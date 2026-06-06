@@ -163,11 +163,11 @@ public class TestDevBootstrapConfiguration {
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE + 1)
-    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-submitters", havingValue = "true", matchIfMissing = true)
-    public CommandLineRunner testSubmitterBootstrapRunner(MassSdkApplication app) {
+    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-api-keys", havingValue = "true", matchIfMissing = true)
+    public CommandLineRunner testApiKeyBootstrapRunner(MassSdkApplication app) {
         return args -> {
             app.projectCredential(CredentialPrincipalRegistration.builder()
-                    .principalId("crawler-submitter")
+                    .principalId("crawler-task-api-key")
                     .credential("crawler-task-api-key")
                     .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
                     .projectScopes(List.of("crawlerApp"))

@@ -4,7 +4,7 @@ import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -61,7 +61,7 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
 
     @Test
     void registerWorkerFailsFastWhenRealtimeFamilyMatchesMultipleAdapters() {
-        app.registerSubmitter(SubmitterRegistration.builder()
+        app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId("realtime-worker-principal")
                 .credential(WORKER_KEY)
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))

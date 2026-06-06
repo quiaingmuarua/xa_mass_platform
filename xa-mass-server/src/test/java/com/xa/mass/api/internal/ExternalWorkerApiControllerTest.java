@@ -61,12 +61,12 @@ class ExternalWorkerApiControllerTest {
     private AuthProvider authProvider;
 
     private MockMvc mockMvc;
-    private PrincipalContext workerSubmitter;
+    private PrincipalContext workerCredentialPrincipal;
     private InMemoryWorkerRegistrationObservationStore registrationObservationStore;
 
     @BeforeEach
     void setUp() {
-        workerSubmitter = new PrincipalContext(
+        workerCredentialPrincipal = new PrincipalContext(
                 "node-worker-1",
                 null,
                 null,
@@ -75,7 +75,7 @@ class ExternalWorkerApiControllerTest {
                 List.of("crawler.fetch-page"),
                 Map.of("workerId", "node-worker-1")
         );
-        lenient().when(authProvider.authenticate("node-worker-key")).thenReturn(workerSubmitter);
+        lenient().when(authProvider.authenticate("node-worker-key")).thenReturn(workerCredentialPrincipal);
         lenient().when(workerClient.getWorkerAdapterId("node-worker-1"))
                 .thenReturn(WorkerTransportHints.POLLING);
         lenient().when(workerClient.getWorkerTransportHint("node-worker-1"))

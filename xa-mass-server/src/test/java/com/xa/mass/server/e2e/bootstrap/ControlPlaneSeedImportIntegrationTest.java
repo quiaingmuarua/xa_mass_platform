@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "sample.worker.auto-start=false",
                 "mass.mock.bootstrap.enabled=false",
                 "mass.mock.bootstrap.register-dev-catalog=false",
-                "mass.mock.bootstrap.register-dev-submitters=false",
+                "mass.mock.bootstrap.register-dev-api-keys=false",
                 "mass.mock.bootstrap.load-rules=false",
                 "mass.control-plane.seed.enabled=true",
                 "mass.control-plane.seed.catalog-location=file:../integrations/samples/dev/scenario/bootstrap.json",
@@ -47,10 +47,10 @@ public class ControlPlaneSeedImportIntegrationTest extends AbstractSampleE2eTest
     void explicitSeedImportCreatesControlPlaneMetadataOnly() {
         assertNotNull(app.getProject("crawlerApp"));
         assertNotNull(app.getEvent("stock.quote.fetch"));
-        assertNotNull(app.getSubmitter("crawler-submitter"));
-        assertNotNull(app.getSubmitter("phone-device-probe-poll-sg-001"));
+        assertNotNull(app.getCredentialPrincipal("crawler-task-api-key"));
+        assertNotNull(app.getCredentialPrincipal("phone-device-probe-poll-sg-001"));
         assertEquals("fp-sg-alpha",
-                app.getSubmitter("phone-device-probe-poll-sg-001").getAttributes().get("fingerprintProfile"));
+                app.getCredentialPrincipal("phone-device-probe-poll-sg-001").getAttributes().get("fingerprintProfile"));
 
         List<String> ruleIds = app.listDefaultRules().stream()
                 .map(rule -> String.valueOf(rule.get("ruleId")))

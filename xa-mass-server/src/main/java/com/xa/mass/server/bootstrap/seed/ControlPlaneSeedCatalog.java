@@ -8,7 +8,6 @@ final class ControlPlaneSeedCatalog {
     private List<ProjectSeed> projects = List.of();
     private List<EventSeed> events = List.of();
     private List<ApiKeySeed> apiKeys = List.of();
-    private List<ApiKeySeed> submitters = List.of();
 
     List<ProjectSeed> getProjects() {
         return projects;
@@ -32,14 +31,6 @@ final class ControlPlaneSeedCatalog {
 
     public void setApiKeys(List<ApiKeySeed> apiKeys) {
         this.apiKeys = apiKeys != null ? apiKeys : List.of();
-    }
-
-    List<ApiKeySeed> getSubmitters() {
-        return submitters;
-    }
-
-    public void setSubmitters(List<ApiKeySeed> submitters) {
-        this.submitters = submitters != null ? submitters : List.of();
     }
 
     static final class ProjectSeed {

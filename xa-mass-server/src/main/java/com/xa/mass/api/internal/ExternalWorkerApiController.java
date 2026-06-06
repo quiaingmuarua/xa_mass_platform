@@ -108,7 +108,7 @@ public class ExternalWorkerApiController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestBody ExternalAdapterNodeRegisterApiRequest requestBody) {
         validateAdapterNodeRegisterRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader,
                 authorizationHeader,
                 ApiSecurityScenario.WORKER_REGISTER,
@@ -135,7 +135,7 @@ public class ExternalWorkerApiController {
         response.put("enabled", request.isEnabled());
         response.put("online", request.isOnline());
         response.put("attributes", request.getAttributes());
-        observeRegistration("ADAPTER_NODE", request.getAdapterNodeId(), "REGISTER", submitter, response);
+        observeRegistration("ADAPTER_NODE", request.getAdapterNodeId(), "REGISTER", workerPrincipal, response);
         return ApiResponse.success(response);
     }
 
@@ -147,7 +147,7 @@ public class ExternalWorkerApiController {
             @RequestBody ExternalWorkerGroupDeclareApiRequest requestBody) {
         validateWorkerGroupDeclareRequest(requestBody);
         List<WorkerEventBinding> eventBindings = toEventBindings(requestBody.getEventBindings());
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader,
                 authorizationHeader,
                 ApiSecurityScenario.WORKER_REGISTER,
@@ -170,7 +170,7 @@ public class ExternalWorkerApiController {
         response.put("eventBindings", request.getEventBindings());
         response.put("defaultAttributes", request.getDefaultAttributes());
         response.put("defaultMaxConcurrentWork", request.getDefaultMaxConcurrentWork());
-        observeRegistration("WORKER_GROUP", request.getGroupId(), "DECLARE", submitter, response);
+        observeRegistration("WORKER_GROUP", request.getGroupId(), "DECLARE", workerPrincipal, response);
         return ApiResponse.success(response);
     }
 
@@ -181,7 +181,7 @@ public class ExternalWorkerApiController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestBody ExternalNodeGroupBindingApiRequest requestBody) {
         validateNodeGroupBindingRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader,
                 authorizationHeader,
                 ApiSecurityScenario.WORKER_REGISTER,
@@ -211,7 +211,7 @@ public class ExternalWorkerApiController {
         observeRegistration("NODE_GROUP_BINDING",
                 request.getAdapterNodeId() + ":" + request.getWorkerGroupId(),
                 "BIND",
-                submitter,
+                workerPrincipal,
                 response);
         return ApiResponse.success(response);
     }
@@ -223,7 +223,7 @@ public class ExternalWorkerApiController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestBody ExternalWorkerRegisterApiRequest requestBody) {
         validateRegisterRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader,
                 authorizationHeader,
                 ApiSecurityScenario.WORKER_REGISTER,
@@ -231,7 +231,7 @@ public class ExternalWorkerApiController {
                 null,
                 null
         );
-        String workerId = requireBoundWorkerId(submitter, requestBody.getWorkerId());
+        String workerId = requireBoundWorkerId(workerPrincipal, requestBody.getWorkerId());
         String transportHint = resolveSupportedTransportHint(requestBody.getTransportHint());
         WorkerRegistration request = WorkerRegistration.builder()
                 .workerId(workerId)
@@ -249,7 +249,7 @@ public class ExternalWorkerApiController {
         response.put("workerGroupId", request.getWorkerGroupId());
         response.put("adapterId", effectiveAdapterId);
         response.put("transportHint", transportHint);
-        observeRegistration("WORKER", request.getWorkerId(), "REGISTER", submitter, response);
+        observeRegistration("WORKER", request.getWorkerId(), "REGISTER", workerPrincipal, response);
         return ApiResponse.success(response);
     }
 
@@ -260,9 +260,9 @@ public class ExternalWorkerApiController {
                                                          @PathVariable String workerId,
                                                          @RequestBody(required = false) ExternalWorkerPresenceApiRequest requestBody) {
         validatePresenceRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_ONLINE, workerId, null, null);
-        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "online");
         workerClient.workerOnline(boundWorkerId, requestBody == null ? null : requestBody.getReason());
         return ApiResponse.success(presenceResponse(
@@ -279,9 +279,9 @@ public class ExternalWorkerApiController {
                                                             @PathVariable String workerId,
                                                             @RequestBody(required = false) ExternalWorkerPresenceApiRequest requestBody) {
         validatePresenceRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_HEARTBEAT, workerId, null, null);
-        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "heartbeat");
         workerClient.workerHeartbeat(boundWorkerId, requestBody == null ? null : requestBody.getReason());
         return ApiResponse.success(presenceResponse(
@@ -298,9 +298,9 @@ public class ExternalWorkerApiController {
                                                           @PathVariable String workerId,
                                                           @RequestBody(required = false) ExternalWorkerPresenceApiRequest requestBody) {
         validatePresenceRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_OFFLINE, workerId, null, null);
-        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "offline");
         workerClient.workerOffline(boundWorkerId, requestBody == null ? null : requestBody.getReason());
         return ApiResponse.success(presenceResponse(
@@ -317,9 +317,9 @@ public class ExternalWorkerApiController {
                                                       @PathVariable String workerId,
                                                       @RequestBody(required = false) ExternalWorkerPollApiRequest requestBody) {
         validatePollRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_POLL, workerId, null, null);
-        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "poll");
         int maxMessages = requestBody == null || requestBody.getMaxMessages() == null ? 1 : requestBody.getMaxMessages();
         long timeoutMs = requestBody == null || requestBody.getTimeoutMs() == null ? 0L : requestBody.getTimeoutMs();
@@ -338,9 +338,9 @@ public class ExternalWorkerApiController {
                                                          @PathVariable String workerId,
                                                          @RequestBody ExternalWorkerResultSubmitApiRequest requestBody) {
         validateResultRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_SUBMIT_RESULT, workerId, null, null);
-        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "submitResult");
         boolean submitted = workerClient.submitResult(boundWorkerId, new TaskResultReport(
                 requireNonBlank(requestBody.getTaskId(), "taskId"),
@@ -366,9 +366,9 @@ public class ExternalWorkerApiController {
             @PathVariable String workerId,
             @RequestBody(required = false) ExternalWorkerCommandPollApiRequest requestBody) {
         validateCommandPollRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_POLL, workerId, null, null);
-        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "pollCommand");
         int maxCommands = requestBody == null || requestBody.getMaxCommands() == null
                 ? 10
@@ -390,11 +390,11 @@ public class ExternalWorkerApiController {
             @RequestBody ExternalWorkerCapabilityReportApiRequest requestBody) {
         validateCapabilityReportRequest(requestBody);
         List<WorkerEventBinding> eventBindings = toCapabilityEventBindings(requestBody.getAvailableEventCodes());
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_REPORT_CAPABILITY, workerId, null, eventBindings);
-        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "reportCapability");
-        requireWorkerEventScope(submitter, requestBody.getAvailableEventCodes());
+        requireWorkerEventScope(workerPrincipal, requestBody.getAvailableEventCodes());
         long capabilityVersion = resolveOptionalVersion(requestBody.getCapabilityVersion(), "capabilityVersion");
         return ApiResponse.success(requireWorkerControl().reportWorkerCapability(
                 new WorkerCapabilityReportRequest(
@@ -415,9 +415,9 @@ public class ExternalWorkerApiController {
             @PathVariable String workerId,
             @RequestBody ExternalWorkerStateReportApiRequest requestBody) {
         validateStateReportRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_REPORT_STATE, workerId, null, null);
-        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "reportState");
         long stateVersion = resolveOptionalVersion(requestBody.getStateVersion(), "stateVersion");
         return ApiResponse.success(requireWorkerControl().reportWorkerState(
@@ -441,9 +441,9 @@ public class ExternalWorkerApiController {
             @PathVariable String commandId,
             @RequestBody WorkerCommandAcknowledgementApiRequest requestBody) {
         validateCommandAcknowledgementRequest(requestBody);
-        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+        PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_ACK_COMMAND, workerId, null, null);
-        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "ackCommand");
         WorkerCommandSnapshot command = requireWorkerCommandOwnership(commandId, boundWorkerId);
         return ApiResponse.success(requireWorkerControl().acknowledgeWorkerCommand(
@@ -693,19 +693,19 @@ public class ExternalWorkerApiController {
         return command;
     }
 
-    private String requireBoundWorkerId(PrincipalContext submitter, String requestedWorkerId) {
+    private String requireBoundWorkerId(PrincipalContext workerPrincipal, String requestedWorkerId) {
         String normalizedWorkerId = requireNonBlank(requestedWorkerId, "workerId");
-        if (submitter == null || submitter.getAttributes() == null) {
+        if (workerPrincipal == null || workerPrincipal.getAttributes() == null) {
             return normalizedWorkerId;
         }
-        String boundWorkerId = blankToNull(submitter.getAttributes().get(WORKER_ID_BINDING_ATTRIBUTE));
+        String boundWorkerId = blankToNull(workerPrincipal.getAttributes().get(WORKER_ID_BINDING_ATTRIBUTE));
         if (boundWorkerId != null && !boundWorkerId.equals(normalizedWorkerId)) {
             throw new ApiForbiddenException("Worker credential binding denied: " + normalizedWorkerId);
         }
         return normalizedWorkerId;
     }
 
-    private PrincipalContext requireAuthorizedWorkerSubmitter(String apiKeyHeader,
+    private PrincipalContext requireAuthorizedWorkerCredential(String apiKeyHeader,
                                                               String authorizationHeader,
                                                               ApiSecurityScenario scenario,
                                                               String workerId,

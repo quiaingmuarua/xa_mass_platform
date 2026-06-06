@@ -11,8 +11,8 @@ import com.xa.mass.client.worker.session.PollingWorkerSession;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
@@ -60,11 +60,11 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
         String otherWorkerId = "phone-device-probe-poll-sg-002";
         String matchedWorkerKey = "phone-device-probe-worker-a-key";
         String otherWorkerKey = "phone-device-probe-worker-b-key";
-        String submitterKey = "phone-device-probe-submitter-key";
+        String taskApiKey = "phone-device-probe-api-key-key";
         registerDeviceProbeCatalogFixture();
-        registerTaskSubmitter("phone-device-probe-submitter", submitterKey);
-        registerWorkerSubmitter("phone-device-probe-worker-a", matchedWorkerKey, matchedWorkerId);
-        registerWorkerSubmitter("phone-device-probe-worker-b", otherWorkerKey, otherWorkerId);
+        registerTaskApiKey("phone-device-probe-api-key", taskApiKey);
+        registerWorkerApiKey("phone-device-probe-worker-a", matchedWorkerKey, matchedWorkerId);
+        registerWorkerApiKey("phone-device-probe-worker-b", otherWorkerKey, otherWorkerId);
         sdkApp().replaceDefaultRules(List.of(
                 rule("phone-worker-online", "hasWorkerSchedulingResource == true"),
                 rule("phone-worker-capacity", "hasWorkerSchedulingResource == true"),
@@ -74,7 +74,7 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
 
         MassPlatform matchedWorkerMass = platform(matchedWorkerKey);
         MassPlatform otherWorkerMass = platform(otherWorkerKey);
-        MassPlatform submitterMass = platform(submitterKey);
+        MassPlatform taskApiClient = platform(taskApiKey);
 
         try (PollingWorkerSession matched = ProbeWorkerPack.phoneDevicePolling(matchedWorkerMass)
                 .workerId(matchedWorkerId)
@@ -96,7 +96,7 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
                      .pollInterval(Duration.ofMillis(50))
                      .heartbeatInterval(Duration.ofMillis(100))
                      .startPolling()) {
-            String taskId = submitterMass.tasks().create(TaskCreateRequest.builder()
+            String taskId = taskApiClient.tasks().create(TaskCreateRequest.builder()
                     .project("deviceProbe")
                     .userId("worker-pack-agent")
                     .contract(TaskContract.BATCH)
@@ -107,7 +107,7 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
                             .batchSize(1)
                             .build())
                     .build()).taskId();
-            submitterMass.tasks().appendItems(taskId, TaskItemBatch.builder()
+            taskApiClient.tasks().appendItems(taskId, TaskItemBatch.builder()
                     .eventCode(ProbeWorkerPack.PHONE_METADATA_EVENT)
                     .item(Map.of(
                             "phoneNumber", "+6591234567",
@@ -118,7 +118,7 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
                             "traceLabel", "stage2-phone-fingerprint-proof"
                     ))
                     .build());
-            submitterMass.tasks().seal(taskId);
+            taskApiClient.tasks().seal(taskId);
             assertApiOk(approveTask(taskId));
 
             RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
@@ -126,7 +126,7 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
             assertEquals(1, terminal.stats().successCount());
 
-            TaskResultWindow results = submitterMass.tasks().results(taskId,
+            TaskResultWindow results = taskApiClient.tasks().results(taskId,
                     TaskResultReadRequest.builder().limit(10).build());
             assertFalse(results.items().isEmpty());
             assertEquals(matchedWorkerId, results.items().getFirst().workerId());
@@ -160,8 +160,8 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
                 .build();
     }
 
-    private void registerTaskSubmitter(String principalId, String credential) {
-        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+    private void registerTaskApiKey(String principalId, String credential) {
+        sdkApp().registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
@@ -170,8 +170,8 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
                 .build());
     }
 
-    private void registerWorkerSubmitter(String principalId, String credential, String workerId) {
-        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+    private void registerWorkerApiKey(String principalId, String credential, String workerId) {
+        sdkApp().registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))

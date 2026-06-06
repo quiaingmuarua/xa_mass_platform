@@ -1,9 +1,9 @@
 import {ApiError, requestApiData} from '@/api/http'
-import type {CurrentSubmitterProfile, CurrentSubmitterSnapshot,} from '@/types/current-submitter'
+import type {CurrentApiKeyProfile, CurrentApiKeySnapshot,} from '@/types/current-api-key'
 
-export async function getCurrentSubmitterReal(): Promise<CurrentSubmitterSnapshot> {
+export async function getCurrentApiKeyReal(): Promise<CurrentApiKeySnapshot> {
     try {
-        const profile = await requestApiData<CurrentSubmitterProfile>('/api/v1/api-keys:current')
+        const profile = await requestApiData<CurrentApiKeyProfile>('/api/v1/api-keys:current')
         return {
             state: 'available',
             profile,

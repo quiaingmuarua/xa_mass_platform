@@ -1,9 +1,6 @@
 import {requestApiData} from '@/api/http'
 import type {EventDefinition} from '@/types/catalog'
-import type {
-    ProjectDefinition,
-    ProjectSubmitterProfile,
-} from '@/types/projects'
+import type {ProjectDefinition} from '@/types/projects'
 
 export async function listProjectsReal(): Promise<ProjectDefinition[]> {
     return requestApiData<ProjectDefinition[]>('/api/v1/projects')
@@ -22,13 +19,5 @@ export async function listProjectEventDefinitionsReal(
 ): Promise<EventDefinition[]> {
     return requestApiData<EventDefinition[]>(
         `/api/v1/projects/${encodeURIComponent(projectCode)}/events`,
-    )
-}
-
-export async function listProjectSubmittersReal(
-    projectCode: string,
-): Promise<ProjectSubmitterProfile[]> {
-    return requestApiData<ProjectSubmitterProfile[]>(
-        `/api/v1/projects/${encodeURIComponent(projectCode)}/submitters`,
     )
 }

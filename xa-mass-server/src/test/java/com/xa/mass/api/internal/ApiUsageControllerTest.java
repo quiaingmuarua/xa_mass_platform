@@ -10,6 +10,8 @@ import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
 import com.xa.mass.api.auth.usage.ApiUsageOperation;
 import com.xa.mass.api.auth.usage.ApiUsageStatus;
 import com.xa.mass.api.auth.usage.InMemoryApiUsageLedgerStore;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
+import com.xa.mass.sdk.auth.InMemoryCredentialPrincipalStore;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,13 +27,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class ApiUsageControllerTest {
 
-    private InMemorySubmitterOperations submitters;
+    private InMemoryCredentialPrincipalStore credentialPrincipals;
     private ApiUsageLedgerService usageLedgerService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        submitters = new InMemorySubmitterOperations();
+        credentialPrincipals = new InMemoryCredentialPrincipalStore();
         usageLedgerService = new ApiUsageLedgerService(new InMemoryApiUsageLedgerStore());
         ApiAuthInterceptor interceptor = new ApiAuthInterceptor(
                 ApiAuthTestSupport.defaultOperatorAuthService(),
@@ -39,14 +41,14 @@ class ApiUsageControllerTest {
                 new ApiAuthorizationService(),
                 new ApiRouteAuthorizationCatalog()
         );
-        mockMvc = MockMvcBuilders.standaloneSetup(new ApiUsageController(usageLedgerService, submitters))
+        mockMvc = MockMvcBuilders.standaloneSetup(new ApiUsageController(usageLedgerService, credentialPrincipals))
                 .addInterceptors(interceptor)
                 .build();
     }
 
     @Test
-    void submitterCanReadOwnApiKeyUsage() throws Exception {
-        submitters.registerSubmitter(com.xa.mass.sdk.auth.SubmitterRegistration.builder()
+    void credentialPrincipalCanReadOwnApiKeyUsage() throws Exception {
+        credentialPrincipals.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId("crawler-key")
                 .credential("raw-secret")
                 .userId("ops-admin")
@@ -56,7 +58,7 @@ class ApiUsageControllerTest {
                 .attributes(Map.of(ApiKeyCredentialService.ATTR_KEY_ID, "ak-usage-1"))
                 .build());
         usageLedgerService.recordAccepted(
-                submitters.authenticate("raw-secret"),
+                credentialPrincipals.authenticate("raw-secret"),
                 ApiUsageOperation.TASK_CREATE,
                 "crawlerApp",
                 null,

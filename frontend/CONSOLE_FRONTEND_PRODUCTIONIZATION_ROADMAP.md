@@ -85,7 +85,7 @@ Already implemented:
   and `permissions` metadata.
 - `src/router/visible-routes.ts` and `src/router/menu-model.ts`.
 - Route/menu tests for explicit shell metadata, permission visibility, and
-  submitter-viewer separation.
+  API-key viewer separation.
 - `AppSidebar.vue` consumes the prepared menu model.
 - `src/console-kit` contains:
   - `layout/ConsolePage.vue`
@@ -95,14 +95,14 @@ Already implemented:
   - `data/StatusBadge.vue`
   - `security/CredentialInputCard.vue`
   - `security/SecretRevealDialog.vue`
-- Dashboard, Tasks List, Submitter Viewer, and API Keys already consume
+- Dashboard, Tasks List, API-key Viewer, and API Keys already consume
   console-kit components.
-- Submitter Viewer and API Keys tests cover API-key terminology and source
+- API-key Viewer and API Keys tests cover API-key terminology and source
   secret persistence rules.
 
 Post-implementation residue:
 
-- `submitter-viewer` and `public` shell modes remain lightweight by current
+- `api-key-viewer` and `public` shell modes remain lightweight by current
   design and must not accidentally inherit operator navbar/sidebar.
 - `bootstrap.ts` globally installs Element Plus. The build passes but still
   emits a large main-chunk warning; this warning is accepted for this roadmap
@@ -142,12 +142,12 @@ src/pages:
    schema.
 5. Keep frontend permissions as UX visibility only. Backend authorization is the
    real enforcement boundary.
-6. Keep operator console, submitter-viewer, and public routes as separate shell
+6. Keep operator console, API-key viewer, and public routes as separate shell
    modes.
 7. Do not create another login page or move the current login page to
    `src/pages/auth`.
 8. Do not change backend auth contracts, CSRF behavior, SDK API-key behavior, or
-   submitter credential behavior.
+   API-key credential behavior.
 9. API-key secrets are password-like. Show them once, never persist raw secrets,
    and never render internal viewer/session credentials as user-facing concepts.
 10. Tests stay behavior-focused. Do not add broad screenshot or visual snapshot
@@ -196,7 +196,7 @@ Scope:
    - page-local deferred debt
 3. confirm auth/login baseline remains implemented
 4. confirm route/menu baseline remains implemented
-5. confirm submitter-viewer and public routes remain lightweight shell modes
+5. confirm API-key viewer and public routes remain lightweight shell modes
 6. classify existing console-kit primitives as mainline, visual debt, or
    rollback candidate
 7. record current build and test status, including any chunk warning
@@ -212,7 +212,7 @@ Acceptance:
 1. route/menu/auth baseline is documented as current, not future work
 2. token debt is classified by owner
 3. console-kit current consumers are listed
-4. submitter-viewer shell boundary is explicit
+4. API-key viewer shell boundary is explicit
 5. auth mode discovery is confirmed through src/auth/backend-auth.ts and
    src/auth/provider.backend.ts, including /api/v1/auth/config
 6. build/chunk baseline is recorded in the inventory so later changes can be
@@ -279,7 +279,7 @@ Scope:
 6. move operator mode switch into the dropdown
 7. show operator mode switch only in mock auth or backend dev-header mode
 8. remove visible top-bar Mock API / Backend API and auth diagnostic badges
-9. keep submitter-viewer and public routes off the operator navbar/sidebar
+9. keep API-key viewer and public routes off the operator navbar/sidebar
 ```
 
 Acceptance:
@@ -290,7 +290,7 @@ Acceptance:
 2. navbar shows breadcrumb and operator identity
 3. logout calls existing logout() from @/auth/use-auth and routes to /login
 4. session auth mode hides operator mode switch
-5. submitter-viewer/public shell behavior is unchanged
+5. API-key viewer/public shell behavior is unchanged
 6. AppShell/AppHeader focused tests cover sidebar collapse, breadcrumb,
    logout, and session-mode operator selector hiding
 7. build and tests pass
@@ -400,7 +400,7 @@ Acceptance:
 2. permission-aware actions remain explicit
 3. runtime/worker/trace pages do not imply frontend runtime ownership
 4. no generic CRUD page builder is introduced
-5. SubmitterViewer tests cover credential clear on 401/failed refresh and
+5. API-key Viewer tests cover credential clear on 401/failed refresh and
    explicit exit
 6. ResultPayloadViewer tests prove payload rendering is plain text, bounded,
    and does not use HTML injection paths
@@ -452,7 +452,7 @@ Manual checks:
 2. corepack pnpm typecheck
 3. corepack pnpm build
 4. backend-hosted http://localhost:8088/
-5. backend-hosted http://localhost:8088/submitter-viewer
+5. backend-hosted http://localhost:8088/api-key-viewer
 6. operator admin mode vs viewer mode menu visibility
 7. API-key create/approve one-time secret dialog
 ```
@@ -483,7 +483,7 @@ This roadmap is complete only when:
    token declarations
 3. operator shell has collapsible sidebar, navbar, breadcrumb, user dropdown,
    and logout
-4. submitter-viewer and public shell behavior remain intentionally lightweight
+4. API-key viewer and public shell behavior remain intentionally lightweight
 5. login/auth surface is polished without duplicating auth ownership
 6. console-kit consumes app tokens and no longer carries a parallel visual
    system

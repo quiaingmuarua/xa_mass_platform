@@ -11,7 +11,7 @@ import java.util.Set;
 /**
  * Credential-principal projection payload.
  *
- * <p>This is the non-submitter runtime auth projection shape used by API-key
+ * <p>This is the runtime auth projection shape used by API-key
  * lifecycle owners. It contains the raw credential only for projection writes;
  * read surfaces must use {@link CredentialPrincipalProfile}.
  */

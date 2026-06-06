@@ -6,7 +6,7 @@ import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,14 +51,14 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void externalWorkerRegisterApiRequiresExplicitAdapterIdForRealtimeFamily() {
-        registerExternalWorkerSubmitter(
+        registerExternalWorkerCredential(
                 "realtime-worker",
                 "realtime-worker-key",
                 "realtime-worker-001",
                 "crawlerApp",
                 "crawler.fetch-page"
         );
-        registerExternalWorkerSubmitter(
+        registerExternalWorkerCredential(
                 "alias-worker",
                 "alias-worker-key",
                 "realtime-worker-002",
@@ -98,13 +98,13 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     void externalWorkerPollingApiCompletesTaskEndToEnd() throws Exception {
         String workerId = "node-worker-api-001";
         String credential = "node-worker-key";
-        String submitterCredential = "crawler-task-api-key";
+        String taskApiKey = "crawler-task-api-key";
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "supportsProject == true"),
                 rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
         HttpHeaders workerHeaders = credentialHeaders(credential);
-        HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        HttpHeaders taskApiKeyHeaders = credentialHeaders(taskApiKey);
         declareCrawlerWorkerGroup("node-runtime", workerHeaders);
         bindAdapterNode("polling-node", "node-runtime", workerHeaders);
 
@@ -138,14 +138,14 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         createBody.put("userId", "crawler-agent");
         createBody.put("sharedConfig", Map.of("routingCode", "us"));
         createBody.put("executionSpec", Map.of("batchSize", 1));
-        Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
+        Map<String, Object> createResponse = createTaskShell(createBody, taskApiKeyHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertApiOk(exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
                 "eventCode", "crawler.fetch-page",
                 "items", List.of(Map.of("url", "https://example.test/page-1"))
-        ), submitterHeaders));
-        assertApiOk(executeTaskCommand(taskId, "SEAL", null, submitterHeaders));
+        ), taskApiKeyHeaders));
+        assertApiOk(executeTaskCommand(taskId, "SEAL", null, taskApiKeyHeaders));
 
         Map<String, Object> auditResponse = approveTask(taskId);
         assertApiOk(auditResponse);
@@ -197,8 +197,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     void externalWorkerPollingApiCanAcknowledgeOperatorIssuedCommand() throws Exception {
         String workerId = "node-worker-api-002";
         String credential = "node-worker-ack-key";
-        String submitterCredential = "crawler-task-api-key";
-        registerExternalWorkerSubmitter(
+        String taskApiKey = "crawler-task-api-key";
+        registerExternalWorkerCredential(
                 "node-worker-ack",
                 credential,
                 workerId,
@@ -206,7 +206,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 "crawler.fetch-page"
         );
         HttpHeaders workerHeaders = credentialHeaders(credential);
-        HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        HttpHeaders taskApiKeyHeaders = credentialHeaders(taskApiKey);
         declareCrawlerWorkerGroup("node-runtime", workerHeaders);
         bindAdapterNode("polling-node", "node-runtime", workerHeaders);
 
@@ -275,7 +275,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("DELIVERY_ACCEPTED", readCommand.get("status"));
         assertEquals("command pulled by worker", readCommand.get("statusReason"));
 
-        String taskId = createReadyCrawlerTask(submitterHeaders);
+        String taskId = createReadyCrawlerTask(taskApiKeyHeaders);
         for (int attempt = 0; attempt < 4; attempt++) {
             Map<String, Object> pollResponse = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
                     "maxMessages", 10,
@@ -305,7 +305,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertApiOk(failedAckResponse);
         assertEquals("FAILED", responseData(failedAckResponse).get("currentStatus"));
 
-        String stillDrainedTaskId = createReadyCrawlerTask(submitterHeaders);
+        String stillDrainedTaskId = createReadyCrawlerTask(taskApiKeyHeaders);
         for (int attempt = 0; attempt < 4; attempt++) {
             Map<String, Object> pollResponse = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
                     "maxMessages", 10,
@@ -351,12 +351,12 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     void drainingStateStopsNewAssignmentsUntilWorkerReportsAvailable() throws Exception {
         String workerId = "node-worker-draining-001";
         String credential = "node-worker-draining-key";
-        String submitterCredential = "crawler-task-api-key";
+        String taskApiKey = "crawler-task-api-key";
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "supportsProject == true"),
                 rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
-        registerExternalWorkerSubmitter(
+        registerExternalWorkerCredential(
                 "node-worker-draining",
                 credential,
                 workerId,
@@ -364,7 +364,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 "crawler.fetch-page"
         );
         HttpHeaders workerHeaders = credentialHeaders(credential);
-        HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        HttpHeaders taskApiKeyHeaders = credentialHeaders(taskApiKey);
         declareCrawlerWorkerGroup("node-runtime", workerHeaders);
         bindAdapterNode("polling-node", "node-runtime", workerHeaders);
 
@@ -389,7 +389,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 "reason", "maintenance"
         ), workerHeaders));
 
-        String taskId = createReadyCrawlerTask(submitterHeaders);
+        String taskId = createReadyCrawlerTask(taskApiKeyHeaders);
 
         for (int attempt = 0; attempt < 4; attempt++) {
             Map<String, Object> pollResponse = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
@@ -477,20 +477,20 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         ), workerHeaders));
     }
 
-    private String createReadyCrawlerTask(HttpHeaders submitterHeaders) {
+    private String createReadyCrawlerTask(HttpHeaders taskApiKeyHeaders) {
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "crawlerApp");
         createBody.put("userId", "crawler-agent");
         createBody.put("sharedConfig", Map.of("routingCode", "us"));
         createBody.put("executionSpec", Map.of("batchSize", 1));
-        Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
+        Map<String, Object> createResponse = createTaskShell(createBody, taskApiKeyHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertApiOk(exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
                 "eventCode", "crawler.fetch-page",
                 "items", List.of(Map.of("url", "https://example.test/draining"))
-        ), submitterHeaders));
-        assertApiOk(executeTaskCommand(taskId, "SEAL", null, submitterHeaders));
+        ), taskApiKeyHeaders));
+        assertApiOk(executeTaskCommand(taskId, "SEAL", null, taskApiKeyHeaders));
         assertApiOk(approveTask(taskId));
         return taskId;
     }
@@ -518,12 +518,12 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertTrue(condition.getAsBoolean(), failureMessage);
     }
 
-    private void registerExternalWorkerSubmitter(String principalId,
+    private void registerExternalWorkerCredential(String principalId,
                                                  String credential,
                                                  String workerId,
                                                  String projectCode,
                                                  String eventCode) {
-        app.registerSubmitter(SubmitterRegistration.builder()
+        app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))

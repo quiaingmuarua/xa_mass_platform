@@ -5,7 +5,7 @@ import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
 import com.xa.mass.server.e2e.support.ExternalNodeWorkerProcess;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.transport.socket.server.SocketTransportServer;
 import org.junit.jupiter.api.Test;
@@ -65,7 +65,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
 
     @Test
     void externalNodeSocketWorkerCompletesTaskThroughExplicitSocketAdapterRegistration() throws Exception {
-        registerExternalWorkerSubmitter(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
+        registerExternalWorkerCredential(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
 
         HttpHeaders workerHeaders = credentialHeaders(SOCKET_WORKER_KEY);
         declareExternalWorkerGroup("node-socket-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
@@ -146,8 +146,8 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
 
     @Test
     void websocketAndSocketAdaptersCanCoexistWithoutCrossRouting() throws Exception {
-        registerExternalWorkerSubmitter(WEBSOCKET_WORKER_ID, WEBSOCKET_WORKER_KEY, List.of("demo.dispatch"));
-        registerExternalWorkerSubmitter(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
+        registerExternalWorkerCredential(WEBSOCKET_WORKER_ID, WEBSOCKET_WORKER_KEY, List.of("demo.dispatch"));
+        registerExternalWorkerCredential(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
         HttpHeaders websocketHeaders = credentialHeaders(WEBSOCKET_WORKER_KEY);
         HttpHeaders socketHeaders = credentialHeaders(SOCKET_WORKER_KEY);
         declareExternalWorkerGroup("node-websocket-demo", "demoApp", "demo.dispatch", websocketHeaders);
@@ -232,8 +232,8 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
         }
     }
 
-    private void registerExternalWorkerSubmitter(String workerId, String credential, List<String> eventCodes) {
-        app.registerSubmitter(SubmitterRegistration.builder()
+    private void registerExternalWorkerCredential(String workerId, String credential, List<String> eventCodes) {
+        app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(workerId + "-principal")
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))

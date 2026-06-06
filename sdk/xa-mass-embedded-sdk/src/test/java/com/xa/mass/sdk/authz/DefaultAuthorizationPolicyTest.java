@@ -43,8 +43,8 @@ class DefaultAuthorizationPolicyTest {
     }
 
     @Test
-    void submitterTaskCreateAuthorizationPreservesProjectEventAndUserScopeChecks() {
-        PrincipalContext submitter = PrincipalContext.builder()
+    void taskApiKeyCreateAuthorizationPreservesProjectEventAndUserScopeChecks() {
+        PrincipalContext taskApiKey = PrincipalContext.builder()
                 .principalId("crawler-agent")
                 .userId("crawler-user")
                 .permissions(List.of("task:create"))
@@ -57,7 +57,7 @@ class DefaultAuthorizationPolicyTest {
         resourceAttributes.put(DefaultAuthorizationPolicy.ATTR_USER_ID, "crawler-user");
 
         AuthorizationDecision allowed = policy.authorize(AuthorizationRequest.builder()
-                .principal(submitter)
+                .principal(taskApiKey)
                 .resourceType(PlatformResourceType.TASK)
                 .action(PlatformAction.CREATE)
                 .project("crawlerApp")
@@ -66,7 +66,7 @@ class DefaultAuthorizationPolicyTest {
                 .build());
 
         AuthorizationDecision deniedProject = policy.authorize(AuthorizationRequest.builder()
-                .principal(submitter)
+                .principal(taskApiKey)
                 .resourceType(PlatformResourceType.TASK)
                 .action(PlatformAction.CREATE)
                 .project("demoApp")
@@ -75,7 +75,7 @@ class DefaultAuthorizationPolicyTest {
                 .build());
 
         AuthorizationDecision deniedEvent = policy.authorize(AuthorizationRequest.builder()
-                .principal(submitter)
+                .principal(taskApiKey)
                 .resourceType(PlatformResourceType.TASK)
                 .action(PlatformAction.CREATE)
                 .project("crawlerApp")
@@ -86,7 +86,7 @@ class DefaultAuthorizationPolicyTest {
         Map<String, Object> mismatchedUserAttributes = new LinkedHashMap<>(resourceAttributes);
         mismatchedUserAttributes.put(DefaultAuthorizationPolicy.ATTR_USER_ID, "other-user");
         AuthorizationDecision deniedUser = policy.authorize(AuthorizationRequest.builder()
-                .principal(submitter)
+                .principal(taskApiKey)
                 .resourceType(PlatformResourceType.TASK)
                 .action(PlatformAction.CREATE)
                 .project("crawlerApp")
@@ -104,8 +104,8 @@ class DefaultAuthorizationPolicyTest {
     }
 
     @Test
-    void submitterTaskEditAuthorizationPreservesProjectAndEventScopeChecksWithoutUserScope() {
-        PrincipalContext submitter = PrincipalContext.builder()
+    void taskApiKeyEditAuthorizationPreservesProjectAndEventScopeChecksWithoutUserScope() {
+        PrincipalContext taskApiKey = PrincipalContext.builder()
                 .principalId("crawler-agent")
                 .userId("crawler-user")
                 .permissions(List.of("task:create"))
@@ -119,7 +119,7 @@ class DefaultAuthorizationPolicyTest {
         );
 
         AuthorizationDecision allowed = policy.authorize(AuthorizationRequest.builder()
-                .principal(submitter)
+                .principal(taskApiKey)
                 .resourceType(PlatformResourceType.TASK)
                 .action(PlatformAction.EDIT)
                 .project("crawlerApp")
@@ -128,7 +128,7 @@ class DefaultAuthorizationPolicyTest {
                 .build());
 
         AuthorizationDecision deniedEvent = policy.authorize(AuthorizationRequest.builder()
-                .principal(submitter)
+                .principal(taskApiKey)
                 .resourceType(PlatformResourceType.TASK)
                 .action(PlatformAction.EDIT)
                 .project("crawlerApp")

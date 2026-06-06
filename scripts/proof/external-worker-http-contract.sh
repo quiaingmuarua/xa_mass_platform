@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8088}"
-SUBMITTER_KEY="${SUBMITTER_KEY:-external-proof-submitter-key}"
+TASK_API_KEY="${TASK_API_KEY:-external-proof-task-api-key}"
 WORKER_KEY="${WORKER_KEY:-external-proof-worker-key}"
 WORKER_ID="${WORKER_ID:-external-proof-polling-worker-001}"
 WORKER_GROUP_ID="${WORKER_GROUP_ID:-external-proof-polling}"
@@ -121,7 +121,7 @@ JSON
 )" >/dev/null
 
 log "create task shell"
-create_response="$(api POST "/api/v1/tasks" "$SUBMITTER_KEY" "$(cat <<JSON
+create_response="$(api POST "/api/v1/tasks" "$TASK_API_KEY" "$(cat <<JSON
 {
   "project": $(json_escape "$PROJECT"),
   "userId": "external-proof-user",
@@ -145,7 +145,7 @@ if [[ -z "$TASK_ID" || "$TASK_ID" == "null" ]]; then
 fi
 
 log "append item and approve task ${TASK_ID}"
-api POST "/api/v1/tasks/${TASK_ID}/items" "$SUBMITTER_KEY" "$(cat <<JSON
+api POST "/api/v1/tasks/${TASK_ID}/items" "$TASK_API_KEY" "$(cat <<JSON
 {
   "eventCode": $(json_escape "$EVENT_CODE"),
   "items": [
@@ -157,8 +157,8 @@ api POST "/api/v1/tasks/${TASK_ID}/items" "$SUBMITTER_KEY" "$(cat <<JSON
 }
 JSON
 )" >/dev/null
-api POST "/api/v1/tasks/${TASK_ID}/commands" "$SUBMITTER_KEY" '{"command":"SEAL"}' >/dev/null
-api POST "/api/v1/tasks/${TASK_ID}/commands" "$SUBMITTER_KEY" '{"command":"APPROVE"}' >/dev/null
+api POST "/api/v1/tasks/${TASK_ID}/commands" "$TASK_API_KEY" '{"command":"SEAL"}' >/dev/null
+api POST "/api/v1/tasks/${TASK_ID}/commands" "$TASK_API_KEY" '{"command":"APPROVE"}' >/dev/null
 
 log "poll until dispatch"
 dispatch_item=""
@@ -208,7 +208,7 @@ JSON
 log "wait for terminal task"
 terminal_response=""
 for _ in $(seq 1 "$TERMINAL_ATTEMPTS"); do
-  terminal_response="$(api GET "/api/v1/tasks/${TASK_ID}" "$SUBMITTER_KEY")"
+  terminal_response="$(api GET "/api/v1/tasks/${TASK_ID}" "$TASK_API_KEY")"
   status="$(jq -r '.data.task.status // .data.status // empty' <<<"$terminal_response")"
   if [[ "$status" == "TERMINAL" ]]; then
     break

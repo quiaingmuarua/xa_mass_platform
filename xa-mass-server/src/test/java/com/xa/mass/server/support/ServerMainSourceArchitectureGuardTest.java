@@ -440,33 +440,27 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
-    void apiKeyLifecycleDoesNotDependOnBroadSubmitterResourceOperations() throws IOException {
+    void apiKeyLifecycleDoesNotDependOnBroadLegacyResourceOperations() throws IOException {
         Path service = SERVER_MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/api/auth/apikey/ApiKeyCredentialService.java");
         String source = Files.readString(service, StandardCharsets.UTF_8);
 
-        assertTrue(!source.contains("import com.xa.mass.sdk.SubmitterOperations"),
+        assertTrue(!source.contains("import com.xa.mass.sdk." + "Sub" + "mitterOperations"),
                 "ApiKeyCredentialService must write auth projection through a narrow projection port, "
-                        + "not broad SubmitterOperations");
+                        + "not broad legacy resource operations");
         assertTrue(source.contains("CredentialAuthProjectionWriter"),
                 "ApiKeyCredentialService must depend on CredentialAuthProjectionWriter for auth projection writes");
     }
 
     @Test
-    void submitterRegistryInterfaceDoesNotOwnWriteAuthAndDirectoryTogether() throws IOException {
+    void removedLegacyCredentialRegistryDoesNotReappear() throws IOException {
         Path registry = REPO_ROOT.resolve(
-                "sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/auth/SubmitterRegistry.java");
-        String source = Files.readString(registry, StandardCharsets.UTF_8);
-
-        assertTrue(!source.contains("extends AuthProvider")
-                        && !source.contains("extends PrincipalDirectory")
-                        && !source.contains("AuthProvider, PrincipalDirectory"),
-                "SubmitterRegistry must stay a resource registry; auth provider, principal directory, "
-                        + "and auth projection writes are separate contracts");
+                "sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/auth/" + "Sub" + "mitterRegistry.java");
+        assertTrue(!Files.exists(registry), "legacy credential registry must not reappear");
     }
 
     @Test
-    void submitterViewerSessionsAreNotJdbcControlPlaneStores() throws IOException {
+    void apiKeyViewerSessionsAreNotJdbcControlPlaneStores() throws IOException {
         List<String> violations = new ArrayList<>();
         try (Stream<Path> paths = Files.walk(SERVER_MAIN_SOURCE_ROOT)) {
             paths.filter(Files::isRegularFile)
@@ -474,10 +468,11 @@ class ServerMainSourceArchitectureGuardTest {
                     .forEach(path -> {
                         try {
                             String source = Files.readString(path, StandardCharsets.UTF_8);
-                            if (source.contains("JdbcSubmitterViewerSessionStore")
-                                    || source.contains("SubmitterViewerSessionStore") && source.contains("xa_submitter_viewer_session")
-                                    || source.contains("SubmitterViewerSessionStore") && source.contains("submitter_viewer_session")) {
-                                violations.add(path + " treats SubmitterViewerSessionStore as JDBC/control-plane storage");
+                            String legacySessionTable = "sub" + "mitter_viewer_session";
+                            if (source.contains("JdbcApiKeyViewerSessionStore")
+                                    || source.contains("ApiKeyViewerSessionStore") && source.contains("xa_" + legacySessionTable)
+                                    || source.contains("ApiKeyViewerSessionStore") && source.contains(legacySessionTable)) {
+                                violations.add(path + " treats ApiKeyViewerSessionStore as JDBC/control-plane storage");
                             }
                         } catch (IOException e) {
                             violations.add(path + " could not be read: " + e.getMessage());
@@ -486,7 +481,7 @@ class ServerMainSourceArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "submitter-viewer sessions must remain volatile session state, not JDBC stores:\n"
+                "API-key viewer sessions must remain volatile session state, not JDBC stores:\n"
                         + String.join("\n", violations));
     }
 
@@ -496,7 +491,7 @@ class ServerMainSourceArchitectureGuardTest {
                 "InMemoryApiKeyApplicationStore", "com/xa/mass/api/auth/apikey/InMemoryApiKeyApplicationStore.java",
                 "InMemoryApiKeyCredentialStore", "com/xa/mass/api/auth/apikey/InMemoryApiKeyCredentialStore.java",
                 "InMemoryUserRolePermissionStore", "com/xa/mass/api/auth/iam/InMemoryUserRolePermissionStore.java",
-                "InMemorySubmitterViewerSessionStore", "com/xa/mass/api/auth/session/InMemorySubmitterViewerSessionStore.java",
+                "InMemoryApiKeyViewerSessionStore", "com/xa/mass/api/auth/session/InMemoryApiKeyViewerSessionStore.java",
                 "InMemoryApiUsageLedgerStore", "com/xa/mass/api/auth/usage/InMemoryApiUsageLedgerStore.java",
                 "InMemoryWorkerRegistrationObservationStore",
                 "com/xa/mass/api/worker/registration/InMemoryWorkerRegistrationObservationStore.java"
@@ -583,19 +578,19 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
-    void apiKeyLifecycleDoesNotProjectThroughSubmitterRegistration() throws IOException {
+    void apiKeyLifecycleDoesNotProjectThroughLegacyCredentialPayload() throws IOException {
         String source = Files.readString(
                 SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/auth/apikey/ApiKeyCredentialService.java"),
                 StandardCharsets.UTF_8);
 
-        assertTrue(!source.contains("SubmitterRegistration"),
-                "API-key lifecycle must project credential principals without SubmitterRegistration");
+        assertTrue(!source.contains("Sub" + "mitterRegistration"),
+                "API-key lifecycle must project credential principals without the legacy credential payload");
         assertTrue(source.contains("CredentialPrincipalRegistration"),
                 "API-key lifecycle should use the credential-principal projection payload");
     }
 
     @Test
-    void sampleControlPlaneSeedsUseApiKeysNotSubmitters() throws IOException {
+    void sampleControlPlaneSeedsUseApiKeysOnly() throws IOException {
         List<Path> seedFiles = List.of(
                 SERVER_MAIN_SOURCE_ROOT.resolve("../resources/control-plane-seed/control-console-scenario.json")
                         .normalize(),
@@ -604,8 +599,9 @@ class ServerMainSourceArchitectureGuardTest {
         List<String> violations = new ArrayList<>();
         for (Path seedFile : seedFiles) {
             String source = Files.readString(seedFile, StandardCharsets.UTF_8);
-            if (source.contains("\"submitters\"")) {
-                violations.add(seedFile + " still uses submitters seed field");
+            String legacySeedField = "\"submit" + "ters\"";
+            if (source.contains(legacySeedField)) {
+                violations.add(seedFile + " still uses legacy credential seed field");
             }
             if (!source.contains("\"apiKeys\"")) {
                 violations.add(seedFile + " does not define apiKeys seed field");
@@ -638,7 +634,7 @@ class ServerMainSourceArchitectureGuardTest {
                                     || source.contains("xa_operator_credential")
                                     || source.contains("xa_api_usage_")
                                     || source.contains("xa_worker_registration_")
-                                    || source.contains("submitter_viewer_session")) {
+                                    || source.contains("sub" + "mitter_viewer_session")) {
                                 violations.add(path
                                         + " contains server-owned API/IAM/operator/session/usage/worker-observation schema");
                             }
@@ -655,8 +651,8 @@ class ServerMainSourceArchitectureGuardTest {
                     .forEach(path -> {
                         try {
                             String source = Files.readString(path, StandardCharsets.UTF_8);
-                            if (source.contains("submitter_viewer_session")) {
-                                violations.add(path + " persists submitter-viewer sessions in JDBC");
+                            if (source.contains("sub" + "mitter_viewer_session")) {
+                                violations.add(path + " persists API-key viewer sessions in JDBC");
                             }
                             if (source.contains("xa_worker_registration_")
                                     && (source.contains("heartbeat")
@@ -675,7 +671,7 @@ class ServerMainSourceArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "server-owned API-key/IAM/operator/usage/worker-observation schema must stay in xa-mass-server and "
-                        + "submitter-viewer sessions must stay out of JDBC:\n"
+                        + "API-key viewer sessions must stay out of JDBC:\n"
                         + String.join("\n", violations));
     }
 

@@ -3,7 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.api.auth.ApiAuthInterceptor;
 import com.xa.mass.api.auth.apikey.ApiKeyCredentialRecord;
 import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
-import com.xa.mass.api.auth.session.SubmitterViewerSessionService;
+import com.xa.mass.api.auth.session.ApiKeyViewerSessionService;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -30,7 +30,7 @@ public class ApiKeyController {
 
     private final ApiKeyCredentialService credentialService;
     private final AuthProvider authProvider;
-    private final SubmitterViewerSessionService viewerSessionService;
+    private final ApiKeyViewerSessionService viewerSessionService;
 
     public ApiKeyController(ApiKeyCredentialService credentialService) {
         this(credentialService, null);
@@ -43,7 +43,7 @@ public class ApiKeyController {
     @Autowired
     public ApiKeyController(ApiKeyCredentialService credentialService,
                             AuthProvider authProvider,
-                            SubmitterViewerSessionService viewerSessionService) {
+                            ApiKeyViewerSessionService viewerSessionService) {
         this.credentialService = credentialService;
         this.authProvider = authProvider;
         this.viewerSessionService = viewerSessionService;

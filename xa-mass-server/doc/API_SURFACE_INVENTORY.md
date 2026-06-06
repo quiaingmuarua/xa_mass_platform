@@ -45,13 +45,12 @@ Deferred decisions:
 | POST | /api/v1/auth/login | AuthController | operator-command | public credential exchange | server auth/session | keep; bounded login; sets HttpOnly session cookie and returns CSRF token | frontend | keep |
 | GET | /api/v1/auth/me | AuthController | console-diagnostics | operator auth-only | server auth/session | keep; bounded principal read | frontend | keep |
 | POST | /api/v1/auth/logout | AuthController | operator-command | operator auth-only + CSRF in session mode | server auth/session | keep; bounded operator session command | frontend | keep |
-| POST | /api/v1/api-key-viewer-sessions | SubmitterViewerSessionController | public-sdk-ingress | SDK credential bypass only | API-key viewer session owner | keep; bounded session create | frontend | keep |
-| GET | /api/v1/api-key-viewer-sessions/me | SubmitterViewerSessionController | public-sdk-read | SDK credential bypass only | API-key viewer session owner | keep; bounded session read | frontend | keep |
-| POST | /api/v1/api-key-viewer-sessions:logout | SubmitterViewerSessionController | operator-command | SDK credential bypass only | API-key viewer session owner | keep; bounded logout command | frontend | keep |
+| POST | /api/v1/api-key-viewer-sessions | ApiKeyViewerSessionController | public-sdk-ingress | SDK credential bypass only | API-key viewer session owner | keep; bounded session create | frontend | keep |
+| GET | /api/v1/api-key-viewer-sessions/me | ApiKeyViewerSessionController | public-sdk-read | SDK credential bypass only | API-key viewer session owner | keep; bounded session read | frontend | keep |
+| POST | /api/v1/api-key-viewer-sessions:logout | ApiKeyViewerSessionController | operator-command | SDK credential bypass only | API-key viewer session owner | keep; bounded logout command | frontend | keep |
 | GET | /api/v1/projects | ProjectApiController | public-sdk-read | SDK-or-operator route | control-plane catalog | keep; bounded metadata list | frontend, SDK users | keep |
 | GET | /api/v1/projects/{projectCode} | ProjectApiController | public-sdk-read | SDK-or-operator route | control-plane catalog | keep; bounded metadata read | frontend, SDK users | keep |
 | GET | /api/v1/projects/{projectCode}/events | ProjectApiController | public-sdk-read | SDK-or-operator route | control-plane catalog | keep; bounded metadata read | frontend, SDK users | keep |
-| GET | /api/v1/projects/{projectCode}/submitters | ProjectApiController | public-sdk-read | SDK-or-operator route | control-plane catalog | keep; bounded metadata read | frontend | keep |
 | GET | /api/v1/catalog/events | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded catalog read | frontend, SDK users | keep |
 | GET | /api/v1/catalog/events/{eventCode} | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded catalog read | frontend, SDK users | keep |
 | GET | /api/v1/catalog/event-capabilities | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded capability read | frontend, SDK users | keep |

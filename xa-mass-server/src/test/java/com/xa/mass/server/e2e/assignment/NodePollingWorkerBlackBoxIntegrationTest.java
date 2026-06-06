@@ -81,7 +81,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eT
             ));
             createBody.put("executionSpec", Map.of("batchSize", 1));
 
-            Map<String, Object> createResponse = createTaskShell(createBody, submitterCredentialHeaders(TASK_API_KEY));
+            Map<String, Object> createResponse = createTaskShell(createBody, taskApiKeyHeaders(TASK_API_KEY));
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
             assertApiOk(appendTaskItems(taskId, "crawler.fetch-page",
@@ -177,7 +177,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eT
         assertEquals(expectedState, projection.get("state"));
     }
 
-    private HttpHeaders submitterCredentialHeaders(String credential) {
+    private HttpHeaders taskApiKeyHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

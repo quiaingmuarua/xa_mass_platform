@@ -16,8 +16,8 @@ import com.xa.mass.client.worker.session.PollingWorkerSession;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import org.junit.jupiter.api.Test;
@@ -60,16 +60,16 @@ class JavaExternalSdkTaskScopedInvocationIntegrationTest extends AbstractSampleE
     void javaExternalSdkTaskHandleApprovesSessionAndRunsSyncAppendThroughPublicApis() throws Exception {
         String workerId = "java-sdk-task-handle-worker-001";
         String workerKey = "java-sdk-task-handle-worker-key";
-        String submitterKey = "java-sdk-task-handle-submitter-key";
-        registerTaskSubmitter("java-sdk-task-handle-submitter", submitterKey);
-        registerWorkerSubmitter("java-sdk-task-handle-worker", workerKey, workerId);
+        String taskApiKey = "java-sdk-task-handle-api-key-key";
+        registerTaskApiKey("java-sdk-task-handle-api-key", taskApiKey);
+        registerWorkerApiKey("java-sdk-task-handle-worker", workerKey, workerId);
         sdkApp().replaceDefaultRules(List.of(
                 rule("java-sdk-task-handle-online", "supportsProject == true"),
                 rule("java-sdk-task-handle-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
 
         MassPlatform workerMass = platform(workerKey);
-        MassPlatform submitterMass = platform(submitterKey);
+        MassPlatform taskApiClient = platform(taskApiKey);
 
         workerMass.workers().declareGroup(WorkerGroupSpec.builder()
                 .groupId("java-sdk-task-handle-phone-probe")
@@ -100,7 +100,7 @@ class JavaExternalSdkTaskScopedInvocationIntegrationTest extends AbstractSampleE
                 .pollInterval(Duration.ofMillis(50))
                 .heartbeatInterval(Duration.ofMillis(100))
                 .start()) {
-            String taskId = submitterMass.tasks().create(TaskCreateRequest.builder()
+            String taskId = taskApiClient.tasks().create(TaskCreateRequest.builder()
                     .project("crawlerApp")
                     .userId("java-sdk-task-handle-agent")
                     .contract(TaskContract.SESSION)
@@ -113,7 +113,7 @@ class JavaExternalSdkTaskScopedInvocationIntegrationTest extends AbstractSampleE
                             .build())
                     .build()).taskId();
 
-            TaskHandle handle = submitterMass.tasks().forTask(taskId);
+            TaskHandle handle = taskApiClient.tasks().forTask(taskId);
             TaskCommandResult approve = handle.approve();
             assertTrue(approve.accepted());
             assertEquals("READY", approve.status());
@@ -145,8 +145,8 @@ class JavaExternalSdkTaskScopedInvocationIntegrationTest extends AbstractSampleE
                 .build();
     }
 
-    private void registerTaskSubmitter(String principalId, String credential) {
-        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+    private void registerTaskApiKey(String principalId, String credential) {
+        sdkApp().registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
@@ -155,8 +155,8 @@ class JavaExternalSdkTaskScopedInvocationIntegrationTest extends AbstractSampleE
                 .build());
     }
 
-    private void registerWorkerSubmitter(String principalId, String credential, String workerId) {
-        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+    private void registerWorkerApiKey(String principalId, String credential, String workerId) {
+        sdkApp().registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))

@@ -13,8 +13,8 @@ import com.xa.mass.api.auth.iam.UserRolePermissionStore;
 import com.xa.mass.api.auth.operator.InMemoryOperatorCredentialStore;
 import com.xa.mass.api.auth.operator.JdbcOperatorCredentialStore;
 import com.xa.mass.api.auth.operator.OperatorCredentialStore;
-import com.xa.mass.api.auth.session.InMemorySubmitterViewerSessionStore;
-import com.xa.mass.api.auth.session.SubmitterViewerSessionStore;
+import com.xa.mass.api.auth.session.InMemoryApiKeyViewerSessionStore;
+import com.xa.mass.api.auth.session.ApiKeyViewerSessionStore;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerStore;
 import com.xa.mass.api.auth.usage.InMemoryApiUsageLedgerStore;
 import com.xa.mass.api.auth.usage.JdbcApiUsageLedgerStore;
@@ -91,8 +91,8 @@ public class ServerControlPlaneStoreConfiguration {
     }
 
     @Bean
-    public SubmitterViewerSessionStore submitterViewerSessionStore() {
-        return new InMemorySubmitterViewerSessionStore();
+    public ApiKeyViewerSessionStore apiKeyViewerSessionStore() {
+        return new InMemoryApiKeyViewerSessionStore();
     }
 
     @Bean

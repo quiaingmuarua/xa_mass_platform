@@ -163,7 +163,7 @@ When adding schema notes or DDL baselines here:
   `xa_principal`
 - represent project/event scopes with explicit omitted, wildcard, and bounded
   modes before persisting them
-- keep submitter-viewer sessions out of SQLite/JDBC
+- keep API-key viewer sessions out of SQLite/JDBC
 - keep worker registration observation rows out of runtime restore,
   scheduling, matching, presence, heartbeat, and transport routing
 - avoid runtime queues, leases, worker presence, dispatch streams, trace

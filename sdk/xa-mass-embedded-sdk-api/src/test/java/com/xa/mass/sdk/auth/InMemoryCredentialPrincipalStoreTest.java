@@ -7,14 +7,14 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class InMemorySubmitterRegistryTest {
+class InMemoryCredentialPrincipalStoreTest {
 
     @Test
-    void registerAndAuthenticateRoundTripsSubmitterBinding() {
-        InMemorySubmitterRegistry registry = new InMemorySubmitterRegistry();
+    void registerAndAuthenticateRoundTripsCredentialPrincipalBinding() {
+        InMemoryCredentialPrincipalStore store = new InMemoryCredentialPrincipalStore();
 
-        registry.register(SubmitterRegistration.builder()
-                .principalId("crawler-submitter")
+        store.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
+                .principalId("crawler-task-key")
                 .credential("crawler-secret")
                 .userId("crawler-user")
                 .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
@@ -23,18 +23,18 @@ class InMemorySubmitterRegistryTest {
                 .attributes(Map.of("lane", "crawler"))
                 .build());
 
-        PrincipalContext principal = registry.authenticate("crawler-secret");
+        PrincipalContext principal = store.authenticate("crawler-secret");
         assertThat(principal).isNotNull();
-        assertThat(principal.getPrincipalId()).isEqualTo("crawler-submitter");
-        assertThat(registry.getSubmitter("crawler-submitter")).isNotNull();
-        assertThat(registry.listSubmitters()).hasSize(1);
+        assertThat(principal.getPrincipalId()).isEqualTo("crawler-task-key");
+        assertThat(store.getCredentialPrincipal("crawler-task-key")).isNotNull();
+        assertThat(store.listCredentialPrincipals()).hasSize(1);
     }
 
     @Test
     void projectionWriterPublishesCredentialWithoutResourceFacadeRead() {
-        CredentialAuthProjectionWriter projectionWriter = new InMemorySubmitterRegistry();
+        CredentialAuthProjectionWriter projectionWriter = new InMemoryCredentialPrincipalStore();
 
-        projectionWriter.projectCredential(SubmitterRegistration.builder()
+        projectionWriter.projectCredential(CredentialPrincipalRegistration.builder()
                 .principalId("api-key-principal")
                 .credential("api-secret")
                 .userId("ops-user")
@@ -48,9 +48,9 @@ class InMemorySubmitterRegistryTest {
 
     @Test
     void loadDurableRestoresAuthenticationWithoutPlainCredential() {
-        InMemorySubmitterRegistry registry = new InMemorySubmitterRegistry();
-        SubmitterRegistration registration = SubmitterRegistration.builder()
-                .principalId("ops-submitter")
+        InMemoryCredentialPrincipalStore store = new InMemoryCredentialPrincipalStore();
+        CredentialPrincipalRegistration registration = CredentialPrincipalRegistration.builder()
+                .principalId("ops-task-key")
                 .credential("ops-secret")
                 .userId("ops-user")
                 .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
@@ -58,10 +58,10 @@ class InMemorySubmitterRegistryTest {
                 .eventScopes(List.of("tool.time.now"))
                 .build();
 
-        registry.loadDurable(registration.toProfile(), CredentialHashing.sha256(registration.getCredential()));
+        store.loadDurable(registration.toProfile(), CredentialHashing.sha256(registration.getCredential()));
 
-        PrincipalContext principal = registry.authenticate("ops-secret");
+        PrincipalContext principal = store.authenticate("ops-secret");
         assertThat(principal).isNotNull();
-        assertThat(principal.getPrincipalId()).isEqualTo("ops-submitter");
+        assertThat(principal.getPrincipalId()).isEqualTo("ops-task-key");
     }
 }

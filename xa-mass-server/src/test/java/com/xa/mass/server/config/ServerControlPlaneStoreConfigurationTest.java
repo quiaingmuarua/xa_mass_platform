@@ -13,8 +13,8 @@ import com.xa.mass.api.auth.iam.UserRolePermissionStore;
 import com.xa.mass.api.auth.operator.InMemoryOperatorCredentialStore;
 import com.xa.mass.api.auth.operator.JdbcOperatorCredentialStore;
 import com.xa.mass.api.auth.operator.OperatorCredentialStore;
-import com.xa.mass.api.auth.session.InMemorySubmitterViewerSessionStore;
-import com.xa.mass.api.auth.session.SubmitterViewerSessionStore;
+import com.xa.mass.api.auth.session.InMemoryApiKeyViewerSessionStore;
+import com.xa.mass.api.auth.session.ApiKeyViewerSessionStore;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerStore;
 import com.xa.mass.api.auth.usage.InMemoryApiUsageLedgerStore;
 import com.xa.mass.api.auth.usage.JdbcApiUsageLedgerStore;
@@ -45,7 +45,7 @@ class ServerControlPlaneStoreConfigurationTest {
             assertSingleBean(context, ApiKeyCredentialStore.class, InMemoryApiKeyCredentialStore.class);
             assertSingleBean(context, UserRolePermissionStore.class, InMemoryUserRolePermissionStore.class);
             assertSingleBean(context, OperatorCredentialStore.class, InMemoryOperatorCredentialStore.class);
-            assertSingleBean(context, SubmitterViewerSessionStore.class, InMemorySubmitterViewerSessionStore.class);
+            assertSingleBean(context, ApiKeyViewerSessionStore.class, InMemoryApiKeyViewerSessionStore.class);
             assertSingleBean(context, ApiUsageLedgerStore.class, InMemoryApiUsageLedgerStore.class);
 
             DefaultOperatorPrincipalDirectory directory = context.getBean(DefaultOperatorPrincipalDirectory.class);
@@ -93,7 +93,7 @@ class ServerControlPlaneStoreConfigurationTest {
             assertSingleBean(context, UserRolePermissionStore.class, JdbcUserRolePermissionStore.class);
             assertSingleBean(context, OperatorCredentialStore.class, JdbcOperatorCredentialStore.class);
             assertSingleBean(context, ApiUsageLedgerStore.class, JdbcApiUsageLedgerStore.class);
-            assertSingleBean(context, SubmitterViewerSessionStore.class, InMemorySubmitterViewerSessionStore.class);
+            assertSingleBean(context, ApiKeyViewerSessionStore.class, InMemoryApiKeyViewerSessionStore.class);
 
             DefaultOperatorPrincipalDirectory directory = context.getBean(DefaultOperatorPrincipalDirectory.class);
             assertNotNull(directory.getPrincipal("ops-admin"));

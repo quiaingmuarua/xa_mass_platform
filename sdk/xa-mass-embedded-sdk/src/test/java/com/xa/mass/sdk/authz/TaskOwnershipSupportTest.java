@@ -42,7 +42,7 @@ class TaskOwnershipSupportTest {
         MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("crawler-user")
                 .project("crawlerApp")
-                .sharedConfig(Map.of("source", "submitter"))
+                .sharedConfig(Map.of("source", "task-api-key"))
                 .build();
 
         PrincipalContext principal = PrincipalContext.builder()
@@ -57,7 +57,7 @@ class TaskOwnershipSupportTest {
         assertNotNull(ownershipStamp);
         assertEquals("crawler-agent", ownershipStamp.getCreatedByPrincipalId());
         assertEquals(PrincipalType.SERVICE, ownershipStamp.getCreatedByPrincipalType());
-        assertEquals("submitter", stamped.getSharedConfig().get("source"));
+        assertEquals("task-api-key", stamped.getSharedConfig().get("source"));
     }
 
     @Test
@@ -66,7 +66,7 @@ class TaskOwnershipSupportTest {
                 .userId("crawler-user")
                 .project("crawlerApp")
                 .sharedConfig(TaskOwnershipStamp.applyToSharedConfig(
-                        Map.of("source", "submitter"),
+                        Map.of("source", "task-api-key"),
                         new TaskOwnershipStamp("crawler-agent", PrincipalType.SERVICE)
                 ))
                 .build();
@@ -83,7 +83,7 @@ class TaskOwnershipSupportTest {
         assertNotNull(ownershipStamp);
         assertEquals("crawler-agent", ownershipStamp.getCreatedByPrincipalId());
         assertEquals(PrincipalType.SERVICE, ownershipStamp.getCreatedByPrincipalType());
-        assertEquals("submitter", stamped.getSharedConfig().get("source"));
+        assertEquals("task-api-key", stamped.getSharedConfig().get("source"));
     }
 
     @Test
@@ -96,7 +96,7 @@ class TaskOwnershipSupportTest {
         AuthorizationDecision decision = TaskOwnershipSupport.authorizeOwnership(
                 principal,
                 TaskOwnershipStamp.applyToSharedConfig(
-                        Map.of("source", "submitter"),
+                        Map.of("source", "task-api-key"),
                         new TaskOwnershipStamp("crawler-agent", PrincipalType.SERVICE)
                 )
         );
@@ -112,7 +112,7 @@ class TaskOwnershipSupportTest {
                 .principalType(PrincipalType.SERVICE)
                 .build();
 
-        AuthorizationDecision decision = TaskOwnershipSupport.authorizeOwnership(principal, Map.of("source", "submitter"));
+        AuthorizationDecision decision = TaskOwnershipSupport.authorizeOwnership(principal, Map.of("source", "task-api-key"));
 
         assertFalse(decision.isAllowed());
         assertEquals(AuthorizationReasonCode.OWNERSHIP_STAMP_MISSING, decision.getReasonCode());
@@ -128,7 +128,7 @@ class TaskOwnershipSupportTest {
         AuthorizationDecision decision = TaskOwnershipSupport.authorizeOwnership(
                 principal,
                 TaskOwnershipStamp.applyToSharedConfig(
-                        Map.of("source", "submitter"),
+                        Map.of("source", "task-api-key"),
                         new TaskOwnershipStamp("crawler-agent", PrincipalType.SERVICE)
                 )
         );

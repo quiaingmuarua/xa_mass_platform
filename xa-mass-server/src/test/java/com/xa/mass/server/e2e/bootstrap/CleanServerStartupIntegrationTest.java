@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "sample.worker.auto-start=false",
                 "mass.mock.bootstrap.enabled=false",
                 "mass.mock.bootstrap.register-dev-catalog=false",
-                "mass.mock.bootstrap.register-dev-submitters=false",
+                "mass.mock.bootstrap.register-dev-api-keys=false",
                 "mass.mock.bootstrap.load-rules=false",
                 "mass.control-plane.seed.enabled=false"
         }
@@ -44,8 +44,8 @@ public class CleanServerStartupIntegrationTest extends AbstractSampleE2eTest {
         assertNotNull(app);
         assertNull(app.getProject("crawlerApp"));
         assertNull(app.getEvent("crawler.fetch-page"));
-        assertTrue(app.listSubmitters().isEmpty(),
-                "clean dev startup must not create submitter credentials");
+        assertTrue(app.listCredentialPrincipals().isEmpty(),
+                "clean dev startup must not create API-key credential principals");
 
         assertTrue(app.listTaskSummaries(0, 10).isEmpty(),
                 "clean dev startup must not create task shells");

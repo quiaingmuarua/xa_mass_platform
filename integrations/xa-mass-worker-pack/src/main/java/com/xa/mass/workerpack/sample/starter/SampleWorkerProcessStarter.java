@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Launches the external sample-worker supervisor script for dev-shell runs.
  *
- * <p>The server shell stays responsible only for submitter credentials and HTTP
+ * <p>The server shell stays responsible only for API-key credentials and HTTP
  * availability. The sample launcher script owns worker registration plus
  * child-process startup under {@code integrations/samples}.
  */

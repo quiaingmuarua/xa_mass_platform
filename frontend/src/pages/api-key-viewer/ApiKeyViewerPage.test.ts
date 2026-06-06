@@ -1,35 +1,35 @@
 import ElementPlus from 'element-plus'
 import {flushPromises, mount} from '@vue/test-utils'
-import SubmitterViewerPage from '@/pages/submitter/SubmitterViewerPage.vue'
+import ApiKeyViewerPage from '@/pages/api-key-viewer/ApiKeyViewerPage.vue'
 import {
-    createSubmitterViewerSession,
-    getCurrentSubmitterViewerSession,
-    getSubmitterProfileWithCredential,
-    getSubmitterUsageWithCredential,
-    logoutSubmitterViewerSession,
-} from '@/api/submitter-sessions'
+    createApiKeyViewerSession,
+    getCurrentApiKeyViewerSession,
+    getApiKeyProfileWithCredential,
+    getApiKeyUsageWithCredential,
+    logoutApiKeyViewerSession,
+} from '@/api/api-key-viewer-sessions'
 import {ApiError} from '@/api/http'
 
-vi.mock('@/api/submitter-sessions', () => ({
-    createSubmitterViewerSession: vi.fn(),
-    getCurrentSubmitterViewerSession: vi.fn(),
-    getSubmitterProfileWithCredential: vi.fn(),
-    getSubmitterUsageWithCredential: vi.fn(),
-    logoutSubmitterViewerSession: vi.fn(),
+vi.mock('@/api/api-key-viewer-sessions', () => ({
+    createApiKeyViewerSession: vi.fn(),
+    getCurrentApiKeyViewerSession: vi.fn(),
+    getApiKeyProfileWithCredential: vi.fn(),
+    getApiKeyUsageWithCredential: vi.fn(),
+    logoutApiKeyViewerSession: vi.fn(),
 }))
 
-describe('SubmitterViewerPage', () => {
+describe('ApiKeyViewerPage', () => {
     beforeEach(() => {
         window.sessionStorage.clear()
-        vi.mocked(createSubmitterViewerSession).mockReset()
-        vi.mocked(getCurrentSubmitterViewerSession).mockReset()
-        vi.mocked(getSubmitterProfileWithCredential).mockReset()
-        vi.mocked(getSubmitterUsageWithCredential).mockReset()
-        vi.mocked(logoutSubmitterViewerSession).mockReset()
+        vi.mocked(createApiKeyViewerSession).mockReset()
+        vi.mocked(getCurrentApiKeyViewerSession).mockReset()
+        vi.mocked(getApiKeyProfileWithCredential).mockReset()
+        vi.mocked(getApiKeyUsageWithCredential).mockReset()
+        vi.mocked(logoutApiKeyViewerSession).mockReset()
     })
 
     it('presents API-key viewer semantics without exposing session token concepts', async () => {
-        const wrapper = mount(SubmitterViewerPage, {
+        const wrapper = mount(ApiKeyViewerPage, {
             global: {
                 plugins: [ElementPlus],
                 stubs: {
@@ -45,19 +45,19 @@ describe('SubmitterViewerPage', () => {
         expect(wrapper.text()).toContain('View API key usage')
         expect(wrapper.text()).not.toContain('session token')
         expect(wrapper.text()).not.toContain('Attach')
-        expect(wrapper.text()).not.toContain('Current submitter session')
+        expect(wrapper.text()).not.toContain('Current API-key viewer session')
         expect(wrapper.text()).not.toContain('mass_sess_')
     })
 
     it('exchanges API-key secret for an internal viewer credential without storing the source secret', async () => {
-        vi.mocked(createSubmitterViewerSession).mockResolvedValue({
+        vi.mocked(createApiKeyViewerSession).mockResolvedValue({
             rawSecret: 'mass_sess_internal_secret',
             session: viewerSession(),
         })
-        vi.mocked(getCurrentSubmitterViewerSession).mockResolvedValue(
+        vi.mocked(getCurrentApiKeyViewerSession).mockResolvedValue(
             viewerSession(),
         )
-        vi.mocked(getSubmitterProfileWithCredential).mockResolvedValue({
+        vi.mocked(getApiKeyProfileWithCredential).mockResolvedValue({
             principalId: 'crawler-api-key',
             userId: 'ops-admin',
             projectScope: null,
@@ -66,14 +66,14 @@ describe('SubmitterViewerPage', () => {
             permissions: ['task:view'],
             attributes: {},
         })
-        vi.mocked(getSubmitterUsageWithCredential).mockResolvedValue({
+        vi.mocked(getApiKeyUsageWithCredential).mockResolvedValue({
             keyId: 'ak-1',
             principalId: 'crawler-api-key',
             total: 0,
             items: [],
         })
 
-        const wrapper = mount(SubmitterViewerPage, {
+        const wrapper = mount(ApiKeyViewerPage, {
             global: {
                 plugins: [ElementPlus],
                 stubs: {
@@ -95,7 +95,7 @@ describe('SubmitterViewerPage', () => {
         await setupState.openViewer()
         await flushPromises()
 
-        expect(createSubmitterViewerSession).toHaveBeenCalledWith(
+        expect(createApiKeyViewerSession).toHaveBeenCalledWith(
             'mass_sk_source_secret',
         )
         expect(window.sessionStorage.getItem('xa.mass.apiKeyViewerCredential'))
@@ -112,11 +112,11 @@ describe('SubmitterViewerPage', () => {
             'xa.mass.apiKeyViewerCredential',
             'mass_sess_expired_secret',
         )
-        vi.mocked(getCurrentSubmitterViewerSession).mockRejectedValue(
-            new ApiError('Invalid or missing submitter credential', 401, null),
+        vi.mocked(getCurrentApiKeyViewerSession).mockRejectedValue(
+            new ApiError('Invalid or missing API-key credential', 401, null),
         )
 
-        const wrapper = mount(SubmitterViewerPage, {
+        const wrapper = mount(ApiKeyViewerPage, {
             global: {
                 plugins: [ElementPlus],
                 stubs: {
@@ -127,17 +127,17 @@ describe('SubmitterViewerPage', () => {
 
         await flushPromises()
 
-        expect(getCurrentSubmitterViewerSession).toHaveBeenCalledWith(
+        expect(getCurrentApiKeyViewerSession).toHaveBeenCalledWith(
             'mass_sess_expired_secret',
         )
         expect(window.sessionStorage.getItem('xa.mass.apiKeyViewerCredential'))
             .toBeNull()
         expect(wrapper.text()).not.toContain('mass_sess_expired_secret')
-        expect(wrapper.text()).toContain('Invalid or missing submitter credential')
+        expect(wrapper.text()).toContain('Invalid or missing API-key credential')
     })
 
     it('clears the internal viewer credential on explicit exit', async () => {
-        const wrapper = mount(SubmitterViewerPage, {
+        const wrapper = mount(ApiKeyViewerPage, {
             global: {
                 plugins: [ElementPlus],
                 stubs: {
@@ -164,7 +164,7 @@ describe('SubmitterViewerPage', () => {
         await setupState.exitViewer()
         await flushPromises()
 
-        expect(logoutSubmitterViewerSession).toHaveBeenCalledWith(
+        expect(logoutApiKeyViewerSession).toHaveBeenCalledWith(
             'mass_sess_internal_secret',
         )
         expect(window.sessionStorage.getItem('xa.mass.apiKeyViewerCredential'))

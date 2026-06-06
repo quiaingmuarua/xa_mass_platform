@@ -73,7 +73,7 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
                         routeAuthorization.requiredPermission()
                 );
                 if (SDK_OR_OPERATOR_ROUTE.equals(routeAuthorization.requiredPermission())) {
-                    PrincipalContext submitter = apiAuthorizationService.resolveTaskViewerCredential(
+                    PrincipalContext apiKeyPrincipal = apiAuthorizationService.resolveTaskViewerCredential(
                             request.getHeader(SdkCredentialAuthSupport.API_KEY_HEADER),
                             request.getHeader("Authorization"),
                             java.util.Map.of(
@@ -81,8 +81,8 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
                                     "path", request.getRequestURI()
                             )
                     );
-                    if (submitter != null) {
-                        request.setAttribute(AUTHENTICATED_PRINCIPAL_ATTR, submitter);
+                    if (apiKeyPrincipal != null) {
+                        request.setAttribute(AUTHENTICATED_PRINCIPAL_ATTR, apiKeyPrincipal);
                         return true;
                     }
                 }

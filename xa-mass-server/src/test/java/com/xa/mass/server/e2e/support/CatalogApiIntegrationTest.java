@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "mass.mock.bootstrap.register-dev-catalog=true",
-                "mass.mock.bootstrap.register-dev-submitters=true",
+                "mass.mock.bootstrap.register-dev-api-keys=true",
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",

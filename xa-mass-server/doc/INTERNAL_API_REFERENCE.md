@@ -156,20 +156,6 @@ Returns the full `EventDefinition` list for the project's declared
 metadata and do not change task scheduling, result finality, or transport
 delivery behavior by themselves.
 
-### 3.4 List Project Submitters
-
-- Method: `GET`
-- Path: `/api/v1/projects/{projectCode}/submitters`
-- Status: `Implemented`
-
-Returns the effective submitter list visible for the project scope.
-
-Notes:
-
-- includes both explicitly project-scoped submitters and wildcard/global
-  submitters whose scopes still authorize the project
-- this is a control-plane ownership view; it does not expose raw credentials
-
 ## 4. Catalog API
 
 Base path: `/api/v1/catalog`
@@ -295,7 +281,7 @@ Query params:
 Notes:
 
 - operator callers require normal task-view authorization
-- submitter credential callers may also use this route
+- API-key credential callers may also use this route
 - current SDK list behavior is ownership-scoped
 - project filtering is shell-level ownership filtering, not item-level
   `eventCode` filtering
@@ -410,7 +396,7 @@ Response notes:
 - returns `task`
 - returns `security`
 - does not return item payload snapshots by default
-- submitter credential callers may use this route under the same ownership-based
+- API-key credential callers may use this route under the same ownership-based
   task-view gate
 - response `data` is `ApiTaskGetResult`
 - `data.task` is `ApiTask`
@@ -1030,7 +1016,7 @@ Purpose:
 
 Contract rules:
 
-- operator authentication is required; SDK submitter credentials are rejected
+- operator authentication is required; SDK API-key credentials are rejected
   for this route
 - request uses an internal debug-only invocation DTO on this route
 - exactly one item is required

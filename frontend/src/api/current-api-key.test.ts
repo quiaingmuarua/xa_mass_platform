@@ -1,6 +1,6 @@
 import {resetRuntimeConfigOverrides, setRuntimeConfigOverrides} from '@/app/config'
-import {getCurrentSubmitter} from '@/api/current-submitter'
-import {getCurrentSubmitterReal} from '@/api/current-submitter.real'
+import {getCurrentApiKey} from '@/api/current-api-key'
+import {getCurrentApiKeyReal} from '@/api/current-api-key.real'
 
 function jsonResponse(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
@@ -11,7 +11,7 @@ function jsonResponse(body: unknown, status = 200): Response {
     })
 }
 
-describe('current submitter API facade', () => {
+describe('current API-key API facade', () => {
     afterEach(() => {
         resetRuntimeConfigOverrides()
         vi.unstubAllGlobals()
@@ -20,19 +20,19 @@ describe('current submitter API facade', () => {
     it('returns unavailable in mock mode', async () => {
         setRuntimeConfigOverrides({ useMockApi: true })
 
-        await expect(getCurrentSubmitter()).resolves.toEqual({
+        await expect(getCurrentApiKey()).resolves.toEqual({
             state: 'unavailable',
             profile: null,
         })
     })
 })
 
-describe('current-submitter.real', () => {
+describe('current-api-key.real', () => {
     afterEach(() => {
         vi.unstubAllGlobals()
     })
 
-    it('returns the authenticated submitter when introspection succeeds', async () => {
+    it('returns the authenticated API key when introspection succeeds', async () => {
         vi.stubGlobal(
             'fetch',
             vi.fn(() =>
@@ -53,7 +53,7 @@ describe('current-submitter.real', () => {
             ),
         )
 
-        await expect(getCurrentSubmitterReal()).resolves.toEqual({
+        await expect(getCurrentApiKeyReal()).resolves.toEqual({
             state: 'available',
             profile: {
                 principalId: 'crawler-agent',
@@ -66,7 +66,7 @@ describe('current-submitter.real', () => {
         })
     })
 
-    it('returns unauthorized when submitter credential is not present', async () => {
+    it('returns unauthorized when API-key credential is not present', async () => {
         vi.stubGlobal(
             'fetch',
             vi.fn(() =>
@@ -74,7 +74,7 @@ describe('current-submitter.real', () => {
                     jsonResponse(
                         {
                             code: 401,
-                            msg: 'Invalid or missing submitter credential',
+                            msg: 'Invalid or missing API-key credential',
                             data: null,
                         },
                         401,
@@ -83,13 +83,13 @@ describe('current-submitter.real', () => {
             ),
         )
 
-        await expect(getCurrentSubmitterReal()).resolves.toEqual({
+        await expect(getCurrentApiKeyReal()).resolves.toEqual({
             state: 'unauthorized',
             profile: null,
         })
     })
 
-    it('returns unavailable when submitter introspection endpoint is not exposed', async () => {
+    it('returns unavailable when API-key introspection endpoint is not exposed', async () => {
         vi.stubGlobal(
             'fetch',
             vi.fn(() =>
@@ -106,7 +106,7 @@ describe('current-submitter.real', () => {
             ),
         )
 
-        await expect(getCurrentSubmitterReal()).resolves.toEqual({
+        await expect(getCurrentApiKeyReal()).resolves.toEqual({
             state: 'unavailable',
             profile: null,
         })

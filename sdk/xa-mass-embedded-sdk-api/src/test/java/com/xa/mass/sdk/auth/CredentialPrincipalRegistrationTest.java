@@ -6,12 +6,12 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-class SubmitterRegistrationTest {
+class CredentialPrincipalRegistrationTest {
 
     @Test
     void builderRejectsBlankPrincipalId() {
         Assertions.assertThrows(IllegalArgumentException.class,
-                () -> SubmitterRegistration.builder()
+                () -> CredentialPrincipalRegistration.builder()
                         .principalId(" ")
                         .credential("api-key")
                         .build());
@@ -20,7 +20,7 @@ class SubmitterRegistrationTest {
     @Test
     void builderRejectsBlankCredential() {
         Assertions.assertThrows(IllegalArgumentException.class,
-                () -> SubmitterRegistration.builder()
+                () -> CredentialPrincipalRegistration.builder()
                         .principalId("telegram-bot")
                         .credential(" ")
                         .build());
@@ -28,7 +28,7 @@ class SubmitterRegistrationTest {
 
     @Test
     void builderNormalizesOptionalFieldsAndOmitsInvalidAttributes() {
-        SubmitterRegistration registration = SubmitterRegistration.builder()
+        CredentialPrincipalRegistration registration = CredentialPrincipalRegistration.builder()
                 .principalId(" telegram-bot ")
                 .credential(" dev-api-key ")
                 .userId(" bot-user ")
@@ -52,7 +52,7 @@ class SubmitterRegistrationTest {
 
     @Test
     void builderSupportsPerCredentialPermissionsAndScopes() {
-        SubmitterRegistration registration = SubmitterRegistration.builder()
+        CredentialPrincipalRegistration registration = CredentialPrincipalRegistration.builder()
                 .principalId(" crawler-key ")
                 .credential(" mass_sk_test_123456 ")
                 .keyPrefix(" mass_sk_test ")
@@ -78,7 +78,7 @@ class SubmitterRegistrationTest {
 
     @Test
     void toStringDoesNotLeakCredential() {
-        SubmitterRegistration registration = SubmitterRegistration.builder()
+        CredentialPrincipalRegistration registration = CredentialPrincipalRegistration.builder()
                 .principalId("telegram-bot")
                 .credential("secret-key")
                 .build();
@@ -88,7 +88,7 @@ class SubmitterRegistrationTest {
 
     @Test
     void metadataProjectionDoesNotExposeCredential() {
-        SubmitterRegistration registration = SubmitterRegistration.builder()
+        CredentialPrincipalRegistration registration = CredentialPrincipalRegistration.builder()
                 .principalId("telegram-bot")
                 .credential("secret-key")
                 .userId("bot-user")
@@ -96,7 +96,7 @@ class SubmitterRegistrationTest {
                 .attributes(Map.of("channel", "telegram"))
                 .build();
 
-        SubmitterProfile metadata = registration.toProfile();
+        CredentialPrincipalProfile metadata = registration.toProfile();
 
         Assertions.assertEquals("telegram-bot", metadata.getPrincipalId());
         Assertions.assertEquals("bot-user", metadata.getUserId());

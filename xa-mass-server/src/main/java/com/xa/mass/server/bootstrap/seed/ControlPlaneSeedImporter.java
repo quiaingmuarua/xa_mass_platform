@@ -67,7 +67,6 @@ final class ControlPlaneSeedImporter {
 
         List<EventDefinition> events = toEventDefinitions(catalog);
         List<ProjectDefinition> projects = toProjectDefinitions(catalog);
-        rejectLegacySubmitterSeeds(catalog);
         List<ApiKeyCredentialService.CreateApiKeyCommand> apiKeys = toApiKeyCommands(catalog);
         List<RuleDefinition> ruleDefinitions = List.copyOf(rules.getRules());
         List<OperatorCredentialRecord> operatorCredentials = toOperatorCredentials(credentialSeed);
@@ -139,12 +138,6 @@ final class ControlPlaneSeedImporter {
             }
         }
         return List.copyOf(commands);
-    }
-
-    private void rejectLegacySubmitterSeeds(ControlPlaneSeedCatalog catalog) {
-        if (!catalog.getSubmitters().isEmpty()) {
-            throw new IllegalArgumentException("control-plane seed field 'submitters' is removed; use 'apiKeys'");
-        }
     }
 
     private List<OperatorCredentialRecord> toOperatorCredentials(ControlPlaneOperatorCredentialSeed seed) {

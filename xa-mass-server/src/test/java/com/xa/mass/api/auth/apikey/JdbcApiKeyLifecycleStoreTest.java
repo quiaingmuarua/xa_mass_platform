@@ -4,9 +4,9 @@ import com.xa.mass.api.auth.ApiPermissionNames;
 import com.xa.mass.api.auth.iam.InMemoryUserRolePermissionStore;
 import com.xa.mass.sdk.auth.CredentialAuthProjectionWriter;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.server.auth.jdbc.JdbcCredentialPrincipalStore;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
-import com.xa.mass.server.auth.jdbc.JdbcSubmitterRegistry;
 import com.xa.mass.server.config.ServerControlPlaneMigrationRunner;
 import org.junit.jupiter.api.Test;
 
@@ -79,7 +79,7 @@ class JdbcApiKeyLifecycleStoreTest {
         assertThat(applicationStore.markApproved(application.applicationId(), "ops-admin", "approved").status())
                 .isEqualTo(ApiKeyApplicationStatus.APPROVED);
 
-        JdbcSubmitterRegistry registry = new JdbcSubmitterRegistry(fixture.runtime().dataSource(), fixture.mode());
+        JdbcCredentialPrincipalStore registry = new JdbcCredentialPrincipalStore(fixture.runtime().dataSource(), fixture.mode());
         ApiKeyCredentialService service = new ApiKeyCredentialService(
                 applicationStore,
                 new JdbcApiKeyCredentialStore(fixture.runtime().dataSource()),
@@ -90,7 +90,7 @@ class JdbcApiKeyLifecycleStoreTest {
         ApiKeyCredentialService.CreatedApiKey created = service.createOperatorKey(command("crawler-api-key"));
         assertThat(registry.authenticate(created.rawSecret())).isNotNull();
 
-        JdbcSubmitterRegistry restartedRegistry = new JdbcSubmitterRegistry(fixture.runtime().dataSource(), fixture.mode());
+        JdbcCredentialPrincipalStore restartedRegistry = new JdbcCredentialPrincipalStore(fixture.runtime().dataSource(), fixture.mode());
         ApiKeyCredentialService restartedService = new ApiKeyCredentialService(
                 new JdbcApiKeyApplicationStore(fixture.runtime().dataSource()),
                 new JdbcApiKeyCredentialStore(fixture.runtime().dataSource()),
@@ -107,8 +107,8 @@ class JdbcApiKeyLifecycleStoreTest {
         restartedService.revoke(created.record().keyId(), "ops-admin", "rotation");
         assertThat(restartedRegistry.authenticate(created.rawSecret())).isNull();
 
-        JdbcSubmitterRegistry revokedRestartedRegistry =
-                new JdbcSubmitterRegistry(fixture.runtime().dataSource(), fixture.mode());
+        JdbcCredentialPrincipalStore revokedRestartedRegistry =
+                new JdbcCredentialPrincipalStore(fixture.runtime().dataSource(), fixture.mode());
         ApiKeyCredentialService revokedRestartedService = new ApiKeyCredentialService(
                 new JdbcApiKeyApplicationStore(fixture.runtime().dataSource()),
                 new JdbcApiKeyCredentialStore(fixture.runtime().dataSource()),

@@ -1,10 +1,10 @@
 import {
-    createSubmitterViewerSession,
-    getCurrentSubmitterViewerSession,
-    getSubmitterProfileWithCredential,
-    getSubmitterUsageWithCredential,
-    logoutSubmitterViewerSession,
-} from '@/api/submitter-sessions'
+    createApiKeyViewerSession,
+    getCurrentApiKeyViewerSession,
+    getApiKeyProfileWithCredential,
+    getApiKeyUsageWithCredential,
+    logoutApiKeyViewerSession,
+} from '@/api/api-key-viewer-sessions'
 import {setRuntimeConfigOverrides} from '@/app/config'
 
 function jsonResponse(body: unknown): Response {
@@ -16,8 +16,8 @@ function jsonResponse(body: unknown): Response {
     })
 }
 
-describe('submitter viewer session API client', () => {
-    it('uses explicit submitter credentials without operator auth headers', async () => {
+describe('API-key viewer session API client', () => {
+    it('uses explicit API-key credentials without operator auth headers', async () => {
         setRuntimeConfigOverrides({
             apiBaseUrl: '/backend',
             useMockAuth: false,
@@ -49,11 +49,11 @@ describe('submitter viewer session API client', () => {
         )
         vi.stubGlobal('fetch', fetchMock)
 
-        await createSubmitterViewerSession('mass_sk_source')
-        await getCurrentSubmitterViewerSession('mass_sess_secret')
-        await getSubmitterProfileWithCredential('mass_sess_secret')
-        await getSubmitterUsageWithCredential('mass_sess_secret')
-        await logoutSubmitterViewerSession('mass_sess_secret')
+        await createApiKeyViewerSession('mass_sk_source')
+        await getCurrentApiKeyViewerSession('mass_sess_secret')
+        await getApiKeyProfileWithCredential('mass_sess_secret')
+        await getApiKeyUsageWithCredential('mass_sess_secret')
+        await logoutApiKeyViewerSession('mass_sess_secret')
 
         expect(fetchMock.mock.calls.map(([input]) => input)).toEqual([
             '/backend/api/v1/api-key-viewer-sessions',

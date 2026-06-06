@@ -5,10 +5,7 @@ import type {
     NodeGroupBindingCapability,
     WorkerGroupCapability,
 } from '@/types/catalog'
-import type {
-    ProjectDefinition,
-    ProjectSubmitterProfile,
-} from '@/types/projects'
+import type {ProjectDefinition} from '@/types/projects'
 
 export const mockProjects: ProjectDefinition[] = [
     {
@@ -47,71 +44,6 @@ export const mockProjects: ProjectDefinition[] = [
         ownerPrincipalId: 'data-quality-runner',
     },
 ]
-
-export const mockProjectSubmitters: Record<string, ProjectSubmitterProfile[]> = {
-    publicProbe: [
-        {
-            principalId: 'public-probe-runner',
-            principalType: 'SERVICE',
-            keyPrefix: 'pubp',
-            userId: 'public-probe-runner',
-            projectScope: 'publicProbe',
-            permissions: ['task:create'],
-            projectScopes: ['publicProbe'],
-            eventScopes: ['probe.weather.current', 'probe.fx.latest', 'probe.url.dns', 'probe.http.status'],
-            enabled: true,
-            attributes: {
-                label: 'Public Probe Runner',
-            },
-        },
-        {
-            principalId: 'public-probe-ops',
-            principalType: 'SERVICE',
-            keyPrefix: 'pubo',
-            userId: 'public-probe-ops',
-            projectScope: null,
-            permissions: ['*'],
-            projectScopes: ['publicProbe', 'deviceProbe', 'dataQualityProbe'],
-            eventScopes: ['*'],
-            enabled: true,
-            attributes: {
-                label: 'Public Probe Ops',
-            },
-        },
-    ],
-    deviceProbe: [
-        {
-            principalId: 'device-probe-runner',
-            principalType: 'SERVICE',
-            keyPrefix: 'devp',
-            userId: 'device-probe-runner',
-            projectScope: 'deviceProbe',
-            permissions: ['task:create'],
-            projectScopes: ['deviceProbe'],
-            eventScopes: ['probe.phone.metadata'],
-            enabled: true,
-            attributes: {
-                label: 'Device Probe Runner',
-            },
-        },
-    ],
-    dataQualityProbe: [
-        {
-            principalId: 'data-quality-runner',
-            principalType: 'SERVICE',
-            keyPrefix: 'data',
-            userId: 'data-quality-runner',
-            projectScope: 'dataQualityProbe',
-            permissions: ['task:create'],
-            projectScopes: ['dataQualityProbe'],
-            eventScopes: ['probe.market.daily-csv', 'probe.csv.validate', 'probe.json.schema'],
-            enabled: true,
-            attributes: {
-                label: 'Data Quality Runner',
-            },
-        },
-    ],
-}
 
 export const mockEvents: EventDefinition[] = [
     {

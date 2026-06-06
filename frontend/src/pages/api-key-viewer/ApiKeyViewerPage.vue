@@ -1,9 +1,9 @@
 <template>
   <ConsolePage
-    class="submitter-viewer-page"
+    class="api-key-viewer-page"
     tone="security"
     width="normal"
-    eyebrow="Submitter access"
+    eyebrow="API-key access"
     title="API Key Viewer"
     subtitle="Inspect one API key's identity, allowed scope, and recent usage without entering the operator console. The API key secret is exchanged once for a short-lived browser credential and is never stored locally."
   >
@@ -118,7 +118,7 @@
       <PageSectionSkeleton v-if="loading" />
       <PageEmptyState
         v-else-if="!usage || usage.items.length === 0"
-        description="No usage rows are visible for this submitter credential."
+        description="No usage rows are visible for this API-key credential."
       />
       <el-table v-else :data="usage.items" row-key="usageId">
         <el-table-column prop="operation" label="Operation" min-width="180" />
@@ -146,12 +146,12 @@
 <script setup lang="ts">
 import {computed, onMounted, ref} from 'vue'
 import {
-  createSubmitterViewerSession,
-  getCurrentSubmitterViewerSession,
-  getSubmitterProfileWithCredential,
-  getSubmitterUsageWithCredential,
-  logoutSubmitterViewerSession,
-} from '@/api/submitter-sessions'
+  createApiKeyViewerSession,
+  getCurrentApiKeyViewerSession,
+  getApiKeyProfileWithCredential,
+  getApiKeyUsageWithCredential,
+  logoutApiKeyViewerSession,
+} from '@/api/api-key-viewer-sessions'
 import {getAppConfig} from '@/app/config'
 import MetricCard from '@/console-kit/data/MetricCard.vue'
 import MetricGrid from '@/console-kit/data/MetricGrid.vue'
@@ -163,19 +163,19 @@ import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {
   ApiUsageStatus,
-  CurrentSubmitterUsageResponse,
-  SubmitterViewerSessionView,
+  CurrentApiKeyUsageResponse,
+  ApiKeyViewerSessionView,
 } from '@/types/api-keys'
-import type {CurrentSubmitterProfile} from '@/types/current-submitter'
+import type {CurrentApiKeyProfile} from '@/types/current-api-key'
 import {toErrorMessage} from '@/utils/errors'
 
 const VIEWER_STORAGE_KEY = 'xa.mass.apiKeyViewerCredential'
 
 const apiKeySecret = ref('')
 const viewerCredential = ref('')
-const viewer = ref<SubmitterViewerSessionView | null>(null)
-const profile = ref<CurrentSubmitterProfile | null>(null)
-const usage = ref<CurrentSubmitterUsageResponse | null>(null)
+const viewer = ref<ApiKeyViewerSessionView | null>(null)
+const profile = ref<CurrentApiKeyProfile | null>(null)
+const usage = ref<CurrentApiKeyUsageResponse | null>(null)
 const errorMessage = ref('')
 const loading = ref(false)
 
@@ -184,7 +184,7 @@ const useMockApi = computed(() => getAppConfig().useMockApi)
 async function openViewer(): Promise<void> {
   errorMessage.value = ''
   try {
-    const created = await createSubmitterViewerSession(apiKeySecret.value)
+    const created = await createApiKeyViewerSession(apiKeySecret.value)
     apiKeySecret.value = ''
     setViewerCredential(created.rawSecret)
     viewer.value = created.session
@@ -202,9 +202,9 @@ async function refreshViewer(): Promise<void> {
   errorMessage.value = ''
   try {
     const [viewerRow, profileRow, usageRow] = await Promise.all([
-      getCurrentSubmitterViewerSession(viewerCredential.value),
-      getSubmitterProfileWithCredential(viewerCredential.value),
-      getSubmitterUsageWithCredential(viewerCredential.value),
+      getCurrentApiKeyViewerSession(viewerCredential.value),
+      getApiKeyProfileWithCredential(viewerCredential.value),
+      getApiKeyUsageWithCredential(viewerCredential.value),
     ])
     viewer.value = viewerRow
     profile.value = profileRow
@@ -222,7 +222,7 @@ async function exitViewer(): Promise<void> {
     return
   }
   try {
-    await logoutSubmitterViewerSession(viewerCredential.value)
+    await logoutApiKeyViewerSession(viewerCredential.value)
   } catch {
     // Local cleanup is still correct if the server already invalidated it.
   } finally {

@@ -12,6 +12,7 @@ import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
 import com.xa.mass.api.auth.apikey.InMemoryApiKeyApplicationStore;
 import com.xa.mass.api.auth.apikey.InMemoryApiKeyCredentialStore;
 import com.xa.mass.api.auth.iam.InMemoryUserRolePermissionStore;
+import com.xa.mass.sdk.auth.InMemoryCredentialPrincipalStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -35,12 +36,12 @@ class ApiKeyApplicationControllerTest {
 
     @BeforeEach
     void setUp() {
-        InMemorySubmitterOperations submitters = new InMemorySubmitterOperations();
+        InMemoryCredentialPrincipalStore credentialPrincipals = new InMemoryCredentialPrincipalStore();
         ApiKeyCredentialService service = new ApiKeyCredentialService(
                 new InMemoryApiKeyApplicationStore(),
                 new InMemoryApiKeyCredentialStore(),
                 InMemoryUserRolePermissionStore.bootstrapDefaults(),
-                submitters
+                credentialPrincipals
         );
         ApiAuthInterceptor interceptor = new ApiAuthInterceptor(
                 ApiAuthTestSupport.defaultOperatorAuthService(),
@@ -50,7 +51,7 @@ class ApiKeyApplicationControllerTest {
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ApiKeyApplicationController(service),
-                        new ApiKeyController(service, submitters))
+                        new ApiKeyController(service, credentialPrincipals))
                 .addInterceptors(interceptor)
                 .build();
     }

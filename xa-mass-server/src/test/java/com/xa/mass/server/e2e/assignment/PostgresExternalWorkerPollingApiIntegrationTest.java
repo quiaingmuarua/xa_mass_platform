@@ -4,7 +4,7 @@ import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
@@ -79,22 +79,22 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSam
     void externalWorkerPollingApiCompletesTaskEndToEndAgainstPostgresStorage() throws Exception {
         String workerId = "polling-pg-worker-001";
         String workerCredential = "polling-pg-worker-key";
-        String submitterCredential = "polling-pg-submitter-key";
+        String taskApiKey = "polling-pg-api-key-key";
 
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "supportsProject == true"),
                 rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
-        registerExternalWorkerSubmitter(
+        registerExternalWorkerCredential(
                 "polling-pg-worker",
                 workerCredential,
                 workerId,
                 "crawlerApp",
                 "crawler.fetch-page"
         );
-        app.registerSubmitter(SubmitterRegistration.builder()
-                .principalId("polling-pg-submitter")
-                .credential(submitterCredential)
+        app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
+                .principalId("polling-pg-api-key")
+                .credential(taskApiKey)
                 .userId("crawler-agent")
                 .permissions(List.of("task:create"))
                 .projectScopes(List.of("crawlerApp"))
@@ -102,7 +102,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSam
                 .build());
 
         HttpHeaders workerHeaders = credentialHeaders(workerCredential);
-        HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        HttpHeaders taskApiKeyHeaders = credentialHeaders(taskApiKey);
         declareExternalWorkerGroup("polling-postgres", "crawlerApp", "crawler.fetch-page", workerHeaders);
         bindExternalAdapterNode("polling-postgres-node", "polling-postgres", workerHeaders);
 
@@ -131,7 +131,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSam
         createBody.put("sourceRef", "crawler-fetch-page-postgres");
         createBody.put("sharedConfig", Map.of("routingCode", "us"));
         createBody.put("executionSpec", Map.of("batchSize", 1));
-        Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
+        Map<String, Object> createResponse = createTaskShell(createBody, taskApiKeyHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/postgres-page"))));
@@ -209,12 +209,12 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSam
         assertTrue(condition.getAsBoolean(), failureMessage);
     }
 
-    private void registerExternalWorkerSubmitter(String principalId,
+    private void registerExternalWorkerCredential(String principalId,
                                                  String credential,
                                                  String workerId,
                                                  String projectCode,
                                                  String eventCode) {
-        app.registerSubmitter(SubmitterRegistration.builder()
+        app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))

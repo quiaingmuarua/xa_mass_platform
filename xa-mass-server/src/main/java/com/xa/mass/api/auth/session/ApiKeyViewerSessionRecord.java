@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-public record SubmitterViewerSessionRecord(
+public record ApiKeyViewerSessionRecord(
         String sessionId,
         String keyId,
         String principalId,

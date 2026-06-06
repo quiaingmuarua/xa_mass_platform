@@ -211,7 +211,7 @@ scripts/proof/external-worker-http-contract.sh
 
 The script uses only `curl` and `jq`. It drives `/worker-api/v1/**` through the
 stable polling contract and uses the dev-only `external.proof.echo` event plus
-`external-proof-submitter-key` / `external-proof-worker-key` credentials so it
+`external-proof-task-api-key` / `external-proof-worker-key` credentials so it
 does not depend on optional sample workers or server-owned demo workload state.
 
 Producer traffic uses shell create plus explicit ingest:

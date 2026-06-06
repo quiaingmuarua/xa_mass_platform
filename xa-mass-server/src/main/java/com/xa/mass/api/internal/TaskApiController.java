@@ -175,7 +175,7 @@ public class TaskApiController {
                                                                       @Parameter(description = "Bounded list window size")
                                                                       @RequestParam(defaultValue = "500") int limit) {
         return executeApi("Task list failed", () -> {
-            PrincipalContext submitterViewer = resolveTaskViewerCredential(apiKeyHeader, authorizationHeader);
+            PrincipalContext apiKeyViewer = resolveTaskViewerCredential(apiKeyHeader, authorizationHeader);
             String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
             String normalizedProject = project == null ? "" : project.trim();
             // push status filter to storage when provided; otherwise use bounded page scan
@@ -183,7 +183,7 @@ public class TaskApiController {
                     ? taskQueries.getTaskSummariesByStatus(status)
                     : taskQueries.listTaskSummaries(offset, Math.min(limit, 1000));
             List<ApiTask> items = candidates.stream()
-                    .filter(task -> canViewTaskSummary(task, submitterViewer))
+                    .filter(task -> canViewTaskSummary(task, apiKeyViewer))
                     .filter(task -> matchesProject(task.getProject(), normalizedProject))
                     .filter(task -> matchesKeyword(task.getTaskId(), task.getTaskName(), task.getProject(), normalizedKeyword))
                     .sorted(Comparator
@@ -207,17 +207,17 @@ public class TaskApiController {
         return executeApi("Task shell create failed", () -> {
             validateKnownFields(requestBody, "task shell create");
 
-            ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
-                    resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
-            if (submitterTaskCreate != null) {
+            ApiAuthorizationService.AuthorizedApiKeyTaskCreate apiKeyTaskCreate =
+                    resolveApiKeyTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
+            if (apiKeyTaskCreate != null) {
                 TaskShellSnapshot task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
-                        toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(), submitterTaskCreate.userId()),
-                        submitterTaskCreate.principal()
+                        toMassTaskShellCreateRequest(requestBody, apiKeyTaskCreate.project(), apiKeyTaskCreate.userId()),
+                        apiKeyTaskCreate.principal()
                 ));
                 ApiUsageAcceptedContext usage = recordApiUsage(
-                        submitterTaskCreate.principal(),
+                        apiKeyTaskCreate.principal(),
                         ApiUsageOperation.TASK_CREATE,
-                        submitterTaskCreate.project(),
+                        apiKeyTaskCreate.project(),
                         null,
                         task.getTaskId(),
                         null,
@@ -228,7 +228,7 @@ public class TaskApiController {
                     return ok(taskApiContractAssembler.toCreateOutcome(
                             task,
                             toEmbeddedExecutionSpec(requestBody.getExecutionSpec()),
-                            submitterTaskCreate.principal().getPrincipalId(),
+                            apiKeyTaskCreate.principal().getPrincipalId(),
                             "Task shell created"
                     ));
                 } catch (RuntimeException e) {
@@ -993,11 +993,11 @@ public class TaskApiController {
         requireUserId(userId);
     }
 
-    private ApiAuthorizationService.AuthorizedSubmitterTaskCreate resolveSubmitterTaskCreate(String apiKeyHeader,
+    private ApiAuthorizationService.AuthorizedApiKeyTaskCreate resolveApiKeyTaskCreate(String apiKeyHeader,
                                                                                              String authorizationHeader,
                                                                                              TaskCreateRequest requestBody) {
         try {
-            return apiAuthorizationService.resolveAuthorizedSubmitterTaskCreate(
+            return apiAuthorizationService.resolveAuthorizedApiKeyTaskCreate(
                     apiKeyHeader,
                     authorizationHeader,
                     requestBody != null ? requestBody.getProject() : null,
@@ -1007,7 +1007,7 @@ public class TaskApiController {
                         "executionProfile", requestBody != null && requestBody.getExecutionSpec() != null
                                 ? String.valueOf(requestBody.getExecutionSpec().getProfile()) : "",
                         ApiUsageLedgerService.CONTEXT_USAGE_OPERATION, ApiUsageOperation.TASK_CREATE,
-                        "scenario", ApiSecurityScenario.SUBMITTER_TASK_CREATE.name()
+                        "scenario", ApiSecurityScenario.TASK_API_KEY_TASK_CREATE.name()
                     )
             );
         } catch (com.xa.mass.api.auth.ApiUnauthenticatedException ex) {
@@ -1033,7 +1033,7 @@ public class TaskApiController {
         try {
             Map<String, Object> context = new LinkedHashMap<>();
             context.put("taskId", taskId != null ? taskId : "");
-            context.put("scenario", ApiSecurityScenario.SUBMITTER_TASK_VIEW.name());
+            context.put("scenario", ApiSecurityScenario.TASK_API_KEY_TASK_VIEW.name());
             if (usageOperation != null) {
                 context.put(ApiUsageLedgerService.CONTEXT_USAGE_OPERATION, usageOperation);
             }
@@ -1061,22 +1061,22 @@ public class TaskApiController {
             return apiAuthorizationService.resolveTaskViewerCredential(
                     apiKeyHeader,
                     authorizationHeader,
-                    Map.of("scenario", ApiSecurityScenario.SUBMITTER_TASK_VIEW.name())
+                    Map.of("scenario", ApiSecurityScenario.TASK_API_KEY_TASK_VIEW.name())
             );
         } catch (com.xa.mass.api.auth.ApiUnauthenticatedException ex) {
             throw new SdkUnauthenticatedException(ex.getMessage());
         }
     }
 
-    private boolean canViewTaskSummary(TaskSummarySnapshot task, PrincipalContext submitterViewer) {
-        if (submitterViewer == null) {
+    private boolean canViewTaskSummary(TaskSummarySnapshot task, PrincipalContext apiKeyViewer) {
+        if (apiKeyViewer == null) {
             return true;
         }
         TaskAccessSnapshot access = taskQueries.getTaskAccess(task.getTaskId());
         if (access == null) {
             return false;
         }
-        return apiAuthorizationService.allowsTaskOwnershipAccess(submitterViewer, access.getSharedConfig());
+        return apiAuthorizationService.allowsTaskOwnershipAccess(apiKeyViewer, access.getSharedConfig());
     }
 
     private PrincipalContext resolveTaskAppender(String apiKeyHeader,
@@ -1101,7 +1101,7 @@ public class TaskApiController {
             context.put("taskId", taskId != null ? taskId : "");
             context.put("project", project != null ? project : "");
             context.put("eventCodes", eventCodes == null ? List.of() : eventCodes);
-            context.put("scenario", ApiSecurityScenario.SUBMITTER_TASK_APPEND.name());
+            context.put("scenario", ApiSecurityScenario.TASK_API_KEY_TASK_APPEND.name());
             if (usageOperation != null) {
                 context.put(ApiUsageLedgerService.CONTEXT_USAGE_OPERATION, usageOperation);
             }

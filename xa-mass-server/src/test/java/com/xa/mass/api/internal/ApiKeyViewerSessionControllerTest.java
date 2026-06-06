@@ -13,11 +13,12 @@ import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
 import com.xa.mass.api.auth.apikey.InMemoryApiKeyApplicationStore;
 import com.xa.mass.api.auth.apikey.InMemoryApiKeyCredentialStore;
 import com.xa.mass.api.auth.iam.InMemoryUserRolePermissionStore;
-import com.xa.mass.api.auth.session.InMemorySubmitterViewerSessionStore;
-import com.xa.mass.api.auth.session.SubmitterViewerSessionService;
+import com.xa.mass.api.auth.session.InMemoryApiKeyViewerSessionStore;
+import com.xa.mass.api.auth.session.ApiKeyViewerSessionService;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
 import com.xa.mass.api.auth.usage.ApiUsageOperation;
 import com.xa.mass.api.auth.usage.InMemoryApiUsageLedgerStore;
+import com.xa.mass.sdk.auth.InMemoryCredentialPrincipalStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -34,33 +35,33 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-class SubmitterViewerSessionControllerTest {
+class ApiKeyViewerSessionControllerTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private MockMvc mockMvc;
-    private SubmitterViewerSessionService sessionService;
+    private ApiKeyViewerSessionService sessionService;
     private ApiUsageLedgerService usageLedgerService;
     private ApiAuthorizationService authorizationService;
 
     @BeforeEach
     void setUp() {
-        InMemorySubmitterOperations submitters = new InMemorySubmitterOperations();
+        InMemoryCredentialPrincipalStore credentialPrincipals = new InMemoryCredentialPrincipalStore();
         ApiKeyCredentialService apiKeyCredentialService = new ApiKeyCredentialService(
                 new InMemoryApiKeyApplicationStore(),
                 new InMemoryApiKeyCredentialStore(),
                 InMemoryUserRolePermissionStore.bootstrapDefaults(),
-                submitters
+                credentialPrincipals
         );
-        sessionService = new SubmitterViewerSessionService(
-                new InMemorySubmitterViewerSessionStore(),
-                submitters,
+        sessionService = new ApiKeyViewerSessionService(
+                new InMemoryApiKeyViewerSessionStore(),
+                credentialPrincipals,
                 apiKeyCredentialService
         );
         usageLedgerService = new ApiUsageLedgerService(new InMemoryApiUsageLedgerStore());
-        authorizationService = new ApiAuthorizationService(submitters, null);
+        authorizationService = new ApiAuthorizationService(credentialPrincipals, null);
         authorizationService.setApiKeyCredentialService(apiKeyCredentialService);
-        authorizationService.setSubmitterViewerSessionService(sessionService);
+        authorizationService.setApiKeyViewerSessionService(sessionService);
         ApiAuthInterceptor interceptor = new ApiAuthInterceptor(
                 ApiAuthTestSupport.defaultOperatorAuthService(),
                 objectMapper,
@@ -68,9 +69,9 @@ class SubmitterViewerSessionControllerTest {
                 new ApiRouteAuthorizationCatalog()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new ApiKeyController(apiKeyCredentialService, submitters, sessionService),
-                        new SubmitterViewerSessionController(sessionService),
-                        new ApiUsageController(usageLedgerService, submitters, apiKeyCredentialService, sessionService))
+                        new ApiKeyController(apiKeyCredentialService, credentialPrincipals, sessionService),
+                        new ApiKeyViewerSessionController(sessionService),
+                        new ApiUsageController(usageLedgerService, credentialPrincipals, apiKeyCredentialService, sessionService))
                 .addInterceptors(interceptor)
                 .build();
     }
@@ -103,7 +104,7 @@ class SubmitterViewerSessionControllerTest {
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, sessionSecret))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.principalId").value("crawler-api-key"))
-                .andExpect(jsonPath("$.data.attributes.submitterViewerSessionId").isString());
+                .andExpect(jsonPath("$.data.attributes.apiKeyViewerSessionId").isString());
 
         usageLedgerService.recordAccepted(
                 sessionService.authenticate(sessionSecret),
@@ -171,7 +172,7 @@ class SubmitterViewerSessionControllerTest {
         mockMvc.perform(post("/api/v1/api-key-viewer-sessions")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, sessionSecret))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.msg").value("submitter viewer sessions cannot create nested sessions"));
+                .andExpect(jsonPath("$.msg").value("API-key viewer sessions cannot create nested sessions"));
     }
 
     @Test

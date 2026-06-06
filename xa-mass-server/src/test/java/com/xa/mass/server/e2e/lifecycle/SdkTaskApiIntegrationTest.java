@@ -2,7 +2,7 @@ package com.xa.mass.server.e2e.lifecycle;
 
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "sample.client.auto-start=true",
                 "mass.mock.bootstrap.enabled=true",
                 "mass.mock.bootstrap.register-dev-catalog=true",
-                "mass.mock.bootstrap.register-dev-submitters=false",
+                "mass.mock.bootstrap.register-dev-api-keys=false",
                 "mass.mock.data.workers=mock/test_mock_workers.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
@@ -54,8 +54,8 @@ class SdkTaskApiIntegrationTest extends ReviewReadModelSampleE2eTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void createTaskThroughUnifiedTaskApiWithSubmitterCredentialCompletesOverRealRuntime() throws Exception {
-        app.registerSubmitter(SubmitterRegistration.builder()
+    void createTaskThroughUnifiedTaskApiWithAPIKeyCredentialCompletesOverRealRuntime() throws Exception {
+        app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId("crawler-agent")
                 .credential("sdk-test-key")
                 .userId("sdk-client")
@@ -65,9 +65,9 @@ class SdkTaskApiIntegrationTest extends ReviewReadModelSampleE2eTest {
 
         Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "demoApp",
-                "sharedConfig", Map.of("source", "submitter"),
+                "sharedConfig", Map.of("source", "apiKey"),
                 "executionSpec", Map.of("batchSize", 1)
-        ), submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
+        ), apiKeyCredentialHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
 
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
@@ -97,15 +97,15 @@ class SdkTaskApiIntegrationTest extends ReviewReadModelSampleE2eTest {
         assertEquals("SERVICE", securityView.get("createdByPrincipalType"));
 
         Map<String, Object> listResponse = exchange("/api/v1/tasks", HttpMethod.GET, null,
-                submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
+                apiKeyCredentialHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
         assertApiOk(listResponse);
         List<Map<String, Object>> items = (List<Map<String, Object>>) responseData(listResponse).get("items");
         assertTrue(items.stream().anyMatch(item -> taskId.equals(String.valueOf(item.get("id")))));
     }
 
     @Test
-    void createTaskThroughUnifiedTaskApiRejectsSubmitterScopeViolation() {
-        app.registerSubmitter(SubmitterRegistration.builder()
+    void createTaskThroughUnifiedTaskApiRejectsAPIKeyScopeViolation() {
+        app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId("telegram-bot")
                 .credential("telegram-key")
                 .userId("bot-user")
@@ -115,15 +115,15 @@ class SdkTaskApiIntegrationTest extends ReviewReadModelSampleE2eTest {
         Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "crawlerApp",
                 "userId", "bot-user"
-        ), submitterCredentialHeaders(Map.of("Authorization", "Bearer telegram-key")));
+        ), apiKeyCredentialHeaders(Map.of("Authorization", "Bearer telegram-key")));
 
         assertApiError(createResponse, 403);
-        assertEquals("Submitter credential project scope denied: crawlerApp", apiMsg(createResponse));
+        assertEquals("APIKey credential project scope denied: crawlerApp", apiMsg(createResponse));
     }
 
     @Test
-    void appendTaskThroughUnifiedTaskApiRejectsSubmitterEventScopeViolation() {
-        app.registerSubmitter(SubmitterRegistration.builder()
+    void appendTaskThroughUnifiedTaskApiRejectsAPIKeyEventScopeViolation() {
+        app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId("crawler-reader")
                 .credential("crawler-reader-key")
                 .userId("crawler-user")
@@ -134,7 +134,7 @@ class SdkTaskApiIntegrationTest extends ReviewReadModelSampleE2eTest {
         Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "crawlerApp",
                 "userId", "crawler-user"
-        ), submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
+        ), apiKeyCredentialHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
 
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
@@ -142,14 +142,14 @@ class SdkTaskApiIntegrationTest extends ReviewReadModelSampleE2eTest {
         Map<String, Object> appendResponse = exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
                 "eventCode", "crawler.fetch-page",
                 "items", java.util.List.of(Map.of("url", "https://example.test/page-1"))
-        ), submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
+        ), apiKeyCredentialHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
 
         assertApiError(appendResponse, 403);
-        assertEquals("Submitter credential event scope denied: crawler.fetch-page", apiMsg(appendResponse));
+        assertEquals("APIKey credential event scope denied: crawler.fetch-page", apiMsg(appendResponse));
     }
 
     @SuppressWarnings("unchecked")
-    private HttpHeaders submitterCredentialHeaders(Map<String, String> headers) {
+    private HttpHeaders apiKeyCredentialHeaders(Map<String, String> headers) {
         HttpHeaders httpHeaders = new HttpHeaders();
         httpHeaders.set("Content-Type", "application/json");
         headers.forEach(httpHeaders::set);

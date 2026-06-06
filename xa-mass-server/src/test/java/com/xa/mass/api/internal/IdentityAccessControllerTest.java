@@ -14,6 +14,7 @@ import com.xa.mass.api.auth.apikey.InMemoryApiKeyApplicationStore;
 import com.xa.mass.api.auth.apikey.InMemoryApiKeyCredentialStore;
 import com.xa.mass.api.auth.iam.InMemoryUserRolePermissionStore;
 import com.xa.mass.api.auth.iam.UserStatus;
+import com.xa.mass.sdk.auth.InMemoryCredentialPrincipalStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -39,18 +40,18 @@ class IdentityAccessControllerTest {
 
     private MockMvc mockMvc;
     private InMemoryUserRolePermissionStore store;
-    private InMemorySubmitterOperations submitters;
+    private InMemoryCredentialPrincipalStore credentialPrincipals;
     private ApiKeyCredentialService apiKeyCredentialService;
 
     @BeforeEach
     void setUp() {
         store = InMemoryUserRolePermissionStore.bootstrapDefaults();
-        submitters = new InMemorySubmitterOperations();
+        credentialPrincipals = new InMemoryCredentialPrincipalStore();
         apiKeyCredentialService = new ApiKeyCredentialService(
                 new InMemoryApiKeyApplicationStore(),
                 new InMemoryApiKeyCredentialStore(),
                 store,
-                submitters
+                credentialPrincipals
         );
         ApiAuthService apiAuthService = new ApiAuthService(
                 new CompositePrincipalDirectory(List.of(new DefaultOperatorPrincipalDirectory(store))),
@@ -64,7 +65,7 @@ class IdentityAccessControllerTest {
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new IdentityAccessController(store, apiKeyCredentialService),
-                        new ApiKeyController(apiKeyCredentialService, submitters),
+                        new ApiKeyController(apiKeyCredentialService, credentialPrincipals),
                         new AuthController(apiAuthService))
                 .addInterceptors(interceptor)
                 .build();
@@ -164,17 +165,17 @@ class IdentityAccessControllerTest {
         mockMvc.perform(post("/api/v1/roles")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "roleId", "TASK_SUBMITTER",
-                                "name", "Task Submitter",
+                                "roleId", "TASK_PRODUCER",
+                                "name", "Task API Key",
                                 "description", "Can submit tasks",
                                 "permissions", List.of(ApiPermissionNames.TASK_CREATE)
                         ))))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.roleId").value("TASK_SUBMITTER"))
+                .andExpect(jsonPath("$.data.roleId").value("TASK_PRODUCER"))
                 .andExpect(jsonPath("$.data.systemRole").value(false))
                 .andExpect(jsonPath("$.data.permissions", hasItem(ApiPermissionNames.TASK_CREATE)));
 
-        mockMvc.perform(patch("/api/v1/roles/TASK_SUBMITTER")
+        mockMvc.perform(patch("/api/v1/roles/TASK_PRODUCER")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "name", "Task Operator",
@@ -191,8 +192,8 @@ class IdentityAccessControllerTest {
         mockMvc.perform(post("/api/v1/roles")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "roleId", "TASK_SUBMITTER",
-                                "name", "Task Submitter",
+                                "roleId", "TASK_PRODUCER",
+                                "name", "Task API Key",
                                 "permissions", List.of(ApiPermissionNames.TASK_CREATE)
                         ))))
                 .andExpect(status().isCreated());
@@ -202,7 +203,7 @@ class IdentityAccessControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.permissions", not(hasItem(ApiPermissionNames.TASK_CREATE))));
 
-        mockMvc.perform(post("/api/v1/users/ops-viewer/roles/TASK_SUBMITTER"))
+        mockMvc.perform(post("/api/v1/users/ops-viewer/roles/TASK_PRODUCER"))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/v1/auth/me")

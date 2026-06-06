@@ -5,16 +5,16 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public class InMemorySubmitterViewerSessionStore implements SubmitterViewerSessionStore {
+public class InMemoryApiKeyViewerSessionStore implements ApiKeyViewerSessionStore {
 
-    private final Map<String, SubmitterViewerSessionRecord> bySessionId = new LinkedHashMap<>();
+    private final Map<String, ApiKeyViewerSessionRecord> bySessionId = new LinkedHashMap<>();
     private final Map<String, String> sessionIdByCredentialHash = new LinkedHashMap<>();
 
     @Override
-    public synchronized SubmitterViewerSessionRecord create(SubmitterViewerSessionRecord record) {
-        SubmitterViewerSessionRecord normalized = Objects.requireNonNull(record, "record");
+    public synchronized ApiKeyViewerSessionRecord create(ApiKeyViewerSessionRecord record) {
+        ApiKeyViewerSessionRecord normalized = Objects.requireNonNull(record, "record");
         if (bySessionId.containsKey(normalized.sessionId())) {
-            throw new IllegalArgumentException("submitter viewer session already exists: " + normalized.sessionId());
+            throw new IllegalArgumentException("API-key viewer session already exists: " + normalized.sessionId());
         }
         bySessionId.put(normalized.sessionId(), normalized);
         sessionIdByCredentialHash.put(normalized.credentialHash(), normalized.sessionId());
@@ -22,23 +22,23 @@ public class InMemorySubmitterViewerSessionStore implements SubmitterViewerSessi
     }
 
     @Override
-    public synchronized SubmitterViewerSessionRecord get(String sessionId) {
+    public synchronized ApiKeyViewerSessionRecord get(String sessionId) {
         return sessionId == null ? null : bySessionId.get(sessionId);
     }
 
     @Override
-    public synchronized SubmitterViewerSessionRecord getByCredentialHash(String credentialHash) {
+    public synchronized ApiKeyViewerSessionRecord getByCredentialHash(String credentialHash) {
         String sessionId = credentialHash == null ? null : sessionIdByCredentialHash.get(credentialHash);
         return sessionId == null ? null : bySessionId.get(sessionId);
     }
 
     @Override
-    public synchronized SubmitterViewerSessionRecord revoke(String sessionId) {
-        SubmitterViewerSessionRecord existing = bySessionId.get(sessionId);
+    public synchronized ApiKeyViewerSessionRecord revoke(String sessionId) {
+        ApiKeyViewerSessionRecord existing = bySessionId.get(sessionId);
         if (existing == null || existing.revokedAt() != null) {
             return existing;
         }
-        SubmitterViewerSessionRecord revoked = new SubmitterViewerSessionRecord(
+        ApiKeyViewerSessionRecord revoked = new ApiKeyViewerSessionRecord(
                 existing.sessionId(),
                 existing.keyId(),
                 existing.principalId(),

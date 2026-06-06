@@ -117,7 +117,7 @@ public class ApiRouteAuthorizationCatalog {
                     ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_OR_OPERATOR_ROUTE)
                     : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
         }
-        if (uri.matches("^/api/v1/projects/[^/]+(/events|/submitters)?$") && "GET".equals(method)) {
+        if (uri.matches("^/api/v1/projects/[^/]+(/events)?$") && "GET".equals(method)) {
             return sdkCredentialAttempt
                     ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_OR_OPERATOR_ROUTE)
                     : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);

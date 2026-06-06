@@ -31,7 +31,7 @@ Rules:
 For the dev Spring Boot shell there is now a sample supervisor script at
 `integrations/samples/dev/scenario/launch-workers.mjs`.
 
-- it assumes project/event/submitter catalog and runtime default rules were
+- it assumes project/event/API-key catalog and runtime default rules were
   prepared through server-owned seed/import or an equivalent test fixture
 - it registers the curated sample worker set through `/worker-api/v1/**`
 - it creates curated sample tasks through `POST /api/v1/tasks` plus explicit item append
@@ -79,7 +79,7 @@ realtime worker child processes. The Java launcher is the formal SDK-composition
 path for WorkerGroup, AdapterNode, NodeGroupBinding, polling/WebSocket worker
 sessions, and task seeding. Use `--register-only` when you only want
 control-plane data registered and do not want worker sessions started.
-Task shell/item writes use submitter credentials; task commands such as seal and
+Task shell/item writes use API-key credentials; task commands such as seal and
 approve use the launcher command credential because task commands are
 operator-style lifecycle actions.
 In launch mode it starts a bounded set of polling workers, starts WebSocket
@@ -93,7 +93,7 @@ Current dev scenario shape:
   public worker API. They model a larger device fleet for matching review
   without starting 100 local processes.
 - `bootstrap.json` is the explicit seed/import catalog source for dev-only
-  submitter credentials, including per-worker `worker:poll` credentials for the
+  API-key credentials, including per-worker `worker:poll` credentials for the
   100 generated polling workers.
 - `tasks.json` creates normal approved realtime sample tasks plus a sealed but
   unapproved `deviceProbe/probe.phone.metadata` task with 1000 generated items.

@@ -14,7 +14,7 @@ Use these directories:
   server-owned control-plane schema generation.
 
 Do not put server API-key, IAM, usage, worker registration observation, or
-submitter-viewer session schema under `platform_infra/mass-storage-jdbc`. That
+API-key viewer session schema under `platform_infra/mass-storage-jdbc`. That
 module owns generic storage schema such as task shell, rule storage, and
 generic principal projection support.
 
@@ -27,7 +27,7 @@ Current project stage:
 - SQLite is the current lightweight control-plane DB target, but schema should
   stay portable enough for a later PostgreSQL path
 
-Submitter-viewer sessions are not server control-plane DB truth. They remain
+API-key viewer sessions are not server control-plane DB truth. They remain
 memory-only unless a future runtime/Redis session design explicitly changes
 that owner.
 

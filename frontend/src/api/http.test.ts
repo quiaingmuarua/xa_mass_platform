@@ -156,7 +156,7 @@ describe('http API helpers', () => {
         )
     })
 
-    it('can send an explicit submitter credential without operator auth', async () => {
+    it('can send an explicit API-key credential without operator auth', async () => {
         setRuntimeConfigOverrides({
             apiBaseUrl: '/backend',
             useMockAuth: false,
@@ -178,7 +178,7 @@ describe('http API helpers', () => {
         vi.stubGlobal('fetch', fetchMock)
 
         await requestApiData('/api/v1/api-keys:current', {
-            submitterCredential: 'mass_sess_secret',
+            apiKeyCredential: 'mass_sess_secret',
         })
 
         expect(fetchMock).toHaveBeenCalledWith(

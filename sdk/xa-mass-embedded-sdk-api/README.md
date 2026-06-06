@@ -63,7 +63,7 @@ Read-model rule:
 - `com.xa.mass.sdk.auth.PrincipalContext` is the shared authenticated caller shape
 - `com.xa.mass.sdk.auth.CredentialAuthProjectionWriter` is the narrow
   lifecycle-to-auth-projection write port. API-key lifecycle owners should use
-  this port instead of broad submitter resource operations.
+  this port instead of broad credential-principal resource operations.
 - `com.xa.mass.sdk.auth.CredentialPrincipalStore` is the embedded credential
   principal store for authentication (`AuthProvider`), principal lookup
   (`PrincipalDirectory`), and auth projection writes.

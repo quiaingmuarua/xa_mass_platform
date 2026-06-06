@@ -2,7 +2,7 @@ package com.xa.mass.api.auth;
 
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
-import com.xa.mass.api.auth.session.SubmitterViewerSessionService;
+import com.xa.mass.api.auth.session.ApiKeyViewerSessionService;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
 import com.xa.mass.api.auth.usage.ApiUsageOperation;
 import com.xa.mass.sdk.auth.AuthProvider;
@@ -34,7 +34,7 @@ public class ApiAuthorizationService {
     private final AuthorizationPolicy authorizationPolicy;
     private ApiUsageLedgerService apiUsageLedgerService;
     private ApiKeyCredentialService apiKeyCredentialService;
-    private SubmitterViewerSessionService submitterViewerSessionService;
+    private ApiKeyViewerSessionService apiKeyViewerSessionService;
 
     public ApiAuthorizationService() {
         this(null, new DefaultAuthorizationPolicy());
@@ -57,48 +57,48 @@ public class ApiAuthorizationService {
     }
 
     @Autowired(required = false)
-    public void setSubmitterViewerSessionService(SubmitterViewerSessionService submitterViewerSessionService) {
-        this.submitterViewerSessionService = submitterViewerSessionService;
+    public void setApiKeyViewerSessionService(ApiKeyViewerSessionService apiKeyViewerSessionService) {
+        this.apiKeyViewerSessionService = apiKeyViewerSessionService;
     }
 
-    public PrincipalContext resolveSubmitterPrincipal(String apiKeyHeader,
+    public PrincipalContext resolveApiKeyPrincipal(String apiKeyHeader,
                                                 String authorizationHeader,
                                                 ApiSecurityScenario scenario,
                                                 Map<String, Object> context) {
         if (!SdkCredentialAuthSupport.hasCredentialAttempt(apiKeyHeader, authorizationHeader)) {
             return null;
         }
-        PrincipalContext submitter = authenticateSubmitter(apiKeyHeader, authorizationHeader);
-        if (submitter == null) {
+        PrincipalContext apiKeyPrincipal = authenticateApiKeyOrViewerSession(apiKeyHeader, authorizationHeader);
+        if (apiKeyPrincipal == null) {
             logCredentialFailure(scenario.surface(), scenario.unauthenticatedMessage(), context);
             throw new ApiUnauthenticatedException(scenario.unauthenticatedMessage());
         }
-        return submitter;
+        return apiKeyPrincipal;
     }
 
-    public AuthorizedSubmitterTaskCreate resolveAuthorizedSubmitterTaskCreate(String apiKeyHeader,
+    public AuthorizedApiKeyTaskCreate resolveAuthorizedApiKeyTaskCreate(String apiKeyHeader,
                                                                               String authorizationHeader,
                                                                               String requestedProject,
                                                                               String eventCode,
                                                                               String requestedUserId,
                                                                               Map<String, Object> context) {
-        PrincipalContext submitter =
-                resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_CREATE, context);
-        if (submitter == null) {
+        PrincipalContext apiKeyPrincipal =
+                resolveApiKeyPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.TASK_API_KEY_TASK_CREATE, context);
+        if (apiKeyPrincipal == null) {
             return null;
         }
-        requireSubmitterTaskCreate(
-                submitter,
+        requireApiKeyTaskCreate(
+                apiKeyPrincipal,
                 requestedProject,
                 eventCode,
                 requestedUserId,
-                ApiSecurityScenario.SUBMITTER_TASK_CREATE,
+                ApiSecurityScenario.TASK_API_KEY_TASK_CREATE,
                 context
         );
-        return new AuthorizedSubmitterTaskCreate(
-                submitter,
-                resolveSubmitterProject(requestedProject, submitter),
-                resolveSubmitterUserId(requestedUserId, submitter)
+        return new AuthorizedApiKeyTaskCreate(
+                apiKeyPrincipal,
+                resolveApiKeyProject(requestedProject, apiKeyPrincipal),
+                resolveApiKeyUserId(requestedUserId, apiKeyPrincipal)
         );
     }
 
@@ -106,12 +106,12 @@ public class ApiAuthorizationService {
                                                             String authorizationHeader,
                                                             ApiSecurityScenario scenario,
                                                             Map<String, Object> context) {
-        PrincipalContext submitter = authenticateApiKeySubmitter(apiKeyHeader, authorizationHeader);
-        if (submitter == null) {
+        PrincipalContext apiKeyPrincipal = authenticateApiKeyPrincipal(apiKeyHeader, authorizationHeader);
+        if (apiKeyPrincipal == null) {
             logCredentialFailure(scenario.surface(), scenario.unauthenticatedMessage(), context);
             throw new ApiUnauthenticatedException(scenario.unauthenticatedMessage());
         }
-        return submitter;
+        return apiKeyPrincipal;
     }
 
     public PrincipalContext requireAuthorizedWorkerCredential(String apiKeyHeader,
@@ -121,9 +121,9 @@ public class ApiAuthorizationService {
                                                               String project,
                                                               List<WorkerEventBinding> eventBindings,
                                                               Map<String, Object> context) {
-        PrincipalContext submitter = requireExternalWorkerCredential(apiKeyHeader, authorizationHeader, scenario, context);
-        requireWorkerAccess(submitter, scenario, workerId, project, eventBindings, context);
-        return submitter;
+        PrincipalContext apiKeyPrincipal = requireExternalWorkerCredential(apiKeyHeader, authorizationHeader, scenario, context);
+        requireWorkerAccess(apiKeyPrincipal, scenario, workerId, project, eventBindings, context);
+        return apiKeyPrincipal;
     }
 
     public PrincipalContext resolveAuthorizedTaskViewer(String apiKeyHeader,
@@ -132,19 +132,19 @@ public class ApiAuthorizationService {
                                                         String project,
                                                         Map<String, Object> sharedConfig,
                                                         Map<String, Object> context) {
-        PrincipalContext submitter =
-                resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
-        if (submitter == null) {
+        PrincipalContext apiKeyPrincipal =
+                resolveApiKeyPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.TASK_API_KEY_TASK_VIEW, context);
+        if (apiKeyPrincipal == null) {
             return null;
         }
-        requireTaskOwnershipAccess(submitter, taskId, project, sharedConfig, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
-        return submitter;
+        requireTaskOwnershipAccess(apiKeyPrincipal, taskId, project, sharedConfig, ApiSecurityScenario.TASK_API_KEY_TASK_VIEW, context);
+        return apiKeyPrincipal;
     }
 
     public PrincipalContext resolveTaskViewerCredential(String apiKeyHeader,
                                                         String authorizationHeader,
                                                         Map<String, Object> context) {
-        return resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
+        return resolveApiKeyPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.TASK_API_KEY_TASK_VIEW, context);
     }
 
     public PrincipalContext resolveAuthorizedTaskAppender(String apiKeyHeader,
@@ -154,24 +154,24 @@ public class ApiAuthorizationService {
                                                           Map<String, Object> sharedConfig,
                                                           List<String> eventCodes,
                                                           Map<String, Object> context) {
-        PrincipalContext submitter =
-                resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_APPEND, context);
-        if (submitter == null) {
+        PrincipalContext apiKeyPrincipal =
+                resolveApiKeyPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.TASK_API_KEY_TASK_APPEND, context);
+        if (apiKeyPrincipal == null) {
             return null;
         }
-        requireTaskOwnershipAccess(submitter, taskId, project, sharedConfig, ApiSecurityScenario.SUBMITTER_TASK_APPEND, context);
+        requireTaskOwnershipAccess(apiKeyPrincipal, taskId, project, sharedConfig, ApiSecurityScenario.TASK_API_KEY_TASK_APPEND, context);
         List<String> normalizedEventCodes = eventCodes == null ? List.of() : List.copyOf(eventCodes);
         for (String eventCode : normalizedEventCodes) {
-            requireSubmitterTaskAccess(
-                    submitter,
+            requireApiKeyTaskAccess(
+                    apiKeyPrincipal,
                     project,
                     eventCode,
                     null,
-                    ApiSecurityScenario.SUBMITTER_TASK_APPEND,
+                    ApiSecurityScenario.TASK_API_KEY_TASK_APPEND,
                     context
             );
         }
-        return submitter;
+        return apiKeyPrincipal;
     }
 
     public void requireOperatorRoutePermission(PrincipalContext principal,
@@ -192,16 +192,16 @@ public class ApiAuthorizationService {
         }
     }
 
-    public void requireSubmitterTaskCreate(PrincipalContext principal,
+    public void requireApiKeyTaskCreate(PrincipalContext principal,
                                            String project,
                                            String eventCode,
                                            String userId,
                                            ApiSecurityScenario scenario,
                                            Map<String, Object> context) {
-        requireSubmitterTaskAccess(principal, project, eventCode, userId, scenario, context);
+        requireApiKeyTaskAccess(principal, project, eventCode, userId, scenario, context);
     }
 
-    private void requireSubmitterTaskAccess(PrincipalContext principal,
+    private void requireApiKeyTaskAccess(PrincipalContext principal,
                                             String project,
                                             String eventCode,
                                             String userId,
@@ -309,21 +309,21 @@ public class ApiAuthorizationService {
                 .build());
     }
 
-    private PrincipalContext authenticateSubmitter(String apiKeyHeader, String authorizationHeader) {
+    private PrincipalContext authenticateApiKeyOrViewerSession(String apiKeyHeader, String authorizationHeader) {
         String credential = SdkCredentialAuthSupport.extractCredential(apiKeyHeader, authorizationHeader);
-        PrincipalContext principal = authenticateApiKeySubmitter(credential);
+        PrincipalContext principal = authenticateApiKeyPrincipal(credential);
         if (principal != null) {
             return principal;
         }
-        return submitterViewerSessionService == null ? null : submitterViewerSessionService.authenticate(credential);
+        return apiKeyViewerSessionService == null ? null : apiKeyViewerSessionService.authenticate(credential);
     }
 
-    private PrincipalContext authenticateApiKeySubmitter(String apiKeyHeader, String authorizationHeader) {
+    private PrincipalContext authenticateApiKeyPrincipal(String apiKeyHeader, String authorizationHeader) {
         String credential = SdkCredentialAuthSupport.extractCredential(apiKeyHeader, authorizationHeader);
-        return authenticateApiKeySubmitter(credential);
+        return authenticateApiKeyPrincipal(credential);
     }
 
-    private PrincipalContext authenticateApiKeySubmitter(String credential) {
+    private PrincipalContext authenticateApiKeyPrincipal(String credential) {
         if (credential == null) {
             return null;
         }
@@ -417,33 +417,33 @@ public class ApiAuthorizationService {
         return Map.copyOf(attributes);
     }
 
-    private String resolveSubmitterProject(String requestedProject, PrincipalContext submitter) {
+    private String resolveApiKeyProject(String requestedProject, PrincipalContext apiKeyPrincipal) {
         String normalizedRequestedProject = SdkCredentialAuthSupport.firstNonBlank(requestedProject);
-        String scopedProject = SdkCredentialAuthSupport.firstNonBlank(submitter.getProjectScope());
+        String scopedProject = SdkCredentialAuthSupport.firstNonBlank(apiKeyPrincipal.getProjectScope());
         if (scopedProject != null) {
             return scopedProject;
         }
         if (normalizedRequestedProject == null
-                && submitter.getProjectScopes().size() == 1
-                && !PrincipalContext.WILDCARD_SCOPE.equals(submitter.getProjectScopes().get(0))) {
-            return submitter.getProjectScopes().get(0);
+                && apiKeyPrincipal.getProjectScopes().size() == 1
+                && !PrincipalContext.WILDCARD_SCOPE.equals(apiKeyPrincipal.getProjectScopes().get(0))) {
+            return apiKeyPrincipal.getProjectScopes().get(0);
         }
         if (normalizedRequestedProject != null) {
             return normalizedRequestedProject;
         }
-        throw new IllegalArgumentException("project is required when submitter has no project scope");
+        throw new IllegalArgumentException("project is required when apiKeyPrincipal has no project scope");
     }
 
-    private String resolveSubmitterUserId(String requestedUserId, PrincipalContext submitter) {
+    private String resolveApiKeyUserId(String requestedUserId, PrincipalContext apiKeyPrincipal) {
         String normalizedRequestedUserId = SdkCredentialAuthSupport.firstNonBlank(requestedUserId);
-        String scopedUserId = SdkCredentialAuthSupport.firstNonBlank(submitter.getUserId());
+        String scopedUserId = SdkCredentialAuthSupport.firstNonBlank(apiKeyPrincipal.getUserId());
         if (scopedUserId != null) {
             return requireUserId(scopedUserId);
         }
         if (normalizedRequestedUserId != null) {
             return requireUserId(normalizedRequestedUserId);
         }
-        return requireUserId(submitter.getPrincipalId());
+        return requireUserId(apiKeyPrincipal.getPrincipalId());
     }
 
     private String requireUserId(String userId) {
@@ -453,7 +453,7 @@ public class ApiAuthorizationService {
         return userId.trim();
     }
 
-    public record AuthorizedSubmitterTaskCreate(PrincipalContext principal,
+    public record AuthorizedApiKeyTaskCreate(PrincipalContext principal,
                                                 String project,
                                                 String userId) {
     }

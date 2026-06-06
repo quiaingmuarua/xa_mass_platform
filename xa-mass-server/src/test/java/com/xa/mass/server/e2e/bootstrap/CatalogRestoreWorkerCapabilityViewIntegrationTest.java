@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "sample.worker.auto-start=false",
                 "mass.mock.bootstrap.enabled=false",
                 "mass.mock.bootstrap.register-dev-catalog=false",
-                "mass.mock.bootstrap.register-dev-submitters=false",
+                "mass.mock.bootstrap.register-dev-api-keys=false",
                 "mass.mock.bootstrap.load-rules=false",
                 "mass.control-plane.seed.enabled=false"
         }

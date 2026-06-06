@@ -3,8 +3,8 @@ package com.xa.mass.server.auth.jdbc;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import com.xa.mass.sdk.auth.CredentialAuthProjectionWriter;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
@@ -16,7 +16,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class JdbcSubmitterRegistryTest {
+class JdbcCredentialPrincipalStoreTest {
 
     @Test
     void persistsPrincipalTruthAndRestoresAuthentication() {
@@ -33,10 +33,10 @@ class JdbcSubmitterRegistryTest {
     }
 
     private void assertPrincipalPersistence(StorageFixture fixture, JdbcStorageMode mode) {
-        JdbcSubmitterRegistry registry = new JdbcSubmitterRegistry(fixture.dataSource(), mode);
-        CredentialAuthProjectionWriter projectionWriter = registry;
-        registry.register(SubmitterRegistration.builder()
-                .principalId("crawler-submitter")
+        JdbcCredentialPrincipalStore store = new JdbcCredentialPrincipalStore(fixture.dataSource(), mode);
+        CredentialAuthProjectionWriter projectionWriter = store;
+        store.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
+                .principalId("crawler-task-key")
                 .credential("crawler-submit-secret")
                 .userId("crawler-user")
                 .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
@@ -45,19 +45,19 @@ class JdbcSubmitterRegistryTest {
                 .attributes(Map.of("lane", "crawler"))
                 .build());
 
-        PrincipalContext authenticated = registry.authenticate("crawler-submit-secret");
+        PrincipalContext authenticated = store.authenticate("crawler-submit-secret");
         assertThat(authenticated).isNotNull();
-        assertThat(authenticated.getPrincipalId()).isEqualTo("crawler-submitter");
-        assertThat(projectionWriter.hasProjectedCredential("crawler-submitter")).isTrue();
-        assertThat(registry.getSubmitter("crawler-submitter")).isNotNull();
-        assertThat(registry.listSubmitters()).hasSize(1);
+        assertThat(authenticated.getPrincipalId()).isEqualTo("crawler-task-key");
+        assertThat(projectionWriter.hasProjectedCredential("crawler-task-key")).isTrue();
+        assertThat(store.getCredentialPrincipal("crawler-task-key")).isNotNull();
+        assertThat(store.listCredentialPrincipals()).hasSize(1);
 
-        JdbcSubmitterRegistry restartedRegistry = new JdbcSubmitterRegistry(fixture.dataSource(), mode);
-        PrincipalContext restartedPrincipal = restartedRegistry.authenticate("crawler-submit-secret");
+        JdbcCredentialPrincipalStore restartedStore = new JdbcCredentialPrincipalStore(fixture.dataSource(), mode);
+        PrincipalContext restartedPrincipal = restartedStore.authenticate("crawler-submit-secret");
         assertThat(restartedPrincipal).isNotNull();
-        assertThat(restartedPrincipal.getPrincipalId()).isEqualTo("crawler-submitter");
-        assertThat(restartedRegistry.getSubmitter("crawler-submitter")).isNotNull();
-        assertThat(restartedRegistry.listSubmitters()).hasSize(1);
+        assertThat(restartedPrincipal.getPrincipalId()).isEqualTo("crawler-task-key");
+        assertThat(restartedStore.getCredentialPrincipal("crawler-task-key")).isNotNull();
+        assertThat(restartedStore.listCredentialPrincipals()).hasSize(1);
     }
 
     private StorageFixture h2Fixture() {
@@ -72,7 +72,7 @@ class JdbcSubmitterRegistryTest {
 
     private StorageFixture sqliteFixture() {
         try {
-            var db = Files.createTempDirectory("xa-mass-submitters-sqlite").resolve("xa_mass.db");
+            var db = Files.createTempDirectory("xa-mass-principals-sqlite").resolve("xa_mass.db");
             HikariConfig config = new HikariConfig();
             config.setJdbcUrl("jdbc:sqlite:" + db);
             config.setMaximumPoolSize(1);
@@ -80,7 +80,7 @@ class JdbcSubmitterRegistryTest {
             Flyway.configure().dataSource(dataSource).locations("classpath:db/migration/control-plane").load().migrate();
             return new StorageFixture(dataSource);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to create SQLite submitter fixture", e);
+            throw new IllegalStateException("Failed to create SQLite credential-principal fixture", e);
         }
     }
 
