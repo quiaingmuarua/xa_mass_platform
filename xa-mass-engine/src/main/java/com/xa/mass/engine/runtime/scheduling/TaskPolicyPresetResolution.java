@@ -2,7 +2,6 @@ package com.xa.mass.engine.runtime.scheduling;
 
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.policy.TaskPolicyPresetSemantics;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.BackpressurePolicy;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.ClaimPolicy;
@@ -49,7 +48,7 @@ public record TaskPolicyPresetResolution(
     }
 
     static TaskPolicyPresetResolution from(Task task, TaskRuntimeProfile profile) {
-        TaskContract contract = TaskPolicyPresetSemantics.defaultContract(task == null ? null : task.getContract());
+        TaskContract contract = TaskPolicyPresetDefinition.defaultContract(task == null ? null : task.getContract());
         TaskPolicyPresetDefinition definition = TaskPolicyPresetDefinition.forContract(contract);
         return from(task, definition, profile, TaskPolicyRuntimeDefaults.fromSystemProperties());
     }

@@ -24,6 +24,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     private static final Path MAIN_SOURCE_ROOT = Path.of("src/main/java");
     private static final Path TEST_SOURCE_ROOT = Path.of("src/test/java");
+    private static final String RETIRED_PRESET_HELPER = "TaskPolicyPreset" + "Semantics";
     private static final Path WORKER_MANAGER_SOURCE = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
             "com", "xa", "mass", "worker", "runtime", "WorkerManager.java");
 
@@ -488,9 +489,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void legacyTaskContractBehaviorReadsStayBehindPresetSemantics() throws IOException {
+    void legacyTaskContractBehaviorReadsStayBehindPresetDefinition() throws IOException {
         Set<String> allowedRelativePaths = Set.of(
-                "com/xa/mass/engine/policy/TaskPolicyPresetSemantics.java",
                 "com/xa/mass/engine/runtime/scheduling/TaskPolicyPresetDefinition.java",
                 "com/xa/mass/engine/runtime/scheduling/TaskPolicyPresetResolution.java",
                 "com/xa/mass/engine/TaskManager.java"
@@ -517,7 +517,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void terminalPolicyConsumesIdleClosePolicyNotLegacyPresetSemantics() throws IOException {
+    void terminalPolicyConsumesIdleClosePolicyNotLegacyPresetHelpers() throws IOException {
         List<Path> terminalPolicySources = List.of(
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/policy/ContractAwareTaskTerminalPolicy.java"),
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/policy/AllWorkFinalTaskTerminalPolicy.java")
@@ -526,9 +526,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
         List<String> violations = new ArrayList<>();
         for (Path sourcePath : terminalPolicySources) {
             String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
-            if (source.contains("TaskPolicyPresetSemantics")
+            if (source.contains(RETIRED_PRESET_HELPER)
                     || Pattern.compile("\\bTaskContract\\s*\\.|\\.getContract\\s*\\(").matcher(source).find()) {
-                violations.add(sourcePath + " reads legacy preset semantics for terminal behavior");
+                violations.add(sourcePath + " reads legacy preset helpers for terminal behavior");
             }
             if (!source.contains("IdleClosePolicy")) {
                 violations.add(sourcePath + " does not consume explicit IdleClosePolicy");
@@ -536,13 +536,13 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Terminal policy must consume resolved IdleClosePolicy; TaskContract and temporary "
-                        + "TaskPolicyPresetSemantics are no longer terminal behavior truth:\n"
+                "Terminal policy must consume resolved IdleClosePolicy; TaskContract and legacy "
+                        + "preset helpers are no longer terminal behavior truth:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void dispatchCadenceConsumersUseResolvedPolicyNotLegacyPresetSemantics() throws IOException {
+    void dispatchCadenceConsumersUseResolvedPolicyNotLegacyPresetHelpers() throws IOException {
         List<Path> dispatchSources = List.of(
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskDispatchRequestService.java"),
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/watchdog/RuntimeReadyDispatchPump.java"),
@@ -552,9 +552,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
         List<String> violations = new ArrayList<>();
         for (Path sourcePath : dispatchSources) {
             String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
-            if (source.contains("TaskPolicyPresetSemantics")
+            if (source.contains(RETIRED_PRESET_HELPER)
                     || Pattern.compile("\\bTaskContract\\s*\\.|\\.getContract\\s*\\(").matcher(source).find()) {
-                violations.add(sourcePath + " reads legacy preset semantics for dispatch cadence");
+                violations.add(sourcePath + " reads legacy preset helpers for dispatch cadence");
             }
             if (!source.contains("DispatchCadence")) {
                 violations.add(sourcePath + " does not consume resolved DispatchCadence");
@@ -562,8 +562,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Dispatch cadence owners must consume resolved DispatchCadence; TaskContract and temporary "
-                        + "TaskPolicyPresetSemantics are no longer dispatch behavior truth:\n"
+                "Dispatch cadence owners must consume resolved DispatchCadence; TaskContract and legacy "
+                        + "preset helpers are no longer dispatch behavior truth:\n"
                         + String.join("\n", violations));
     }
 
@@ -574,19 +574,19 @@ class EngineSchedulingCoreArchitectureGuardTest {
         String source = Files.readString(policyPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
-        if (source.contains("TaskPolicyPresetSemantics")
+        if (source.contains(RETIRED_PRESET_HELPER)
                 || Pattern.compile("\\.isForeground\\s*\\(|\\.getExecutionSpec\\s*\\(\\)\\.isForeground\\s*\\(")
                 .matcher(source)
                 .find()) {
-            violations.add(policyPath + " reads legacy foreground preset semantics for resource mode");
+            violations.add(policyPath + " reads legacy foreground preset helpers for resource mode");
         }
         if (!source.contains("WorkerResourceMode")) {
             violations.add(policyPath + " does not consume resolved WorkerResourceMode");
         }
 
         assertTrue(violations.isEmpty(),
-                "Worker resource policy must consume resolved WorkerResourceMode; foreground and temporary "
-                        + "TaskPolicyPresetSemantics are no longer resource-mode truth:\n"
+                "Worker resource policy must consume resolved WorkerResourceMode; foreground and legacy "
+                        + "preset helpers are no longer resource-mode truth:\n"
                         + String.join("\n", violations));
     }
 
@@ -618,8 +618,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 .find()) {
             violations.add(resultServicePath + " resolves retry from raw Task instead of resolved task policy");
         }
-        if (resultServiceSource.contains("TaskPolicyPresetSemantics")) {
-            violations.add(resultServicePath + " reads temporary preset semantics for result finality");
+        if (resultServiceSource.contains(RETIRED_PRESET_HELPER)) {
+            violations.add(resultServicePath + " reads legacy preset helpers for result finality");
         }
         if (Pattern.compile("enqueueOptionsResolver\\.resolve\\s*\\(\\s*task\\s*\\)")
                 .matcher(taskManagerSource)
