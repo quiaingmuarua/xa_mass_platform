@@ -216,6 +216,7 @@ Target flow:
 
 ```text
 task shell fields / shared config
+  -> DefaultSchedulingPlaneResolver
   -> TaskPolicyPresetResolver
   -> ResolvedTaskSchedulingPolicy
   -> terminal / dispatch cadence / claim / retry / backpressure / resource mode
@@ -230,6 +231,110 @@ TaskContract / foreground / workloadClass
 
 The resolver is allowed to read legacy fields while public callers still send
 them. Runtime owners should not.
+
+## Resolver Placement
+
+`DefaultSchedulingPlaneResolver` remains the engine scheduling-plane assembly
+entry point.
+
+`TaskPolicyPresetResolver` is an internal collaborator of that assembly path. It
+may read legacy preset inputs such as `TaskContract`, `TaskWorkloadClass`,
+`TaskExecutionProfile`, and `TaskExecutionSpec.foreground` and return explicit
+task-side policy values.
+
+Runtime owners must not call `TaskPolicyPresetResolver` directly after their
+phase is switched. They should consume `ResolvedTaskSchedulingPolicy` or a
+narrow value derived from it.
+
+Current entry:
+
+```text
+DefaultSchedulingPlaneResolver.resolve(task)
+  -> TaskRuntimeProfileResolver.resolve(task)
+  -> ResolvedTaskSchedulingPolicy.from(task, profile)
+```
+
+Target entry:
+
+```text
+DefaultSchedulingPlaneResolver.resolve(task)
+  -> TaskPolicyPresetResolver.resolve(task)
+  -> ResolvedTaskSchedulingPolicy.from(task, presetResolution)
+```
+
+`ResolvedTaskSchedulingPolicy.from(...)` may remain as a factory, but it should
+not become the place where each runtime owner reinterprets legacy fields.
+
+## Resolution Timing
+
+Resolved task scheduling policy is a runtime-derived view in this roadmap. It
+is not persisted to the task shell and does not introduce DB/schema/storage
+truth.
+
+Reasoning:
+
+- persisting resolved policy would create a second task policy truth beside the
+  current task shell fields
+- this roadmap should not introduce schema migration or historical policy
+  upgrade behavior
+- runtime owners already resolve scheduling-plane views from the current task
+  state
+
+`RuntimeReadyDispatchPump` and other runtime owners may resolve policy on demand
+through the scheduling-plane resolver. If this becomes a measured bottleneck,
+add a bounded read cache or index in a later performance slice; do not solve it
+by persisting resolved policy in this roadmap.
+
+## Field To Consumer Map
+
+TPC-2 defines the explicit fields. Later phases switch exactly one behavior
+owner family at a time:
+
+| Resolved field | Replaces | Consumer phase |
+| --- | --- | --- |
+| `idleClosePolicy` | `TaskContract` terminal branching | `TPC-3` |
+| `dispatchCadence` | `TaskContract` dispatch pump / delayed wakeup branching | `TPC-4` |
+| `workerResourceMode` | `TaskExecutionSpec.foreground` resource branch | `TPC-5` |
+| `claimPolicy` | `TaskRuntimeProfile.BatchPolicy` claim behavior | `TPC-6` |
+| `retryPolicy` | workload/profile retry behavior | `TPC-6` |
+| `backpressurePolicy` | workload/profile enqueue limit behavior | `TPC-6` |
+| `leasePolicy` or lease sub-value | `TaskRuntimeProfile.LeaseProfile` claim lease behavior | `TPC-6` |
+| `dispatchLane` / `dispatchPriority` | existing workload-derived lane/priority profile values | keep as resolved task policy evidence; switch only when a consumer changes |
+
+Do not add a resolved field without a named consumer phase and a residue scan
+for the old branch.
+
+## Guard Strategy
+
+Guards are progressive:
+
+1. `TPC-1` may allow existing terminal, dispatch, result, and resource owners to
+   call the temporary convergence seam because that is the point of the first
+   slice.
+2. Each modify phase shrinks the allowlist for the owner it switches.
+3. `TPC-8` is the final consolidation guard; it should not duplicate broad
+   regex checks that earlier owner-specific guards already cover.
+
+This avoids two bad outcomes:
+
+- blocking the temporary seam before it can reduce scattered reads
+- keeping permissive allowlists after explicit policy consumers are in place
+
+## TaskSharedConfig Ownership
+
+`TaskSharedConfig` dispatch-intent keys are not solved by this roadmap.
+
+Current classification:
+
+- worker group selector, adapter node selector, route fields, target worker,
+  and target attributes belong to worker-side scheduling intent
+- `_sdk.eventCode` is handler/capability evidence, not worker-selection truth
+- these keys are consumed through `TaskDispatchIntent` /
+  `ResolvedWorkerSchedulingPolicy`
+
+Future ownership should be a separate task-create / dispatch-intent contract
+convergence decision. This roadmap must not use `TaskSharedConfig` cleanup as a
+reason to reopen worker matching or event-code scheduling truth.
 
 ## Phase Plan
 
@@ -301,6 +406,8 @@ Scope:
 4. Mark the seam as temporary convergence-only.
 5. Add a source comment or small guard test naming this seam as not eligible
    for new behavior after `TPC-2`.
+6. Do not forbid current migrated owners from calling the seam in this phase;
+   owner allowlists shrink later as each owner switches to explicit policy.
 
 Acceptance:
 
@@ -313,6 +420,8 @@ Acceptance:
    retaining parallel direct `TaskContract` branches.
 6. The seam has an explicit retirement note listing which later phase removes
    each method.
+7. A source guard or residue scan prevents adding new call families outside the
+   TPC-1 allowlist.
 
 Verification candidates:
 
@@ -343,6 +452,8 @@ Scope:
    `ProjectSchedulingBinding`, or writable policy storage in this roadmap.
 6. Add a migration map from each temporary seam method to a resolved policy
    field.
+7. Include `workerResourceMode` in this phase; `TPC-5` consumes it and must not
+   define it for the first time.
 
 Acceptance:
 
@@ -395,6 +506,8 @@ Scope:
    - batch-style tasks are runtime-ready pump driven
    - session-style tasks use signal/delayed wakeup
 4. Keep polling/backoff mechanism separate from the policy value.
+5. Resolve `dispatchCadence` as a runtime-derived view; do not persist it to
+   task shell storage in this roadmap.
 
 Acceptance:
 
@@ -412,7 +525,7 @@ Goal: worker exclusive lock policy is explicit, not hidden behind
 
 Scope:
 
-1. Add or resolve `WorkerResourceMode`.
+1. Consume the `WorkerResourceMode` defined in `TPC-2`.
 2. `DefaultWorkerDispatchResourcePolicy` reads the resolved resource mode.
 3. Preserve current default:
    - foreground/default tasks use exclusive worker lock
@@ -441,6 +554,10 @@ Scope:
 4. Keep property defaults and current behavior unchanged.
 5. Do not remove `TaskWorkloadClass` yet; it can remain preset input and
    read-model evidence.
+6. Move system-property/default interpretation into policy resolution or
+   explicit policy construction. Claim/retry/enqueue consumers should not keep
+   reading workload/profile and system properties as separate hidden policy
+   owners after this phase.
 
 Acceptance:
 
@@ -458,8 +575,15 @@ implemented as a preset input.
 
 Scope:
 
-1. Update SDK/server docs to describe `contract` as legacy preset input, not
-   direct behavior truth.
+1. Update SDK/server docs incrementally as owners switch:
+   - after `TPC-3`, terminal docs stop saying contract directly owns terminal
+     behavior
+   - after `TPC-4`, dispatch docs stop saying contract directly owns dispatch
+     path
+   - after `TPC-5`, resource docs stop saying foreground is the resource-mode
+     owner
+   - after `TPC-6`, runtime profile docs stop saying workload/profile owns
+     claim/retry/backpressure behavior
 2. Add public/read model language for future `taskPolicyPreset` or explicit
    task policy fields.
 3. Do not break existing SDK/server requests.
@@ -473,6 +597,8 @@ Acceptance:
 3. Existing public contract tests pass.
 4. Any new SDK/server wording points users toward explicit task policy naming
    when available.
+5. This phase is a final wording sweep; owner-specific docs should already have
+   been adjusted in the phase that switched the owner.
 
 ### TPC-8: Guard Direct Behavior Reads
 
@@ -551,13 +677,18 @@ Suggested starting tests:
 Use server or SDK E2E only when the change affects public request mapping,
 worker dispatch wiring, or frontend-visible read model behavior.
 
+These suggested engine tests currently exist and are listed as behavior
+baseline candidates, not as placeholders hidden by
+`surefire.failIfNoSpecifiedTests=false`.
+
 ## Open Questions
 
 1. Should `TaskExecutionProfile.STANDARD` remain after explicit policy preset
    exists, or is it redundant with `taskPolicyPreset`?
 2. Should `foreground` become a public field named around worker resource
    semantics, such as `workerResourceMode`?
-3. Should `TaskSharedConfig` continue to own dispatch intent keys, or should
-   worker selector fields move into a typed public task-create object first?
-4. Should `TaskContract` be kept indefinitely as a convenient public preset
+3. Should `TaskContract` be kept indefinitely as a convenient public preset
    name even after behavior is explicit?
+4. Should a follow-up task-create / dispatch-intent contract convergence
+   roadmap replace selected `TaskSharedConfig` conventional keys with typed
+   public request fields?
