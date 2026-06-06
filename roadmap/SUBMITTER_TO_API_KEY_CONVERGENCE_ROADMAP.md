@@ -77,6 +77,10 @@ production auth design.
 8. Every phase must reduce submitter surface or prove API-key replacement.
 9. Do not preserve submitter merely to avoid test churn.
 10. Do not change engine scheduling semantics in this roadmap.
+11. API-key auth projection must not use `SubmitterRegistration` as its
+    internal payload after the convergence phase.
+12. Checked-in raw API-key secrets are sample/dev seed data only and must be
+    structurally rejected in production startup paths.
 
 ## Target Vocabulary
 
@@ -116,6 +120,12 @@ This roadmap does not:
 7. Store plaintext production credentials.
 8. Preserve old submitter API as a final product surface.
 
+Worker credential redesign is out of scope, but worker API auth must be
+inventoried because it currently consumes the same `PrincipalContext` /
+credential projection path. This roadmap may rename submitter vocabulary on that
+path when required to remove the submitter runtime payload; it must not change
+worker authorization semantics.
+
 ## Phase Plan
 
 ### SAK-C0: Inventory And Freeze
@@ -129,6 +139,9 @@ Scope:
    - `SubmitterProfile`
    - `SubmitterOperations`
    - `SubmitterRegistry`
+   - `InMemorySubmitterRegistry`
+   - `JdbcSubmitterRegistry`
+   - `CredentialAuthProjectionWriter.projectCredential(SubmitterRegistration)`
    - `registerSubmitter(...)`
    - `authenticateSubmitter(...)`
    - `listSubmitters(...)`
@@ -138,17 +151,26 @@ Scope:
 2. Classify each call site:
    - SDK public surface
    - server auth path
+   - API-key lifecycle projection path
+   - worker API credential path
    - sample/dev bootstrap
    - frontend/read model
    - test fixture
-3. Add docs/source comments marking submitter as frozen legacy.
-4. Add guard note: no new production feature may depend on submitter.
+3. Add `@Deprecated(forRemoval = true)` to public submitter types and methods
+   that cannot be deleted in C0.
+4. Add a CI-enforced source guard that blocks new production imports/usages of:
+   - `SubmitterRegistration`
+   - `SubmitterProfile`
+   - `SubmitterOperations`
+   - `SubmitterRegistry`
+5. Add guard note: no new production feature may depend on submitter.
 
 Acceptance:
 
 1. Full call-site inventory exists.
 2. No behavior change.
-3. New submitter feature additions are explicitly blocked by docs/guard.
+3. New submitter feature additions are explicitly blocked by a failing guard,
+   not only by documentation.
 
 ### SAK-C1: Principal-First Server Convergence
 
@@ -165,12 +187,31 @@ Scope:
    submitter resource records.
 4. Keep `/api/v1/submitters/me` temporarily only because no replacement endpoint
    exists yet.
+5. Replace `CredentialAuthProjectionWriter.projectCredential(SubmitterRegistration)`
+   with an API-key/principal projection payload that is not a submitter resource
+   DTO.
+6. Ensure `ApiKeyCredentialService` projects active/disabled credentials through
+   the new projection payload, not through `SubmitterRegistration`.
+7. Verify worker API credential authorization still resolves the same
+   `PrincipalContext` from the shared projection path without depending on a
+   submitter resource registry.
 
 Acceptance:
 
 1. Task authorization uses `PrincipalContext` language.
 2. Existing behavior remains green.
-3. Submitter usage count in server production code is lower than before.
+3. `ApiKeyCredentialService` has no import or construction of
+   `SubmitterRegistration`.
+4. Worker API credential authorization behavior is unchanged and covered by the
+   existing worker API tests.
+5. Run this count before and after C1:
+
+```sh
+rg -c "SubmitterRegistration|SubmitterProfile|SubmitterOperations|SubmitterRegistry|InMemorySubmitterRegistry|JdbcSubmitterRegistry" \
+  xa-mass-server/src/main/java sdk/xa-mass-embedded-sdk-api/src/main/java sdk/xa-mass-embedded-sdk/src/main/java
+```
+
+The count must decrease in C1 and must not increase in any later phase.
 
 ### SAK-C2: API-Key Seed Shape
 
@@ -185,6 +226,7 @@ Target sample seed shape:
       "principalId": "public-probe-runner",
       "createdForUserId": "ops-admin",
       "rawSecret": "public-probe-key",
+      "devOnly": true,
       "permissions": ["task:create", "task:view"],
       "projectScopes": ["publicProbe"],
       "eventScopes": ["probe.http.status"],
@@ -202,13 +244,19 @@ Scope:
 2. Migrate sample seed files from `submitters` to `apiKeys`.
 3. Keep `submitters` parsing only for one transition phase if needed, but mark
    it deprecated and test that new sample uses `apiKeys`.
-4. Make production docs explicit: checked-in sample secrets are local/dev only.
+4. Require checked-in seed entries that contain `rawSecret` to set
+   `devOnly=true`.
+5. Reject `rawSecret` seed import when the active server profile is production
+   or when dev seed loading is not explicitly enabled.
+6. Make production docs explicit: checked-in sample secrets are local/dev only.
 
 Acceptance:
 
 1. Clean local quick-start can create sample API keys.
 2. Sample tasks use API-key credentials.
 3. No new seed file requires `submitters`.
+4. A production-profile startup/import test proves plaintext sample API-key
+   seed is rejected.
 
 ### SAK-M1: API-Key Auth Proof Becomes Mainline
 
@@ -229,6 +277,8 @@ Scope:
    - task owned by another principal
    - missing permission
 4. Prefer API-key lifecycle tests over submitter tests.
+5. If C2 is not merged first, M1 tests must create API keys through the server
+   lifecycle endpoint instead of relying on seed.
 
 Acceptance:
 
@@ -280,7 +330,16 @@ GET /api/v1/api-keys/me
    - project scopes
    - event scopes
    - attributes
-3. Update frontend submitter viewer to API-key credential terminology.
+3. Update frontend submitter viewer to API-key credential terminology. Known
+   first-party targets include:
+   - `frontend/src/api/current-submitter.real.ts`
+   - `frontend/src/api/current-submitter.ts`
+   - `frontend/src/api/submitter-sessions.ts`
+   - `frontend/src/types/current-submitter.ts`
+   - `frontend/src/pages/submitter/SubmitterViewerPage.vue`
+   - `frontend/src/pages/resources/projects/ProjectDetailPage.vue`
+   - `frontend/src/pages/resources/projects/ProjectsPage.vue`
+   - `frontend/src/api/projects.real.ts`
 4. Keep `/api/v1/submitters/me` only until the frontend and tests move.
 
 Acceptance:
@@ -335,14 +394,16 @@ Scope:
 1. Delete `SubmitterRegistration`.
 2. Delete `SubmitterProfile`.
 3. Delete `SubmitterOperations`.
-4. Delete `SubmitterRegistry` if no longer needed internally.
+4. Delete `SubmitterRegistry`, `InMemorySubmitterRegistry`, and
+   `JdbcSubmitterRegistry`. Any legitimate remaining internal credential
+   projection need must be renamed to a non-submitter type before D2 starts.
 5. Remove `registerSubmitter(...)`, `authenticateSubmitter(...)`,
    `listSubmitters(...)`, `getSubmitter(...)`, and `hasSubmitter(...)`.
 6. Delete submitter-specific docs and tests.
 
 Acceptance:
 
-1. `rg "SubmitterRegistration|SubmitterProfile|SubmitterOperations|SubmitterRegistry|registerSubmitter|authenticateSubmitter|listSubmitters|getSubmitter|hasSubmitter"` returns no mainline source hits except archived docs, if any.
+1. `rg "SubmitterRegistration|SubmitterProfile|SubmitterOperations|SubmitterRegistry|InMemorySubmitterRegistry|JdbcSubmitterRegistry|registerSubmitter|authenticateSubmitter|listSubmitters|getSubmitter|hasSubmitter"` returns no mainline source hits except archived docs, if any.
 2. SDK API-key operations cover the removed use cases.
 3. CI is green without submitter compatibility tests.
 
@@ -358,6 +419,9 @@ Scope:
 4. Remove any remaining submitter registry fallback from server production
    assembly.
 5. Keep only API-key lifecycle/projection as task credential truth.
+6. Existing submitter rows in local/staging DBs are abandoned. No historical DB
+   migration is required in this pre-release stage; clean DB recreation or a
+   later schema cleanup pass is the supported path.
 
 Acceptance:
 
@@ -433,8 +497,8 @@ temporary and removed by SAK-D3.
 
 Risk: sample API-key seed looks production-ready.
 
-Mitigation: checked-in sample secrets remain explicitly local/dev only; prod
-requires environment-owned seed or existing DB state.
+Mitigation: checked-in sample secrets must be structurally marked `devOnly`;
+production-profile seed import rejects plaintext `rawSecret`.
 
 Risk: test churn hides auth regressions.
 
@@ -465,4 +529,3 @@ SubmitterRegistry
 /api/v1/submitters/*
 submitters seed field
 ```
-
