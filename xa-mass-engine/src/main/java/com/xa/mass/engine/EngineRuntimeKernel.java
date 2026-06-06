@@ -1,6 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
@@ -8,8 +7,11 @@ import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.DispatchCadence;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.TraceEventLogger;
@@ -54,6 +56,7 @@ public class EngineRuntimeKernel {
     private Consumer<Task> taskDispatchSignalListener;
     private Consumer<Task> taskTerminalListener;
     private TaskWorkAttemptClosedListener taskWorkAttemptClosedListener;
+    private final SchedulingPlaneResolver schedulingPlaneResolver = new DefaultSchedulingPlaneResolver();
     private boolean running;
 
     public EngineRuntimeKernel(EngineRuntimeKernelConfig config) {
@@ -129,12 +132,12 @@ public class EngineRuntimeKernel {
                     workerAdmissionRuntime,
                     traceEventLogger);
             taskReadyListener = task -> {
-                if (task != null && task.getContract() == TaskContract.SESSION) {
+                if (usesSignalDrivenDelayedDispatch(task)) {
                     assignWorker.submit(task);
                 }
             };
             taskDispatchSignalListener = task -> {
-                if (task != null && task.getContract() == TaskContract.SESSION) {
+                if (usesSignalDrivenDelayedDispatch(task)) {
                     assignWorker.submit(task);
                 }
             };
@@ -241,10 +244,16 @@ public class EngineRuntimeKernel {
         for (Task task : runtimeRecoveryPort.getRuntimeDispatchableTasks(STARTUP_READY_TASK_SCAN_LIMIT)) {
             TaskStatus status = task.getStatus();
             if ((status == TaskStatus.READY || status == TaskStatus.RUNNING)
-                    && task.getContract() == TaskContract.SESSION) {
+                    && usesSignalDrivenDelayedDispatch(task)) {
                 assignWorker.submit(task);
             }
         }
+    }
+
+    private boolean usesSignalDrivenDelayedDispatch(Task task) {
+        return task != null
+                && schedulingPlaneResolver.resolve(task).taskSchedulingPolicy().dispatchCadence()
+                == DispatchCadence.SIGNAL_DRIVEN_DELAYED;
     }
 
     private StartedRuntime startedRuntime() {

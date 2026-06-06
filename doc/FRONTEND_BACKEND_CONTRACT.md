@@ -13,7 +13,7 @@ The project remains server + SDK first.
 
 - kernel/core owns correctness, lifecycle semantics, scheduling correctness,
   and runtime truth boundaries
-- server owns the reference host, product shell, auth/session/CSRF, API
+- server owns the reference host, product/API host, auth/session/CSRF, API
   boundary, server-local control-plane resources, API docs exposure, and
   backend-hosted console assembly
 - SDK owns the main external edit, integration, and automation surface for
@@ -31,12 +31,12 @@ The project remains server + SDK first.
 Frontend is not the main editing surface. Its primary optimization target is:
 
 - clear information architecture
-- accurate task, worker, runtime, auth, and product-shell state presentation
+- accurate task, worker, runtime, auth, and product/API host state presentation
 - explicit mock/backend mode behavior
 - closed auth/session/CSRF UX loops
 - meaningful dashboard metrics
 - task and worker detail pages that help operators debug current behavior
-- audit, API-key, user, and role pages that demonstrate server product-shell
+- audit, API-key, user, and role pages that demonstrate server product/API
   maturity
 - professional loading, empty, error, retry, and unavailable states
 - API documentation/static snapshot presentation as a contract review surface,

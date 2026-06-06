@@ -1,6 +1,7 @@
 package com.xa.mass.engine.runtime;
 
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 
 /**
  * Resolves workload-aware retry policy from the normalized runtime profile.
@@ -37,17 +38,38 @@ public class TaskRuntimeRetryPolicyResolver {
 
     public TaskRuntimeRetryPolicy resolve(Task task, long defaultAssignmentRetryDelayMillis) {
         TaskRuntimeProfile profile = profileResolver.resolve(task);
+        return resolve(
+                ResolvedTaskSchedulingPolicy.RetryPolicy.from(
+                        profile,
+                        interactiveAssignmentRetryDelayMillis,
+                        interactiveWorkRetryDelayMillis,
+                        bulkWorkRetryDelayMillis),
+                defaultAssignmentRetryDelayMillis);
+    }
+
+    public TaskRuntimeRetryPolicy resolve(ResolvedTaskSchedulingPolicy taskPolicy,
+                                          long defaultAssignmentRetryDelayMillis) {
+        ResolvedTaskSchedulingPolicy.RetryPolicy retryPolicy = taskPolicy == null ? null : taskPolicy.retryPolicy();
+        return resolve(retryPolicy, defaultAssignmentRetryDelayMillis);
+    }
+
+    public TaskRuntimeRetryPolicy resolve(ResolvedTaskSchedulingPolicy.RetryPolicy retryPolicy,
+                                          long defaultAssignmentRetryDelayMillis) {
+        ResolvedTaskSchedulingPolicy.RetryPolicy resolvedPolicy = retryPolicy != null
+                ? retryPolicy
+                : ResolvedTaskSchedulingPolicy.RetryPolicy.from(null);
         long normalizedAssignmentDefaultDelayMillis = Math.max(1L, defaultAssignmentRetryDelayMillis);
-        return switch (profile.workloadClass()) {
+        return switch (resolvedPolicy.workloadClass()) {
             case INTERACTIVE -> new TaskRuntimeRetryPolicy(
-                    profile.workloadClass(),
-                    Math.min(normalizedAssignmentDefaultDelayMillis, interactiveAssignmentRetryDelayMillis),
-                    interactiveWorkRetryDelayMillis
+                    resolvedPolicy.workloadClass(),
+                    Math.min(normalizedAssignmentDefaultDelayMillis,
+                            resolvedPolicy.interactiveAssignmentRetryDelayMillis()),
+                    resolvedPolicy.interactiveWorkRetryDelayMillis()
             );
             case BULK -> new TaskRuntimeRetryPolicy(
-                    profile.workloadClass(),
+                    resolvedPolicy.workloadClass(),
                     normalizedAssignmentDefaultDelayMillis,
-                    bulkWorkRetryDelayMillis
+                    resolvedPolicy.bulkWorkRetryDelayMillis()
             );
         };
     }

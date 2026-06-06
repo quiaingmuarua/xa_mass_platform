@@ -300,8 +300,8 @@ Supported request fields:
 
 - `userId`
 - `project`
-- `contract` (`SESSION` or `BATCH`) top-level field; controls lifecycle,
-  dispatch, and terminal contract
+- `contract` (`SESSION` or `BATCH`) top-level field; current public preset
+  input used to resolve task scheduling policy defaults
 - `sharedConfig`
 - `executionSpec`
 - `sourceRef`

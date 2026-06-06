@@ -18,9 +18,13 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
+import com.xa.mass.engine.policy.TaskPolicyPresetSemantics;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
@@ -81,6 +85,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
     private final TaskWorkRuntime taskWorkRuntime;
     private final TaskResultRuntime taskResultRuntime;
     private final TaskRuntimeEnqueueOptionsResolver enqueueOptionsResolver;
+    private final SchedulingPlaneResolver schedulingPlaneResolver;
     private final TaskConcurrencyStrategy concurrencyCoordinator;
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
     private final com.xa.mass.engine.TraceEventLogger traceEventLogger;
@@ -118,6 +123,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         this.taskWorkRuntime = requiredTaskWorkRuntime;
         this.taskResultRuntime = requiredTaskResultRuntime;
         this.enqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
+        this.schedulingPlaneResolver = new DefaultSchedulingPlaneResolver();
         this.concurrencyCoordinator = new LocalTaskConcurrencyCoordinator();
         this.retryWakeupExecutor = new VirtualThreadRuntimeTaskExecutor(
                 "engine-retry-wakeup-",
@@ -126,7 +132,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         this.dispatchRequestService = new TaskDispatchRequestService(
                 this,
                 retryWakeupExecutor,
-                new LocalDelayedDispatchSchedule()
+                new LocalDelayedDispatchSchedule(),
+                schedulingPlaneResolver
         );
         this.lifecycleService = new TaskLifecycleService(
                 this,
@@ -428,7 +435,12 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
 
     @Override
     public TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
-        return taskTerminalPolicy.evaluate(task, stats);
+        ResolvedTaskSchedulingPolicy taskPolicy = schedulingPlaneResolver.resolve(task).taskSchedulingPolicy();
+        return taskTerminalPolicy.evaluate(task, stats, taskPolicy.idleClosePolicy());
+    }
+
+    ResolvedTaskSchedulingPolicy resolveTaskSchedulingPolicy(Task task) {
+        return schedulingPlaneResolver.resolve(task).taskSchedulingPolicy();
     }
 
     void publishTaskTerminal(Task task) {
@@ -577,17 +589,12 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         if (dto != null && dto.getContract() != null) {
             return dto.getContract();
         }
-        return TaskContract.BATCH;
+        return TaskPolicyPresetSemantics.defaultContract(null);
     }
 
     private com.xa.mass.base.enums.task.TaskWorkloadClass resolveWorkloadClass(TaskContract contract,
                                                                                TaskExecutionSpec normalizedSpec) {
-        if (normalizedSpec != null && normalizedSpec.getWorkloadClass() != null) {
-            return normalizedSpec.getWorkloadClass();
-        }
-        return contract == TaskContract.SESSION
-                ? com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE
-                : com.xa.mass.base.enums.task.TaskWorkloadClass.BULK;
+        return TaskPolicyPresetSemantics.defaultWorkloadClassFor(contract, normalizedSpec);
     }
 
     private String normalizeSourceRef(String sourceRef) {
@@ -774,7 +781,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
                 null,
                 java.time.Instant.now()
         );
-        return taskWorkRuntime.enqueue(item, enqueueOptionsResolver.resolve(task));
+        return taskWorkRuntime.enqueue(item, enqueueOptionsResolver.resolve(resolveTaskSchedulingPolicy(task)));
     }
 
     private Task createTaskShellInternal(TaskShellCreateRequestDto dto) {
@@ -812,7 +819,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
 
     private String deriveTaskName(TaskShellCreateRequestDto dto, String taskId) {
         String project = dto.getProject() != null ? dto.getProject().trim() : "task";
-        TaskContract contract = dto.getContract() != null ? dto.getContract() : TaskContract.BATCH;
+        TaskContract contract = TaskPolicyPresetSemantics.defaultContract(dto.getContract());
         String normalizedContract = contract.name().toLowerCase(java.util.Locale.ROOT);
         String profile = dto.getExecutionSpec() != null && dto.getExecutionSpec().getProfile() != null
                 ? dto.getExecutionSpec().getProfile().name().toLowerCase(java.util.Locale.ROOT)

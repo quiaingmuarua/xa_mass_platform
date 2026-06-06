@@ -287,7 +287,8 @@ class TaskLifecycleService {
         if (task == null || itemCount <= 0) {
             return;
         }
-        WorkEnqueueOptions enqueueOptions = taskManager.enqueueOptionsResolver().resolve(task);
+        WorkEnqueueOptions enqueueOptions = taskManager.enqueueOptionsResolver()
+                .resolve(taskManager.resolveTaskSchedulingPolicy(task));
         TaskWorkStats taskStats = taskManager.getTaskWorkRuntime().stats(task.getTid());
         long projectedReadyCount = taskStats.readyCount() + itemCount;
         if (projectedReadyCount > enqueueOptions.maxReadyItemsPerTask()) {

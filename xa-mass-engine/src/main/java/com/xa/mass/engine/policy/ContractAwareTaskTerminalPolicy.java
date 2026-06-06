@@ -1,8 +1,8 @@
 package com.xa.mass.engine.policy;
 
-import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.IdleClosePolicy;
 import com.xa.mass.runtime.api.TaskWorkStats;
 
 import java.util.Objects;
@@ -24,14 +24,14 @@ public class ContractAwareTaskTerminalPolicy implements TaskTerminalPolicy {
     }
 
     @Override
-    public TaskTerminalPolicyDecision evaluate(Task task, TaskWorkStats stats) {
+    public TaskTerminalPolicyDecision evaluate(Task task, TaskWorkStats stats, IdleClosePolicy idleClosePolicy) {
         if (task == null) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
-        return switch (task.getContract()) {
-            case BATCH -> batchPolicy.evaluate(task, stats);
-            case SESSION -> evaluateSession(task, stats);
-        };
+        if (idleClosePolicy != null && idleClosePolicy.enabled()) {
+            return batchPolicy.evaluate(task, stats, idleClosePolicy);
+        }
+        return evaluateSession(task, stats);
     }
 
     private TaskTerminalPolicyDecision evaluateSession(Task task, TaskWorkStats stats) {

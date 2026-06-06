@@ -1,6 +1,5 @@
 package com.xa.mass.engine.watchdog;
 
-import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
@@ -8,6 +7,9 @@ import com.xa.mass.engine.ExponentialPollingIdleBackoffPolicy;
 import com.xa.mass.engine.PollingIdleBackoffPolicy;
 import com.xa.mass.engine.PollingResourceKey;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.DispatchCadence;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +43,7 @@ public class RuntimeReadyDispatchPump {
     private final PollingIdleBackoffPolicy idleBackoffPolicy;
     private final PollingIdleAdmissionTracker idleAdmissionTracker;
     private final VirtualThreadRuntimeTaskExecutor dispatchExecutor;
+    private final SchedulingPlaneResolver schedulingPlaneResolver;
     private final Set<String> inFlightTaskIds = ConcurrentHashMap.newKeySet();
     private ScheduledExecutorService scheduler;
 
@@ -70,6 +73,18 @@ public class RuntimeReadyDispatchPump {
                                     long baseIdleBackoffMillis,
                                     long maxIdleBackoffMillis,
                                     PollingIdleBackoffPolicy idleBackoffPolicy) {
+        this(recoveryPort, dispatchAttempt, intervalMillis, scanLimit, baseIdleBackoffMillis, maxIdleBackoffMillis,
+                idleBackoffPolicy, new DefaultSchedulingPlaneResolver());
+    }
+
+    public RuntimeReadyDispatchPump(TaskRuntimeRecoveryPort recoveryPort,
+                                    Predicate<Task> dispatchAttempt,
+                                    long intervalMillis,
+                                    int scanLimit,
+                                    long baseIdleBackoffMillis,
+                                    long maxIdleBackoffMillis,
+                                    PollingIdleBackoffPolicy idleBackoffPolicy,
+                                    SchedulingPlaneResolver schedulingPlaneResolver) {
         this.recoveryPort = Objects.requireNonNull(recoveryPort, "recoveryPort");
         this.dispatchAttempt = Objects.requireNonNull(dispatchAttempt, "dispatchAttempt");
         this.intervalMillis = Math.max(intervalMillis, 50L);
@@ -89,6 +104,7 @@ public class RuntimeReadyDispatchPump {
                 "runtime-ready-dispatch-",
                 Integer.getInteger("xa.mass.engine.runtimeReadyDispatchMaxPendingTasks", 20_000)
         );
+        this.schedulingPlaneResolver = Objects.requireNonNull(schedulingPlaneResolver, "schedulingPlaneResolver");
     }
 
     public void start() {
@@ -166,7 +182,8 @@ public class RuntimeReadyDispatchPump {
             return false;
         }
         TaskStatus status = task.getStatus();
-        return task.getContract() == TaskContract.BATCH
+        return schedulingPlaneResolver.resolve(task).taskSchedulingPolicy().dispatchCadence()
+                == DispatchCadence.RUNTIME_READY_POLLING
                 && (status == TaskStatus.READY || status == TaskStatus.RUNNING);
     }
 

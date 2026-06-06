@@ -1,13 +1,14 @@
 package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 import com.xa.mass.engine.runtime.scheduling.ResolvedWorkerSchedulingPolicy;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolution;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
+import com.xa.mass.engine.runtime.scheduling.TaskPolicyPresetResolution;
+import com.xa.mass.engine.runtime.scheduling.TaskPolicyPresetResolver;
 
 import java.util.Objects;
 import java.util.Set;
@@ -20,28 +21,33 @@ import java.util.Set;
  */
 public final class DefaultSchedulingPlaneResolver implements SchedulingPlaneResolver {
 
-    private final TaskRuntimeProfileResolver taskRuntimeProfileResolver;
+    private final TaskPolicyPresetResolver taskPolicyPresetResolver;
     private final WorkerRoutingPolicy workerRoutingPolicy;
 
     public DefaultSchedulingPlaneResolver() {
-        this(new TaskRuntimeProfileResolver(), WorkerRoutingPolicy.defaultPolicy());
+        this(new TaskPolicyPresetResolver(), WorkerRoutingPolicy.defaultPolicy());
     }
 
     public DefaultSchedulingPlaneResolver(TaskRuntimeProfileResolver taskRuntimeProfileResolver,
                                           WorkerRoutingPolicy workerRoutingPolicy) {
-        this.taskRuntimeProfileResolver = Objects.requireNonNull(taskRuntimeProfileResolver,
-                "taskRuntimeProfileResolver");
+        this(new TaskPolicyPresetResolver(taskRuntimeProfileResolver), workerRoutingPolicy);
+    }
+
+    public DefaultSchedulingPlaneResolver(TaskPolicyPresetResolver taskPolicyPresetResolver,
+                                          WorkerRoutingPolicy workerRoutingPolicy) {
+        this.taskPolicyPresetResolver = Objects.requireNonNull(taskPolicyPresetResolver,
+                "taskPolicyPresetResolver");
         this.workerRoutingPolicy = workerRoutingPolicy == null ? WorkerRoutingPolicy.defaultPolicy() : workerRoutingPolicy;
     }
 
     @Override
     public SchedulingPlaneResolution resolve(Task task) {
         TaskDispatchIntent intent = TaskDispatchIntent.fromTask(task);
-        TaskRuntimeProfile taskProfile = taskRuntimeProfileResolver.resolve(task);
+        TaskPolicyPresetResolution presetResolution = taskPolicyPresetResolver.resolve(task);
         Set<String> routeBucketKeys = workerRoutingPolicy.routeBucketKeysForTask(task);
         return new SchedulingPlaneResolution(
                 intent,
-                ResolvedTaskSchedulingPolicy.from(task, taskProfile),
+                ResolvedTaskSchedulingPolicy.from(task, presetResolution),
                 ResolvedWorkerSchedulingPolicy.from(intent, routeBucketKeys)
         );
     }

@@ -29,9 +29,9 @@ flows, commands, and module-local inventories.
 - result convergence is runtime-first, but the lifecycle owner split must be
   verified from `TASK_LIFECYCLE_BASELINE.md` plus current engine/runtime code
 - runtime seams are transport-neutral: task dispatch, result ingest, and system events
-- runtime entry is SDK-first; server HTTP/UI surfaces form a lightweight
-  backend product shell and validation host, but they do not redefine kernel
-  ownership
+- runtime entry is SDK-first; server HTTP/UI surfaces provide the backend
+  product/API host, control-console support, and validation surface, but they do
+  not redefine kernel ownership
 - observability belongs in logs, traces, counters, and bounded diagnostics, not scan-heavy hot-path projections
 - canonical trace write-path ownership stays in `platform_infra/mass-trace-sink`;
   operator trace read/query ownership stays in `xa-mass-trace`
@@ -59,7 +59,7 @@ SDK-first boundary rules:
 Current owner vocabulary:
 
 - `Task` is the task/control aggregate truth
-- `Task.contract` is the runtime contract truth: `SESSION | BATCH`
+- `Task.contract` is the current public/runtime preset input: `SESSION | BATCH`
 - `Task.intakeStatus` is the intake-window truth: `OPEN | SEALED`
 - Scheduling Plane ownership is split into three first-class categories:
   `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
@@ -127,7 +127,7 @@ Scheduling Plane inputs, resolved views, and constraints:
 | `SchedulingPolicyCatalog` | reusable task scheduling policy definitions and worker scheduling policy definitions | target owner boundary, not fully implemented |
 | `ProjectSchedulingBinding` | project/workload allowed/default task policies, allowed/default worker policies, per-policy config, and quota/fairness scope | target owner boundary, not fully implemented |
 | `TaskDispatchIntent` | task-level dispatch target and constraints: project, WorkerGroup selector, route, optional target worker, optional target attributes, and future selected/inherited policy refs | current engine value contract derived from task fields and shared config; selected/inherited policy refs remain target-only |
-| `ResolvedTaskSchedulingPolicy` | resolved task-side scheduling input view: workload class, dispatch lane/priority, batch/retry/backpressure/gate inputs | current engine value contract consumed by selected task-side execution owners; not storage truth |
+| `ResolvedTaskSchedulingPolicy` | resolved task-side scheduling input view: workload class, dispatch cadence, resource mode, idle-close, result-finality, dispatch lane/priority, claim/retry/backpressure inputs | current engine value contract consumed by selected task-side execution owners; not storage truth |
 | `ResolvedWorkerSchedulingPolicy` | resolved worker-side scheduling input view: WorkerGroup selector, adapter node, route buckets, target worker, and target attributes | current engine value contract consumed before runtime worker selection; not storage truth |
 | `WorkerGroupCapability` | external group-level capability truth: project bindings, event bindings, group defaults, and capacity hints | current worker-runtime resource truth; constrains worker scheduling resolution |
 | `Item` | executable work unit: `eventCode` plus input or `payloadRef` | current runtime work-item boundary; not worker-selection policy |
@@ -198,8 +198,8 @@ Boundary rules:
 - do not let protocol fields become business or lifecycle truth
 - `EventDefinition.code` is globally unique capability identity
 - do not let server view DTOs or SDK snapshots become kernel runtime truth
-- task contract owns lifecycle, terminal, and default dispatch expectation
-- task runtime scheduling semantics resolve from `Task.workloadClass`, not from free-form `sharedConfig`
+- task contract is a preset input; resolved task scheduling policy owns lifecycle-adjacent terminal, dispatch cadence, retry/finality, resource-mode, and backpressure inputs
+- task runtime scheduling semantics resolve through `ResolvedTaskSchedulingPolicy`, not directly from free-form `sharedConfig`
 - task orchestration and worker selection belong at task or task-slice level; do not reintroduce per-message rule matching on the hot path
 - message/attempt read surfaces are bounded compatibility or audit helpers, not
   the production business-detail query model
@@ -280,8 +280,9 @@ Read them to verify three things quickly:
   remain `contract=BATCH`, `profile=STANDARD`, `workloadClass=BULK`,
   `batchSize=1`, `maxRuntimeSeconds=0`
 - ingress form such as inline create, repeated append, file import, or
-  `sourceRef` metadata does not define the runtime contract; engine lifecycle,
-  dispatch, and terminal semantics come from `Task.contract`
+  `sourceRef` metadata does not define task policy; engine lifecycle-adjacent
+  dispatch, retry/finality, and terminal semantics consume resolved task
+  scheduling policy
 - aggregate truth stays on `Task.project`, `Task.user`, and `Task.sharedConfig`
 - per-item runtime truth stays on the runtime ingress item and dispatch/result
   flow; server-local review materialization may retain payload summary or

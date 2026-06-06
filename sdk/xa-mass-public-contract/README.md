@@ -46,5 +46,5 @@ task request class model.
 | `TaskItemSyncRequest` | `TaskApiController.appendTaskItemSync` | request body for `POST /api/v1/tasks/{taskId}/items:sync` |
 | `TaskCommandRequest` | `TaskApiController.executeTaskCommand` | request body for `POST /api/v1/tasks/{taskId}/commands` |
 | `TaskCommand` | `TaskApiController.executeTaskCommand` | public command value inside `TaskCommandRequest` |
-| `TaskContract` | `TaskApiController.createTask` | public task contract value inside `TaskExecutionSpec` |
+| `TaskContract` | `TaskApiController.createTask` | public task preset input for resolving task scheduling policy defaults |
 | `TaskSharedConfigKeys` | `TaskApiController.createTask` | public shared-config keys consumed from `TaskCreateRequest.sharedConfig` |

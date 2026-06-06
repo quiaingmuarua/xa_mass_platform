@@ -1,6 +1,7 @@
 package com.xa.mass.engine.runtime;
 
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
 
 /**
@@ -34,14 +35,28 @@ public class TaskRuntimeEnqueueOptionsResolver {
 
     public WorkEnqueueOptions resolve(Task task) {
         TaskRuntimeProfile profile = profileResolver.resolve(task);
-        return switch (profile.backpressureClass()) {
-            case INTERACTIVE -> new WorkEnqueueOptions(interactiveMaxReadyItemsPerTask);
-            case BULK -> new WorkEnqueueOptions(bulkMaxReadyItemsPerTask);
+        int maxReadyItemsPerTask = switch (profile.backpressureClass()) {
+            case INTERACTIVE -> interactiveMaxReadyItemsPerTask;
+            case BULK -> bulkMaxReadyItemsPerTask;
         };
+        return resolve(ResolvedTaskSchedulingPolicy.BackpressurePolicy.from(profile, maxReadyItemsPerTask));
+    }
+
+    public WorkEnqueueOptions resolve(ResolvedTaskSchedulingPolicy taskPolicy) {
+        ResolvedTaskSchedulingPolicy.BackpressurePolicy backpressurePolicy = taskPolicy == null
+                ? null
+                : taskPolicy.backpressurePolicy();
+        return resolve(backpressurePolicy);
+    }
+
+    public WorkEnqueueOptions resolve(ResolvedTaskSchedulingPolicy.BackpressurePolicy backpressurePolicy) {
+        ResolvedTaskSchedulingPolicy.BackpressurePolicy resolvedPolicy = backpressurePolicy != null
+                ? backpressurePolicy
+                : ResolvedTaskSchedulingPolicy.BackpressurePolicy.from(null);
+        return new WorkEnqueueOptions(resolvedPolicy.maxReadyItemsPerTask());
     }
 
     private static int normalizeLimit(int value) {
         return value <= 0 ? WorkEnqueueOptions.UNLIMITED : value;
     }
 }
-

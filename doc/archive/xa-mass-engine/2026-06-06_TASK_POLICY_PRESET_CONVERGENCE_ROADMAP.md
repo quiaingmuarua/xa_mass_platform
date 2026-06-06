@@ -1,7 +1,22 @@
 # Task Policy Preset Convergence Roadmap
 
-Status: active high-priority planning. This is not current implementation
-truth.
+Status: completed and archived on 2026-06-06. This record is historical
+implementation context, not current implementation truth.
+
+Completion summary:
+
+- `ResolvedTaskSchedulingPolicy` now carries explicit dispatch cadence, worker
+  resource mode, idle-close, claim, retry, result-finality, and backpressure
+  policy values.
+- Terminal, dispatch cadence, resource-mode, claim, retry, result-finality, and
+  backpressure production consumers use resolved policy values instead of
+  directly interpreting `TaskContract`, `foreground`, or workload/profile
+  fields.
+- Public `TaskContract` is retained as the current public/runtime preset input.
+  Public rename/removal is intentionally deferred to a separate public API
+  decision; it is not part of this completed engine convergence.
+- Tests named around `TaskContract` remain as public compatibility and behavior
+  regression proof, not as evidence that `TaskContract` owns engine behavior.
 
 Priority: high.
 
@@ -101,6 +116,35 @@ Other implicit preset call families:
 | `TaskRuntimeRetryPolicyResolver` | interactive/bulk retry cadence defaults | retry preset hidden behind workload class |
 | `TaskSharedConfig` | worker group, route, target worker, event code conventions | map-shaped dispatch intent instead of first-class policy fields |
 
+## TPC-0 Inventory Snapshot
+
+Current production call-site categories:
+
+| Source | Category | Current classification |
+| --- | --- | --- |
+| `TaskManager#resolveShellContract` | preset resolution | allowed legacy shell defaulting until public preset migration |
+| `TaskManager#resolveWorkloadClass` | preset resolution | `TaskContract -> workloadClass` derivation; must move behind preset resolver |
+| `TaskManager#createTaskRecord` | public/read shell storage | stores request contract for current task shell/read model |
+| `TaskManager#deriveTaskName` | read/default naming | uses default contract only as generated name evidence |
+| `ContractAwareTaskTerminalPolicy` | hidden behavior | terminal behavior must move to `idleClosePolicy` |
+| `AllWorkFinalTaskTerminalPolicy` | hidden behavior | batch all-final guard must move to `idleClosePolicy` |
+| `TaskDispatchRequestService` | hidden behavior | delayed/signal wakeup gate must move to `dispatchCadence` |
+| `RuntimeReadyDispatchPump` | hidden behavior | runtime-ready pump eligibility must move to `dispatchCadence` |
+| `EngineRuntimeKernel` listeners | hidden behavior | session listener routing must move to `dispatchCadence` |
+| `TaskResultService` | hidden behavior | result/retry finality branch must move to explicit retry/finality policy |
+| `DefaultWorkerDispatchResourcePolicy` | hidden behavior | foreground/exclusive lock must move to `workerResourceMode` |
+| `TaskRuntimeProfileResolver` | hidden behavior | workload class profile must move to explicit resolved policy fields |
+| `TaskRuntimeClaimOptionsResolver` | hidden behavior | claim/lease defaults must consume resolved claim/lease policy |
+| `TaskRuntimeEnqueueOptionsResolver` | hidden behavior | backpressure defaults must consume resolved backpressure policy |
+| `TaskRuntimeRetryPolicyResolver` | hidden behavior | retry defaults must consume resolved retry policy |
+| `TraceEventLogger` | read/diagnostic | may expose current fields as evidence, not behavior truth |
+| `TaskApiContractAssembler` and SDK mappers | public/read model | out of first engine convergence slice |
+| scenario launcher / sample SDK callers | public caller input | out of first engine convergence slice |
+
+`TPC-1` introduces `TaskPolicyPresetSemantics` as the temporary place for hidden
+behavior interpretation. Later phases shrink this allowlist as each behavior
+owner switches to explicit resolved policy.
+
 ## Retirement Targets
 
 These old mechanisms are not allowed to remain mainline behavior truth after
@@ -167,6 +211,7 @@ record ResolvedTaskSchedulingPolicy(
     IdleClosePolicy idleClosePolicy,
     ClaimPolicy claimPolicy,
     RetryPolicy retryPolicy,
+    ResultFinalityPolicy resultFinalityPolicy,
     BackpressurePolicy backpressurePolicy,
     int batchSize,
     int defaultMaxRetryCount,
@@ -195,6 +240,16 @@ WorkerResourceMode.CAPACITY
 IdleClosePolicy
   whether all-final runtime work can close the task, whether intake must be
   sealed first, and optional idle delay.
+
+ClaimPolicy / RetryPolicy / BackpressurePolicy
+  carry both the profile class and the concrete runtime defaults currently
+  selected from system properties. Runtime claim/retry/enqueue consumers should
+  adapt these values; they should not re-read workload/profile/system-property
+  defaults as separate hidden policy owners.
+
+ResultFinalityPolicy
+  whether lease expiry retries from any active state and whether exhausted
+  lease expiry materializes as failure or expiry.
 ```
 
 `TaskContract` can continue to select default preset behavior temporarily:
@@ -297,6 +352,7 @@ owner family at a time:
 | `workerResourceMode` | `TaskExecutionSpec.foreground` resource branch | `TPC-5` |
 | `claimPolicy` | `TaskRuntimeProfile.BatchPolicy` claim behavior | `TPC-6` |
 | `retryPolicy` | workload/profile retry behavior | `TPC-6` |
+| `resultFinalityPolicy` | `TaskContract` result finality / lease-expiry branching | `TPC-6` |
 | `backpressurePolicy` | workload/profile enqueue limit behavior | `TPC-6` |
 | `leasePolicy` or lease sub-value | `TaskRuntimeProfile.LeaseProfile` claim lease behavior | `TPC-6` |
 | `dispatchLane` / `dispatchPriority` | existing workload-derived lane/priority profile values | keep as resolved task policy evidence; switch only when a consumer changes |
@@ -397,11 +453,7 @@ Scope:
    abstraction boundary.
 2. Move direct `TaskContract` behavior interpretation behind named methods:
    - `defaultWorkloadClassFor(...)`
-   - `usesRuntimeReadyDispatchPump(...)`
-   - `usesSignalDelayedDispatch(...)`
-   - `usesAllFinalAutoTerminal(...)`
-   - `usesBatchRetryFinality(...)` if needed
-   - `usesSessionRuntimeListeners(...)` if needed
+   - temporary behavior methods only until their resolved policy field lands
 3. Keep server/SDK/read-model contract exposure unchanged.
 4. Mark the seam as temporary convergence-only.
 5. Add a source comment or small guard test naming this seam as not eligible
@@ -543,25 +595,28 @@ Acceptance:
 
 ### TPC-6: Switch Retry / Claim / Backpressure To Resolved Policy
 
-Goal: workload class no longer acts as an implicit policy owner across several
-runtime resolvers.
+Goal: workload class and contract no longer act as implicit policy owners
+across runtime claim, retry, result-finality, and backpressure consumers.
 
 Scope:
 
 1. `TaskRuntimeClaimOptionsResolver` consumes claim policy.
 2. `TaskRuntimeRetryPolicyResolver` consumes retry policy.
 3. `TaskRuntimeEnqueueOptionsResolver` consumes backpressure policy.
-4. Keep property defaults and current behavior unchanged.
-5. Do not remove `TaskWorkloadClass` yet; it can remain preset input and
+4. `TaskResultService` consumes result finality policy for lease-expiry retry
+   and final visible status semantics.
+5. Keep property defaults and current behavior unchanged.
+6. Do not remove `TaskWorkloadClass` yet; it can remain preset input and
    read-model evidence.
-6. Move system-property/default interpretation into policy resolution or
+7. Move system-property/default interpretation into policy resolution or
    explicit policy construction. Claim/retry/enqueue consumers should not keep
    reading workload/profile and system properties as separate hidden policy
    owners after this phase.
 
 Acceptance:
 
-1. Claim/retry/enqueue behavior is represented by resolved policy fields.
+1. Claim/retry/enqueue/result-finality behavior is represented by resolved
+   policy fields.
 2. Resolver tests pass and are renamed or supplemented around policy values.
 3. `TaskWorkloadClass` direct behavior reads are limited to preset resolution
    and read model.

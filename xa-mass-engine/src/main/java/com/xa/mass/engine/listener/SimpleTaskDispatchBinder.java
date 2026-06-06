@@ -15,7 +15,10 @@ import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
@@ -45,6 +48,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     private final TraceEventLogger traceEventLogger;
     private final WorkerDispatchResourcePolicy resourcePolicy;
     private final WorkerDispatchResourceReleaser resourceReleaser;
+    private final SchedulingPlaneResolver schedulingPlaneResolver;
 
     public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
                                        WorkerAdmissionRuntime workerAdmissionRuntime,
@@ -85,6 +89,18 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                              TraceEventLogger traceEventLogger,
                              WorkerDispatchResourcePolicy resourcePolicy,
                              WorkerDispatchResourceReleaser resourceReleaser) {
+        this(assignmentRuntime, workerAdmissionRuntime, recordService, dispatchListener, traceEventLogger,
+                resourcePolicy, resourceReleaser, new DefaultSchedulingPlaneResolver());
+    }
+
+    SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
+                             WorkerAdmissionRuntime workerAdmissionRuntime,
+                             AssignmentDiagnosticRecorder recordService,
+                             TaskDispatchBatchListener dispatchListener,
+                             TraceEventLogger traceEventLogger,
+                             WorkerDispatchResourcePolicy resourcePolicy,
+                             WorkerDispatchResourceReleaser resourceReleaser,
+                             SchedulingPlaneResolver schedulingPlaneResolver) {
         this.assignmentRuntime = assignmentRuntime;
         this.workerAdmissionRuntime = workerAdmissionRuntime;
         this.recordService = recordService;
@@ -94,6 +110,9 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         this.resourceReleaser = resourceReleaser == null
                 ? new WorkerDispatchResourceReleaser(workerAdmissionRuntime, this.resourcePolicy, traceEventLogger)
                 : resourceReleaser;
+        this.schedulingPlaneResolver = schedulingPlaneResolver == null
+                ? new DefaultSchedulingPlaneResolver()
+                : schedulingPlaneResolver;
     }
 
     @Override
@@ -137,8 +156,10 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         }
 
         int resolvedWorkerCount = Math.max(matchedWorkers.size(), 1);
+        ResolvedTaskSchedulingPolicy taskPolicy = schedulingPlaneResolver.resolve(task).taskSchedulingPolicy();
         TaskWorkClaimOptions claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
                 task,
+                taskPolicy,
                 resolvedWorkerCount,
                 assignmentRuntime.getWorkLeaseSeconds()
         );
@@ -164,6 +185,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 .collect(Collectors.toList());
         claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
                 task,
+                taskPolicy,
                 Math.max(dispatchSlots.size(), 1),
                 assignmentRuntime.getWorkLeaseSeconds()
         );

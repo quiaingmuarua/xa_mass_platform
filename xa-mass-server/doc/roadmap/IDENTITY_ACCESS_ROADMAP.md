@@ -93,7 +93,7 @@ ExternalIdentityLink
   -> later Google/GitHub login mapping
 
 DevOperatorSession
-  -> dev-only permission validation shell
+  -> dev-only permission validation surface
 ```
 
 Fixed placement:
@@ -129,7 +129,7 @@ roadmap after access control is stable.
 9. Engine, transport, and runtime modules must not import user, role, permission, API-key, or usage-ledger stores.
 10. Permission checks stay at server / SDK authorization boundaries, not inside scheduling policy.
 11. SDK changes are allowed only when they reuse or tighten existing auth contracts such as `PrincipalContext`, `AuthorizationPolicy`, `SubmitterRegistration`, and `AuthProvider`.
-12. Dev operator login is a local permission-validation shell, not a production login product.
+12. Dev operator login is a local permission-validation surface, not a production login product.
 13. API-key viewer sessions are submitter-scoped sessions, not operator sessions.
 14. `ApiKeyCredentialStore` owns API-key lifecycle state; `SubmitterRegistry` / `AuthProvider` are authentication projections or adapters, not a second credential owner.
 15. Disabling a human user disables that user's owned API keys unless the key is explicitly modeled as service-owned.

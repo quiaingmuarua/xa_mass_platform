@@ -415,7 +415,9 @@ public class TaskAssignWorker {
             releaseTrackedTask(task != null ? task.getTid() : null);
             return;
         }
-        TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(task, retryDelayMillis);
+        TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(
+                resolveTaskSchedulingPolicy(task),
+                retryDelayMillis);
         long resolvedRetryDelayMillis = retryPolicy.assignmentRetryDelayMillis();
         laneState.scheduledRetryCount.incrementAndGet();
         emitQueueSnapshot(task, task.getStatus(), laneState, "SUBMIT_RETRY_SCHEDULED", resolvedRetryDelayMillis,
@@ -457,7 +459,9 @@ public class TaskAssignWorker {
         if (laneState == null || laneState.retryExecutor == null) {
             return;
         }
-        TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(task, retryDelayMillis);
+        TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(
+                resolveTaskSchedulingPolicy(task),
+                retryDelayMillis);
         long resolvedRetryDelayMillis = retryPolicy.assignmentRetryDelayMillis();
         laneState.scheduledRetryCount.incrementAndGet();
         WaitingRetry waitingRetry = new WaitingRetry(task, expectedStatus, laneState, resolvedRetryDelayMillis);

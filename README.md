@@ -76,7 +76,9 @@ Task + Worker + Scheduling Plane
 
 Current kernel truth is intentionally narrow:
 
-- `Task.contract` answers whether the task is `SESSION` or `BATCH`
+- `Task.contract` is the current public/runtime preset input
+  (`SESSION | BATCH`); engine behavior consumes resolved task scheduling policy
+  values derived from it
 - `Task.intakeStatus` answers whether ingress remains `OPEN` or is already `SEALED`
 - `TaskWorkRuntime` answers ready/delayed/lease/counter truth for execution
 - result convergence is runtime-first, but the lifecycle owner split is documented
@@ -98,7 +100,7 @@ Scheduling Plane Boundary:
   `TaskDispatchIntent`, `ResolvedTaskSchedulingPolicy`, and
   `ResolvedWorkerSchedulingPolicy`; persisted catalog/binding and configurable
   policy modules are not implemented yet
-- current policy remains distributed across task runtime profile, explicit
+- current policy remains distributed across resolved task policy, explicit
   worker group selectors, matching rule sets, assignment policy, and runtime
   backpressure/admission behavior
 - `TaskDispatchIntent` is the task-level dispatch intent: project,
@@ -129,9 +131,9 @@ The shared kernel is:
   QLExpress-backed eligibility rules, ranking, and admission without changing
   worker-runtime ownership. It is not a top-level policy owner.
 - transport-neutral runtime seams: task dispatch, result ingest, and system events
-- SDK-first runtime entry; server provides a lightweight backend product shell
-  for HTTP APIs, auth/IAM, API-key operations, and the control console without
-  redefining kernel ownership
+- SDK-first runtime entry; server provides the backend product/API host,
+  control-console support, auth/IAM, and API-key operations without redefining
+  kernel ownership
 - hot-path observability through logs, traces, and bounded diagnostics rather than scan-heavy projections
 
 Current integration boundary rule:
