@@ -142,6 +142,81 @@ class ControlPlaneSeedImporterTest {
     }
 
     @Test
+    void importRejectsDevOnlyApiKeyRawSecretsWhenDevSeedsAreNotAllowed() throws Exception {
+        var seed = Files.createTempFile("xa-mass-dev-only-api-key-seed", ".json");
+        Files.writeString(seed, """
+                {
+                  "apiKeys": [
+                    {
+                      "principalId": "sample-task-api-key",
+                      "devOnly": true,
+                      "rawSecret": "sample-task-secret",
+                      "createdForUserId": "ops-admin",
+                      "permissions": ["task:create"],
+                      "projectScopes": ["demoApp"],
+                      "eventScopes": ["demo.dispatch"]
+                    }
+                  ]
+                }
+                """);
+
+        assertThatThrownBy(() -> importer(new InMemoryOperatorCredentialStore())
+                .importSeed(new ControlPlaneSeedImporter.ControlPlaneSeedImportRequest(
+                        seed.toUri().toString(),
+                        null,
+                        null,
+                        "apply",
+                        false
+                )))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("devOnly apiKeys rawSecret seed is not allowed");
+    }
+
+    @Test
+    void importAllowsOperatorOwnedApiKeyRawSecretsWhenDevSeedsAreNotAllowed() throws Exception {
+        InMemoryApiKeyCredentialStore apiKeyStore = new InMemoryApiKeyCredentialStore();
+        InMemoryCredentialPrincipalStore principalStore = new InMemoryCredentialPrincipalStore();
+        var seed = Files.createTempFile("xa-mass-prod-api-key-seed", ".json");
+        Files.writeString(seed, """
+                {
+                  "apiKeys": [
+                    {
+                      "principalId": "prod-task-api-key",
+                      "rawSecret": "prod-task-secret",
+                      "createdForUserId": "ops-admin",
+                      "permissions": ["task:create"],
+                      "projectScopes": ["demoApp"],
+                      "eventScopes": ["demo.dispatch"]
+                    }
+                  ]
+                }
+                """);
+
+        ControlPlaneSeedImporter importer = new ControlPlaneSeedImporter(
+                MassSdk.builder().credentialPrincipalStore(principalStore).build(),
+                new InMemoryCatalogMetadataStore(),
+                apiKeyCredentialService(apiKeyStore, principalStore),
+                new InMemoryOperatorCredentialStore(),
+                new ObjectMapper(),
+                new DefaultResourceLoader()
+        );
+
+        ControlPlaneSeedImporter.SeedImportResult result = importer.importSeed(
+                new ControlPlaneSeedImporter.ControlPlaneSeedImportRequest(
+                        seed.toUri().toString(),
+                        null,
+                        null,
+                        "apply",
+                        false
+                ));
+
+        assertThat(result.apiKeys()).isEqualTo(1);
+        assertThat(apiKeyStore.getByPrincipalId("prod-task-api-key")).isNotNull();
+        assertThat(principalStore.authenticate("prod-task-secret").getPrincipalId())
+                .isEqualTo("prod-task-api-key");
+    }
+
+    @Test
     void validateOnlyOperatorCredentialsDoesNotWriteStore() throws Exception {
         InMemoryOperatorCredentialStore credentialStore = new InMemoryOperatorCredentialStore();
         var seed = Files.createTempFile("xa-mass-operator-credentials-validate", ".json");

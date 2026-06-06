@@ -67,7 +67,7 @@ final class ControlPlaneSeedImporter {
 
         List<EventDefinition> events = toEventDefinitions(catalog);
         List<ProjectDefinition> projects = toProjectDefinitions(catalog);
-        List<ApiKeyCredentialService.CreateApiKeyCommand> apiKeys = toApiKeyCommands(catalog);
+        List<ApiKeyCredentialService.CreateApiKeyCommand> apiKeys = toApiKeyCommands(catalog, request);
         List<RuleDefinition> ruleDefinitions = List.copyOf(rules.getRules());
         List<OperatorCredentialRecord> operatorCredentials = toOperatorCredentials(credentialSeed);
 
@@ -130,11 +130,12 @@ final class ControlPlaneSeedImporter {
         return List.copyOf(definitions);
     }
 
-    private List<ApiKeyCredentialService.CreateApiKeyCommand> toApiKeyCommands(ControlPlaneSeedCatalog catalog) {
+    private List<ApiKeyCredentialService.CreateApiKeyCommand> toApiKeyCommands(ControlPlaneSeedCatalog catalog,
+                                                                               ControlPlaneSeedImportRequest request) {
         List<ApiKeyCredentialService.CreateApiKeyCommand> commands = new ArrayList<>();
         for (ControlPlaneSeedCatalog.ApiKeySeed seed : catalog.getApiKeys()) {
             for (int index = 0; index < count(seed.getCount()); index++) {
-                commands.add(toApiKeyCommand(seed, placeholderValues(index)));
+                commands.add(toApiKeyCommand(seed, placeholderValues(index), request));
             }
         }
         return List.copyOf(commands);
@@ -174,10 +175,17 @@ final class ControlPlaneSeedImporter {
     }
 
     private ApiKeyCredentialService.CreateApiKeyCommand toApiKeyCommand(ControlPlaneSeedCatalog.ApiKeySeed seed,
-                                                                        Map<String, String> placeholders) {
+                                                                        Map<String, String> placeholders,
+                                                                        ControlPlaneSeedImportRequest request) {
         String rawSecret = replace(firstNonBlank(seed.getRawSecret(), seed.getCredential()), placeholders);
         if (rawSecret == null) {
             throw new IllegalArgumentException("apiKeys rawSecret must not be blank");
+        }
+        if (seed.isDevOnly() && !request.allowDevOnlyApiKeyRawSecrets()) {
+            throw new IllegalArgumentException(
+                    "devOnly apiKeys rawSecret seed is not allowed for this profile/import context: "
+                            + replace(seed.getPrincipalId(), placeholders)
+            );
         }
         return new ApiKeyCredentialService.CreateApiKeyCommand(
                 replace(seed.getPrincipalId(), placeholders),
@@ -253,7 +261,15 @@ final class ControlPlaneSeedImporter {
     record ControlPlaneSeedImportRequest(String catalogLocation,
                                          String rulesLocation,
                                          String operatorCredentialsLocation,
-                                         String mode) {
+                                         String mode,
+                                         boolean allowDevOnlyApiKeyRawSecrets) {
+        ControlPlaneSeedImportRequest(String catalogLocation,
+                                      String rulesLocation,
+                                      String operatorCredentialsLocation,
+                                      String mode) {
+            this(catalogLocation, rulesLocation, operatorCredentialsLocation, mode, true);
+        }
+
         boolean hasAnyLocation() {
             return catalogLocation != null || rulesLocation != null || operatorCredentialsLocation != null;
         }

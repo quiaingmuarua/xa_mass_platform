@@ -12,6 +12,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.core.io.ResourceLoader;
 
 @Configuration
@@ -27,6 +29,7 @@ public class ControlPlaneSeedImportConfiguration {
                                                                OperatorCredentialStore operatorCredentialStore,
                                                                ObjectMapper objectMapper,
                                                                ResourceLoader resourceLoader,
+                                                               Environment environment,
                                                                @Value("${mass.control-plane.seed.catalog-location:}") String catalogLocation,
                                                                @Value("${mass.control-plane.seed.rules-location:}") String rulesLocation,
                                                                @Value("${mass.control-plane.seed.operator-credentials-location:}")
@@ -52,7 +55,8 @@ public class ControlPlaneSeedImportConfiguration {
                             normalizedCatalogLocation,
                             null,
                             normalizedOperatorCredentialsLocation,
-                            blankToDefault(mode, "apply")
+                            blankToDefault(mode, "apply"),
+                            allowDevOnlyApiKeyRawSecrets(environment)
                     ));
         };
     }
@@ -66,6 +70,7 @@ public class ControlPlaneSeedImportConfiguration {
                                                               OperatorCredentialStore operatorCredentialStore,
                                                               ObjectMapper objectMapper,
                                                               ResourceLoader resourceLoader,
+                                                              Environment environment,
                                                               @Value("${mass.control-plane.seed.rules-location:}") String rulesLocation,
                                                               @Value("${mass.control-plane.seed.mode:apply}") String mode) {
         return args -> {
@@ -84,9 +89,14 @@ public class ControlPlaneSeedImportConfiguration {
                             null,
                             normalizedRulesLocation,
                             null,
-                            blankToDefault(mode, "apply")
+                            blankToDefault(mode, "apply"),
+                            allowDevOnlyApiKeyRawSecrets(environment)
                     ));
         };
+    }
+
+    static boolean allowDevOnlyApiKeyRawSecrets(Environment environment) {
+        return environment == null || !environment.acceptsProfiles(Profiles.of("prod"));
     }
 
     private static String blankToNull(String value) {

@@ -17,11 +17,11 @@ mass:
       # Fresh local prod-like environment:
       # mass.control-plane.seed.enabled=true
       # operator-credentials-location: classpath:control-plane-seed/operator-credentials.json
-      # Replace catalog/rules with an environment-owned external seed file for
-      # non-local deployments. The checked-in scenario seed is only the local
-      # prod-like validation catalog used by integrations/xa-mass-scenario-launcher.
-      catalog-location: file:integrations/samples/dev/scenario/bootstrap.json
-      rules-location: file:integrations/samples/dev/scenario/rules.json
+      # Set catalog/rules only to environment-owned external seed files. The
+      # checked-in sample scenario seed contains devOnly API-key raw secrets and
+      # is rejected by prod seed import.
+      catalog-location:
+      rules-location:
       # Seed file shape:
       # {
       #   "operatorCredentials": [

@@ -53,6 +53,32 @@ api() {
   printf '%s' "$response"
 }
 
+operator_api() {
+  local method="$1"
+  local path="$2"
+  local body="${3:-}"
+  local response
+  local http_code
+  local curl_args=(-sS -X "$method" "${BASE_URL}${path}" -H "Content-Type: application/json" -H "X-Mass-User-Mode: admin" -w $'\n%{http_code}')
+  if [[ -n "$body" ]]; then
+    curl_args+=(-d "$body")
+  fi
+  response="$(curl "${curl_args[@]}")"
+  http_code="$(printf '%s' "$response" | tail -n 1)"
+  response="$(printf '%s' "$response" | sed '$d')"
+  if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+    echo "HTTP ${http_code} ${method} ${path}" >&2
+    printf '%s\n' "$response" >&2
+    exit 1
+  fi
+  if [[ -n "$response" ]] && [[ "$(jq -r '.code // empty' <<<"$response")" != "0" ]]; then
+    echo "API error ${method} ${path}" >&2
+    printf '%s\n' "$response" >&2
+    exit 1
+  fi
+  printf '%s' "$response"
+}
+
 log() {
   printf '[external-worker-http-contract] %s\n' "$1"
 }
@@ -157,8 +183,8 @@ api POST "/api/v1/tasks/${TASK_ID}/items" "$TASK_API_KEY" "$(cat <<JSON
 }
 JSON
 )" >/dev/null
-api POST "/api/v1/tasks/${TASK_ID}/commands" "$TASK_API_KEY" '{"command":"SEAL"}' >/dev/null
-api POST "/api/v1/tasks/${TASK_ID}/commands" "$TASK_API_KEY" '{"command":"APPROVE"}' >/dev/null
+operator_api POST "/api/v1/tasks/${TASK_ID}/commands" '{"command":"SEAL"}' >/dev/null
+operator_api POST "/api/v1/tasks/${TASK_ID}/commands" '{"command":"APPROVE"}' >/dev/null
 
 log "poll until dispatch"
 dispatch_item=""
@@ -226,7 +252,7 @@ fi
 
 log "request and ack worker command"
 COMMAND_ID="external-proof-drain-${RUN_ID}"
-api POST "/api/v1/runtime/workers/${WORKER_ID}/commands" "" "$(cat <<JSON
+operator_api POST "/api/v1/runtime/workers/${WORKER_ID}/commands" "$(cat <<JSON
 {
   "commandId": $(json_escape "$COMMAND_ID"),
   "workerId": $(json_escape "$WORKER_ID"),

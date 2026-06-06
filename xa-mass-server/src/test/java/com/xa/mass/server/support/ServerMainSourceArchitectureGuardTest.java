@@ -437,6 +437,9 @@ class ServerMainSourceArchitectureGuardTest {
         assertTrue(!prodConfig.contains("sample.bootstrap")
                         && !prodConfig.contains("bootstrap:\n    enabled: false"),
                 "prod profile must not carry retired sample bootstrap HTTP config");
+        assertTrue(!prodConfig.contains("integrations/samples/dev/scenario")
+                        && !prodConfig.contains("control-plane-seed/control-console-scenario.json"),
+                "prod profile must not default to checked-in scenario seeds that contain devOnly API-key raw secrets");
     }
 
     @Test

@@ -145,7 +145,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 "eventCode", "crawler.fetch-page",
                 "items", List.of(Map.of("url", "https://example.test/page-1"))
         ), taskApiKeyHeaders));
-        assertApiOk(executeTaskCommand(taskId, "SEAL", null, taskApiKeyHeaders));
+        assertApiOk(sealTask(taskId));
 
         Map<String, Object> auditResponse = approveTask(taskId);
         assertApiOk(auditResponse);
@@ -490,7 +490,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 "eventCode", "crawler.fetch-page",
                 "items", List.of(Map.of("url", "https://example.test/draining"))
         ), taskApiKeyHeaders));
-        assertApiOk(executeTaskCommand(taskId, "SEAL", null, taskApiKeyHeaders));
+        assertApiOk(sealTask(taskId));
         assertApiOk(approveTask(taskId));
         return taskId;
     }
