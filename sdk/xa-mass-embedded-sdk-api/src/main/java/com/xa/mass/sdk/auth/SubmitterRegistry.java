@@ -10,6 +10,7 @@ import java.util.List;
  * resource registry, but callers should depend on the narrow contract they
  * actually need.
  */
+@Deprecated(forRemoval = true)
 public interface SubmitterRegistry {
 
     void register(SubmitterRegistration submitterRegistration);

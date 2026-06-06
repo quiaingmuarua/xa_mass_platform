@@ -3,7 +3,7 @@ import type {CurrentSubmitterProfile, CurrentSubmitterSnapshot,} from '@/types/c
 
 export async function getCurrentSubmitterReal(): Promise<CurrentSubmitterSnapshot> {
     try {
-        const profile = await requestApiData<CurrentSubmitterProfile>('/api/v1/submitters/me')
+        const profile = await requestApiData<CurrentSubmitterProfile>('/api/v1/api-keys:current')
         return {
             state: 'available',
             profile,

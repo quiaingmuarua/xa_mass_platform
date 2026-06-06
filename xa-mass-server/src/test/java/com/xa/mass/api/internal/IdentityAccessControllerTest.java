@@ -64,7 +64,7 @@ class IdentityAccessControllerTest {
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new IdentityAccessController(store, apiKeyCredentialService),
-                        new CurrentSubmitterController(submitters),
+                        new ApiKeyController(apiKeyCredentialService, submitters),
                         new AuthController(apiAuthService))
                 .addInterceptors(interceptor)
                 .build();
@@ -283,7 +283,7 @@ class IdentityAccessControllerTest {
     }
 
     @Test
-    void disablingUserDisablesOwnedApiKeysThroughSubmitterProjection() throws Exception {
+    void disablingUserDisablesOwnedApiKeysThroughCredentialProjection() throws Exception {
         ApiKeyCredentialService.CreatedApiKey created = apiKeyCredentialService.createOperatorKey(
                 new ApiKeyCredentialService.CreateApiKeyCommand(
                         "viewer-owned-key",
@@ -294,10 +294,11 @@ class IdentityAccessControllerTest {
                         "ops-admin",
                         null,
                         Map.of(),
+                        null,
                         null
                 ));
 
-        mockMvc.perform(get("/api/v1/submitters/me")
+        mockMvc.perform(get("/api/v1/api-keys:current")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, created.rawSecret()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.principalId").value("viewer-owned-key"));
@@ -308,7 +309,7 @@ class IdentityAccessControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DISABLED"));
 
-        mockMvc.perform(get("/api/v1/submitters/me")
+        mockMvc.perform(get("/api/v1/api-keys:current")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, created.rawSecret()))
                 .andExpect(status().isUnauthorized());
 

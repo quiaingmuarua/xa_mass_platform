@@ -42,7 +42,7 @@ import com.xa.mass.sdk.model.TaskWorkFinalNotification;
 import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 import com.xa.mass.api.auth.CompositePrincipalDirectory;
 import com.xa.mass.api.auth.DefaultOperatorPrincipalDirectory;
-import com.xa.mass.server.auth.jdbc.JdbcSubmitterRegistry;
+import com.xa.mass.server.auth.jdbc.JdbcCredentialPrincipalStore;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -319,7 +319,7 @@ public class XaMassServerApplication {
                                                           ObjectProvider<ExecutionEventSink> executionEventSinkProvider) {
         MassSdk.Builder builder = MassSdk.builder();
         if (jdbcStorageRuntime.isEnabled()) {
-            builder.submitterRegistry(new JdbcSubmitterRegistry(
+            builder.credentialPrincipalStore(new JdbcCredentialPrincipalStore(
                     jdbcStorageRuntime.dataSource(),
                     JdbcStorageMode.parse(storageMode)
             ));

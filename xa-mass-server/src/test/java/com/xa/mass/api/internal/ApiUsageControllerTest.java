@@ -66,10 +66,11 @@ class ApiUsageControllerTest {
                 1
         );
 
-        mockMvc.perform(get("/api/v1/submitters/me/usage")
+        mockMvc.perform(get("/api/v1/api-keys:current/usage")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "raw-secret"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.keyId").value("ak-usage-1"))
+                .andExpect(jsonPath("$.data.principalId").value("crawler-key"))
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].operation").value("TASK_CREATE"))
                 .andExpect(jsonPath("$.data.items[0].units").value(1));

@@ -27,13 +27,13 @@ public class SubmitterViewerSessionController {
         this.sessionService = sessionService;
     }
 
-    @PostMapping("/submitter-sessions")
+    @PostMapping("/api-key-viewer-sessions")
     public ResponseEntity<ApiResponse<SubmitterViewerSessionCreateResponse>> create(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         String credential = SdkCredentialAuthSupport.extractCredential(apiKeyHeader, authorizationHeader);
         if (credential == null) {
-            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing submitter credential"));
+            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing API key credential"));
         }
         SubmitterViewerSessionService.CreatedSubmitterViewerSession created = sessionService.create(credential);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(new SubmitterViewerSessionCreateResponse(
@@ -42,26 +42,26 @@ public class SubmitterViewerSessionController {
         )));
     }
 
-    @GetMapping("/submitter-sessions/me")
+    @GetMapping("/api-key-viewer-sessions/me")
     public ResponseEntity<ApiResponse<SubmitterViewerSessionView>> current(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         SubmitterViewerSessionRecord current = sessionService.current(
                 SdkCredentialAuthSupport.extractCredential(apiKeyHeader, authorizationHeader));
         if (current == null) {
-            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing submitter viewer session"));
+            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing API-key viewer session"));
         }
         return ResponseEntity.ok(ApiResponse.success(SubmitterViewerSessionView.from(current)));
     }
 
-    @PostMapping("/submitter-sessions:logout")
+    @PostMapping("/api-key-viewer-sessions:logout")
     public ResponseEntity<ApiResponse<SubmitterViewerSessionView>> logout(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         SubmitterViewerSessionRecord revoked = sessionService.logout(
                 SdkCredentialAuthSupport.extractCredential(apiKeyHeader, authorizationHeader));
         if (revoked == null) {
-            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing submitter viewer session"));
+            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing API-key viewer session"));
         }
         return ResponseEntity.ok(ApiResponse.success(SubmitterViewerSessionView.from(revoked)));
     }

@@ -30,7 +30,7 @@ class TaskScenarioSeederTest {
         try (RecordingServer server = RecordingServer.start(requests)) {
             ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
                     "--base-url", server.baseUrl(),
-                    "--task-api-key", "submitter-key"
+                    "--task-api-key", "task-api-key"
             });
             TaskScenarioSeeder seeder = new TaskScenarioSeeder(options, objectMapper,
                     new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper));
@@ -46,9 +46,9 @@ class TaskScenarioSeederTest {
                     )
             )));
 
-            assertEquals("submitter-key", requests.get(0).headers().get("X-mass-api-key"));
+            assertEquals("task-api-key", requests.get(0).headers().get("X-mass-api-key"));
             assertEquals("/api/v1/tasks", requests.get(0).path());
-            assertEquals("submitter-key", requests.get(1).headers().get("X-mass-api-key"));
+            assertEquals("task-api-key", requests.get(1).headers().get("X-mass-api-key"));
             assertEquals("/api/v1/tasks/task-001/items", requests.get(1).path());
             assertEquals(2, requests.size());
             assertEquals(1, seededTasks.size());
@@ -63,7 +63,7 @@ class TaskScenarioSeederTest {
         try (RecordingServer server = RecordingServer.start(requests)) {
             ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
                     "--base-url", server.baseUrl(),
-                    "--task-api-key", "submitter-key"
+                    "--task-api-key", "task-api-key"
             });
             TaskScenarioSeeder seeder = new TaskScenarioSeeder(options, objectMapper,
                     new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper));
@@ -95,7 +95,7 @@ class TaskScenarioSeederTest {
         try (RecordingServer server = RecordingServer.start(requests)) {
             ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
                     "--base-url", server.baseUrl(),
-                    "--task-api-key", "submitter-key"
+                    "--task-api-key", "task-api-key"
             });
             TaskScenarioSeeder seeder = new TaskScenarioSeeder(options, objectMapper,
                     new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper));

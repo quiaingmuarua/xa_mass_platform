@@ -1,6 +1,7 @@
 package com.xa.mass.server.bootstrap.seed;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
 import com.xa.mass.api.auth.operator.OperatorCredentialStore;
 import com.xa.mass.storage.api.CatalogMetadataStore;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -22,6 +23,7 @@ public class ControlPlaneSeedImportConfiguration {
     @ConditionalOnProperty(prefix = "mass.control-plane.seed", name = "enabled", havingValue = "true")
     public CommandLineRunner controlPlaneEarlySeedImportRunner(MassSdkApplication app,
                                                                CatalogMetadataStore catalogMetadataStore,
+                                                               ApiKeyCredentialService apiKeyCredentialService,
                                                                OperatorCredentialStore operatorCredentialStore,
                                                                ObjectMapper objectMapper,
                                                                ResourceLoader resourceLoader,
@@ -42,6 +44,7 @@ public class ControlPlaneSeedImportConfiguration {
             new ControlPlaneSeedImporter(
                     app,
                     catalogMetadataStore,
+                    apiKeyCredentialService,
                     operatorCredentialStore,
                     objectMapper,
                     resourceLoader)
@@ -59,6 +62,7 @@ public class ControlPlaneSeedImportConfiguration {
     @ConditionalOnProperty(prefix = "mass.control-plane.seed", name = "enabled", havingValue = "true")
     public CommandLineRunner controlPlaneRuleSeedImportRunner(MassSdkApplication app,
                                                               CatalogMetadataStore catalogMetadataStore,
+                                                              ApiKeyCredentialService apiKeyCredentialService,
                                                               OperatorCredentialStore operatorCredentialStore,
                                                               ObjectMapper objectMapper,
                                                               ResourceLoader resourceLoader,
@@ -72,6 +76,7 @@ public class ControlPlaneSeedImportConfiguration {
             new ControlPlaneSeedImporter(
                     app,
                     catalogMetadataStore,
+                    apiKeyCredentialService,
                     operatorCredentialStore,
                     objectMapper,
                     resourceLoader)

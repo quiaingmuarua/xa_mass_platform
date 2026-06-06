@@ -14,7 +14,7 @@ engine, worker-pack, or transport ownership.
 ## Current Scope
 
 - reads the existing scenario JSON files under `integrations/samples/dev/scenario`
-- assumes catalog, rules, and submitter credentials already exist through
+- assumes catalog, rules, and API-key credentials already exist through
   explicit server seed/import or test fixtures
 - worker launcher registers WorkerGroups, AdapterNodes, NodeGroupBindings, and Workers through
   public worker APIs via `xa-mass-java-sdk`
@@ -42,7 +42,7 @@ Options:
 
 - `--base-url`: server HTTP base URL. Default: `MASS_BASE_URL` or `http://127.0.0.1:8088`
 - `--websocket-url`: optional server WebSocket URL for realtime launcher workers. Default: `MASS_WEBSOCKET_URL`
-- `--task-api-key`: default task API key. Default: `MASS_TASK_SUBMITTER_KEY` or `crawler-submitter-key`
+- `--task-api-key`: default task API key. Default: `MASS_TASK_API_KEY` or `crawler-task-api-key`
 - `--worker-api-key`: optional worker API key override. Default: each worker spec's `workerKey`
 - `--scenario-dir`: scenario JSON directory. Default: `integrations/samples/dev/scenario`
 - `--max-polling-workers`: maximum polling workers to start in worker launcher. Default: `25`; `0` disables the cap
@@ -59,4 +59,4 @@ Options:
   flow.
 - task lifecycle commands such as seal/approve are operator/server-console
   behavior. The task launcher deliberately does not send `/commands` requests
-  with submitter API-key credentials.
+  with task API-key credentials.

@@ -219,7 +219,7 @@ Producer traffic uses shell create plus explicit ingest:
 ```bash
 curl -X POST http://127.0.0.1:8088/api/v1/tasks \
   -H 'Content-Type: application/json' \
-  -H 'X-Mass-Api-Key: crawler-submitter-key' \
+  -H 'X-Mass-Api-Key: crawler-task-api-key' \
   -d '{
     "project": "crawlerApp",
     "userId": "crawler-agent",
@@ -233,7 +233,7 @@ curl -X POST http://127.0.0.1:8088/api/v1/tasks \
 
 curl -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}/items \
   -H 'Content-Type: application/json' \
-  -H 'X-Mass-Api-Key: crawler-submitter-key' \
+  -H 'X-Mass-Api-Key: crawler-task-api-key' \
   -d '{
     "eventCode": "crawler.fetch-page",
     "items": [

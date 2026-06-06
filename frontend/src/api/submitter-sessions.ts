@@ -10,7 +10,7 @@ export async function createSubmitterViewerSession(
     sourceApiKey: string,
 ): Promise<SubmitterViewerSessionCreateResponse> {
     return requestApiData<SubmitterViewerSessionCreateResponse>(
-        '/api/v1/submitter-sessions',
+        '/api/v1/api-key-viewer-sessions',
         {
             method: 'POST',
             submitterCredential: sourceApiKey,
@@ -23,7 +23,7 @@ export async function getCurrentSubmitterViewerSession(
     sessionCredential: string,
 ): Promise<SubmitterViewerSessionView> {
     return requestApiData<SubmitterViewerSessionView>(
-        '/api/v1/submitter-sessions/me',
+        '/api/v1/api-key-viewer-sessions/me',
         {
             submitterCredential: sessionCredential,
             includeOperatorAuth: false,
@@ -35,7 +35,7 @@ export async function logoutSubmitterViewerSession(
     sessionCredential: string,
 ): Promise<SubmitterViewerSessionView> {
     return requestApiData<SubmitterViewerSessionView>(
-        '/api/v1/submitter-sessions:logout',
+        '/api/v1/api-key-viewer-sessions:logout',
         {
             method: 'POST',
             submitterCredential: sessionCredential,
@@ -47,7 +47,7 @@ export async function logoutSubmitterViewerSession(
 export async function getSubmitterProfileWithCredential(
     credential: string,
 ): Promise<CurrentSubmitterProfile> {
-    return requestApiData<CurrentSubmitterProfile>('/api/v1/submitters/me', {
+    return requestApiData<CurrentSubmitterProfile>('/api/v1/api-keys:current', {
         submitterCredential: credential,
         includeOperatorAuth: false,
     })
@@ -57,7 +57,7 @@ export async function getSubmitterUsageWithCredential(
     credential: string,
 ): Promise<CurrentSubmitterUsageResponse> {
     return requestApiData<CurrentSubmitterUsageResponse>(
-        '/api/v1/submitters/me/usage',
+        '/api/v1/api-keys:current/usage',
         {
             submitterCredential: credential,
             includeOperatorAuth: false,

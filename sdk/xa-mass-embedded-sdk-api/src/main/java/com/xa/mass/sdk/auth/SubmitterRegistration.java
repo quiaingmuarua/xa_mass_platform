@@ -15,6 +15,7 @@ import java.util.Set;
  * style task submission. It is intentionally lightweight so security policies
  * can evolve without changing the SDK-facing task model.
  */
+@Deprecated(forRemoval = true)
 public final class SubmitterRegistration {
 
     private final String principalId;

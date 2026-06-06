@@ -14,14 +14,14 @@ record ScenarioLauncherOptions(
         boolean help
 ) {
     private static final String DEFAULT_BASE_URL = "http://127.0.0.1:8088";
-    private static final String DEFAULT_TASK_API_KEY = "crawler-submitter-key";
+    private static final String DEFAULT_TASK_API_KEY = "crawler-task-api-key";
     private static final Path DEFAULT_SCENARIO_DIR = Path.of("integrations/samples/dev/scenario");
     private static final int DEFAULT_MAX_POLLING_WORKERS = 25;
 
     static ScenarioLauncherOptions parse(String[] args) {
         String baseUrl = envOrDefault("MASS_BASE_URL", DEFAULT_BASE_URL);
         URI webSocketUrl = optionalUri(System.getenv("MASS_WEBSOCKET_URL"), "MASS_WEBSOCKET_URL");
-        String taskApiKey = envOrDefault("MASS_TASK_SUBMITTER_KEY", DEFAULT_TASK_API_KEY);
+        String taskApiKey = envOrDefault("MASS_TASK_API_KEY", DEFAULT_TASK_API_KEY);
         String workerApiKey = System.getenv("MASS_WORKER_API_KEY");
         Path scenarioDir = DEFAULT_SCENARIO_DIR;
         int maxPollingWorkers = intEnvOrDefault("MASS_SCENARIO_MAX_POLLING_WORKERS", DEFAULT_MAX_POLLING_WORKERS);
@@ -109,7 +109,7 @@ record ScenarioLauncherOptions(
         return """
                   --base-url <url>             Server HTTP base URL. Default: MASS_BASE_URL or http://127.0.0.1:8088
                   --websocket-url <url>        Optional server WebSocket URL for realtime launcher workers. Default: MASS_WEBSOCKET_URL
-                  --task-api-key <key>         Default task API key. Default: MASS_TASK_SUBMITTER_KEY or crawler-submitter-key
+                  --task-api-key <key>         Default task API key. Default: MASS_TASK_API_KEY or crawler-task-api-key
                   --worker-api-key <key>       Optional worker API key override. Default: each worker spec's workerKey
                   --scenario-dir <path>        Scenario JSON directory. Default: integrations/samples/dev/scenario
                   --max-polling-workers <n>    Max polling workers to start in worker launcher. Default: 25. Use 0 for no cap.

@@ -50,7 +50,7 @@ class ApiKeyApplicationControllerTest {
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ApiKeyApplicationController(service),
-                        new CurrentSubmitterController(submitters))
+                        new ApiKeyController(service, submitters))
                 .addInterceptors(interceptor)
                 .build();
     }
@@ -90,7 +90,7 @@ class ApiKeyApplicationControllerTest {
         JsonNode approvedData = objectMapper.readTree(approved.getResponse().getContentAsString()).get("data");
         String rawSecret = approvedData.get("rawSecret").asText();
 
-        mockMvc.perform(get("/api/v1/submitters/me")
+        mockMvc.perform(get("/api/v1/api-keys:current")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, rawSecret))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.principalId").value("approved-crawler-key"))

@@ -68,19 +68,18 @@ class SubmitterViewerSessionControllerTest {
                 new ApiRouteAuthorizationCatalog()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new ApiKeyController(apiKeyCredentialService),
+                        new ApiKeyController(apiKeyCredentialService, submitters, sessionService),
                         new SubmitterViewerSessionController(sessionService),
-                        new CurrentSubmitterController(submitters, apiKeyCredentialService, sessionService),
                         new ApiUsageController(usageLedgerService, submitters, apiKeyCredentialService, sessionService))
                 .addInterceptors(interceptor)
                 .build();
     }
 
     @Test
-    void apiKeyCreatesViewerSessionThatAuthenticatesThroughSubmitterSurface() throws Exception {
+    void apiKeyCreatesViewerSessionThatAuthenticatesThroughApiKeySurface() throws Exception {
         String apiKey = createApiKey();
 
-        MvcResult createdSession = mockMvc.perform(post("/api/v1/submitter-sessions")
+        MvcResult createdSession = mockMvc.perform(post("/api/v1/api-key-viewer-sessions")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, apiKey))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.rawSecret").isString())
@@ -95,12 +94,12 @@ class SubmitterViewerSessionControllerTest {
                 .get("rawSecret")
                 .asText();
 
-        mockMvc.perform(get("/api/v1/submitter-sessions/me")
+        mockMvc.perform(get("/api/v1/api-key-viewer-sessions/me")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, sessionSecret))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.principalId").value("crawler-api-key"));
 
-        mockMvc.perform(get("/api/v1/submitters/me")
+        mockMvc.perform(get("/api/v1/api-keys:current")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, sessionSecret))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.principalId").value("crawler-api-key"))
@@ -116,18 +115,18 @@ class SubmitterViewerSessionControllerTest {
                 "req-001",
                 1
         );
-        mockMvc.perform(get("/api/v1/submitters/me/usage")
+        mockMvc.perform(get("/api/v1/api-keys:current/usage")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, sessionSecret))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.keyId").isString())
                 .andExpect(jsonPath("$.data.items[0].operation").value("TASK_CREATE"));
 
-        mockMvc.perform(post("/api/v1/submitter-sessions:logout")
+        mockMvc.perform(post("/api/v1/api-key-viewer-sessions:logout")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, sessionSecret))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.revokedAt").exists());
 
-        mockMvc.perform(get("/api/v1/submitter-sessions/me")
+        mockMvc.perform(get("/api/v1/api-key-viewer-sessions/me")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, sessionSecret))
                 .andExpect(status().isUnauthorized());
     }
@@ -138,7 +137,7 @@ class SubmitterViewerSessionControllerTest {
         JsonNode keyData = objectMapper.readTree(createdKey.getResponse().getContentAsString()).get("data");
         String apiKey = keyData.get("rawSecret").asText();
         String keyId = keyData.get("credential").get("keyId").asText();
-        MvcResult createdSession = mockMvc.perform(post("/api/v1/submitter-sessions")
+        MvcResult createdSession = mockMvc.perform(post("/api/v1/api-key-viewer-sessions")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, apiKey))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -152,7 +151,7 @@ class SubmitterViewerSessionControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of("reason", "rotated"))))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/submitters/me")
+        mockMvc.perform(get("/api/v1/api-keys:current")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, sessionSecret))
                 .andExpect(status().isUnauthorized());
     }
@@ -160,7 +159,7 @@ class SubmitterViewerSessionControllerTest {
     @Test
     void viewerSessionCannotCreateNestedSession() throws Exception {
         String apiKey = createApiKey();
-        MvcResult createdSession = mockMvc.perform(post("/api/v1/submitter-sessions")
+        MvcResult createdSession = mockMvc.perform(post("/api/v1/api-key-viewer-sessions")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, apiKey))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -169,7 +168,7 @@ class SubmitterViewerSessionControllerTest {
                 .get("rawSecret")
                 .asText();
 
-        mockMvc.perform(post("/api/v1/submitter-sessions")
+        mockMvc.perform(post("/api/v1/api-key-viewer-sessions")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, sessionSecret))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.msg").value("submitter viewer sessions cannot create nested sessions"));
@@ -178,7 +177,7 @@ class SubmitterViewerSessionControllerTest {
     @Test
     void viewerSessionDoesNotAuthenticateAsExternalWorkerCredential() throws Exception {
         String apiKey = createApiKey();
-        MvcResult createdSession = mockMvc.perform(post("/api/v1/submitter-sessions")
+        MvcResult createdSession = mockMvc.perform(post("/api/v1/api-key-viewer-sessions")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, apiKey))
                 .andExpect(status().isCreated())
                 .andReturn();

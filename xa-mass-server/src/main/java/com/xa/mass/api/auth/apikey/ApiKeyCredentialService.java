@@ -6,9 +6,9 @@ import com.xa.mass.api.auth.iam.UserRolePermissionStore;
 import com.xa.mass.api.auth.iam.UserStatus;
 import com.xa.mass.sdk.auth.CredentialHashing;
 import com.xa.mass.sdk.auth.CredentialAuthProjectionWriter;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalType;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
@@ -109,7 +109,8 @@ public class ApiKeyCredentialService {
                 reviewedBy,
                 expiresAt,
                 application.attributes(),
-                application.applicationId()
+                application.applicationId(),
+                null
         ));
         applicationStore.markApproved(applicationId, reviewedBy, reviewReason);
         return created;
@@ -126,9 +127,9 @@ public class ApiKeyCredentialService {
             throw new IllegalArgumentException("principal already has an API key credential: " + normalized.principalId());
         }
         if (credentialProjectionWriter.hasProjectedCredential(normalized.principalId())) {
-            throw new IllegalArgumentException("principal already exists in submitter auth projection: " + normalized.principalId());
+            throw new IllegalArgumentException("principal already exists in credential auth projection: " + normalized.principalId());
         }
-        String rawSecret = generateSecret();
+        String rawSecret = normalized.rawSecret() == null ? generateSecret() : normalized.rawSecret();
         String keyId = "ak_" + UUID.randomUUID();
         String keyPrefix = keyPrefix(rawSecret);
         Instant now = Instant.now();
@@ -170,6 +171,10 @@ public class ApiKeyCredentialService {
 
     public ApiKeyCredentialRecord get(String keyId) {
         return credentialStore.get(keyId);
+    }
+
+    public ApiKeyCredentialRecord getByPrincipalId(String principalId) {
+        return credentialStore.getByPrincipalId(principalId);
     }
 
     public ApiKeyCredentialRecord revoke(String keyId, String revokedBy, String reason) {
@@ -235,7 +240,7 @@ public class ApiKeyCredentialService {
     }
 
     private void projectActiveCredential(ApiKeyCredentialRecord record, String rawSecret) {
-        credentialProjectionWriter.projectCredential(SubmitterRegistration.builder()
+        credentialProjectionWriter.projectCredential(CredentialPrincipalRegistration.builder()
                 .principalId(record.principalId())
                 .principalType(PrincipalType.SERVICE)
                 .credential(rawSecret)
@@ -250,7 +255,7 @@ public class ApiKeyCredentialService {
     }
 
     private void projectDisabledCredential(ApiKeyCredentialRecord record) {
-        credentialProjectionWriter.projectCredential(SubmitterRegistration.builder()
+        credentialProjectionWriter.projectCredential(CredentialPrincipalRegistration.builder()
                 .principalId(record.principalId())
                 .principalType(PrincipalType.SERVICE)
                 .credential("revoked-" + record.keyId() + "-" + UUID.randomUUID())
@@ -286,7 +291,8 @@ public class ApiKeyCredentialService {
                 source.createdBy(),
                 expiresAt,
                 source.attributes() == null ? Map.of() : Map.copyOf(source.attributes()),
-                normalizeOptional(source.applicationId())
+                normalizeOptional(source.applicationId()),
+                normalizeOptional(source.rawSecret())
         );
     }
 
@@ -383,7 +389,8 @@ public class ApiKeyCredentialService {
                                       String createdBy,
                                       Instant expiresAt,
                                       Map<String, String> attributes,
-                                      String applicationId) {
+                                      String applicationId,
+                                      String rawSecret) {
     }
 
     public record CreatedApiKey(ApiKeyCredentialRecord record, String rawSecret) {

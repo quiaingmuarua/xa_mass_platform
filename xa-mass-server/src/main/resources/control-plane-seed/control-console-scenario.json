@@ -112,12 +112,14 @@
       ]
     }
   ],
-  "submitters": [
+  "apiKeys": [
     {
       "principalId": "public-probe-runner",
-      "credential": "public-probe-key",
-      "userId": "public-probe-user",
-      "projectScope": "publicProbe",
+      "devOnly": true,
+      "rawSecret": "public-probe-key",
+      "createdForUserId": "ops-admin",
+      "permissions": ["task:create", "task:edit", "task:view"],
+      "projectScopes": ["publicProbe"],
       "eventScopes": [
         "probe.weather.current",
         "probe.fx.latest",
@@ -132,9 +134,11 @@
     },
     {
       "principalId": "device-probe-runner",
-      "credential": "device-probe-key",
-      "userId": "device-probe-user",
-      "projectScope": "deviceProbe",
+      "devOnly": true,
+      "rawSecret": "device-probe-key",
+      "createdForUserId": "ops-admin",
+      "permissions": ["task:create", "task:edit", "task:view"],
+      "projectScopes": ["deviceProbe"],
       "eventScopes": ["probe.phone.metadata"],
       "attributes": {
         "label": "Device Probe Runner"
@@ -142,9 +146,11 @@
     },
     {
       "principalId": "data-quality-runner",
-      "credential": "data-quality-key",
-      "userId": "data-quality-user",
-      "projectScope": "dataQualityProbe",
+      "devOnly": true,
+      "rawSecret": "data-quality-key",
+      "createdForUserId": "ops-admin",
+      "permissions": ["task:create", "task:edit", "task:view"],
+      "projectScopes": ["dataQualityProbe"],
       "eventScopes": [
         "probe.market.daily-csv",
         "probe.csv.validate",
@@ -156,8 +162,9 @@
     },
     {
       "principalId": "public-probe-reviewer",
-      "credential": "public-probe-reviewer-key",
-      "userId": "public-probe-reviewer",
+      "devOnly": true,
+      "rawSecret": "public-probe-reviewer-key",
+      "createdForUserId": "ops-admin",
       "permissions": ["task:govern"],
       "projectScopes": ["publicProbe", "deviceProbe", "dataQualityProbe"],
       "eventScopes": [
@@ -178,8 +185,9 @@
     },
     {
       "principalId": "public-probe-ops",
-      "credential": "public-probe-ops-key",
-      "userId": "public-probe-ops",
+      "devOnly": true,
+      "rawSecret": "public-probe-ops-key",
+      "createdForUserId": "ops-admin",
       "permissions": ["worker:poll", "task:create", "task:edit", "task:control", "task:govern"],
       "projectScopes": ["publicProbe", "deviceProbe", "dataQualityProbe"],
       "eventScopes": [

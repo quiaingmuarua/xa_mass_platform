@@ -3,6 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.sdk.SubmitterOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.CredentialAuthProjectionWriter;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.InMemorySubmitterRegistry;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterProfile;
@@ -20,8 +21,8 @@ final class InMemorySubmitterOperations implements SubmitterOperations, Credenti
     }
 
     @Override
-    public void projectCredential(SubmitterRegistration submitterRegistration) {
-        registry.projectCredential(submitterRegistration);
+    public void projectCredential(CredentialPrincipalRegistration registration) {
+        registry.projectCredential(registration);
     }
 
     @Override

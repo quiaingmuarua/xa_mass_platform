@@ -583,6 +583,47 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void apiKeyLifecycleDoesNotProjectThroughSubmitterRegistration() throws IOException {
+        String source = Files.readString(
+                SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/auth/apikey/ApiKeyCredentialService.java"),
+                StandardCharsets.UTF_8);
+
+        assertTrue(!source.contains("SubmitterRegistration"),
+                "API-key lifecycle must project credential principals without SubmitterRegistration");
+        assertTrue(source.contains("CredentialPrincipalRegistration"),
+                "API-key lifecycle should use the credential-principal projection payload");
+    }
+
+    @Test
+    void sampleControlPlaneSeedsUseApiKeysNotSubmitters() throws IOException {
+        List<Path> seedFiles = List.of(
+                SERVER_MAIN_SOURCE_ROOT.resolve("../resources/control-plane-seed/control-console-scenario.json")
+                        .normalize(),
+                REPO_ROOT.resolve("integrations/samples/dev/scenario/bootstrap.json")
+        );
+        List<String> violations = new ArrayList<>();
+        for (Path seedFile : seedFiles) {
+            String source = Files.readString(seedFile, StandardCharsets.UTF_8);
+            if (source.contains("\"submitters\"")) {
+                violations.add(seedFile + " still uses submitters seed field");
+            }
+            if (!source.contains("\"apiKeys\"")) {
+                violations.add(seedFile + " does not define apiKeys seed field");
+            }
+            String[] lines = source.split("\\R");
+            for (int index = 0; index < lines.length; index++) {
+                if (lines[index].contains("\"rawSecret\"")
+                        && (index == 0 || !lines[index - 1].contains("\"devOnly\": true"))) {
+                    violations.add(seedFile + " rawSecret is missing adjacent devOnly=true marker near line " + (index + 1));
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "sample control-plane seeds must use API-key seed shape:\n" + String.join("\n", violations));
+    }
+
+    @Test
     void serverApiIamUsageSchemaDoesNotMoveToPlatformInfraMigrations() throws IOException {
         List<String> violations = new ArrayList<>();
         Path platformMigrations = REPO_ROOT.resolve(

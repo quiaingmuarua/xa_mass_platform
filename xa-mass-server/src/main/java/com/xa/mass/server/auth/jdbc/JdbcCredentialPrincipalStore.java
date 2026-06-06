@@ -3,16 +3,12 @@ package com.xa.mass.server.auth.jdbc;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.sdk.auth.CredentialHashing;
-import com.xa.mass.sdk.auth.CredentialAuthProjectionWriter;
+import com.xa.mass.sdk.auth.CredentialPrincipalProfile;
 import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
-import com.xa.mass.sdk.auth.AuthProvider;
-import com.xa.mass.sdk.auth.InMemorySubmitterRegistry;
+import com.xa.mass.sdk.auth.CredentialPrincipalStore;
+import com.xa.mass.sdk.auth.InMemoryCredentialPrincipalStore;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.PrincipalDirectory;
 import com.xa.mass.sdk.auth.PrincipalType;
-import com.xa.mass.sdk.auth.SubmitterProfile;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.auth.SubmitterRegistry;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
 
 import javax.sql.DataSource;
@@ -22,90 +18,73 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Server-side JDBC persistence for submitter/auth principal truth.
- *
- * <p>Auth contracts stay owned by the SDK surface; this class is only a host-side
- * persistence adapter and intentionally does not live under platform_infra.
+ * Server-side JDBC persistence for credential-principal auth truth.
  */
-public final class JdbcSubmitterRegistry
-        implements SubmitterRegistry, CredentialAuthProjectionWriter, AuthProvider, PrincipalDirectory {
+public final class JdbcCredentialPrincipalStore implements CredentialPrincipalStore {
 
     private final DataSource dataSource;
     private final JdbcStorageMode mode;
     private final ObjectMapper mapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    private final InMemorySubmitterRegistry runtimeProjection = new InMemorySubmitterRegistry();
+    private final InMemoryCredentialPrincipalStore runtimeProjection = new InMemoryCredentialPrincipalStore();
     private boolean loadedFromDb;
 
-    public JdbcSubmitterRegistry(DataSource dataSource, JdbcStorageMode mode) {
+    public JdbcCredentialPrincipalStore(DataSource dataSource, JdbcStorageMode mode) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.mode = Objects.requireNonNull(mode, "mode");
         if (!mode.isJdbc()) {
-            throw new IllegalArgumentException("JdbcSubmitterRegistry requires a JDBC storage mode");
+            throw new IllegalArgumentException("JdbcCredentialPrincipalStore requires a JDBC storage mode");
         }
     }
 
     @Override
-    public synchronized void register(SubmitterRegistration submitterRegistration) {
-        SubmitterRegistration registration = Objects.requireNonNull(submitterRegistration, "submitterRegistration");
+    public synchronized void registerCredentialPrincipal(CredentialPrincipalRegistration registration) {
+        CredentialPrincipalRegistration normalized = Objects.requireNonNull(registration, "registration");
         ensureLoaded();
-        String credentialHash = CredentialHashing.sha256(registration.getCredential());
+        String credentialHash = CredentialHashing.sha256(normalized.getCredential());
         String existingPrincipalId = findPrincipalIdByCredentialHash(credentialHash);
-        if (existingPrincipalId != null && !existingPrincipalId.equals(registration.getPrincipalId())) {
-            throw new IllegalArgumentException("credential is already assigned to another submitter");
+        if (existingPrincipalId != null && !existingPrincipalId.equals(normalized.getPrincipalId())) {
+            throw new IllegalArgumentException("credential is already assigned to another principal");
         }
-        SubmitterProfile profile = registration.toProfile();
-        String profileJson = json(StoredSubmitterDocument.from(profile));
+        CredentialPrincipalProfile profile = normalized.toProfile();
+        String profileJson = json(StoredCredentialPrincipalDocument.from(profile));
         try (var conn = dataSource.getConnection(); var ps = conn.prepareStatement(principalUpsertSql())) {
-            ps.setString(1, registration.getPrincipalId());
-            ps.setString(2, registration.getPrincipalType().name());
+            ps.setString(1, normalized.getPrincipalId());
+            ps.setString(2, normalized.getPrincipalType().name());
             ps.setString(3, credentialHash);
-            ps.setString(4, registration.getKeyPrefix());
-            ps.setString(5, registration.getUserId());
-            ps.setString(6, registration.getProjectScope());
-            ps.setBoolean(7, registration.isEnabled());
+            ps.setString(4, normalized.getKeyPrefix());
+            ps.setString(5, normalized.getUserId());
+            ps.setString(6, normalized.getProjectScope());
+            ps.setBoolean(7, normalized.isEnabled());
             ps.setString(8, profileJson);
             ps.executeUpdate();
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to save submitter " + registration.getPrincipalId(), e);
+            throw new IllegalStateException("Failed to save credential principal " + normalized.getPrincipalId(), e);
         }
-        runtimeProjection.register(registration);
+        runtimeProjection.registerCredentialPrincipal(normalized);
     }
 
     @Override
     public void projectCredential(CredentialPrincipalRegistration registration) {
-        CredentialPrincipalRegistration normalized = Objects.requireNonNull(registration, "registration");
-        register(SubmitterRegistration.builder()
-                .principalId(normalized.getPrincipalId())
-                .principalType(normalized.getPrincipalType())
-                .credential(normalized.getCredential())
-                .keyPrefix(normalized.getKeyPrefix())
-                .userId(normalized.getUserId())
-                .projectScope(normalized.getProjectScope())
-                .permissions(normalized.getPermissions())
-                .projectScopes(normalized.getProjectScopes())
-                .eventScopes(normalized.getEventScopes())
-                .enabled(normalized.isEnabled())
-                .attributes(normalized.getAttributes())
-                .build());
+        registerCredentialPrincipal(registration);
     }
 
     @Override
     public synchronized boolean hasProjectedCredential(String principalId) {
         ensureLoaded();
-        return runtimeProjection.getSubmitter(principalId) != null;
+        return runtimeProjection.getCredentialPrincipal(principalId) != null;
     }
 
     @Override
-    public synchronized List<SubmitterProfile> listSubmitters() {
+    public synchronized List<CredentialPrincipalProfile> listCredentialPrincipals() {
         ensureLoaded();
-        return runtimeProjection.listSubmitters();
+        return runtimeProjection.listCredentialPrincipals();
     }
 
     @Override
-    public synchronized SubmitterProfile getSubmitter(String principalId) {
+    public synchronized CredentialPrincipalProfile getCredentialPrincipal(String principalId) {
         ensureLoaded();
-        return runtimeProjection.getSubmitter(principalId);
+        return runtimeProjection.getCredentialPrincipal(principalId);
     }
 
     @Override
@@ -137,7 +116,10 @@ public final class JdbcSubmitterRegistry
             List<StoredPrincipalRecord> result = new ArrayList<>();
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    SubmitterProfile profile = readJson(rs.getString("json"), StoredSubmitterDocument.class).toProfile();
+                    CredentialPrincipalProfile profile = readJson(
+                            rs.getString("json"),
+                            StoredCredentialPrincipalDocument.class
+                    ).toProfile();
                     result.add(new StoredPrincipalRecord(
                             rs.getString("principal_id"),
                             rs.getString("credential_hash"),
@@ -147,7 +129,7 @@ public final class JdbcSubmitterRegistry
             }
             return result;
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to load submitters from JDBC storage", e);
+            throw new IllegalStateException("Failed to load credential principals from JDBC storage", e);
         }
     }
 
@@ -194,7 +176,7 @@ public final class JdbcSubmitterRegistry
                       enabled = excluded.enabled,
                       json = excluded.json
                     """;
-            case MEMORY -> throw new IllegalStateException("memory mode does not use JDBC submitter persistence");
+            case MEMORY -> throw new IllegalStateException("memory mode does not use JDBC credential-principal persistence");
         };
     }
 
@@ -202,7 +184,7 @@ public final class JdbcSubmitterRegistry
         try {
             return mapper.writeValueAsString(value);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to serialize submitter profile", e);
+            throw new IllegalStateException("Failed to serialize credential principal profile", e);
         }
     }
 
@@ -210,13 +192,16 @@ public final class JdbcSubmitterRegistry
         try {
             return mapper.readValue(json, type);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to deserialize submitter profile: " + type.getSimpleName(), e);
+            throw new IllegalStateException("Failed to deserialize credential principal profile: " + type.getSimpleName(), e);
         }
     }
 
-    private record StoredPrincipalRecord(String principalId, String credentialHash, SubmitterProfile profile) {}
+    private record StoredPrincipalRecord(String principalId,
+                                         String credentialHash,
+                                         CredentialPrincipalProfile profile) {
+    }
 
-    private static final class StoredSubmitterDocument {
+    private static final class StoredCredentialPrincipalDocument {
         public String principalId;
         public String principalType;
         public String keyPrefix;
@@ -228,8 +213,8 @@ public final class JdbcSubmitterRegistry
         public boolean enabled;
         public java.util.Map<String, String> attributes;
 
-        static StoredSubmitterDocument from(SubmitterProfile profile) {
-            StoredSubmitterDocument document = new StoredSubmitterDocument();
+        static StoredCredentialPrincipalDocument from(CredentialPrincipalProfile profile) {
+            StoredCredentialPrincipalDocument document = new StoredCredentialPrincipalDocument();
             document.principalId = profile.getPrincipalId();
             document.principalType = profile.getPrincipalType().name();
             document.keyPrefix = profile.getKeyPrefix();
@@ -243,8 +228,8 @@ public final class JdbcSubmitterRegistry
             return document;
         }
 
-        SubmitterProfile toProfile() {
-            return SubmitterProfile.builder()
+        CredentialPrincipalProfile toProfile() {
+            return CredentialPrincipalProfile.builder()
                     .principalId(principalId)
                     .principalType(principalType == null ? null : PrincipalType.valueOf(principalType))
                     .keyPrefix(keyPrefix)

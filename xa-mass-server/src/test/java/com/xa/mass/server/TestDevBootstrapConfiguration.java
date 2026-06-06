@@ -9,7 +9,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
@@ -166,14 +166,14 @@ public class TestDevBootstrapConfiguration {
     @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-submitters", havingValue = "true", matchIfMissing = true)
     public CommandLineRunner testSubmitterBootstrapRunner(MassSdkApplication app) {
         return args -> {
-            app.registerSubmitter(SubmitterRegistration.builder()
+            app.projectCredential(CredentialPrincipalRegistration.builder()
                     .principalId("crawler-submitter")
-                    .credential("crawler-submitter-key")
+                    .credential("crawler-task-api-key")
                     .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
                     .projectScopes(List.of("crawlerApp"))
                     .eventScopes(List.of("crawler.fetch-page", "stock.quote.fetch"))
                     .build());
-            app.registerSubmitter(SubmitterRegistration.builder()
+            app.projectCredential(CredentialPrincipalRegistration.builder()
                     .principalId("node-worker-api-001")
                     .credential("node-worker-key")
                     .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
@@ -181,7 +181,7 @@ public class TestDevBootstrapConfiguration {
                     .eventScopes(List.of("crawler.fetch-page"))
                     .attributes(Map.of("workerId", "node-worker-api-001"))
                     .build());
-            app.registerSubmitter(SubmitterRegistration.builder()
+            app.projectCredential(CredentialPrincipalRegistration.builder()
                     .principalId("node-worker-realtime-001")
                     .credential("node-worker-realtime-key")
                     .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
@@ -189,7 +189,7 @@ public class TestDevBootstrapConfiguration {
                     .eventScopes(List.of("crawler.fetch-page"))
                     .attributes(Map.of("workerId", "node-worker-realtime-001"))
                     .build());
-            app.registerSubmitter(SubmitterRegistration.builder()
+            app.projectCredential(CredentialPrincipalRegistration.builder()
                     .principalId("stock-ws-worker-001")
                     .credential("stock-ws-worker-key")
                     .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))

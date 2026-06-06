@@ -89,7 +89,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     private final MassApplication delegate;
     private final ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry;
-    private final SubmitterRegistry submitterRegistry;
+    private final CredentialPrincipalStore credentialPrincipalStore;
     private final CredentialAuthProjectionWriter credentialProjectionWriter;
     private final AuthProvider authProvider;
     private final PrincipalDirectory principalDirectory;
@@ -103,32 +103,29 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private final RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     MassSdkApplication(MassApplication delegate) {
-        this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), new InMemorySubmitterRegistry());
+        this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), new InMemoryCredentialPrincipalStore());
     }
 
     MassSdkApplication(MassApplication delegate, ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry) {
-        this(delegate, bootstrapProjectCatalogRegistry, new InMemorySubmitterRegistry());
+        this(delegate, bootstrapProjectCatalogRegistry, new InMemoryCredentialPrincipalStore());
     }
 
-    MassSdkApplication(MassApplication delegate, SubmitterRegistry submitterRegistry) {
-        this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), submitterRegistry);
+    MassSdkApplication(MassApplication delegate, CredentialPrincipalStore credentialPrincipalStore) {
+        this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), credentialPrincipalStore);
     }
 
     MassSdkApplication(MassApplication delegate,
                        ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry,
-                       SubmitterRegistry submitterRegistry) {
+                       CredentialPrincipalStore credentialPrincipalStore) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.bootstrapProjectCatalogRegistry = Objects.requireNonNull(
                 bootstrapProjectCatalogRegistry,
                 "bootstrapProjectCatalogRegistry"
         );
-        this.submitterRegistry = Objects.requireNonNull(submitterRegistry, "submitterRegistry");
-        this.credentialProjectionWriter = requireSubmitterCapability(
-                submitterRegistry,
-                CredentialAuthProjectionWriter.class
-        );
-        this.authProvider = requireSubmitterCapability(submitterRegistry, AuthProvider.class);
-        this.principalDirectory = requireSubmitterCapability(submitterRegistry, PrincipalDirectory.class);
+        this.credentialPrincipalStore = Objects.requireNonNull(credentialPrincipalStore, "credentialPrincipalStore");
+        this.credentialProjectionWriter = credentialPrincipalStore;
+        this.authProvider = credentialPrincipalStore;
+        this.principalDirectory = credentialPrincipalStore;
         this.eventRuntime = delegate.getEventRuntime() != null ? delegate.getEventRuntime() : new InMemoryMassEventRuntime();
         this.eventDefinitionRegistry = new EventDefinitionRegistry();
         this.eventHandlerCache = new LinkedHashMap<>();
@@ -824,12 +821,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public void registerSubmitter(SubmitterRegistration submitterRegistration) {
-        submitterRegistry.register(submitterRegistration);
+        credentialPrincipalStore.registerCredentialPrincipal(toCredentialPrincipalRegistration(submitterRegistration));
     }
 
     @Override
-    public void projectCredential(SubmitterRegistration submitterRegistration) {
-        credentialProjectionWriter.projectCredential(submitterRegistration);
+    public void projectCredential(CredentialPrincipalRegistration registration) {
+        credentialProjectionWriter.projectCredential(registration);
     }
 
     @Override
@@ -839,12 +836,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<SubmitterProfile> listSubmitters() {
-        return submitterRegistry.listSubmitters();
+        return credentialPrincipalStore.listCredentialPrincipals().stream()
+                .map(MassSdkApplication::toSubmitterProfile)
+                .toList();
     }
 
     @Override
     public SubmitterProfile getSubmitter(String principalId) {
-        return submitterRegistry.getSubmitter(principalId);
+        return toSubmitterProfile(credentialPrincipalStore.getCredentialPrincipal(principalId));
     }
 
     @Override
@@ -862,11 +861,39 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return authenticateSubmitter(credential);
     }
 
-    private static <T> T requireSubmitterCapability(SubmitterRegistry submitterRegistry, Class<T> type) {
-        if (type.isInstance(submitterRegistry)) {
-            return type.cast(submitterRegistry);
+    private static CredentialPrincipalRegistration toCredentialPrincipalRegistration(SubmitterRegistration registration) {
+        Objects.requireNonNull(registration, "registration");
+        return CredentialPrincipalRegistration.builder()
+                .principalId(registration.getPrincipalId())
+                .principalType(registration.getPrincipalType())
+                .credential(registration.getCredential())
+                .keyPrefix(registration.getKeyPrefix())
+                .userId(registration.getUserId())
+                .projectScope(registration.getProjectScope())
+                .permissions(registration.getPermissions())
+                .projectScopes(registration.getProjectScopes())
+                .eventScopes(registration.getEventScopes())
+                .enabled(registration.isEnabled())
+                .attributes(registration.getAttributes())
+                .build();
+    }
+
+    private static SubmitterProfile toSubmitterProfile(CredentialPrincipalProfile profile) {
+        if (profile == null) {
+            return null;
         }
-        throw new IllegalArgumentException("submitterRegistry must implement " + type.getSimpleName());
+        return SubmitterProfile.builder()
+                .principalId(profile.getPrincipalId())
+                .principalType(profile.getPrincipalType())
+                .keyPrefix(profile.getKeyPrefix())
+                .userId(profile.getUserId())
+                .projectScope(profile.getProjectScope())
+                .permissions(profile.getPermissions())
+                .projectScopes(profile.getProjectScopes())
+                .eventScopes(profile.getEventScopes())
+                .enabled(profile.isEnabled())
+                .attributes(profile.getAttributes())
+                .build();
     }
 
     @Override

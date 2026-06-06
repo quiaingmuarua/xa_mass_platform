@@ -348,16 +348,23 @@ Scope:
 2. Use that API key to:
    - create task
    - append task items
-   - seal/approve where allowed
    - read owned task
    - read results
-3. Prove denial for:
+3. Keep task lifecycle commands outside the task API-key proof:
+   - `SEAL`
+   - `APPROVE`
+   - `PAUSE`
+   - `RESUME`
+   - `TERMINATE`
+4. Prove lifecycle commands through the existing operator/server-control path,
+   not through task API keys.
+5. Prove denial for:
    - out-of-project task create
    - out-of-event append
    - task owned by another principal
    - missing permission
-4. Prefer API-key lifecycle tests over submitter tests.
-5. If C2 is not merged first, M1 tests must create API keys through the server
+6. Prefer API-key lifecycle tests over submitter tests.
+7. If C2 is not merged first, M1 tests must create API keys through the server
    lifecycle endpoint instead of relying on seed.
 
 Acceptance:
@@ -365,6 +372,9 @@ Acceptance:
 1. Main server E2E task credential proof uses API-key lifecycle.
 2. Submitter registry is not required for mainline task API proof.
 3. Failure messages still identify authorization reason clearly.
+4. Task API-key proof does not call `/api/v1/tasks/{taskId}/commands`.
+5. Operator/server-control proof still covers `SEAL` / `APPROVE` task
+   lifecycle commands.
 
 ### SAK-M2: SDK API-Key Resource Surface
 
@@ -456,13 +466,17 @@ Scope:
    - default key values must correspond to the new `apiKeys` sample seed
 3. Java scenario launcher task and worker launchers remain startable after seed
    migration:
-   - task launcher can create/append/seal tasks using sample task API keys
+   - task launcher can create tasks, append items, and read results using sample
+     task API keys
    - worker launcher can register topology and start worker sessions using
      sample worker API keys
 4. Node launcher uses API-key seed/registration path.
-5. Server E2E helper names use API-key terminology.
-6. SDK README examples use API-key operations.
-7. Tests that only existed to preserve submitter compatibility are deleted or
+5. Node launcher must stop issuing task lifecycle commands with task API keys.
+   If a sample still needs `SEAL` / `APPROVE`, it must use an operator/server
+   control path and document that boundary explicitly.
+6. Server E2E helper names use API-key terminology.
+7. SDK README examples use API-key operations.
+8. Tests that only existed to preserve submitter compatibility are deleted or
    rewritten as API-key tests.
 
 Acceptance:
@@ -474,7 +488,10 @@ Acceptance:
    launcher help output no longer mentions submitter vocabulary.
 5. Scenario launcher tests prove `MASS_TASK_API_KEY` is the task default env
    name and `MASS_TASK_SUBMITTER_KEY` is not required.
-6. Test count does not grow by duplicating old and new credential paths.
+6. Scenario launcher task tests prove task API keys do not call
+   `/api/v1/tasks/{taskId}/commands`.
+7. Node sample launcher no longer sends task commands with task API keys.
+8. Test count does not grow by duplicating old and new credential paths.
 
 ### SAK-D1: Delete Server Submitter Endpoint
 
@@ -627,6 +644,8 @@ Server integration tests:
 - out-of-project denied
 - out-of-event denied
 - missing permission denied
+- task API key cannot use task lifecycle command endpoint
+- operator/server-control path still covers task lifecycle commands
 - `/api/v1/api-keys:current` returns current credential principal
 - `/api/v1/api-keys:current/usage` returns current credential usage
 

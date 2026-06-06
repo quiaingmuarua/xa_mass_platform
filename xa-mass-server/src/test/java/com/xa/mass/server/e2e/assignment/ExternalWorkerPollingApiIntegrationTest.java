@@ -98,7 +98,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     void externalWorkerPollingApiCompletesTaskEndToEnd() throws Exception {
         String workerId = "node-worker-api-001";
         String credential = "node-worker-key";
-        String submitterCredential = "crawler-submitter-key";
+        String submitterCredential = "crawler-task-api-key";
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "supportsProject == true"),
                 rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")
@@ -197,7 +197,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     void externalWorkerPollingApiCanAcknowledgeOperatorIssuedCommand() throws Exception {
         String workerId = "node-worker-api-002";
         String credential = "node-worker-ack-key";
-        String submitterCredential = "crawler-submitter-key";
+        String submitterCredential = "crawler-task-api-key";
         registerExternalWorkerSubmitter(
                 "node-worker-ack",
                 credential,
@@ -351,7 +351,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     void drainingStateStopsNewAssignmentsUntilWorkerReportsAvailable() throws Exception {
         String workerId = "node-worker-draining-001";
         String credential = "node-worker-draining-key";
-        String submitterCredential = "crawler-submitter-key";
+        String submitterCredential = "crawler-task-api-key";
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "supportsProject == true"),
                 rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")

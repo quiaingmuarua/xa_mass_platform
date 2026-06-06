@@ -73,8 +73,8 @@ public class ApiUsageController {
         ));
     }
 
-    @GetMapping("/submitters/me/usage")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> listCurrentSubmitterUsage(
+    @GetMapping("/api-keys:current/usage")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> listCurrentApiKeyUsage(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestParam(required = false) String project,
@@ -85,11 +85,11 @@ public class ApiUsageController {
             @RequestParam(required = false) Integer limit) {
         PrincipalContext submitter = authenticateSubmitter(apiKeyHeader, authorizationHeader);
         if (submitter == null) {
-            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing submitter credential"));
+            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing API key credential"));
         }
         String keyId = usageLedgerService.apiKeyId(submitter);
         if (keyId == null) {
-            return ResponseEntity.status(403).body(ApiResponse.error(403, "Current submitter is not an API key principal"));
+            return ResponseEntity.status(403).body(ApiResponse.error(403, "Current credential is not an API key principal"));
         }
         List<ApiUsageLedgerRecord> items = filterUsage(
                 usageLedgerService.listByKeyId(keyId),

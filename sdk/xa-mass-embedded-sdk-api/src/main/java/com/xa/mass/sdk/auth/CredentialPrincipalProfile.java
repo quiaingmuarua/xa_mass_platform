@@ -9,14 +9,9 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Public read model for a registered submitter.
- *
- * <p>Credentials are accepted only on {@link SubmitterRegistration}. Query
- * operations should expose this profile shape so callers do not
- * accidentally leak API keys or service-account tokens.
+ * Public read model for a projected credential principal.
  */
-@Deprecated(forRemoval = true)
-public final class SubmitterProfile {
+public final class CredentialPrincipalProfile {
 
     private final String principalId;
     private final PrincipalType principalType;
@@ -29,7 +24,7 @@ public final class SubmitterProfile {
     private final boolean enabled;
     private final Map<String, String> attributes;
 
-    private SubmitterProfile(Builder builder) {
+    private CredentialPrincipalProfile(Builder builder) {
         this.principalId = requireNonBlank(builder.principalId, "principalId");
         this.principalType = builder.principalType == null ? PrincipalType.SERVICE : builder.principalType;
         this.keyPrefix = blankToNull(builder.keyPrefix);
@@ -46,7 +41,7 @@ public final class SubmitterProfile {
         return new Builder();
     }
 
-    public static SubmitterProfile from(SubmitterRegistration registration) {
+    public static CredentialPrincipalProfile from(CredentialPrincipalRegistration registration) {
         Objects.requireNonNull(registration, "registration");
         return builder()
                 .principalId(registration.getPrincipalId())
@@ -118,7 +113,7 @@ public final class SubmitterProfile {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof SubmitterProfile that)) return false;
+        if (!(o instanceof CredentialPrincipalProfile that)) return false;
         return enabled == that.enabled
                 && Objects.equals(principalId, that.principalId)
                 && principalType == that.principalType
@@ -138,7 +133,7 @@ public final class SubmitterProfile {
 
     @Override
     public String toString() {
-        return "SubmitterProfile{" +
+        return "CredentialPrincipalProfile{" +
                 "principalId='" + principalId + '\'' +
                 ", principalType=" + principalType +
                 ", keyPrefix='" + keyPrefix + '\'' +
@@ -262,8 +257,8 @@ public final class SubmitterProfile {
             return this;
         }
 
-        public SubmitterProfile build() {
-            return new SubmitterProfile(this);
+        public CredentialPrincipalProfile build() {
+            return new CredentialPrincipalProfile(this);
         }
     }
 }

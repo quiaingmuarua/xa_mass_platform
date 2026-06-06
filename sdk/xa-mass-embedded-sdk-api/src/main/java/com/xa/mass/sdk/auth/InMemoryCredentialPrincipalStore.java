@@ -7,55 +7,23 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Minimal in-memory submitter registry used by the SDK facade.
+ * In-memory credential-principal store used by embedded SDK and tests.
  */
-public final class InMemorySubmitterRegistry
-        implements SubmitterRegistry, CredentialAuthProjectionWriter, AuthProvider, PrincipalDirectory {
+public final class InMemoryCredentialPrincipalStore implements CredentialPrincipalStore {
 
     private final Map<String, StoredBinding> byPrincipalId = new LinkedHashMap<>();
     private final Map<String, StoredBinding> byCredentialHash = new LinkedHashMap<>();
 
-    public synchronized void register(SubmitterRegistration submitterRegistration) {
-        SubmitterRegistration registration = Objects.requireNonNull(submitterRegistration, "submitterRegistration");
-        String credentialHash = CredentialHashing.sha256(registration.getCredential());
-        StoredBinding credentialOwner = byCredentialHash.get(credentialHash);
-        if (credentialOwner != null && !credentialOwner.profile().getPrincipalId().equals(registration.getPrincipalId())) {
-            throw new IllegalArgumentException("credential is already assigned to another submitter");
-        }
-        StoredBinding binding = new StoredBinding(
-                registration.toProfile(),
-                registration.toPrincipalContext(),
-                credentialHash
-        );
-        StoredBinding previous = byPrincipalId.put(registration.getPrincipalId(), binding);
-        if (previous != null) {
-            byCredentialHash.remove(previous.credentialHash());
-        }
-        byCredentialHash.put(credentialHash, binding);
-    }
-
     @Override
-    public void projectCredential(CredentialPrincipalRegistration registration) {
+    public synchronized void registerCredentialPrincipal(CredentialPrincipalRegistration registration) {
         CredentialPrincipalRegistration normalized = Objects.requireNonNull(registration, "registration");
         String credentialHash = CredentialHashing.sha256(normalized.getCredential());
         StoredBinding credentialOwner = byCredentialHash.get(credentialHash);
         if (credentialOwner != null && !credentialOwner.profile().getPrincipalId().equals(normalized.getPrincipalId())) {
-            throw new IllegalArgumentException("credential is already assigned to another submitter");
+            throw new IllegalArgumentException("credential is already assigned to another principal");
         }
-        SubmitterProfile profile = SubmitterProfile.builder()
-                .principalId(normalized.getPrincipalId())
-                .principalType(normalized.getPrincipalType())
-                .keyPrefix(normalized.getKeyPrefix())
-                .userId(normalized.getUserId())
-                .projectScope(normalized.getProjectScope())
-                .permissions(normalized.getPermissions())
-                .projectScopes(normalized.getProjectScopes())
-                .eventScopes(normalized.getEventScopes())
-                .enabled(normalized.isEnabled())
-                .attributes(normalized.getAttributes())
-                .build();
         StoredBinding binding = new StoredBinding(
-                profile,
+                normalized.toProfile(),
                 normalized.toPrincipalContext(),
                 credentialHash
         );
@@ -67,16 +35,21 @@ public final class InMemorySubmitterRegistry
     }
 
     @Override
+    public void projectCredential(CredentialPrincipalRegistration registration) {
+        registerCredentialPrincipal(registration);
+    }
+
+    @Override
     public synchronized boolean hasProjectedCredential(String principalId) {
         return byPrincipalId.containsKey(principalId);
     }
 
-    public synchronized void loadDurable(SubmitterProfile profile, String credentialHash) {
-        SubmitterProfile normalizedProfile = Objects.requireNonNull(profile, "profile");
+    public synchronized void loadDurable(CredentialPrincipalProfile profile, String credentialHash) {
+        CredentialPrincipalProfile normalizedProfile = Objects.requireNonNull(profile, "profile");
         String normalizedCredentialHash = Objects.requireNonNull(credentialHash, "credentialHash");
         StoredBinding credentialOwner = byCredentialHash.get(normalizedCredentialHash);
         if (credentialOwner != null && !credentialOwner.profile().getPrincipalId().equals(normalizedProfile.getPrincipalId())) {
-            throw new IllegalArgumentException("credential is already assigned to another submitter");
+            throw new IllegalArgumentException("credential is already assigned to another principal");
         }
         StoredBinding binding = new StoredBinding(
                 normalizedProfile,
@@ -90,14 +63,16 @@ public final class InMemorySubmitterRegistry
         byCredentialHash.put(normalizedCredentialHash, binding);
     }
 
-    public synchronized List<SubmitterProfile> listSubmitters() {
+    @Override
+    public synchronized List<CredentialPrincipalProfile> listCredentialPrincipals() {
         return byPrincipalId.values().stream()
                 .map(StoredBinding::profile)
-                .sorted(Comparator.comparing(SubmitterProfile::getPrincipalId, Comparator.nullsLast(String::compareTo)))
+                .sorted(Comparator.comparing(CredentialPrincipalProfile::getPrincipalId, Comparator.nullsLast(String::compareTo)))
                 .toList();
     }
 
-    public synchronized SubmitterProfile getSubmitter(String principalId) {
+    @Override
+    public synchronized CredentialPrincipalProfile getCredentialPrincipal(String principalId) {
         StoredBinding binding = byPrincipalId.get(principalId);
         return binding != null ? binding.profile() : null;
     }
@@ -120,7 +95,7 @@ public final class InMemorySubmitterRegistry
         return binding.principalContext();
     }
 
-    private record StoredBinding(SubmitterProfile profile,
+    private record StoredBinding(CredentialPrincipalProfile profile,
                                  PrincipalContext principalContext,
                                  String credentialHash) {
     }

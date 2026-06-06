@@ -45,6 +45,7 @@ class ScenarioLauncherOptionsTest {
     void parsesDefaultRuntimeOptions() {
         ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{});
 
+        assertEquals("crawler-task-api-key", options.taskApiKey());
         assertEquals(25, options.maxPollingWorkers());
     }
 

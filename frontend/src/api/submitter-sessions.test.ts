@@ -56,11 +56,11 @@ describe('submitter viewer session API client', () => {
         await logoutSubmitterViewerSession('mass_sess_secret')
 
         expect(fetchMock.mock.calls.map(([input]) => input)).toEqual([
-            '/backend/api/v1/submitter-sessions',
-            '/backend/api/v1/submitter-sessions/me',
-            '/backend/api/v1/submitters/me',
-            '/backend/api/v1/submitters/me/usage',
-            '/backend/api/v1/submitter-sessions:logout',
+            '/backend/api/v1/api-key-viewer-sessions',
+            '/backend/api/v1/api-key-viewer-sessions/me',
+            '/backend/api/v1/api-keys:current',
+            '/backend/api/v1/api-keys:current/usage',
+            '/backend/api/v1/api-key-viewer-sessions:logout',
         ])
         for (const [, init] of fetchMock.mock.calls) {
             expect(init.headers).toMatchObject({

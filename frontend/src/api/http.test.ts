@@ -177,12 +177,12 @@ describe('http API helpers', () => {
         )
         vi.stubGlobal('fetch', fetchMock)
 
-        await requestApiData('/api/v1/submitters/me', {
+        await requestApiData('/api/v1/api-keys:current', {
             submitterCredential: 'mass_sess_secret',
         })
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/v1/submitters/me',
+            '/backend/api/v1/api-keys:current',
             expect.objectContaining({
                 credentials: 'omit',
                 headers: expect.objectContaining({

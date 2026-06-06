@@ -24,7 +24,7 @@ function jsonResponseWithStatus(body: unknown, status: number): Response {
 
 function discoveryFetch(submitterResponse: Response): (input: string) => Promise<Response> {
     return (input: string) => {
-        if (input.includes('/api/v1/submitters/me')) {
+        if (input.includes('/api/v1/api-keys:current')) {
             return Promise.resolve(submitterResponse)
         }
         if (input.includes('/api/v1/catalog/event-capabilities')) {
@@ -377,7 +377,7 @@ describe('RuntimeDiscoveryPage', () => {
         vi.stubGlobal(
             'fetch',
             vi.fn((input: string) => {
-                if (input.includes('/api/v1/submitters/me')) {
+                if (input.includes('/api/v1/api-keys:current')) {
                     return Promise.resolve(
                         jsonResponseWithStatus(
                             {

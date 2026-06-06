@@ -130,6 +130,7 @@ class JdbcApiKeyLifecycleStoreTest {
                 "ops-admin",
                 Instant.now().plusSeconds(3600),
                 Map.of("lane", "crawler"),
+                null,
                 null
         );
     }
@@ -167,7 +168,7 @@ class JdbcApiKeyLifecycleStoreTest {
 
     private static final class FailingProjectionWriter implements CredentialAuthProjectionWriter {
         @Override
-        public void projectCredential(com.xa.mass.sdk.auth.SubmitterRegistration submitterRegistration) {
+        public void projectCredential(com.xa.mass.sdk.auth.CredentialPrincipalRegistration registration) {
             throw new IllegalStateException("projection unavailable");
         }
 

@@ -9,17 +9,17 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Public read model for a registered submitter.
+ * Credential-principal projection payload.
  *
- * <p>Credentials are accepted only on {@link SubmitterRegistration}. Query
- * operations should expose this profile shape so callers do not
- * accidentally leak API keys or service-account tokens.
+ * <p>This is the non-submitter runtime auth projection shape used by API-key
+ * lifecycle owners. It contains the raw credential only for projection writes;
+ * read surfaces must use {@link CredentialPrincipalProfile}.
  */
-@Deprecated(forRemoval = true)
-public final class SubmitterProfile {
+public final class CredentialPrincipalRegistration {
 
     private final String principalId;
     private final PrincipalType principalType;
+    private final String credential;
     private final String keyPrefix;
     private final String userId;
     private final String projectScope;
@@ -29,15 +29,23 @@ public final class SubmitterProfile {
     private final boolean enabled;
     private final Map<String, String> attributes;
 
-    private SubmitterProfile(Builder builder) {
+    private CredentialPrincipalRegistration(Builder builder) {
         this.principalId = requireNonBlank(builder.principalId, "principalId");
         this.principalType = builder.principalType == null ? PrincipalType.SERVICE : builder.principalType;
-        this.keyPrefix = blankToNull(builder.keyPrefix);
+        this.credential = requireNonBlank(builder.credential, "credential");
+        this.keyPrefix = blankToNull(builder.keyPrefix) != null
+                ? blankToNull(builder.keyPrefix)
+                : defaultKeyPrefix(this.credential);
         this.userId = blankToNull(builder.userId);
         this.projectScope = blankToNull(builder.projectScope);
-        this.permissions = immutableStringList(builder.permissions);
-        this.projectScopes = immutableStringList(builder.projectScopes);
-        this.eventScopes = immutableStringList(builder.eventScopes);
+        this.permissions = immutableStringList(builder.permissions, List.of(PrincipalContext.TASK_CREATE_PERMISSION));
+        this.projectScopes = immutableStringList(
+                !builder.projectScopes.isEmpty()
+                        ? builder.projectScopes
+                        : (this.projectScope == null ? List.of() : List.of(this.projectScope)),
+                List.of()
+        );
+        this.eventScopes = immutableStringList(builder.eventScopes, List.of());
         this.enabled = builder.enabled;
         this.attributes = immutableAttributes(builder.attributes);
     }
@@ -46,28 +54,16 @@ public final class SubmitterProfile {
         return new Builder();
     }
 
-    public static SubmitterProfile from(SubmitterRegistration registration) {
-        Objects.requireNonNull(registration, "registration");
-        return builder()
-                .principalId(registration.getPrincipalId())
-                .principalType(registration.getPrincipalType())
-                .keyPrefix(registration.getKeyPrefix())
-                .userId(registration.getUserId())
-                .projectScope(registration.getProjectScope())
-                .permissions(registration.getPermissions())
-                .projectScopes(registration.getProjectScopes())
-                .eventScopes(registration.getEventScopes())
-                .enabled(registration.isEnabled())
-                .attributes(registration.getAttributes())
-                .build();
-    }
-
     public String getPrincipalId() {
         return principalId;
     }
 
     public PrincipalType getPrincipalType() {
         return principalType;
+    }
+
+    public String getCredential() {
+        return credential;
     }
 
     public String getKeyPrefix() {
@@ -103,25 +99,30 @@ public final class SubmitterProfile {
     }
 
     public PrincipalContext toPrincipalContext() {
-        return PrincipalContext.builder()
-                .principalId(principalId)
-                .principalType(principalType)
-                .userId(userId)
-                .projectScope(projectScope)
-                .permissions(permissions)
-                .projectScopes(projectScopes)
-                .eventScopes(eventScopes)
-                .attributes(attributes)
-                .build();
+        return new PrincipalContext(
+                principalId,
+                principalType,
+                userId,
+                projectScope,
+                permissions,
+                projectScopes,
+                eventScopes,
+                attributes
+        );
+    }
+
+    public CredentialPrincipalProfile toProfile() {
+        return CredentialPrincipalProfile.from(this);
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof SubmitterProfile that)) return false;
+        if (!(o instanceof CredentialPrincipalRegistration that)) return false;
         return enabled == that.enabled
                 && Objects.equals(principalId, that.principalId)
                 && principalType == that.principalType
+                && Objects.equals(credential, that.credential)
                 && Objects.equals(keyPrefix, that.keyPrefix)
                 && Objects.equals(userId, that.userId)
                 && Objects.equals(projectScope, that.projectScope)
@@ -133,12 +134,12 @@ public final class SubmitterProfile {
 
     @Override
     public int hashCode() {
-        return Objects.hash(principalId, principalType, keyPrefix, userId, projectScope, permissions, projectScopes, eventScopes, enabled, attributes);
+        return Objects.hash(principalId, principalType, credential, keyPrefix, userId, projectScope, permissions, projectScopes, eventScopes, enabled, attributes);
     }
 
     @Override
     public String toString() {
-        return "SubmitterProfile{" +
+        return "CredentialPrincipalRegistration{" +
                 "principalId='" + principalId + '\'' +
                 ", principalType=" + principalType +
                 ", keyPrefix='" + keyPrefix + '\'' +
@@ -181,12 +182,13 @@ public final class SubmitterProfile {
         return normalized.isEmpty() ? Collections.emptyMap() : Collections.unmodifiableMap(normalized);
     }
 
-    private static List<String> immutableStringList(List<String> values) {
-        if (values == null || values.isEmpty()) {
+    private static List<String> immutableStringList(List<String> values, List<String> defaultValues) {
+        List<String> source = values == null || values.isEmpty() ? defaultValues : values;
+        if (source == null || source.isEmpty()) {
             return Collections.emptyList();
         }
         Set<String> normalized = new LinkedHashSet<>();
-        for (String value : values) {
+        for (String value : source) {
             String normalizedValue = blankToNull(value);
             if (normalizedValue != null) {
                 normalized.add(normalizedValue);
@@ -197,9 +199,15 @@ public final class SubmitterProfile {
                 : Collections.unmodifiableList(List.copyOf(normalized));
     }
 
+    private static String defaultKeyPrefix(String credential) {
+        String normalized = requireNonBlank(credential, "credential");
+        return normalized.substring(0, Math.min(8, normalized.length())) + "...";
+    }
+
     public static final class Builder {
         private String principalId;
         private PrincipalType principalType = PrincipalType.SERVICE;
+        private String credential;
         private String keyPrefix;
         private String userId;
         private String projectScope;
@@ -219,6 +227,11 @@ public final class SubmitterProfile {
 
         public Builder principalType(PrincipalType principalType) {
             this.principalType = principalType;
+            return this;
+        }
+
+        public Builder credential(String credential) {
+            this.credential = credential;
             return this;
         }
 
@@ -262,8 +275,8 @@ public final class SubmitterProfile {
             return this;
         }
 
-        public SubmitterProfile build() {
-            return new SubmitterProfile(this);
+        public CredentialPrincipalRegistration build() {
+            return new CredentialPrincipalRegistration(this);
         }
     }
 }
