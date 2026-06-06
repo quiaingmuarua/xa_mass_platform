@@ -203,11 +203,6 @@ through server-owned seed/import or the normal host setup, then run the Java SDK
 launcher. The launcher does not own server metadata preparation; it proves
 SDK-backed WorkerGroup, AdapterNode, Worker, task, and worker-session paths.
 
-For real external-registration proof, prepare catalog, rules, and API keys
-through server-owned seed/import or the normal host setup, then run the Java SDK
-launcher. The launcher does not own server metadata preparation; it proves
-SDK-backed WorkerGroup, AdapterNode, Worker, task, and worker-session paths.
-
 For a CLI-only public-contract smoke against an already running dev server, use:
 
 ```bash

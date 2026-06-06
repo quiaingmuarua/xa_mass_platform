@@ -130,6 +130,40 @@ Current worker-state contract note:
   expired `DRAIN` command outcomes and resumes only after a later
   `report-state(AVAILABLE)`
 
+## Observability
+
+- active logging configuration is `src/main/resources/logback.xml`; there is no
+  alternate active JSON logback file
+- normal application logs write to `logs/xa-mass-platform.log`
+- error-level application logs also write to `logs/xa-mass-platform-error.log`
+- API failure events write to `logs/xa-mass-server-api-failure.log` through the
+  dedicated `com.xa.mass.api.observability.ServerApiFailureLogger`
+- rolling file appenders use size-and-time retention with `maxHistory` and
+  `totalSizeCap`; local log directories are runtime output, not repository
+  truth
+- `SERVER_API_FAILURE` is a server-owned triage lane for final 4xx/5xx
+  responses under `/api/v1/**`, `/internal/v1/**`, and `/worker-api/v1/**`
+- failure logging is final-status based so direct controller
+  `ResponseEntity.status(...).body(ApiResponse.error(...))` paths are captured,
+  not only exceptions
+- failure events include bounded fields such as method, sanitized path, status,
+  failure class, duration, trace id, principal type/id when already resolved,
+  origin surface, route authorization class, and required permission
+- failure logging must not read or log request bodies, raw query strings,
+  `Authorization`, API keys, bearer tokens, cookies, or CSRF tokens; safe
+  messages are sanitized independently from response messages
+- request trace id lifecycle is owned by `RequestMdcCleanupFilter`, which stores
+  the trace id as a request attribute before final failure logging and then
+  clears MDC at request exit
+- endpoint success rate, status, and latency use Spring Boot Actuator's
+  `http.server.requests` metric; the first-pass contract does not add
+  hand-rolled endpoint counters, timers, Prometheus registry, or high-cardinality
+  tags such as task id, principal id, trace id, raw URL, or query string
+- `dev` exposes `/actuator/health` and `/actuator/metrics`; inspect endpoint
+  aggregates with `/actuator/metrics/http.server.requests`
+- `prod` exposes `/actuator/health` only by default; broader metrics export is a
+  later operator-deployment decision, not enabled implicitly
+
 ## Port Model
 
 The default dev shell uses one HTTP port plus adapter-specific transport ports:

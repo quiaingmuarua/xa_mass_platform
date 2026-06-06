@@ -1,6 +1,6 @@
 # Server API Observability Roadmap
 
-Status: proposed convergence roadmap.
+Status: implemented mainline.
 
 This roadmap makes product-readiness API behavior easy to diagnose without
 adding heavyweight observability infrastructure. It combines two lightweight
@@ -30,15 +30,15 @@ Read with:
 ## Current Code Observations
 
 - `xa-mass-server/src/main/resources/logback.xml` is the active default
-  Logback configuration. It writes JSON logs to stdout and a single
-  `logs/xa-mass-platform.log` rolling file.
-- `logback.xml` has `maxHistory=30`, but no `totalSizeCap`, no clean startup
-  validation of log retention properties, and no separate active level/error
-  appender.
-- `xa-mass-server/src/main/resources/logback-json.xml` contains separate
-  `ERROR_FILE` and `BUSINESS_FILE` appenders, but no `logging.config` or
-  `logback-spring.xml` evidence shows it is the active runtime config. Treat it
-  as residue/reference until proven otherwise.
+  Logback configuration. It writes JSON logs to stdout, normal application logs
+  to `logs/xa-mass-platform.log`, error-level logs to
+  `logs/xa-mass-platform-error.log`, and server API failure events to
+  `logs/xa-mass-server-api-failure.log`.
+- Active rolling file appenders use `SizeAndTimeBasedRollingPolicy` with
+  `maxHistory` and `totalSizeCap`.
+- The inactive `xa-mass-server/src/main/resources/logback-json.xml` residue was
+  removed during this roadmap execution so future sessions do not edit the
+  wrong config.
 - `xa-mass-server/pom.xml` already includes `spring-boot-starter-actuator`.
   Current resource search did not find explicit Prometheus registry dependency
   or `management.endpoints.web.exposure.include` configuration.
@@ -46,14 +46,13 @@ Read with:
   endpoint aggregate metrics. Do not hand-roll request counters in SQLite or
   controller code before proving the built-in metrics are insufficient.
 - `RequestMdcCleanupFilter` currently populates `httpMethod`, `httpPath`, and
-  `traceId` in MDC for each HTTP request.
+  `traceId` in MDC for each HTTP request and stores `traceId` as a request
+  attribute for final-status failure logging.
 - `ApiLogInterceptor.preHandle(...)` logs a normal request-start line for every
   API request. It does not log completion status, duration, authenticated
   principal, route authorization category, or failure class.
-- `ApiLogInterceptor.afterCompletion(...)` currently calls `MDC.clear()`.
-  That is fine for today's start-only logging, but it conflicts with a
-  filter-finally completion/failure logger unless `traceId` is also stored on
-  the request or MDC cleanup is owned by one filter.
+- MDC cleanup is owned by `RequestMdcCleanupFilter`; `ApiLogInterceptor` does
+  not clear MDC.
 - `GlobalExceptionHandler` converts common exceptions into `ApiResponse`
   envelopes. It logs only unhandled 500 exceptions; normal 400/401/403/405/409
   responses are not emitted to a dedicated diagnostics lane.
@@ -161,6 +160,11 @@ logs/xa-mass-server-api-failure.log
 The server API failure lane should receive 4xx and 5xx request-failure events
 emitted by a dedicated server logger. It should not be populated by every WARN
 or ERROR from unrelated engine/runtime classes.
+
+The dedicated logger/appender lane must exist before the failure emitter is
+turned on. Do not land a slice where `SERVER_API_FAILURE` events are emitted
+but can only route through the default root appender unless the slice explicitly
+records that as a temporary validation-only state.
 
 Retention baseline:
 
@@ -295,6 +299,21 @@ Scope:
   - unknown/unsupported route
 - Decide the first-pass `originSurface` rules without requiring frontend code
   changes.
+- Produce a route + auth-context mapping table for `originSurface`. First-pass
+  rules should cover at least:
+  - `/worker-api/v1/**` -> `worker-api`
+  - operator/session principal on console routes -> `console`
+  - submitter viewer session -> `submitter-viewer`
+  - API-key task-producer calls -> `sdk`
+  - missing or ambiguous context -> `unknown`
+- Decide the `traceId` lifecycle strategy. Preferred decision:
+  `RequestMdcCleanupFilter` creates the `traceId`, stores it as a request
+  attribute, owns MDC cleanup, and `ApiLogInterceptor.afterCompletion(...)`
+  stops clearing MDC.
+- Decide profile exposure for Actuator metrics:
+  - local/dev should expose `/actuator/metrics/http.server.requests`
+  - prod-like profiles must not expose broad actuator endpoints unless the
+    profile explicitly opts in, ideally through a separate management surface
 - Decide the AOB-2 capture strategy:
   - preferred: a post-chain `OncePerRequestFilter` logs in-scope final 4xx/5xx
     responses and reads request attributes written by auth/exception/guard
@@ -320,6 +339,11 @@ Acceptance:
   `SERVER_API_FAILURE`.
 - Inventory records whether final-status filter coverage is used. If not, it
   lists every direct controller-local error path that must emit explicitly.
+- Inventory records the first-pass `originSurface` route + auth-context mapping
+  table.
+- Inventory records the chosen `traceId` lifecycle strategy and the owner of
+  MDC cleanup.
+- Inventory records the local/dev and prod-like Actuator exposure policy.
 - Inventory records forbidden fields that must not appear in the failure log.
 - Inventory records the `safeMessage` sanitizer rules and examples.
 - Inventory records metric tag allowlist/denylist.
@@ -343,6 +367,9 @@ lightest built-in path.
 Scope:
 
 - Enable the minimum safe Actuator metrics endpoints for local/dev inspection.
+- Implement the AOB-0 profile exposure decision. Prod-like profiles must either
+  keep broad actuator endpoints closed or expose only the explicitly approved
+  management endpoint set.
 - Confirm `http.server.requests` records route-template `uri`, method, status,
   and outcome tags.
 - If Prometheus is chosen in AOB-0, add `micrometer-registry-prometheus` and
@@ -357,6 +384,8 @@ Acceptance:
 
 - `/actuator/metrics/http.server.requests` is available in intended local/dev
   mode.
+- Prod-like actuator exposure matches the AOB-0 decision; broad actuator
+  endpoints are not exposed by default.
 - Metric tags do not include task id, worker id, command id, principal id,
   trace id, raw URL, raw query string, or request body fields.
 - Prod-like exposure is explicit and does not accidentally publish broad
@@ -376,14 +405,17 @@ surface that should be updated if metrics tag or actuator exposure rules need a
 source-level guard. If exact test names differ after AOB-0, update the command
 with real focused tests instead of using `-Dsurefire.failIfNoSpecifiedTests=false`.
 
-## AOB-2 Request Failure Event Emitter
+## AOB-2 Failure Logger Lane And Event Emitter
 
-Goal: add a single server-owned request-failure event emitter that catches
-in-scope final 4xx/5xx responses without requiring every controller to remember
-to log.
+Goal: create the dedicated failure logger lane and add a single server-owned
+request-failure event emitter that catches in-scope final 4xx/5xx responses
+without requiring every controller to remember to log.
 
 Scope:
 
+- Add the minimum active Logback logger/appender routing needed for
+  `SERVER_API_FAILURE` events to avoid a slice where the emitter only writes to
+  the default appender. Full retention/error appender cleanup remains AOB-3.
 - Add a small server API observability component, for example
   `ServerApiFailureLogger`.
 - Add a post-chain `OncePerRequestFilter` unless AOB-0 proves another central
@@ -395,9 +427,10 @@ Scope:
 - Final-status fallback must still log direct controller-local
   `ApiResponse.error(...)` responses even when no detailed request attributes
   were set.
-- Preserve `traceId` by storing it in a request attribute before the chain and
-  by removing `ApiLogInterceptor.afterCompletion(...)` MDC cleanup or otherwise
-  proving the completion filter can still read the same trace id.
+- Implement the AOB-0 `traceId` lifecycle decision. Preferred path:
+  `RequestMdcCleanupFilter` stores `traceId` on the request, remains the single
+  MDC cleanup owner, and `ApiLogInterceptor.afterCompletion(...)` no longer
+  clears MDC.
 - Add a dedicated `safeMessage` sanitizer. It may map known exceptions and
   validation failures to bounded messages, but must not copy raw parser output,
   headers, tokens, request body content, or arbitrary query values directly
@@ -412,6 +445,8 @@ Acceptance:
 
 - 401/403 permission failures from `ApiAuthInterceptor` produce exactly one
   `SERVER_API_FAILURE` event.
+- The `SERVER_API_FAILURE` logger is routed to a dedicated appender in the
+  active Logback config before events are emitted.
 - Direct controller-local `ResponseEntity.status(...).body(ApiResponse.error(...))`
   responses in in-scope routes produce a `SERVER_API_FAILURE` event through
   final-status fallback.
@@ -427,20 +462,22 @@ Acceptance:
 Verification:
 
 ```powershell
-./mvnw -pl xa-mass-server -am "-Dtest=ServerApiFailureLoggingFilterTest,ApiAuthInterceptorTest,GlobalExceptionHandlerTest,ApiRequestSizeGuardFilterTest" test
+./mvnw -pl xa-mass-server -am "-Dtest=ServerApiFailureLoggingFilterTest,ServerLoggingConfigurationTest,ApiAuthInterceptorTest,GlobalExceptionHandlerTest,ApiRequestSizeGuardFilterTest" test
 ```
 
 `ServerApiFailureLoggingFilterTest` is a must-add or must-update proof in this
 slice. `ApiAuthInterceptorTest` is an existing proof surface to update.
 `GlobalExceptionHandlerTest` and `ApiRequestSizeGuardFilterTest` are must-add
-proofs unless AOB-0 identifies existing equivalent focused tests. If exact
-existing test names differ after AOB-0, update the command with real focused
-tests instead of using `-Dsurefire.failIfNoSpecifiedTests=false`.
+proofs unless AOB-0 identifies existing equivalent focused tests.
+`ServerLoggingConfigurationTest` starts in this slice as the proof that the
+dedicated logger lane is active; AOB-3 extends it for retention and error-file
+coverage. If exact existing test names differ after AOB-0, update the command
+with real focused tests instead of using `-Dsurefire.failIfNoSpecifiedTests=false`.
 
-## AOB-3 Active Logback File Split And Retention
+## AOB-3 Active Logback Retention And Error File Split
 
-Goal: make the active server logging config produce bounded normal, error, and
-server API failure files.
+Goal: finish the active server logging config so normal, error, and server API
+failure files are bounded and proven.
 
 Scope:
 
@@ -449,10 +486,10 @@ Scope:
   `SizeAndTimeBasedRollingPolicy`.
 - Add `totalSizeCap` to all rolling file appenders.
 - Add `ERROR_FILE` appender for `ERROR` level server logs.
-- Add `SERVER_API_FAILURE_FILE` appender routed only from the dedicated
-  failure logger.
-- Decide whether to remove, merge, or archive `logback-json.xml` residue after
-  the active config owns the behavior.
+- Verify or complete the `SERVER_API_FAILURE_FILE` appender introduced in
+  AOB-2 so it is routed only from the dedicated failure logger.
+- Remove inactive `logback-json.xml` residue after the active config owns the
+  behavior.
 
 Acceptance:
 
@@ -463,7 +500,11 @@ Acceptance:
 - All rolling file appenders have max file size, max history, and total size
   cap.
 - Active config has no deprecated `SizeAndTimeBasedFNATP`.
-- Startup/runtime proof confirms the active config is loaded.
+- Inactive `logback-json.xml` is removed so there is one editable server
+  logging config.
+- Startup/runtime proof confirms the active config is loaded by inspecting the
+  running Logback `LoggerContext` and the actual logger/appender wiring. XML
+  string checks alone are not sufficient.
 
 Verification:
 
@@ -473,8 +514,10 @@ rg -n "SizeAndTimeBasedFNATP|totalSizeCap|xa-mass-server-api-failure|SERVER_API_
 ```
 
 `ServerLoggingConfigurationTest` is a must-add or must-update proof in this
-slice. It must verify the active Logback config, not only the presence of XML
-strings in an inactive resource.
+slice. It must verify the active Logback config by reading the runtime Logback
+`LoggerContext`, checking that the `SERVER_API_FAILURE` logger has the expected
+dedicated appender, and confirming the retention/error-file appender wiring. It
+must not rely only on XML string checks or file existence checks.
 
 ## AOB-4 End-To-End Metrics And Log Proof
 
@@ -488,7 +531,9 @@ Scope:
   - forbidden operator route
   - bad JSON request
   - unsupported method
-- Capture log output with a test appender or temporary log directory.
+- Capture failure output by attaching a Logback `ListAppender` to the
+  `SERVER_API_FAILURE` logger. File routing is proven by AOB-3; AOB-4 should
+  prove event emission and fields without stdout noise.
 - Assert JSON fields exist and forbidden fields do not exist.
 - Assert endpoint metrics include route-template/count/status evidence for the
   same request class, without high-cardinality labels.
@@ -500,17 +545,21 @@ Acceptance:
   `SERVER_API_FAILURE`.
 - Test proves a successful API request does not write to the dedicated failure
   lane.
+- Test proves the dedicated `ListAppender` receives only the expected
+  `SERVER_API_FAILURE` events for the selected failure scenarios.
 - Test proves `traceId`, method, path, status, and failure class are present.
 - Test proves headers/body secrets are absent.
 
 Verification:
 
 ```powershell
-./mvnw -pl xa-mass-server -am "-Dtest=ServerApiFailureLoggingIntegrationTest,ServerEndpointMetricsConfigurationTest,ServerLoggingConfigurationTest" test
+./mvnw -pl xa-mass-server -am "-Dtest=ServerApiFailureLoggingIntegrationTest,ServerEndpointMetricsConfigurationTest,ServerEndpointMetricsIntegrationTest,ServerLoggingConfigurationTest" test
 ```
 
 `ServerApiFailureLoggingIntegrationTest` is a must-add or must-update proof in
-this slice. `ServerEndpointMetricsConfigurationTest` and
+this slice. `ServerEndpointMetricsIntegrationTest` is a must-add proof that
+successful and failed API requests appear in `http.server.requests`.
+`ServerEndpointMetricsConfigurationTest` and
 `ServerLoggingConfigurationTest` should already exist from AOB-1 and AOB-3 by
 the time this slice runs.
 
@@ -550,7 +599,7 @@ Acceptance:
 Verification:
 
 ```powershell
-./mvnw -pl xa-mass-server -am "-Dtest=ServerMainSourceArchitectureGuardTest,ServerLoggingConfigurationTest,ServerEndpointMetricsConfigurationTest,ServerApiFailureLoggingIntegrationTest" test
+./mvnw -pl xa-mass-server -am "-Dtest=ServerMainSourceArchitectureGuardTest,ServerLoggingConfigurationTest,ServerEndpointMetricsConfigurationTest,ServerEndpointMetricsIntegrationTest,ServerApiFailureLoggingIntegrationTest" test
 rg -n "logback-json|SizeAndTimeBasedFNATP|Authorization|Cookie|CSRF|request body|SERVER_API_FAILURE|MeterRegistry|Timer|Counter|http.server.requests" xa-mass-server/src/main/resources xa-mass-server/src/main/java xa-mass-server/src/test/java xa-mass-server/README.md doc/FRONTEND_BACKEND_CONTRACT.md
 git diff --check
 ```
@@ -564,8 +613,8 @@ updated by earlier slices; do not run this command with
 
 1. AOB-0 inventory, failure classification, and metrics baseline.
 2. AOB-1 endpoint metrics exposure.
-3. AOB-2 request failure event emitter.
-4. AOB-3 active Logback split and retention.
+3. AOB-2 failure logger lane and request failure event emitter.
+4. AOB-3 active Logback retention and error file split.
 5. AOB-4 end-to-end metrics and log proof.
 6. AOB-5 docs, guards, and residue scan.
 
@@ -601,5 +650,6 @@ This roadmap can be marked complete only when:
 | SDK or worker API failures are mislabeled as frontend failures | AOB-0 classifies route/auth/caller surfaces before implementation |
 | Duplicate failure events make analysis noisy | Central emitter marks/logs once per request or call site owns exactly one emission |
 | Agents edit inactive `logback-json.xml` | AOB-0/AOB-3 must identify active config and AOB-5 removes or classifies residue |
+| Failure events are emitted before a dedicated appender exists | AOB-2 includes the minimum active logger/appender lane; AOB-3 only completes retention and error-file cleanup |
 | File logs grow unbounded | Every rolling file appender gets `maxHistory` and `totalSizeCap` |
 | Logging becomes trace/audit substitute | Hard rules keep this as operational diagnosis output only |

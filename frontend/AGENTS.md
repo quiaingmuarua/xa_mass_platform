@@ -17,6 +17,23 @@ server DTO shapes, submitter viewer credentials, or frontend mock/real adapter
 alignment. The project is server + SDK first; frontend consumes backend
 contracts and does not define replacement platform truth.
 
+Positioning:
+
+- kernel/core owns correctness, lifecycle semantics, scheduling correctness,
+  and runtime truth boundaries.
+- server owns the reference host, product shell, auth/session/CSRF, API
+  boundary, server-local control-plane resources, API docs exposure, and
+  backend-hosted console assembly.
+- SDK owns the main external edit, integration, and automation surface.
+- frontend owns presentation, observation, validation, and a lightweight
+  operator console.
+
+Frontend work should optimize information architecture, state accuracy,
+mock/backend clarity, auth/session UX closure, meaningful dashboards,
+debuggable task/worker detail pages, mature audit/API-key/user/role surfaces,
+and professional loading/empty/error states. It should not become a broad
+editing console or a generic CRUD admin.
+
 ## Rules
 
 - Add new pages under domain folders in `src/pages`.
@@ -34,6 +51,10 @@ contracts and does not define replacement platform truth.
 - Keep page-level view logic inside page SFCs. Do not introduce schema-driven page DSLs or generic CRUD wrappers.
 - Extract reusable UI into `src/components` only after repetition is clear.
 - Frontend permission checks are UX only. Backend authorization remains the real enforcement boundary.
+- Before adding a frontend capability, decide whether it is presentation,
+  observation, or validation. If it defines new platform behavior, route shape,
+  auth rule, permission, DTO, task/worker truth, or scan-heavy data access, move
+  the decision back to the backend contract, SDK, or kernel owner first.
 - If a page needs data or an action that the backend does not expose, stop and
   define the backend contract requirement first. Do not add frontend-only route
   aliases, permission names, production mock behavior, or inline `fetch`

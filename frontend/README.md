@@ -6,11 +6,18 @@ Lightweight Vue 3 + Vite frontend for the XA Mass worker orchestration platform.
 
 ## Principles
 
+- Observation, validation, and lightweight operator console, not the main edit
+  surface
 - Control-plane UI, not a generic CRUD admin
-- Backend remains the source of truth
+- Backend remains the source of truth for route behavior, auth, DTOs, and
+  runtime/control-plane truth
+- SDK remains the main external edit, integration, and automation surface
 - Permission-aware from day one
 - Route-driven navigation with typed route meta
 - Low-magic structure for future agent sessions
+- Clear information architecture, accurate state presentation, explicit
+  mock/backend mode, meaningful dashboards, useful task/worker debug detail,
+  and professional loading/empty/error states
 
 ## Commands
 

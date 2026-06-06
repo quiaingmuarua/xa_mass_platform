@@ -2,16 +2,20 @@ package com.xa.mass.api.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.api.observability.ServerApiFailureAttributes;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE + 20)
 public class ApiRequestSizeGuardFilter extends OncePerRequestFilter {
 
     private static final long MAX_TASK_SHELL_CREATE_BYTES =
@@ -31,6 +35,11 @@ public class ApiRequestSizeGuardFilter extends OncePerRequestFilter {
         if (maxAllowedBytes != null) {
             long contentLength = request.getContentLengthLong();
             if (contentLength > maxAllowedBytes) {
+                ServerApiFailureAttributes.markFailure(
+                        request,
+                        ServerApiFailureAttributes.PAYLOAD_TOO_LARGE,
+                        "Request body exceeds size limit"
+                );
                 writePayloadTooLarge(response, maxAllowedBytes, contentLength);
                 return;
             }

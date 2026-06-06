@@ -10,6 +10,8 @@ entry and place detailed current/future owner docs under this directory.
 - `baseline/`: current truth documents and executable-owner expectations.
 - `measurements/`: local validation records and measurement context; these are
   evidence notes, not performance guarantees.
+- `notes/`: lightweight observations and brainstorms that are not accepted
+  roadmap scope.
 - `roadmap/`: future or deferred direction that is not current behavior.
 - completed historical plans live outside the active engine read map and should
   be used only for changelog-style audits.
@@ -31,6 +33,10 @@ entry and place detailed current/future owner docs under this directory.
 
 - [MATCH_THROUGHPUT_NOTE.md](measurements/MATCH_THROUGHPUT_NOTE.md)
 
+## Notes
+
+- [ENGINE_MAINLINE_CONVERGENCE_NOTES.md](notes/ENGINE_MAINLINE_CONVERGENCE_NOTES.md)
+
 ## Roadmaps
 
 Active or future direction only. Completed convergence records are archived
@@ -38,6 +44,7 @@ below and must not stay in this list.
 
 - [PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md](roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md)
 - [TASK_RUNTIME_PROFILE_DESIGN.md](roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
+- [TASK_POLICY_PRESET_CONVERGENCE_ROADMAP.md](roadmap/TASK_POLICY_PRESET_CONVERGENCE_ROADMAP.md)
 - [WORKER_MATCH_UPGRADE_ROADMAP.md](roadmap/WORKER_MATCH_UPGRADE_ROADMAP.md)
 - [WORKER_SLOT_REGISTRY_ROADMAP.md](roadmap/WORKER_SLOT_REGISTRY_ROADMAP.md)
 
