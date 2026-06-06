@@ -3,6 +3,9 @@ package com.xa.mass.engine.runtime.scheduling;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
+import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
+
+import java.util.Objects;
 
 /**
  * Resolved task-side scheduling view consumed by engine execution owners.
@@ -32,37 +35,29 @@ public record ResolvedTaskSchedulingPolicy(
 ) {
 
     public ResolvedTaskSchedulingPolicy {
-        taskPolicyPreset = taskPolicyPreset == null || taskPolicyPreset.isBlank() ? "BATCH" : taskPolicyPreset;
-        dispatchCadence = dispatchCadence == null ? DispatchCadence.RUNTIME_READY_POLLING : dispatchCadence;
-        workerResourceMode = workerResourceMode == null ? WorkerResourceMode.EXCLUSIVE : workerResourceMode;
-        idleClosePolicy = idleClosePolicy == null ? IdleClosePolicy.batchAllFinal() : idleClosePolicy;
-        TaskRuntimeProfile profile = new TaskRuntimeProfile(
-                workloadClass == null ? TaskWorkloadClass.BULK : workloadClass,
-                dispatchLane == null ? TaskRuntimeProfile.DispatchLane.BULK : dispatchLane,
-                dispatchPriority == null ? TaskRuntimeProfile.DispatchPriority.NORMAL : dispatchPriority,
-                batchPolicy == null ? TaskRuntimeProfile.BatchPolicy.LARGE : batchPolicy,
-                leaseProfile == null ? TaskRuntimeProfile.LeaseProfile.NORMAL : leaseProfile,
-                backpressureClass == null ? TaskRuntimeProfile.BackpressureClass.BULK : backpressureClass
-        );
-        claimPolicy = claimPolicy == null ? ClaimPolicy.from(profile) : claimPolicy;
-        retryPolicy = retryPolicy == null ? RetryPolicy.from(profile) : retryPolicy;
-        resultFinalityPolicy = resultFinalityPolicy == null
-                ? ResultFinalityPolicy.batch()
-                : resultFinalityPolicy;
-        backpressurePolicy = backpressurePolicy == null ? BackpressurePolicy.from(profile) : backpressurePolicy;
+        taskPolicyPreset = requireText(taskPolicyPreset, "taskPolicyPreset");
+        workloadClass = Objects.requireNonNull(workloadClass, "workloadClass");
+        dispatchLane = Objects.requireNonNull(dispatchLane, "dispatchLane");
+        dispatchPriority = Objects.requireNonNull(dispatchPriority, "dispatchPriority");
+        batchPolicy = Objects.requireNonNull(batchPolicy, "batchPolicy");
+        leaseProfile = Objects.requireNonNull(leaseProfile, "leaseProfile");
+        backpressureClass = Objects.requireNonNull(backpressureClass, "backpressureClass");
+        dispatchCadence = Objects.requireNonNull(dispatchCadence, "dispatchCadence");
+        workerResourceMode = Objects.requireNonNull(workerResourceMode, "workerResourceMode");
+        idleClosePolicy = Objects.requireNonNull(idleClosePolicy, "idleClosePolicy");
+        claimPolicy = Objects.requireNonNull(claimPolicy, "claimPolicy");
+        retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy");
+        resultFinalityPolicy = Objects.requireNonNull(resultFinalityPolicy, "resultFinalityPolicy");
+        backpressurePolicy = Objects.requireNonNull(backpressurePolicy, "backpressurePolicy");
         batchSize = Math.max(1, batchSize);
         defaultMaxRetryCount = Math.max(0, defaultMaxRetryCount);
         minRequiredWorkerCount = Math.max(0, minRequiredWorkerCount);
     }
 
-    public static ResolvedTaskSchedulingPolicy from(Task task, TaskRuntimeProfile profile) {
-        return from(task, TaskPolicyPresetResolution.from(task, profile));
-    }
-
     public static ResolvedTaskSchedulingPolicy from(Task task, TaskPolicyPresetResolution presetResolution) {
         TaskPolicyPresetResolution resolvedPreset = presetResolution != null
                 ? presetResolution
-                : TaskPolicyPresetResolution.from(task, defaultProfile());
+                : TaskPolicyPresetResolution.fromResolved(task, new TaskRuntimeProfileResolver());
         TaskRuntimeProfile resolvedProfile = resolvedPreset.runtimeProfile();
         return new ResolvedTaskSchedulingPolicy(
                 task == null ? null : task.getTid(),
@@ -86,15 +81,11 @@ public record ResolvedTaskSchedulingPolicy(
         );
     }
 
-    private static TaskRuntimeProfile defaultProfile() {
-        return new TaskRuntimeProfile(
-                TaskWorkloadClass.BULK,
-                TaskRuntimeProfile.DispatchLane.BULK,
-                TaskRuntimeProfile.DispatchPriority.NORMAL,
-                TaskRuntimeProfile.BatchPolicy.LARGE,
-                TaskRuntimeProfile.LeaseProfile.NORMAL,
-                TaskRuntimeProfile.BackpressureClass.BULK
-        );
+    private static String requireText(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(name + " is required");
+        }
+        return value;
     }
 
     public enum DispatchCadence {
@@ -128,14 +119,10 @@ public record ResolvedTaskSchedulingPolicy(
             shortLeaseSeconds = Math.max(1L, shortLeaseSeconds);
         }
 
-        public static ClaimPolicy from(TaskRuntimeProfile profile) {
-            return from(profile, defaultInteractivePerWorkerCap(), defaultShortLeaseSeconds());
-        }
-
         public static ClaimPolicy from(TaskRuntimeProfile profile,
                                        int smallPerWorkerCapacityLimit,
                                        long shortLeaseSeconds) {
-            TaskRuntimeProfile resolvedProfile = profile != null ? profile : defaultProfile();
+            TaskRuntimeProfile resolvedProfile = Objects.requireNonNull(profile, "profile");
             return new ClaimPolicy(resolvedProfile.batchPolicy(), resolvedProfile.leaseProfile(),
                     smallPerWorkerCapacityLimit, shortLeaseSeconds);
         }
@@ -152,18 +139,11 @@ public record ResolvedTaskSchedulingPolicy(
             bulkWorkRetryDelayMillis = Math.max(0L, bulkWorkRetryDelayMillis);
         }
 
-        public static RetryPolicy from(TaskRuntimeProfile profile) {
-            return from(profile,
-                    defaultInteractiveAssignmentRetryDelayMillis(),
-                    defaultInteractiveWorkRetryDelayMillis(),
-                    defaultBulkWorkRetryDelayMillis());
-        }
-
         public static RetryPolicy from(TaskRuntimeProfile profile,
                                        long interactiveAssignmentRetryDelayMillis,
                                        long interactiveWorkRetryDelayMillis,
                                        long bulkWorkRetryDelayMillis) {
-            TaskRuntimeProfile resolvedProfile = profile != null ? profile : defaultProfile();
+            TaskRuntimeProfile resolvedProfile = Objects.requireNonNull(profile, "profile");
             return new RetryPolicy(
                     resolvedProfile.workloadClass(),
                     interactiveAssignmentRetryDelayMillis,
@@ -192,45 +172,9 @@ public record ResolvedTaskSchedulingPolicy(
             maxReadyItemsPerTask = maxReadyItemsPerTask <= 0 ? -1 : maxReadyItemsPerTask;
         }
 
-        public static BackpressurePolicy from(TaskRuntimeProfile profile) {
-            TaskRuntimeProfile resolvedProfile = profile != null ? profile : defaultProfile();
-            int maxReadyItemsPerTask = resolvedProfile.backpressureClass() == TaskRuntimeProfile.BackpressureClass.INTERACTIVE
-                    ? defaultInteractiveMaxReadyItemsPerTask()
-                    : defaultBulkMaxReadyItemsPerTask();
-            return from(profile, maxReadyItemsPerTask);
-        }
-
         public static BackpressurePolicy from(TaskRuntimeProfile profile, int maxReadyItemsPerTask) {
-            TaskRuntimeProfile resolvedProfile = profile != null ? profile : defaultProfile();
+            TaskRuntimeProfile resolvedProfile = Objects.requireNonNull(profile, "profile");
             return new BackpressurePolicy(resolvedProfile.backpressureClass(), maxReadyItemsPerTask);
         }
-    }
-
-    private static int defaultInteractivePerWorkerCap() {
-        return Integer.getInteger("xa.mass.engine.interactivePerWorkerClaimLimit", 1);
-    }
-
-    private static long defaultShortLeaseSeconds() {
-        return Long.getLong("xa.mass.engine.interactiveLeaseSeconds", 30L);
-    }
-
-    private static long defaultInteractiveAssignmentRetryDelayMillis() {
-        return Long.getLong("xa.mass.engine.interactiveAssignmentRetryDelayMillis", 100L);
-    }
-
-    private static long defaultInteractiveWorkRetryDelayMillis() {
-        return Long.getLong("xa.mass.engine.interactiveWorkRetryDelayMillis", 100L);
-    }
-
-    private static long defaultBulkWorkRetryDelayMillis() {
-        return Long.getLong("xa.mass.engine.bulkWorkRetryDelayMillis", 0L);
-    }
-
-    private static int defaultInteractiveMaxReadyItemsPerTask() {
-        return Integer.getInteger("xa.mass.engine.interactiveMaxReadyItemsPerTask", 10_000);
-    }
-
-    private static int defaultBulkMaxReadyItemsPerTask() {
-        return Integer.getInteger("xa.mass.engine.bulkMaxReadyItemsPerTask", -1);
     }
 }

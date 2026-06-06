@@ -534,8 +534,8 @@ Useful starting tests:
 - `TaskResultConcurrencyConvergenceTest`
 - `EngineSchedulingCoreArchitectureGuardTest` (support-only residue guard; not
   selected by `EngineSchedulingCoreSuite`)
-- `TaskContractTerminalBehaviorTest`
-- `TaskContractSchedulingBehaviorTest`
+- `TaskIdleClosePolicyBehaviorTest`
+- `TaskPolicySchedulingOutcomeTest`
 - `TaskSchedulingContentionTest`
 - `TaskWorkerEligibilityTest`
 - `TaskRedispatchCompetitionTest`

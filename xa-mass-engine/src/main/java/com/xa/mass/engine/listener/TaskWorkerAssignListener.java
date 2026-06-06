@@ -114,17 +114,19 @@ public class TaskWorkerAssignListener {
                 new DefaultSchedulingPlaneResolver());
     }
 
-    TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
-                             WorkerAdmissionRuntime workerAdmissionRuntime,
-                             WorkerWarmHintRuntime workerWarmHintRuntime,
-                             TaskDispatchBinder dispatchBinder,
-                             TaskAssignmentRuntimePort assignmentRuntime,
-                             TaskAssignmentEventSink assignmentEventSink,
-                             TraceEventLogger traceEventLogger,
-                             AssignmentAllocationPolicy allocationPolicy,
-                             WorkerDispatchResourcePolicy resourcePolicy,
-                             WorkerDispatchResourceReleaser resourceReleaser,
-                             SchedulingPlaneResolver schedulingPlaneResolver) {
+    public TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
+                                    WorkerAdmissionRuntime workerAdmissionRuntime,
+                                    WorkerWarmHintRuntime workerWarmHintRuntime,
+                                    TaskDispatchBinder dispatchBinder,
+                                    TaskAssignmentRuntimePort assignmentRuntime,
+                                    TaskAssignmentEventSink assignmentEventSink,
+                                    TraceEventLogger traceEventLogger,
+                                    AssignmentAllocationPolicy allocationPolicy,
+                                    WorkerDispatchResourcePolicy resourcePolicy,
+                                    WorkerDispatchResourceReleaser resourceReleaser,
+                                    SchedulingPlaneResolver schedulingPlaneResolver) {
+        SchedulingPlaneResolver resolvedSchedulingPlaneResolver =
+                Objects.requireNonNull(schedulingPlaneResolver, "schedulingPlaneResolver");
         this.matchingStrategy = matchingStrategy;
         this.workerAdmissionRuntime = workerAdmissionRuntime;
         this.workerWarmHintRuntime = workerWarmHintRuntime;
@@ -132,12 +134,16 @@ public class TaskWorkerAssignListener {
         this.assignmentRuntime = assignmentRuntime;
         this.assignmentEventSink = assignmentEventSink;
         this.traceEventLogger = traceEventLogger;
-        this.allocationPolicy = allocationPolicy == null ? new DefaultAssignmentAllocationPolicy() : allocationPolicy;
-        this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
+        this.allocationPolicy = allocationPolicy == null
+                ? new DefaultAssignmentAllocationPolicy(null, resolvedSchedulingPlaneResolver)
+                : allocationPolicy;
+        this.resourcePolicy = resourcePolicy == null
+                ? new DefaultWorkerDispatchResourcePolicy(resolvedSchedulingPlaneResolver)
+                : resourcePolicy;
         this.resourceReleaser = resourceReleaser == null
                 ? new WorkerDispatchResourceReleaser(workerAdmissionRuntime, this.resourcePolicy, traceEventLogger)
                 : resourceReleaser;
-        this.schedulingPlaneResolver = Objects.requireNonNull(schedulingPlaneResolver, "schedulingPlaneResolver");
+        this.schedulingPlaneResolver = resolvedSchedulingPlaneResolver;
     }
 
     /**

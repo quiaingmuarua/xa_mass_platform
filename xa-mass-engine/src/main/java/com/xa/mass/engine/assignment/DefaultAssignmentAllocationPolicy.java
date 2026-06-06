@@ -23,8 +23,8 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
         this(workerBudgetPolicy, new DefaultSchedulingPlaneResolver());
     }
 
-    DefaultAssignmentAllocationPolicy(WorkerBudgetPolicy workerBudgetPolicy,
-                                      SchedulingPlaneResolver schedulingPlaneResolver) {
+    public DefaultAssignmentAllocationPolicy(WorkerBudgetPolicy workerBudgetPolicy,
+                                             SchedulingPlaneResolver schedulingPlaneResolver) {
         this.workerBudgetPolicy = workerBudgetPolicy == null ? new DefaultWorkerBudgetPolicy() : workerBudgetPolicy;
         this.schedulingPlaneResolver = schedulingPlaneResolver == null
                 ? new DefaultSchedulingPlaneResolver()

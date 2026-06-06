@@ -18,12 +18,12 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
-import com.xa.mass.engine.policy.TaskPolicyPresetSemantics;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
+import com.xa.mass.engine.runtime.scheduling.TaskPolicyPresetDefinition;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
@@ -589,12 +589,15 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         if (dto != null && dto.getContract() != null) {
             return dto.getContract();
         }
-        return TaskPolicyPresetSemantics.defaultContract(null);
+        return TaskPolicyPresetDefinition.defaultContract(null);
     }
 
     private com.xa.mass.base.enums.task.TaskWorkloadClass resolveWorkloadClass(TaskContract contract,
                                                                                TaskExecutionSpec normalizedSpec) {
-        return TaskPolicyPresetSemantics.defaultWorkloadClassFor(contract, normalizedSpec);
+        if (normalizedSpec != null && normalizedSpec.getWorkloadClass() != null) {
+            return normalizedSpec.getWorkloadClass();
+        }
+        return TaskPolicyPresetDefinition.forContract(contract).defaultRuntimeProfile().workloadClass();
     }
 
     private String normalizeSourceRef(String sourceRef) {
@@ -819,7 +822,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
 
     private String deriveTaskName(TaskShellCreateRequestDto dto, String taskId) {
         String project = dto.getProject() != null ? dto.getProject().trim() : "task";
-        TaskContract contract = TaskPolicyPresetSemantics.defaultContract(dto.getContract());
+        TaskContract contract = TaskPolicyPresetDefinition.defaultContract(dto.getContract());
         String normalizedContract = contract.name().toLowerCase(java.util.Locale.ROOT);
         String profile = dto.getExecutionSpec() != null && dto.getExecutionSpec().getProfile() != null
                 ? dto.getExecutionSpec().getProfile().name().toLowerCase(java.util.Locale.ROOT)

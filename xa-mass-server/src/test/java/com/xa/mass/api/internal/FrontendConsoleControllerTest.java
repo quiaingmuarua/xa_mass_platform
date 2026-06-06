@@ -55,6 +55,11 @@ class FrontendConsoleControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("console-shell")));
+
+        mockMvc.perform(get("/tasks/task-001/"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("console-shell")));
     }
 
     @Test
@@ -65,6 +70,11 @@ class FrontendConsoleControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(new FrontendConsoleController(routingService)).build();
 
         mockMvc.perform(get("/resources/workers/worker-001"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("worker-console-shell")));
+
+        mockMvc.perform(get("/resources/workers/worker-001/"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("worker-console-shell")));
@@ -79,6 +89,7 @@ class FrontendConsoleControllerTest {
         for (String path : java.util.List.of(
                 "/resources/projects",
                 "/resources/projects/demoApp",
+                "/resources/projects/demoApp/",
                 "/runtime/discovery",
                 "/submitter-viewer",
                 "/system/api-keys")) {

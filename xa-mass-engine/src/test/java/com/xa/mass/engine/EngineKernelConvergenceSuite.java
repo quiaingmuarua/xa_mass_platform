@@ -8,7 +8,7 @@ import org.junit.platform.suite.api.Suite;
         EngineKernelConvergenceArchitectureGuardTest.class,
         EngineProofOwnershipGuardTest.class,
         TaskKernelLifecycleTest.class,
-        TaskContractTerminalBehaviorTest.class,
+        TaskIdleClosePolicyBehaviorTest.class,
         TaskResultRuntimeConvergenceTest.class,
         TaskResultConcurrencyConvergenceTest.class,
         TaskRuntimeRecoveryPortTest.class

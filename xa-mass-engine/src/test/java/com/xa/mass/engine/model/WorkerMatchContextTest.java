@@ -1,10 +1,20 @@
 package com.xa.mass.engine.model;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TestWorkerCandidateRows;
+import com.xa.mass.engine.runtime.TaskRuntimeProfile;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.BackpressurePolicy;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.ClaimPolicy;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.DispatchCadence;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.IdleClosePolicy;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.ResultFinalityPolicy;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.RetryPolicy;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.WorkerResourceMode;
 import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
 import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
@@ -218,6 +228,39 @@ public class WorkerMatchContextTest {
     }
 
     @Test
+    void resolvedPolicyEvidenceIsDiagnosticOnly() {
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-policy-evidence");
+        worker.setStatus(WorkerStatus.ONLINE);
+        worker.setWorkerGroupId("pool-a");
+        worker.setSupportedProjects(List.of("demoApp"));
+
+        Task task = new Task();
+        task.setTid("task-policy-evidence");
+        task.setProject("demoApp");
+        task.setSharedConfig(Map.of());
+        task.setStatus(TaskStatus.READY);
+
+        WorkerMatchContext context = new WorkerMatchContext(
+                candidate(worker),
+                task,
+                dispatchIntent(task),
+                policy(task)
+        );
+
+        assertEquals("SESSION", context.getContext().get("resolvedTaskPolicyPreset"));
+        assertEquals("INTERACTIVE", context.getContext().get("resolvedTaskWorkloadClass"));
+        assertEquals("SIGNAL_DRIVEN_DELAYED", context.getContext().get("resolvedDispatchCadence"));
+        assertEquals("CAPACITY", context.getContext().get("resolvedWorkerResourceMode"));
+        assertEquals(false, context.getContext().get("resolvedIdleCloseEnabled"));
+        assertEquals(false, context.getContext().get("resolvedExpiredLeaseFinalizesAsFailure"));
+        assertEquals(100, context.getContext().get("resolvedBackpressureMaxReadyItemsPerTask"));
+        assertFalse(context.getRuleContext().containsKey("resolvedTaskPolicyPreset"));
+        assertFalse(context.getRuleContext().containsKey("resolvedDispatchCadence"));
+        assertFalse(context.getRuleContext().containsKey("resolvedWorkerResourceMode"));
+    }
+
+    @Test
     void workerSchedulingResourceStateComesFromLoadView() {
         Worker worker = new Worker();
         worker.setWorkerId("worker-3");
@@ -326,6 +369,29 @@ public class WorkerMatchContextTest {
                 supportedEventCodes,
                 Map.of(),
                 1
+        );
+    }
+
+    private ResolvedTaskSchedulingPolicy policy(Task task) {
+        return new ResolvedTaskSchedulingPolicy(
+                task.getTid(),
+                "SESSION",
+                TaskWorkloadClass.INTERACTIVE,
+                TaskRuntimeProfile.DispatchLane.INTERACTIVE,
+                TaskRuntimeProfile.DispatchPriority.HIGH,
+                TaskRuntimeProfile.BatchPolicy.SMALL,
+                TaskRuntimeProfile.LeaseProfile.SHORT,
+                TaskRuntimeProfile.BackpressureClass.INTERACTIVE,
+                DispatchCadence.SIGNAL_DRIVEN_DELAYED,
+                WorkerResourceMode.CAPACITY,
+                IdleClosePolicy.disabled(),
+                new ClaimPolicy(TaskRuntimeProfile.BatchPolicy.SMALL, TaskRuntimeProfile.LeaseProfile.SHORT, 1, 30L),
+                new RetryPolicy(TaskWorkloadClass.INTERACTIVE, 100L, 100L, 0L),
+                ResultFinalityPolicy.session(),
+                new BackpressurePolicy(TaskRuntimeProfile.BackpressureClass.INTERACTIVE, 100),
+                1,
+                0,
+                0
         );
     }
 
