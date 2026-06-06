@@ -2,6 +2,7 @@ package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolution;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
@@ -85,28 +86,31 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 candidateEnumerator);
     }
 
-    RuleBasedTaskWorkerMatchingStrategy(MatchingRuleSetProvider ruleSetProvider,
-                                        MatchingRuleEvaluator<Map<String, Object>> ruleEvaluator,
-                                        WorkerCandidateRuntime candidateRuntime,
-                                        WorkerAdmissionRuntime admissionRuntime,
-                                        WorkerSchedulingViewRuntime schedulingViewRuntime,
-                                        AssignmentDiagnosticRecorder recordService,
-                                        TraceEventLogger traceEventLogger,
-                                        SchedulingPlaneResolver schedulingPlaneResolver,
-                                        WorkerCandidateRanker candidateRanker,
-                                        WorkerDispatchResourcePolicy resourcePolicy,
-                                        WorkerSchedulingCandidateEnumerator candidateEnumerator) {
+    public RuleBasedTaskWorkerMatchingStrategy(MatchingRuleSetProvider ruleSetProvider,
+                                               MatchingRuleEvaluator<Map<String, Object>> ruleEvaluator,
+                                               WorkerCandidateRuntime candidateRuntime,
+                                               WorkerAdmissionRuntime admissionRuntime,
+                                               WorkerSchedulingViewRuntime schedulingViewRuntime,
+                                               AssignmentDiagnosticRecorder recordService,
+                                               TraceEventLogger traceEventLogger,
+                                               SchedulingPlaneResolver schedulingPlaneResolver,
+                                               WorkerCandidateRanker candidateRanker,
+                                               WorkerDispatchResourcePolicy resourcePolicy,
+                                               WorkerSchedulingCandidateEnumerator candidateEnumerator) {
         this.ruleSetProvider = Objects.requireNonNull(ruleSetProvider, "ruleSetProvider");
         this.ruleEvaluator = Objects.requireNonNull(ruleEvaluator, "ruleEvaluator");
         this.candidateRuntime = Objects.requireNonNull(candidateRuntime, "candidateRuntime");
         this.admissionRuntime = Objects.requireNonNull(admissionRuntime, "admissionRuntime");
         this.recordService = recordService;
         this.traceEventLogger = traceEventLogger;
-        this.schedulingPlaneResolver = schedulingPlaneResolver == null
+        SchedulingPlaneResolver resolvedSchedulingPlaneResolver = schedulingPlaneResolver == null
                 ? new DefaultSchedulingPlaneResolver()
                 : schedulingPlaneResolver;
+        this.schedulingPlaneResolver = resolvedSchedulingPlaneResolver;
         this.candidateRanker = candidateRanker != null ? candidateRanker : new DefaultWorkerCandidateRanker();
-        this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
+        this.resourcePolicy = resourcePolicy == null
+                ? new DefaultWorkerDispatchResourcePolicy(resolvedSchedulingPlaneResolver)
+                : resourcePolicy;
         WorkerSchedulingViewRuntime schedulingRuntime =
                 Objects.requireNonNull(schedulingViewRuntime, "schedulingViewRuntime");
         this.candidateEnumerator = candidateEnumerator == null
@@ -122,6 +126,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         }
         SchedulingPlaneResolution resolution = schedulingPlaneResolver.resolve(task);
         TaskDispatchIntent dispatchIntent = resolution.dispatchIntent();
+        ResolvedTaskSchedulingPolicy taskSchedulingPolicy = resolution.taskSchedulingPolicy();
         WorkerTaskSelector selector = WorkerTaskSelectorFactory.fromPolicy(resolution.workerSchedulingPolicy());
         WorkerCandidateBatch<WorkerCandidateRow> candidateBatch = candidateRuntime.findWorkerCandidateBatch(
                 selector,
@@ -152,7 +157,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 continue;
             }
 
-            PrefilterDecision prefilterDecision = prefilterCandidate(task, dispatchIntent, candidate);
+            PrefilterDecision prefilterDecision = prefilterCandidate(task, dispatchIntent, taskSchedulingPolicy, candidate);
             if (!prefilterDecision.passed()) {
                 traceEventLogger.workerMatchRejected(task.getTid(), candidate, prefilterDecision.reason(),
                         null, null);
@@ -169,7 +174,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 continue;
             }
 
-            WorkerMatchContext matchContext = new WorkerMatchContext(candidate, task, dispatchIntent);
+            WorkerMatchContext matchContext =
+                    new WorkerMatchContext(candidate, task, dispatchIntent, taskSchedulingPolicy);
 
             if (log.isDebugEnabled()) {
                 log.debug("[Debug] WorkerId={}, workerGroupId={}, status={}, locked={}, supportedProjects={}",
@@ -402,10 +408,16 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
 
     private PrefilterDecision prefilterCandidate(Task task,
                                                 TaskDispatchIntent dispatchIntent,
+                                                ResolvedTaskSchedulingPolicy taskSchedulingPolicy,
                                                 WorkerSchedulingCandidate candidate) {
         WorkerSchedulingView schedulingView = candidate.getSchedulingView();
         WorkerReachabilityState reachability = schedulingView.reachability();
-        Map<String, Object> contextSnapshot = WorkerMatchContext.contextSnapshot(candidate, task, dispatchIntent);
+        Map<String, Object> contextSnapshot = WorkerMatchContext.contextSnapshot(
+                candidate,
+                task,
+                dispatchIntent,
+                taskSchedulingPolicy
+        );
         if (!schedulingView.dispatchEnabled()) {
             return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
                     "worker unavailable", contextSnapshot, false, REJECTION_OWNER_DISPATCH_GATE);

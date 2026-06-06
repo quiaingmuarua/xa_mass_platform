@@ -11,8 +11,9 @@ import com.xa.mass.engine.TaskWorkLifecycleState.MessageStatus;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
-import com.xa.mass.engine.runtime.TaskRuntimeProfile;
-import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.stage.TaskStageEvidenceResult;
@@ -40,7 +41,8 @@ import java.util.Map;
 public final class TraceEventLogger {
 
     private static final Logger LOG = LoggerFactory.getLogger(TraceEventLogger.class);
-    private static final TaskRuntimeProfileResolver TASK_RUNTIME_PROFILE_RESOLVER = new TaskRuntimeProfileResolver();
+    private static final SchedulingPlaneResolver TRACE_SCHEDULING_PLANE_RESOLVER =
+            new DefaultSchedulingPlaneResolver();
 
     private final ExecutionEventSink sink;
 
@@ -1083,14 +1085,32 @@ public final class TraceEventLogger {
         if (task == null) {
             return;
         }
-        TaskRuntimeProfile profile = TASK_RUNTIME_PROFILE_RESOLVER.resolve(task);
-        attrs.put("workloadClass", enumName(task.getExecutionSpec().getWorkloadClass()));
+        ResolvedTaskSchedulingPolicy policy =
+                TRACE_SCHEDULING_PLANE_RESOLVER.resolve(task).taskSchedulingPolicy();
+        attrs.put("taskPolicyPreset", policy.taskPolicyPreset());
+        attrs.put("workloadClass", enumName(policy.workloadClass()));
         attrs.put("foreground", task.getExecutionSpec().isForeground());
-        attrs.put("dispatchLane", enumName(profile.dispatchLane()));
-        attrs.put("dispatchPriority", enumName(profile.dispatchPriority()));
-        attrs.put("batchPolicy", enumName(profile.batchPolicy()));
-        attrs.put("leaseProfile", enumName(profile.leaseProfile()));
-        attrs.put("backpressureClass", enumName(profile.backpressureClass()));
+        attrs.put("dispatchLane", enumName(policy.dispatchLane()));
+        attrs.put("dispatchPriority", enumName(policy.dispatchPriority()));
+        attrs.put("batchPolicy", enumName(policy.batchPolicy()));
+        attrs.put("leaseProfile", enumName(policy.leaseProfile()));
+        attrs.put("backpressureClass", enumName(policy.backpressureClass()));
+        attrs.put("dispatchCadence", enumName(policy.dispatchCadence()));
+        attrs.put("workerResourceMode", enumName(policy.workerResourceMode()));
+        attrs.put("idleCloseEnabled", policy.idleClosePolicy().enabled());
+        attrs.put("idleCloseRequiresSealed", policy.idleClosePolicy().requireIntakeSealed());
+        attrs.put("resultExpiredLeaseRetryFromAnyActiveState",
+                policy.resultFinalityPolicy().retryExpiredLeaseFromAnyActiveState());
+        attrs.put("resultExpiredLeaseFinalizesAsFailure",
+                policy.resultFinalityPolicy().expiredLeaseFinalizesAsFailure());
+        attrs.put("claimSmallPerWorkerCapacityLimit", policy.claimPolicy().smallPerWorkerCapacityLimit());
+        attrs.put("claimShortLeaseSeconds", policy.claimPolicy().shortLeaseSeconds());
+        attrs.put("retryWorkloadClass", enumName(policy.retryPolicy().workloadClass()));
+        attrs.put("interactiveAssignmentRetryDelayMillis",
+                policy.retryPolicy().interactiveAssignmentRetryDelayMillis());
+        attrs.put("interactiveWorkRetryDelayMillis", policy.retryPolicy().interactiveWorkRetryDelayMillis());
+        attrs.put("bulkWorkRetryDelayMillis", policy.retryPolicy().bulkWorkRetryDelayMillis());
+        attrs.put("backpressureMaxReadyItemsPerTask", policy.backpressurePolicy().maxReadyItemsPerTask());
     }
 
     private static Map<String, String> flatten(ExecutionEvent event) {

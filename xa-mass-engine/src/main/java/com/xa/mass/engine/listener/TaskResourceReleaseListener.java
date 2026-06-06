@@ -63,13 +63,13 @@ public class TaskResourceReleaseListener {
         this(leaseMaintenancePort, dispatchWakeupPort, workerAdmissionRuntime, traceEventLogger, refillPolicy, resourcePolicy, null);
     }
 
-    TaskResourceReleaseListener(TaskLeaseMaintenancePort leaseMaintenancePort,
-                                TaskDispatchWakeupPort dispatchWakeupPort,
-                                WorkerAdmissionRuntime workerAdmissionRuntime,
-                                TraceEventLogger traceEventLogger,
-                                AssignmentRefillPolicy refillPolicy,
-                                WorkerDispatchResourcePolicy resourcePolicy,
-                                WorkerDispatchResourceReleaser resourceReleaser) {
+    public TaskResourceReleaseListener(TaskLeaseMaintenancePort leaseMaintenancePort,
+                                       TaskDispatchWakeupPort dispatchWakeupPort,
+                                       WorkerAdmissionRuntime workerAdmissionRuntime,
+                                       TraceEventLogger traceEventLogger,
+                                       AssignmentRefillPolicy refillPolicy,
+                                       WorkerDispatchResourcePolicy resourcePolicy,
+                                       WorkerDispatchResourceReleaser resourceReleaser) {
         this.leaseMaintenancePort = leaseMaintenancePort;
         this.dispatchWakeupPort = dispatchWakeupPort;
         this.workerAdmissionRuntime = workerAdmissionRuntime;
@@ -135,4 +135,3 @@ public class TaskResourceReleaseListener {
         return leaseMaintenancePort.hasActiveWorkForWorker(taskId, workerId);
     }
 }
-

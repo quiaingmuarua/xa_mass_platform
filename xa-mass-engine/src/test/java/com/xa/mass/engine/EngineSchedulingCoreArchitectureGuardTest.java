@@ -491,6 +491,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void legacyTaskContractBehaviorReadsStayBehindPresetSemantics() throws IOException {
         Set<String> allowedRelativePaths = Set.of(
                 "com/xa/mass/engine/policy/TaskPolicyPresetSemantics.java",
+                "com/xa/mass/engine/runtime/scheduling/TaskPolicyPresetDefinition.java",
                 "com/xa/mass/engine/runtime/scheduling/TaskPolicyPresetResolution.java",
                 "com/xa/mass/engine/TaskManager.java"
         );
@@ -634,6 +635,82 @@ class EngineSchedulingCoreArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "Claim, retry, result finality, and backpressure consumers must use resolved task "
                         + "policy fields instead of raw preset/profile semantics:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void rawTaskPolicyResolverEntriesAreNotPublicMainlineSurface() throws IOException {
+        List<Path> resolverSources = List.of(
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/runtime/TaskRuntimeClaimOptionsResolver.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/runtime/TaskRuntimeRetryPolicyResolver.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/runtime/TaskRuntimeEnqueueOptionsResolver.java")
+        );
+        Map<String, Pattern> rawOverloadByFile = Map.of(
+                "TaskRuntimeClaimOptionsResolver.java",
+                Pattern.compile("public\\s+TaskWorkClaimOptions\\s+resolve\\s*\\(\\s*Task\\s+task\\s*,\\s*int"),
+                "TaskRuntimeRetryPolicyResolver.java",
+                Pattern.compile("public\\s+TaskRuntimeRetryPolicy\\s+resolve\\s*\\(\\s*Task\\s+task\\s*,\\s*long"),
+                "TaskRuntimeEnqueueOptionsResolver.java",
+                Pattern.compile("public\\s+WorkEnqueueOptions\\s+resolve\\s*\\(\\s*Task\\s+task\\s*\\)")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path sourcePath : resolverSources) {
+            String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+            Pattern rawOverload = rawOverloadByFile.get(sourcePath.getFileName().toString());
+            if (rawOverload != null && rawOverload.matcher(source).find()) {
+                violations.add(sourcePath + " exposes raw Task policy resolution as public mainline API");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Runtime claim/retry/enqueue policy resolvers must expose resolved-policy overloads "
+                        + "as the production path. Raw Task overloads are package-private support only:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void engineRuntimeKernelWiresResolvedSchedulingPlaneThroughRuntimeOwners() throws IOException {
+        Path kernelPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernel.java");
+        String source = Files.readString(kernelPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (!source.contains("new DefaultWorkerDispatchResourcePolicy(schedulingPlaneResolver)")) {
+            violations.add(kernelPath + " must build resource policy from the kernel schedulingPlaneResolver");
+        }
+        if (!source.contains("new WorkerDispatchResourceReleaser(\n"
+                + "                    workerAdmissionRuntime,\n"
+                + "                    resourcePolicy,\n"
+                + "                    traceEventLogger\n"
+                + "            )")) {
+            violations.add(kernelPath + " must build a shared WorkerDispatchResourceReleaser");
+        }
+        if (!source.contains("resourcePolicy,\n"
+                + "                    resourceReleaser,\n"
+                + "                    schedulingPlaneResolver")) {
+            violations.add(kernelPath + " must pass policy/releaser/resolver into SimpleTaskDispatchBinder");
+        }
+        if (!source.contains("traceEventLogger,\n"
+                + "                            schedulingPlaneResolver,\n"
+                + "                            new DefaultWorkerCandidateRanker(),\n"
+                + "                            resourcePolicy,")) {
+            violations.add(kernelPath + " must pass schedulingPlaneResolver/resourcePolicy into matching strategy");
+        }
+        if (!source.contains("new DefaultAssignmentAllocationPolicy(null, schedulingPlaneResolver)")) {
+            violations.add(kernelPath + " must build assignment allocation policy from the kernel resolver");
+        }
+        if (!source.contains("resourceReleaser,\n"
+                + "                    schedulingPlaneResolver")) {
+            violations.add(kernelPath + " must pass resourceReleaser/resolver into TaskWorkerAssignListener");
+        }
+        if (!source.contains("config.getRuntimeReadyDispatchIdleBackoffPolicy(),\n"
+                + "                    schedulingPlaneResolver")) {
+            violations.add(kernelPath + " must pass schedulingPlaneResolver into RuntimeReadyDispatchPump");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "EngineRuntimeKernel owns production runtime assembly. Runtime owners must not each "
+                        + "silently construct policy defaults or separate scheduling resolvers:\n"
                         + String.join("\n", violations));
     }
 

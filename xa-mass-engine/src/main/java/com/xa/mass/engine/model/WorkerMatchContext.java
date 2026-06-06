@@ -2,6 +2,7 @@ package com.xa.mass.engine.model;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 
@@ -28,13 +29,20 @@ public class WorkerMatchContext {
     public WorkerMatchContext(WorkerSchedulingCandidate candidate,
                               Task task,
                               TaskDispatchIntent dispatchIntent) {
+        this(candidate, task, dispatchIntent, null);
+    }
+
+    public WorkerMatchContext(WorkerSchedulingCandidate candidate,
+                              Task task,
+                              TaskDispatchIntent dispatchIntent,
+                              ResolvedTaskSchedulingPolicy taskSchedulingPolicy) {
         Objects.requireNonNull(candidate, "candidate");
         Objects.requireNonNull(task, "task");
         Objects.requireNonNull(dispatchIntent, "dispatchIntent");
         this.candidateRow = candidate.getCandidateRow();
         this.task = task;
         this.schedulingView = candidate.getSchedulingView();
-        this.context = buildContext(candidate, task, dispatchIntent);
+        this.context = buildContext(candidate, task, dispatchIntent, taskSchedulingPolicy);
         this.ruleContext = buildRuleContext(candidate, task, dispatchIntent);
     }
 
@@ -43,7 +51,16 @@ public class WorkerMatchContext {
                                                       TaskDispatchIntent dispatchIntent) {
         Objects.requireNonNull(candidate, "candidate");
         Objects.requireNonNull(task, "task");
-        return buildContext(candidate, task, dispatchIntent);
+        return buildContext(candidate, task, dispatchIntent, null);
+    }
+
+    public static Map<String, Object> contextSnapshot(WorkerSchedulingCandidate candidate,
+                                                      Task task,
+                                                      TaskDispatchIntent dispatchIntent,
+                                                      ResolvedTaskSchedulingPolicy taskSchedulingPolicy) {
+        Objects.requireNonNull(candidate, "candidate");
+        Objects.requireNonNull(task, "task");
+        return buildContext(candidate, task, dispatchIntent, taskSchedulingPolicy);
     }
 
     public static Map<String, Object> ruleContextSnapshot(WorkerSchedulingCandidate candidate,
@@ -56,11 +73,13 @@ public class WorkerMatchContext {
 
     private static Map<String, Object> buildContext(WorkerSchedulingCandidate candidate,
                                                     Task task,
-                                                    TaskDispatchIntent dispatchIntent) {
+                                                    TaskDispatchIntent dispatchIntent,
+                                                    ResolvedTaskSchedulingPolicy taskSchedulingPolicy) {
         WorkerSchedulingView schedulingView = candidate.getSchedulingView();
         Map<String, Object> ctx = new LinkedHashMap<>();
 
         putWorkerSchedulingFields(ctx, schedulingView);
+        putResolvedTaskSchedulingPolicyFields(ctx, taskSchedulingPolicy);
 
         Objects.requireNonNull(dispatchIntent, "dispatchIntent");
         String routingCode = dispatchIntent.routingCode();
@@ -101,6 +120,39 @@ public class WorkerMatchContext {
         ctx.put("workerSchedulingMatchesRoutingCode", workerSchedulingMatchesRoutingCode);
 
         return ctx;
+    }
+
+    private static void putResolvedTaskSchedulingPolicyFields(Map<String, Object> ctx,
+                                                              ResolvedTaskSchedulingPolicy taskSchedulingPolicy) {
+        if (taskSchedulingPolicy == null) {
+            return;
+        }
+        ctx.put("resolvedTaskPolicyPreset", taskSchedulingPolicy.taskPolicyPreset());
+        ctx.put("resolvedTaskWorkloadClass", taskSchedulingPolicy.workloadClass().name());
+        ctx.put("resolvedDispatchLane", taskSchedulingPolicy.dispatchLane().name());
+        ctx.put("resolvedDispatchPriority", taskSchedulingPolicy.dispatchPriority().name());
+        ctx.put("resolvedBatchPolicy", taskSchedulingPolicy.batchPolicy().name());
+        ctx.put("resolvedLeaseProfile", taskSchedulingPolicy.leaseProfile().name());
+        ctx.put("resolvedBackpressureClass", taskSchedulingPolicy.backpressureClass().name());
+        ctx.put("resolvedDispatchCadence", taskSchedulingPolicy.dispatchCadence().name());
+        ctx.put("resolvedWorkerResourceMode", taskSchedulingPolicy.workerResourceMode().name());
+        ctx.put("resolvedIdleCloseEnabled", taskSchedulingPolicy.idleClosePolicy().enabled());
+        ctx.put("resolvedIdleCloseRequiresSealed", taskSchedulingPolicy.idleClosePolicy().requireIntakeSealed());
+        ctx.put("resolvedClaimSmallPerWorkerCapacityLimit",
+                taskSchedulingPolicy.claimPolicy().smallPerWorkerCapacityLimit());
+        ctx.put("resolvedClaimShortLeaseSeconds", taskSchedulingPolicy.claimPolicy().shortLeaseSeconds());
+        ctx.put("resolvedRetryWorkloadClass", taskSchedulingPolicy.retryPolicy().workloadClass().name());
+        ctx.put("resolvedInteractiveAssignmentRetryDelayMillis",
+                taskSchedulingPolicy.retryPolicy().interactiveAssignmentRetryDelayMillis());
+        ctx.put("resolvedInteractiveWorkRetryDelayMillis",
+                taskSchedulingPolicy.retryPolicy().interactiveWorkRetryDelayMillis());
+        ctx.put("resolvedBulkWorkRetryDelayMillis", taskSchedulingPolicy.retryPolicy().bulkWorkRetryDelayMillis());
+        ctx.put("resolvedExpiredLeaseRetryFromAnyActiveState",
+                taskSchedulingPolicy.resultFinalityPolicy().retryExpiredLeaseFromAnyActiveState());
+        ctx.put("resolvedExpiredLeaseFinalizesAsFailure",
+                taskSchedulingPolicy.resultFinalityPolicy().expiredLeaseFinalizesAsFailure());
+        ctx.put("resolvedBackpressureMaxReadyItemsPerTask",
+                taskSchedulingPolicy.backpressurePolicy().maxReadyItemsPerTask());
     }
 
     private static Map<String, Object> buildRuleContext(WorkerSchedulingCandidate candidate,

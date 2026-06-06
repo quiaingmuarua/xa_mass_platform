@@ -4,8 +4,11 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
-import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolution;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.engine.TraceEventLogger;
@@ -21,6 +24,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
@@ -363,7 +367,15 @@ public class TaskAssignWorkerTest {
                 retryingListener,
                 200L,
                 10,
-                new TaskRuntimeRetryPolicyResolver(25L, 100L, 0L, new TaskRuntimeProfileResolver())
+                new TaskRuntimeRetryPolicyResolver(),
+                customPolicyResolver((task, policy) -> withRetryPolicy(policy,
+                        new ResolvedTaskSchedulingPolicy.RetryPolicy(
+                                policy.workloadClass(),
+                                25L,
+                                100L,
+                                0L
+                        ))),
+                TraceEventLogger.noop()
         );
         worker.start();
 
@@ -451,30 +463,17 @@ public class TaskAssignWorkerTest {
             return true;
         }).when(priorityAwareListener).onTaskAssign(any());
 
-        TaskRuntimeProfileResolver sameLanePriorityResolver = new TaskRuntimeProfileResolver() {
-            @Override
-            public TaskRuntimeProfile resolve(Task task) {
-                TaskRuntimeProfile.DispatchPriority priority = task != null
-                        && "lane-high".equals(task.getTid())
-                        ? TaskRuntimeProfile.DispatchPriority.HIGH
-                        : TaskRuntimeProfile.DispatchPriority.NORMAL;
-                return new TaskRuntimeProfile(
-                        TaskWorkloadClass.BULK,
-                        TaskRuntimeProfile.DispatchLane.BULK,
-                        priority,
-                        TaskRuntimeProfile.BatchPolicy.LARGE,
-                        TaskRuntimeProfile.LeaseProfile.NORMAL,
-                        TaskRuntimeProfile.BackpressureClass.BULK
-                );
-            }
-        };
-
         worker = new TaskAssignWorker(
                 priorityAwareListener,
                 50L,
                 10,
                 new TaskRuntimeRetryPolicyResolver(),
-                sameLanePriorityResolver,
+                customPolicyResolver((task, policy) -> withDispatchPriority(
+                        policy,
+                        task != null && "lane-high".equals(task.getTid())
+                                ? TaskRuntimeProfile.DispatchPriority.HIGH
+                                : TaskRuntimeProfile.DispatchPriority.NORMAL
+                )),
                 TraceEventLogger.noop()
         );
         worker.start();
@@ -622,6 +621,67 @@ public class TaskAssignWorkerTest {
         t.setTid(tid);
         t.setStatus(TaskStatus.RUNNING);
         return t;
+    }
+
+    private SchedulingPlaneResolver customPolicyResolver(
+            BiFunction<Task, ResolvedTaskSchedulingPolicy, ResolvedTaskSchedulingPolicy> customizer) {
+        DefaultSchedulingPlaneResolver delegate = new DefaultSchedulingPlaneResolver();
+        return task -> {
+            SchedulingPlaneResolution base = delegate.resolve(task);
+            return new SchedulingPlaneResolution(
+                    base.dispatchIntent(),
+                    customizer.apply(task, base.taskSchedulingPolicy()),
+                    base.workerSchedulingPolicy()
+            );
+        };
+    }
+
+    private ResolvedTaskSchedulingPolicy withRetryPolicy(ResolvedTaskSchedulingPolicy policy,
+                                                        ResolvedTaskSchedulingPolicy.RetryPolicy retryPolicy) {
+        return new ResolvedTaskSchedulingPolicy(
+                policy.taskId(),
+                policy.taskPolicyPreset(),
+                policy.workloadClass(),
+                policy.dispatchLane(),
+                policy.dispatchPriority(),
+                policy.batchPolicy(),
+                policy.leaseProfile(),
+                policy.backpressureClass(),
+                policy.dispatchCadence(),
+                policy.workerResourceMode(),
+                policy.idleClosePolicy(),
+                policy.claimPolicy(),
+                retryPolicy,
+                policy.resultFinalityPolicy(),
+                policy.backpressurePolicy(),
+                policy.batchSize(),
+                policy.defaultMaxRetryCount(),
+                policy.minRequiredWorkerCount()
+        );
+    }
+
+    private ResolvedTaskSchedulingPolicy withDispatchPriority(ResolvedTaskSchedulingPolicy policy,
+                                                             TaskRuntimeProfile.DispatchPriority priority) {
+        return new ResolvedTaskSchedulingPolicy(
+                policy.taskId(),
+                policy.taskPolicyPreset(),
+                policy.workloadClass(),
+                policy.dispatchLane(),
+                priority,
+                policy.batchPolicy(),
+                policy.leaseProfile(),
+                policy.backpressureClass(),
+                policy.dispatchCadence(),
+                policy.workerResourceMode(),
+                policy.idleClosePolicy(),
+                policy.claimPolicy(),
+                policy.retryPolicy(),
+                policy.resultFinalityPolicy(),
+                policy.backpressurePolicy(),
+                policy.batchSize(),
+                policy.defaultMaxRetryCount(),
+                policy.minRequiredWorkerCount()
+        );
     }
 
     private boolean awaitCondition(BooleanSupplier condition) throws InterruptedException {

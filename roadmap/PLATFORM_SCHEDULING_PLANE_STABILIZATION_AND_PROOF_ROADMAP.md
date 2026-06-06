@@ -403,7 +403,7 @@ Acceptance:
 Suggested proof surfaces:
 
 ```powershell
-mvn -pl xa-mass-engine "-Dtest=EngineSchedulingCoreSuite,TaskSchedulingGateAndTargetingTest,TaskContractSchedulingBehaviorTest,TaskSchedulingContentionTest" test
+mvn -pl xa-mass-engine "-Dtest=EngineSchedulingCoreSuite,TaskSchedulingGateAndTargetingTest,TaskPolicySchedulingOutcomeTest,TaskSchedulingContentionTest" test
 rg -n "dispatchIntent|taskSchedulingPolicy|workerSchedulingPolicy|candidateSource|rule.*detail|admission" xa-mass-engine xa-mass-trace doc roadmap --glob '!**/target/**'
 ```
 

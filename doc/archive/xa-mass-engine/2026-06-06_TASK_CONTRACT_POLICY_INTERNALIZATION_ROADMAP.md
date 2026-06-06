@@ -1,6 +1,27 @@
 # Task Contract Policy Internalization Roadmap
 
-Status: active implementation roadmap.
+Status: completed and archived on 2026-06-06.
+
+Completed scope:
+
+- contract-implied behavior defaults are centralized behind
+  `TaskPolicyPresetDefinition` / `TaskPolicyPresetResolver`
+- production runtime assembly injects a single `SchedulingPlaneResolver`
+  through dispatch, matching, allocation, resource, assign-worker, and pump
+  owners
+- resolved task policy evidence is emitted in engine diagnostics/trace context
+  without becoming rule-evaluation truth
+- internal behavior tests were renamed from `TaskContract*` vocabulary to
+  policy/outcome vocabulary
+- raw `Task` overloads for claim/retry/enqueue policy resolution were
+  downgraded to package-private support paths
+- active docs and proof indexes were updated to describe `TaskContract` as a
+  public preset input, not runtime behavior truth
+
+Verification at archive time:
+
+- `./mvnw -q -pl xa-mass-engine -am test`
+- `./mvnw -q -pl xa-mass-engine,xa-mass-testing -am -DskipTests compile`
 
 ## Summary
 
@@ -165,7 +186,9 @@ Scope:
 6. Record current allowed direct-read list in architecture guard comments or a
    focused baseline section.
 7. Record convenience policy-resolution entry points and decide whether they
-   stay as package-private/test support or get removed in TCPI-3/TCPI-4.
+   stay as package-private/test support or get removed in TCPI-1/TCPI-5.
+8. Record production constructors and assembly paths that instantiate
+   `DefaultSchedulingPlaneResolver` directly.
 
 Acceptance:
 
@@ -175,17 +198,97 @@ Acceptance:
 4. Runtime owner signature convergence targets are listed.
 5. Convenience resolver entry points are classified and do not bypass the
    `DefaultSchedulingPlaneResolver -> TaskPolicyPresetResolver` mainline.
-6. No behavior change.
+6. Production resolver assembly convergence targets are listed.
+7. No behavior change.
 
-### TCPI-1: Resolved Policy Diagnostics
+### TCPI-1: Default Truth And Preset Definition Convergence
 
-Goal: make kernel behavior transparent without changing semantics.
+Goal: make preset resolution the single owner of behavior defaults before
+diagnostics or naming work can freeze a temporary shape.
+
+Scope:
+
+1. Replace ad-hoc `contract == BATCH ? ... : ...` clusters inside preset
+   resolution with a small explicit preset definition structure.
+2. Each preset definition names:
+   - default workload class
+   - dispatch cadence
+   - idle-close policy
+   - result-finality policy
+   - default claim/retry/backpressure profile
+3. Keep per-task overrides outside the preset table. Examples:
+   - `executionSpec.foreground -> workerResourceMode`
+   - task-level retry/batch/min-worker fields that are not pure preset defaults
+4. Move behavior defaults to one owner: preset definition/resolver owns policy
+   defaults; `ResolvedTaskSchedulingPolicy` compact construction retains only
+   structural normalization and null-safety that cannot change behavior
+   semantics.
+5. Move system-property-backed behavior defaults out of ad hoc resolved-policy
+   helper methods and into preset/default resolution inputs.
+6. Decide the exit path for `TaskPolicyPresetSemantics`:
+   - `defaultWorkloadClassFor(...)` should be absorbed by preset definitions
+   - `defaultContract(...)` should either move to task shell defaulting or stay
+     as a narrowly named public-preset default helper
+7. Keep custom policy catalog deferred; this is an internal table, not a product
+   policy catalog.
+
+Acceptance:
+
+1. Adding a future preset requires adding one preset definition, not editing
+   multiple runtime owners.
+2. Existing `SESSION` and `BATCH` runtime outcomes are unchanged.
+3. Per-task overrides continue to win over preset defaults where they already
+   do today.
+4. `ResolvedTaskSchedulingPolicy` no longer owns behavior defaults that belong
+   to preset resolution.
+5. Unit snapshot tests prove the table maps expected values, but completion is
+   proven by the runtime outcome tests listed in the proof plan.
+6. Guards still allow direct `TaskContract` branching only inside preset
+   definition/resolution and public boundary code.
+
+### TCPI-2: Production Resolver Assembly Convergence
+
+Goal: make the production kernel use one approved resolver assembly boundary,
+instead of each runtime owner silently constructing its own default resolver.
+
+Scope:
+
+1. Pass the engine-owned `SchedulingPlaneResolver` through production assembly
+   into:
+   - dispatch binder
+   - runtime-ready pump
+   - assignment allocation policy
+   - worker resource policy
+   - any matching/ranking owner that needs resolved policy
+2. Keep default constructors only for tests or support wiring where there is no
+   production assembly owner.
+3. Add source guards against production owners silently calling
+   `new DefaultSchedulingPlaneResolver()` in hot-path/runtime owner
+   constructors.
+4. Avoid a pass-through facade. The owner boundary is the resolver itself and
+   the engine assembly that injects it.
+
+Acceptance:
+
+1. Production runtime owners share the approved resolver instance or receive
+   explicit resolved policy values from that boundary.
+2. No production hot-path owner creates an unapproved default resolver.
+3. Test/support constructors remain allowed only when named or package-scoped
+   as support paths.
+4. Existing scheduling behavior remains unchanged.
+
+### TCPI-3: Resolved Policy Diagnostics
+
+Goal: make kernel behavior transparent after the canonical resolver/default
+truth is in place.
 
 Scope:
 
 1. First-slice diagnostics land in engine/trace-owned evidence, not in public
    task create request shape.
-2. Add or tighten trace/diagnostic evidence for resolved policy fields:
+2. Diagnostic fields must be emitted from the canonical resolved policy produced
+   by `TaskPolicyPresetResolver` and the approved resolver assembly boundary.
+3. Add or tighten trace/diagnostic evidence for resolved policy fields:
    - `taskPolicyPreset`
    - `dispatchCadence`
    - `workerResourceMode`
@@ -194,12 +297,12 @@ Scope:
    - `retryPolicy`
    - `resultFinalityPolicy`
    - `backpressurePolicy`
-3. Ensure task detail/debug/read surfaces can explain why a task behaves like
+4. Ensure task detail/debug/read surfaces can explain why a task behaves like
    `SESSION` or `BATCH` without requiring code inspection.
-4. If server read surfaces expose resolved policy evidence, add it as optional
+5. If server read surfaces expose resolved policy evidence, add it as optional
    read-side diagnostics and update server/frontend contract docs in the same
    change.
-5. Keep public create/request contract unchanged.
+6. Keep public create/request contract unchanged.
 
 Acceptance:
 
@@ -208,13 +311,16 @@ Acceptance:
 2. A task created with `contract=SESSION` exposes resolved policy evidence in
    the chosen engine/trace diagnostic surface.
 3. Diagnostics distinguish public preset input from engine-resolved policy.
-4. No runtime owner starts consuming diagnostics as truth.
-5. Any server read-surface exposure is additive, documented, and covered by
+4. Diagnostics do not expose constructor fallback/default residue as canonical
+   policy truth.
+5. No runtime owner starts consuming diagnostics as truth.
+6. Any server read-surface exposure is additive, documented, and covered by
    server/API proof.
 
-### TCPI-2: Test Vocabulary Convergence
+### TCPI-4: Test Vocabulary And Outcome Proof Convergence
 
-Goal: prevent tests from preserving the old mental model.
+Goal: prevent tests from preserving the old mental model and avoid treating
+field-copy assertions as kernel proof.
 
 Scope:
 
@@ -225,7 +331,14 @@ Scope:
    - foreground resource behavior -> worker-resource-mode tests
 2. Keep public `TaskContract` tests only where they prove API/default/preset
    mapping.
-3. Update proof registry/testing docs if test ownership changes.
+3. Add or retarget runtime outcome proof for:
+   - terminal aggregate behavior
+   - runtime-ready vs signal-driven dispatch entry
+   - exclusive worker lock vs capacity sharing
+   - claim/backpressure effects on ready/inflight work
+   - retry/result-finality behavior
+4. Keep resolved-policy snapshot tests as support regression only.
+5. Update proof registry/testing docs if test ownership changes.
 
 Acceptance:
 
@@ -233,11 +346,14 @@ Acceptance:
 2. Public contract tests assert only public API/default mapping and preset
    compatibility.
 3. Test names no longer imply `TaskContract` is the runtime owner.
-4. No behavior change.
+4. Runtime outcome proof exists for each policy behavior, not only snapshot
+   field-copy proof.
+5. No behavior change.
 
-### TCPI-3: Internal Policy Entry Narrowing
+### TCPI-5: Internal Policy Entry Narrowing
 
-Goal: make `ResolvedTaskSchedulingPolicy` the narrow internal runtime entry.
+Goal: make `ResolvedTaskSchedulingPolicy` the narrow internal runtime entry
+where method signatures currently accept `Task` only to recover policy.
 
 Scope:
 
@@ -254,62 +370,24 @@ Scope:
 4. Remove or restrict convenience resolution paths such as
    `ResolvedTaskSchedulingPolicy.from(Task, TaskRuntimeProfile)` if they allow
    new callers to bypass `TaskPolicyPresetResolver`.
-5. Avoid pass-through bridge/facade layers; update direct internal callers.
-6. Preserve lifecycle/resource owners and existing task/runtime truth owners.
+5. Production paths must not call raw `Task` overloads on claim/retry/enqueue
+   resolvers when a resolved policy is available; retained raw overloads must
+   be package-private/test/support or source-guarded as non-mainline.
+6. Avoid pass-through bridge/facade layers; update direct internal callers.
+7. Preserve lifecycle/resource owners and existing task/runtime truth owners.
 
 Acceptance:
 
-1. Runtime owners that need policy receive explicit policy values or resolve at
-   one approved boundary.
-2. No new same-module pass-through abstraction is introduced.
-3. Source guards block direct `TaskContract` behavior reads in runtime owners.
-4. New callers cannot introduce an alternate preset-resolution mainline outside
+1. Runtime owners that need only policy receive explicit policy values.
+2. Runtime owners that still need `Task` resolve policy at one approved boundary
+   and do not re-derive contract/profile behavior locally.
+3. No new same-module pass-through abstraction is introduced.
+4. Source guards block direct `TaskContract` behavior reads in runtime owners.
+5. New callers cannot introduce an alternate preset-resolution mainline outside
    `TaskPolicyPresetResolver`.
-5. Existing behavior tests remain green.
+6. Existing behavior tests remain green.
 
-### TCPI-4: Preset Mapping As Explicit Table
-
-Goal: make the `SESSION/BATCH -> policy` mapping a visible table-like
-mechanism, not scattered conditionals.
-
-Scope:
-
-1. Replace ad-hoc `contract == BATCH ? ... : ...` clusters inside preset
-   resolution with a small explicit preset definition structure.
-2. Each preset definition names:
-   - default workload class
-   - dispatch cadence
-   - idle-close policy
-   - result-finality policy
-   - default claim/retry/backpressure profile
-3. Keep per-task overrides outside the preset table. Examples:
-   - `executionSpec.foreground -> workerResourceMode`
-   - task-level retry/batch/min-worker fields that are not pure preset defaults
-4. Move behavior defaults toward a single owner: preset definition/resolver owns
-   policy defaults; `ResolvedTaskSchedulingPolicy` compact construction should
-   retain only structural normalization and null-safety that cannot change
-   behavior semantics.
-5. Decide the exit path for `TaskPolicyPresetSemantics`:
-   - `defaultWorkloadClassFor(...)` should be absorbed by preset definitions
-   - `defaultContract(...)` should either move to task shell defaulting or stay
-     as a narrowly named public-preset default helper
-6. Keep custom policy catalog deferred; this is an internal table, not a product
-   policy catalog.
-
-Acceptance:
-
-1. Adding a future preset requires adding one preset definition, not editing
-   multiple runtime owners.
-2. Existing `SESSION` and `BATCH` resolved policy values are unchanged.
-3. Unit tests compare full resolved policy snapshots for both presets.
-4. Guards still allow direct `TaskContract` branching only inside preset
-   definition/resolution.
-5. Per-task overrides continue to win over preset defaults where they already
-   do today.
-6. `ResolvedTaskSchedulingPolicy` no longer owns behavior defaults that belong
-   to preset resolution.
-
-### TCPI-5: Public Boundary Documentation
+### TCPI-6: Public Boundary Documentation
 
 Goal: document external stability and internal ownership clearly.
 
@@ -335,7 +413,7 @@ Acceptance:
 3. New-agent path is unambiguous: public contract first, internal policy after
    resolver.
 
-### TCPI-6: Residue Removal
+### TCPI-7: Residue Removal
 
 Goal: delete old internal mental-model residue after proof is in place.
 
@@ -366,21 +444,31 @@ Acceptance:
 
 Required proof lanes:
 
-1. Unit:
+1. Runtime outcome:
+   - terminal aggregate behavior changes when idle-close policy changes
+   - runtime-ready vs signal-driven dispatch entry changes when dispatch cadence
+     changes
+   - worker exclusive lock vs capacity sharing changes when resource mode
+     changes
+   - claim/backpressure policy changes ready/inflight behavior
+   - retry/result-finality policy changes retry/final state behavior
+2. Unit/support:
    - full preset resolution for `SESSION`
    - full preset resolution for `BATCH`
    - explicit sub-policy consumers
-2. Architecture guards:
+3. Architecture guards:
    - no direct `TaskContract` behavior reads outside allowed files
    - no direct `foreground` resource branch outside preset resolution
    - no direct runtime-profile branch in claim/retry/backpressure production
      consumers
-3. Lifecycle:
+   - no production runtime owner silently creates an unapproved default
+     scheduling resolver
+4. Lifecycle:
    - session-style idle close disabled
    - batch-style sealed/all-final close enabled
    - session-style result finality behavior
    - batch-style retry/finality behavior
-4. Integration/Boot-shell when server/API evidence is exposed:
+5. Integration/Boot-shell when server/API evidence is exposed:
    - task create still accepts existing `contract`
    - read surface shows stable public contract
    - optional resolved policy diagnostics match engine behavior
@@ -397,7 +485,9 @@ Risk 2: internal policy values become another hidden preset.
 
 Mitigation:
 
-Expose resolved policy evidence in diagnostics and test full resolved snapshots.
+Converge default ownership before diagnostics, emit diagnostics only from the
+canonical resolver output, and treat full resolved snapshots as support proof
+rather than kernel behavior proof.
 
 Risk 3: preset table becomes a product policy catalog by accident.
 
@@ -424,19 +514,26 @@ versioning, and clean-DB behavior.
 
 ## Recommended First Slice
 
-Implement TCPI-0 + TCPI-1 first.
+Implement TCPI-0 first.
 
-That gives immediate kernel transparency and a bounded direct-read list without
-changing public APIs or runtime behavior.
+It must produce concrete inventories for direct reads, resolver entries,
+default owners, production resolver assembly, raw overloads, and test ownership.
 
 Second slice:
 
-TCPI-2 + TCPI-3 to converge internal tests and runtime method boundaries.
+TCPI-1 + TCPI-2. This converges default truth and production resolver assembly
+before any diagnostics or naming work can freeze a temporary shape.
 
 Third slice:
 
-TCPI-4 to make preset mapping table-like.
+TCPI-3 + TCPI-4. Add transparent diagnostics only from the canonical resolved
+policy, then converge tests toward policy vocabulary and runtime outcome proof.
+
+Fourth slice:
+
+TCPI-5. Narrow internal policy entry points and remove or restrict raw overloads
+that would become alternate mainlines.
 
 Final slice:
 
-TCPI-5 + TCPI-6 for docs, guards, and residue removal.
+TCPI-6 + TCPI-7 for public docs, guards, and residue removal.

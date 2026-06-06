@@ -1,5 +1,6 @@
 package com.xa.mass.engine.runtime;
 
+import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 
@@ -36,7 +37,7 @@ public class TaskRuntimeRetryPolicyResolver {
         this.profileResolver = profileResolver;
     }
 
-    public TaskRuntimeRetryPolicy resolve(Task task, long defaultAssignmentRetryDelayMillis) {
+    TaskRuntimeRetryPolicy resolve(Task task, long defaultAssignmentRetryDelayMillis) {
         TaskRuntimeProfile profile = profileResolver.resolve(task);
         return resolve(
                 ResolvedTaskSchedulingPolicy.RetryPolicy.from(
@@ -57,7 +58,18 @@ public class TaskRuntimeRetryPolicyResolver {
                                           long defaultAssignmentRetryDelayMillis) {
         ResolvedTaskSchedulingPolicy.RetryPolicy resolvedPolicy = retryPolicy != null
                 ? retryPolicy
-                : ResolvedTaskSchedulingPolicy.RetryPolicy.from(null);
+                : ResolvedTaskSchedulingPolicy.RetryPolicy.from(
+                        new TaskRuntimeProfile(
+                                TaskWorkloadClass.BULK,
+                                TaskRuntimeProfile.DispatchLane.BULK,
+                                TaskRuntimeProfile.DispatchPriority.NORMAL,
+                                TaskRuntimeProfile.BatchPolicy.LARGE,
+                                TaskRuntimeProfile.LeaseProfile.NORMAL,
+                                TaskRuntimeProfile.BackpressureClass.BULK
+                        ),
+                        interactiveAssignmentRetryDelayMillis,
+                        interactiveWorkRetryDelayMillis,
+                        bulkWorkRetryDelayMillis);
         long normalizedAssignmentDefaultDelayMillis = Math.max(1L, defaultAssignmentRetryDelayMillis);
         return switch (resolvedPolicy.workloadClass()) {
             case INTERACTIVE -> new TaskRuntimeRetryPolicy(

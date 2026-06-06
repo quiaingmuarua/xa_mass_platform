@@ -22,7 +22,6 @@ public final class TaskPolicyPresetResolver {
     }
 
     public TaskPolicyPresetResolution resolve(Task task) {
-        TaskRuntimeProfile profile = runtimeProfileResolver.resolve(task);
-        return TaskPolicyPresetResolution.from(task, profile);
+        return TaskPolicyPresetResolution.fromResolved(task, runtimeProfileResolver);
     }
 }

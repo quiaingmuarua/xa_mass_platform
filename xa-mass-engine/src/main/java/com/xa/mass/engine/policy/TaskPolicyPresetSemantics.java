@@ -3,6 +3,7 @@ package com.xa.mass.engine.policy;
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.engine.runtime.scheduling.TaskPolicyPresetDefinition;
 
 /**
  * Temporary convergence seam for legacy task preset interpretation.
@@ -17,7 +18,7 @@ public final class TaskPolicyPresetSemantics {
     }
 
     public static TaskContract defaultContract(TaskContract contract) {
-        return contract == null ? TaskContract.BATCH : contract;
+        return TaskPolicyPresetDefinition.defaultContract(contract);
     }
 
     public static TaskWorkloadClass defaultWorkloadClassFor(TaskContract contract,
@@ -25,8 +26,6 @@ public final class TaskPolicyPresetSemantics {
         if (normalizedSpec != null && normalizedSpec.getWorkloadClass() != null) {
             return normalizedSpec.getWorkloadClass();
         }
-        return defaultContract(contract) == TaskContract.SESSION
-                ? TaskWorkloadClass.INTERACTIVE
-                : TaskWorkloadClass.BULK;
+        return TaskPolicyPresetDefinition.forContract(contract).defaultRuntimeProfile().workloadClass();
     }
 }

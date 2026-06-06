@@ -13,8 +13,8 @@ import org.junit.platform.suite.api.Suite;
 @Suite
 @SelectClasses({
         TaskKernelLifecycleTest.class,
-        TaskContractTerminalBehaviorTest.class,
-        TaskContractSchedulingBehaviorTest.class,
+        TaskIdleClosePolicyBehaviorTest.class,
+        TaskPolicySchedulingOutcomeTest.class,
         TaskSchedulingContentionTest.class,
         TaskWorkerEligibilityTest.class,
         TaskSchedulingBindingEntryBypassTest.class,

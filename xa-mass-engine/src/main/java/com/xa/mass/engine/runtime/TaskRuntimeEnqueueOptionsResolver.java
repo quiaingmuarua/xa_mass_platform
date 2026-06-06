@@ -33,7 +33,7 @@ public class TaskRuntimeEnqueueOptionsResolver {
         this.profileResolver = profileResolver;
     }
 
-    public WorkEnqueueOptions resolve(Task task) {
+    WorkEnqueueOptions resolve(Task task) {
         TaskRuntimeProfile profile = profileResolver.resolve(task);
         int maxReadyItemsPerTask = switch (profile.backpressureClass()) {
             case INTERACTIVE -> interactiveMaxReadyItemsPerTask;
@@ -52,7 +52,9 @@ public class TaskRuntimeEnqueueOptionsResolver {
     public WorkEnqueueOptions resolve(ResolvedTaskSchedulingPolicy.BackpressurePolicy backpressurePolicy) {
         ResolvedTaskSchedulingPolicy.BackpressurePolicy resolvedPolicy = backpressurePolicy != null
                 ? backpressurePolicy
-                : ResolvedTaskSchedulingPolicy.BackpressurePolicy.from(null);
+                : new ResolvedTaskSchedulingPolicy.BackpressurePolicy(
+                        TaskRuntimeProfile.BackpressureClass.BULK,
+                        bulkMaxReadyItemsPerTask);
         return new WorkEnqueueOptions(resolvedPolicy.maxReadyItemsPerTask());
     }
 

@@ -93,26 +93,29 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 resourcePolicy, resourceReleaser, new DefaultSchedulingPlaneResolver());
     }
 
-    SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                             WorkerAdmissionRuntime workerAdmissionRuntime,
-                             AssignmentDiagnosticRecorder recordService,
-                             TaskDispatchBatchListener dispatchListener,
-                             TraceEventLogger traceEventLogger,
-                             WorkerDispatchResourcePolicy resourcePolicy,
-                             WorkerDispatchResourceReleaser resourceReleaser,
-                             SchedulingPlaneResolver schedulingPlaneResolver) {
+    public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
+                                    WorkerAdmissionRuntime workerAdmissionRuntime,
+                                    AssignmentDiagnosticRecorder recordService,
+                                    TaskDispatchBatchListener dispatchListener,
+                                    TraceEventLogger traceEventLogger,
+                                    WorkerDispatchResourcePolicy resourcePolicy,
+                                    WorkerDispatchResourceReleaser resourceReleaser,
+                                    SchedulingPlaneResolver schedulingPlaneResolver) {
+        SchedulingPlaneResolver resolvedSchedulingPlaneResolver = schedulingPlaneResolver == null
+                ? new DefaultSchedulingPlaneResolver()
+                : schedulingPlaneResolver;
         this.assignmentRuntime = assignmentRuntime;
         this.workerAdmissionRuntime = workerAdmissionRuntime;
         this.recordService = recordService;
         this.dispatchListener = dispatchListener;
         this.traceEventLogger = traceEventLogger;
-        this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
+        this.resourcePolicy = resourcePolicy == null
+                ? new DefaultWorkerDispatchResourcePolicy(resolvedSchedulingPlaneResolver)
+                : resourcePolicy;
         this.resourceReleaser = resourceReleaser == null
                 ? new WorkerDispatchResourceReleaser(workerAdmissionRuntime, this.resourcePolicy, traceEventLogger)
                 : resourceReleaser;
-        this.schedulingPlaneResolver = schedulingPlaneResolver == null
-                ? new DefaultSchedulingPlaneResolver()
-                : schedulingPlaneResolver;
+        this.schedulingPlaneResolver = resolvedSchedulingPlaneResolver;
     }
 
     @Override

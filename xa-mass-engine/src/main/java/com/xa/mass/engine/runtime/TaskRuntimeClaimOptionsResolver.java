@@ -25,7 +25,7 @@ public class TaskRuntimeClaimOptionsResolver {
         this.profileResolver = profileResolver;
     }
 
-    public TaskWorkClaimOptions resolve(Task task, int workerCount, long defaultLeaseSeconds) {
+    TaskWorkClaimOptions resolve(Task task, int workerCount, long defaultLeaseSeconds) {
         TaskRuntimeProfile profile = profileResolver.resolve(task);
         return resolve(task,
                 ResolvedTaskSchedulingPolicy.ClaimPolicy.from(
@@ -52,7 +52,10 @@ public class TaskRuntimeClaimOptionsResolver {
                                         long defaultLeaseSeconds) {
         ResolvedTaskSchedulingPolicy.ClaimPolicy resolvedPolicy = claimPolicy != null
                 ? claimPolicy
-                : ResolvedTaskSchedulingPolicy.ClaimPolicy.from(null);
+                : ResolvedTaskSchedulingPolicy.ClaimPolicy.from(
+                        profileResolver.resolve(task),
+                        DEFAULT_INTERACTIVE_PER_WORKER_CAP,
+                        DEFAULT_SHORT_LEASE_SECONDS);
         int taskBatchSize = task != null ? Math.max(task.getExecutionSpec().getBatchSize(), 1) : 1;
         int perWorkerCapacity = switch (resolvedPolicy.batchPolicy()) {
             case SMALL -> Math.min(taskBatchSize, resolvedPolicy.smallPerWorkerCapacityLimit());

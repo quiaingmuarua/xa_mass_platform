@@ -3,18 +3,23 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
+import com.xa.mass.engine.assignment.DefaultAssignmentAllocationPolicy;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
+import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.DispatchCadence;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
+import com.xa.mass.engine.strategy.DefaultWorkerCandidateRanker;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.TraceEventLogger;
+import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.watchdog.LeaseExpireWatchdog;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.engine.watchdog.WorkerCommandMaintenanceWatchdog;
@@ -83,12 +88,21 @@ public class EngineRuntimeKernel {
             var workerWarmHintRuntime = config.getWorkerWarmHintRuntime();
             AssignmentDiagnosticRecorder recordService = config.getRecordService();
             TraceEventLogger traceEventLogger = config.getTraceEventLogger();
+            var resourcePolicy = new DefaultWorkerDispatchResourcePolicy(schedulingPlaneResolver);
+            var resourceReleaser = new WorkerDispatchResourceReleaser(
+                    workerAdmissionRuntime,
+                    resourcePolicy,
+                    traceEventLogger
+            );
             var dispatchBinder = new SimpleTaskDispatchBinder(
                     assignmentRuntimePort,
                     workerAdmissionRuntime,
                     recordService,
                     dispatchBatchListener,
-                    traceEventLogger);
+                    traceEventLogger,
+                    resourcePolicy,
+                    resourceReleaser,
+                    schedulingPlaneResolver);
             TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
             TaskWorkerMatchingStrategy matchingStrategy = customStrategy != null
                     ? customStrategy
@@ -99,7 +113,11 @@ public class EngineRuntimeKernel {
                             workerAdmissionRuntime,
                             config.getWorkerSchedulingViewRuntime(),
                             recordService,
-                            traceEventLogger);
+                            traceEventLogger,
+                            schedulingPlaneResolver,
+                            new DefaultWorkerCandidateRanker(),
+                            resourcePolicy,
+                            null);
             var workerAssignListener = new TaskWorkerAssignListener(
                     matchingStrategy,
                     workerAdmissionRuntime,
@@ -107,8 +125,16 @@ public class EngineRuntimeKernel {
                     dispatchBinder,
                     assignmentRuntimePort,
                     taskEvents,
+                    traceEventLogger,
+                    new DefaultAssignmentAllocationPolicy(null, schedulingPlaneResolver),
+                    resourcePolicy,
+                    resourceReleaser,
+                    schedulingPlaneResolver);
+            assignWorker = new TaskAssignWorker(
+                    workerAssignListener,
+                    config.getAssignmentRetryDelayMillis(),
+                    schedulingPlaneResolver,
                     traceEventLogger);
-            assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis(), traceEventLogger);
             assignWorker.start();
             runtimeReadyDispatchPump = new RuntimeReadyDispatchPump(
                     runtimeRecoveryPort,
@@ -117,7 +143,8 @@ public class EngineRuntimeKernel {
                     STARTUP_READY_TASK_SCAN_LIMIT,
                     config.getAssignmentRetryDelayMillis(),
                     config.getRuntimeReadyDispatchIdleBackoffMaxMillis(),
-                    config.getRuntimeReadyDispatchIdleBackoffPolicy()
+                    config.getRuntimeReadyDispatchIdleBackoffPolicy(),
+                    schedulingPlaneResolver
             );
             TaskDispatchWakeupBridge dispatchWakeupBridge =
                     new TaskDispatchWakeupBridge(assignWorker, runtimeReadyDispatchPump);
@@ -130,7 +157,10 @@ public class EngineRuntimeKernel {
                     leaseMaintenancePort,
                     dispatchWakeupPort,
                     workerAdmissionRuntime,
-                    traceEventLogger);
+                    traceEventLogger,
+                    null,
+                    resourcePolicy,
+                    resourceReleaser);
             taskReadyListener = task -> {
                 if (usesSignalDrivenDelayedDispatch(task)) {
                     assignWorker.submit(task);

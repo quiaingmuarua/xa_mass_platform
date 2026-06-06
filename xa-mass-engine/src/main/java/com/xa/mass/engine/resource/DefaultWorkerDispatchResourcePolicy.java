@@ -23,7 +23,7 @@ public final class DefaultWorkerDispatchResourcePolicy implements WorkerDispatch
         this(new DefaultSchedulingPlaneResolver());
     }
 
-    DefaultWorkerDispatchResourcePolicy(SchedulingPlaneResolver schedulingPlaneResolver) {
+    public DefaultWorkerDispatchResourcePolicy(SchedulingPlaneResolver schedulingPlaneResolver) {
         this.schedulingPlaneResolver = Objects.requireNonNull(schedulingPlaneResolver, "schedulingPlaneResolver");
     }
 
