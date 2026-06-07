@@ -1,6 +1,9 @@
 import { backendAuthProvider } from '@/auth/provider.backend'
 import { setRuntimeConfigOverrides } from '@/app/config'
-import { currentOperatorCsrfHeader } from '@/auth/backend-auth'
+import {
+    currentOperatorCsrfHeader,
+    resetBackendAuthRuntime,
+} from '@/auth/backend-auth'
 import { useOperatorMode } from '@/auth/operator-mode'
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -13,6 +16,16 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('backendAuthProvider', () => {
+    beforeEach(() => {
+        sessionStorage.clear()
+        resetBackendAuthRuntime()
+    })
+
+    afterEach(() => {
+        sessionStorage.clear()
+        resetBackendAuthRuntime()
+    })
+
     it('loads the current user from /api/v1/auth/me', async () => {
         setRuntimeConfigOverrides({
             apiBaseUrl: '/backend',
@@ -103,6 +116,49 @@ describe('backendAuthProvider', () => {
         )
 
         await expect(backendAuthProvider.loadCurrentUser()).resolves.toBeNull()
+    })
+
+    it('stores CSRF returned by current session user', async () => {
+        setRuntimeConfigOverrides({
+            apiBaseUrl: '/backend',
+            useMockAuth: false,
+        })
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValueOnce(
+                jsonResponse({
+                    code: 0,
+                    msg: 'ok',
+                    data: {
+                        authMode: 'session',
+                        operatorHeaderSupported: false,
+                        sessionCookieSupported: true,
+                        csrfHeaderName: 'X-Mass-Csrf-Token',
+                    },
+                }),
+            )
+            .mockResolvedValueOnce(
+                jsonResponse({
+                    code: 0,
+                    msg: 'ok',
+                    data: {
+                        id: 'ops-admin',
+                        name: 'Ops Admin',
+                        email: 'ops-admin@example.internal',
+                        roles: ['OPS_ADMIN'],
+                        permissions: ['task:view'],
+                        csrfToken: 'csrf-token-from-me',
+                    },
+                }),
+            )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const user = await backendAuthProvider.loadCurrentUser()
+
+        expect(user?.id).toBe('ops-admin')
+        expect(currentOperatorCsrfHeader()).toEqual({
+            'X-Mass-Csrf-Token': 'csrf-token-from-me',
+        })
     })
 
     it('throws when /api/v1/auth/me fails for non-auth reasons', async () => {

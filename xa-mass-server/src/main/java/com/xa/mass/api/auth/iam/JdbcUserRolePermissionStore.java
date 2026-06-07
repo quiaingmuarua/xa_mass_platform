@@ -266,13 +266,23 @@ public final class JdbcUserRolePermissionStore implements UserRolePermissionStor
             }
         }
         for (RoleRecord role : UserRolePermissionBootstrapDefaults.roles()) {
-            if (getRole(role.roleId()) == null) {
+            RoleRecord existing = getRole(role.roleId());
+            if (existing == null) {
                 createRole(role);
+            } else if (existing.systemRole() && !sameSystemRole(existing, role)) {
+                updateRole(role);
             }
         }
         for (UserRoleBindingRecord binding : UserRolePermissionBootstrapDefaults.bindings()) {
             bindRole(binding);
         }
+    }
+
+    private boolean sameSystemRole(RoleRecord existing, RoleRecord expected) {
+        return Objects.equals(existing.name(), expected.name())
+                && Objects.equals(existing.description(), expected.description())
+                && Objects.equals(existing.permissions(), expected.permissions())
+                && existing.systemRole() == expected.systemRole();
     }
 
     private UserRoleBindingRecord findBinding(String userId, String roleId) {

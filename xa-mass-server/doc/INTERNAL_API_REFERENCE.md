@@ -73,6 +73,9 @@ Base path: `/api/v1/auth`
 - Method: `GET`
 - Path: `/api/v1/auth/me`
 - Status: `Implemented`
+- Response includes the operator principal fields. In session-cookie mode it
+  also includes the current session `csrfToken` so the control console can
+  restore `X-Mass-Csrf-Token` after a page reload.
 
 #### Logout Operator Principal
 

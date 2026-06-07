@@ -125,7 +125,8 @@ class AuthControllerTest {
 
         sessionMvc.perform(get("/api/v1/auth/me").cookie(sessionCookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value("ops-admin"));
+                .andExpect(jsonPath("$.data.id").value("ops-admin"))
+                .andExpect(jsonPath("$.data.csrfToken").isNotEmpty());
 
         sessionMvc.perform(post("/api/v1/auth/logout").cookie(sessionCookie))
                 .andExpect(status().isOk())
