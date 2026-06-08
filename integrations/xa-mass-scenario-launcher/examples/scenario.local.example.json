@@ -21,10 +21,11 @@
   "tasks": [
     {
       "project": "crawlerApp",
-      "userId": "sample-launcher",
+      "userId": "ops-admin",
       "sourceRef": "human-config-crawler-fetch-page",
       "action": "fetch_page",
       "sharedConfig": {
+        "workerGroupId": "sample-websocket-crawler",
         "routingCode": "us"
       },
       "executionSpec": {

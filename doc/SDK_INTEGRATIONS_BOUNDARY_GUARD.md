@@ -113,6 +113,12 @@ two live truths.
 - `integrations/xa-mass-scenario-launcher` may compose SDK calls into an
   executable scenario that proves real external registration, worker sessions,
   task creation, item append, and result convergence.
+- `integrations/xa-mass-scenario-launcher` may also provide local credential
+  preparation tooling that calls server operator login and API-key lifecycle
+  routes, validates `credentials.taskApiKeyFile` through
+  `/api/v1/api-keys:current`, and writes the one-time raw secret to a
+  gitignored cache file. This is an explicit integration-tool exception, not
+  Java SDK public credential management.
 - Scenario-launcher should assume the target server environment has already
   been initialized through real control-plane storage or explicit seed/import;
   it should not call server-owned sample bootstrap APIs as part of the SDK

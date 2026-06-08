@@ -14,6 +14,8 @@ engine, worker-pack, or transport ownership.
 ## Current Scope
 
 - task launcher can read a human task config file with `--config`
+- credential bootstrap can validate or create a local task API-key cache
+  through server operator login and API-key lifecycle APIs
 - worker launcher still reads existing worker specs under
   `integrations/samples/dev/scenario` through `--scenario-dir`
 - assumes catalog, rules, and API-key credentials already exist through
@@ -30,30 +32,42 @@ engine, worker-pack, or transport ownership.
 
 ## Usage
 
-Prepare the checked-in local scenario on the server first. The sample
-`bootstrap.json` includes local fixture API-key raw secrets, so the import must
-be marked explicitly as a local fixture:
+Prepare the checked-in local scenario on the server first. The preferred local
+path imports catalog/rules/operator credentials only; task API-key raw secrets
+are created later through the real API-key lifecycle route:
 
 ```bash
 java -jar xa-mass-server/target/xa-mass-server.jar \
   --mass.control-plane.seed.enabled=true \
-  --mass.control-plane.seed.allow-local-fixture-raw-secrets=true \
-  --mass.control-plane.seed.catalog-location=file:integrations/samples/dev/scenario/bootstrap.json \
-  --mass.control-plane.seed.rules-location=file:integrations/samples/dev/scenario/rules.json
+  --mass.control-plane.seed.catalog-location=file:integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json \
+  --mass.control-plane.seed.rules-location=file:integrations/samples/dev/scenario/rules.json \
+  --mass.control-plane.seed.operator-credentials-location=classpath:control-plane-seed/operator-credentials.json
 ```
 
 ```bash
 ./mvnw -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 ```
 
-For human task-producer runs, start from the checked-in example config:
+For local scenario runs, initialize the scenario environment first. The
+initializer verifies that the scenario catalog is already imported, then
+prepares both task and worker API-key cache files through operator login and
+the real API-key lifecycle route:
 
 ```bash
-mkdir -p integrations/xa-mass-scenario-launcher/examples/secrets
-printf 'crawler-task-api-key' > integrations/xa-mass-scenario-launcher/examples/secrets/task-api-key.txt
+java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-credential-bootstrap.jar \
+  --config integrations/xa-mass-scenario-launcher/examples/scenario.local.example.json
 
 java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-task-launcher.jar \
   --config integrations/xa-mass-scenario-launcher/examples/scenario.local.example.json
+```
+
+The default worker launcher reads
+`integrations/xa-mass-scenario-launcher/examples/secrets/worker-api-key.txt`
+when present, so it can use the same initializer output:
+
+```bash
+java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-worker-launcher.jar \
+  --base-url http://127.0.0.1:8088
 ```
 
 Config-internal relative paths, such as `credentials.taskApiKeyFile` and
@@ -70,12 +84,11 @@ Legacy `--scenario-dir` fixtures may still use `body.items` and
 `generatedItems` in `tasks.json` for agent proof coverage. Human task config
 should prefer real item source files instead of generated fixture items.
 
-The worker launcher is intentionally unchanged for now:
-
-```bash
-java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-worker-launcher.jar \
-  --base-url http://127.0.0.1:8088
-```
+Raw-secret fixture seed remains available only as an explicit local fallback:
+`integrations/samples/dev/scenario/bootstrap.json` contains devOnly API-key raw
+secrets and requires
+`--mass.control-plane.seed.allow-local-fixture-raw-secrets=true`. Do not use it
+as the preferred scenario credential path.
 
 Agent proof and legacy fixture commands can still use `--scenario-dir`:
 
@@ -91,8 +104,33 @@ Options:
 - `--websocket-url`: optional server WebSocket URL for realtime launcher workers. Default: `MASS_WEBSOCKET_URL`
 - `--task-api-key`: default task API key. Default: `MASS_TASK_API_KEY` or `crawler-task-api-key`
 - `--worker-api-key`: optional worker API key override. Default: each worker spec's `workerKey`
+- `--worker-api-key-file`: optional worker API key cache file. Default:
+  `integrations/xa-mass-scenario-launcher/examples/secrets/worker-api-key.txt`
+  when present.
 - `--scenario-dir`: scenario JSON directory. Default: `integrations/samples/dev/scenario`
 - `--max-polling-workers`: maximum polling workers to start in worker launcher. Default: `25`; `0` disables the cap
+
+Credential bootstrap options:
+
+- `--config`: scenario task config. Reads `server.baseUrl` and
+  `credentials.taskApiKeyFile`.
+- `--kind`: `env`, `task`, or `worker`. Default: `env`. Env mode verifies
+  the checked-in scenario catalog and prepares both task and worker key caches.
+  Worker credentials use `worker:poll` and wildcard project/event scopes for
+  the checked-in local worker scenario.
+- `--api-key-file`: cache file to validate/write. Use this for worker
+  credentials.
+- `--operator-user`: operator login user. Default: `MASS_OPERATOR_USER` or
+  `ops-admin`.
+- `--operator-password`: operator password. Default: `MASS_OPERATOR_PASSWORD`
+  or `ops-admin`.
+- `--principal-id`: task API-key principal id. Default:
+  `crawler-task-producer-local`.
+- `--project`: comma-separated project scopes. Default: `crawlerApp`.
+- `--event-code`: comma-separated event scopes. Default: `crawler.fetch-page`.
+- `--no-create`: fail when the cache file is missing.
+- `--no-refresh-stale-cache`: fail when the cache file exists but
+  `/api/v1/api-keys:current` rejects it.
 
 ## Boundary
 
@@ -109,5 +147,8 @@ Options:
   with task API-key credentials.
 - task config is not a credential/bootstrap mechanism. API keys referenced by
   config files must already exist in the target server.
+- credential bootstrap is local/integration-test tooling. It may call server
+  operator login and API-key lifecycle APIs, but it is not an SDK public
+  contract and must not print raw secrets after writing the cache file.
 - worker config, `workers[]`, and worker credential files are deferred; use the
   existing worker launcher with `--scenario-dir` until that path is designed.

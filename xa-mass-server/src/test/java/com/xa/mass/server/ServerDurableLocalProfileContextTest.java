@@ -77,11 +77,14 @@ class ServerDurableLocalProfileContextTest extends AbstractSampleE2eTest {
     void durableLocalStartsWithSqliteAndRedisRuntime() {
         assertThat(jdbcStorageRuntime.isEnabled()).isTrue();
         assertThat(taskWorkRuntime).isInstanceOf(RedisTaskWorkRuntime.class);
+        assertThat(Files.exists(SQLITE_DB.resolveSibling(SQLITE_DB.getFileName() + ".schema.sha256"))).isTrue();
     }
 
     private static Path createTempSqliteDbPath() {
         try {
-            return Files.createTempDirectory("xa-mass-durable-local-profile-").resolve("xa_mass.db");
+            Path db = Files.createTempDirectory("xa-mass-durable-local-profile-").resolve("xa_mass.db");
+            Files.writeString(db, "stale-local-db-without-sidecar");
+            return db;
         } catch (IOException e) {
             throw new IllegalStateException("Failed to create durable-local SQLite test path", e);
         }

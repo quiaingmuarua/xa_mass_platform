@@ -2,7 +2,10 @@ package com.xa.mass.scenario;
 
 import com.xa.mass.client.http.exception.MassHttpException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,6 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScenarioLauncherOptionsTest {
+    @TempDir
+    private Path tempDir;
+
     @Test
     void parsesDefaultsAndOverrides() {
         ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
@@ -50,6 +56,18 @@ class ScenarioLauncherOptionsTest {
     }
 
     @Test
+    void readsWorkerApiKeyFromExplicitFile() throws Exception {
+        Path workerKeyFile = tempDir.resolve("worker-api-key.txt");
+        Files.writeString(workerKeyFile, "worker-key-from-file\n", StandardCharsets.UTF_8);
+
+        ScenarioLauncherOptions options = ScenarioLauncherOptions.parseWorker(new String[]{
+                "--worker-api-key-file", workerKeyFile.toString()
+        });
+
+        assertEquals("worker-key-from-file", options.workerApiKey());
+    }
+
+    @Test
     void helpIsParsedByBothEntrypoints() {
         ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{"--help"});
 
@@ -81,8 +99,8 @@ class ScenarioLauncherOptionsTest {
         assertTrue(message.contains("server catalog does not contain an event"));
         assertTrue(message.contains("integrations/samples/dev/scenario/workers.json"));
         assertTrue(message.contains("--mass.control-plane.seed.enabled=true"));
-        assertTrue(message.contains("--mass.control-plane.seed.allow-local-fixture-raw-secrets=true"));
-        assertTrue(message.contains("file:integrations/samples/dev/scenario/bootstrap.json"));
+        assertTrue(!message.contains("--mass.control-plane.seed.allow-local-fixture-raw-secrets=true"));
+        assertTrue(message.contains("file:integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json"));
         assertTrue(message.contains("file:integrations/samples/dev/scenario/rules.json"));
     }
 
@@ -102,9 +120,29 @@ class ScenarioLauncherOptionsTest {
         assertTrue(message.contains("task API-key credential does not exist"));
         assertTrue(message.contains("--task-api-key"));
         assertTrue(message.contains("MASS_TASK_API_KEY"));
+        assertTrue(message.contains("xa-mass-scenario-credential-bootstrap"));
         assertTrue(message.contains("--mass.control-plane.seed.enabled=true"));
-        assertTrue(message.contains("--mass.control-plane.seed.allow-local-fixture-raw-secrets=true"));
-        assertTrue(message.contains("file:integrations/samples/dev/scenario/bootstrap.json"));
+        assertTrue(!message.contains("--mass.control-plane.seed.allow-local-fixture-raw-secrets=true"));
+        assertTrue(message.contains("file:integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json"));
         assertTrue(message.contains("file:integrations/samples/dev/scenario/rules.json"));
+    }
+
+    @Test
+    void diagnosesMissingWorkerApiKeyForScenarioWorkerRegistration() {
+        ScenarioLauncherOptions options = ScenarioLauncherOptions.parseWorker(new String[]{
+                "--scenario-dir", "integrations/samples/dev/scenario"
+        });
+
+        String message = ScenarioFailureDiagnostics.diagnoseHttpFailure(options, new MassHttpException(
+                "POST",
+                "/worker-api/v1/worker-groups",
+                401,
+                "{\"code\":401,\"msg\":\"Invalid or missing worker credential\",\"data\":null}"
+        ));
+
+        assertTrue(message.contains("worker API-key credential"));
+        assertTrue(message.contains("--kind worker"));
+        assertTrue(message.contains("--worker-api-key-file"));
+        assertTrue(message.contains("MASS_WORKER_API_KEY"));
     }
 }

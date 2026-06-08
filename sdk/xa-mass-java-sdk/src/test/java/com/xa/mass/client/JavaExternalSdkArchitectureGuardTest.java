@@ -128,6 +128,7 @@ class JavaExternalSdkArchitectureGuardTest {
         Path relative = repoRoot.relativize(path);
         String normalized = relative.toString().replace('\\', '/');
         return normalized.startsWith("sdk/xa-mass-java-sdk/")
+                || normalized.endsWith("/src/main/java/com/xa/mass/scenario/ScenarioCredentialBootstrapMain.java")
                 || normalized.contains("/src/test/");
     }
 

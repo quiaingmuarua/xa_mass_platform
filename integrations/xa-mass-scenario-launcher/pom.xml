@@ -82,6 +82,25 @@
                             </archive>
                         </configuration>
                     </execution>
+                    <execution>
+                        <id>credential-bootstrap-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>xa-mass-scenario-credential-bootstrap</finalName>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <descriptorRefs>
+                                <descriptorRef>jar-with-dependencies</descriptorRef>
+                            </descriptorRefs>
+                            <archive>
+                                <manifest>
+                                    <mainClass>com.xa.mass.scenario.ScenarioCredentialBootstrapMain</mainClass>
+                                </manifest>
+                            </archive>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>

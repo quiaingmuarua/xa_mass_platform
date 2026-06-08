@@ -41,6 +41,7 @@ record ScenarioLauncherOptions(
         String cliWebSocketUrl = null;
         String cliTaskApiKey = null;
         String cliWorkerApiKey = null;
+        Path cliWorkerApiKeyFile = null;
         Path cliScenarioDir = null;
         Path configPath = null;
         Integer cliMaxPollingWorkers = null;
@@ -75,6 +76,11 @@ record ScenarioLauncherOptions(
                 index++;
             } else if (arg.startsWith("--worker-api-key=")) {
                 cliWorkerApiKey = arg.substring("--worker-api-key=".length());
+            } else if ("--worker-api-key-file".equals(arg)) {
+                cliWorkerApiKeyFile = Path.of(requiredArg(args, index, arg));
+                index++;
+            } else if (arg.startsWith("--worker-api-key-file=")) {
+                cliWorkerApiKeyFile = Path.of(arg.substring("--worker-api-key-file=".length()));
             } else if ("--scenario-dir".equals(arg)) {
                 cliScenarioDir = Path.of(requiredArg(args, index, arg));
                 index++;
@@ -115,6 +121,8 @@ record ScenarioLauncherOptions(
         String workerApiKey = firstNonBlank(
                 cliWorkerApiKey,
                 System.getenv("MASS_WORKER_API_KEY"),
+                workerApiKeyFromFile(cliWorkerApiKeyFile),
+                workerApiKeyFromFile(defaultWorkerApiKeyFile()),
                 null
         );
         Path scenarioDir = cliScenarioDir == null ? DEFAULT_SCENARIO_DIR : cliScenarioDir;
@@ -182,6 +190,7 @@ record ScenarioLauncherOptions(
                   --websocket-url <url>        Optional server WebSocket URL for realtime launcher workers. Default: MASS_WEBSOCKET_URL
                   --task-api-key <key>         Default task API key. Default: MASS_TASK_API_KEY or crawler-task-api-key
                   --worker-api-key <key>       Optional worker API key override. Default: each worker spec's workerKey
+                  --worker-api-key-file <path> Optional worker API key cache file. Default: examples/secrets/worker-api-key.txt when present
                   --scenario-dir <path>        Scenario JSON directory. Default: integrations/samples/dev/scenario
                   --max-polling-workers <n>    Max polling workers to start in worker launcher. Default: 25. Use 0 for no cap.
                   -h, --help                   Show this help.
@@ -247,6 +256,25 @@ record ScenarioLauncherOptions(
         } catch (java.io.IOException e) {
             throw new IllegalArgumentException("failed to read credentials.taskApiKeyFile: " + resolved, e);
         }
+    }
+
+    private static String workerApiKeyFromFile(Path path) {
+        if (path == null || !java.nio.file.Files.exists(path)) {
+            return null;
+        }
+        try {
+            String value = java.nio.file.Files.readString(path).trim();
+            if (value.isBlank()) {
+                throw new IllegalArgumentException("worker API key file is blank: " + path);
+            }
+            return value;
+        } catch (java.io.IOException e) {
+            throw new IllegalArgumentException("failed to read worker API key file: " + path, e);
+        }
+    }
+
+    private static Path defaultWorkerApiKeyFile() {
+        return Path.of("integrations/xa-mass-scenario-launcher/examples/secrets/worker-api-key.txt");
     }
 
     private static Duration durationFromSeconds(Integer seconds, Duration defaultValue, String fieldName) {

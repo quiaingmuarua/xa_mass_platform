@@ -219,20 +219,24 @@ stable polling contract and uses the dev-only `external.proof.echo` event plus
 `external-proof-task-api-key` / `external-proof-worker-key` credentials so it
 does not depend on optional sample workers or server-owned demo workload state.
 
-Producer traffic uses shell create plus explicit ingest. These calls require
-`crawler-task-api-key` to already exist through explicit seed/import or normal
-host credential setup; the checked-in local scenario seed must be imported with
-`mass.control-plane.seed.allow-local-fixture-raw-secrets=true` because it
-contains local fixture raw secrets.
+Producer traffic uses shell create plus explicit ingest. These calls require a
+real task API key to already exist through normal host credential setup. For
+local scenario work, prefer
+`integrations/xa-mass-scenario-launcher`'s credential bootstrap helper: it
+checks the scenario catalog, validates local task/worker key cache files
+through `/api/v1/api-keys:current`, or logs in as an operator and creates
+task/worker credentials through `POST /api/v1/api-keys`. The checked-in
+raw-secret seed remains an explicit local fixture fallback only.
 
 ```bash
 curl -X POST http://127.0.0.1:8088/api/v1/tasks \
   -H 'Content-Type: application/json' \
-  -H 'X-Mass-Api-Key: crawler-task-api-key' \
+  -H 'X-Mass-Api-Key: <task-api-key>' \
   -d '{
     "project": "crawlerApp",
-    "userId": "crawler-agent",
+    "userId": "ops-admin",
     "sharedConfig": {
+      "workerGroupId": "sample-websocket-crawler",
       "routingCode": "us"
     },
     "executionSpec": {
@@ -242,7 +246,7 @@ curl -X POST http://127.0.0.1:8088/api/v1/tasks \
 
 curl -X POST http://127.0.0.1:8088/api/v1/tasks/{taskId}/items \
   -H 'Content-Type: application/json' \
-  -H 'X-Mass-Api-Key: crawler-task-api-key' \
+  -H 'X-Mass-Api-Key: <task-api-key>' \
   -d '{
     "eventCode": "crawler.fetch-page",
     "items": [

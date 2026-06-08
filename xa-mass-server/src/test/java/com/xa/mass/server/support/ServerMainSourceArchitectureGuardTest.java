@@ -445,6 +445,14 @@ class ServerMainSourceArchitectureGuardTest {
         assertTrue(!durableLocalConfig.contains("integrations/samples/dev/scenario")
                         && !durableLocalConfig.contains("control-plane-seed/control-console-scenario.json"),
                 "durable-local profile must not default to checked-in scenario seeds that contain devOnly API-key raw secrets");
+        assertTrue(Pattern.compile("seed:\\R(?:.*\\R){0,8}\\s+enabled: true")
+                        .matcher(durableLocalConfig).find()
+                        && Pattern.compile("catalog-location:\\R\\s+rules-location:\\R")
+                        .matcher(durableLocalConfig).find()
+                        && durableLocalConfig.contains(
+                        "operator-credentials-location: classpath:control-plane-seed/operator-credentials.json"),
+                "durable-local session auth must seed a minimal operator credential by default after local SQLite reset; "
+                        + "catalog/rules seeds must remain explicit");
     }
 
     @Test
@@ -543,6 +551,33 @@ class ServerMainSourceArchitectureGuardTest {
                 "server-owned migrations must use a separate Flyway history table");
         assertTrue(!runnerSource.contains("classpath:db/migration/control-plane"),
                 "server-owned API/IAM/usage migrations must not reuse platform_infra control-plane migration location");
+    }
+
+    @Test
+    void localSchemaResetGuardRunsBeforeJdbcRuntimeCreation() throws IOException {
+        String serverSource = Files.readString(
+                SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java"),
+                StandardCharsets.UTF_8);
+        int guardIndex = serverSource.indexOf("new LocalSchemaResetGuard().verify(");
+        int createIndex = serverSource.indexOf("JdbcStorageRuntime.create(");
+
+        assertTrue(guardIndex >= 0,
+                "durable-local schema reset guard must run from server startup assembly");
+        assertTrue(createIndex >= 0,
+                "server startup assembly must still create JdbcStorageRuntime explicitly");
+        assertTrue(guardIndex < createIndex,
+                "local schema reset guard must run before JdbcStorageRuntime.create(...) "
+                        + "so stale local DBs are detected before Flyway migrations");
+
+        String guardSource = Files.readString(
+                SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/config/LocalSchemaResetGuard.java"),
+                StandardCharsets.UTF_8);
+        assertTrue(guardSource.contains("classpath*:db/migration/control-plane/**/*.sql"),
+                "local schema fingerprint must include platform control-plane SQL resources");
+        assertTrue(guardSource.contains("classpath*:db/migration/server-control-plane/**/*.sql"),
+                "local schema fingerprint must include server control-plane SQL resources");
+        assertTrue(guardSource.contains("ALLOWLISTED_PROFILES = Set.of(\"durable-local\")"),
+                "destructive local schema reset must be restricted to an explicit local profile allowlist");
     }
 
     @Test

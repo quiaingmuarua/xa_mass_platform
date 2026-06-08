@@ -103,6 +103,16 @@ design and must not be implied by result ingress or review materialization.
 | engine assembly | wires kernel SPI task-shell ports and worker-runtime `WorkerDeclarationStore` explicitly | prevents shell/declaration truth from silently redefining review/export or runtime ownership |
 | `doc/TRACE_CONTRACT.md` plus `platform_infra/mass-trace-sink` | required trace semantics plus the current canonical sink/module implementation | trace remains analysis/debug ownership, not lifecycle/runtime truth |
 
+Local destructive schema reset is an environment-management guard for
+pre-release file-backed SQLite only. The server records a sidecar fingerprint
+for control-plane SQL resources before JDBC/Flyway startup. In `durable-local`,
+an existing local SQLite DB without the sidecar, or with a mismatched sidecar,
+is deleted and recreated by default so local schema churn does not block
+iteration. This reset is denied outside explicitly allowlisted local profiles
+and local SQLite file URLs. It is not migration compatibility and must not be
+extended to runtime Redis state, trace/audit data, PostgreSQL, or remote JDBC
+targets.
+
 ## 4. Fast Placement Test
 
 Ask these in order:

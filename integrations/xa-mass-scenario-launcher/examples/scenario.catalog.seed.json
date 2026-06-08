@@ -1,0 +1,31 @@
+{
+  "events": [
+    {
+      "code": "crawler.fetch-page",
+      "name": "Crawler Fetch Page",
+      "description": "Dispatch a crawler fetch request to an SDK-created worker.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN", "STREAMING"],
+      "projectCodes": ["crawlerApp"]
+    },
+    {
+      "code": "stock.quote.fetch",
+      "name": "Stock Quote Fetch",
+      "description": "Dispatch a stock quote request to an external crawler worker.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN", "STREAMING"],
+      "projectCodes": ["crawlerApp"]
+    }
+  ],
+  "projects": [
+    {
+      "code": "crawlerApp",
+      "name": "Crawler",
+      "description": "Crawler worker lab project for SDK-created worker scenarios.",
+      "eventCodes": [
+        "crawler.fetch-page",
+        "stock.quote.fetch"
+      ]
+    }
+  ]
+}

@@ -31,62 +31,72 @@ existing API key through `credentials.taskApiKeyFile`.
 | `examples/secrets/task-api-key.txt` | local filesystem | User-created local API-key cache. | volatile local secret cache | May be written by helper; must stay gitignored. |
 | `ScenarioTaskLauncherMain` | `integrations/xa-mass-scenario-launcher` | Consumes existing task API key to create task and append items. | SDK adopter task producer | Must not login, create credentials, or seed server state. |
 
-## Current Gaps
+## Implemented Outcomes
 
-1. There is no schema fingerprint or reset guard. A stale local SQLite DB can
-   survive schema/seed shape changes and produce confusing API-key/catalog
-   mismatches.
-2. The current seed importer is explicit and off by default, but the checked-in
-   scenario fixture combines catalog metadata with devOnly raw API-key secrets.
-   That makes "catalog prepared" and "credential prepared" easy to confuse.
-3. `scenario.local.example.json` uses a task API-key file, but there is no
-   helper that logs in as an operator, creates a task producer API key, and
-   writes the returned one-time secret to that file.
-4. API-key lifecycle truth lives in `xa_api_key_credential`; old or derived
-   rows in `xa_principal` are not enough for task API authentication.
-5. `ApiKeyController` can create API keys but does not accept caller-specified
-   raw secrets. That is correct for the real lifecycle, but it means local
-   launcher configs need a cache file populated from the one-time response.
-6. Reusing an existing DB credential is not enough for launcher setup unless
-   the local cache file already contains the raw secret. Otherwise the helper
-   must create a new credential or follow an explicit revoke/recreate/rotate
-   decision.
-7. The scenario launcher README still presents raw-secret seed as the primary
-   local setup path. That is useful as a fallback but not the desired real
-   integration-test setup.
+1. `LocalSchemaResetGuard` now runs from server startup assembly before
+   `JdbcStorageRuntime.create(...)`. It hashes platform and server
+   control-plane migration SQL and stores a sidecar fingerprint beside the
+   durable-local SQLite DB.
+2. Existing `durable-local` SQLite DBs without a sidecar, or with a mismatched
+   sidecar, reset by default because this repo is pre-release and does not
+   preserve historical local DB compatibility. Destructive reset is still
+   allowlisted to durable-local file-backed SQLite; non-allowlisted profiles,
+   PostgreSQL, remote JDBC URLs, and unsupported targets fail before delete.
+3. `scenario.local.example.json` still references
+   `credentials.taskApiKeyFile`, but the preferred setup path now populates
+   that file through `ScenarioCredentialBootstrapMain`.
+4. `ScenarioCredentialBootstrapMain` validates an existing cache through
+   `GET /api/v1/api-keys:current`; stale cache is refreshed through operator
+   login plus `POST /api/v1/api-keys`, or rejected when refresh is disabled.
+5. API-key lifecycle truth remains in `xa_api_key_credential`; the helper does
+   not recover raw secrets from DB rows and does not add credential lifecycle
+   APIs to `sdk/xa-mass-java-sdk`.
+6. `integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json`
+   prepares local catalog metadata without API-key raw secrets. The old
+   raw-secret sample seed remains an explicit local fixture fallback only.
+7. Scenario launcher, integrations, SDK, server, and infra docs now describe
+   credential bootstrap and local schema reset as local/integration tooling,
+   not SDK or migration compatibility.
 
-## Decisions To Close In Slice 0
+## Slice 0 Decisions
 
 1. Exact local profile and JDBC URL allowlist where destructive schema reset is
-   allowed. Current preference: named local/test profile plus file-backed
-   SQLite target only for the first implementation.
-2. Whether the first reset implementation targets SQLite only, or also local
-   file-backed H2.
+   allowed: `durable-local` plus file-backed SQLite only.
+2. File-backed H2 reset is deferred. H2 may remain a test schema target, but it
+   is not a destructive reset target in this roadmap.
 3. Exact schema hash inputs:
-   - server-owned SQL resources
-   - platform JDBC migration resources
-   - optionally profile/storage mode identifiers
+   - platform JDBC migration resources under
+     `classpath*:db/migration/control-plane/**/*.sql`
+   - server-owned SQL resources under
+     `classpath*:db/migration/server-control-plane/**/*.sql`
 4. Hash storage location:
-   - first-pass preference: sidecar file beside SQLite DB, because it can be
-     checked before opening/migrating the DB
-   - DB metadata table is allowed only if the design proves mismatch detection
-     without first running platform or server Flyway
+   - sidecar file beside SQLite DB:
+     `<db-file-name>.schema.sha256`
+   - DB metadata table storage remains deferred because it cannot prove
+     mismatch detection before opening/migrating the DB in this slice.
 5. Startup behavior on mismatch:
    - fail with recreate/reseed message by default
    - delete/recreate only when explicit local reset flag is enabled
 6. Credential helper auth path:
    - session login first
-   - dev-header fallback only for local profiles, if still needed
+   - dev-header fallback is deferred; the implemented helper uses session mode
    - session helper must retain cookie and send `X-Mass-Csrf-Token`
    - proof operator must have `api-key:approve`
 7. Credential cache semantics:
-   - cache file exists: use it or optionally validate it
+   - cache file exists: validate it through `GET /api/v1/api-keys:current`
+     before using it
+   - stale or invalid cache after local DB reset must be detected; refresh
+     through operator login + API-key creation and overwrite the cache only
+     when the selected local policy enables refresh, otherwise fail with an
+     explicit delete/refresh-cache hint
    - cache file missing: create a new API key and write returned one-time
      secret
    - existing DB credential without cache is not reusable unless a separate
      rotate/recreate decision is made
 8. Local catalog/rule preparation path that does not require raw API-key seed
-   secrets.
+   secrets: `integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json`
+   plus the existing rules seed, with operator credentials loaded from the
+   server-owned operator credential seed.
 
 ## Hard Boundary
 

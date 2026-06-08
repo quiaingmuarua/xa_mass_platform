@@ -1,6 +1,6 @@
 # Local Env Schema Reset And Scenario Credential Roadmap
 
-Status: proposed direction document.
+Status: implemented mainline.
 
 ## Summary
 
@@ -79,6 +79,24 @@ scenario task launcher
   -> create task and append items through Java SDK task APIs
 ```
 
+Implemented first-slice decisions:
+
+- destructive reset allowlist: `durable-local` plus file-backed SQLite only
+- reset properties: `mass.local-schema-reset.enabled` and
+  `mass.local-schema-reset.reset-on-mismatch`
+- `durable-local` default: `reset-on-mismatch=true` so old local SQLite DBs
+  without the sidecar are automatically rebuilt during pre-release iteration
+- schema fingerprint location: sidecar file beside SQLite DB,
+  `<db-file-name>.schema.sha256`
+- hash inputs:
+  `classpath*:db/migration/control-plane/**/*.sql` and
+  `classpath*:db/migration/server-control-plane/**/*.sql`
+- credential helper:
+  `com.xa.mass.scenario.ScenarioCredentialBootstrapMain` packaged as
+  `xa-mass-scenario-credential-bootstrap`
+- local catalog seed without raw API-key secrets:
+  `integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json`
+
 ## Hard Rules
 
 1. Destructive reset is deny-by-default. It is allowed only when both are true:
@@ -87,8 +105,10 @@ scenario task launcher
 2. Any non-allowlisted profile, unnamed environment, remote JDBC target,
    PostgreSQL target, or unsupported URL must fail before deleting anything,
    even if the reset property is set.
-3. Default schema mismatch behavior is fail-fast with a concrete DB path and
-   property/action hint.
+3. Default schema mismatch behavior is profile scoped: `durable-local`
+   automatically resets allowlisted file-backed SQLite targets, while
+   non-allowlisted profiles, PostgreSQL, remote JDBC URLs, and unsupported
+   targets fail before delete with a concrete DB path and property/action hint.
 4. Schema reset is not migration. Do not add historical upgrade compatibility
    or migration repair logic in this roadmap.
 5. The schema fingerprint/reset hook must run before
@@ -150,8 +170,11 @@ Scope:
   - session login required for durable-local proof
   - dev-header may be local-only fallback if still useful
 - Decide credential cache semantics:
-  - cache file exists: use it, optionally validate through current-credential
-    API
+  - cache file exists: validate it through `GET /api/v1/api-keys:current`
+    before using it
+  - stale or invalid cache after local DB reset: either authenticate as an
+    operator, create a replacement key, and overwrite the cache when refresh is
+    enabled, or fail clearly with a delete/refresh-cache hint
   - cache file missing: create a new API key and write the returned one-time
     raw secret
   - existing DB credential without cache: do not promise reuse; either fail
@@ -218,7 +241,7 @@ Acceptance:
 Verification:
 
 ```powershell
-./mvnw.cmd -pl xa-mass-server -am "-Dtest=*Schema*Reset*Test,*Profile*Startup*Test,ServerMainSourceArchitectureGuardTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+./mvnw.cmd -pl xa-mass-server -am "-Dtest=LocalSchemaResetGuardTest,ServerDurableLocalProfileContextTest,ServerMainSourceArchitectureGuardTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 git diff --check
 ```
 
@@ -232,9 +255,11 @@ Scope:
 - Add a scenario-launcher helper main, for example
   `ScenarioCredentialBootstrapMain`.
 - The helper first checks the configured cache file:
-  - if present, use it as the task API key
-  - optionally validate it through a current-credential route if LSR-0 selects
-    that behavior
+  - if present, validate it through `GET /api/v1/api-keys:current`
+  - if valid, use it as the task API key
+  - if invalid or stale after a local DB reset, either authenticate as an
+    operator, create a replacement key, and overwrite the cache when refresh is
+    enabled, or fail clearly with a delete/refresh-cache hint
   - do not attempt to recover raw secret from an existing DB credential
 - If the cache file is missing, the helper authenticates as an operator:
   - session login path first
@@ -253,9 +278,13 @@ Scope:
 
 Acceptance:
 
-- Helper uses an existing cache file without creating a duplicate credential,
-  or creates a new task producer credential for `crawlerApp` /
-  `crawler.fetch-page` when the cache file is missing.
+- Helper validates an existing cache file before use and does not create a
+  duplicate credential for a valid cache.
+- Helper detects stale cache after local DB reset; invalid cache is either
+  refreshed through the operator flow or rejected with an explicit
+  delete/refresh-cache hint according to the LSR-0 policy.
+- Helper creates a new task producer credential for `crawlerApp` /
+  `crawler.fetch-page` when the cache file is missing and creation is enabled.
 - Helper preserves session cookies and sends `X-Mass-Csrf-Token` when using
   session auth.
 - Helper proof operator has `api-key:approve`; missing permission is covered.
@@ -270,7 +299,7 @@ Acceptance:
 Verification:
 
 ```powershell
-./mvnw.cmd -pl integrations/xa-mass-scenario-launcher,sdk/xa-mass-java-sdk -am test
+./mvnw.cmd -pl integrations/xa-mass-scenario-launcher,sdk/xa-mass-java-sdk -am "-Dtest=ScenarioCredentialBootstrapMainTest,JavaExternalSdkArchitectureGuardTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 rg -n "auth/login|api-keys|ScenarioCredential|taskApiKeyFile" integrations/xa-mass-scenario-launcher sdk/xa-mass-java-sdk -g "*.java" -g "*.md"
 rg -n "login\\(|api-keys" sdk/xa-mass-java-sdk/src/main/java
 ```
@@ -296,14 +325,26 @@ Acceptance:
 - The proof uses API-key lifecycle creation, not checked-in raw task secrets.
 - Catalog/rules are explicit setup and are not created by the launcher.
 - The launcher does not receive operator credentials.
-- Re-running after local schema reset produces a clean environment and a new
-  valid cached task API key.
+- Re-running after local schema reset proves the old cache is checked through
+  `GET /api/v1/api-keys:current`; a passing proof ends with a valid cached task
+  API key created through the selected refresh path.
 - The proof can be run from documented commands or a focused integration test.
 
 Verification:
 
 ```powershell
-./mvnw.cmd -pl xa-mass-server,integrations/xa-mass-scenario-launcher -am "-Dtest=*Scenario*Credential*IntegrationTest,*Schema*Reset*IntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+./mvnw.cmd -pl xa-mass-server,integrations/xa-mass-scenario-launcher -am -DskipTests package
+java -jar xa-mass-server/target/xa-mass-server-0.0.1-SNAPSHOT.jar `
+  --mass.storage.jdbc.url=jdbc:sqlite:<temp>/xa_mass.db `
+  --mass.local-schema-reset.reset-on-mismatch=true `
+  --mass.control-plane.seed.enabled=true `
+  --mass.control-plane.seed.catalog-location=file:integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json `
+  --mass.control-plane.seed.rules-location=file:integrations/samples/dev/scenario/rules.json `
+  --mass.control-plane.seed.operator-credentials-location=classpath:control-plane-seed/operator-credentials.json
+java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-credential-bootstrap.jar `
+  --config integrations/xa-mass-scenario-launcher/examples/scenario.local.example.json
+java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-task-launcher.jar `
+  --config integrations/xa-mass-scenario-launcher/examples/scenario.local.example.json
 ```
 
 ## LSR-4 Docs, Guards, And Residue
@@ -320,7 +361,7 @@ Scope:
   - `sdk/README.md`
 - Add or update guards so SDK does not gain operator login/API-key lifecycle
   surface.
-- Add startup/profile guard for prod reset prohibition.
+- Add startup/profile guard for non-allowlisted profile/URL reset prohibition.
 - Add startup/profile guard for destructive reset allowlist enforcement.
 - Residue scan old raw-secret-primary demo instructions.
 
@@ -363,7 +404,8 @@ The roadmap can be marked complete only when:
 ## Suggested Implementation Order
 
 1. LSR-0 inventory decisions.
-2. LSR-1 schema fingerprint fail-fast before enabling auto-reset.
+2. LSR-1 schema fingerprint before JDBC/Flyway with durable-local auto-reset
+   and non-allowlisted fail-closed behavior.
 3. LSR-2 credential helper using current server APIs.
 4. LSR-3 local proof without raw task-secret seed.
 5. LSR-4 docs/guards/residue.

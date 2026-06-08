@@ -40,6 +40,12 @@ mass:
       # ACTIVE operator credential exists after this seed/import step.
       # Seed files must use passwordHash; plaintext password is rejected.
       operator-credentials-location:
+  local-schema-reset:
+    # Local destructive environment management only. When enabled, durable-local
+    # SQLite startup records a sidecar schema fingerprint before migrations.
+    # A mismatch fails fast unless reset-on-mismatch is explicitly enabled.
+    enabled: true
+    reset-on-mismatch: false
   auth:
     operator:
       # New server profiles must set this explicitly. Blank remains only for

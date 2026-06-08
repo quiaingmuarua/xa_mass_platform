@@ -81,6 +81,9 @@ What this module does not own:
 - control-plane seed import may load operator credentials from
   `mass.control-plane.seed.operator-credentials-location`; seed files must use
   `passwordHash` and plaintext `password` is rejected
+- `durable-local` enables the minimal operator credential seed by default so a
+  reset local SQLite DB can still satisfy session-auth startup readiness; this
+  is auth bootstrap only, not sample catalog/task/worker seeding
 - `session` mode fails startup when no active login-capable operator
   credential exists after seed/import
 - `POST /api/v1/auth/login` verifies `OperatorCredentialStore` password hashes,
@@ -226,7 +229,9 @@ node, or worker truth.
 New-environment metadata is prepared explicitly through the server-owned
 control-plane seed/import runner:
 
-- `mass.control-plane.seed.enabled=false` by default in every profile
+- `mass.control-plane.seed.enabled=false` globally; `durable-local` overrides
+  it to `true` only for the minimal operator credential seed required by
+  session auth after local SQLite reset
 - `mass.control-plane.seed.catalog-location` reads event, project, and
   submitter metadata
 - `mass.control-plane.seed.rules-location` reads default scheduling rules
@@ -411,6 +416,8 @@ Observability:
 | `mass.storage.jdbc.url` | `jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false` | JDBC URL used when `mass.storage.mode` is a JDBC mode |
 | `mass.storage.jdbc.username` | `sa` | JDBC username |
 | `mass.storage.jdbc.password` | empty | JDBC password |
+| `mass.local-schema-reset.enabled` | `true` | enables durable-local SQLite schema fingerprint sidecar checks before JDBC/Flyway startup |
+| `mass.local-schema-reset.reset-on-mismatch` | `true` in `durable-local`; `false` globally | destructive reset flag for allowlisted local SQLite file targets only |
 | `mass.runtime.mode` | `memory` | engine runtime backend; normal `memory-local` uses `memory`, while normal `durable-local` uses Redis-backed work/result runtime |
 | `mass.runtime.redis.namespace` | `xa:mass:runtime:v1` | Redis namespace prefix when `mass.runtime.mode=redis` |
 | `mass.runtime.redis.max-queued-items` | `1000000` | runtime work backpressure cap for the Redis-backed work runtime |
@@ -521,6 +528,13 @@ Server control-plane store hard rules:
 - DB schema changes may require deleting/recreating local DBs in this
   pre-release phase; validation proves clean DB creation and current-schema
   restart behavior, not historical upgrade compatibility
+- durable-local SQLite startup records a sidecar schema fingerprint before
+  JDBC/Flyway migration. Existing local DBs without the sidecar, or with a
+  mismatched fingerprint, are destructively rebuilt by default only for the
+  allowlisted local file-backed SQLite target. Disable with
+  `--mass.local-schema-reset.reset-on-mismatch=false` when intentionally
+  inspecting a stale local DB. Reset is denied for non-allowlisted profiles,
+  PostgreSQL, remote JDBC URLs, and unsupported targets.
 - server memory-local/durable-local catalog reads must not be satisfied by the default/demo
   catalog fallback. The fallback remains explicit local/embedded/test bootstrap
   behavior only.

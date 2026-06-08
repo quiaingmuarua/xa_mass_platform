@@ -18,7 +18,7 @@ Global boundary guard:
 
 | Module | Artifact | Role |
 | --- | --- | --- |
-| [`xa-mass-scenario-launcher`](./xa-mass-scenario-launcher/README.md) | `xa-mass-scenario-task-launcher`, `xa-mass-scenario-worker-launcher` | primary Java external SDK adopter split into task-producer and worker-process launchers against an explicitly initialized server |
+| [`xa-mass-scenario-launcher`](./xa-mass-scenario-launcher/README.md) | `xa-mass-scenario-task-launcher`, `xa-mass-scenario-worker-launcher`, `xa-mass-scenario-credential-bootstrap` | primary Java external SDK adopter split into local credential preparation, task-producer, and worker-process launchers against an explicitly initialized server |
 | [`xa-mass-worker-pack`](./xa-mass-worker-pack/README.md) | `xa-mass-worker-pack` | worker capability pack and active server E2E harness support |
 | [`samples`](./samples/README.md) | none | historical/dev fixtures only; not a long-term public SDK product surface |
 
@@ -43,6 +43,11 @@ Global boundary guard:
 
 - Scenario launcher is the primary Java SDK adopter, split into two executable
   process roles: task producer and worker process.
+- Scenario credential bootstrap is local/integration tooling that initializes
+  the scenario environment: it verifies required catalog facts, validates or
+  creates task and worker API keys through server operator login and API-key
+  lifecycle APIs, then writes one-time secrets to gitignored local cache files.
+  It is not Java SDK public credential management.
 - Scenario task launcher now supports a human `--config` file for task
   producer runs. Worker launcher config remains deferred and continues to use
   `--scenario-dir` / `workers.json`.

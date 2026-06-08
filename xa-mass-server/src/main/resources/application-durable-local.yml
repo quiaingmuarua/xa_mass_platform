@@ -6,13 +6,21 @@ mass:
       url: jdbc:sqlite:./data/xa-mass-sqlite/xa_mass.db
       username:
       password:
+  local-schema-reset:
+    # Pre-release local SQLite guard. Existing DBs without the sidecar
+    # xa_mass.db.schema.sha256, or with a mismatched hash, are reset by
+    # default only for this allowlisted local file-backed SQLite profile.
+    # Disable when intentionally inspecting a stale local DB:
+    # --mass.local-schema-reset.reset-on-mismatch=false
+    enabled: true
+    reset-on-mismatch: true
   control-plane:
     seed:
       # Durable-local startup order is seed/import -> operator readiness -> runtime start.
       # Leave disabled only when xa_operator_credential already has an ACTIVE
       # login-capable operator credential. Otherwise session auth fails
       # before runtime starts.
-      enabled: false
+      enabled: true
       mode: apply
       allow-local-fixture-raw-secrets: false
       # Fresh durable-local environment:

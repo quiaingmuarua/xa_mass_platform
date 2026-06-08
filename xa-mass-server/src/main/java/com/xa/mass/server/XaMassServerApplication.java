@@ -43,6 +43,7 @@ import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 import com.xa.mass.api.auth.CompositePrincipalDirectory;
 import com.xa.mass.api.auth.DefaultOperatorPrincipalDirectory;
 import com.xa.mass.server.auth.jdbc.JdbcCredentialPrincipalStore;
+import com.xa.mass.server.config.LocalSchemaResetGuard;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -154,6 +155,12 @@ public class XaMassServerApplication {
     @Value("${mass.storage.jdbc.password:}")
     private String storageJdbcPassword;
 
+    @Value("${mass.local-schema-reset.enabled:true}")
+    private boolean localSchemaResetEnabled;
+
+    @Value("${mass.local-schema-reset.reset-on-mismatch:false}")
+    private boolean localSchemaResetOnMismatch;
+
     @Value("${mass.review.materialization.mode:OFF}")
     private String taskReviewMaterializationMode;
 
@@ -207,6 +214,13 @@ public class XaMassServerApplication {
         if (isDurableLocalProfile() && !mode.isJdbc()) {
             throw new IllegalStateException("durable-local requires mass.storage.mode to be JDBC-enabled");
         }
+        new LocalSchemaResetGuard().verify(
+                environment == null ? new String[0] : effectiveProfiles(environment),
+                mode,
+                storageJdbcUrl,
+                localSchemaResetEnabled,
+                localSchemaResetOnMismatch
+        );
         return JdbcStorageRuntime.create(
                 mode,
                 storageJdbcUrl,
