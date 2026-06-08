@@ -1255,14 +1255,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (!Pattern.compile("\\bsourceGuard\\s*\\(").matcher(source).find()) {
             violations.add(indexPath + " does not expose a source-guard owner API");
         }
-        if (Pattern.compile("\\bWorkerRouteBucketOwner\\b").matcher(source).find()) {
-            violations.add(indexPath + " still references removed WorkerRouteBucketOwner residue");
+        if (Pattern.compile("\\bWorkerCandidateBucketOwner\\b").matcher(source).find()) {
+            violations.add(indexPath + " still references removed WorkerCandidateBucketOwner residue");
         }
 
         assertTrue(violations.isEmpty(),
                 "WorkerCandidateIndex is Stage-1 group-capability narrowing only. "
                 + "It must not read worker-level compatibility capability, WorkerManager, "
-                + "storage, route-bucket residue, unbounded group worker enumeration, full scans, "
+                + "storage, candidate-bucket residue, unbounded group worker enumeration, full scans, "
                         + "or Stage-2 runtime admission state:\n"
                 + String.join("\n", violations));
     }
@@ -1354,7 +1354,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("worker reserve", Pattern.compile("\\btryReserve\\b|\\bconfirmReservation\\b")),
                 Map.entry("worker release/final", Pattern.compile("\\breleaseReservation\\b|\\brecordWorkFinal\\b")),
                 Map.entry("dispatch runtime", Pattern.compile("\\bTaskWorkRuntime\\b|\\bTaskResultRuntime\\b|\\bTaskDispatch\\b")),
-                Map.entry("route bucket acquisition", Pattern.compile("\\bacquireCandidates\\s*\\(")),
+                Map.entry("candidate bucket acquisition", Pattern.compile("\\bacquireCandidates\\s*\\(")),
                 Map.entry("worker slot truth", Pattern.compile("\\bWorkerSlot\\b|\\bWorkerRegistry\\b"))
         );
 
@@ -1397,14 +1397,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerManagerDoesNotOwnRouteBucketMembershipResidue() throws IOException {
+    void workerManagerDoesNotOwnCandidateBucketMembershipResidue() throws IOException {
         Path workerManagerPath = WORKER_MANAGER_SOURCE;
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
 
-        assertFalse(source.contains("WorkerRouteBucketOwner"),
-                "WorkerManager must not keep a second route bucket membership owner. "
+        assertFalse(source.contains("WorkerCandidateBucketOwner"),
+                "WorkerManager must not keep a second candidate bucket membership owner. "
                         + "Stage-1 candidate membership is owned by WorkerRegistry; "
-                        + "snapshot-backed route bucket code may only remain as isolated residue until removed.");
+                        + "snapshot-backed candidate bucket code may only remain as isolated residue until removed.");
     }
 
     @Test
@@ -1517,7 +1517,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "RuleBasedTaskWorkerMatchingStrategy must consume the centralized candidate source. "
-                        + "Do not reintroduce direct worker-pool scans, route-bucket reads, or source-guard "
+                        + "Do not reintroduce direct worker-pool scans, candidate-bucket reads, or source-guard "
                         + "relation checks in the rule/rank/resource path:\n"
                         + String.join("\n", violations));
     }
@@ -1837,7 +1837,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         Pattern.compile("\\bWorkerRegistry\\b")),
                 Map.entry("low-level worker registry primitive import",
                         Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.runtime\\.worker\\."
-                                + "(?:WorkerRegistry|WorkerSlot|WorkerMeta|WorkerRouteBucketPolicy)\\b")),
+                                + "(?:WorkerRegistry|WorkerSlot|WorkerMeta|WorkerCandidateBucketPolicy)\\b")),
                 Map.entry("resource/report/group runtime owners",
                         Pattern.compile("\\bWorker(?:Resource|Report|Group|Relationship|Admission|CandidateSource)Owner\\b")),
                 Map.entry("state projection owner",
@@ -1868,7 +1868,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker");
         Set<String> allowedFiles = Set.of(
                 "CleanupSummary.java",
-                "DefaultWorkerRouteBucketPolicy.java",
+                "DefaultWorkerCandidateBucketPolicy.java",
                 "DispatchAvailabilitySource.java",
                 "EventKey.java",
                 "RandomWorkerCandidateSamplingPolicy.java",
@@ -1878,7 +1878,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "WorkerCandidateSamplingPolicy.java",
                 "WorkerMeta.java",
                 "WorkerRegistry.java",
-                "WorkerRouteBucketPolicy.java",
+                "WorkerCandidateBucketPolicy.java",
                 "WorkerSlot.java"
         );
         Set<String> actualFiles = javaSourceFiles(workerApiPackage).stream()
@@ -2435,25 +2435,28 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void taskSelectorAndRoutePolicyAdaptersStayInEngineStrategyPackage() throws IOException {
+    void taskSelectorAdapterStaysInEngineStrategyAndRoutingPolicyDoesNotReturn() throws IOException {
         Path workerPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker");
         Path strategyPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
 
         List<String> violations = new ArrayList<>();
-        for (String adapterFile : List.of("WorkerTaskSelectorFactory.java", "WorkerRoutingPolicy.java")) {
-            if (Files.exists(workerPackage.resolve(adapterFile))) {
-                violations.add(workerPackage.resolve(adapterFile)
-                        + " keeps task selector or route policy adapter in worker package");
-            }
-            if (!Files.exists(strategyPackage.resolve(adapterFile))) {
-                violations.add(strategyPackage.resolve(adapterFile)
-                        + " is missing engine strategy selector/routing adapter");
-            }
+        String selectorAdapter = "WorkerTaskSelectorFactory.java";
+        if (Files.exists(workerPackage.resolve(selectorAdapter))) {
+            violations.add(workerPackage.resolve(selectorAdapter)
+                    + " keeps task selector adapter in worker package");
+        }
+        if (!Files.exists(strategyPackage.resolve(selectorAdapter))) {
+            violations.add(strategyPackage.resolve(selectorAdapter)
+                    + " is missing engine strategy selector adapter");
+        }
+        if (Files.exists(strategyPackage.resolve("WorkerRoutingPolicy.java"))) {
+            violations.add(strategyPackage.resolve("WorkerRoutingPolicy.java")
+                    + " reintroduces a second candidate-bucket owner");
         }
 
         assertTrue(violations.isEmpty(),
-                "Task sharedConfig to WorkerTaskSelector adaptation and route-bucket policy are "
-                        + "engine strategy concerns, not worker runtime owner residue:\n"
+                "Task sharedConfig to WorkerTaskSelector adaptation stays in engine strategy, "
+                        + "but candidate-bucket policy belongs to the shared worker-runtime policy owner:\n"
                         + String.join("\n", violations));
     }
 
@@ -2547,7 +2550,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerRegistry implementations must consume runtime-api route-bucket policy, "
+                "WorkerRegistry implementations must consume runtime-api candidate-bucket policy, "
                         + "not engine worker policy:\n"
                         + String.join("\n", violations));
     }

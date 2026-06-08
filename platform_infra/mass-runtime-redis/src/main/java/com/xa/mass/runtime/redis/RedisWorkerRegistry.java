@@ -11,8 +11,8 @@ import com.xa.mass.runtime.worker.WorkerCandidateSamplingContext;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.DefaultWorkerRouteBucketPolicy;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
+import com.xa.mass.runtime.worker.DefaultWorkerCandidateBucketPolicy;
+import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerSlot;
 import io.lettuce.core.Range;
 import io.lettuce.core.RedisClient;
@@ -39,7 +39,7 @@ import java.util.function.Consumer;
  */
 public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable {
 
-    public static final String DEFAULT_ROUTE_BUCKET_KEY = WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY;
+    public static final String DEFAULT_CANDIDATE_BUCKET_KEY = WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY;
     public static final long DEFAULT_HEARTBEAT_FRESHNESS_MILLIS = 30_000L;
 
     private static final Gson GSON = new Gson();
@@ -50,19 +50,19 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     private final RedisCommands<String, String> commands;
     private final RedisWorkerRegistryKeyspace keyspace;
     private final WorkerCandidateSamplingPolicy samplingPolicy;
-    private final WorkerRouteBucketPolicy routeBucketPolicy;
+    private final WorkerCandidateBucketPolicy candidateBucketPolicy;
     private final long heartbeatFreshnessMillis;
     private final boolean ownsClient;
 
     public RedisWorkerRegistry(String redisUri, String namespace) {
-        this(redisUri, namespace, DefaultWorkerRouteBucketPolicy.defaultPolicy());
+        this(redisUri, namespace, DefaultWorkerCandidateBucketPolicy.defaultPolicy());
     }
 
-    public RedisWorkerRegistry(String redisUri, String namespace, WorkerRouteBucketPolicy routeBucketPolicy) {
+    public RedisWorkerRegistry(String redisUri, String namespace, WorkerCandidateBucketPolicy candidateBucketPolicy) {
         this(RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 new RedisWorkerRegistryKeyspace(namespace),
                 RandomWorkerCandidateSamplingPolicy.defaultPolicy(),
-                routeBucketPolicy,
+                candidateBucketPolicy,
                 DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
                 true);
     }
@@ -70,12 +70,12 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     public RedisWorkerRegistry(RedisClient redisClient,
                                RedisWorkerRegistryKeyspace keyspace,
                                WorkerCandidateSamplingPolicy samplingPolicy,
-                               WorkerRouteBucketPolicy routeBucketPolicy,
+                               WorkerCandidateBucketPolicy candidateBucketPolicy,
                                boolean ownsClient) {
         this(redisClient,
                 keyspace,
                 samplingPolicy,
-                routeBucketPolicy,
+                candidateBucketPolicy,
                 DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
                 ownsClient);
     }
@@ -83,14 +83,14 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     public RedisWorkerRegistry(RedisClient redisClient,
                                RedisWorkerRegistryKeyspace keyspace,
                                WorkerCandidateSamplingPolicy samplingPolicy,
-                               WorkerRouteBucketPolicy routeBucketPolicy,
+                               WorkerCandidateBucketPolicy candidateBucketPolicy,
                                long heartbeatFreshnessMillis,
                                boolean ownsClient) {
         this(redisClient,
                 Objects.requireNonNull(redisClient, "redisClient").connect(),
                 keyspace,
                 samplingPolicy,
-                routeBucketPolicy,
+                candidateBucketPolicy,
                 heartbeatFreshnessMillis,
                 ownsClient);
     }
@@ -98,12 +98,12 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     public RedisWorkerRegistry(StatefulRedisConnection<String, String> connection,
                                RedisWorkerRegistryKeyspace keyspace,
                                WorkerCandidateSamplingPolicy samplingPolicy,
-                               WorkerRouteBucketPolicy routeBucketPolicy) {
+                               WorkerCandidateBucketPolicy candidateBucketPolicy) {
         this(null,
                 connection,
                 keyspace,
                 samplingPolicy,
-                routeBucketPolicy,
+                candidateBucketPolicy,
                 DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
                 false);
     }
@@ -112,7 +112,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                                 StatefulRedisConnection<String, String> connection,
                                 RedisWorkerRegistryKeyspace keyspace,
                                 WorkerCandidateSamplingPolicy samplingPolicy,
-                                WorkerRouteBucketPolicy routeBucketPolicy,
+                                WorkerCandidateBucketPolicy candidateBucketPolicy,
                                 long heartbeatFreshnessMillis,
                                 boolean ownsClient) {
         this.redisClient = redisClient;
@@ -122,9 +122,9 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         this.samplingPolicy = samplingPolicy != null
                 ? samplingPolicy
                 : RandomWorkerCandidateSamplingPolicy.defaultPolicy();
-        this.routeBucketPolicy = routeBucketPolicy != null
-                ? routeBucketPolicy
-                : DefaultWorkerRouteBucketPolicy.defaultPolicy();
+        this.candidateBucketPolicy = candidateBucketPolicy != null
+                ? candidateBucketPolicy
+                : DefaultWorkerCandidateBucketPolicy.defaultPolicy();
         this.heartbeatFreshnessMillis = Math.max(1L, heartbeatFreshnessMillis);
         this.ownsClient = ownsClient;
     }
@@ -137,6 +137,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         String previousGroupId = commands.hget(keyspace.workerGroupHash(), workerId);
         if (previousGroupId != null && !previousGroupId.equals(groupId)) {
             removeFromBuckets(previousGroupId, workerId);
+            commands.zrem(keyspace.groupHeartbeatDeadlinesZset(previousGroupId), workerId);
             commands.hdel(keyspace.groupSlotsHash(previousGroupId), workerId);
         }
 
@@ -156,10 +157,11 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                             current.removingReason()
                     );
             return SlotUpdate.write(updated, tx -> {
+                tx.sadd(keyspace.workerGroupsSet(), groupId);
                 tx.hset(keyspace.workerGroupHash(), workerId, groupId);
-                tx.zadd(keyspace.heartbeatDeadlinesZset(),
+                tx.zadd(keyspace.groupHeartbeatDeadlinesZset(groupId),
                         heartbeatDeadlineMillis(meta),
-                        keyspace.heartbeatMember(groupId, workerId));
+                        workerId);
             });
         });
         removeFromBuckets(groupId, workerId);
@@ -218,7 +220,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             }
             commands.hdel(keyspace.groupSlotsHash(normalizedGroupId), workerId);
             commands.hdel(keyspace.workerGroupHash(), workerId);
-            commands.zrem(keyspace.heartbeatDeadlinesZset(), keyspace.heartbeatMember(normalizedGroupId, workerId));
+            commands.zrem(keyspace.groupHeartbeatDeadlinesZset(normalizedGroupId), workerId);
             commands.srem(keyspace.exclusiveLeasesSet(), workerId);
             removeFromBuckets(normalizedGroupId, workerId);
             removed++;
@@ -263,12 +265,12 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             return Set.of();
         }
         LinkedHashSet<String> workerIds = new LinkedHashSet<>();
-        for (String nodeRouteMember : commands.smembers(keyspace.groupNodeRoutesSet(normalizedGroupId))) {
+        for (String nodeCandidateBucketMember : commands.smembers(keyspace.groupNodeCandidateBucketsSet(normalizedGroupId))) {
             try {
-                RedisWorkerRegistryKeyspace.NodeRouteMember parsed = keyspace.parseNodeRouteMember(nodeRouteMember);
+                RedisWorkerRegistryKeyspace.NodeCandidateBucketMember parsed = keyspace.parseNodeCandidateBucketMember(nodeCandidateBucketMember);
                 if (normalizedAdapterNodeId.equals(parsed.adapterNodeId())) {
                     workerIds.addAll(commands.smembers(
-                            keyspace.nodeRouteBucket(normalizedGroupId, parsed.adapterNodeId(), parsed.routeBucketKey())
+                            keyspace.nodeCandidateBucket(normalizedGroupId, parsed.adapterNodeId(), parsed.candidateBucketKey())
                     ));
                 }
             } catch (IllegalArgumentException ignored) {
@@ -279,28 +281,28 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public synchronized List<String> acquireCandidates(String groupId, String routeBucketKey, int maxCandidateCount) {
-        return acquireCandidates(groupId, null, routeBucketKey, maxCandidateCount);
+    public synchronized List<String> acquireCandidates(String groupId, String candidateBucketKey, int maxCandidateCount) {
+        return acquireCandidates(groupId, null, candidateBucketKey, maxCandidateCount);
     }
 
     @Override
     public synchronized List<String> acquireCandidates(String groupId,
                                           String adapterNodeId,
-                                          String routeBucketKey,
+                                          String candidateBucketKey,
                                           int maxCandidateCount) {
         String normalizedGroupId = normalizeNullable(groupId);
-        String normalizedRouteBucketKey = normalizeRouteBucketKey(routeBucketKey);
+        String normalizedCandidateBucketKey = normalizeCandidateBucketKey(candidateBucketKey);
         String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
         if (normalizedGroupId == null || maxCandidateCount <= 0) {
             return List.of();
         }
         String bucketKey = normalizedAdapterNodeId == null
-                ? keyspace.groupRouteBucket(normalizedGroupId, normalizedRouteBucketKey)
-                : keyspace.nodeRouteBucket(normalizedGroupId, normalizedAdapterNodeId, normalizedRouteBucketKey);
+                ? keyspace.groupCandidateBucket(normalizedGroupId, normalizedCandidateBucketKey)
+                : keyspace.nodeCandidateBucket(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey);
         List<String> workerIds = new ArrayList<>(commands.smembers(bucketKey));
         workerIds.sort(String::compareTo);
         return samplingPolicy.sample(
-                new WorkerCandidateSamplingContext(normalizedGroupId, normalizedAdapterNodeId, normalizedRouteBucketKey),
+                new WorkerCandidateSamplingContext(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey),
                 workerIds,
                 maxCandidateCount
         );
@@ -602,30 +604,29 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         if (limit <= 0) {
             return CleanupSummary.empty();
         }
-        List<String> members = commands.zrangebyscore(
-                keyspace.heartbeatDeadlinesZset(),
-                Range.create(Double.NEGATIVE_INFINITY, (double) nowMillis)
-        );
         int scanned = 0;
         int removed = 0;
         int skipped = 0;
-        for (String member : members) {
-            if (scanned >= limit) {
-                break;
-            }
-            scanned++;
-            try {
-                RedisWorkerRegistryKeyspace.HeartbeatMember parsed = keyspace.parseHeartbeatMember(member);
-                boolean changed = markSlotRemoving(parsed.groupId(), parsed.workerId(), "heartbeat expired");
-                removeFromBuckets(parsed.groupId(), parsed.workerId());
-                commands.zrem(keyspace.heartbeatDeadlinesZset(), member);
+        List<String> groupIds = new ArrayList<>(commands.smembers(keyspace.workerGroupsSet()));
+        groupIds.sort(String::compareTo);
+        for (String groupId : groupIds) {
+            List<String> workerIds = commands.zrangebyscore(
+                    keyspace.groupHeartbeatDeadlinesZset(groupId),
+                    Range.create(Double.NEGATIVE_INFINITY, (double) nowMillis)
+            );
+            for (String workerId : workerIds) {
+                if (scanned >= limit) {
+                    return new CleanupSummary(scanned, removed, skipped);
+                }
+                scanned++;
+                boolean changed = markSlotRemoving(groupId, workerId, "heartbeat expired");
+                removeFromBuckets(groupId, workerId);
+                commands.zrem(keyspace.groupHeartbeatDeadlinesZset(groupId), workerId);
                 if (changed) {
                     removed++;
                 } else {
                     skipped++;
                 }
-            } catch (IllegalArgumentException ignored) {
-                skipped++;
             }
         }
         return new CleanupSummary(scanned, removed, skipped);
@@ -639,8 +640,8 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         }
         int scanned = 0;
         int removed = 0;
-        for (String routeBucketKey : commands.smembers(keyspace.groupRoutesSet(normalizedGroupId))) {
-            String bucketKey = keyspace.groupRouteBucket(normalizedGroupId, routeBucketKey);
+        for (String candidateBucketKey : commands.smembers(keyspace.groupCandidateBucketsSet(normalizedGroupId))) {
+            String bucketKey = keyspace.groupCandidateBucket(normalizedGroupId, candidateBucketKey);
             for (String workerId : List.copyOf(commands.smembers(bucketKey))) {
                 if (scanned >= limit) {
                     return new CleanupSummary(scanned, removed, 0);
@@ -748,14 +749,14 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
 
     private void addToBuckets(WorkerMeta meta) {
         LinkedHashSet<String> bucketKeys = new LinkedHashSet<>();
-        for (String routeBucketKey : routeBucketKeys(meta)) {
-            commands.sadd(keyspace.groupRoutesSet(meta.groupId()), routeBucketKey);
-            String groupBucketKey = keyspace.groupRouteBucket(meta.groupId(), routeBucketKey);
+        for (String candidateBucketKey : candidateBucketKeys(meta)) {
+            commands.sadd(keyspace.groupCandidateBucketsSet(meta.groupId()), candidateBucketKey);
+            String groupBucketKey = keyspace.groupCandidateBucket(meta.groupId(), candidateBucketKey);
             commands.sadd(groupBucketKey, meta.workerId());
             bucketKeys.add(groupBucketKey);
             if (meta.adapterNodeId() != null) {
-                commands.sadd(keyspace.groupNodeRoutesSet(meta.groupId()), keyspace.nodeRouteMember(meta.adapterNodeId(), routeBucketKey));
-                String nodeBucketKey = keyspace.nodeRouteBucket(meta.groupId(), meta.adapterNodeId(), routeBucketKey);
+                commands.sadd(keyspace.groupNodeCandidateBucketsSet(meta.groupId()), keyspace.nodeCandidateBucketMember(meta.adapterNodeId(), candidateBucketKey));
+                String nodeBucketKey = keyspace.nodeCandidateBucket(meta.groupId(), meta.adapterNodeId(), candidateBucketKey);
                 commands.sadd(nodeBucketKey, meta.workerId());
                 bucketKeys.add(nodeBucketKey);
             }
@@ -777,11 +778,11 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         commands.del(membershipKey);
     }
 
-    private Set<String> routeBucketKeys(WorkerMeta meta) {
-        Set<String> routeBucketKeys = routeBucketPolicy.routeBucketKeysForWorkerMeta(meta);
-        return routeBucketKeys == null || routeBucketKeys.isEmpty()
-                ? Set.of(DEFAULT_ROUTE_BUCKET_KEY)
-                : Set.copyOf(routeBucketKeys);
+    private Set<String> candidateBucketKeys(WorkerMeta meta) {
+        Set<String> candidateBucketKeys = candidateBucketPolicy.candidateBucketKeysForWorkerMeta(meta);
+        return candidateBucketKeys == null || candidateBucketKeys.isEmpty()
+                ? Set.of(DEFAULT_CANDIDATE_BUCKET_KEY)
+                : Set.copyOf(candidateBucketKeys);
     }
 
     private long heartbeatDeadlineMillis(WorkerMeta meta) {
@@ -852,9 +853,9 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         return Math.max(0, Integer.parseInt(value));
     }
 
-    private static String normalizeRouteBucketKey(String value) {
+    private static String normalizeCandidateBucketKey(String value) {
         String normalized = normalizeNullable(value);
-        return normalized == null ? DEFAULT_ROUTE_BUCKET_KEY : normalized;
+        return normalized == null ? DEFAULT_CANDIDATE_BUCKET_KEY : normalized;
     }
 
     private static String normalizeNullable(String value) {

@@ -24,7 +24,7 @@ Worker runtime owns worker truth that is not task truth:
   contracts.
 - Stage-1 worker candidate source, source guard, and warm/cold merge.
 - Task-local warm candidate hint storage.
-- Platform-approved worker route bucket policies.
+- Platform-approved worker candidate bucket policies.
 
 Engine still owns task scheduling decisions. Worker runtime provides worker
 lifecycle state, admission operations, and evidence; it does not evaluate match
@@ -41,7 +41,7 @@ com.xa.mass.worker.runtime.admission  reserve/release, wakeup, warm hints
 com.xa.mass.worker.runtime.command    worker command lifecycle truth
 com.xa.mass.worker.runtime.report     capability and state report projection
 com.xa.mass.worker.runtime.control    worker dispatch gate control
-com.xa.mass.worker.runtime.routing    platform route bucket policy
+com.xa.mass.worker.runtime.routing    platform candidate bucket policy
 com.xa.mass.worker.runtime            implementation owners and assembly
 ```
 
@@ -60,6 +60,33 @@ com.xa.mass.worker.runtime            implementation owners and assembly
 
 WorkerGroup owns capability truth. Worker-level supported project/event fields
 are compatibility read hints only.
+
+## Worker Runtime State Dimensions
+
+Worker runtime state is split into independent dimensions:
+
+- reachability: transport/heartbeat observation such as `ONLINE`, `STALE`,
+  `OFFLINE`, or `UNKNOWN`
+- readiness: dispatch-in-principle state such as `READY`, `DRAINING`, or
+  `MAINTENANCE`
+- occupancy: capacity/reservation/active-lease/lock observation such as `FREE`,
+  `RESERVED`, `OCCUPIED`, or `CAPACITY_FULL`
+
+`UNKNOWN` reachability is an observation gap and is not reachable for runtime
+scheduling. Legacy `statusName` / worker `status` fields are display
+compatibility only; they must not drive scheduling.
+
+Current readiness evidence is intentionally narrow: dispatch-enabled workers are
+`READY`, removing/draining workers are `DRAINING`, and dispatch-disabled workers
+are `MAINTENANCE`. Target states such as `INIT_REQUIRED`, `VERSION_MISMATCH`,
+`ACCOUNT_UNAVAILABLE`, and `HEALTH_UNAVAILABLE` remain target vocabulary until a
+worker state/report owner maps them to dispatch-gate behavior and runtime
+outcome proof.
+
+Current Redis worker occupancy is still stored through the canonical
+`WorkerSlot` aggregate. `worker:meta:{workerId}`,
+`worker:occupancy:{workerId}`, and `available:{shard}` split keys are not
+implemented and must not be added as parallel writable truth.
 
 WorkerGroup capability boundary:
 
@@ -95,14 +122,14 @@ Forbidden:
 
 ## Verification
 
-Boundary guard:
+Runtime outcome proof:
+
+```powershell
+mvn -pl xa-mass-worker-runtime,xa-mass-engine -am '-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,TaskCandidateWarmPoolTest,TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskSchedulingBindingEntryBypassTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
+```
+
+Boundary residue sanity:
 
 ```powershell
 mvn -pl xa-mass-engine -am '-Dtest=EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
-```
-
-Focused worker-runtime regression:
-
-```powershell
-mvn -pl xa-mass-worker-runtime,xa-mass-engine -am '-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,TaskCandidateWarmPoolTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
 ```

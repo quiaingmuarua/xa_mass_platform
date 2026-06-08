@@ -101,7 +101,7 @@ public class DefaultSchedulingPlaneResolverTest {
     }
 
     @Test
-    void resolvesWorkerSchedulingPolicyFromCurrentRouteBucketRules() {
+    void resolvesWorkerSchedulingPolicyFromCurrentCandidateBucketRules() {
         SchedulingPlaneResolution resolution = resolver.resolve(task());
         ResolvedWorkerSchedulingPolicy workerPolicy = resolution.workerSchedulingPolicy();
 
@@ -114,7 +114,7 @@ public class DefaultSchedulingPlaneResolverTest {
         assertEquals(Map.of("region", "us"), workerPolicy.routeAttributes());
         assertEquals("worker-target", workerPolicy.targetWorkerId());
         assertEquals(Map.of("fingerprintProfile", "fp-alpha"), workerPolicy.targetWorkerAttributes());
-        assertTrue(workerPolicy.routeBucketKeys().stream().anyMatch(key -> key.contains("region")));
+        assertTrue(workerPolicy.candidateBucketKeys().stream().anyMatch(key -> key.contains("region")));
     }
 
     private static Task task() {

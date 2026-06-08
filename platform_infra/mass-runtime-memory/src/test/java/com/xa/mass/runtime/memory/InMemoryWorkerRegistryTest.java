@@ -4,7 +4,7 @@ import com.xa.mass.runtime.contract.WorkerRegistryContractTest;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
+import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 
 import org.junit.jupiter.api.Test;
 
@@ -120,13 +120,13 @@ class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
         );
     }
 
-    private static WorkerRouteBucketPolicy regionRoutePolicy() {
+    private static WorkerCandidateBucketPolicy regionRoutePolicy() {
         return meta -> {
             String region = meta == null || meta.attributes() == null ? null : meta.attributes().get("region");
             if (region == null || region.isBlank()) {
-                return Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY);
+                return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
             }
-            return Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY, "attr:region=" + region.trim());
+            return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY, "attr:region=" + region.trim());
         };
     }
 }

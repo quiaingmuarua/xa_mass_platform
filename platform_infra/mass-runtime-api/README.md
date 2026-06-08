@@ -16,7 +16,7 @@ Status: current shared runtime contract module.
 - active lease truth
 - runtime result-apply outcomes
 - runtime counters and bounded runtime stats
-- worker registry slot, reserve, gate-source, route-bucket SPI, and candidate
+- worker registry slot, reserve, gate-source, candidate-bucket SPI, and candidate
   sampling contracts
 
 ## What Does Not Belong Here

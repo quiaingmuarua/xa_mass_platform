@@ -21,7 +21,8 @@ selection.
   the `prod` profile, property override, or builder wiring
 - this module now provides a real Redis-backed `TaskWorkRuntime`
 - this module now provides a contract-tested Redis-backed `WorkerRegistry`
-  foundation using group-partitioned worker slot hashes and route buckets
+  foundation using group-partitioned worker slot hashes, group-local heartbeat
+  deadline indexes, and candidate buckets
 - dev/server shells can opt into it explicitly without changing engine constructors
 - this module is intentionally not the bootstrap default
 - the intended Redis keyspace and hot-path index model lives in
@@ -36,9 +37,10 @@ selection.
   slot hash for first-slice reserve, confirm, release, final, gate, and lease
   mutations; broader server/runtime switching and finer-grained Lua mutation are
   outside the current implementation
-- Redis and memory worker registries share the same runtime-api route-bucket
+- Redis and memory worker registries share the same runtime-api candidate-bucket
   default policy; workers with approved route attributes are indexed into both
-  `default` and attribute buckets.
+  `default` and attribute buckets. Candidate buckets derived from route
+  attributes are hints, not readiness, occupancy, or policy truth.
 
 ## Guardrails
 

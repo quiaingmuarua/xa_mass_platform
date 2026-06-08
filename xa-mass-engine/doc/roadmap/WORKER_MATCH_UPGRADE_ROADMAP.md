@@ -13,7 +13,7 @@ follow-up tuning.
 
 Transport spine keeps the transport boundary and TW-1C scaling intent. This
 roadmap owns the engine-side follow-through for bounded candidate acquisition,
-route-bucket cleanup, and match diagnostics that consume those spine contracts.
+candidate-bucket cleanup, and match diagnostics that consume those spine contracts.
 
 This roadmap supersedes the former `TASK_CANDIDATE_WARM_POOL_ROADMAP.md`.
 Warm candidate reuse now lives under Slice 5 instead of driving the overall
@@ -38,7 +38,7 @@ Task dispatch signal
   -> allocation plan / requested match count
   -> Stage-1 candidate source
        WorkerGroup selector
-       adapter node / route bucket
+       adapter node / candidate bucket
        bounded random sample
   -> Stage-2 admission and preference
        scheduling candidate enumeration
@@ -73,7 +73,7 @@ Mechanism is the part of matching that protects runtime correctness and owner
 truth. It should be stable, testable, and shared by every strategy:
 
 - WorkerGroup selector resolution before candidate acquisition
-- route bucket membership and stale cleanup
+- candidate bucket membership and stale cleanup
 - heartbeat freshness and source-guard validation
 - reachability / dispatch gate / capacity admission
 - `WorkerRegistry` reserve, confirm, release, and final occupancy mutation
@@ -83,7 +83,7 @@ truth. It should be stable, testable, and shared by every strategy:
 Policy is the part of matching that can evolve without changing those truth
 owners:
 
-- route bucket sampling distribution
+- candidate bucket sampling distribution
 - candidate priority hints such as warm entries
 - prefilter ordering after hard source/admission gates
 - QLExpress rule content and rule cost budget
@@ -106,9 +106,9 @@ Hard boundary:
   `WorkerCandidateIndex` and `WorkerRegistry.acquireCandidates(...)`.
 - Stage-1 sample size is currently `requestedMatchCount * 4`, clamped by
   JVM-configurable min/max defaults of 512 and 2048.
-- Route buckets use approved attribute powersets. With four standard route
-  attributes, a fully attributed worker writes to the default bucket plus 15
-  attribute buckets.
+- Candidate buckets may be derived from approved route-attribute powersets.
+  With four standard route attributes, a fully attributed worker writes to the
+  default candidate bucket plus 15 attribute-derived buckets.
 - Stage-2 prefilter short-circuits dispatch availability, reachability,
   existing lock, target worker id, target attributes, and routing code before
   QLExpress.
@@ -147,7 +147,7 @@ It may use:
 - resolved WorkerGroup selector
 - target-worker shortcut
 - adapter node
-- route bucket
+- candidate bucket
 - bounded random sample
 - future source hints, such as warm candidates, only after source guard
 
@@ -181,7 +181,7 @@ It may use:
 It must not own:
 
 - long-lived worker lifecycle truth
-- route-bucket membership truth
+- candidate-bucket membership truth
 - task result finality
 - retry policy
 
@@ -260,8 +260,8 @@ Landed in first slice:
 - in-memory heartbeat cleanup now uses
   `lastHeartbeatMillis + heartbeatFreshnessMillis` and marks expired slots
   removing, matching Redis lifecycle semantics
-- route-bucket removal uses per-worker bucket membership instead of scanning
-  all route buckets for every worker removal
+- candidate-bucket removal uses per-worker bucket membership instead of scanning
+  all candidate buckets for every worker removal
 - shared contract and implementation tests cover stale heartbeat reserve and
   route-attribute bucket movement
 
@@ -279,7 +279,7 @@ Scope:
    reject the same stale slot even when cleanup has not run yet.
 5. Add tests proving stale heartbeat cleanup removes candidates from route
    buckets and prevents new reserve.
-6. Replace broad route-bucket removal scans with worker-to-bucket membership.
+6. Replace broad candidate-bucket removal scans with worker-to-bucket membership.
    `removeFromBuckets` must remove only the bucket keys indexed for the worker
    being removed.
 
@@ -289,11 +289,11 @@ Acceptance:
    as a current-time API and agree on internal heartbeat-deadline semantics.
 2. Both in-memory and Redis `tryReserve(...)` return the same stale-heartbeat
    rejection for a slot whose heartbeat deadline has passed, whether or not
-   cleanup has already removed the candidate from route buckets.
+   cleanup has already removed the candidate from candidate buckets.
 3. Worker unregister / group move / route-attribute update removes only known
    bucket memberships from the worker-to-bucket reverse index.
 4. Cleanup remains bounded and stale-tolerant; stale bucket members may be
-   rejected lazily by reserve, but cleanup does not scan every route bucket on
+   rejected lazily by reserve, but cleanup does not scan every candidate bucket on
    every worker removal.
 
 ## Slice 0B: Dispatch Wakeup And Dedupe Semantics
@@ -376,9 +376,9 @@ Scope:
    reads. The API should validate:
    - worker still belongs to one selected WorkerGroup
    - optional adapter-node relation still matches
-   - current routing policy still maps worker to the observed route bucket
+   - current routing policy still maps worker to the observed candidate bucket
    - source-guard rejection is distinguishable from Stage-2 admission rejection
-   Matching strategy code must call this API; it must not inspect route-bucket
+   Matching strategy code must call this API; it must not inspect candidate-bucket
    storage directly.
 6. Separate trace reasons for:
    - no candidate source
@@ -404,7 +404,7 @@ Acceptance:
    rule, rank, reserve, and dispatch-bind outcomes without scraping log text,
    while remaining bounded for large worker pools.
 6. Source-guard API rejects stale group/node/route evidence before Stage-2, and
-   tests prove matching does not read route-bucket internals directly.
+   tests prove matching does not read candidate-bucket internals directly.
 7. Architecture guards prevent match strategy code from bypassing centralized
    candidate source or reserve owners.
 
@@ -413,7 +413,7 @@ Landed first slice:
 1. `WorkerCandidateIndex` exposes `sourceGuard(...)` as the source-guard owner
    API.
 2. Source guard validates current worker slot group, optional adapter node, and
-   current route-bucket membership before returning a worker candidate.
+   current candidate-bucket membership before returning a worker candidate.
 3. `targetWorkerId` lookup uses the same source guard instead of bypassing
    group/route relation checks.
 4. Architecture guards keep matching strategy code out of direct
@@ -427,12 +427,12 @@ Goal: tune Stage-1 policy without changing Stage-2 truth.
 
 Scope:
 
-1. Review route bucket powerset growth and standard approved route attributes.
+1. Review candidate bucket powerset growth and standard approved route attributes.
 2. Add worker-to-bucket diagnostics: bucket count, worker membership count,
    stale member cleanup count.
 3. Define and test multi-group and multi-route sample distribution under bounded
    sample limits. First-slice policy: round-robin bucket budget across selected
-   `(groupId, routeBucketKey)` sources, capped by the assignment candidate
+   `(groupId, candidateBucketKey)` sources, capped by the assignment candidate
    budget. Empty/stale buckets are skipped and remaining budget may be
    redistributed to later buckets in the same bounded pass.
 4. Review sample min/max defaults for interactive and bulk tasks.
@@ -457,7 +457,7 @@ Acceptance:
 
 Landed first slice:
 
-1. `WorkerCandidateIndex` builds bounded `(groupId, routeBucketKey)` source
+1. `WorkerCandidateIndex` builds bounded `(groupId, candidateBucketKey)` source
    buckets from the selected worker groups and approved task route attributes.
 2. Stage-1 candidate acquisition allocates remaining candidate budget fairly
    across remaining source buckets instead of allowing the first large group to
@@ -562,7 +562,7 @@ diagnostics only.
 
 Warm pool is a pre-Stage-2 candidate priority hint. It can prefer candidates
 that recently passed this task's source/admission path, but it is not a new
-matching truth, not route-bucket membership truth, and not an eligibility /
+matching truth, not candidate-bucket membership truth, and not an eligibility /
 admission cache.
 
 Warm entry shape for first slice:
@@ -573,7 +573,7 @@ TaskCandidateWarmEntry
   workerId
   observedGroupId
   observedAdapterNodeId
-  observedRouteBucketKey
+  observedCandidateBucketKey
   observedAt
 ```
 
@@ -586,14 +586,14 @@ Scope:
 4. Do not add worker version fields.
 5. Disable warm sampling for `targetWorkerId` tasks in the first slice.
 6. Rehydrate warm ids through the Slice-1 source-guard owner API before Stage-2
-   sees them. Matching strategy code must not read route-bucket internals
+   sees them. Matching strategy code must not read candidate-bucket internals
    directly.
 7. Route-bucket source guard is explicit inside that owner API: fetch current
    worker meta/slot, verify selected WorkerGroup and adapter-node relation,
-   recompute current route bucket keys with the same routing policy used by
+   recompute current candidate bucket keys with the same routing policy used by
    `WorkerRegistry` registration, and reject a warm entry when
-   `observedRouteBucketKey` is no longer in that current set. TTL alone is not
-   enough to prove route-bucket validity.
+   `observedCandidateBucketKey` is no longer in that current set. TTL alone is not
+   enough to prove candidate-bucket validity.
 8. Cold-fill through the normal candidate source after warm rehydration.
 9. Dedupe warm and cold candidates before Stage-2.
 10. Insert warm entries only after dispatch binding proves the worker actually
@@ -604,7 +604,7 @@ Scope:
 Acceptance:
 
 1. Warm candidates never bypass Stage-2.
-2. Warm entries from a stale WorkerGroup / adapter node / route bucket are
+2. Warm entries from a stale WorkerGroup / adapter node / candidate bucket are
    rejected by source guard before Stage-2.
 3. `targetWorkerId` direct lookup is not suppressed by warm entries.
 4. Empty, stale, or dropped warm state degrades to normal cold candidate source.
@@ -612,7 +612,7 @@ Acceptance:
 6. Warm pool does not hold reservations, locks, leases, or dispatch truth.
 7. Runtime dispatch pump and lane-driven assignment can touch warm state safely.
 8. Source guard is exposed through a match/source owner API; matching code does
-   not directly inspect route-bucket storage.
+   not directly inspect candidate-bucket storage.
 9. Matching strategy code does not write warm hints; dispatch/assignment code
    records them only after bound work exists.
 
@@ -621,7 +621,7 @@ Acceptance:
 Engine tests:
 
 - in-memory and Redis heartbeat cleanup share expiration semantics
-- stale heartbeat cleanup removes stale candidates from route buckets and
+- stale heartbeat cleanup removes stale candidates from candidate buckets and
   prevents new reserve
 - worker bucket removal uses known worker-to-bucket memberships
 - candidate source starts from WorkerGroup selector
@@ -650,7 +650,7 @@ Concurrency tests:
 Architecture guards:
 
 - matching must consume centralized candidate source
-- matching must not call route-bucket internals directly when a source owner API
+- matching must not call candidate-bucket internals directly when a source owner API
   exists
 - warm pool must not call rule evaluation or reserve
 - maintenance must not evaluate task-specific rules

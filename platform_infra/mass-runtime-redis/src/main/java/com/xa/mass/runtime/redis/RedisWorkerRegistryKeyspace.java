@@ -8,7 +8,7 @@ import java.util.Objects;
 public final class RedisWorkerRegistryKeyspace {
 
     public static final String DEFAULT_NAMESPACE = RedisTaskWorkKeyspace.DEFAULT_NAMESPACE + ":worker";
-    static final String NODE_ROUTE_SEPARATOR = "\u001F";
+    static final String NODE_BUCKET_SEPARATOR = "\u001F";
 
     private final String namespace;
 
@@ -28,8 +28,12 @@ public final class RedisWorkerRegistryKeyspace {
         return namespaced("worker:group");
     }
 
-    public String heartbeatDeadlinesZset() {
-        return namespaced("heartbeat:deadlines");
+    public String workerGroupsSet() {
+        return namespaced("groups");
+    }
+
+    public String groupHeartbeatDeadlinesZset(String groupId) {
+        return groupPrefix(groupId) + ":heartbeat:0";
     }
 
     public String exclusiveLeasesSet() {
@@ -40,23 +44,23 @@ public final class RedisWorkerRegistryKeyspace {
         return groupPrefix(groupId) + ":slots";
     }
 
-    public String groupRouteBucket(String groupId, String routeBucketKey) {
-        return groupPrefix(groupId) + ":route:" + requireToken(routeBucketKey, "routeBucketKey") + ":workers";
+    public String groupCandidateBucket(String groupId, String candidateBucketKey) {
+        return groupPrefix(groupId) + ":bucket:" + requireToken(candidateBucketKey, "candidateBucketKey") + ":workers";
     }
 
-    public String groupRoutesSet(String groupId) {
-        return groupPrefix(groupId) + ":routes";
+    public String groupCandidateBucketsSet(String groupId) {
+        return groupPrefix(groupId) + ":buckets";
     }
 
-    public String nodeRouteBucket(String groupId, String adapterNodeId, String routeBucketKey) {
+    public String nodeCandidateBucket(String groupId, String adapterNodeId, String candidateBucketKey) {
         return groupPrefix(groupId)
                 + ":node:" + requireToken(adapterNodeId, "adapterNodeId")
-                + ":route:" + requireToken(routeBucketKey, "routeBucketKey")
+                + ":bucket:" + requireToken(candidateBucketKey, "candidateBucketKey")
                 + ":workers";
     }
 
-    public String groupNodeRoutesSet(String groupId) {
-        return groupPrefix(groupId) + ":node-routes";
+    public String groupNodeCandidateBucketsSet(String groupId) {
+        return groupPrefix(groupId) + ":node-buckets";
     }
 
     public String workerBucketMembershipSet(String groupId, String workerId) {
@@ -71,24 +75,15 @@ public final class RedisWorkerRegistryKeyspace {
         return taskPrefix(taskId) + ":worker-active-count";
     }
 
-    public String heartbeatMember(String groupId, String workerId) {
-        return requireToken(groupId, "groupId") + NODE_ROUTE_SEPARATOR + requireToken(workerId, "workerId");
-    }
-
-    public String nodeRouteMember(String adapterNodeId, String routeBucketKey) {
+    public String nodeCandidateBucketMember(String adapterNodeId, String candidateBucketKey) {
         return requireToken(adapterNodeId, "adapterNodeId")
-                + NODE_ROUTE_SEPARATOR
-                + requireToken(routeBucketKey, "routeBucketKey");
+                + NODE_BUCKET_SEPARATOR
+                + requireToken(candidateBucketKey, "candidateBucketKey");
     }
 
-    public HeartbeatMember parseHeartbeatMember(String member) {
-        String[] parts = splitPair(member, "heartbeat member");
-        return new HeartbeatMember(parts[0], parts[1]);
-    }
-
-    public NodeRouteMember parseNodeRouteMember(String member) {
-        String[] parts = splitPair(member, "node route member");
-        return new NodeRouteMember(parts[0], parts[1]);
+    public NodeCandidateBucketMember parseNodeCandidateBucketMember(String member) {
+        String[] parts = splitPair(member, "node candidate bucket member");
+        return new NodeCandidateBucketMember(parts[0], parts[1]);
     }
 
     private String groupPrefix(String groupId) {
@@ -105,13 +100,13 @@ public final class RedisWorkerRegistryKeyspace {
 
     private static String[] splitPair(String value, String fieldName) {
         String token = requireToken(value, fieldName);
-        int separator = token.indexOf(NODE_ROUTE_SEPARATOR);
-        if (separator <= 0 || separator == token.length() - NODE_ROUTE_SEPARATOR.length()) {
+        int separator = token.indexOf(NODE_BUCKET_SEPARATOR);
+        if (separator <= 0 || separator == token.length() - NODE_BUCKET_SEPARATOR.length()) {
             throw new IllegalArgumentException(fieldName + " is malformed");
         }
         return new String[]{
                 token.substring(0, separator),
-                token.substring(separator + NODE_ROUTE_SEPARATOR.length())
+                token.substring(separator + NODE_BUCKET_SEPARATOR.length())
         };
     }
 
@@ -134,9 +129,6 @@ public final class RedisWorkerRegistryKeyspace {
         return value.trim();
     }
 
-    public record HeartbeatMember(String groupId, String workerId) {
-    }
-
-    public record NodeRouteMember(String adapterNodeId, String routeBucketKey) {
+    public record NodeCandidateBucketMember(String adapterNodeId, String candidateBucketKey) {
     }
 }

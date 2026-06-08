@@ -2,9 +2,9 @@ package com.xa.mass.worker.runtime;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
+import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerSlot;
-import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
+import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 
 import java.util.ArrayList;
@@ -25,20 +25,20 @@ public final class WorkerCandidateIndex {
 
     private final WorkerRegistrySnapshot snapshot;
     private final WorkerRegistry workerRegistry;
-    private final WorkerRouteBucketPolicy routeBucketPolicy;
+    private final WorkerCandidateBucketPolicy candidateBucketPolicy;
 
     public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot, WorkerRegistry workerRegistry) {
-        this(snapshot, workerRegistry, WorkerRouteBucketPolicies.defaultPolicy());
+        this(snapshot, workerRegistry, WorkerCandidateBucketPolicies.defaultPolicy());
     }
 
     public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot,
                                 WorkerRegistry workerRegistry,
-                                WorkerRouteBucketPolicy routeBucketPolicy) {
+                                WorkerCandidateBucketPolicy candidateBucketPolicy) {
         this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
         this.workerRegistry = Objects.requireNonNull(workerRegistry, "workerRegistry");
-        this.routeBucketPolicy = routeBucketPolicy != null
-                ? routeBucketPolicy
-                : WorkerRouteBucketPolicies.defaultPolicy();
+        this.candidateBucketPolicy = candidateBucketPolicy != null
+                ? candidateBucketPolicy
+                : WorkerCandidateBucketPolicies.defaultPolicy();
     }
 
     public List<Worker> workersFor(WorkerTaskSelector selector) {
@@ -76,7 +76,7 @@ public final class WorkerCandidateIndex {
                         selector,
                         sourceBucket.groupId(),
                         adapterNodeId,
-                        source.routeBucketKey(),
+                        source.candidateBucketKey(),
                         source.workerId()
                 );
                 if (!guardResult.accepted()) {
@@ -100,12 +100,12 @@ public final class WorkerCandidateIndex {
             if (normalizedGroupId == null) {
                 continue;
             }
-            for (String routeBucketKey : taskRouteBucketKeys(selector)) {
+            for (String candidateBucketKey : taskCandidateBucketKeys(selector)) {
                 SourceGuardResult guardResult = sourceGuard(
                         selector,
                         normalizedGroupId,
                         adapterNodeId,
-                        routeBucketKey,
+                        candidateBucketKey,
                         normalizedWorkerId
                 );
                 if (guardResult.accepted()) {
@@ -120,7 +120,7 @@ public final class WorkerCandidateIndex {
     public SourceGuardResult sourceGuard(WorkerTaskSelector selector,
                                          String selectedGroupId,
                                          String observedAdapterNodeId,
-                                         String observedRouteBucketKey,
+                                         String observedCandidateBucketKey,
                                          String workerId) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null) {
@@ -142,13 +142,13 @@ public final class WorkerCandidateIndex {
         if (normalizedAdapterNodeId != null && !normalizedAdapterNodeId.equals(currentSlot.adapterNodeId())) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.ADAPTER_NODE_MISMATCH);
         }
-        String routeBucketKey = normalizeNullable(observedRouteBucketKey);
-        if (routeBucketKey == null) {
-            return SourceGuardResult.rejected(SourceGuardRejectionReason.ROUTE_MISMATCH);
+        String candidateBucketKey = normalizeNullable(observedCandidateBucketKey);
+        if (candidateBucketKey == null) {
+            return SourceGuardResult.rejected(SourceGuardRejectionReason.CANDIDATE_BUCKET_MISMATCH);
         }
-        Set<String> currentWorkerRouteKeys = routeBucketPolicy.routeBucketKeysForWorkerMeta(currentSlot.meta());
-        if (!currentWorkerRouteKeys.contains(routeBucketKey)) {
-            return SourceGuardResult.rejected(SourceGuardRejectionReason.ROUTE_MISMATCH);
+        Set<String> currentWorkerCandidateBucketKeys = candidateBucketPolicy.candidateBucketKeysForWorkerMeta(currentSlot.meta());
+        if (!currentWorkerCandidateBucketKeys.contains(candidateBucketKey)) {
+            return SourceGuardResult.rejected(SourceGuardRejectionReason.CANDIDATE_BUCKET_MISMATCH);
         }
         Optional<Worker> worker = snapshot.worker(normalizedWorkerId);
         if (worker.isEmpty()) {
@@ -167,10 +167,10 @@ public final class WorkerCandidateIndex {
         for (String workerId : workerRegistry.acquireCandidates(
                 sourceBucket.groupId(),
                 adapterNodeId,
-                sourceBucket.routeBucketKey(),
+                sourceBucket.candidateBucketKey(),
                 maxCandidateCount
         )) {
-            acquired.add(new CandidateSource(workerId, sourceBucket.routeBucketKey()));
+            acquired.add(new CandidateSource(workerId, sourceBucket.candidateBucketKey()));
         }
         return List.copyOf(acquired);
     }
@@ -184,11 +184,11 @@ public final class WorkerCandidateIndex {
         if (normalizedGroupIds.isEmpty()) {
             return List.of();
         }
-        List<String> routeBucketKeys = taskRouteBucketKeys(selector).stream().toList();
-        List<CandidateSourceBucket> buckets = new ArrayList<>(normalizedGroupIds.size() * routeBucketKeys.size());
+        List<String> candidateBucketKeys = taskCandidateBucketKeys(selector).stream().toList();
+        List<CandidateSourceBucket> buckets = new ArrayList<>(normalizedGroupIds.size() * candidateBucketKeys.size());
         for (String groupId : normalizedGroupIds) {
-            for (String routeBucketKey : routeBucketKeys) {
-                buckets.add(new CandidateSourceBucket(groupId, routeBucketKey, 0));
+            for (String candidateBucketKey : candidateBucketKeys) {
+                buckets.add(new CandidateSourceBucket(groupId, candidateBucketKey, 0));
             }
         }
         int size = buckets.size();
@@ -196,15 +196,15 @@ public final class WorkerCandidateIndex {
         for (int index = 0; index < size; index++) {
             indexedBuckets.add(new CandidateSourceBucket(
                     buckets.get(index).groupId(),
-                    buckets.get(index).routeBucketKey(),
+                    buckets.get(index).candidateBucketKey(),
                     size - index
             ));
         }
         return List.copyOf(indexedBuckets);
     }
 
-    private Set<String> taskRouteBucketKeys(WorkerTaskSelector selector) {
-        return selector == null ? Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY) : selector.routeBucketKeys();
+    private Set<String> taskCandidateBucketKeys(WorkerTaskSelector selector) {
+        return selector == null ? Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY) : selector.candidateBucketKeys();
     }
 
     private static int sourceBudget(int remainingCandidateBudget, int remainingSourceCount) {
@@ -226,10 +226,10 @@ public final class WorkerCandidateIndex {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private record CandidateSource(String workerId, String routeBucketKey) {
+    private record CandidateSource(String workerId, String candidateBucketKey) {
     }
 
-    private record CandidateSourceBucket(String groupId, String routeBucketKey, int remainingSourceCount) {
+    private record CandidateSourceBucket(String groupId, String candidateBucketKey, int remainingSourceCount) {
     }
 
     public record SourceGuardResult(boolean accepted,
@@ -250,6 +250,6 @@ public final class WorkerCandidateIndex {
         MISSING_GROUP,
         GROUP_MISMATCH,
         ADAPTER_NODE_MISMATCH,
-        ROUTE_MISMATCH
+        CANDIDATE_BUCKET_MISMATCH
     }
 }

@@ -254,6 +254,8 @@ public class WorkerMatchContext {
         ctx.put("agentVersion", schedulingView.agentVersion());
         ctx.put("supportedProjects", schedulingView.supportedProjects());
         ctx.put("supportedEventCodes", schedulingView.supportedEventCodes());
+        ctx.put("workerReadinessState", schedulingView.readinessState().name());
+        ctx.put("workerOccupancyState", schedulingView.occupancyState().name());
         ctx.put("isWorkerAvailable", schedulingView.dispatchEnabled() && schedulingView.isTransportReachable());
         ctx.put("isWorkerLocked", schedulingView.workerLocked());
         ctx.put("workerActiveLeaseCount", schedulingView.activeLeaseCount());

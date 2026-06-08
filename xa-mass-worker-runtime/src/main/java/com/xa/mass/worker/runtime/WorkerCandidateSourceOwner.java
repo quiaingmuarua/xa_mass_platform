@@ -3,7 +3,7 @@ package com.xa.mass.worker.runtime;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
+import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 
 import java.util.ArrayList;
@@ -73,13 +73,13 @@ public final class WorkerCandidateSourceOwner {
             return;
         }
         long nowMillis = System.currentTimeMillis();
-        for (String routeBucketKey : routeBucketKeysForTask(selector)) {
+        for (String candidateBucketKey : candidateBucketKeysForTask(selector)) {
             taskCandidateWarmPool.put(new TaskCandidateWarmPool.Entry(
                     taskId,
                     workerId,
                     groupId,
                     normalizeNullable(candidate.adapterNodeId()),
-                    routeBucketKey,
+                    candidateBucketKey,
                     nowMillis
             ));
         }
@@ -107,7 +107,7 @@ public final class WorkerCandidateSourceOwner {
                     selector,
                     entry.observedGroupId(),
                     entry.observedAdapterNodeId(),
-                    entry.observedRouteBucketKey(),
+                    entry.observedCandidateBucketKey(),
                     entry.workerId()
             );
             if (guardResult.accepted()) {
@@ -174,8 +174,8 @@ public final class WorkerCandidateSourceOwner {
         );
     }
 
-    private Set<String> routeBucketKeysForTask(WorkerTaskSelector selector) {
-        return selector == null ? Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY) : selector.routeBucketKeys();
+    private Set<String> candidateBucketKeysForTask(WorkerTaskSelector selector) {
+        return selector == null ? Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY) : selector.candidateBucketKeys();
     }
 
     private static String normalizeNullable(String value) {

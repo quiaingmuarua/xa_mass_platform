@@ -170,14 +170,14 @@ public final class TaskCandidateWarmPool {
                         String workerId,
                         String observedGroupId,
                         String observedAdapterNodeId,
-                        String observedRouteBucketKey,
+                        String observedCandidateBucketKey,
                         long observedAtMillis) {
         public Entry {
             taskId = requireNonBlank(taskId, "taskId");
             workerId = requireNonBlank(workerId, "workerId");
             observedGroupId = requireNonBlank(observedGroupId, "observedGroupId");
             observedAdapterNodeId = normalizeNullable(observedAdapterNodeId);
-            observedRouteBucketKey = requireNonBlank(observedRouteBucketKey, "observedRouteBucketKey");
+            observedCandidateBucketKey = requireNonBlank(observedCandidateBucketKey, "observedCandidateBucketKey");
         }
 
         private static String requireNonBlank(String value, String fieldName) {

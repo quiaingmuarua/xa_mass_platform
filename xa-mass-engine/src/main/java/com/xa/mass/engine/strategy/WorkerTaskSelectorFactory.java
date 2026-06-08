@@ -21,7 +21,7 @@ public final class WorkerTaskSelectorFactory {
                 resolvedPolicy.workerGroupIds(),
                 resolvedPolicy.adapterNodeId(),
                 resolvedPolicy.targetWorkerId(),
-                resolvedPolicy.routeBucketKeys()
+                resolvedPolicy.candidateBucketKeys()
         );
     }
 }

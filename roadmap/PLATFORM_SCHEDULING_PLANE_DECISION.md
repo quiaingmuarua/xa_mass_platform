@@ -104,7 +104,7 @@ Worker scheduling policy owns resolved parameters for the worker universe:
 
 - allowed/selected WorkerGroup ids,
 - adapter-node constraint,
-- route bucket keys from approved route attributes,
+- candidate bucket keys from approved route attributes,
 - routing code / route affinity constraints,
 - target worker override,
 - target worker attributes,

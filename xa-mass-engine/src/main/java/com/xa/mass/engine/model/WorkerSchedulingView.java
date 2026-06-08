@@ -4,6 +4,8 @@ import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
+import com.xa.mass.worker.runtime.evidence.WorkerOccupancyState;
+import com.xa.mass.worker.runtime.evidence.WorkerReadinessState;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -145,6 +147,14 @@ public final class WorkerSchedulingView {
 
     public boolean isTransportReachable() {
         return reachability == WorkerReachabilityState.ONLINE;
+    }
+
+    public WorkerReadinessState readinessState() {
+        return WorkerReadinessState.fromDispatchEvidence(dispatchEnabled, false);
+    }
+
+    public WorkerOccupancyState occupancyState() {
+        return WorkerOccupancyState.fromLoad(workerLoad, workerLocked);
     }
 
     public boolean dispatchEnabled() {

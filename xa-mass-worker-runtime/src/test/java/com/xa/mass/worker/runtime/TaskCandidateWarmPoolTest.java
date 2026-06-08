@@ -1,6 +1,6 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
+import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -42,7 +42,7 @@ class TaskCandidateWarmPoolTest {
                 workerId,
                 "group-a",
                 null,
-                WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY,
+                WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY,
                 observedAtMillis
         );
     }

@@ -24,11 +24,11 @@ public interface WorkerRegistry {
 
     Set<String> workerIdsByAdapterNodeGroup(String adapterNodeId, String groupId);
 
-    List<String> acquireCandidates(String groupId, String routeBucketKey, int maxCandidateCount);
+    List<String> acquireCandidates(String groupId, String candidateBucketKey, int maxCandidateCount);
 
     List<String> acquireCandidates(String groupId,
                                    String adapterNodeId,
-                                   String routeBucketKey,
+                                   String candidateBucketKey,
                                    int maxCandidateCount);
 
     ReserveResult tryReserve(String groupId, String workerId, String taskId, int permits, long nowMillis);

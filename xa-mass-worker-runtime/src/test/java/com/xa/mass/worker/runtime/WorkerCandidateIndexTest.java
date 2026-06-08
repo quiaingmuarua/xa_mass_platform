@@ -1,9 +1,9 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.worker.runtime.resource.EventBinding;
-import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
+import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
+import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
@@ -118,7 +118,7 @@ public class WorkerCandidateIndexTest {
     }
 
     @Test
-    void nonTargetedGroupLookupUsesBoundedRouteBucketAcquisition() {
+    void nonTargetedGroupLookupUsesBoundedCandidateBucketAcquisition() {
         WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
         ), List.of(
@@ -155,7 +155,7 @@ public class WorkerCandidateIndexTest {
     }
 
     @Test
-    void targetWorkerLookupBypassesRouteBucketLimitButStillChecksGroupCapability() {
+    void targetWorkerLookupBypassesCandidateBucketLimitButStillChecksGroupCapability() {
         WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp"))),
                 group("export", "node-a", EventBinding.of("report.export", List.of("demoApp")))
@@ -186,20 +186,20 @@ public class WorkerCandidateIndexTest {
     }
 
     @Test
-    void sourceGuardRejectsStaleRouteEvidenceBeforeStageTwo() {
+    void sourceGuardRejectsStaleCandidateBucketEvidenceBeforeStageTwo() {
         WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
         ), List.of(
                 worker("worker-eu", "crawler", Map.of("region", "eu"))
         )));
         WorkerTaskSelector selector = taskWithRouteAttributes(Map.of("region", "us"), "crawler");
-        String observedRouteBucket = selector.routeBucketKeys().iterator().next();
+        String observedCandidateBucket = selector.candidateBucketKeys().iterator().next();
 
         WorkerCandidateIndex.SourceGuardResult result =
-                index.sourceGuard(selector, "crawler", null, observedRouteBucket, "worker-eu");
+                index.sourceGuard(selector, "crawler", null, observedCandidateBucket, "worker-eu");
 
         assertFalse(result.accepted());
-        assertEquals(WorkerCandidateIndex.SourceGuardRejectionReason.ROUTE_MISMATCH, result.rejectionReason());
+        assertEquals(WorkerCandidateIndex.SourceGuardRejectionReason.CANDIDATE_BUCKET_MISMATCH, result.rejectionReason());
     }
 
     @Test
@@ -214,7 +214,7 @@ public class WorkerCandidateIndexTest {
                 index.sourceGuard(task("demoApp", "crawler.fetch", null, "crawler"),
                         "crawler",
                         "node-a",
-                        WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY,
+                        WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY,
                         "worker-node-b");
 
         assertFalse(result.accepted());
@@ -227,7 +227,7 @@ public class WorkerCandidateIndexTest {
 
     private static WorkerCandidateIndex index(WorkerRegistrySnapshot snapshot) {
         InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry(
-                WorkerRouteBucketPolicies.defaultPolicy(),
+                WorkerCandidateBucketPolicies.defaultPolicy(),
                 RandomWorkerCandidateSamplingPolicy.defaultPolicy()
         );
         for (Worker worker : snapshot.workers()) {
@@ -247,7 +247,7 @@ public class WorkerCandidateIndexTest {
                     worker.getStatus() == null ? null : worker.getStatus().name()
             ), worker.getMaxConcurrentWork(), Set.of());
         }
-        return new WorkerCandidateIndex(snapshot, registry, WorkerRouteBucketPolicies.defaultPolicy());
+        return new WorkerCandidateIndex(snapshot, registry, WorkerCandidateBucketPolicies.defaultPolicy());
     }
 
     private static WorkerTaskSelector task(String project, String eventCode, String targetWorkerId, String... groupIds) {
@@ -256,7 +256,7 @@ public class WorkerCandidateIndexTest {
                 groupIdList(groupIds),
                 null,
                 targetWorkerId,
-                Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY)
+                Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY)
         );
     }
 
@@ -268,21 +268,21 @@ public class WorkerCandidateIndexTest {
                 groupIdList(groupIds),
                 adapterNodeId,
                 targetWorkerId,
-                Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY)
+                Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY)
         );
     }
 
     private static WorkerTaskSelector taskWithRouteAttributes(Map<String, String> routeAttributes,
                                                               String... groupIds) {
-        String routeBucketKey = WorkerRouteBucketPolicies.approvedAttributePolicy(
-                        WorkerRouteBucketPolicies.STANDARD_APPROVED_ROUTE_ATTRIBUTES)
-                .exactRouteBucketKeyForAttributes(routeAttributes);
+        String candidateBucketKey = WorkerCandidateBucketPolicies.approvedAttributePolicy(
+                        WorkerCandidateBucketPolicies.STANDARD_APPROVED_ROUTE_ATTRIBUTES)
+                .exactCandidateBucketKeyForAttributes(routeAttributes);
         return new WorkerTaskSelector(
                 "task-routed",
                 groupIdList(groupIds),
                 null,
                 null,
-                Set.of(routeBucketKey)
+                Set.of(candidateBucketKey)
         );
     }
 

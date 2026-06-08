@@ -1,6 +1,6 @@
 package com.xa.mass.engine.runtime.scheduling;
 
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
+import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 
 import java.util.List;
 import java.util.Map;
@@ -21,7 +21,7 @@ public record ResolvedWorkerSchedulingPolicy(
         String adapterNodeId,
         String routingCode,
         Map<String, String> routeAttributes,
-        Set<String> routeBucketKeys,
+        Set<String> candidateBucketKeys,
         String targetWorkerId,
         Map<String, String> targetWorkerAttributes
 ) {
@@ -29,11 +29,11 @@ public record ResolvedWorkerSchedulingPolicy(
     public ResolvedWorkerSchedulingPolicy {
         workerGroupIds = workerGroupIds == null ? List.of() : List.copyOf(workerGroupIds);
         routeAttributes = routeAttributes == null ? Map.of() : Map.copyOf(routeAttributes);
-        routeBucketKeys = normalizeRouteBucketKeys(routeBucketKeys);
+        candidateBucketKeys = normalizeCandidateBucketKeys(candidateBucketKeys);
         targetWorkerAttributes = targetWorkerAttributes == null ? Map.of() : Map.copyOf(targetWorkerAttributes);
     }
 
-    public static ResolvedWorkerSchedulingPolicy from(TaskDispatchIntent intent, Set<String> routeBucketKeys) {
+    public static ResolvedWorkerSchedulingPolicy from(TaskDispatchIntent intent, Set<String> candidateBucketKeys) {
         TaskDispatchIntent resolvedIntent = intent == null
                 ? new TaskDispatchIntent(null, null, null, List.of(), null, null, Map.of(), null, Map.of())
                 : intent;
@@ -45,7 +45,7 @@ public record ResolvedWorkerSchedulingPolicy(
                 resolvedIntent.adapterNodeId(),
                 resolvedIntent.routingCode(),
                 resolvedIntent.routeAttributes(),
-                routeBucketKeys,
+                candidateBucketKeys,
                 resolvedIntent.targetWorkerId(),
                 resolvedIntent.targetWorkerAttributes()
         );
@@ -55,9 +55,9 @@ public record ResolvedWorkerSchedulingPolicy(
         return targetWorkerId != null;
     }
 
-    private static Set<String> normalizeRouteBucketKeys(Set<String> values) {
+    private static Set<String> normalizeCandidateBucketKeys(Set<String> values) {
         if (values == null || values.isEmpty()) {
-            return Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY);
+            return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
         }
         return Set.copyOf(values);
     }

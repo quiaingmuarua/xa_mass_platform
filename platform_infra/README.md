@@ -84,7 +84,7 @@ Current truth for this conservative first slice:
   commitment from local schema helpers: current new-environment setup should
   prefer explicit seed/import and may use SQLite as the lightweight
   control-plane DB direction.
-- worker registry slot state, dispatch availability, route buckets, and
+- worker registry slot state, dispatch availability, candidate buckets, and
   candidate sampling are runtime state, not control-plane DB CRUD state. Higher
   level worker resource/candidate/evidence contracts such as
   `WorkerRegistrySnapshot`, `AdapterNodeRecord`, and `NodeGroupBindingRecord`

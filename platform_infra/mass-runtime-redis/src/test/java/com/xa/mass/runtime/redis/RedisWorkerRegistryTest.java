@@ -6,10 +6,10 @@ import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.ReserveStatus;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
-import com.xa.mass.runtime.worker.DefaultWorkerRouteBucketPolicy;
+import com.xa.mass.runtime.worker.DefaultWorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
+import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -47,7 +47,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 redisClient,
                 keyspace,
                 samplingPolicy,
-                DefaultWorkerRouteBucketPolicy.defaultPolicy(),
+                DefaultWorkerCandidateBucketPolicy.defaultPolicy(),
                 false
         );
         return registry;
@@ -83,8 +83,11 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
         assertEquals(Set.of("worker-1"), Set.copyOf(commands.hkeys(keyspace.groupSlotsHash("group-a"))));
         assertEquals(Set.of("worker-2"), Set.copyOf(commands.hkeys(keyspace.groupSlotsHash("group-b"))));
         assertEquals("group-a", commands.hget(keyspace.workerGroupHash(), "worker-1"));
+        assertEquals(Set.of("group-a", "group-b"), commands.smembers(keyspace.workerGroupsSet()));
+        assertEquals(List.of("worker-1"), commands.zrange(keyspace.groupHeartbeatDeadlinesZset("group-a"), 0, -1));
+        assertEquals(List.of("worker-2"), commands.zrange(keyspace.groupHeartbeatDeadlinesZset("group-b"), 0, -1));
         assertEquals(Set.of("worker-1"),
-                commands.smembers(keyspace.groupRouteBucket("group-a", RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY)));
+                commands.smembers(keyspace.groupCandidateBucket("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY)));
     }
 
     @Test
@@ -99,7 +102,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                         redisClient,
                         keyspace,
                         (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList(),
-                        DefaultWorkerRouteBucketPolicy.defaultPolicy(),
+                        DefaultWorkerCandidateBucketPolicy.defaultPolicy(),
                         false
                 ));
             }
@@ -197,7 +200,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 redisClient,
                 otherKeyspace,
                 (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList(),
-                DefaultWorkerRouteBucketPolicy.defaultPolicy(),
+                DefaultWorkerCandidateBucketPolicy.defaultPolicy(),
                 false
         );
         try {
@@ -212,7 +215,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
     }
 
     @Test
-    void acceptsSharedWorkerRouteBucketPolicySeam() {
+    void acceptsSharedWorkerCandidateBucketPolicySeam() {
         createRegistry();
         registry.close();
         registry = new RedisWorkerRegistry(
@@ -259,12 +262,12 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
 
 
     @Test
-    void staleHeartbeatCandidateIsRejectedThenCleanedFromRouteBucket() {
+    void staleHeartbeatCandidateIsRejectedThenCleanedFromCandidateBucket() {
         WorkerRegistry workerRegistry = createRegistry();
         workerRegistry.upsertSlot(meta("worker-stale", "group-a", 1_000), 1, Set.of(eventKey()));
 
         assertEquals(List.of("worker-stale"),
-                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY, 10));
+                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY, 10));
         assertEquals(ReserveStatus.STALE_HEARTBEAT,
                 workerRegistry.tryReserve("group-a", "worker-stale", "task-1", 1, 31_001).status());
 
@@ -277,7 +280,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
         assertTrue(workerRegistry.slot("group-a", "worker-stale").isEmpty());
         assertTrue(workerRegistry.acquireCandidates(
                 "group-a",
-                RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY,
+                RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY,
                 10
         ).isEmpty());
     }
@@ -310,7 +313,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
         commands.hdel(keyspace.groupSlotsHash("group-a"), "worker-gone");
 
         assertEquals(List.of("worker-gone"),
-                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY, 10));
+                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY, 10));
 
         CleanupSummary cleanup = workerRegistry.cleanupStaleBucketMembers("group-a", 10);
 
@@ -318,7 +321,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
         assertEquals(2, cleanup.removed());
         assertTrue(workerRegistry.acquireCandidates(
                 "group-a",
-                RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY,
+                RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY,
                 10
         ).isEmpty());
         assertTrue(workerRegistry.acquireCandidates("group-a", "attr:region=us", 10).isEmpty());
@@ -363,7 +366,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                     while (!stop.get()) {
                         workerRegistry.slotByWorkerId("worker-1");
                         workerRegistry.workerIdsByAdapterNodeGroup("node-a", "group-a");
-                        workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY, 10);
+                        workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY, 10);
                         workerRegistry.hasExclusiveLease("worker-1");
                     }
                 } catch (InterruptedException e) {
@@ -386,7 +389,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
             fail(failure.get());
         }
         assertEquals(List.of("worker-1"),
-                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY, 10));
+                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY, 10));
     }
 
     private WorkerMeta meta(String workerId, String groupId, long lastHeartbeatMillis) {
@@ -419,13 +422,13 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
         );
     }
 
-    private static WorkerRouteBucketPolicy regionRoutePolicy() {
+    private static WorkerCandidateBucketPolicy regionRoutePolicy() {
         return meta -> {
             String region = meta == null || meta.attributes() == null ? null : meta.attributes().get("region");
             if (region == null || region.isBlank()) {
-                return Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY);
+                return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
             }
-            return Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY, "attr:region=" + region.trim());
+            return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY, "attr:region=" + region.trim());
         };
     }
 }

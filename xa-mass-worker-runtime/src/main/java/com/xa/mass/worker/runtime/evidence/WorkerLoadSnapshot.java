@@ -27,4 +27,8 @@ public record WorkerLoadSnapshot(
     public double estimatedLoadRatio() {
         return observedLoadCount() / (double) declaredCapacity;
     }
+
+    public WorkerOccupancyState occupancyState() {
+        return WorkerOccupancyState.fromLoad(this, false);
+    }
 }

@@ -7,6 +7,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -19,6 +20,31 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskSchedulingGateAndTargetingTest {
+
+    @Test
+    void unknownReachabilityIsRejectedBeforeBindingWork() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness(workerId ->
+                "worker-unknown".equals(workerId) ? WorkerReachabilityState.UNKNOWN : WorkerReachabilityState.ONLINE);
+        harness.addWorker("worker-unknown", "us");
+        Task task = harness.createBatchTask(
+                "unknown-reachability",
+                List.of(harness.item("alpha")),
+                0,
+                1
+        );
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
+
+        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
+
+        assertEquals(TaskStatus.READY, harness.taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(1, harness.stats(task.getTid()).readyCount());
+        assertEquals(0, harness.stats(task.getTid()).inflightCount());
+        assertTrue(harness.activeLeases(task.getTid()).isEmpty());
+        AssignmentRecord rejected = harness.record(task.getTid(), "worker-unknown");
+        assertEquals(AssignmentResult.RESOURCE_UNAVAILABLE, rejected.getResult());
+        assertEquals("worker transport unreachable", rejected.getReason());
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-unknown"));
+    }
 
     @Test
     void workerGroupSelectorNarrowsCandidatePoolBeforeRuntimeSelection() {

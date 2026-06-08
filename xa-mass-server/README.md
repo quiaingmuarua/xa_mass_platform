@@ -244,6 +244,7 @@ Example local seed:
 ```bash
 java -jar xa-mass-server/target/xa-mass-server.jar \
   --mass.control-plane.seed.enabled=true \
+  --mass.control-plane.seed.allow-local-fixture-raw-secrets=true \
   --mass.control-plane.seed.catalog-location=file:integrations/samples/dev/scenario/bootstrap.json \
   --mass.control-plane.seed.rules-location=file:integrations/samples/dev/scenario/rules.json
 ```

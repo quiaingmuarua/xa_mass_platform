@@ -214,7 +214,11 @@ stable polling contract and uses the dev-only `external.proof.echo` event plus
 `external-proof-task-api-key` / `external-proof-worker-key` credentials so it
 does not depend on optional sample workers or server-owned demo workload state.
 
-Producer traffic uses shell create plus explicit ingest:
+Producer traffic uses shell create plus explicit ingest. These calls require
+`crawler-task-api-key` to already exist through explicit seed/import or normal
+host credential setup; the checked-in local scenario seed must be imported with
+`mass.control-plane.seed.allow-local-fixture-raw-secrets=true` because it
+contains local fixture raw secrets.
 
 ```bash
 curl -X POST http://127.0.0.1:8088/api/v1/tasks \

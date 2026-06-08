@@ -114,7 +114,7 @@ Current policy seams:
 
 ```text
 route key policy
-  WorkerRoutingPolicy
+  WorkerCandidateBucketPolicy
 
 bounded bucket selection
   WorkerCandidateSamplingPolicy
@@ -155,7 +155,7 @@ This roadmap follows that model:
 
 ```text
 Stage-1 candidate source
-  lock-free / stale-tolerant / bounded sample from group/route buckets
+  lock-free / stale-tolerant / bounded sample from group/candidate buckets
 
 Stage-2 admission
   validate current slot, heartbeat, gate, capacity, and route attributes
@@ -237,11 +237,11 @@ runtime-api residues; admission and cleanup behavior stays inside the current
 registry/runtime owners until a real implementation boundary exists.
 
 ```text
-WorkerRoutingPolicy
-  task/group/attribute -> routeBucketKey
+WorkerCandidateBucketPolicy
+  task/group/attribute -> candidateBucketKey
 
 WorkerCandidateSamplingPolicy
-  choose bounded worker ids from a large group/route bucket
+  choose bounded worker ids from a large group/candidate bucket
 
 WorkerRankingPolicy
   optional ranking after bounded sampling; first slice may be random/no-op
@@ -249,7 +249,7 @@ WorkerRankingPolicy
 
 First-slice policies may be intentionally simple:
 
-- route bucket key can be the default route plus approved routing attributes
+- candidate bucket key can be the default route plus approved routing attributes
 - candidate sampling can be random bounded sampling
 - ranking can be no-op
 - cleanup can be lazy plus bounded watchdog
@@ -356,13 +356,16 @@ First Redis slice target:
 {prefix}:worker:group:{groupId}:slots
   HASH workerId -> WorkerSlotPayload
 
-{prefix}:worker:heartbeat:deadlines
-  ZSET encoded(groupId,workerId) -> lastHeartbeatMillis + freshnessTtlMillis
+{prefix}:worker:groups
+  SET groupId
 
-{prefix}:worker:group:{groupId}:route:{routeBucketKey}:workers
+{prefix}:worker:group:{groupId}:heartbeat:0
+  ZSET workerId -> lastHeartbeatMillis + freshnessTtlMillis
+
+{prefix}:worker:group:{groupId}:bucket:{candidateBucketKey}:workers
   SET/ZSET workerId
 
-{prefix}:worker:group:{groupId}:node:{adapterNodeId}:route:{routeBucketKey}:workers
+{prefix}:worker:group:{groupId}:node:{adapterNodeId}:bucket:{candidateBucketKey}:workers
   SET/ZSET workerId
 
 {prefix}:worker:task:{taskId}:active-workers
@@ -405,8 +408,8 @@ Scheduling after convergence:
 ```text
 Task.sharedConfig.workerGroupId(s)
   -> for each group:
-       routeBucketKey = WorkerRoutingPolicy(task)
-       sample bounded workerIds from group route bucket
+       candidateBucketKey = WorkerCandidateBucketPolicy(task)
+       sample bounded workerIds from group candidate bucket
   -> de-duplicate candidates for this scheduling pass
   -> for each workerId:
        read current slot/meta/load/gate
@@ -437,11 +440,11 @@ Strong enough:
 
 Eventually consistent:
 
-- route bucket membership
+- candidate bucket membership
 - node/group bucket membership
 - heartbeat/presence cleanup
 - meta attribute propagation into candidate buckets
-- route bucket cleanup after worker remove
+- candidate bucket cleanup after worker remove
 
 Stale is acceptable only when it is harmless:
 
@@ -473,7 +476,7 @@ WorkerReachabilityView
 ```
 
 Both may be consulted during Stage-2 admission, but neither is a candidate
-source. Candidate discovery still starts from worker group / route buckets and
+source. Candidate discovery still starts from worker group / candidate buckets and
 current slot validation rejects stale or unreachable workers.
 
 ## WorkerRegistry Contract
@@ -489,8 +492,8 @@ WorkerRegistry
     slotByWorkerId(workerId) -> Optional<WorkerSlot>
 
   candidate acquisition
-    acquireCandidates(groupId, routeBucketKey, max) -> List<workerId>
-    acquireCandidates(groupId, adapterNodeId, routeBucketKey, max) -> List<workerId>
+    acquireCandidates(groupId, candidateBucketKey, max) -> List<workerId>
+    acquireCandidates(groupId, adapterNodeId, candidateBucketKey, max) -> List<workerId>
 
   admission
     tryReserve(groupId, workerId, taskId, permits, nowMillis) -> ReserveResult
@@ -624,7 +627,7 @@ No global lock:
 ```text
 do not lock all workers
 do not lock all groups
-do not lock all route buckets
+do not lock all candidate buckets
 do not lock WorkerManager for scheduling reads
 ```
 
@@ -669,7 +672,7 @@ behavior.
 Scope:
 
 1. Inventory `WorkerStorage`, `WorkerManager.workerRegistryRows`,
-   `WorkerRegistrySnapshot`, `WorkerRouteBucketOwner`, historical `WorkerLoadView`,
+   `WorkerRegistrySnapshot`, `WorkerCandidateBucketOwner`, historical `WorkerLoadView`,
    registry-backed dispatch gates, and `WorkerReachabilityView`.
 2. List every place that still treats `WorkerStorage` as scheduling truth.
 3. List every place that still depends on `tryLockWorker`, `unlockWorker`, or
@@ -699,14 +702,14 @@ Scope:
    - diagnostics/read-cache reads
 2. Mark `WorkerRegistrySnapshot` as current read cache only, not the target
    admission owner.
-3. Mark `WorkerRouteBucketOwner` as current bucket owner that must either be
+3. Mark `WorkerCandidateBucketOwner` as current bucket owner that must either be
    retired or reduced to selection-only after registry migration.
 4. Mark historical `WorkerLoadView` and `WorkerStorage.lockedWorkers` as
    occupancy/exclusivity residues that must not remain live production wiring
    after registry occupancy convergence.
 5. Classify current strategy-like code as mechanism or policy:
    - route key construction
-   - route bucket sampling
+   - candidate bucket sampling
    - candidate ranking / ordering
    - capacity admission
    - cleanup pacing
@@ -746,7 +749,7 @@ Scope:
    - group mismatch
    - adapter-node mismatch
 5. Define policy seams without implementing mature strategy:
-   - `WorkerRoutingPolicy`
+   - `WorkerCandidateBucketPolicy`
    - `WorkerCandidateSamplingPolicy`, injected into `WorkerRegistry` at
      construction time and used by `acquireCandidates(...)`
    - optional `WorkerRankingPolicy`
@@ -801,8 +804,8 @@ Scope:
 1. Implement grouped structures:
    - `slotsByGroupId`
    - `workerIdToGroupId`
-   - `routeBucketsByGroupId`
-   - `nodeRouteBucketsByGroupId`
+   - `candidateBucketsByGroupId`
+   - `nodeCandidateBucketsByGroupId`
    - `heartbeatDeadlinesByGroupId`
    - task active worker indexes
 2. Use per-worker `AtomicReference<WorkerSlot>` or equivalent CAS boundary.
@@ -838,14 +841,14 @@ Scope:
 2. Migrate scheduling candidate-source callers away from
    `WorkerRegistrySnapshot`:
    - `WorkerCandidateIndex`
-   - `WorkerRouteBucketOwner`
+   - `WorkerCandidateBucketOwner`
    - `WorkerSchedulingCandidateEnumerator`
 3. Retain `WorkerRegistrySnapshot` only if it is still needed as a diagnostic /
    stable read cache. It must not be admission truth, candidate-source truth, or
    a full-scan rebuild of worker identity.
-4. Move `WorkerRouteBucketOwner` membership to registry-owned buckets. After
+4. Move `WorkerCandidateBucketOwner` membership to registry-owned buckets. After
    migration it must not own membership. Selection belongs to
-   `WorkerCandidateSamplingPolicy`, not to a second route-bucket owner.
+   `WorkerCandidateSamplingPolicy`, not to a second candidate-bucket owner.
 5. At the original WSR-4 boundary, `WorkerLoadView` remained the admission
    truth while registry synchronized identity and bucket membership only.
    This is historical phase context; current production occupancy has moved to
@@ -963,25 +966,26 @@ Prerequisite status:
   shared contract test package instead of depending on `xa-mass-engine`.
 - completed first slice: `RedisWorkerRegistry` now implements the shared
   contract with group-local slot hashes, worker-id-to-group lookup,
-  group/node route buckets, heartbeat deadline index, task occupancy indexes,
-  and Redis `WATCH` / `MULTI` / `EXEC` over the group-local slot hash.
+  group-local heartbeat deadline indexes, group/node candidate buckets, task
+  occupancy indexes, and Redis `WATCH` / `MULTI` / `EXEC` over the group-local
+  slot hash.
 - completed correction: slot mutation on a single `RedisWorkerRegistry`
   instance is serialized around the connection-scoped `WATCH` / `MULTI`
   sequence. This keeps the current first slice safe for multi-threaded engine
   use while preserving cross-instance Redis concurrency semantics.
 - completed correction: expired heartbeat cleanup now marks the slot removing
-  before removing route-bucket membership, so `cleanupRemovedSlots` can reclaim
+  before removing candidate-bucket membership, so `cleanupRemovedSlots` can reclaim
   the group slot instead of leaving a permanent stale slot payload.
-- completed correction: Redis worker route bucket indexing now depends on the
-  shared `WorkerRouteBucketPolicy` runtime-api seam instead of a raw
+- completed correction: Redis worker candidate bucket indexing now depends on the
+  shared `WorkerCandidateBucketPolicy` runtime-api seam instead of a raw
   `Function<WorkerMeta, Set<String>>`.
 
 Scope:
 
 1. Implement Redis key prefix as configuration.
 2. Implement group-local worker slot payload hashes.
-3. Implement group-local route/node route buckets with bounded sampling.
-4. Implement heartbeat deadline ZSET and bounded cleanup.
+3. Implement group-local and node-local candidate buckets with bounded sampling.
+4. Implement group-local heartbeat deadline ZSETs and bounded cleanup.
 5. Implement atomic reserve/confirm/release/final with Lua or Redis atomic
    primitives.
    - Current first slice uses Redis `WATCH` on the group-local slot hash, so it
@@ -1022,7 +1026,7 @@ Current status:
 - started: SDK/starter engine assembly can now accept an injected
   `WorkerRegistry`, and server `mass.runtime.mode=redis` wires
   `RedisWorkerRegistry` beside Redis task work/result runtime.
-- completed at registry level: Redis stale heartbeat reject, stale route bucket
+- completed at registry level: Redis stale heartbeat reject, stale candidate bucket
   cleanup, reconnect heartbeat refresh, prefix isolation, and concurrent reserve
   are covered by `RedisWorkerRegistryTest`.
 - completed at server E2E level: ready-task late-worker registration on Redis
@@ -1043,7 +1047,7 @@ Scope:
    - worker heartbeat expires and stale candidate is skipped: covered at
      registry level
    - worker reconnects and becomes eligible again: covered at registry level
-   - route bucket stale member cleanup: covered at registry level
+   - candidate bucket stale member cleanup: covered at registry level
    - concurrent reserve against same worker: covered at registry level
 5. Update docs to describe runtime truth vs historical projection truth.
 
@@ -1062,9 +1066,9 @@ Goal: delete old paths once the new registry is proven.
 Current status:
 
 - completed for route membership: production `WorkerManager` no longer owns or
-  publishes a route bucket membership copy, `WorkerCandidateIndex` acquires
+  publishes a candidate bucket membership copy, `WorkerCandidateIndex` acquires
   candidates from `WorkerRegistry`, and the snapshot-backed
-  `WorkerRouteBucketOwner` residue has been removed.
+  `WorkerCandidateBucketOwner` residue has been removed.
 - completed for worker membership indexes in production mutation paths: group
   and adapter-node/group worker-id lookups now come from `WorkerRegistry`, so
   node-group gates and group removal no longer read snapshot-owned worker
@@ -1089,7 +1093,7 @@ Scope:
 
 1. Remove or demote `WorkerRegistrySnapshot` to diagnostics-only if still
    required.
-2. Remove `WorkerRouteBucketOwner` membership ownership; keep only selection
+2. Remove `WorkerCandidateBucketOwner` membership ownership; keep only selection
    policy if it still has a role.
 3. Remove `WorkerLoadView` production wiring.
 4. Rename or remove remaining lock-named diagnostics and trace terminology
@@ -1101,7 +1105,7 @@ Scope:
 Acceptance:
 
 1. No old and new worker occupancy truth run in parallel.
-2. No old and new route bucket membership truth run in parallel.
+2. No old and new candidate bucket membership truth run in parallel.
 3. No production scheduling path depends on worker-storage row scans.
 4. Worker runtime docs describe only the converged registry owner model.
 
@@ -1116,14 +1120,14 @@ Required lanes:
 - `InMemoryWorkerRegistryTest`
 - `RedisWorkerRegistryTest`
 - `WorkerManager` convergence tests
-- route bucket stale candidate tests
+- candidate bucket stale candidate tests
 - node-group drain / worker-state gate source tests
 - lifecycle result/final release tests
 - Redis prefix isolation tests
 - source guards for worker hot-path lock/ownership:
   - scheduling reads do not enter `workerRegistryLock`
   - production occupancy no longer writes through `InMemoryWorkerLoadView`
-  - route bucket membership is not owned outside `WorkerRegistry`
+  - candidate bucket membership is not owned outside `WorkerRegistry`
 
 Avoid:
 

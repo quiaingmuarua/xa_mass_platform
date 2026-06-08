@@ -67,6 +67,8 @@ public class WorkerMatchContextTest {
         assertEquals(0.0, context.getContext().get("workerEstimatedLoadRatio"));
         assertEquals(0, context.getContext().get("currentActiveLeaseCount"));
         assertEquals(0.0, context.getContext().get("estimatedLoadRatio"));
+        assertEquals("READY", context.getContext().get("workerReadinessState"));
+        assertEquals("FREE", context.getContext().get("workerOccupancyState"));
         assertEquals("worker-1", context.getSchedulingView().schedulingResourceId());
         assertEquals(0, context.getContext().get("taskTargetNumber"));
         assertEquals("us", context.getContext().get("routingCode"));
@@ -210,6 +212,8 @@ public class WorkerMatchContextTest {
                 "transportReachability",
                 "isTransportReachable",
                 "agentVersion",
+                "workerReadinessState",
+                "workerOccupancyState",
                 "isWorkerAvailable",
                 "isWorkerLocked",
                 "workerActiveLeaseCount",
@@ -405,6 +409,8 @@ public class WorkerMatchContextTest {
         assertFalse(context.containsKey("isWorkerAvailable"));
         assertFalse(context.containsKey("isTransportReachable"));
         assertFalse(context.containsKey("transportReachability"));
+        assertFalse(context.containsKey("workerReadinessState"));
+        assertFalse(context.containsKey("workerOccupancyState"));
         assertFalse(context.containsKey("isWorkerLocked"));
         assertFalse(context.containsKey("workerActiveLeaseCount"));
         assertFalse(context.containsKey("workerReservedCount"));

@@ -1,7 +1,7 @@
 package com.xa.mass.worker.runtime.routing;
 
 import com.xa.mass.runtime.worker.WorkerMeta;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
+import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -12,59 +12,63 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Shared route-bucket policy helpers for worker runtime indexes.
+ * Shared candidate-bucket policy helpers for worker runtime indexes.
  */
-public final class WorkerRouteBucketPolicies {
+public final class WorkerCandidateBucketPolicies {
 
-    public static final String DEFAULT_ROUTE_BUCKET_KEY = WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY;
+    public static final String DEFAULT_CANDIDATE_BUCKET_KEY = WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY;
 
     public static final List<String> STANDARD_APPROVED_ROUTE_ATTRIBUTES =
             List.of("business", "tenant", "region", "pool");
 
-    private static final ApprovedAttributeRouteBucketPolicy DEFAULT =
-            new ApprovedAttributeRouteBucketPolicy(STANDARD_APPROVED_ROUTE_ATTRIBUTES);
+    private static final ApprovedAttributeCandidateBucketPolicy DEFAULT =
+            new ApprovedAttributeCandidateBucketPolicy(STANDARD_APPROVED_ROUTE_ATTRIBUTES);
 
-    private WorkerRouteBucketPolicies() {
+    private WorkerCandidateBucketPolicies() {
     }
 
-    public static WorkerRouteBucketPolicy defaultPolicy() {
+    public static WorkerCandidateBucketPolicy defaultPolicy() {
         return DEFAULT;
     }
 
-    public static ApprovedAttributeRouteBucketPolicy approvedAttributePolicy(
-            Collection<String> approvedAttributeKeys) {
-        return new ApprovedAttributeRouteBucketPolicy(approvedAttributeKeys);
+    public static ApprovedAttributeCandidateBucketPolicy defaultApprovedAttributePolicy() {
+        return DEFAULT;
     }
 
-    public static final class ApprovedAttributeRouteBucketPolicy implements WorkerRouteBucketPolicy {
+    public static ApprovedAttributeCandidateBucketPolicy approvedAttributePolicy(
+            Collection<String> approvedAttributeKeys) {
+        return new ApprovedAttributeCandidateBucketPolicy(approvedAttributeKeys);
+    }
+
+    public static final class ApprovedAttributeCandidateBucketPolicy implements WorkerCandidateBucketPolicy {
         private final List<String> approvedAttributeKeys;
 
-        private ApprovedAttributeRouteBucketPolicy(Collection<String> approvedAttributeKeys) {
+        private ApprovedAttributeCandidateBucketPolicy(Collection<String> approvedAttributeKeys) {
             this.approvedAttributeKeys = normalizeApprovedKeys(approvedAttributeKeys);
         }
 
         @Override
-        public Set<String> routeBucketKeysForWorkerMeta(WorkerMeta meta) {
-            return routeBucketKeysForAttributes(meta == null ? null : meta.attributes());
+        public Set<String> candidateBucketKeysForWorkerMeta(WorkerMeta meta) {
+            return candidateBucketKeysForAttributes(meta == null ? null : meta.attributes());
         }
 
-        public Set<String> routeBucketKeysForAttributes(Map<String, String> attributes) {
+        public Set<String> candidateBucketKeysForAttributes(Map<String, String> attributes) {
             Map<String, String> routeAttributes = approvedAttributes(attributes);
             if (routeAttributes.isEmpty()) {
-                return Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY);
+                return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
             }
             LinkedHashSet<String> keys = new LinkedHashSet<>();
-            keys.add(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY);
+            keys.add(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
             for (Map<String, String> combination : combinations(routeAttributes)) {
                 keys.add(bucketKey(combination));
             }
             return Set.copyOf(keys);
         }
 
-        public String exactRouteBucketKeyForAttributes(Map<String, String> attributes) {
+        public String exactCandidateBucketKeyForAttributes(Map<String, String> attributes) {
             Map<String, String> routeAttributes = approvedAttributes(attributes);
             return routeAttributes.isEmpty()
-                    ? WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY
+                    ? WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY
                     : bucketKey(routeAttributes);
         }
 
@@ -96,7 +100,7 @@ public final class WorkerRouteBucketPolicies {
                 builder.append(escape(key)).append('=').append(escape(value));
                 first = false;
             }
-            return first ? WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY : builder.toString();
+            return first ? WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY : builder.toString();
         }
 
         private List<Map<String, String>> combinations(Map<String, String> attributes) {

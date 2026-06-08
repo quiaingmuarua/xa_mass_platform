@@ -81,6 +81,29 @@ class ScenarioLauncherOptionsTest {
         assertTrue(message.contains("server catalog does not contain an event"));
         assertTrue(message.contains("integrations/samples/dev/scenario/workers.json"));
         assertTrue(message.contains("--mass.control-plane.seed.enabled=true"));
+        assertTrue(message.contains("--mass.control-plane.seed.allow-local-fixture-raw-secrets=true"));
+        assertTrue(message.contains("file:integrations/samples/dev/scenario/bootstrap.json"));
+        assertTrue(message.contains("file:integrations/samples/dev/scenario/rules.json"));
+    }
+
+    @Test
+    void diagnosesMissingTaskApiKeyForScenarioTaskCreate() {
+        ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
+                "--scenario-dir", "integrations/samples/dev/scenario"
+        });
+
+        String message = ScenarioFailureDiagnostics.diagnoseHttpFailure(options, new MassHttpException(
+                "POST",
+                "/api/v1/tasks",
+                401,
+                "{\"code\":401,\"msg\":\"Invalid or missing API-key credential\",\"data\":null}"
+        ));
+
+        assertTrue(message.contains("task API-key credential does not exist"));
+        assertTrue(message.contains("--task-api-key"));
+        assertTrue(message.contains("MASS_TASK_API_KEY"));
+        assertTrue(message.contains("--mass.control-plane.seed.enabled=true"));
+        assertTrue(message.contains("--mass.control-plane.seed.allow-local-fixture-raw-secrets=true"));
         assertTrue(message.contains("file:integrations/samples/dev/scenario/bootstrap.json"));
         assertTrue(message.contains("file:integrations/samples/dev/scenario/rules.json"));
     }

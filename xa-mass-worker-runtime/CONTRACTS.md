@@ -33,7 +33,7 @@ Worker runtime owns:
 - Stage-1 worker candidate source, source guard, and warm/cold merge.
 - Task-local warm candidate hint storage after engine observes useful Stage-2
   evidence.
-- Platform-approved worker route bucket policy composition.
+- Platform-approved worker candidate bucket policy composition.
 
 Worker runtime does not own:
 
@@ -75,7 +75,8 @@ Role split:
   leases, or worker-level supported project/event capability hints.
 - `WorkerRuntimeStateRecord` is a current runtime-state view assembled from
   registry, reachability, heartbeat freshness, dispatch gate, and admission
-  evidence. It is not persisted as declaration truth.
+  evidence. It exposes reachability/readiness diagnostics and occupancy
+  evidence fields, but it is not persisted as declaration truth.
 - `WorkerResourceRecord` is the current composite resource read model used by
   SDK/server/operator views and compatibility mutation surfaces. Because it
   contains status, heartbeat, and compatibility capability hints, it must not
@@ -119,6 +120,8 @@ Owned contracts:
 - `WorkerSchedulingViewRuntime`
 - `WorkerReachabilityView`
 - `WorkerReachabilityState`
+- `WorkerReadinessState`
+- `WorkerOccupancyState`
 - `WorkerGroupCapabilityView`
 - `WorkerLoadSnapshot`
 
@@ -130,6 +133,13 @@ Allowed callers:
 
 Evidence is read-only scheduling input. It must not mutate worker lifecycle
 truth.
+
+Reachability, readiness, and occupancy are separate dimensions. `UNKNOWN`
+reachability is an observation gap; only `ONLINE` is reachable for scheduling.
+Readiness and occupancy states are diagnostic views derived from current
+worker-runtime facts unless a later owner decision makes a stored field
+canonical. Legacy `statusName` / worker `status` fields are display-only
+compatibility and must not become scheduling truth.
 
 ### Admission
 
@@ -226,10 +236,10 @@ Package: `com.xa.mass.worker.runtime.routing`
 
 Owned contract:
 
-- `WorkerRouteBucketPolicies`
+- `WorkerCandidateBucketPolicies`
 
-`WorkerRouteBucketPolicies` is the platform approved-attribute route policy.
-The registry-level route-bucket SPI remains in `mass-runtime-api`.
+`WorkerCandidateBucketPolicies` is the platform approved-attribute candidate-bucket policy.
+The registry-level candidate-bucket SPI remains in `mass-runtime-api`.
 
 ## Online And Heartbeat Semantics
 
@@ -257,8 +267,8 @@ These low-level types stay in
 - `WorkerCandidateSamplingPolicy`
 - `WorkerCandidateSamplingContext`
 - `RandomWorkerCandidateSamplingPolicy`
-- `WorkerRouteBucketPolicy`
-- `DefaultWorkerRouteBucketPolicy`
+- `WorkerCandidateBucketPolicy`
+- `DefaultWorkerCandidateBucketPolicy`
 
 `EventKey` is a project-scoped worker capability key for registry binding. It
 is not a globally unique business event identity.
@@ -289,16 +299,16 @@ contract packages above.
 
 ## Verification
 
-Boundary guard:
+Runtime outcome proof:
+
+```powershell
+mvn -pl xa-mass-worker-runtime,xa-mass-engine -am '-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,TaskCandidateWarmPoolTest,TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskSchedulingBindingEntryBypassTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
+```
+
+Boundary residue sanity:
 
 ```powershell
 mvn -pl xa-mass-engine -am '-Dtest=EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
-```
-
-Worker-runtime focused regression:
-
-```powershell
-mvn -pl xa-mass-worker-runtime,xa-mass-engine -am '-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,TaskCandidateWarmPoolTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
 ```
 
 The completed WRX/WRA convergence records are historical archive entries. This

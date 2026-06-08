@@ -24,7 +24,7 @@ single class, not a policy family, and not a new facade.
 | Current Owner / Symbol | Owns | Consumes | Must Not Own | Classification |
 | --- | --- | --- | --- | --- |
 | `DefaultSchedulingPlaneResolver` | computed default scheduling resolution from current task shell, shared config, route, and target inputs | task shell and shared config | live worker reachability, slots, reserve, lock, admission, trace evidence | resolved input owner |
-| `ResolvedWorkerSchedulingPolicy` | static worker-side scheduling input view: worker group, adapter node, route buckets, target worker, target attributes | resolver output | runtime truth, diagnostic evidence, mutable admission state | resolved input owner |
+| `ResolvedWorkerSchedulingPolicy` | static worker-side scheduling input view: worker group, adapter node, candidate buckets, target worker, target attributes | resolver output | runtime truth, diagnostic evidence, mutable admission state | resolved input owner |
 | `WorkerTaskSelectorFactory#fromPolicy` | candidate-source selector construction from resolved worker policy | `ResolvedWorkerSchedulingPolicy` | policy resolution, runtime admission, ranking, reserve/lock mutation | candidate-source adapter |
 | `RuleBasedTaskWorkerMatchingStrategy` | matching assembly, prefilter, rule evaluation handoff, ranking handoff, reserve/lock/admission handoff | dispatch intent, resolved worker policy, candidate source, rule context, ranker, admission/resource mechanisms | persisted policy truth, public policy config, trace truth | runtime-selection mechanism |
 | `TaskAssignWorker` | assignment signal queue, delayed retry, lane routing, and retry wakeup | task events and `TaskWorkerAssignListener` | concrete worker choice, policy definition, trace truth | binding entry coordinator |
@@ -85,7 +85,7 @@ Static strategy inputs:
 
 - worker group selector,
 - adapter node constraint,
-- route bucket keys,
+- candidate bucket keys,
 - target worker constraint,
 - target attributes,
 - future ranking policy such as comparator/weight selection only after RS-5.

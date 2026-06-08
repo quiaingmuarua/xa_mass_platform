@@ -58,7 +58,7 @@ class TaskWorkerEligibilityTest {
     }
 
     @Test
-    void activeContentionExcludesWorkerAfterTransportReachabilityDropsAndUsesBackupWorker() {
+    void activeContentionExcludesWorkerAfterTransportReachabilityStalesAndUsesBackupWorker() {
         Map<String, WorkerReachabilityState> reachability = new HashMap<>();
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness(
                 workerId -> reachability.getOrDefault(workerId, WorkerReachabilityState.ONLINE)
@@ -72,7 +72,7 @@ class TaskWorkerEligibilityTest {
         ActiveLeaseRecord firstLease = harness.activeLeases(firstTask.getTid()).getFirst();
         assertEquals("worker-primary", firstLease.workerId());
 
-        reachability.put("worker-primary", WorkerReachabilityState.OFFLINE);
+        reachability.put("worker-primary", WorkerReachabilityState.STALE);
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
 

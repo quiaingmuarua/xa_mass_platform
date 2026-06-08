@@ -17,7 +17,7 @@ import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportStatus;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
-import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
+import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
@@ -583,7 +583,7 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void updateWorkerRefreshesRouteBucketMembership() {
+    void updateWorkerRefreshesCandidateBucketMembership() {
         declareProjectGroup("pool-a", "demoApp");
         Worker worker = worker("w-route-reindex", "pool-a");
         worker.setAttributes(Map.of("region", "us"));
@@ -1160,15 +1160,15 @@ public class WorkerManagerTest {
                 TaskSharedConfig.workerGroupSelector(task),
                 TaskSharedConfig.adapterNodeId(task),
                 TaskSharedConfig.targetWorkerId(task),
-                java.util.Set.of(WorkerRouteBucketPolicies.approvedAttributePolicy(
-                                WorkerRouteBucketPolicies.STANDARD_APPROVED_ROUTE_ATTRIBUTES)
-                        .exactRouteBucketKeyForAttributes(TaskSharedConfig.routeAttributes(task)))
+                java.util.Set.of(WorkerCandidateBucketPolicies.approvedAttributePolicy(
+                                WorkerCandidateBucketPolicies.STANDARD_APPROVED_ROUTE_ATTRIBUTES)
+                        .exactCandidateBucketKeyForAttributes(TaskSharedConfig.routeAttributes(task)))
         );
     }
 
     private static InMemoryWorkerRegistry platformRegistry() {
         return new InMemoryWorkerRegistry(
-                WorkerRouteBucketPolicies.defaultPolicy(),
+                WorkerCandidateBucketPolicies.defaultPolicy(),
                 RandomWorkerCandidateSamplingPolicy.defaultPolicy()
         );
     }

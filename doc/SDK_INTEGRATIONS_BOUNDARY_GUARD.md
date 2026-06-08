@@ -93,7 +93,7 @@ keys for SDK/worker-api calls.
 | Runtime actor registration | Must use SDK or worker API | WorkerGroup, AdapterNode, NodeGroupBinding, Worker, worker online/state/capability reports | External actor and topology evidence must enter through the same registration path production workers use. |
 | Workload injection | Must use SDK or task API | task create, item append, task result reads | Workload is caller behavior, not server initialization. |
 | Operator lifecycle command | Must use operator/server-control API | seal, approve, pause, resume, cancel, worker command requests | Control actions require the operator authorization boundary. |
-| Runtime truth | Forbidden | ready/delayed queues, leases, assignments, reservations, occupancy, route buckets, dispatch gates, final result rows, command status | Runtime owners derive and mutate these facts; seed/import must not precompute or restore them. |
+| Runtime truth | Forbidden | ready/delayed queues, leases, assignments, reservations, occupancy, candidate buckets, dispatch gates, final result rows, command status | Runtime owners derive and mutate these facts; seed/import must not precompute or restore them. |
 | Generated evidence | Forbidden as seed | usage, trace, audit rows, sessions, CSRF tokens | Evidence is emitted by real accepted/rejected operations. A seed/import operation may produce audit evidence; it must not seed audit evidence. |
 
 WorkerGroup is currently runtime actor registration truth and must be declared

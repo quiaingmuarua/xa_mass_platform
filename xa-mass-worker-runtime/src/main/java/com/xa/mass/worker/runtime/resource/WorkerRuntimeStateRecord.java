@@ -1,6 +1,7 @@
 package com.xa.mass.worker.runtime.resource;
 
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.evidence.WorkerReadinessState;
 
 import java.time.LocalDateTime;
 
@@ -31,6 +32,10 @@ public record WorkerRuntimeStateRecord(
         reachability = reachability == null ? WorkerReachabilityState.UNKNOWN : reachability;
         capacityPermits = Math.max(0, capacityPermits);
         reservedPermits = Math.max(0, reservedPermits);
+    }
+
+    public WorkerReadinessState readinessState() {
+        return WorkerReadinessState.fromDispatchEvidence(dispatchEnabled, removing);
     }
 
     private static String normalizeNullable(String value) {

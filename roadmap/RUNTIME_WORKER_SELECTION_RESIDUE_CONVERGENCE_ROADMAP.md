@@ -202,7 +202,7 @@ Scope:
 - Add perturbation tests for `ResolvedWorkerSchedulingPolicy` consumers:
   - worker group selector narrows candidate source,
   - adapter node constraint narrows candidate source,
-  - route bucket keys narrow candidate source,
+  - candidate bucket keys narrow candidate source,
   - target worker narrows candidate source but does not bypass Stage-2 gates,
   - target attributes are enforced as Stage-2 constraints.
 - Add guard coverage that resolver and selector construction do not import or

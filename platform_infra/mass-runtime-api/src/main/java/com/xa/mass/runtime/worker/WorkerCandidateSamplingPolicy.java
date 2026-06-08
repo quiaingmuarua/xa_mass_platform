@@ -3,7 +3,7 @@ package com.xa.mass.runtime.worker;
 import java.util.List;
 
 /**
- * Selects a bounded worker-id sample from a group/route bucket.
+ * Selects a bounded worker-id sample from a group/candidate bucket.
  */
 public interface WorkerCandidateSamplingPolicy {
 

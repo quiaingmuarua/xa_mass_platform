@@ -28,6 +28,18 @@ engine, worker-pack, or transport ownership.
 
 ## Usage
 
+Prepare the checked-in local scenario on the server first. The sample
+`bootstrap.json` includes local fixture API-key raw secrets, so the import must
+be marked explicitly as a local fixture:
+
+```bash
+java -jar xa-mass-server/target/xa-mass-server.jar \
+  --mass.control-plane.seed.enabled=true \
+  --mass.control-plane.seed.allow-local-fixture-raw-secrets=true \
+  --mass.control-plane.seed.catalog-location=file:integrations/samples/dev/scenario/bootstrap.json \
+  --mass.control-plane.seed.rules-location=file:integrations/samples/dev/scenario/rules.json
+```
+
 ```bash
 ./mvnw -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 
