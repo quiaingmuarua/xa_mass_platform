@@ -17,6 +17,7 @@ import org.junit.platform.suite.api.Suite;
         TaskPolicySchedulingOutcomeTest.class,
         TaskSchedulingContentionTest.class,
         TaskWorkerEligibilityTest.class,
+        WorkerStateReportSchedulingIntegrationTest.class,
         TaskSchedulingBindingEntryBypassTest.class,
         TaskRedispatchCompetitionTest.class,
         TaskSchedulingGateAndTargetingTest.class,

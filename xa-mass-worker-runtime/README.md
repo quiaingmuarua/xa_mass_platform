@@ -76,12 +76,35 @@ Worker runtime state is split into independent dimensions:
 scheduling. Legacy `statusName` / worker `status` fields are display
 compatibility only; they must not drive scheduling.
 
-Current readiness evidence is intentionally narrow: dispatch-enabled workers are
-`READY`, removing/draining workers are `DRAINING`, and dispatch-disabled workers
-are `MAINTENANCE`. Target states such as `INIT_REQUIRED`, `VERSION_MISMATCH`,
-`ACCOUNT_UNAVAILABLE`, and `HEALTH_UNAVAILABLE` remain target vocabulary until a
-worker state/report owner maps them to dispatch-gate behavior and runtime
-outcome proof.
+Occupancy is diagnostic. `OCCUPIED` means active work exists; it does not mean
+the worker is unschedulable when declared capacity remains. Reservation and
+capacity truth stay in the worker registry/admission path, and `CAPACITY_FULL`
+or exclusive lock evidence is what blocks new work.
+
+Current readiness evidence is intentionally narrow. Worker-runtime state records
+can derive `DRAINING` from removing evidence. Engine scheduling currently treats
+worker state report `DRAINING` as upstream dispatch-gate unavailability; the
+scheduling view does not need a distinct DRAINING label to reject the worker.
+Dispatch-enabled workers are `READY`, and dispatch-disabled workers are
+`MAINTENANCE` in the current scheduling diagnostic view. Target states such as
+`INIT_REQUIRED`, `VERSION_MISMATCH`, `ACCOUNT_UNAVAILABLE`, and
+`HEALTH_UNAVAILABLE` remain target vocabulary until a worker state/report owner
+maps them to dispatch-gate behavior and runtime outcome proof.
+
+`WorkerStateReport` remains an open worker-originated diagnostic report string.
+The default dispatch-gate policy is an allowlist over the latest state
+projection, not a parser for every report value:
+
+| State report value | Default scheduling effect |
+| --- | --- |
+| `DRAINING` | disables dispatch through the `WORKER_STATE` source |
+| `AVAILABLE` | clears only the `WORKER_STATE` disable source |
+| `DEGRADED` | diagnostic-only projection |
+| `OFFLINE` | diagnostic-only projection; transport reachability owns offline scheduling evidence |
+| `READY` | diagnostic-only projection |
+
+`AVAILABLE` does not clear `WORKER_COMMAND`; command-drain state remains a
+separate dispatch-gate source.
 
 Current Redis worker occupancy is still stored through the canonical
 `WorkerSlot` aggregate. `worker:meta:{workerId}`,

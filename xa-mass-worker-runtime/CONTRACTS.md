@@ -141,6 +141,14 @@ worker-runtime facts unless a later owner decision makes a stored field
 canonical. Legacy `statusName` / worker `status` fields are display-only
 compatibility and must not become scheduling truth.
 
+`WorkerOccupancyState` is not an admission predicate. `OCCUPIED` may still be
+schedulable when declared capacity remains; `WorkerAdmissionRuntime` and the
+underlying `WorkerRegistry` reserve result own the binding decision.
+
+Current engine scheduling proof treats worker state report `DRAINING` as
+dispatch-gate unavailability from the worker-control owner path. A distinct
+`DRAINING` label in `WorkerSchedulingView` is not current scheduling truth.
+
 ### Admission
 
 Package: `com.xa.mass.worker.runtime.admission`
@@ -188,6 +196,24 @@ Allowed callers:
 
 Report contracts update worker-plane resource and projection truth. They do not
 create task scheduling decisions.
+
+`WorkerStateReport` is currently an open diagnostic string. Default scheduling
+side effects are limited to an explicit dispatch-gate allowlist:
+
+| State report value | Classification |
+| --- | --- |
+| `DRAINING` | dispatch-gate input; disables `WORKER_STATE` |
+| `AVAILABLE` | dispatch-gate input; clears only `WORKER_STATE` |
+| `DEGRADED` | diagnostic-only projection |
+| `OFFLINE` | diagnostic-only projection; reachability owns offline scheduling evidence |
+| `READY` | diagnostic-only projection |
+| `INIT_REQUIRED` | target-only readiness vocabulary |
+| `VERSION_MISMATCH` | target-only readiness vocabulary |
+| `ACCOUNT_UNAVAILABLE` | target-only readiness vocabulary |
+| `HEALTH_UNAVAILABLE` | target-only readiness vocabulary |
+
+`AVAILABLE` must not clear `WORKER_COMMAND`; worker command drain remains a
+separate dispatch-gate source.
 
 ### Control
 

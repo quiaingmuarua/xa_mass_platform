@@ -1,8 +1,8 @@
 # Worker Runtime State Dimension Indexing Roadmap
 
 Status: current slice complete / mainline unblocked; archived on 2026-06-08
-with residual readiness and physical-split work moved to
-[WORKER_RUNTIME_STATE_READINESS_AND_PHYSICAL_SPLIT_ROADMAP.md](../../../roadmap/WORKER_RUNTIME_STATE_READINESS_AND_PHYSICAL_SPLIT_ROADMAP.md).
+with residual readiness and physical-split work closed or classified by
+[2026-06-08_WORKER_RUNTIME_STATE_READINESS_AND_PHYSICAL_SPLIT_ROADMAP.md](2026-06-08_WORKER_RUNTIME_STATE_READINESS_AND_PHYSICAL_SPLIT_ROADMAP.md).
 
 Current implementation progress:
 

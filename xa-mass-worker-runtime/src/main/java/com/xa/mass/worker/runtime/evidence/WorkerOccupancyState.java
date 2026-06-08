@@ -13,10 +13,6 @@ public enum WorkerOccupancyState {
     OCCUPIED,
     CAPACITY_FULL;
 
-    public boolean available() {
-        return this == FREE;
-    }
-
     public static WorkerOccupancyState fromLoad(WorkerLoadSnapshot load, boolean exclusiveLeaseHeld) {
         WorkerLoadSnapshot snapshot = load == null ? WorkerLoadSnapshot.empty(null) : load;
         return fromCounters(snapshot.activeLeaseCount(), snapshot.reservedCount(),

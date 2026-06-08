@@ -117,13 +117,16 @@ directories.
 Entrypoint validation rules:
 
 ```text
-task launcher config mode   = tasks required, workers ignored if present
+task launcher config mode   = tasks required, workers rejected if present
 worker launcher config mode = deferred; existing worker launcher behavior remains unchanged
 ```
 
 The old `scenarioDir` fixture loader may continue to read both `tasks.json` and
-`workers.json` during the transition. Task config-file mode must not require a
-`workers` section.
+`workers.json` for the legacy `--scenario-dir` path during the transition. New
+task config-file mode reads `tasks[]` directly from the config file and must not
+route through `scenarioDir`. If a config file contains top-level `workers`, fail
+fast with a clear message that worker config is deferred and the worker launcher
+still uses `--scenario-dir` / `workers.json`.
 
 Credential precedence must be explicit and tested. First implementation should
 preserve current behavior unless SLC-0 records a different decision:
@@ -178,8 +181,7 @@ And a richer file:
     "taskApiKeyFile": "./secrets/task-api-key.txt"
   },
   "runtime": {
-    "taskItemBatchSize": 100,
-    "sleepRangeSeconds": [5, 10]
+    "taskItemBatchSize": 100
   },
   "actions": {
     "resolve_phone": {
@@ -286,14 +288,18 @@ Scope:
    - CLI paths keep process-cwd behavior unless explicitly changed
 6. Decide task launcher config validation:
    - task launcher requires tasks only
-   - workers are ignored if present
+   - top-level `workers` is rejected with a clear "worker config deferred"
+     message
    - worker launcher config mode is deferred
 7. Decide credential precedence, including current per-spec task and worker
    key behavior, without changing worker behavior.
 8. Decide that resolved task `eventCode` remains append-scoped and does not
    enter `TaskCreateRequest`.
-9. Decide whether existing `--scenario-dir` remains as a compatibility path for
-   checked-in samples during the first slice.
+9. Decide that `scenarioDir` is not part of the new config-file schema. Existing
+   `--scenario-dir` remains a legacy CLI fixture path for checked-in samples.
+10. Decide that first-version runtime knobs are limited to
+    `runtime.taskItemBatchSize`; any append delay/jitter knob requires a later
+    named decision and tests.
 
 Acceptance:
 
@@ -330,16 +336,21 @@ Scope:
 
 Acceptance:
 
-- `--config scenario.local.json` can supply base URL, scenario dir, timeout
-  fields, and task credential source fields.
+- `--config scenario.local.json` can supply base URL, timeout fields, and task
+  credential source fields. It must not supply `scenarioDir`; `scenarioDir`
+  remains a legacy CLI fixture path.
 - Config-internal relative paths are resolved relative to the config file
   directory; absolute paths are used as-is.
 - CLI `--config` relative paths keep process-cwd behavior.
-- Config mode supports task-only files; worker config mode is explicitly
-  deferred and existing worker launcher behavior remains unchanged.
+- Config mode supports task-only files. Top-level `workers` is rejected with a
+  clear worker-config-deferred message; existing worker launcher behavior remains
+  unchanged.
 - Existing `ScenarioLauncherOptionsTest` coverage continues to pass.
 - New tests prove config value loading, CLI override behavior, relative path
   resolution, timeout mapping, and task-entrypoint validation.
+- `connectTimeoutSeconds` and `requestTimeoutSeconds` must actually affect
+  `MassPlatform` / `HttpClient` construction. Do not merely parse the fields or
+  pass a custom `HttpClient` that bypasses `MassPlatform.connectTimeout(...)`.
 - Config parsing does not log or echo raw credential values.
 
 Verification:

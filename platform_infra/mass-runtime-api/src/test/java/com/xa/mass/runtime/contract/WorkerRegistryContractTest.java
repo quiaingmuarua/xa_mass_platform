@@ -50,6 +50,18 @@ public abstract class WorkerRegistryContractTest {
     }
 
     @Test
+    void tryReserveAcceptsWhileCapacityRemainsAndRejectsAtCapacity() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(meta("worker-1", "group-a"), 2, Set.of(eventKey()));
+
+        assertTrue(registry.tryReserve("group-a", "worker-1", "task-1", 1, 1000).accepted());
+        assertTrue(registry.tryReserve("group-a", "worker-1", "task-2", 1, 1000).accepted());
+        assertEquals(ReserveStatus.CAPACITY_UNAVAILABLE,
+                registry.tryReserve("group-a", "worker-1", "task-3", 1, 1000).status());
+        assertEquals(2, registry.slot("group-a", "worker-1").orElseThrow().reservedCount());
+    }
+
+    @Test
     void slotMembershipQueriesComeFromRegistryTruth() {
         WorkerRegistry registry = createRegistry();
         registry.upsertSlot(meta("worker-a", "group-a"), 1, Set.of(eventKey()));

@@ -1,25 +1,60 @@
 # Worker Runtime State Readiness And Physical Split Roadmap
 
-Status: active successor roadmap; proposed for the next implementation slice.
+Status: complete; archived on 2026-06-08 after implementation, verification,
+and residue scan.
+
+Implementation progress:
+
+- RSP-1 is implemented: worker state report vocabulary is classified in
+  `xa-mass-worker-runtime/README.md` and `CONTRACTS.md`. The default
+  dispatch-gate policy remains an allowlist: `DRAINING` disables
+  `WORKER_STATE`, `AVAILABLE` clears only `WORKER_STATE`, and
+  `DEGRADED`/`OFFLINE`/`READY` are diagnostic-only projection values.
+- RSP-2 is implemented by `WorkerStateReportSchedulingIntegrationTest`, which
+  starts from `WorkerControlService.applyWorkerStateReport(...)` and observes
+  assignment, lease, and dispatch-binding outcomes.
+- RSP-3 is closed by documenting `DRAINING` as upstream worker-control /
+  dispatch-gate evidence in current scheduling; `WorkerSchedulingView` does not
+  claim an independent DRAINING label.
+- RSP-4 keeps `group:{groupId}:slots` canonical. `worker:meta` and
+  `worker:occupancy` remain target-only split ideas until a future clean-runtime
+  physical-split roadmap replaces the slot mutation boundary.
+- RSP-5 is implemented: `WorkerOccupancyState#available()` was removed, and
+  capacity proof shows `OCCUPIED` with remaining capacity can still assign while
+  `CAPACITY_FULL` rejects.
+- RSP-6 is deferred by decision: `available:{shard}`, `nextAvailableAt`, and
+  `occupiedUntil` remain unimplemented until measured candidate-acquisition or
+  reserve-rejection cost justifies them.
+- RSP-7 is covered by current owner docs: legacy `statusName` / worker `status`
+  fields are display-only compatibility and do not own runtime scheduling
+  truth.
 
 Previous context:
-[2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md](../doc/archive/core/2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md)
+[2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md](2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md)
 landed the current mainline-unblocking worker-state dimension slice:
 group-local heartbeat, candidate-bucket vocabulary, logical readiness and
 occupancy diagnostics, and the conservative Redis single-writer decision that
 keeps `group:{groupId}:slots` canonical.
 
-This roadmap owns the residue that should not be treated as complete:
+This roadmap closes the immediate successor residue:
 
-- readiness values and worker state reports are not yet proven as scheduling
-  outcomes beyond the existing dispatch gate,
-- `DRAINING` is not yet represented end-to-end through the scheduling view as a
-  distinct readiness state,
+- worker state report `DRAINING` is proven through worker-control dispatch-gate
+  application to scheduling-visible assignment, lease, and binding outcomes,
+- `DRAINING` is documented as upstream worker-control / dispatch-gate evidence;
+  the current scheduling view does not claim an independent `DRAINING` label,
+- `AVAILABLE`, `DRAINING`, `DEGRADED`, `OFFLINE`, and `READY` are classified
+  for default worker state report handling,
+- occupancy is documented and proven as diagnostic, not the admission predicate
+  for multi-capacity workers.
+
+Deferred target-only work remains out of scope for this closed roadmap:
+
 - `worker:meta:{workerId}`, `worker:occupancy:{workerId}`, and
   `worker:group:{groupId}:available:{shard}` remain target-only physical split
   ideas, not current runtime truth,
-- occupancy is currently diagnostic and must not be confused with the admission
-  predicate for multi-capacity workers.
+- `INIT_REQUIRED`, `VERSION_MISMATCH`, `ACCOUNT_UNAVAILABLE`, and
+  `HEALTH_UNAVAILABLE` remain target-only readiness vocabulary until a future
+  roadmap gives them dispatch-gate semantics and runtime outcome proof.
 
 ## Current Code Observations
 
@@ -30,10 +65,15 @@ This roadmap owns the residue that should not be treated as complete:
 - `DefaultWorkerDispatchAvailabilityPolicy` maps worker state report
   `DRAINING` to the `WORKER_STATE` dispatch-disable source and `AVAILABLE` to
   clearing only that source.
-- Existing scheduling integration proof covers dispatch-disabled or
-  maintenance-style exclusion, but does not prove a worker state report
-  `DRAINING -> dispatch gate -> scheduling rejection -> AVAILABLE recovery`
-  path.
+- `WorkerStateReport` currently accepts any non-blank state string. Current
+  tests and integrations already emit or preserve `AVAILABLE`, `DRAINING`,
+  `DEGRADED`, `OFFLINE`, and `READY`; only `DRAINING` and `AVAILABLE` have
+  default dispatch-gate semantics.
+- Scheduling integration proof now covers
+  `WorkerStateReport(DRAINING) -> dispatch gate -> scheduling rejection` and
+  `WorkerStateReport(AVAILABLE) -> recovery` through
+  `WorkerStateReportSchedulingIntegrationTest`. Direct
+  `disableWorkerDispatch(...)` tests remain support coverage only.
 - `WorkerOccupancyState` is derived from active lease count, reservation count,
   declared capacity, and exclusive lease evidence. It is diagnostic only.
 - Redis worker registry currently stores metadata, dispatch gate inputs,
@@ -124,10 +164,10 @@ change counts as proof only when it changes a scheduling-visible outcome.
 - No task runtime queue, lease, result, or terminal-state ownership change.
 - No attempt to prove target-only readiness values by object construction tests.
 
-## RSP-0: Residue Inventory And Status Repair
+## RSP-0: Residue Drift Checkpoint
 
-Goal: create a current inventory for the successor work and repair stale WRSI
-status wording.
+Goal: verify the successor residue baseline before implementation. This is a
+checkpoint, not the first implementation slice.
 
 Scope:
 
@@ -144,14 +184,14 @@ Scope:
      `occupiedUntil`.
 2. Classify every hit as current runtime truth, diagnostic projection,
    target-only residue, read-model display, support test, or stale doc.
-3. Repair the archived WRSI roadmap status so it says current slice complete /
-   mainline unblocked, not full roadmap complete.
+3. Verify the archived WRSI roadmap status still says current slice complete /
+   mainline unblocked with successor residue, not full roadmap complete.
 
 Acceptance:
 
 1. The inventory distinguishes implemented facts from target-only split ideas.
-2. Archived WRSI docs point to this roadmap for residual readiness and physical
-   split work.
+2. Archived WRSI docs still point to this roadmap for residual readiness and
+   physical split work.
 3. No active doc claims `worker:meta`, `worker:occupancy`, or
    `available:{shard}` is current production truth.
 4. No proof suite treats enum construction, field-copy assertion, or source
@@ -165,33 +205,63 @@ rg -n "WorkerReadinessState|WorkerOccupancyState|readinessState|occupancyState|s
 rg -n "^Status: complete" doc/archive/core/*WORKER_RUNTIME_STATE_DIMENSION* --glob '!**/target/**'
 ```
 
-## RSP-1: Worker State Report To Dispatch Gate Contract
+## RSP-1: Worker State Report Vocabulary And Dispatch Gate Contract
 
-Goal: make the current state-report mapping explicit and bounded.
+Goal: classify every worker state report value that can currently enter the
+system, then make the dispatch-gate mapping explicit and bounded.
 
 Scope:
 
-1. Define the implemented state-report scheduling values:
+1. Inventory current accepted, emitted, or preserved worker state report values
+   from engine tests, worker-runtime tests, SDK/integration samples, and
+   worker-pack command routes.
+2. Classify at least:
+   - `AVAILABLE`,
+   - `DRAINING`,
+   - `DEGRADED`,
+   - `OFFLINE`,
+   - `READY`.
+3. For each state value, choose exactly one classification:
+   - dispatch-gate input,
+   - diagnostic-only projection,
+   - rejected at the caller boundary,
+   - future target-only value.
+4. Define the implemented state-report scheduling values:
    - `DRAINING` disables dispatch through `WORKER_STATE`,
    - `AVAILABLE` clears only the `WORKER_STATE` disable source.
-2. Classify `INIT_REQUIRED`, `VERSION_MISMATCH`, `ACCOUNT_UNAVAILABLE`, and
+5. Classify `INIT_REQUIRED`, `VERSION_MISMATCH`, `ACCOUNT_UNAVAILABLE`, and
    `HEALTH_UNAVAILABLE` as either implemented mappings or target-only
    readiness residue.
-3. Keep worker command drain separate from worker state report drain:
+6. Keep worker command drain separate from worker state report drain:
    `WORKER_COMMAND` and `WORKER_STATE` disable sources must not clear each
    other accidentally.
-4. Document whether state reports affect only dispatch gate truth or also
+7. Document whether state reports affect only dispatch gate truth or also
    diagnostic readiness labels.
+8. Decide whether `WorkerStateReport` remains an open diagnostic string or
+   becomes a closed vocabulary. If it remains open, the dispatch-gate policy
+   must be documented as an allowlist, not as a parser for all states.
 
 Acceptance:
 
-1. `DRAINING` and `AVAILABLE` semantics are documented in the worker-runtime or
+1. `AVAILABLE`, `DRAINING`, `DEGRADED`, `OFFLINE`, and `READY` are each
+   classified as dispatch-gate input, diagnostic-only projection, rejected
+   boundary input, or future target-only value.
+2. `DRAINING` and `AVAILABLE` semantics are documented in the worker-runtime or
    engine control owner docs.
-2. A test proves `AVAILABLE` clears `WORKER_STATE` without clearing
+3. A test proves `AVAILABLE` clears `WORKER_STATE` without clearing
    `WORKER_COMMAND`.
-3. Every readiness enum value is either runtime-implemented with an outcome
+4. `DEGRADED` and `OFFLINE` are not left as unclassified projection strings if
+   any current integration can emit them.
+5. Every readiness enum value is either runtime-implemented with an outcome
    proof target or explicitly marked target-only residue.
-4. No scheduling rule consumes raw worker state report strings.
+6. No scheduling rule consumes raw worker state report strings.
+
+Suggested inventory:
+
+```bash
+rg -n "\"(AVAILABLE|DRAINING|DEGRADED|OFFLINE|READY)\"|WorkerStateReport|fault\\.worker\\.state\\.flap" \
+  xa-mass-engine xa-mass-worker-runtime integrations sdk --glob '!**/target/**'
+```
 
 ## RSP-2: DRAINING Scheduling Outcome Proof
 
@@ -228,8 +298,17 @@ Acceptance:
 Suggested proof:
 
 ```bash
-mvn -pl xa-mass-engine -am "-Dtest=TaskWorkerEligibilityTest,WorkerControlServiceTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+mvn -pl xa-mass-engine -am -DskipTests install
+mvn -pl xa-mass-engine "-Dtest=WorkerStateReportSchedulingIntegrationTest" test
+mvn -pl xa-mass-engine -am \
+  "-Dtest=TaskWorkerEligibilityTest,WorkerControlServiceTest" \
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
+
+`WorkerStateReportSchedulingIntegrationTest` is a required new or renamed proof
+surface for this slice. Existing `TaskWorkerEligibilityTest` coverage that
+directly calls `disableWorkerDispatch(...)` remains support coverage only and
+must not be cited as proof of the state-report chain.
 
 ## RSP-3: Readiness Diagnostic Alignment
 
@@ -321,24 +400,35 @@ Scope:
    - an exclusive lock rejects assignment,
    - a multi-capacity worker may be `OCCUPIED` and still accept work when
      capacity remains.
-3. Keep active lease counters as evidence read by worker runtime. Do not
+3. For the multi-capacity case, the proof must observe this sequence:
+   - first assignment makes the worker diagnostic occupancy `OCCUPIED`,
+   - second assignment still reserves/binds to the same worker because capacity
+     remains,
+   - only the capacity-full attempt rejects.
+4. Keep active lease counters as evidence read by worker runtime. Do not
    change task lease lifecycle.
 
 Acceptance:
 
 1. No production scheduler uses `WorkerOccupancyState#available()` as the
    admission predicate.
-2. Tests prove capacity behavior with runtime-visible outcomes.
+2. Tests prove capacity behavior with runtime-visible outcomes, including
+   `OCCUPIED` with remaining capacity still assigning.
 3. Docs describe occupancy as a diagnostic classification over canonical
    reservation/capacity/lease/lock facts.
 4. Any read model exposing occupancy avoids implying `OCCUPIED` means
    unschedulable when capacity remains.
+5. Registry-level support proof confirms `tryReserve(...)` accepts while
+   capacity remains and rejects only when canonical capacity is exhausted.
 
 Suggested proof:
 
 ```bash
 mvn -pl xa-mass-engine,xa-mass-worker-runtime -am \
   "-Dtest=TaskSchedulingContentionTest,TaskSchedulingGateAndTargetingTest,WorkerAdmissionOwnerTest" \
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
+mvn -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am \
+  "-Dtest=WorkerRegistryContractTest,InMemoryWorkerRegistryTest,RedisWorkerRegistryTest" \
   "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
@@ -434,41 +524,56 @@ Acceptance:
    mainline unblocked with successor residue, not full completion.
 2. `DRAINING` is either proven through worker state report to scheduling
    outcome or downgraded in docs as upstream dispatch-gate input only.
-3. `INIT_REQUIRED`, `VERSION_MISMATCH`, `ACCOUNT_UNAVAILABLE`, and
+3. `AVAILABLE`, `DRAINING`, `DEGRADED`, `OFFLINE`, and `READY` are classified
+   for state-report handling and dispatch-gate effect.
+4. `INIT_REQUIRED`, `VERSION_MISMATCH`, `ACCOUNT_UNAVAILABLE`, and
    `HEALTH_UNAVAILABLE` are implemented with outcome proof or explicitly
    classified as target-only residue.
-4. No production code writes duplicate metadata or occupancy truth across
+5. No production code writes duplicate metadata or occupancy truth across
    `group:{groupId}:slots`, `worker:meta`, and `worker:occupancy`.
-5. No `available:{shard}`, `nextAvailableAt`, or `occupiedUntil` writable fact
+6. No `available:{shard}`, `nextAvailableAt`, or `occupiedUntil` writable fact
    exists without owner, cost proof, atomic update plan, and stale-hint outcome
    proof.
-6. Occupancy diagnostics cannot be read as the admission predicate for
+7. Occupancy diagnostics cannot be read as the admission predicate for
    multi-capacity workers.
-7. `WorkerSchedulingPolicy` and `ResolvedWorkerSchedulingPolicy` remain free of
+8. `WorkerSchedulingPolicy` and `ResolvedWorkerSchedulingPolicy` remain free of
    live worker runtime evidence.
-8. `TaskWorkRuntime` lease lifecycle remains owned by task runtime.
-9. Public read models are either unchanged or updated with owner docs and
+9. `TaskWorkRuntime` lease lifecycle remains owned by task runtime.
+10. Public read models are either unchanged or updated with owner docs and
    startup/API proof.
-10. Residue scans for composite worker status and target-only split keys are
+11. Residue scans for composite worker status and target-only split keys are
     clean or fully classified.
-11. The proof registry and owning READMEs reflect current implemented behavior.
-12. The roadmap is archived only after these criteria are satisfied.
+12. The proof registry and owning READMEs reflect current implemented behavior.
+13. The roadmap is archived only after these criteria are satisfied.
 
-## Suggested First Slice
+## Implemented First Slice
 
-Start with RSP-0 and RSP-2 together only if the inventory confirms the current
-state-report control path can be exercised from `TaskSchedulingTestHarness`
-without fake bypasses.
+The implementation started with RSP-1 and RSP-2 after running RSP-0 as a drift
+checkpoint.
+
+The first implementation slice:
+
+1. classify the current worker state report vocabulary,
+2. add or rename a state-report-driven scheduling integration proof,
+3. extend `TaskSchedulingTestHarness` narrowly if needed so the test can enter
+   through `WorkerControlService.applyWorkerStateReport(...)`,
+4. keep direct `disableWorkerDispatch(...)` tests as support coverage only.
 
 Minimum first-slice verification:
 
 ```bash
-mvn -pl xa-mass-engine -am "-Dtest=TaskWorkerEligibilityTest,WorkerControlServiceTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+mvn -pl xa-mass-engine -am -DskipTests install
+mvn -pl xa-mass-engine "-Dtest=WorkerStateReportSchedulingIntegrationTest" test
+mvn -pl xa-mass-engine -am \
+  "-Dtest=TaskWorkerEligibilityTest,WorkerControlServiceTest" \
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
+rg -n "\"(AVAILABLE|DRAINING|DEGRADED|OFFLINE|READY)\"|WorkerStateReport|fault\\.worker\\.state\\.flap" \
+  xa-mass-engine xa-mass-worker-runtime integrations sdk --glob '!**/target/**'
 rg -n "worker:meta|worker:occupancy|available:\\{shard\\}|nextAvailableAt|occupiedUntil" \
   xa-mass-engine/src/main/java xa-mass-worker-runtime/src/main/java platform_infra/mass-runtime-redis/src/main/java --glob '!**/target/**'
 git diff --check
 ```
 
 If the harness cannot exercise state reports without writing the final gate
-directly, stop after RSP-0 and refine the harness/owner path before adding
-tests.
+directly, stop before RSP-2 proof claims and refine the harness/owner path
+first.

@@ -12,6 +12,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
@@ -33,6 +34,10 @@ import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
+import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
+import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
+import com.xa.mass.worker.runtime.report.WorkerStateReport;
 
 import java.util.ArrayList;
 import java.time.LocalDateTime;
@@ -54,6 +59,7 @@ final class TaskSchedulingTestHarness {
     final AssignmentRecordService assignmentRecords;
     final List<TaskDispatchBinding> dispatches;
     final TaskWorkerAssignListener assignListener;
+    final WorkerControlService workerControlService;
 
     TaskSchedulingTestHarness() {
         this(WorkerReachabilityView.permissive());
@@ -68,6 +74,14 @@ final class TaskSchedulingTestHarness {
                 null
         );
         this.workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), reachabilityView, new InMemoryWorkerRegistry());
+        this.workerControlService = new WorkerControlService(
+                workerManager,
+                workerManager,
+                workerManager,
+                new WorkerCommandLifecycleOwner(),
+                new WorkerStateProjectionOwner(),
+                TraceEventLogger.noop()
+        );
         this.ruleStorage = new InMemoryRuleDefinitionStore();
         this.assignmentRecords = new AssignmentRecordService();
         this.dispatches = new ArrayList<>();
@@ -209,6 +223,19 @@ final class TaskSchedulingTestHarness {
         worker.setAttributes(workerAttributes(routingCode, attributes));
         workerManager.addWorker(workerResource(worker));
         return worker;
+    }
+
+    WorkerStateProjectionResult applyWorkerStateReport(String workerId,
+                                                       long stateVersion,
+                                                       String state,
+                                                       String reason) {
+        WorkerStateReport.Builder builder = WorkerStateReport.builder(workerId, stateVersion, state);
+        if (reason != null) {
+            builder.reason(reason);
+        }
+        WorkerStateProjectionResult result = workerControlService.applyWorkerStateReport(builder.build());
+        assertTrue(result.success());
+        return result;
     }
 
     private static WorkerResourceRecord workerResource(Worker worker) {

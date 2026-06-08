@@ -8,6 +8,7 @@ import com.xa.mass.engine.assignment.DefaultWorkerBudgetPolicy;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.worker.runtime.evidence.WorkerOccupancyState;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -62,7 +63,14 @@ class TaskSchedulingContentionTest {
         Task thirdTask = createReadyBackgroundTask(harness, "background-third", "third");
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
+        assertEquals(WorkerOccupancyState.OCCUPIED,
+                harness.workerManager.getWorkerLoad("worker-background").occupancyState());
+        assertEquals(1, harness.workerManager.getWorkerLoad("worker-background").activeLeaseCount());
+
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
+        assertEquals(WorkerOccupancyState.CAPACITY_FULL,
+                harness.workerManager.getWorkerLoad("worker-background").occupancyState());
+
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(thirdTask.getTid())));
 
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(firstTask.getTid()).getStatus());
