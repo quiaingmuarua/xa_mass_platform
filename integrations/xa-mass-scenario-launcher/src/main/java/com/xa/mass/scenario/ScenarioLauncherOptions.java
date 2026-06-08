@@ -19,6 +19,8 @@ record ScenarioLauncherOptions(
 ) {
     private static final String DEFAULT_BASE_URL = "http://127.0.0.1:8088";
     private static final String DEFAULT_TASK_API_KEY = "crawler-task-api-key";
+    private static final Path DEFAULT_TASK_API_KEY_FILE =
+            Path.of("integrations/xa-mass-scenario-launcher/examples/secrets/task-api-key.txt");
     private static final Path DEFAULT_SCENARIO_DIR = Path.of("integrations/samples/dev/scenario");
     private static final int DEFAULT_MAX_POLLING_WORKERS = 25;
     private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(5);
@@ -116,6 +118,7 @@ record ScenarioLauncherOptions(
                 cliTaskApiKey,
                 System.getenv("MASS_TASK_API_KEY"),
                 taskApiKeyFromConfig(loadedConfig, credentialsConfig),
+                taskApiKeyFromDefaultFile(),
                 DEFAULT_TASK_API_KEY
         );
         String workerApiKey = firstNonBlank(
@@ -187,7 +190,7 @@ record ScenarioLauncherOptions(
                   --base-url <url>             Server HTTP base URL. Default: MASS_BASE_URL or http://127.0.0.1:8088
                   --config <path>              Task launcher config file. Worker config is deferred.
                   --websocket-url <url>        Optional server WebSocket URL for realtime launcher workers. Default: MASS_WEBSOCKET_URL
-                  --task-api-key <key>         Default task API key. Default: MASS_TASK_API_KEY or crawler-task-api-key
+                  --task-api-key <key>         Default task API key. Default: MASS_TASK_API_KEY, generated cache file, or crawler-task-api-key
                   --worker-api-key <key>       Optional worker API key override. Default: each worker spec's workerKey
                   --worker-api-key-file <path> Optional explicit worker API key override file
                   --scenario-dir <path>        Scenario JSON directory. Default: integrations/samples/dev/scenario
@@ -257,6 +260,22 @@ record ScenarioLauncherOptions(
         }
     }
 
+    private static String taskApiKeyFromDefaultFile() {
+        Path resolved = resolveExistingPath(DEFAULT_TASK_API_KEY_FILE);
+        if (resolved == null) {
+            return null;
+        }
+        try {
+            String value = java.nio.file.Files.readString(resolved).trim();
+            if (value.isBlank()) {
+                throw new IllegalArgumentException("default task API key file is blank: " + resolved);
+            }
+            return value;
+        } catch (java.io.IOException e) {
+            throw new IllegalArgumentException("failed to read default task API key file: " + resolved, e);
+        }
+    }
+
     private static String workerApiKeyFromFile(Path path) {
         if (path == null || !java.nio.file.Files.exists(path)) {
             return null;
@@ -270,6 +289,18 @@ record ScenarioLauncherOptions(
         } catch (java.io.IOException e) {
             throw new IllegalArgumentException("failed to read worker API key file: " + path, e);
         }
+    }
+
+    private static Path resolveExistingPath(Path path) {
+        if (path == null) {
+            return null;
+        }
+        Path normalized = path.toAbsolutePath().normalize();
+        if (java.nio.file.Files.exists(normalized)) {
+            return normalized;
+        }
+        Path repoRelativeFromModule = Path.of("..", "..").resolve(path).toAbsolutePath().normalize();
+        return java.nio.file.Files.exists(repoRelativeFromModule) ? repoRelativeFromModule : null;
     }
 
     private static Duration durationFromSeconds(Integer seconds, Duration defaultValue, String fieldName) {

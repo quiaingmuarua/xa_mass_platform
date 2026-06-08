@@ -276,11 +276,13 @@ public final class ScenarioCredentialBootstrapMain {
         }
 
         private static List<String> defaultProjectScopes(CredentialKind kind) {
-            return kind == CredentialKind.WORKER ? List.of("*") : List.of("crawlerApp");
+            return kind == CredentialKind.WORKER ? List.of("*") : List.of("crawlerApp", "deviceProbe");
         }
 
         private static List<String> defaultEventScopes(CredentialKind kind) {
-            return kind == CredentialKind.WORKER ? List.of("*") : List.of("crawler.fetch-page");
+            return kind == CredentialKind.WORKER
+                    ? List.of("*")
+                    : List.of("crawler.fetch-page", "stock.quote.fetch", "probe.phone.metadata");
         }
 
         private static List<String> csv(String value, List<String> defaultValue) {
@@ -491,7 +493,9 @@ public final class ScenarioCredentialBootstrapMain {
                     return false;
                 }
             }
-            return true;
+            JsonNode data = body.path("data");
+            return containsAll(data.path("projectScopes"), credentialOptions.projectScopes())
+                    && containsAll(data.path("eventScopes"), credentialOptions.eventScopes());
         }
 
         private OperatorAuthContext authenticateOperator() throws IOException, InterruptedException {
@@ -795,6 +799,21 @@ public final class ScenarioCredentialBootstrapMain {
                 }
             }
             return false;
+        }
+
+        private static boolean containsAll(JsonNode array, List<String> expectedValues) {
+            if (expectedValues == null || expectedValues.isEmpty()) {
+                return true;
+            }
+            if (containsText(array, "*")) {
+                return true;
+            }
+            for (String expected : expectedValues) {
+                if (!containsText(array, expected)) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private static String encodePathSegment(String value) {

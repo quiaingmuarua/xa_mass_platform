@@ -103,7 +103,8 @@ Options:
 - `--base-url`: server HTTP base URL. Default: `MASS_BASE_URL` or `http://127.0.0.1:8088`
 - `--config`: task launcher config file. Worker launcher config is deferred.
 - `--websocket-url`: optional server WebSocket URL for realtime launcher workers. Default: `MASS_WEBSOCKET_URL`
-- `--task-api-key`: default task API key. Default: `MASS_TASK_API_KEY` or `crawler-task-api-key`
+- `--task-api-key`: default task API key. Default: `MASS_TASK_API_KEY`,
+  generated `examples/secrets/task-api-key.txt`, or `crawler-task-api-key`
 - `--worker-api-key`: optional worker API key override. Default: each worker spec's `workerKey`
 - `--worker-api-key-file`: optional explicit worker API key override file.
   Do not use it for the checked-in local scenario because worker credentials
@@ -128,8 +129,11 @@ Credential bootstrap options:
   or `ops-admin`.
 - `--principal-id`: task API-key principal id. Default:
   `crawler-task-producer-local`.
-- `--project`: comma-separated project scopes. Default: `crawlerApp`.
-- `--event-code`: comma-separated event scopes. Default: `crawler.fetch-page`.
+- `--project`: comma-separated project scopes. Default:
+  `crawlerApp,deviceProbe` for the checked-in local task scenario.
+- `--event-code`: comma-separated event scopes. Default:
+  `crawler.fetch-page,stock.quote.fetch,probe.phone.metadata` for the
+  checked-in local task scenario.
 - `--no-create`: fail when the cache file is missing.
 - `--no-refresh-stale-cache`: fail when the cache file exists but
   `/api/v1/api-keys:current` rejects it.

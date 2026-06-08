@@ -2,7 +2,7 @@
   {
     "body": {
       "project": "crawlerApp",
-      "userId": "sample-launcher",
+      "userId": "ops-admin",
       "sourceRef": "sample-crawler-fetch-page",
       "sharedConfig": {
         "routingCode": "us"
@@ -21,7 +21,7 @@
   {
     "body": {
       "project": "crawlerApp",
-      "userId": "sample-launcher",
+      "userId": "ops-admin",
       "sourceRef": "sample-stock-quote-stream",
       "sharedConfig": {
         "routingCode": "us",
@@ -42,10 +42,9 @@
     }
   },
   {
-    "apiKey": "public-probe-ops-key",
     "body": {
       "project": "deviceProbe",
-      "userId": "sample-launcher",
+      "userId": "ops-admin",
       "sourceRef": "sample-phone-device-probe-bulk",
       "sharedConfig": {
         "routingCode": "sg",
@@ -64,7 +63,7 @@
       "eventCode": "probe.phone.metadata"
     },
     "generatedItems": {
-      "count": 1000,
+      "count": 50,
       "template": {
         "caseId": "phone-sg-${PAD5}",
         "sequence": "${INDEX1}",

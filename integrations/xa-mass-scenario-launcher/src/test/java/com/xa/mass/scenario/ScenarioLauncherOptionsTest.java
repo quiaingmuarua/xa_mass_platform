@@ -51,7 +51,7 @@ class ScenarioLauncherOptionsTest {
     void parsesDefaultRuntimeOptions() {
         ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{});
 
-        assertEquals("crawler-task-api-key", options.taskApiKey());
+        assertEquals(expectedDefaultTaskApiKey(), options.taskApiKey());
         assertEquals(25, options.maxPollingWorkers());
     }
 
@@ -146,5 +146,24 @@ class ScenarioLauncherOptionsTest {
         assertTrue(message.contains("workerId-bound credentials"));
         assertTrue(message.contains("xa-mass-scenario-credential-bootstrap"));
         assertTrue(message.contains("MASS_WORKER_API_KEY"));
+    }
+
+    private static String expectedDefaultTaskApiKey() {
+        Path rootRelative = Path.of("integrations/xa-mass-scenario-launcher/examples/secrets/task-api-key.txt")
+                .toAbsolutePath()
+                .normalize();
+        Path moduleRelative = Path.of("..", "..")
+                .resolve("integrations/xa-mass-scenario-launcher/examples/secrets/task-api-key.txt")
+                .toAbsolutePath()
+                .normalize();
+        Path file = Files.exists(rootRelative) ? rootRelative : moduleRelative;
+        if (!Files.exists(file)) {
+            return "crawler-task-api-key";
+        }
+        try {
+            return Files.readString(file, StandardCharsets.UTF_8).trim();
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

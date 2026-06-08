@@ -279,7 +279,8 @@ class ScenarioCredentialBootstrapMainTest {
             if (validApiKey.equals(apiKey)) {
                 writeJson(exchange, 200,
                         "{\"code\":200,\"msg\":\"success\",\"data\":{\"principalId\":\"p\","
-                                + "\"permissions\":[\"task:create\",\"task:edit\",\"task:view\",\"worker:poll\"]}}");
+                                + "\"permissions\":[\"task:create\",\"task:edit\",\"task:view\",\"worker:poll\"],"
+                                + "\"projectScopes\":[\"*\"],\"eventScopes\":[\"*\"]}}");
             } else if (staleFirstWorkerCredential && "node-worker-realtime-key".equals(apiKey)) {
                 writeJson(exchange, 200,
                         "{\"code\":200,\"msg\":\"success\",\"data\":{\"credential\":{\"keyId\":\"ak-stale\"},"
