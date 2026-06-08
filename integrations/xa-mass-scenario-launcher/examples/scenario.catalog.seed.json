@@ -15,6 +15,14 @@
       "payloadTypes": ["JSON"],
       "taskModes": ["SINGLE_RUN", "STREAMING"],
       "projectCodes": ["crawlerApp"]
+    },
+    {
+      "code": "probe.phone.metadata",
+      "name": "Phone Metadata Probe",
+      "description": "Parse phone numbers into E.164, region, type, and possible/valid metadata.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN", "STREAMING"],
+      "projectCodes": ["deviceProbe"]
     }
   ],
   "projects": [
@@ -26,6 +34,12 @@
         "crawler.fetch-page",
         "stock.quote.fetch"
       ]
+    },
+    {
+      "code": "deviceProbe",
+      "name": "Device Probe",
+      "description": "Phone metadata and device fingerprint routing probes.",
+      "eventCodes": ["probe.phone.metadata"]
     }
   ]
 }

@@ -250,6 +250,12 @@ public class ApiRouteAuthorizationCatalog {
         if (uri.equals("/api/v1/admin/rules/meta") && "GET".equals(method)) {
             return route(PlatformResourceType.RULE, PlatformAction.VIEW, ApiPermissionNames.RULE_VIEW);
         }
+        if (uri.equals("/api/v1/control-plane/catalog:sync") && "POST".equals(method)) {
+            return route(PlatformResourceType.CONFIG, PlatformAction.EDIT, ApiPermissionNames.CONFIG_EDIT);
+        }
+        if (uri.equals("/api/v1/control-plane/rules:sync") && "POST".equals(method)) {
+            return route(PlatformResourceType.RULE, PlatformAction.EDIT, ApiPermissionNames.RULE_EDIT);
+        }
         return null;
     }
 

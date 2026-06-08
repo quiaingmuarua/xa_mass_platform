@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -79,6 +80,12 @@ public final class ScenarioCredentialBootstrapMain {
                 Path.of("integrations/xa-mass-scenario-launcher/examples/secrets/task-api-key.txt");
         private static final Path DEFAULT_WORKER_API_KEY_FILE =
                 Path.of("integrations/xa-mass-scenario-launcher/examples/secrets/worker-api-key.txt");
+        private static final Path DEFAULT_SCENARIO_DIR =
+                Path.of("integrations/samples/dev/scenario");
+        private static final Path DEFAULT_CATALOG_MANIFEST =
+                Path.of("integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json");
+        private static final Path DEFAULT_RULES_MANIFEST =
+                Path.of("integrations/samples/dev/scenario/rules.json");
 
         static ScenarioCredentialBootstrapOptions parse(String[] args) {
             CredentialKind kind = CredentialKind.ENV;
@@ -208,9 +215,10 @@ public final class ScenarioCredentialBootstrapMain {
                     Usage:
                       java -cp ... com.xa.mass.scenario.ScenarioCredentialBootstrapMain [options]
 
-                    Initializes the local scenario environment. Default mode checks
-                    that scenario catalog is already imported, then prepares both
-                    task and worker API-key cache files through operator login and
+                    Initializes the local scenario environment. Default env mode
+                    syncs the checked-in scenario catalog/rules through server
+                    control-plane APIs, then prepares the task API-key cache
+                    file and workerId-bound worker credentials through operator login and
                     POST /api/v1/api-keys.
 
                     Options:
@@ -339,6 +347,26 @@ public final class ScenarioCredentialBootstrapMain {
             );
         }
 
+        ScenarioCredentialBootstrapOptions withPrincipalId(String replacementPrincipalId) {
+            return new ScenarioCredentialBootstrapOptions(
+                    kind,
+                    baseUrl,
+                    apiKeyFile,
+                    operatorUser,
+                    operatorPassword,
+                    requireNonBlank(replacementPrincipalId, "principalId"),
+                    createdForUserId,
+                    projectScopes,
+                    eventScopes,
+                    permissions,
+                    connectTimeout,
+                    requestTimeout,
+                    createIfMissing,
+                    refreshStaleCache,
+                    help
+            );
+        }
+
         private Path apiKeyFileForTarget(CredentialKind targetKind) {
             if (kind == CredentialKind.ENV) {
                 if (targetKind == CredentialKind.TASK) {
@@ -376,15 +404,17 @@ public final class ScenarioCredentialBootstrapMain {
         }
 
         List<Path> prepareEnvironment() throws IOException, InterruptedException {
-            String csrfToken = login();
+            OperatorAuthContext auth = authenticateOperator();
+            syncScenarioCatalog(auth);
+            syncScenarioRules(auth);
             verifyScenarioCatalog();
-            Path taskKey = prepareCredential(options.forKind(CredentialKind.TASK), csrfToken);
-            Path workerKey = prepareCredential(options.forKind(CredentialKind.WORKER), csrfToken);
-            return List.of(taskKey, workerKey);
+            Path taskKey = prepareCredential(options.forKind(CredentialKind.TASK), auth);
+            prepareWorkerCredentials(auth);
+            return List.of(taskKey);
         }
 
         private Path prepareCredential(ScenarioCredentialBootstrapOptions credentialOptions,
-                                       String csrfToken) throws IOException, InterruptedException {
+                                       OperatorAuthContext auth) throws IOException, InterruptedException {
             if (Files.exists(credentialOptions.apiKeyFile())) {
                 String cachedKey = Files.readString(credentialOptions.apiKeyFile(), StandardCharsets.UTF_8).trim();
                 if (cachedKey.isBlank()) {
@@ -404,14 +434,37 @@ public final class ScenarioCredentialBootstrapMain {
                         + " API key cache file is missing and creation is disabled: " + credentialOptions.apiKeyFile());
             }
 
-            String resolvedCsrfToken = csrfToken == null ? login() : csrfToken;
-            String rawSecret = createApiKey(credentialOptions, resolvedCsrfToken);
+            OperatorAuthContext resolvedAuth = auth == null ? authenticateOperator() : auth;
+            String rawSecret = createApiKeyWithLocalPrincipalFallback(credentialOptions, resolvedAuth);
             Path parent = credentialOptions.apiKeyFile().getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
             Files.writeString(credentialOptions.apiKeyFile(), rawSecret + System.lineSeparator(), StandardCharsets.UTF_8);
             return credentialOptions.apiKeyFile();
+        }
+
+        private String createApiKeyWithLocalPrincipalFallback(ScenarioCredentialBootstrapOptions credentialOptions,
+                                                             OperatorAuthContext auth)
+                throws IOException, InterruptedException {
+            try {
+                return createApiKey(credentialOptions, auth);
+            } catch (IllegalStateException e) {
+                if (!credentialOptions.refreshStaleCache() || !isPrincipalAlreadyExists(e)) {
+                    throw e;
+                }
+                String replacementPrincipalId = credentialOptions.principalId()
+                        + "-" + Long.toUnsignedString(System.currentTimeMillis(), 36);
+                System.out.printf("[java-scenario-env-bootstrap] principal %s already has an API-key credential; "
+                                + "creating local replacement principal %s%n",
+                        credentialOptions.principalId(), replacementPrincipalId);
+                return createApiKey(credentialOptions.withPrincipalId(replacementPrincipalId), auth);
+            }
+        }
+
+        private static boolean isPrincipalAlreadyExists(IllegalStateException e) {
+            String message = e.getMessage();
+            return message != null && message.contains("principal already has an API key credential");
         }
 
         private boolean validateCachedKey(ScenarioCredentialBootstrapOptions credentialOptions,
@@ -426,7 +479,7 @@ public final class ScenarioCredentialBootstrapMain {
                 return false;
             }
             JsonNode body = objectMapper.readTree(response.body());
-            if (body.path("code").asInt(500) != 200) {
+            if (body.path("code").asInt(response.statusCode()) >= 400) {
                 return false;
             }
             JsonNode permissions = body.path("data").path("permissions");
@@ -441,7 +494,23 @@ public final class ScenarioCredentialBootstrapMain {
             return true;
         }
 
-        private String login() throws IOException, InterruptedException {
+        private OperatorAuthContext authenticateOperator() throws IOException, InterruptedException {
+            HttpRequest request = HttpRequest.newBuilder(uri("/api/v1/auth/config"))
+                    .timeout(options.requestTimeout())
+                    .GET()
+                    .build();
+            JsonNode response = sendJson(request, "operator auth config");
+            String authMode = response.path("data").path("authMode").asText("");
+            if ("session".equalsIgnoreCase(authMode)) {
+                return login();
+            }
+            if ("dev-header".equalsIgnoreCase(authMode)) {
+                return new OperatorAuthContext("dev-header", null);
+            }
+            throw new IllegalStateException("unsupported operator auth mode for scenario initialization: " + authMode);
+        }
+
+        private OperatorAuthContext login() throws IOException, InterruptedException {
             String body = objectMapper.writeValueAsString(Map.of(
                     "userId", options.operatorUser(),
                     "password", options.operatorPassword()
@@ -456,29 +525,26 @@ public final class ScenarioCredentialBootstrapMain {
             if (csrfToken.isBlank()) {
                 throw new IllegalStateException("operator login did not return csrfToken");
             }
-            return csrfToken;
+            return new OperatorAuthContext("session", csrfToken);
         }
 
         private String createApiKey(ScenarioCredentialBootstrapOptions credentialOptions,
-                                    String csrfToken) throws IOException, InterruptedException {
-            String body = objectMapper.writeValueAsString(Map.of(
-                    "principalId", credentialOptions.principalId(),
-                    "createdForUserId", credentialOptions.createdForUserId(),
-                    "projectScopes", credentialOptions.projectScopes(),
-                    "eventScopes", credentialOptions.eventScopes(),
-                    "permissions", credentialOptions.permissions(),
-                    "attributes", Map.of(
+                                    OperatorAuthContext auth) throws IOException, InterruptedException {
+            String body = objectMapper.writeValueAsString(apiKeyRequestBody(
+                    credentialOptions,
+                    null,
+                    Map.of(
                             "source", "scenario-credential-bootstrap",
                             "credentialKind", credentialOptions.kind().label(),
                             "local", "true"
                     )
             ));
-            HttpRequest request = HttpRequest.newBuilder(uri("/api/v1/api-keys"))
+            HttpRequest.Builder builder = HttpRequest.newBuilder(uri("/api/v1/api-keys"))
                     .timeout(options.requestTimeout())
                     .header("Content-Type", "application/json")
-                    .header("X-Mass-Csrf-Token", csrfToken)
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
+                    .POST(HttpRequest.BodyPublishers.ofString(body));
+            applyOperatorAuth(builder, auth);
+            HttpRequest request = builder.build();
             JsonNode response = sendJson(request, "API-key creation");
             String rawSecret = response.path("data").path("rawSecret").asText("");
             if (rawSecret.isBlank()) {
@@ -487,9 +553,199 @@ public final class ScenarioCredentialBootstrapMain {
             return rawSecret;
         }
 
+        private void prepareWorkerCredentials(OperatorAuthContext auth) throws IOException, InterruptedException {
+            List<WorkerScenarioSpec> workers = ScenarioFiles.load(
+                    resolveManifestPath(ScenarioCredentialBootstrapOptions.DEFAULT_SCENARIO_DIR),
+                    objectMapper
+            ).workerSpecs();
+            int createdOrReady = 0;
+            for (WorkerScenarioSpec worker : workers) {
+                prepareWorkerCredential(worker, auth);
+                createdOrReady++;
+            }
+            System.out.printf("[java-scenario-env-bootstrap] worker credentials ready count=%d%n", createdOrReady);
+        }
+
+        private void prepareWorkerCredential(WorkerScenarioSpec worker,
+                                             OperatorAuthContext auth) throws IOException, InterruptedException {
+            String workerId = requireNonBlank(worker.workerId(), "workerId");
+            String workerKey = requireNonBlank(worker.workerKey(), "workerKey");
+            CurrentApiKey current = currentApiKey(workerKey);
+            if (current != null && current.workerReadyFor(workerId)) {
+                return;
+            }
+            if (current != null && options.refreshStaleCache()) {
+                System.out.printf("[java-scenario-env-bootstrap] worker credential %s is active but not bound to "
+                                + "workerId %s; revoking stale local credential %s before re-creating it%n",
+                        current.principalId(), workerId, current.keyId());
+                revokeApiKey(current.keyId(), auth, "scenario worker credential rebind for " + workerId);
+            } else if (current != null) {
+                throw new IllegalStateException("Worker credential " + current.principalId()
+                        + " is active but is not bound to workerId " + workerId
+                        + "; rerun without --no-refresh-stale-cache to rotate the local credential");
+            }
+            ScenarioCredentialBootstrapOptions workerOptions = options.forKind(CredentialKind.WORKER)
+                    .withPrincipalId("scenario-worker-" + workerId);
+            try {
+                createApiKey(workerOptions, auth, workerKey, workerAttributes(workerId));
+            } catch (IllegalStateException e) {
+                if (!isPrincipalAlreadyExists(e)) {
+                    throw e;
+                }
+                String replacementPrincipalId = "scenario-worker-" + workerId
+                        + "-" + Long.toUnsignedString(System.currentTimeMillis(), 36);
+                System.out.printf("[java-scenario-env-bootstrap] worker principal %s already has an API-key "
+                                + "credential; creating local replacement principal %s%n",
+                        workerOptions.principalId(), replacementPrincipalId);
+                createApiKey(workerOptions.withPrincipalId(replacementPrincipalId), auth, workerKey,
+                        workerAttributes(workerId));
+            }
+        }
+
+        private CurrentApiKey currentApiKey(String apiKey) throws IOException, InterruptedException {
+            HttpRequest request = HttpRequest.newBuilder(uri("/api/v1/api-keys:current"))
+                    .timeout(options.requestTimeout())
+                    .header("X-Mass-Api-Key", apiKey)
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                return null;
+            }
+            JsonNode body = objectMapper.readTree(response.body());
+            if (body.path("code").asInt(response.statusCode()) >= 400) {
+                return null;
+            }
+            JsonNode data = body.path("data");
+            String keyId = data.path("credential").path("keyId").asText("");
+            if (keyId.isBlank()) {
+                return null;
+            }
+            return new CurrentApiKey(
+                    keyId,
+                    data.path("principalId").asText(""),
+                    data.path("permissions"),
+                    data.path("attributes").path("workerId").asText("")
+            );
+        }
+
+        private void revokeApiKey(String keyId,
+                                  OperatorAuthContext auth,
+                                  String reason) throws IOException, InterruptedException {
+            String body = objectMapper.writeValueAsString(Map.of("reason", reason));
+            HttpRequest.Builder builder = HttpRequest.newBuilder(uri("/api/v1/api-keys/" + encodePathSegment(keyId) + ":revoke"))
+                    .timeout(options.requestTimeout())
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body));
+            applyOperatorAuth(builder, auth);
+            sendJson(builder.build(), "API-key revoke");
+        }
+
+        private String createApiKey(ScenarioCredentialBootstrapOptions credentialOptions,
+                                    OperatorAuthContext auth,
+                                    String rawSecret,
+                                    Map<String, String> attributes) throws IOException, InterruptedException {
+            String body = objectMapper.writeValueAsString(apiKeyRequestBody(credentialOptions, rawSecret, attributes));
+            HttpRequest.Builder builder = HttpRequest.newBuilder(uri("/api/v1/api-keys"))
+                    .timeout(options.requestTimeout())
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body));
+            applyOperatorAuth(builder, auth);
+            HttpRequest request = builder.build();
+            JsonNode response = sendJson(request, "API-key creation");
+            String createdRawSecret = response.path("data").path("rawSecret").asText("");
+            if (createdRawSecret.isBlank()) {
+                throw new IllegalStateException("API-key creation did not return a rawSecret");
+            }
+            return createdRawSecret;
+        }
+
+        private Map<String, Object> apiKeyRequestBody(ScenarioCredentialBootstrapOptions credentialOptions,
+                                                      String rawSecret,
+                                                      Map<String, String> attributes) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("principalId", credentialOptions.principalId());
+            body.put("createdForUserId", credentialOptions.createdForUserId());
+            body.put("projectScopes", credentialOptions.projectScopes());
+            body.put("eventScopes", credentialOptions.eventScopes());
+            body.put("permissions", credentialOptions.permissions());
+            body.put("attributes", attributes);
+            if (rawSecret != null && !rawSecret.isBlank()) {
+                body.put("rawSecret", rawSecret);
+            }
+            return body;
+        }
+
+        private Map<String, String> workerAttributes(String workerId) {
+            Map<String, String> attributes = new LinkedHashMap<>();
+            attributes.put("source", "scenario-credential-bootstrap");
+            attributes.put("credentialKind", "worker");
+            attributes.put("local", "true");
+            attributes.put("workerId", workerId);
+            return attributes;
+        }
+
+        private void syncScenarioCatalog(OperatorAuthContext auth) throws IOException, InterruptedException {
+            syncManifest(
+                    ScenarioCredentialBootstrapOptions.DEFAULT_CATALOG_MANIFEST,
+                    "/api/v1/control-plane/catalog:sync",
+                    "scenario catalog sync",
+                    auth
+            );
+        }
+
+        private void syncScenarioRules(OperatorAuthContext auth) throws IOException, InterruptedException {
+            syncManifest(
+                    ScenarioCredentialBootstrapOptions.DEFAULT_RULES_MANIFEST,
+                    "/api/v1/control-plane/rules:sync",
+                    "scenario rules sync",
+                    auth
+            );
+        }
+
+        private void syncManifest(Path manifest,
+                                  String path,
+                                  String operation,
+                                  OperatorAuthContext auth) throws IOException, InterruptedException {
+            Path normalized = resolveManifestPath(manifest);
+            if (!Files.exists(normalized)) {
+                throw new IllegalStateException(operation + " manifest is missing: " + normalized);
+            }
+            String body = Files.readString(normalized, StandardCharsets.UTF_8);
+            HttpRequest.Builder builder = HttpRequest.newBuilder(uri(path))
+                    .timeout(options.requestTimeout())
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body));
+            applyOperatorAuth(builder, auth);
+            sendJson(builder.build(), operation);
+        }
+
+        private Path resolveManifestPath(Path manifest) {
+            Path normalized = manifest.toAbsolutePath().normalize();
+            if (Files.exists(normalized) || manifest.isAbsolute()) {
+                return normalized;
+            }
+            Path repoRelativeFromModule = Path.of("..", "..").resolve(manifest).toAbsolutePath().normalize();
+            return Files.exists(repoRelativeFromModule) ? repoRelativeFromModule : normalized;
+        }
+
+        private void applyOperatorAuth(HttpRequest.Builder builder, OperatorAuthContext auth) {
+            if (auth == null) {
+                return;
+            }
+            if (auth.session()) {
+                builder.header("X-Mass-Csrf-Token", auth.csrfToken());
+                return;
+            }
+            if (auth.devHeader()) {
+                builder.header("X-Mass-User-Mode", "admin");
+            }
+        }
+
         private void verifyScenarioCatalog() throws IOException, InterruptedException {
             verifyScenarioEvent("crawler.fetch-page", "crawlerApp");
             verifyScenarioEvent("stock.quote.fetch", "crawlerApp");
+            verifyScenarioEvent("probe.phone.metadata", "deviceProbe");
         }
 
         private void verifyScenarioEvent(String eventCode, String projectCode) throws IOException, InterruptedException {
@@ -500,7 +756,8 @@ public final class ScenarioCredentialBootstrapMain {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 404) {
                 throw new IllegalStateException("Scenario catalog is not initialized: missing event " + eventCode
-                        + ". Start the server with " + localScenarioSeedArgs());
+                        + ". Re-run ScenarioCredentialBootstrapMain in env mode to initialize the local scenario "
+                        + "through server control-plane APIs.");
             }
             JsonNode body = objectMapper.readTree(response.body());
             int code = body.path("code").asInt(response.statusCode());
@@ -511,8 +768,8 @@ public final class ScenarioCredentialBootstrapMain {
             JsonNode projectCodes = body.path("data").path("projectCodes");
             if (!containsText(projectCodes, projectCode)) {
                 throw new IllegalStateException("Scenario catalog event " + eventCode
-                        + " is not bound to project " + projectCode + ". Start the server with "
-                        + localScenarioSeedArgs());
+                        + " is not bound to project " + projectCode
+                        + ". Re-run ScenarioCredentialBootstrapMain in env mode.");
             }
         }
 
@@ -544,17 +801,34 @@ public final class ScenarioCredentialBootstrapMain {
             return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
         }
 
-        private static String localScenarioSeedArgs() {
-            return "--mass.control-plane.seed.enabled=true "
-                    + "--mass.control-plane.seed.catalog-location="
-                    + "file:integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json "
-                    + "--mass.control-plane.seed.rules-location=file:integrations/samples/dev/scenario/rules.json "
-                    + "--mass.control-plane.seed.operator-credentials-location="
-                    + "classpath:control-plane-seed/operator-credentials.json";
-        }
-
         private URI uri(String path) {
             return URI.create(options.baseUrl() + path);
+        }
+
+        private static String requireNonBlank(String value, String field) {
+            if (value == null || value.isBlank()) {
+                throw new IllegalArgumentException(field + " is required");
+            }
+            return value.trim();
+        }
+
+        private record CurrentApiKey(String keyId,
+                                     String principalId,
+                                     JsonNode permissions,
+                                     String workerId) {
+            boolean workerReadyFor(String expectedWorkerId) {
+                return containsText(permissions, "worker:poll") && expectedWorkerId.equals(workerId);
+            }
+        }
+    }
+
+    record OperatorAuthContext(String mode, String csrfToken) {
+        boolean session() {
+            return "session".equalsIgnoreCase(mode);
+        }
+
+        boolean devHeader() {
+            return "dev-header".equalsIgnoreCase(mode);
         }
     }
 

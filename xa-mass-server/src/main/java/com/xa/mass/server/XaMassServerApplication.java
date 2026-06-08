@@ -27,10 +27,12 @@ import com.xa.mass.api.review.TaskReviewStoreMaterializer;
 import com.xa.mass.api.review.TaskReviewStoreTaskReviewReadModel;
 import com.xa.mass.server.catalog.CatalogMetadataProjection;
 import com.xa.mass.storage.api.CatalogMetadataStore;
+import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
 import com.xa.mass.storage.memory.InMemoryCatalogMetadataStore;
+import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdk;
@@ -245,6 +247,15 @@ public class XaMassServerApplication {
             return jdbcStorageRuntime.catalogMetadataStore();
         }
         return new InMemoryCatalogMetadataStore();
+    }
+
+    @Bean
+    @Profile({"memory-local", "durable-local"})
+    public RuleStorage ruleStorage(JdbcStorageRuntime jdbcStorageRuntime) {
+        if (jdbcStorageRuntime.isEnabled()) {
+            return jdbcStorageRuntime.ruleStorage();
+        }
+        return new InMemoryRuleStorage();
     }
 
     @Bean

@@ -122,7 +122,6 @@ record ScenarioLauncherOptions(
                 cliWorkerApiKey,
                 System.getenv("MASS_WORKER_API_KEY"),
                 workerApiKeyFromFile(cliWorkerApiKeyFile),
-                workerApiKeyFromFile(defaultWorkerApiKeyFile()),
                 null
         );
         Path scenarioDir = cliScenarioDir == null ? DEFAULT_SCENARIO_DIR : cliScenarioDir;
@@ -190,7 +189,7 @@ record ScenarioLauncherOptions(
                   --websocket-url <url>        Optional server WebSocket URL for realtime launcher workers. Default: MASS_WEBSOCKET_URL
                   --task-api-key <key>         Default task API key. Default: MASS_TASK_API_KEY or crawler-task-api-key
                   --worker-api-key <key>       Optional worker API key override. Default: each worker spec's workerKey
-                  --worker-api-key-file <path> Optional worker API key cache file. Default: examples/secrets/worker-api-key.txt when present
+                  --worker-api-key-file <path> Optional explicit worker API key override file
                   --scenario-dir <path>        Scenario JSON directory. Default: integrations/samples/dev/scenario
                   --max-polling-workers <n>    Max polling workers to start in worker launcher. Default: 25. Use 0 for no cap.
                   -h, --help                   Show this help.
@@ -271,10 +270,6 @@ record ScenarioLauncherOptions(
         } catch (java.io.IOException e) {
             throw new IllegalArgumentException("failed to read worker API key file: " + path, e);
         }
-    }
-
-    private static Path defaultWorkerApiKeyFile() {
-        return Path.of("integrations/xa-mass-scenario-launcher/examples/secrets/worker-api-key.txt");
     }
 
     private static Duration durationFromSeconds(Integer seconds, Duration defaultValue, String fieldName) {

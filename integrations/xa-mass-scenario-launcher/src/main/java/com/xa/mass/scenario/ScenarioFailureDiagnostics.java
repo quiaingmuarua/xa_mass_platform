@@ -17,9 +17,7 @@ final class ScenarioFailureDiagnostics {
                     + "exist in the target server or is not valid for task creation. "
                     + "Initialize this server environment with the matching scenario catalog/rules before "
                     + "launching, or pass a real task producer key with --task-api-key / MASS_TASK_API_KEY. "
-                    + "For local scenario config, run xa-mass-scenario-credential-bootstrap with the same --config "
-                    + "to validate or create credentials.taskApiKeyFile. "
-                    + localSeedCommand();
+                    + localInitializerCommand();
         }
         if (failure.statusCode() == 400
                 && failure.path() != null
@@ -29,7 +27,7 @@ final class ScenarioFailureDiagnostics {
             return "Scenario launcher worker registration was rejected because the server catalog does not contain "
                     + "an event declared by " + normalizedScenarioDir(options) + "/workers.json. "
                     + "Initialize this server environment with the matching scenario catalog/rules before launching. "
-                    + localSeedCommand();
+                    + localInitializerCommand();
         }
         if (failure.statusCode() == 401
                 && failure.path() != null
@@ -38,11 +36,10 @@ final class ScenarioFailureDiagnostics {
                 && failure.responseBody().contains("Invalid or missing worker credential")) {
             return "Scenario worker registration was rejected because the configured worker API-key credential "
                     + "does not exist in the target server or is not valid for worker registration/polling. "
-                    + "For local scenario runs, create a worker credential with "
-                    + "xa-mass-scenario-credential-bootstrap --kind worker --api-key-file "
-                    + "integrations/xa-mass-scenario-launcher/examples/secrets/worker-api-key.txt, "
-                    + "or pass a real worker key with --worker-api-key / --worker-api-key-file / MASS_WORKER_API_KEY. "
-                    + localSeedCommand();
+                    + "For local scenario runs, use the env initializer to register workerId-bound credentials "
+                    + "from workers.json, or pass a real worker key with --worker-api-key / --worker-api-key-file "
+                    + "/ MASS_WORKER_API_KEY. "
+                    + localInitializerCommand();
         }
         return failure.getMessage();
     }
@@ -51,13 +48,10 @@ final class ScenarioFailureDiagnostics {
         return options.scenarioDir().toString().replace('\\', '/');
     }
 
-    private static String localSeedCommand() {
-        return "For the checked-in local scenario seed, start the server with "
-                + "--mass.control-plane.seed.enabled=true "
-                + "--mass.control-plane.seed.catalog-location=file:integrations/xa-mass-scenario-launcher/"
-                + "examples/scenario.catalog.seed.json "
-                + "--mass.control-plane.seed.rules-location=file:integrations/samples/dev/scenario/rules.json "
-                + "--mass.control-plane.seed.operator-credentials-location="
-                + "classpath:control-plane-seed/operator-credentials.json";
+    private static String localInitializerCommand() {
+        return "For the checked-in local scenario, run "
+                + "xa-mass-scenario-credential-bootstrap --config "
+                + "integrations/xa-mass-scenario-launcher/examples/scenario.local.example.json "
+                + "after the server is running.";
     }
 }

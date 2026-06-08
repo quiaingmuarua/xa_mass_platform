@@ -34,7 +34,7 @@ public final class DefaultAuthorizationPolicy implements AuthorizationPolicy {
         return switch (request.getResourceType()) {
             case TASK -> authorizeTask(request, principal);
             case WORKER -> authorizeWorker(request, principal);
-            case RULE, USER, ROLE, API_KEY, API_USAGE -> AuthorizationDecision.allow();
+            case RULE, CONFIG, USER, ROLE, API_KEY, API_USAGE -> AuthorizationDecision.allow();
         };
     }
 

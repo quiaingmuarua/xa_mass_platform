@@ -123,6 +123,33 @@ class ApiKeyControllerTest {
     }
 
     @Test
+    void operatorCanCreateApiKeyWithExplicitLocalRawSecret() throws Exception {
+        MvcResult created = mockMvc.perform(post("/api/v1/api-keys")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "principalId", "worker-bound-key",
+                                "createdForUserId", "ops-admin",
+                                "projectScopes", List.of("*"),
+                                "eventScopes", List.of("*"),
+                                "permissions", List.of(ApiPermissionNames.WORKER_POLL),
+                                "attributes", Map.of("workerId", "worker-001"),
+                                "rawSecret", "worker-001-local-secret"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rawSecret").value("worker-001-local-secret"))
+                .andReturn();
+
+        String keyId = objectMapper.readTree(created.getResponse().getContentAsString())
+                .get("data").get("credential").get("keyId").asText();
+        mockMvc.perform(get("/api/v1/api-keys:current")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "worker-001-local-secret"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.credential.keyId").value(keyId))
+                .andExpect(jsonPath("$.data.attributes.workerId").value("worker-001"))
+                .andExpect(jsonPath("$.data.permissions[0]").value(ApiPermissionNames.WORKER_POLL));
+    }
+
+    @Test
     void createRejectsUnknownPermission() throws Exception {
         mockMvc.perform(post("/api/v1/api-keys")
                         .contentType(MediaType.APPLICATION_JSON)

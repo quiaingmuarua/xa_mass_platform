@@ -64,7 +64,7 @@ public class ApiKeyController {
                         request.expiresAt(),
                         request.attributes(),
                         null,
-                        null
+                        request.rawSecret()
                 )
         );
         return ApiResponse.success(new ApiKeyCreateResponse(toView(created.record()), created.rawSecret()));
@@ -164,7 +164,8 @@ public class ApiKeyController {
                                       List<String> eventScopes,
                                       List<String> permissions,
                                       Instant expiresAt,
-                                      Map<String, String> attributes) {
+                                      Map<String, String> attributes,
+                                      String rawSecret) {
     }
 
     public record ApiKeyRevokeRequest(String reason) {

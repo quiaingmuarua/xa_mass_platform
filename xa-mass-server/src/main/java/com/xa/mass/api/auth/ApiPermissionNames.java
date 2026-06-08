@@ -11,6 +11,7 @@ public final class ApiPermissionNames {
     public static final String TASK_CONTROL = "task:control";
     public static final String WORKER_VIEW = "worker:view";
     public static final String WORKER_EDIT = "worker:edit";
+    public static final String WORKER_POLL = "worker:poll";
     public static final String RULE_VIEW = "rule:view";
     public static final String RULE_EDIT = "rule:edit";
     public static final String CONFIG_VIEW = "config:view";
@@ -34,6 +35,7 @@ public final class ApiPermissionNames {
             TASK_CONTROL,
             WORKER_VIEW,
             WORKER_EDIT,
+            WORKER_POLL,
             RULE_VIEW,
             RULE_EDIT,
             CONFIG_VIEW,
