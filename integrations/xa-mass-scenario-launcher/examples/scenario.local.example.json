@@ -11,40 +11,30 @@
     "taskItemBatchSize": 100
   },
   "actions": {
-    "resolve_phone": {
-      "eventCode": "telegram.resolvePhone",
+    "fetch_page": {
+      "eventCode": "crawler.fetch-page",
       "paramMap": {
-        "phone": "phone"
+        "url": "url"
       }
-    },
-    "import_contact": {
-      "eventCode": "telegram.importContactsAndDelete",
-      "paramMap": {
-        "phones": "phones",
-        "client_id": "bind_client"
-      },
-      "jsonFields": [
-        "phones"
-      ]
     }
   },
   "tasks": [
     {
-      "project": "telegram",
-      "userId": "telegram-loader",
-      "contract": "BATCH",
-      "action": "resolve_phone",
+      "project": "crawlerApp",
+      "userId": "sample-launcher",
+      "sourceRef": "human-config-crawler-fetch-page",
+      "action": "fetch_page",
       "sharedConfig": {
-        "workerGroupId": "telegram-workers"
+        "routingCode": "us"
       },
       "executionSpec": {
-        "batchSize": 100,
-        "workloadClass": "BULK"
+        "batchSize": 1,
+        "workloadClass": "INTERACTIVE"
       },
       "items": {
         "type": "txt",
-        "path": "./data/phones.txt",
-        "field": "phone"
+        "path": "./data/urls.txt",
+        "field": "url"
       }
     }
   ]
