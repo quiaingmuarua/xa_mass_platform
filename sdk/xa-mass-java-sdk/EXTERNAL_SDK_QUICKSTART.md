@@ -202,6 +202,11 @@ For real external-registration proof, prepare catalog, rules, and API keys
 through server-owned seed/import or the normal host setup, then run the Java SDK
 launcher. The launcher does not own server metadata preparation; it proves
 SDK-backed WorkerGroup, AdapterNode, Worker, task, and worker-session paths.
+For human task-producer runs, the scenario task launcher supports
+`--config scenario.local.json` with local item files and API-key file
+references. Worker launcher config is deferred; worker process proof continues
+through the existing `--scenario-dir` / `workers.json` path. See the launcher
+README for the concrete config shape and example files.
 
 For a CLI-only public-contract smoke against an already running dev server, use:
 

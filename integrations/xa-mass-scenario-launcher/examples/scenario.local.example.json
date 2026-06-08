@@ -1,0 +1,51 @@
+{
+  "server": {
+    "baseUrl": "http://127.0.0.1:8088",
+    "connectTimeoutSeconds": 5,
+    "requestTimeoutSeconds": 30
+  },
+  "credentials": {
+    "taskApiKeyFile": "./secrets/task-api-key.txt"
+  },
+  "runtime": {
+    "taskItemBatchSize": 100
+  },
+  "actions": {
+    "resolve_phone": {
+      "eventCode": "telegram.resolvePhone",
+      "paramMap": {
+        "phone": "phone"
+      }
+    },
+    "import_contact": {
+      "eventCode": "telegram.importContactsAndDelete",
+      "paramMap": {
+        "phones": "phones",
+        "client_id": "bind_client"
+      },
+      "jsonFields": [
+        "phones"
+      ]
+    }
+  },
+  "tasks": [
+    {
+      "project": "telegram",
+      "userId": "telegram-loader",
+      "contract": "BATCH",
+      "action": "resolve_phone",
+      "sharedConfig": {
+        "workerGroupId": "telegram-workers"
+      },
+      "executionSpec": {
+        "batchSize": 100,
+        "workloadClass": "BULK"
+      },
+      "items": {
+        "type": "txt",
+        "path": "./data/phones.txt",
+        "field": "phone"
+      }
+    }
+  ]
+}

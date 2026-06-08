@@ -30,6 +30,9 @@ Global boundary guard:
   running server. `integrations/xa-mass-scenario-launcher` keeps task-producer
   and worker-process launchers separate. Server-owned dev bootstrap endpoints
   are fixtures, not SDK prerequisites.
+- `integrations/xa-mass-scenario-launcher` owns human task-launcher config
+  ergonomics. This is integration wiring around `xa-mass-java-sdk`, not a new
+  SDK DTO or server bootstrap path.
 - In-process JVM embedding callers should start from `xa-mass-embedded-sdk`.
 - Public HTTP wire DTOs belong in `xa-mass-public-contract` only when the owning
   Controller method and route role are documented by

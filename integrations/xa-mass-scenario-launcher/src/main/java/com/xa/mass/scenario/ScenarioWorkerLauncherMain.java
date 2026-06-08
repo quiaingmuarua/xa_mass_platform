@@ -3,23 +3,25 @@ package com.xa.mass.scenario;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.http.exception.MassHttpException;
 
-import java.net.http.HttpClient;
-
 public final class ScenarioWorkerLauncherMain {
     private ScenarioWorkerLauncherMain() {
     }
 
     public static void main(String[] args) throws Exception {
-        ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(args);
+        ScenarioLauncherOptions options = ScenarioLauncherOptions.parseWorker(args);
         if (options.help()) {
             System.out.println(ScenarioLauncherOptions.workerHelpText());
             return;
+        }
+        if (options.configPath() != null) {
+            throw new IllegalArgumentException("worker launcher config mode is deferred; use --scenario-dir with workers.json");
         }
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         ScenarioFiles files = ScenarioFiles.load(options.scenarioDir(), objectMapper);
         ScenarioClientFactory clientFactory = new ScenarioClientFactory(
                 options.baseUrl(),
-                HttpClient.newHttpClient(),
+                options.connectTimeout(),
+                options.requestTimeout(),
                 objectMapper
         );
         try {

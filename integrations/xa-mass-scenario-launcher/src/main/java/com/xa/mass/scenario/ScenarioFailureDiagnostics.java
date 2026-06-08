@@ -9,7 +9,8 @@ final class ScenarioFailureDiagnostics {
     static String diagnoseHttpFailure(ScenarioLauncherOptions options, MassHttpException failure) {
         if (failure.statusCode() == 401
                 && failure.path() != null
-                && failure.path().equals("/api/v1/tasks")
+                && "POST".equals(failure.method())
+                && failure.path().endsWith("/tasks")
                 && failure.responseBody() != null
                 && failure.responseBody().contains("Invalid or missing API-key credential")) {
             String scenarioDir = normalizedScenarioDir(options);

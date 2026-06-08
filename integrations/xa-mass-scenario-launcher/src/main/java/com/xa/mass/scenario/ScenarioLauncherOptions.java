@@ -2,6 +2,7 @@ package com.xa.mass.scenario;
 
 import java.nio.file.Path;
 import java.net.URI;
+import java.time.Duration;
 import java.util.Objects;
 
 record ScenarioLauncherOptions(
@@ -10,6 +11,9 @@ record ScenarioLauncherOptions(
         String taskApiKey,
         String workerApiKey,
         Path scenarioDir,
+        Path configPath,
+        Duration connectTimeout,
+        Duration requestTimeout,
         int maxPollingWorkers,
         boolean help
 ) {
@@ -17,54 +21,117 @@ record ScenarioLauncherOptions(
     private static final String DEFAULT_TASK_API_KEY = "crawler-task-api-key";
     private static final Path DEFAULT_SCENARIO_DIR = Path.of("integrations/samples/dev/scenario");
     private static final int DEFAULT_MAX_POLLING_WORKERS = 25;
+    private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
     static ScenarioLauncherOptions parse(String[] args) {
-        String baseUrl = envOrDefault("MASS_BASE_URL", DEFAULT_BASE_URL);
-        URI webSocketUrl = optionalUri(System.getenv("MASS_WEBSOCKET_URL"), "MASS_WEBSOCKET_URL");
-        String taskApiKey = envOrDefault("MASS_TASK_API_KEY", DEFAULT_TASK_API_KEY);
-        String workerApiKey = System.getenv("MASS_WORKER_API_KEY");
-        Path scenarioDir = DEFAULT_SCENARIO_DIR;
-        int maxPollingWorkers = intEnvOrDefault("MASS_SCENARIO_MAX_POLLING_WORKERS", DEFAULT_MAX_POLLING_WORKERS);
+        return parseTask(args);
+    }
+
+    static ScenarioLauncherOptions parseTask(String[] args) {
+        return parse(args, true);
+    }
+
+    static ScenarioLauncherOptions parseWorker(String[] args) {
+        return parse(args, false);
+    }
+
+    private static ScenarioLauncherOptions parse(String[] args, boolean loadTaskConfig) {
+        String cliBaseUrl = null;
+        String cliWebSocketUrl = null;
+        String cliTaskApiKey = null;
+        String cliWorkerApiKey = null;
+        Path cliScenarioDir = null;
+        Path configPath = null;
+        Integer cliMaxPollingWorkers = null;
         boolean help = false;
 
         for (int index = 0; index < args.length; index++) {
             String arg = args[index];
             if ("--help".equals(arg) || "-h".equals(arg)) {
                 help = true;
+            } else if ("--config".equals(arg)) {
+                configPath = Path.of(requiredArg(args, index, arg));
+                index++;
+            } else if (arg.startsWith("--config=")) {
+                configPath = Path.of(arg.substring("--config=".length()));
             } else if ("--base-url".equals(arg)) {
-                baseUrl = requiredArg(args, index, arg);
+                cliBaseUrl = requiredArg(args, index, arg);
                 index++;
             } else if (arg.startsWith("--base-url=")) {
-                baseUrl = arg.substring("--base-url=".length());
+                cliBaseUrl = arg.substring("--base-url=".length());
             } else if ("--websocket-url".equals(arg)) {
-                webSocketUrl = optionalUri(requiredArg(args, index, arg), arg);
+                cliWebSocketUrl = requiredArg(args, index, arg);
                 index++;
             } else if (arg.startsWith("--websocket-url=")) {
-                webSocketUrl = optionalUri(arg.substring("--websocket-url=".length()), "--websocket-url");
+                cliWebSocketUrl = arg.substring("--websocket-url=".length());
             } else if ("--task-api-key".equals(arg)) {
-                taskApiKey = requiredArg(args, index, arg);
+                cliTaskApiKey = requiredArg(args, index, arg);
                 index++;
             } else if (arg.startsWith("--task-api-key=")) {
-                taskApiKey = arg.substring("--task-api-key=".length());
+                cliTaskApiKey = arg.substring("--task-api-key=".length());
             } else if ("--worker-api-key".equals(arg)) {
-                workerApiKey = requiredArg(args, index, arg);
+                cliWorkerApiKey = requiredArg(args, index, arg);
                 index++;
             } else if (arg.startsWith("--worker-api-key=")) {
-                workerApiKey = arg.substring("--worker-api-key=".length());
+                cliWorkerApiKey = arg.substring("--worker-api-key=".length());
             } else if ("--scenario-dir".equals(arg)) {
-                scenarioDir = Path.of(requiredArg(args, index, arg));
+                cliScenarioDir = Path.of(requiredArg(args, index, arg));
                 index++;
             } else if (arg.startsWith("--scenario-dir=")) {
-                scenarioDir = Path.of(arg.substring("--scenario-dir=".length()));
+                cliScenarioDir = Path.of(arg.substring("--scenario-dir=".length()));
             } else if ("--max-polling-workers".equals(arg)) {
-                maxPollingWorkers = parseInt(requiredArg(args, index, arg), arg);
+                cliMaxPollingWorkers = parseInt(requiredArg(args, index, arg), arg);
                 index++;
             } else if (arg.startsWith("--max-polling-workers=")) {
-                maxPollingWorkers = parseInt(arg.substring("--max-polling-workers=".length()), "--max-polling-workers");
+                cliMaxPollingWorkers = parseInt(arg.substring("--max-polling-workers=".length()), "--max-polling-workers");
             } else {
                 throw new IllegalArgumentException("unknown argument: " + arg);
             }
         }
+
+        ScenarioLauncherConfig.Loaded loadedConfig = loadTaskConfig && !help ? loadConfig(configPath) : null;
+        ScenarioLauncherConfig config = loadedConfig == null ? null : loadedConfig.config();
+        ScenarioLauncherConfig.ServerConfig serverConfig = config == null ? null : config.server();
+        ScenarioLauncherConfig.CredentialsConfig credentialsConfig = config == null ? null : config.credentials();
+
+        String baseUrl = firstNonBlank(
+                cliBaseUrl,
+                System.getenv("MASS_BASE_URL"),
+                serverConfig == null ? null : serverConfig.baseUrl(),
+                DEFAULT_BASE_URL
+        );
+        URI webSocketUrl = optionalUri(firstNonBlank(
+                cliWebSocketUrl,
+                System.getenv("MASS_WEBSOCKET_URL"),
+                null
+        ), "webSocketUrl");
+        String taskApiKey = firstNonBlank(
+                cliTaskApiKey,
+                System.getenv("MASS_TASK_API_KEY"),
+                taskApiKeyFromConfig(loadedConfig, credentialsConfig),
+                DEFAULT_TASK_API_KEY
+        );
+        String workerApiKey = firstNonBlank(
+                cliWorkerApiKey,
+                System.getenv("MASS_WORKER_API_KEY"),
+                null
+        );
+        Path scenarioDir = cliScenarioDir == null ? DEFAULT_SCENARIO_DIR : cliScenarioDir;
+        int maxPollingWorkers = cliMaxPollingWorkers != null
+                ? cliMaxPollingWorkers
+                : intEnvOrDefault("MASS_SCENARIO_MAX_POLLING_WORKERS", DEFAULT_MAX_POLLING_WORKERS);
+        Duration connectTimeout = durationFromSeconds(
+                serverConfig == null ? null : serverConfig.connectTimeoutSeconds(),
+                DEFAULT_CONNECT_TIMEOUT,
+                "server.connectTimeoutSeconds"
+        );
+        Duration requestTimeout = durationFromSeconds(
+                serverConfig == null ? null : serverConfig.requestTimeoutSeconds(),
+                DEFAULT_REQUEST_TIMEOUT,
+                "server.requestTimeoutSeconds"
+        );
+
         if (maxPollingWorkers < 0) {
             throw new IllegalArgumentException("maxPollingWorkers must be >= 0");
         }
@@ -74,6 +141,9 @@ record ScenarioLauncherOptions(
                 requireNonBlank(taskApiKey, "taskApiKey"),
                 normalizeOptional(workerApiKey),
                 scenarioDir,
+                configPath,
+                connectTimeout,
+                requestTimeout,
                 maxPollingWorkers,
                 help
         );
@@ -85,7 +155,7 @@ record ScenarioLauncherOptions(
                   java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-task-launcher.jar [options]
 
                 Starts the task-producer side only: create scenario tasks and
-                append items according to tasks.json.
+                append items according to a task config file or tasks.json.
 
                 Options:
                 %s
@@ -108,6 +178,7 @@ record ScenarioLauncherOptions(
     static String commonOptionsText() {
         return """
                   --base-url <url>             Server HTTP base URL. Default: MASS_BASE_URL or http://127.0.0.1:8088
+                  --config <path>              Task launcher config file. Worker config is deferred.
                   --websocket-url <url>        Optional server WebSocket URL for realtime launcher workers. Default: MASS_WEBSOCKET_URL
                   --task-api-key <key>         Default task API key. Default: MASS_TASK_API_KEY or crawler-task-api-key
                   --worker-api-key <key>       Optional worker API key override. Default: each worker spec's workerKey
@@ -140,6 +211,62 @@ record ScenarioLauncherOptions(
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException(name + " must be a number: " + value, e);
         }
+    }
+
+    private static ScenarioLauncherConfig.Loaded loadConfig(Path configPath) {
+        if (configPath == null) {
+            return null;
+        }
+        try {
+            return ScenarioLauncherConfig.load(configPath, new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules());
+        } catch (java.io.IOException e) {
+            throw new IllegalArgumentException("failed to read config file: " + configPath, e);
+        }
+    }
+
+    private static String taskApiKeyFromConfig(ScenarioLauncherConfig.Loaded loadedConfig,
+                                               ScenarioLauncherConfig.CredentialsConfig credentialsConfig) {
+        if (loadedConfig == null || credentialsConfig == null) {
+            return null;
+        }
+        String direct = normalizeOptional(credentialsConfig.taskApiKey());
+        if (direct != null) {
+            return direct;
+        }
+        String file = normalizeOptional(credentialsConfig.taskApiKeyFile());
+        if (file == null) {
+            return null;
+        }
+        Path resolved = loadedConfig.resolvePath(file, "credentials.taskApiKeyFile");
+        try {
+            String value = java.nio.file.Files.readString(resolved).trim();
+            if (value.isBlank()) {
+                throw new IllegalArgumentException("credentials.taskApiKeyFile is blank: " + resolved);
+            }
+            return value;
+        } catch (java.io.IOException e) {
+            throw new IllegalArgumentException("failed to read credentials.taskApiKeyFile: " + resolved, e);
+        }
+    }
+
+    private static Duration durationFromSeconds(Integer seconds, Duration defaultValue, String fieldName) {
+        if (seconds == null) {
+            return defaultValue;
+        }
+        if (seconds <= 0) {
+            throw new IllegalArgumentException(fieldName + " must be positive");
+        }
+        return Duration.ofSeconds(seconds);
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            String normalized = normalizeOptional(value);
+            if (normalized != null) {
+                return normalized;
+            }
+        }
+        return null;
     }
 
     private static String normalizeBaseUrl(String value) {

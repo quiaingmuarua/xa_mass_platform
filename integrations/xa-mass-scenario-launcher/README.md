@@ -13,7 +13,9 @@ engine, worker-pack, or transport ownership.
 
 ## Current Scope
 
-- reads the existing scenario JSON files under `integrations/samples/dev/scenario`
+- task launcher can read a human task config file with `--config`
+- worker launcher still reads existing worker specs under
+  `integrations/samples/dev/scenario` through `--scenario-dir`
 - assumes catalog, rules, and API-key credentials already exist through
   explicit server seed/import or test fixtures
 - worker launcher registers WorkerGroups, AdapterNodes, NodeGroupBindings, and Workers through
@@ -42,10 +44,42 @@ java -jar xa-mass-server/target/xa-mass-server.jar \
 
 ```bash
 ./mvnw -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
+```
 
+For human task-producer runs, start from the checked-in example config:
+
+```bash
+mkdir -p integrations/xa-mass-scenario-launcher/examples/secrets
+printf 'crawler-task-api-key' > integrations/xa-mass-scenario-launcher/examples/secrets/task-api-key.txt
+
+java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-task-launcher.jar \
+  --config integrations/xa-mass-scenario-launcher/examples/scenario.local.example.json
+```
+
+Config-internal relative paths, such as `credentials.taskApiKeyFile` and
+`tasks[].items.path`, resolve relative to the config file directory. The task
+config file reads `tasks[]` directly; it does not use `scenarioDir`, and a
+top-level `workers` field is rejected because worker config is deferred.
+
+The task config supports JSON array, JSONL, and text item files. Action aliases
+are caller-side conveniences only: they resolve to item append `eventCode` and
+optional payload mapping. Worker selection stays explicit in `sharedConfig`,
+for example `sharedConfig.workerGroupId`.
+
+Legacy `--scenario-dir` fixtures may still use `body.items` and
+`generatedItems` in `tasks.json` for agent proof coverage. Human task config
+should prefer real item source files instead of generated fixture items.
+
+The worker launcher is intentionally unchanged for now:
+
+```bash
 java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-worker-launcher.jar \
   --base-url http://127.0.0.1:8088
+```
 
+Agent proof and legacy fixture commands can still use `--scenario-dir`:
+
+```bash
 java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-task-launcher.jar \
   --base-url http://127.0.0.1:8088
 ```
@@ -53,6 +87,7 @@ java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-task-la
 Options:
 
 - `--base-url`: server HTTP base URL. Default: `MASS_BASE_URL` or `http://127.0.0.1:8088`
+- `--config`: task launcher config file. Worker launcher config is deferred.
 - `--websocket-url`: optional server WebSocket URL for realtime launcher workers. Default: `MASS_WEBSOCKET_URL`
 - `--task-api-key`: default task API key. Default: `MASS_TASK_API_KEY` or `crawler-task-api-key`
 - `--worker-api-key`: optional worker API key override. Default: each worker spec's `workerKey`
@@ -72,3 +107,7 @@ Options:
 - task lifecycle commands such as seal/approve are operator/server-console
   behavior. The task launcher deliberately does not send `/commands` requests
   with task API-key credentials.
+- task config is not a credential/bootstrap mechanism. API keys referenced by
+  config files must already exist in the target server.
+- worker config, `workers[]`, and worker credential files are deferred; use the
+  existing worker launcher with `--scenario-dir` until that path is designed.

@@ -63,6 +63,7 @@ __pycache__/
 *.p12
 *.jks
 *.keystore
+/integrations/xa-mass-scenario-launcher/examples/secrets/
 /tmp/
 /data/
 /identifier.sqlite

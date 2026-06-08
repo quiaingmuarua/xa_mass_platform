@@ -8,8 +8,8 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +28,7 @@ class WorkerScenarioRegistrarTest {
                     "--worker-api-key", "override-worker-key"
             });
             WorkerScenarioRegistrar registrar = new WorkerScenarioRegistrar(options,
-                    new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper));
+                    new ScenarioClientFactory(server.baseUrl(), Duration.ofSeconds(5), Duration.ofSeconds(30), objectMapper));
 
             registrar.register(List.of(
                     worker("worker-001"),
@@ -56,7 +56,7 @@ class WorkerScenarioRegistrarTest {
                     "--base-url", server.baseUrl()
             });
             WorkerScenarioRegistrar registrar = new WorkerScenarioRegistrar(options,
-                    new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper));
+                    new ScenarioClientFactory(server.baseUrl(), Duration.ofSeconds(5), Duration.ofSeconds(30), objectMapper));
 
             registrar.register(List.of(new WorkerScenarioSpec(
                     "api-worker-001",

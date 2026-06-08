@@ -2,6 +2,7 @@ package com.xa.mass.scenario;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.MassPlatform;
+import com.xa.mass.client.task.TaskHandle;
 import com.xa.mass.client.task.TaskCreateResult;
 import com.xa.mass.contract.task.TaskContract;
 import com.xa.mass.contract.task.TaskCreateRequest;
@@ -61,7 +62,7 @@ final class TaskScenarioSeeder {
         }
         System.out.printf("[java-scenario-launcher] created task project=%s event=%s taskId=%s%n",
                 body.get("project"), body.get("eventCode"), taskId);
-        appendItems(client, taskId, body, taskSpec.itemBatchSize());
+        appendItems(client.tasks().forTask(taskId), body, taskSpec.itemBatchSize());
         return new SeededTask(
                 taskId,
                 stringValue(body.get("project")),
@@ -70,7 +71,7 @@ final class TaskScenarioSeeder {
     }
 
     @SuppressWarnings("unchecked")
-    private void appendItems(MassPlatform client, String taskId, Map<String, Object> body, Integer configuredBatchSize) {
+    private void appendItems(TaskHandle task, Map<String, Object> body, Integer configuredBatchSize) {
         Object itemsValue = body.get("items");
         if (!(itemsValue instanceof List<?> rawItems) || rawItems.isEmpty()) {
             return;
@@ -81,7 +82,7 @@ final class TaskScenarioSeeder {
                 : configuredBatchSize;
         String eventCode = body.get("eventCode") instanceof String value ? value : null;
         for (List<Object> batch : chunks(items, batchSize)) {
-            client.tasks().appendItems(taskId, TaskItemBatch.builder()
+            task.appendItems(TaskItemBatch.builder()
                     .eventCode(eventCode)
                     .items(batch)
                     .build());

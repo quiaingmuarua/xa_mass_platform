@@ -8,7 +8,7 @@ import com.xa.mass.runtime.redis.RedisWorkerRegistry;
 import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
 import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
+import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
@@ -393,7 +393,7 @@ public class XaMassServerApplication {
             return new RedisWorkerRegistry(
                     redisUri(),
                     runtimeRedisNamespace + ":worker",
-                    WorkerRouteBucketPolicies.defaultPolicy()
+                    WorkerCandidateBucketPolicies.defaultPolicy()
             );
         }
         requireDurableLocalInfraMode("mass.runtime.mode", "redis", normalizedMode);

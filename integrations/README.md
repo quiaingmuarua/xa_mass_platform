@@ -43,6 +43,9 @@ Global boundary guard:
 
 - Scenario launcher is the primary Java SDK adopter, split into two executable
   process roles: task producer and worker process.
+- Scenario task launcher now supports a human `--config` file for task
+  producer runs. Worker launcher config remains deferred and continues to use
+  `--scenario-dir` / `workers.json`.
 - Scenario launcher runs require catalog/rules and API keys to be prepared by
   server-owned seed/import, real control-plane setup, or test fixtures; its
   WorkerGroup, AdapterNode, Worker, and task flows remain SDK-backed external

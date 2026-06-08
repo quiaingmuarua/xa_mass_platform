@@ -7,8 +7,8 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +33,7 @@ class TaskScenarioSeederTest {
                     "--task-api-key", "task-api-key"
             });
             TaskScenarioSeeder seeder = new TaskScenarioSeeder(options, objectMapper,
-                    new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper));
+                    new ScenarioClientFactory(server.baseUrl(), Duration.ofSeconds(5), Duration.ofSeconds(30), objectMapper));
 
             List<TaskScenarioSeeder.SeededTask> seededTasks = seeder.seed(List.of(new TaskScenarioSpec(
                     null,
@@ -50,6 +50,10 @@ class TaskScenarioSeederTest {
             assertEquals("/api/v1/tasks", requests.get(0).path());
             assertEquals("task-api-key", requests.get(1).headers().get("X-mass-api-key"));
             assertEquals("/api/v1/tasks/task-001/items", requests.get(1).path());
+            Map<?, ?> createBody = objectMapper.readValue(requests.get(0).body(), Map.class);
+            assertEquals(false, createBody.containsKey("eventCode"));
+            Map<?, ?> appendBody = objectMapper.readValue(requests.get(1).body(), Map.class);
+            assertEquals("demo.dispatch", appendBody.get("eventCode"));
             assertEquals(2, requests.size());
             assertEquals(1, seededTasks.size());
             assertEquals("task-001", seededTasks.getFirst().taskId());
@@ -66,7 +70,7 @@ class TaskScenarioSeederTest {
                     "--task-api-key", "task-api-key"
             });
             TaskScenarioSeeder seeder = new TaskScenarioSeeder(options, objectMapper,
-                    new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper));
+                    new ScenarioClientFactory(server.baseUrl(), Duration.ofSeconds(5), Duration.ofSeconds(30), objectMapper));
 
             List<TaskScenarioSeeder.SeededTask> seededTasks = seeder.seed(List.of(new TaskScenarioSpec(
                     null,
@@ -98,7 +102,7 @@ class TaskScenarioSeederTest {
                     "--task-api-key", "task-api-key"
             });
             TaskScenarioSeeder seeder = new TaskScenarioSeeder(options, objectMapper,
-                    new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper));
+                    new ScenarioClientFactory(server.baseUrl(), Duration.ofSeconds(5), Duration.ofSeconds(30), objectMapper));
 
             List<TaskScenarioSeeder.SeededTask> seededTasks = seeder.seed(List.of(new TaskScenarioSpec(
                     null,

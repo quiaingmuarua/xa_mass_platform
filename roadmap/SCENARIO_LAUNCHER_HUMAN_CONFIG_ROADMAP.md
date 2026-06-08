@@ -1,6 +1,6 @@
 # Scenario Launcher Human Config Roadmap
 
-Status: proposed roadmap.
+Status: implemented mainline; worker config remains deferred by Non-Goals.
 
 ## Summary
 
