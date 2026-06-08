@@ -53,18 +53,18 @@ describe('menu filtering', () => {
         ).toBe(true)
     })
 
-    it('keeps submitter viewer out of the operator menu', () => {
+    it('keeps API-key viewer out of the operator menu', () => {
         setMockCurrentUser(mockAdminUser)
 
         const rootChildren = appRoutes[0].children ?? []
         const operatorMenu = buildMenuModel(rootChildren, 'operator', '/')
-        const viewerMenu = buildMenuModel(rootChildren, 'submitter-viewer', '/')
+        const viewerMenu = buildMenuModel(rootChildren, 'api-key-viewer', '/')
 
         expect(
-            operatorMenu.some((item) => item.title === 'Submitter Viewer'),
+            operatorMenu.some((item) => item.title === 'API-Key Viewer'),
         ).toBe(false)
         expect(viewerMenu.map((item) => item.title)).toEqual([
-            'Submitter Viewer',
+            'API-Key Viewer',
         ])
     })
 })

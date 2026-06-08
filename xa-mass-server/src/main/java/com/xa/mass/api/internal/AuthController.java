@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -83,9 +84,12 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ApiResponse<ApiCurrentUser> getCurrentUser(HttpServletRequest request) {
+    public ApiResponse<OperatorCurrentUserView> getCurrentUser(HttpServletRequest request) {
         PrincipalContext principal = apiAuthService.requireAuthenticated(request);
-        return ApiResponse.success(apiAuthService.toApiCurrentUser(principal));
+        return ApiResponse.success(OperatorCurrentUserView.from(
+                apiAuthService.toApiCurrentUser(principal),
+                currentCsrfToken(request)
+        ));
     }
 
     @PostMapping("/logout")
@@ -112,5 +116,31 @@ public class AuthController {
     }
 
     public record OperatorLoginView(ApiCurrentUser user, String csrfToken) {
+    }
+
+    public record OperatorCurrentUserView(String id,
+                                          String name,
+                                          String email,
+                                          List<String> roles,
+                                          List<String> permissions,
+                                          String csrfToken) {
+        static OperatorCurrentUserView from(ApiCurrentUser user, String csrfToken) {
+            return new OperatorCurrentUserView(
+                    user.id(),
+                    user.name(),
+                    user.email(),
+                    user.roles(),
+                    user.permissions(),
+                    csrfToken
+            );
+        }
+    }
+
+    private String currentCsrfToken(HttpServletRequest request) {
+        if (operatorAuthProperties.mode() != OperatorAuthMode.SESSION || operatorSessionService == null) {
+            return null;
+        }
+        OperatorSessionRecord session = operatorSessionService.resolve(request);
+        return session == null ? null : session.csrfToken();
     }
 }

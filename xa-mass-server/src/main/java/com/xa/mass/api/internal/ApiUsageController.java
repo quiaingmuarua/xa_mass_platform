@@ -5,7 +5,7 @@ import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
 import com.xa.mass.api.auth.usage.ApiUsageOperation;
 import com.xa.mass.api.auth.usage.ApiUsageStatus;
 import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
-import com.xa.mass.api.auth.session.SubmitterViewerSessionService;
+import com.xa.mass.api.auth.session.ApiKeyViewerSessionService;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -32,7 +32,7 @@ public class ApiUsageController {
     private final ApiUsageLedgerService usageLedgerService;
     private final AuthProvider authProvider;
     private final ApiKeyCredentialService apiKeyCredentialService;
-    private final SubmitterViewerSessionService submitterViewerSessionService;
+    private final ApiKeyViewerSessionService apiKeyViewerSessionService;
 
     public ApiUsageController(ApiUsageLedgerService usageLedgerService,
                               AuthProvider authProvider) {
@@ -43,11 +43,11 @@ public class ApiUsageController {
     public ApiUsageController(ApiUsageLedgerService usageLedgerService,
                               AuthProvider authProvider,
                               ApiKeyCredentialService apiKeyCredentialService,
-                              SubmitterViewerSessionService submitterViewerSessionService) {
+                              ApiKeyViewerSessionService apiKeyViewerSessionService) {
         this.usageLedgerService = usageLedgerService;
         this.authProvider = authProvider;
         this.apiKeyCredentialService = apiKeyCredentialService;
-        this.submitterViewerSessionService = submitterViewerSessionService;
+        this.apiKeyViewerSessionService = apiKeyViewerSessionService;
     }
 
     @GetMapping("/api-keys/{keyId}/usage")
@@ -73,8 +73,8 @@ public class ApiUsageController {
         ));
     }
 
-    @GetMapping("/submitters/me/usage")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> listCurrentSubmitterUsage(
+    @GetMapping("/api-keys:current/usage")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> listCurrentApiKeyUsage(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestParam(required = false) String project,
@@ -83,13 +83,13 @@ public class ApiUsageController {
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
             @RequestParam(required = false) Integer limit) {
-        PrincipalContext submitter = authenticateSubmitter(apiKeyHeader, authorizationHeader);
-        if (submitter == null) {
-            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing submitter credential"));
+        PrincipalContext apiKeyPrincipal = authenticateApiKeyOrViewerSession(apiKeyHeader, authorizationHeader);
+        if (apiKeyPrincipal == null) {
+            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing API key credential"));
         }
-        String keyId = usageLedgerService.apiKeyId(submitter);
+        String keyId = usageLedgerService.apiKeyId(apiKeyPrincipal);
         if (keyId == null) {
-            return ResponseEntity.status(403).body(ApiResponse.error(403, "Current submitter is not an API key principal"));
+            return ResponseEntity.status(403).body(ApiResponse.error(403, "Current credential is not an API key principal"));
         }
         List<ApiUsageLedgerRecord> items = filterUsage(
                 usageLedgerService.listByKeyId(keyId),
@@ -102,7 +102,7 @@ public class ApiUsageController {
         );
         return ResponseEntity.ok(ApiResponse.success(Map.of(
                 "keyId", keyId,
-                "principalId", submitter.getPrincipalId(),
+                "principalId", apiKeyPrincipal.getPrincipalId(),
                 "items", items,
                 "total", items.size()
         )));
@@ -143,7 +143,7 @@ public class ApiUsageController {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private PrincipalContext authenticateSubmitter(String apiKeyHeader, String authorizationHeader) {
+    private PrincipalContext authenticateApiKeyOrViewerSession(String apiKeyHeader, String authorizationHeader) {
         String credential = SdkCredentialAuthSupport.extractCredential(apiKeyHeader, authorizationHeader);
         if (credential == null) {
             return null;
@@ -155,6 +155,6 @@ public class ApiUsageController {
         if (principal != null) {
             return principal;
         }
-        return submitterViewerSessionService == null ? null : submitterViewerSessionService.authenticate(credential);
+        return apiKeyViewerSessionService == null ? null : apiKeyViewerSessionService.authenticate(credential);
     }
 }

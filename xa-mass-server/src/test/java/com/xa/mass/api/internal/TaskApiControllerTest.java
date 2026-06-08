@@ -211,7 +211,7 @@ class TaskApiControllerTest {
     }
 
     @Test
-    void createTaskShellWithSdkCredentialUsesSubmitterScope() throws Exception {
+    void createTaskShellWithSdkCredentialUsesApiKeyScope() throws Exception {
         TaskShellSnapshot createdTask = taskShell("task-sdk-001", "crawlerApp", "crawler-agent");
 
         when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(

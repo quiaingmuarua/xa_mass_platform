@@ -22,10 +22,10 @@ function jsonResponseWithStatus(body: unknown, status: number): Response {
     })
 }
 
-function discoveryFetch(submitterResponse: Response): (input: string) => Promise<Response> {
+function discoveryFetch(apiKeyResponse: Response): (input: string) => Promise<Response> {
     return (input: string) => {
-        if (input.includes('/api/v1/submitters/me')) {
-            return Promise.resolve(submitterResponse)
+        if (input.includes('/api/v1/api-keys:current')) {
+            return Promise.resolve(apiKeyResponse)
         }
         if (input.includes('/api/v1/catalog/event-capabilities')) {
             return Promise.resolve(
@@ -288,7 +288,7 @@ describe('RuntimeDiscoveryPage', () => {
         expect(wrapper.text()).toContain('1 / 2')
         expect(wrapper.text()).not.toContain('phone-device-probe-ws-sg-001')
         expect(wrapper.text()).toContain('Start event draft')
-        expect(wrapper.text()).toContain('Submitter credential access')
+        expect(wrapper.text()).toContain('API-key credential access')
         expect(wrapper.text()).toContain('Credential resolved')
         expect(wrapper.text()).toContain('public-probe-runner')
         expect(wrapper.text()).toContain('task:create')
@@ -325,7 +325,7 @@ describe('RuntimeDiscoveryPage', () => {
         expect(router.currentRoute.value.query.taskName).toBeUndefined()
     })
 
-    it('renders submitter credential unauthorized state without treating it as console auth', async () => {
+    it('renders API-key credential unauthorized state without treating it as console auth', async () => {
         setRuntimeConfigOverrides({ useMockApi: false })
         vi.stubGlobal(
             'fetch',
@@ -334,7 +334,7 @@ describe('RuntimeDiscoveryPage', () => {
                     jsonResponseWithStatus(
                         {
                             code: 401,
-                            msg: 'Invalid or missing submitter credential',
+                            msg: 'Invalid or missing API-key credential',
                             data: null,
                         },
                         401,
@@ -345,11 +345,11 @@ describe('RuntimeDiscoveryPage', () => {
 
         const { wrapper } = await mountRuntimeDiscoveryPage()
 
-        expect(wrapper.text()).toContain('No submitter credential in this browser session')
+        expect(wrapper.text()).toContain('No API-key credential in this browser session')
         expect(wrapper.text()).toContain('It is not the control-console login state')
     })
 
-    it('renders submitter credential unavailable state when introspection is not exposed', async () => {
+    it('renders API-key credential unavailable state when introspection is not exposed', async () => {
         setRuntimeConfigOverrides({ useMockApi: false })
         vi.stubGlobal(
             'fetch',
@@ -377,7 +377,7 @@ describe('RuntimeDiscoveryPage', () => {
         vi.stubGlobal(
             'fetch',
             vi.fn((input: string) => {
-                if (input.includes('/api/v1/submitters/me')) {
+                if (input.includes('/api/v1/api-keys:current')) {
                     return Promise.resolve(
                         jsonResponseWithStatus(
                             {

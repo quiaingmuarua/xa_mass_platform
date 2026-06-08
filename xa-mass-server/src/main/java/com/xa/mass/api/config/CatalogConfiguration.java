@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Profile;
  * capability read APIs when the host runtime does not provide a live bean.
  */
 @Configuration
-@Profile("!dev & !prod")
+@Profile("!memory-local & !durable-local")
 public class CatalogConfiguration {
 
     @Bean

@@ -72,7 +72,7 @@ export interface ApiKeyApplicationCreateRequest {
     attributes?: Record<string, string>
 }
 
-export interface SubmitterViewerSessionView {
+export interface ApiKeyViewerSessionView {
     sessionId: string
     keyId: string
     principalId: string
@@ -87,8 +87,8 @@ export interface SubmitterViewerSessionView {
     revokedAt: string | null
 }
 
-export interface SubmitterViewerSessionCreateResponse {
-    session: SubmitterViewerSessionView
+export interface ApiKeyViewerSessionCreateResponse {
+    session: ApiKeyViewerSessionView
     rawSecret: string
 }
 
@@ -119,7 +119,7 @@ export interface ApiUsageLedgerRecord {
     createdAt: string
 }
 
-export interface CurrentSubmitterUsageResponse {
+export interface CurrentApiKeyUsageResponse {
     keyId: string
     principalId: string
     items: ApiUsageLedgerRecord[]

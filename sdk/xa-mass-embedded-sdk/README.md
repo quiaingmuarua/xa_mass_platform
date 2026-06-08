@@ -37,8 +37,8 @@ Create an SDK application handle:
 ```java
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterProfile;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.CredentialPrincipalProfile;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
@@ -266,7 +266,7 @@ Register a lightweight principal credential binding when an embedding app wants
 an API-key or service-account style identity:
 
 ```java
-app.registerSubmitter(SubmitterRegistration.builder()
+app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
         .principalId("telegram-bot")
         .credential("dev-api-key")
         .userId("bot-user")
@@ -277,21 +277,16 @@ app.registerSubmitter(SubmitterRegistration.builder()
         .attributes(java.util.Map.of("channel", "telegram"))
         .build());
 
-var submitter = app.authenticateSubmitter("dev-api-key");
-SubmitterProfile submitterProfile = app.getSubmitter("telegram-bot");
+var apiKeyPrincipal = app.authenticateCredential("dev-api-key");
+CredentialPrincipalProfile profile = app.getCredentialPrincipal("telegram-bot");
 ```
 
-`registerSubmitter(...)` accepts the raw credential. `listSubmitters()` and
-`getSubmitter(...)` return `SubmitterProfile` and intentionally do not expose
-the credential back to callers. Registering the same credential for a different
-principal is rejected. A single `userId` can own multiple credentials; each
-credential keeps its own permissions, project scopes, and event scopes.
-
-`Submitter*` remains acceptable embedded resource vocabulary for this facade.
-Server API-key lifecycle code must not use this resource facade to publish auth
-state; it uses the narrower `CredentialAuthProjectionWriter` contract from
-`xa-mass-embedded-sdk-api`. That split keeps future durable API-key schemas from
-being named or shaped after the historical submitter resource facade.
+`registerCredentialPrincipal(...)` accepts the raw credential.
+`listCredentialPrincipals()` and `getCredentialPrincipal(...)` return
+`CredentialPrincipalProfile` and intentionally do not expose the credential
+back to callers. Registering the same credential for a different principal is
+rejected. A single `userId` can own multiple credentials; each credential keeps
+its own permissions, project scopes, and event scopes.
 
 The returned `MassSdkApplication` exposes:
 
@@ -302,7 +297,7 @@ The returned `MassSdkApplication` exposes:
 - raw transport side-channel access remains internal/operator-only below the stable SDK surface; product or server code should not depend on `sdk.internal`
 - worker mainline after `start()`: `registerWorker(...)`, `getWorker(...)`, `getAllWorkers()`, `isWorkerOnline(...)`
 - worker client/mainline after `start()`: `pullWorker(...)`, `workerOnline(...)`, `workerHeartbeat(...)`, `workerOffline(...)`, `pollTasks(...)`, `submitResult(...)`
-- resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterProfile` without credentials
+- resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerCredentialPrincipal(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listCredentialPrincipals()`, `getCredentialPrincipal(...)`, `authenticateCredential(...)`, `hasProject(...)`, `hasEvent(...)`, `hasCredentialPrincipal(...)`, `projectSupportsEvent(...)`; credential principal list/get return `CredentialPrincipalProfile` without raw credentials
 - stable runtime bootstrap surface after `start()`: open mainline registration/mutation methods such as `registerWorker(...)`, `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`, `replaceDefaultRules(...)`; WorkerContext registration is no longer an SDK surface
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
 
@@ -312,9 +307,9 @@ Current SDK contracts:
 | --- | --- |
 | task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` and `executeTaskCommand(taskId, MassTaskCommandRequest)` for lifecycle/governance; `taskName` is server-derived, and capability `eventCode` belongs on append batches or per-item ingress rather than task shell truth |
 | worker resources | `WorkerGroupDeclaration.eventBindings` declares capability truth; `WorkerRegistration` declares worker execution identity plus group/node membership. Transport liveness owns online state, and `isWorkerOnline(...)` reads transport presence when available (`STALE`/`OFFLINE` both surface as not online). WorkerContext registration/snapshot contracts have been removed from the SDK |
-| resources | `ResourceOperations` owns project/event/submitter resources; project is a first-class control-plane binding and enabled projects also bind into engine task creation and worker capability checks. Submitter resource names are embedded facade vocabulary, not the server API-key lifecycle/auth projection owner. |
+| resources | `ResourceOperations` owns project/event resources plus credential-principal projection for embedded runtimes; project is a first-class control-plane binding and enabled projects also bind into engine task creation and worker capability checks. |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
-| submitters | in-memory principal/API-key binding only, not a full user subsystem; queries return `SubmitterProfile`, not credentials |
+| credential principals | in-memory principal/API-key binding only, not a full user subsystem; queries return `CredentialPrincipalProfile`, not raw credentials |
 | diagnostics/detail | bounded runtime validation/resolution stays behind `app.taskDiagnostics()` instead of the default `MassSdkApplication` task mainline. SDK mainline no longer exposes task-item or attempt detail query APIs; production detail belongs in logs, trace, audit sinks, or async persistence |
 | removed paths | direct engine/manager/runtime escape hatches are removed; queue/session/raw transport debug methods are also off the stable `MassSdkApplication` main surface |
 | startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |

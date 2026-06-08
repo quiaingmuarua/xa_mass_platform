@@ -13,7 +13,7 @@ server, SDK, engine, transport, runtime, or trace truth.
 Use
 [../doc/FRONTEND_BACKEND_CONTRACT.md](../doc/FRONTEND_BACKEND_CONTRACT.md)
 when the task touches backend API calls, auth mode handling, permissions,
-server DTO shapes, submitter viewer credentials, or frontend mock/real adapter
+server DTO shapes, API-key viewer credentials, or frontend mock/real adapter
 alignment. The project is server + SDK first; frontend consumes backend
 contracts and does not define replacement platform truth.
 

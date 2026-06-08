@@ -17,7 +17,7 @@ Rules:
 
 - do not add server API-key/IAM/usage tables under
   `platform_infra/mass-storage-jdbc`
-- do not add submitter-viewer session tables
+- do not add API-key viewer session tables
 - do not add runtime queue, lease, worker presence, dispatch, result
   convergence, trace, or high-volume history tables
 - current pre-release schema changes may require deleting/recreating the DB

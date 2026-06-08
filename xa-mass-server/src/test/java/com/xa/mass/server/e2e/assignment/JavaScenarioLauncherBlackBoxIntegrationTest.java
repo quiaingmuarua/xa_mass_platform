@@ -3,8 +3,8 @@ package com.xa.mass.server.e2e.assignment;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
@@ -40,12 +40,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.mock.bootstrap.enabled=false"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTest {
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String TASK_API_KEY = "ijs-task-key";
-    private static final String TASK_COMMAND_API_KEY = "ijs-command-key";
     private static final String WORKER_ID = "ijs-scenario-worker-001";
     private static final String WORKER_GROUP_ID = "ijs-scenario-group";
     private static final String WEBSOCKET_WORKER_ID = "ijs-scenario-ws-worker-001";
@@ -65,25 +64,37 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
 
         String output;
         String baseUrl = "http://127.0.0.1:" + port;
-        try (ExternalJavaScenarioLauncherProcess launcher = ExternalJavaScenarioLauncherProcess.start(
+        try (ExternalJavaScenarioLauncherProcess workerLauncher = ExternalJavaScenarioLauncherProcess.startWorkerLauncher(
                 baseUrl,
                 null,
                 scenarioDir,
-                TASK_API_KEY,
-                TASK_COMMAND_API_KEY,
-                500L,
-                true)) {
-            output = launcher.awaitExit(Duration.ofSeconds(90), "Java scenario launcher");
+                TASK_API_KEY)) {
+            waitForWorkerPresenceOnline(
+                    WORKER_ID,
+                    40,
+                    250L,
+                    () -> workerLauncher.assertAlive(
+                            "Java scenario worker launcher exited before polling worker became online"),
+                    workerLauncher::capturedOutput
+            );
+            output = ExternalJavaScenarioLauncherProcess.runTaskLauncher(
+                    baseUrl,
+                    scenarioDir,
+                    TASK_API_KEY,
+                    Duration.ofSeconds(90));
+            String taskId = extractCreatedTaskId(output);
+            assertApiOk(sealTask(taskId));
+            assertApiOk(approveTask(taskId));
+
+            RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
+            assertEquals("TERMINAL", terminal.task().get("status"));
+            assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
+            assertEquals(1, terminal.stats().successCount());
+            assertEquals(1, terminal.stats().finalCount());
+            assertTrue(terminal.activeLeases().isEmpty());
         }
 
         String taskId = extractCreatedTaskId(output);
-        RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
-        assertEquals("TERMINAL", terminal.task().get("status"));
-        assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-        assertEquals(1, terminal.stats().successCount());
-        assertEquals(1, terminal.stats().finalCount());
-        assertTrue(terminal.activeLeases().isEmpty());
-
         TaskSnapshot terminalView = fetchTaskSnapshot(taskId);
         assertEquals(WORKER_ID, terminalView.messages().getFirst().get("latestAttemptWorkerId"));
         Object outputObject = terminalView.messages().getFirst().get("output");
@@ -111,25 +122,37 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
         String output;
         String baseUrl = "http://127.0.0.1:" + port;
         String webSocketUrl = "ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws";
-        try (ExternalJavaScenarioLauncherProcess launcher = ExternalJavaScenarioLauncherProcess.start(
+        try (ExternalJavaScenarioLauncherProcess workerLauncher = ExternalJavaScenarioLauncherProcess.startWorkerLauncher(
                 baseUrl,
                 webSocketUrl,
                 scenarioDir,
-                TASK_API_KEY,
-                TASK_COMMAND_API_KEY,
-                500L,
-                true)) {
-            output = launcher.awaitExit(Duration.ofSeconds(90), "Java scenario launcher websocket");
+                TASK_API_KEY)) {
+            waitForWorkerPresenceOnline(
+                    WEBSOCKET_WORKER_ID,
+                    40,
+                    250L,
+                    () -> workerLauncher.assertAlive(
+                            "Java scenario worker launcher exited before websocket worker became online"),
+                    workerLauncher::capturedOutput
+            );
+            output = ExternalJavaScenarioLauncherProcess.runTaskLauncher(
+                    baseUrl,
+                    scenarioDir,
+                    TASK_API_KEY,
+                    Duration.ofSeconds(90));
+            String taskId = extractCreatedTaskId(output);
+            assertApiOk(sealTask(taskId));
+            assertApiOk(approveTask(taskId));
+
+            RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
+            assertEquals("TERMINAL", terminal.task().get("status"));
+            assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
+            assertEquals(1, terminal.stats().successCount());
+            assertEquals(1, terminal.stats().finalCount());
+            assertTrue(terminal.activeLeases().isEmpty());
         }
 
         String taskId = extractCreatedTaskId(output);
-        RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
-        assertEquals("TERMINAL", terminal.task().get("status"));
-        assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-        assertEquals(1, terminal.stats().successCount());
-        assertEquals(1, terminal.stats().finalCount());
-        assertTrue(terminal.activeLeases().isEmpty());
-
         TaskSnapshot terminalView = fetchTaskSnapshot(taskId);
         assertEquals(WEBSOCKET_WORKER_ID, terminalView.messages().getFirst().get("latestAttemptWorkerId"));
         Object outputObject = terminalView.messages().getFirst().get("output");
@@ -165,7 +188,7 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                 "ijs.polling.echo",
                 "IJS Polling Echo",
                 "Minimal scenario-launcher polling proof event.");
-        registerScenarioSubmitters("ijsApp", "ijs.polling.echo", "ijs-worker-key", WORKER_ID);
+        registerScenarioCredentialPrincipals("ijsApp", "ijs.polling.echo", "ijs-worker-key", WORKER_ID);
         replaceScenarioRules("ijs-worker-online", "ijs-event-capability");
     }
 
@@ -177,7 +200,7 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                 "ijs.websocket.echo",
                 "IJS WebSocket Echo",
                 "Minimal scenario-launcher websocket proof event.");
-        registerScenarioSubmitters("ijsWsApp", "ijs.websocket.echo", "ijs-ws-worker-key", WEBSOCKET_WORKER_ID);
+        registerScenarioCredentialPrincipals("ijsWsApp", "ijs.websocket.echo", "ijs-ws-worker-key", WEBSOCKET_WORKER_ID);
         replaceScenarioRules("ijs-ws-worker-online", "ijs-ws-event-capability");
     }
 
@@ -203,30 +226,18 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                 .build());
     }
 
-    private void registerScenarioSubmitters(String projectCode,
-                                            String eventCode,
-                                            String workerCredential,
-                                            String workerId) {
-        sdkApp().registerSubmitter(SubmitterRegistration.builder()
-                .principalId("ijs-task-submitter")
+    private void registerScenarioCredentialPrincipals(String projectCode,
+                                                      String eventCode,
+                                                      String workerCredential,
+                                                      String workerId) {
+        sdkApp().projectCredential(CredentialPrincipalRegistration.builder()
+                .principalId("ijs-task-api-key")
                 .credential(TASK_API_KEY)
                 .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
                 .projectScopes(List.of(projectCode))
                 .eventScopes(List.of(eventCode))
                 .build());
-        sdkApp().registerSubmitter(SubmitterRegistration.builder()
-                .principalId("ijs-task-command")
-                .credential(TASK_COMMAND_API_KEY)
-                .permissions(List.of(
-                        PrincipalContext.TASK_CREATE_PERMISSION,
-                        "task:edit",
-                        "task:control",
-                        "task:govern"
-                ))
-                .projectScopes(List.of(projectCode))
-                .eventScopes(List.of(eventCode))
-                .build());
-        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+        sdkApp().projectCredential(CredentialPrincipalRegistration.builder()
                 .principalId(workerId)
                 .credential(workerCredential)
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
@@ -281,24 +292,21 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                       "eventCodes": ["ijs.polling.echo"]
                     }
                   ],
-                  "submitters": [
+                  "apiKeys": [
                     {
-                      "principalId": "ijs-task-submitter",
-                      "credential": "ijs-task-key",
+                      "principalId": "ijs-task-api-key",
+                      "rawSecret": "ijs-task-key",
+                      "createdForUserId": "ops-admin",
+                      "devOnly": true,
                       "permissions": ["task:create"],
                       "projectScopes": ["ijsApp"],
                       "eventScopes": ["ijs.polling.echo"]
                     },
                     {
-                      "principalId": "ijs-task-command",
-                      "credential": "ijs-command-key",
-                      "permissions": ["task:create", "task:edit", "task:control", "task:govern"],
-                      "projectScopes": ["ijsApp"],
-                      "eventScopes": ["ijs.polling.echo"]
-                    },
-                    {
                       "principalId": "ijs-scenario-worker-001",
-                      "credential": "ijs-worker-key",
+                      "rawSecret": "ijs-worker-key",
+                      "createdForUserId": "ops-admin",
+                      "devOnly": true,
                       "permissions": ["worker:poll"],
                       "projectScopes": ["ijsApp"],
                       "eventScopes": ["ijs.polling.echo"],
@@ -403,24 +411,21 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                       "eventCodes": ["ijs.websocket.echo"]
                     }
                   ],
-                  "submitters": [
+                  "apiKeys": [
                     {
-                      "principalId": "ijs-task-submitter",
-                      "credential": "ijs-task-key",
+                      "principalId": "ijs-task-api-key",
+                      "rawSecret": "ijs-task-key",
+                      "createdForUserId": "ops-admin",
+                      "devOnly": true,
                       "permissions": ["task:create"],
                       "projectScopes": ["ijsWsApp"],
                       "eventScopes": ["ijs.websocket.echo"]
                     },
                     {
-                      "principalId": "ijs-task-command",
-                      "credential": "ijs-command-key",
-                      "permissions": ["task:create", "task:edit", "task:control", "task:govern"],
-                      "projectScopes": ["ijsWsApp"],
-                      "eventScopes": ["ijs.websocket.echo"]
-                    },
-                    {
                       "principalId": "ijs-scenario-ws-worker-001",
-                      "credential": "ijs-ws-worker-key",
+                      "rawSecret": "ijs-ws-worker-key",
+                      "createdForUserId": "ops-admin",
+                      "devOnly": true,
                       "permissions": ["worker:poll"],
                       "projectScopes": ["ijsWsApp"],
                       "eventScopes": ["ijs.websocket.echo"],

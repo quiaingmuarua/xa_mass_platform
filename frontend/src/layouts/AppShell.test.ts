@@ -61,13 +61,13 @@ describe('AppShell', () => {
         )
     })
 
-    it('does not wrap submitter viewer with the operator sidebar', async () => {
+    it('does not wrap API-key viewer with the operator sidebar', async () => {
         const router = createRouter({
             history: createMemoryHistory(),
             routes: appRoutes as unknown as RouteRecordRaw[],
         })
 
-        await router.push('/submitter-viewer')
+        await router.push('/api-key-viewer')
         await router.isReady()
 
         const wrapper = mount(AppShell, {

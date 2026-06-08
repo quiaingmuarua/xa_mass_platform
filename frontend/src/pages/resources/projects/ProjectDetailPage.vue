@@ -5,8 +5,8 @@
         <h2 class="page-title">{{ pageTitle }}</h2>
         <p class="page-subtitle">
           Project-scoped control-plane view. This page gathers the authorized
-          event set, scoped principals, worker coverage, and task inventory
-          under one owner boundary.
+          event set, worker coverage, and task inventory under one owner
+          boundary.
         </p>
       </div>
       <div class="header-actions">
@@ -28,10 +28,6 @@
         <div class="metric-tile">
           <div class="metric-label">Authorized events</div>
           <div class="metric-value">{{ events.length }}</div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Scoped principals</div>
-          <div class="metric-value">{{ submitters.length }}</div>
         </div>
         <div class="metric-tile">
           <div class="metric-label">WorkerGroups</div>
@@ -79,7 +75,7 @@
               <ol class="scope-list">
                 <li>Pick the project as the coarse owner boundary.</li>
                 <li>Choose an authorized event capability for item ingest.</li>
-                <li>Use a scoped principal or API key bound to the project.</li>
+                <li>Use an API key whose scopes allow this project.</li>
                 <li>Confirm worker coverage before approving active workload.</li>
                 <li>Track resulting tasks under the same project scope.</li>
               </ol>
@@ -142,36 +138,7 @@
         </el-card>
 
         <el-row :gutter="20">
-          <el-col :span="12">
-            <el-card class="page-card">
-              <template #header>
-                <strong>Scoped principals</strong>
-              </template>
-              <PageEmptyState
-                v-if="submitters.length === 0"
-                description="No project-scoped principals are currently visible."
-              />
-              <el-table v-else :data="submitters" row-key="principalId">
-                <el-table-column prop="principalId" label="Principal" min-width="220">
-                  <template #default="{ row }">
-                    <div class="row-primary mono">{{ row.principalId }}</div>
-                    <div class="row-secondary">{{ row.userId || 'no user binding' }}</div>
-                  </template>
-                </el-table-column>
-                <el-table-column label="Key prefix" min-width="120">
-                  <template #default="{ row }">
-                    <span class="mono">{{ row.keyPrefix || '-' }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="Event scopes" min-width="220">
-                  <template #default="{ row }">
-                    {{ row.eventScopes.join(', ') || '*' }}
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-card>
-          </el-col>
-          <el-col :span="12">
+          <el-col :span="24">
             <el-card class="page-card">
               <template #header>
                 <strong>WorkerGroup coverage</strong>
@@ -293,7 +260,6 @@ import {
 import {
   getProject,
   listProjectEventDefinitions,
-  listProjectSubmitters,
 } from '@/api/projects'
 import {listTasks} from '@/api/tasks'
 import {listWorkers} from '@/api/workers'
@@ -304,10 +270,7 @@ import type {
   EventDefinition,
   WorkerGroupCapability,
 } from '@/types/catalog'
-import type {
-  ProjectDefinition,
-  ProjectSubmitterProfile,
-} from '@/types/projects'
+import type {ProjectDefinition} from '@/types/projects'
 import type {TaskListItem} from '@/types/tasks'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
@@ -319,7 +282,6 @@ const loading = ref(false)
 const errorMessage = ref('')
 const project = ref<ProjectDefinition | null>(null)
 const events = ref<EventDefinition[]>([])
-const submitters = ref<ProjectSubmitterProfile[]>([])
 const workers = ref<WorkerListItem[]>([])
 const workerGroups = ref<WorkerGroupCapability[]>([])
 const tasks = ref<TaskListItem[]>([])
@@ -374,25 +336,22 @@ async function loadProject(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [projectDefinition, eventRows, submitterRows, workerResponse, workerGroupRows, taskResponse] =
+    const [projectDefinition, eventRows, workerResponse, workerGroupRows, taskResponse] =
       await Promise.all([
         getProject(projectCode.value),
         listProjectEventDefinitions(projectCode.value),
-        listProjectSubmitters(projectCode.value),
         listWorkers(),
         listWorkerGroupCapabilities(),
         listTasks({ project: projectCode.value }),
       ])
     project.value = projectDefinition
     events.value = eventRows
-    submitters.value = submitterRows
     workers.value = workerResponse.items
     workerGroups.value = workerGroupRows
     tasks.value = taskResponse.items
   } catch (error) {
     project.value = null
     events.value = []
-    submitters.value = []
     workers.value = []
     workerGroups.value = []
     tasks.value = []

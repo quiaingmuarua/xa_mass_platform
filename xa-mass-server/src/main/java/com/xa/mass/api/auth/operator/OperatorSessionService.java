@@ -100,7 +100,7 @@ public final class OperatorSessionService {
         if (!configuredCookieSecure.isBlank()) {
             return Boolean.parseBoolean(configuredCookieSecure);
         }
-        return authProperties.isProdProfile();
+        return false;
     }
 
     private String readCookie(HttpServletRequest request) {

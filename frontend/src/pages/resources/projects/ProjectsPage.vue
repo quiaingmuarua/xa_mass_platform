@@ -29,10 +29,6 @@
           <div class="metric-value">{{ enabledProjectCount }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Scoped principals</div>
-          <div class="metric-value">{{ totalSubmitterCount }}</div>
-        </div>
-        <div class="metric-tile">
           <div class="metric-label">WorkerGroups</div>
           <div class="metric-value">{{ workerGroups.length }}</div>
         </div>
@@ -68,11 +64,6 @@
           <el-table-column label="Events" min-width="100">
             <template #default="{ row }">
               {{ row.eventCount }}
-            </template>
-          </el-table-column>
-          <el-table-column label="Principals" min-width="100">
-            <template #default="{ row }">
-              {{ row.submitterCount }}
             </template>
           </el-table-column>
           <el-table-column label="WorkerGroups" min-width="130">
@@ -121,17 +112,13 @@ import {
 } from '@/api/catalog'
 import {
   listProjects,
-  listProjectSubmitters,
 } from '@/api/projects'
 import {listTasks} from '@/api/tasks'
 import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type {
-  ProjectDefinition,
-  ProjectSubmitterProfile,
-} from '@/types/projects'
+import type {ProjectDefinition} from '@/types/projects'
 import type {TaskListItem} from '@/types/tasks'
 import type {WorkerGroupCapability} from '@/types/catalog'
 import type {WorkerListItem} from '@/types/workers'
@@ -139,7 +126,6 @@ import {toErrorMessage} from '@/utils/errors'
 
 interface ProjectRow extends ProjectDefinition {
   eventCount: number
-  submitterCount: number
   workerGroupCount: number
   dispatchEligibleCount: number
   workerCount: number
@@ -154,23 +140,15 @@ const projects = ref<ProjectDefinition[]>([])
 const tasks = ref<TaskListItem[]>([])
 const workers = ref<WorkerListItem[]>([])
 const workerGroups = ref<WorkerGroupCapability[]>([])
-const submittersByProject = ref<Record<string, ProjectSubmitterProfile[]>>({})
 
 const enabledProjectCount = computed(
   () => projects.value.filter((project) => project.enabled).length,
-)
-const totalSubmitterCount = computed(() =>
-  Object.values(submittersByProject.value).reduce(
-    (sum, items) => sum + items.length,
-    0,
-  ),
 )
 const projectRows = computed<ProjectRow[]>(() =>
   projects.value
     .map((project) => ({
       ...project,
       eventCount: project.eventCodes.length,
-      submitterCount: submittersForProject(project.code).length,
       workerGroupCount: workerGroupsForProject(project).length,
       dispatchEligibleCount: workerGroupsForProject(project).reduce(
         (sum, group) => sum + group.dispatchEligibleCount,
@@ -192,23 +170,15 @@ async function loadProjects(): Promise<void> {
       listTasks(),
       listWorkerGroupCapabilities(),
     ])
-    const submitterEntries = await Promise.all(
-      projectItems.map(async (project) => [
-        project.code,
-        await listProjectSubmitters(project.code),
-      ] as const),
-    )
     projects.value = projectItems
     workers.value = workerResponse.items
     workerGroups.value = workerGroupRows
     tasks.value = taskResponse.items
-    submittersByProject.value = Object.fromEntries(submitterEntries)
   } catch (error) {
     projects.value = []
     workers.value = []
     workerGroups.value = []
     tasks.value = []
-    submittersByProject.value = {}
     errorMessage.value = toErrorMessage(error, 'Failed to load projects.')
   } finally {
     loading.value = false
@@ -227,10 +197,6 @@ function workerGroupsForProject(project: ProjectDefinition): WorkerGroupCapabili
         authorizedEventCodes.has(binding.eventCode),
     )
   })
-}
-
-function submittersForProject(projectCode: string): ProjectSubmitterProfile[] {
-  return submittersByProject.value[projectCode] ?? []
 }
 
 function workersForProject(project: ProjectDefinition): WorkerListItem[] {

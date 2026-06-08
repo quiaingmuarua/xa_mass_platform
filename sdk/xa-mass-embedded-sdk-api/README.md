@@ -21,7 +21,7 @@ It is not the public HTTP wire-contract module; that narrower owner is
 - request/response and registration models intended for SDK callers
 - owner-backed worker-control and task-stage evidence request/snapshot models
   intended for SDK callers
-- submitter/principal contract types and small in-memory SDK-local helpers
+- credential-principal contract types and small in-memory SDK-local helpers
 - platform-level authorization request/policy contracts and minimal ownership contracts
 - catalog and event-definition contract types
 
@@ -42,7 +42,7 @@ It is not the public HTTP wire-contract module; that narrower owner is
 - `xa-mass-server` may adapt these contracts into HTTP/auth/project/tenant/user
   flows, but server host concerns must not redefine kernel semantics inside the
   SDK contract layer
-- security model ownership starts here: `PrincipalContext`, submitter credentials, `AuthorizationRequest`, `AuthorizationPolicy`, and `TaskOwnershipStamp` are SDK contracts, not server-only types
+- security model ownership starts here: `PrincipalContext`, credential principals, `AuthorizationRequest`, `AuthorizationPolicy`, and `TaskOwnershipStamp` are SDK contracts, not server-only types
 - infra modules must not export `com.xa.mass.sdk.*` ownership back out of this
   module family
 
@@ -63,11 +63,10 @@ Read-model rule:
 - `com.xa.mass.sdk.auth.PrincipalContext` is the shared authenticated caller shape
 - `com.xa.mass.sdk.auth.CredentialAuthProjectionWriter` is the narrow
   lifecycle-to-auth-projection write port. API-key lifecycle owners should use
-  this port instead of broad submitter resource operations.
-- `com.xa.mass.sdk.auth.SubmitterRegistry` is the embedded submitter resource
-  registry only. Authentication (`AuthProvider`), principal lookup
-  (`PrincipalDirectory`), and auth projection writes are separate contracts even
-  when one backend implements all of them.
+  this port instead of broad credential-principal resource operations.
+- `com.xa.mass.sdk.auth.CredentialPrincipalStore` is the embedded credential
+  principal store for authentication (`AuthProvider`), principal lookup
+  (`PrincipalDirectory`), and auth projection writes.
 - `com.xa.mass.sdk.authz.AuthorizationRequest` + `AuthorizationPolicy` are the unified control-plane authorization entrypoint
 - `AuthorizationDecision` now carries both human-readable `reason` and structured `AuthorizationReasonCode`, so hosts do not need to infer deny semantics from string prefixes
 - `PlatformResourceType` and `PlatformAction` provide the current minimal platform resource/action vocabulary

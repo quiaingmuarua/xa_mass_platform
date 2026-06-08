@@ -17,6 +17,10 @@ import java.util.concurrent.TimeUnit;
  */
 public final class ExternalJavaScenarioLauncherProcess implements AutoCloseable {
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(10);
+    private static final String TASK_LAUNCHER_JAR =
+            "integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-task-launcher.jar";
+    private static final String WORKER_LAUNCHER_JAR =
+            "integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-worker-launcher.jar";
     private static volatile boolean scenarioLauncherBuilt;
 
     private final Process process;
@@ -30,40 +34,42 @@ public final class ExternalJavaScenarioLauncherProcess implements AutoCloseable 
         this.outputPump.start();
     }
 
-    public static ExternalJavaScenarioLauncherProcess start(String baseUrl,
-                                                            Path scenarioDir,
-                                                            String taskApiKey,
-                                                            String taskCommandApiKey,
-                                                            long idleTimeoutMs) throws Exception {
-        return start(baseUrl, null, scenarioDir, taskApiKey, taskCommandApiKey, idleTimeoutMs, false);
+    public static String runTaskLauncher(String baseUrl,
+                                         Path scenarioDir,
+                                         String taskApiKey,
+                                         Duration timeout) throws Exception {
+        try (ExternalJavaScenarioLauncherProcess process = startProcess(
+                TASK_LAUNCHER_JAR,
+                baseUrl,
+                null,
+                scenarioDir,
+                taskApiKey)) {
+            return process.awaitExit(timeout, "Java scenario task launcher");
+        }
     }
 
-    public static ExternalJavaScenarioLauncherProcess start(String baseUrl,
-                                                            String webSocketUrl,
-                                                            Path scenarioDir,
-                                                            String taskApiKey,
-                                                            String taskCommandApiKey,
-                                                            long idleTimeoutMs) throws Exception {
-        return start(baseUrl, webSocketUrl, scenarioDir, taskApiKey, taskCommandApiKey, idleTimeoutMs, false);
+    public static ExternalJavaScenarioLauncherProcess startWorkerLauncher(String baseUrl,
+                                                                          String webSocketUrl,
+                                                                          Path scenarioDir,
+                                                                          String taskApiKey) throws Exception {
+        return startProcess(WORKER_LAUNCHER_JAR, baseUrl, webSocketUrl, scenarioDir, taskApiKey);
     }
 
-    public static ExternalJavaScenarioLauncherProcess start(String baseUrl,
-                                                            String webSocketUrl,
-                                                            Path scenarioDir,
-                                                            String taskApiKey,
-                                                            String taskCommandApiKey,
-                                                            long idleTimeoutMs,
-                                                            boolean skipDevBootstrap) throws Exception {
+    private static ExternalJavaScenarioLauncherProcess startProcess(String jarPath,
+                                                                    String baseUrl,
+                                                                    String webSocketUrl,
+                                                                    Path scenarioDir,
+                                                                    String taskApiKey) throws Exception {
         Objects.requireNonNull(baseUrl, "baseUrl");
+        Objects.requireNonNull(jarPath, "jarPath");
         Objects.requireNonNull(scenarioDir, "scenarioDir");
         Objects.requireNonNull(taskApiKey, "taskApiKey");
-        Objects.requireNonNull(taskCommandApiKey, "taskCommandApiKey");
 
         ensureScenarioLauncherBuilt();
         java.util.List<String> command = new java.util.ArrayList<>();
         command.add(resolveJavaBinary());
         command.add("-jar");
-        command.add(resolveRepoFile("integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-launcher.jar").toString());
+        command.add(resolveRepoFile(jarPath).toString());
         command.add("--base-url");
         command.add(baseUrl);
         if (webSocketUrl != null && !webSocketUrl.isBlank()) {
@@ -74,15 +80,8 @@ public final class ExternalJavaScenarioLauncherProcess implements AutoCloseable 
         command.add(scenarioDir.toString());
         command.add("--task-api-key");
         command.add(taskApiKey);
-        command.add("--task-command-api-key");
-        command.add(taskCommandApiKey);
-        command.add("--idle-timeout-ms");
-        command.add(String.valueOf(idleTimeoutMs));
         command.add("--max-polling-workers");
         command.add("1");
-        if (skipDevBootstrap) {
-            command.add("--skip-dev-bootstrap");
-        }
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         processBuilder.redirectErrorStream(true);
         processBuilder.directory(resolveRepoRoot().toFile());
@@ -105,6 +104,12 @@ public final class ExternalJavaScenarioLauncherProcess implements AutoCloseable 
     public String capturedOutput() {
         synchronized (capturedOutput) {
             return capturedOutput.toString();
+        }
+    }
+
+    public void assertAlive(String message) {
+        if (!process.isAlive()) {
+            throw new AssertionError(message + "\nCaptured output:\n" + capturedOutput());
         }
     }
 

@@ -61,9 +61,9 @@ on-demand import/registration track after shell/product-page behavior settles.
 | CSRF/session handling | `setOperatorCsrfToken()`, `currentOperatorCsrfHeader()`, `clearOperatorSessionAuth()` | implemented baseline |
 | Route metadata | `src/router/modules/*`, `src/router/routes.test.ts` | implemented baseline |
 | Menu model | `src/router/visible-routes.ts`, `src/router/menu-model.ts`, `src/router/menu.test.ts` | implemented baseline |
-| Submitter/public shell separation | `AppShell.vue`, `AppShell.test.ts`, `menu.test.ts` | implemented baseline |
+| API-key viewer/public shell separation | `AppShell.vue`, `AppShell.test.ts`, `menu.test.ts` | implemented baseline |
 | Console-kit components | `src/console-kit/**` | partial baseline with visual debt |
-| Console-kit consumers | Dashboard, Tasks List, Submitter Viewer, API Keys | mainline consumers |
+| Console-kit consumers | Dashboard, Tasks List, API-key Viewer, API Keys | mainline consumers |
 
 ## Raw Color And Visual Debt
 
@@ -87,12 +87,12 @@ and console-kit files are limited to `:root` token declarations and Vue
 
 | Component | Consumers | Classification |
 | --- | --- | --- |
-| `ConsolePage` | Dashboard, Tasks List, Submitter Viewer, API Keys | mainline, visual debt |
-| `MetricGrid` | Dashboard, Submitter Viewer, API Keys | mainline |
-| `MetricCard` | Dashboard, Submitter Viewer, API Keys | mainline, visual debt |
+| `ConsolePage` | Dashboard, Tasks List, API-key Viewer, API Keys | mainline, visual debt |
+| `MetricGrid` | Dashboard, API-key Viewer, API Keys | mainline |
+| `MetricCard` | Dashboard, API-key Viewer, API Keys | mainline, visual debt |
 | `FilterToolbar` | Tasks List | mainline, limited reuse |
-| `StatusBadge` | Dashboard, Tasks List, Submitter Viewer, API Keys | mainline, visual debt |
-| `CredentialInputCard` | Submitter Viewer | mainline, limited reuse |
+| `StatusBadge` | Dashboard, Tasks List, API-key Viewer, API Keys | mainline, visual debt |
+| `CredentialInputCard` | API-key Viewer | mainline, limited reuse |
 | `SecretRevealDialog` | API Keys | mainline, security-critical |
 
 Rollback candidates: none currently. Avoid adding `ResourceTable` until repeated
@@ -103,10 +103,10 @@ table behavior is proven across pages.
 | Shell | Current Behavior | Boundary |
 | --- | --- | --- |
 | `operator` | renders `AppSidebar` and `AppHeader`; menu from route metadata | full operator shell |
-| `submitter-viewer` | no operator sidebar/header; centered shell content | lightweight viewer shell |
+| `api-key-viewer` | no operator sidebar/header; centered shell content | lightweight viewer shell |
 | `public` | no operator sidebar/header; centered shell content | lightweight public shell |
 
-Submitter Viewer and public shell modes must not inherit operator navbar,
+API-key Viewer and public shell modes must not inherit operator navbar,
 sidebar, operator mode switch, or operator auth diagnostics.
 
 ## Next Slice

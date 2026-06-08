@@ -1,12 +1,12 @@
 package com.xa.mass.server.bootstrap.seed;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
 import com.xa.mass.api.auth.operator.OperatorCredentialRecord;
 import com.xa.mass.api.auth.operator.OperatorCredentialStore;
 import com.xa.mass.server.catalog.CatalogMetadataProjection;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
@@ -29,17 +29,21 @@ final class ControlPlaneSeedImporter {
 
     private final MassSdkApplication app;
     private final CatalogMetadataStore catalogMetadataStore;
+    private final ApiKeyCredentialService apiKeyCredentialService;
     private final OperatorCredentialStore operatorCredentialStore;
     private final ObjectMapper objectMapper;
     private final ResourceLoader resourceLoader;
 
     ControlPlaneSeedImporter(MassSdkApplication app,
                              CatalogMetadataStore catalogMetadataStore,
+                             ApiKeyCredentialService apiKeyCredentialService,
                              OperatorCredentialStore operatorCredentialStore,
                              ObjectMapper objectMapper,
                              ResourceLoader resourceLoader) {
         this.app = Objects.requireNonNull(app, "app is required");
         this.catalogMetadataStore = Objects.requireNonNull(catalogMetadataStore, "catalogMetadataStore is required");
+        this.apiKeyCredentialService = Objects.requireNonNull(apiKeyCredentialService,
+                "apiKeyCredentialService is required");
         this.operatorCredentialStore = Objects.requireNonNull(operatorCredentialStore,
                 "operatorCredentialStore is required");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper is required");
@@ -63,14 +67,14 @@ final class ControlPlaneSeedImporter {
 
         List<EventDefinition> events = toEventDefinitions(catalog);
         List<ProjectDefinition> projects = toProjectDefinitions(catalog);
-        List<SubmitterRegistration> submitters = toSubmitterRegistrations(catalog);
+        List<ApiKeyCredentialService.CreateApiKeyCommand> apiKeys = toApiKeyCommands(catalog, request);
         List<RuleDefinition> ruleDefinitions = List.copyOf(rules.getRules());
         List<OperatorCredentialRecord> operatorCredentials = toOperatorCredentials(credentialSeed);
 
         SeedImportResult result = new SeedImportResult(
                 events.size(),
                 projects.size(),
-                submitters.size(),
+                apiKeys.size(),
                 ruleDefinitions.size(),
                 operatorCredentials.size()
         );
@@ -84,7 +88,7 @@ final class ControlPlaneSeedImporter {
         CatalogMetadataProjection.upsertCatalog(catalogMetadataStore, events, projects);
         events.forEach(app::registerEventDefinition);
         projects.forEach(app::registerProject);
-        submitters.forEach(app::registerSubmitter);
+        apiKeys.forEach(this::createApiKeyIfMissing);
         if (!ruleDefinitions.isEmpty()) {
             app.replaceDefaultRules(ruleDefinitions);
         }
@@ -126,14 +130,15 @@ final class ControlPlaneSeedImporter {
         return List.copyOf(definitions);
     }
 
-    private List<SubmitterRegistration> toSubmitterRegistrations(ControlPlaneSeedCatalog catalog) {
-        List<SubmitterRegistration> registrations = new ArrayList<>();
-        for (ControlPlaneSeedCatalog.SubmitterSeed seed : catalog.getSubmitters()) {
+    private List<ApiKeyCredentialService.CreateApiKeyCommand> toApiKeyCommands(ControlPlaneSeedCatalog catalog,
+                                                                               ControlPlaneSeedImportRequest request) {
+        List<ApiKeyCredentialService.CreateApiKeyCommand> commands = new ArrayList<>();
+        for (ControlPlaneSeedCatalog.ApiKeySeed seed : catalog.getApiKeys()) {
             for (int index = 0; index < count(seed.getCount()); index++) {
-                registrations.add(toSubmitterRegistration(seed, placeholderValues(index)));
+                commands.add(toApiKeyCommand(seed, placeholderValues(index), request));
             }
         }
-        return List.copyOf(registrations);
+        return List.copyOf(commands);
     }
 
     private List<OperatorCredentialRecord> toOperatorCredentials(ControlPlaneOperatorCredentialSeed seed) {
@@ -169,20 +174,38 @@ final class ControlPlaneSeedImporter {
                 .build();
     }
 
-    private SubmitterRegistration toSubmitterRegistration(ControlPlaneSeedCatalog.SubmitterSeed seed,
-                                                          Map<String, String> placeholders) {
-        return SubmitterRegistration.builder()
-                .principalId(replace(seed.getPrincipalId(), placeholders))
-                .credential(replace(seed.getCredential(), placeholders))
-                .keyPrefix(replace(seed.getKeyPrefix(), placeholders))
-                .userId(replace(seed.getUserId(), placeholders))
-                .projectScope(replace(seed.getProjectScope(), placeholders))
-                .permissions(replace(seed.getPermissions(), placeholders))
-                .projectScopes(replace(seed.getProjectScopes(), placeholders))
-                .eventScopes(replace(seed.getEventScopes(), placeholders))
-                .enabled(seed.isEnabled())
-                .attributes(replace(seed.getAttributes(), placeholders))
-                .build();
+    private ApiKeyCredentialService.CreateApiKeyCommand toApiKeyCommand(ControlPlaneSeedCatalog.ApiKeySeed seed,
+                                                                        Map<String, String> placeholders,
+                                                                        ControlPlaneSeedImportRequest request) {
+        String rawSecret = replace(firstNonBlank(seed.getRawSecret(), seed.getCredential()), placeholders);
+        if (rawSecret == null) {
+            throw new IllegalArgumentException("apiKeys rawSecret must not be blank");
+        }
+        if (seed.isDevOnly() && !request.allowDevOnlyApiKeyRawSecrets()) {
+            throw new IllegalArgumentException(
+                    "devOnly apiKeys rawSecret seed is not allowed for this profile/import context: "
+                            + replace(seed.getPrincipalId(), placeholders)
+            );
+        }
+        return new ApiKeyCredentialService.CreateApiKeyCommand(
+                replace(seed.getPrincipalId(), placeholders),
+                replace(seed.getCreatedForUserId(), placeholders),
+                replace(seed.getProjectScopes(), placeholders),
+                replace(seed.getEventScopes(), placeholders),
+                replace(seed.getPermissions(), placeholders),
+                replace(seed.getCreatedBy(), placeholders),
+                null,
+                replace(seed.getAttributes(), placeholders),
+                null,
+                rawSecret
+        );
+    }
+
+    private void createApiKeyIfMissing(ApiKeyCredentialService.CreateApiKeyCommand command) {
+        if (apiKeyCredentialService.getByPrincipalId(command.principalId()) != null) {
+            return;
+        }
+        apiKeyCredentialService.createOperatorKey(command);
     }
 
     private static <E extends Enum<E>> E enumValue(Class<E> type, String value, String fieldName) {
@@ -238,7 +261,15 @@ final class ControlPlaneSeedImporter {
     record ControlPlaneSeedImportRequest(String catalogLocation,
                                          String rulesLocation,
                                          String operatorCredentialsLocation,
-                                         String mode) {
+                                         String mode,
+                                         boolean allowDevOnlyApiKeyRawSecrets) {
+        ControlPlaneSeedImportRequest(String catalogLocation,
+                                      String rulesLocation,
+                                      String operatorCredentialsLocation,
+                                      String mode) {
+            this(catalogLocation, rulesLocation, operatorCredentialsLocation, mode, true);
+        }
+
         boolean hasAnyLocation() {
             return catalogLocation != null || rulesLocation != null || operatorCredentialsLocation != null;
         }
@@ -254,6 +285,13 @@ final class ControlPlaneSeedImporter {
         }
     }
 
-    record SeedImportResult(int events, int projects, int submitters, int rules, int operatorCredentials) {
+    private static String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first;
+        }
+        return second == null || second.isBlank() ? null : second;
+    }
+
+    record SeedImportResult(int events, int projects, int apiKeys, int rules, int operatorCredentials) {
     }
 }

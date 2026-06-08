@@ -102,9 +102,9 @@ Rules:
 - `session` uses HttpOnly session cookie plus CSRF token for mutating operator
   routes
 - frontend must not persist operator passwords, API-key raw secrets, CSRF tokens
-  outside the existing auth runtime boundary, or internal submitter viewer
+  outside the existing auth runtime boundary, or internal API-key viewer
   credentials as user-facing concepts
-- submitter viewer credentials use submitter credential APIs and must not
+- API-key viewer credentials use API-key credential APIs and must not
   attach operator session assumptions
 
 ## Frontend API Adapter Rules
@@ -128,7 +128,7 @@ Before adding a console-facing route, classify:
 
 - route owner: public SDK ingress, public SDK read, operator command, console
   diagnostic, internal debug, or remove/merge
-- expected caller: frontend operator, submitter viewer, SDK, integration test,
+- expected caller: frontend operator, API-key viewer, SDK, integration test,
   or internal support
 - auth and permission
 - cardinality and scan cost

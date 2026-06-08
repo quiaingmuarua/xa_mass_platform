@@ -12,8 +12,21 @@ context compaction, and roadmap handoff.
 `sdk/` owns reusable caller contracts. `integrations/` owns real adopters,
 worker capability packs, and protocol/dev fixtures. Server startup must not
 replace external registration with privileged task or worker seeding.
-Dev/prod may differ by infrastructure, seed source, logging, and operational
-defaults, but they must not expose different public API contracts.
+Runtime/deployment profiles may differ by memory vs persistent infrastructure,
+seed source, logging, local convenience, and fail-closed validation, but they
+must not expose different public API contracts or authentication bypass
+semantics.
+
+Seedability is decided by truth ownership, not by active profile. Profiles may
+change infra mode and secret source; they must not change whether a resource is
+initialized by seed/import, public SDK/API calls, or runtime execution.
+Memory infrastructure can be a legitimate deployment mode for immediate or
+RPC-style workloads; it must still use the same public API, API-key, operator
+auth, seed/import, and worker registration rules as persistent infrastructure.
+Fixture-header authentication is a support-test/operator-console fixture, not a
+property of memory infrastructure. Trusted-auth proof may run on memory or
+persistent infra, but it must use session/CSRF for operator mutations and API
+keys for SDK/worker-api calls.
 
 ## Owner Map
 
@@ -63,6 +76,31 @@ defaults, but they must not expose different public API contracts.
   layers; see [`INFRA_TRUTH_LAYERS.md`](./INFRA_TRUTH_LAYERS.md).
 - Transport-specific frame shapes must not redefine event-handler,
   WorkerGroup, AdapterNode, task, result, or scheduling semantics.
+- API-key raw secrets may appear only as seed/import material or one-time
+  create responses. Durable API-key truth is hash, prefix, scopes,
+  permissions, owner, status, expiry, and metadata.
+- Task producer SDK paths may create tasks, append items, and read accepted
+  results. Seal, approve, pause, resume, cancel, and equivalent lifecycle
+  commands are operator/server-control actions unless a separate authorization
+  decision explicitly changes that boundary.
+
+## Seed Taxonomy
+
+| Category | Seed/import stance | Examples | Owner rule |
+| --- | --- | --- | --- |
+| Control-plane config | Allowed | projects, events/catalog, rule and policy configuration | Stable server-owned configuration may be idempotently imported. |
+| Credential bootstrap | Allowed with secret-source controls | operator credentials, API keys | Raw secrets are import material only; stored truth is credential metadata and hash/projection state. |
+| Runtime actor registration | Must use SDK or worker API | WorkerGroup, AdapterNode, NodeGroupBinding, Worker, worker online/state/capability reports | External actor and topology evidence must enter through the same registration path production workers use. |
+| Workload injection | Must use SDK or task API | task create, item append, task result reads | Workload is caller behavior, not server initialization. |
+| Operator lifecycle command | Must use operator/server-control API | seal, approve, pause, resume, cancel, worker command requests | Control actions require the operator authorization boundary. |
+| Runtime truth | Forbidden | ready/delayed queues, leases, assignments, reservations, occupancy, route buckets, dispatch gates, final result rows, command status | Runtime owners derive and mutate these facts; seed/import must not precompute or restore them. |
+| Generated evidence | Forbidden as seed | usage, trace, audit rows, sessions, CSRF tokens | Evidence is emitted by real accepted/rejected operations. A seed/import operation may produce audit evidence; it must not seed audit evidence. |
+
+WorkerGroup is currently runtime actor registration truth and must be declared
+through the worker API or Java SDK. If it later becomes seedable, the change must
+first define a control-plane owner, persistence shape, and runtime projection so
+seeded WorkerGroup capability cannot coexist with worker-declared capability as
+two live truths.
 
 ## Allowed Patterns
 
@@ -103,9 +141,9 @@ Stop and review the boundary if a change does any of the following:
 - treats samples as the Java SDK adoption path;
 - adds server startup code that silently creates production task or worker
   truth;
-- adds a dev/prod API split for project, rule, catalog, credential, task, or
-  worker setup instead of changing only infrastructure, seed source, or
-  operational defaults;
+- adds a memory/persistent or local/production API split for project, rule,
+  catalog, credential, task, or worker setup instead of changing only
+  infrastructure, seed source, or operational defaults;
 - exposes raw worker or bootstrap platform APIs from worker-pack instead of
   routing real worker behavior through the Java SDK;
 - introduces a transport-specific handler runtime that changes event-handler

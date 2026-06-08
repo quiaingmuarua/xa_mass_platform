@@ -11,8 +11,8 @@ import com.xa.mass.client.worker.WorkerGroupSpec;
 import com.xa.mass.client.worker.session.PollingWorkerSession;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
@@ -42,7 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest {
     private static final int WEBSOCKET_PORT = findFreePort();
@@ -56,16 +56,16 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
     void javaExternalSdkPollingSessionCompletesTaskThroughPublicWorkerApi() throws Exception {
         String workerId = "java-sdk-polling-worker-001";
         String workerKey = "java-sdk-polling-worker-key";
-        String submitterKey = "java-sdk-task-submitter-key";
-        registerTaskSubmitter("java-sdk-task-submitter", submitterKey);
-        registerWorkerSubmitter("java-sdk-polling-worker", workerKey, workerId);
+        String taskApiKey = "java-sdk-task-api-key-key";
+        registerTaskApiKey("java-sdk-task-api-key", taskApiKey);
+        registerWorkerApiKey("java-sdk-polling-worker", workerKey, workerId);
         sdkApp().replaceDefaultRules(List.of(
                 rule("java-sdk-online-project", "supportsProject == true"),
                 rule("java-sdk-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
 
         MassPlatform workerMass = platform(workerKey);
-        MassPlatform submitterMass = platform(submitterKey);
+        MassPlatform taskApiClient = platform(taskApiKey);
 
         workerMass.workers().declareGroup(WorkerGroupSpec.builder()
                 .groupId("java-sdk-phone-probe")
@@ -96,7 +96,7 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
                 .pollInterval(Duration.ofMillis(50))
                 .heartbeatInterval(Duration.ofMillis(100))
                 .start()) {
-            String taskId = submitterMass.tasks().create(TaskCreateRequest.builder()
+            String taskId = taskApiClient.tasks().create(TaskCreateRequest.builder()
                     .project("crawlerApp")
                     .userId("java-sdk-agent")
                     .contract(TaskContract.BATCH)
@@ -105,11 +105,11 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
                             .batchSize(1)
                             .build())
                     .build()).taskId();
-            submitterMass.tasks().appendItems(taskId, TaskItemBatch.builder()
+            taskApiClient.tasks().appendItems(taskId, TaskItemBatch.builder()
                     .eventCode("crawler.fetch-page")
                     .item(Map.of("url", "tel:+6588880001"))
                     .build());
-            submitterMass.tasks().seal(taskId);
+            taskApiClient.tasks().seal(taskId);
             assertApiOk(approveTask(taskId));
 
             RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
@@ -117,7 +117,7 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
             assertEquals(1, terminal.stats().successCount());
 
-            TaskResultWindow results = submitterMass.tasks().results(taskId,
+            TaskResultWindow results = taskApiClient.tasks().results(taskId,
                     TaskResultReadRequest.builder().limit(10).build());
             assertFalse(results.items().isEmpty());
             assertEquals("525", results.items().getFirst().output().get("mcc"));
@@ -133,8 +133,8 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
                 .build();
     }
 
-    private void registerTaskSubmitter(String principalId, String credential) {
-        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+    private void registerTaskApiKey(String principalId, String credential) {
+        sdkApp().registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
@@ -143,8 +143,8 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
                 .build());
     }
 
-    private void registerWorkerSubmitter(String principalId, String credential, String workerId) {
-        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+    private void registerWorkerApiKey(String principalId, String credential, String workerId) {
+        sdkApp().registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))

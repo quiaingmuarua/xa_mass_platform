@@ -73,6 +73,9 @@ Base path: `/api/v1/auth`
 - Method: `GET`
 - Path: `/api/v1/auth/me`
 - Status: `Implemented`
+- Response includes the operator principal fields. In session-cookie mode it
+  also includes the current session `csrfToken` so the control console can
+  restore `X-Mass-Csrf-Token` after a page reload.
 
 #### Logout Operator Principal
 
@@ -83,17 +86,17 @@ Base path: `/api/v1/auth`
 Notes:
 
 - These routes are for control-console/operator auth state.
-- submitter credentials use API-key/Bearer auth and do not participate in
+- SDK credentials use API-key/Bearer auth and do not participate in
   operator session login.
 
-### 2.2 Submitter Credential Introspection
+### 2.2 Current API-Key Credential Introspection
 
-Base path: `/api/v1/submitters`
+Base path: `/api/v1`
 
-#### Get Current SDK Submitter
+#### Get Current API-Key Principal
 
 - Method: `GET`
-- Path: `/api/v1/submitters/me`
+- Path: `/api/v1/api-keys:current`
 - Status: `Implemented`
 
 Headers:
@@ -103,11 +106,26 @@ Headers:
 Notes:
 
 - resolves the current credential through `AuthProvider.authenticate(...)`
-- returns the authenticated submitter view with `principalId`, `userId`,
+- returns the authenticated API-key principal view with `principalId`, `userId`,
   `projectScope`, `permissions`, `projectScopes`, `eventScopes`, and
   `attributes`
 - does not expose raw credential material
 - returns HTTP `401` when the credential is missing or invalid
+
+#### Get Current API-Key Usage
+
+- Method: `GET`
+- Path: `/api/v1/api-keys:current/usage`
+- Status: `Implemented`
+
+Headers:
+
+- `X-Mass-Api-Key: <credential>` or `Authorization: Bearer <credential>`
+
+Notes:
+
+- returns usage for the currently authenticated API-key principal
+- does not require the caller to know the API-key record id
 
 ## 3. Project API
 
@@ -140,20 +158,6 @@ Returns the full `EventDefinition` list for the project's declared
 `priorityClass`, `responseMode`, and `targetScope`. These fields are catalog
 metadata and do not change task scheduling, result finality, or transport
 delivery behavior by themselves.
-
-### 3.4 List Project Submitters
-
-- Method: `GET`
-- Path: `/api/v1/projects/{projectCode}/submitters`
-- Status: `Implemented`
-
-Returns the effective submitter list visible for the project scope.
-
-Notes:
-
-- includes both explicitly project-scoped submitters and wildcard/global
-  submitters whose scopes still authorize the project
-- this is a control-plane ownership view; it does not expose raw credentials
 
 ## 4. Catalog API
 
@@ -280,7 +284,7 @@ Query params:
 Notes:
 
 - operator callers require normal task-view authorization
-- submitter credential callers may also use this route
+- API-key credential callers may also use this route
 - current SDK list behavior is ownership-scoped
 - project filtering is shell-level ownership filtering, not item-level
   `eventCode` filtering
@@ -395,7 +399,7 @@ Response notes:
 - returns `task`
 - returns `security`
 - does not return item payload snapshots by default
-- submitter credential callers may use this route under the same ownership-based
+- API-key credential callers may use this route under the same ownership-based
   task-view gate
 - response `data` is `ApiTaskGetResult`
 - `data.task` is `ApiTask`
@@ -1015,7 +1019,7 @@ Purpose:
 
 Contract rules:
 
-- operator authentication is required; SDK submitter credentials are rejected
+- operator authentication is required; SDK API-key credentials are rejected
   for this route
 - request uses an internal debug-only invocation DTO on this route
 - exactly one item is required

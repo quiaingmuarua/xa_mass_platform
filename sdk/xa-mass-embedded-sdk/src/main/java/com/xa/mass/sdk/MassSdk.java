@@ -6,7 +6,7 @@ import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.transport.model.TransportOutboundMessage;
-import com.xa.mass.sdk.auth.SubmitterRegistry;
+import com.xa.mass.sdk.auth.CredentialPrincipalStore;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskShellStore;
@@ -47,7 +47,7 @@ public final class MassSdk {
     public static final class Builder {
         private final MassApplicationBuilder delegate;
         private ProjectEventCatalogRegistry projectCatalogBootstrapRegistry;
-        private SubmitterRegistry submitterRegistry;
+        private CredentialPrincipalStore credentialPrincipalStore;
 
         private Builder(MassApplicationBuilder delegate) {
             this.delegate = Objects.requireNonNull(delegate, "delegate");
@@ -75,19 +75,19 @@ public final class MassSdk {
             return this;
         }
 
-        public Builder submitterRegistry(SubmitterRegistry submitterRegistry) {
-            this.submitterRegistry = Objects.requireNonNull(submitterRegistry, "submitterRegistry");
+        public Builder credentialPrincipalStore(CredentialPrincipalStore credentialPrincipalStore) {
+            this.credentialPrincipalStore = Objects.requireNonNull(credentialPrincipalStore, "credentialPrincipalStore");
             return this;
         }
 
         public MassSdkApplication build() {
             if (projectCatalogBootstrapRegistry != null) {
-                return submitterRegistry != null
-                        ? new MassSdkApplication(delegate.build(), projectCatalogBootstrapRegistry, submitterRegistry)
+                return credentialPrincipalStore != null
+                        ? new MassSdkApplication(delegate.build(), projectCatalogBootstrapRegistry, credentialPrincipalStore)
                         : new MassSdkApplication(delegate.build(), projectCatalogBootstrapRegistry);
             }
-            return submitterRegistry != null
-                    ? new MassSdkApplication(delegate.build(), submitterRegistry)
+            return credentialPrincipalStore != null
+                    ? new MassSdkApplication(delegate.build(), credentialPrincipalStore)
                     : new MassSdkApplication(delegate.build());
         }
 

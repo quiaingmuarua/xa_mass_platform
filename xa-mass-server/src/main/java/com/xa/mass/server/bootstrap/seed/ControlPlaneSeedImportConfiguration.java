@@ -1,6 +1,7 @@
 package com.xa.mass.server.bootstrap.seed;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
 import com.xa.mass.api.auth.operator.OperatorCredentialStore;
 import com.xa.mass.storage.api.CatalogMetadataStore;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -14,7 +15,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.core.io.ResourceLoader;
 
 @Configuration
-@Profile({"dev", "prod"})
+@Profile({"memory-local", "durable-local"})
 public class ControlPlaneSeedImportConfiguration {
 
     @Bean
@@ -22,6 +23,7 @@ public class ControlPlaneSeedImportConfiguration {
     @ConditionalOnProperty(prefix = "mass.control-plane.seed", name = "enabled", havingValue = "true")
     public CommandLineRunner controlPlaneEarlySeedImportRunner(MassSdkApplication app,
                                                                CatalogMetadataStore catalogMetadataStore,
+                                                               ApiKeyCredentialService apiKeyCredentialService,
                                                                OperatorCredentialStore operatorCredentialStore,
                                                                ObjectMapper objectMapper,
                                                                ResourceLoader resourceLoader,
@@ -29,7 +31,9 @@ public class ControlPlaneSeedImportConfiguration {
                                                                @Value("${mass.control-plane.seed.rules-location:}") String rulesLocation,
                                                                @Value("${mass.control-plane.seed.operator-credentials-location:}")
                                                                String operatorCredentialsLocation,
-                                                               @Value("${mass.control-plane.seed.mode:apply}") String mode) {
+                                                               @Value("${mass.control-plane.seed.mode:apply}") String mode,
+                                                               @Value("${mass.control-plane.seed.allow-local-fixture-raw-secrets:false}")
+                                                               boolean allowLocalFixtureRawSecrets) {
         return args -> {
             String normalizedCatalogLocation = blankToNull(catalogLocation);
             String normalizedRulesLocation = blankToNull(rulesLocation);
@@ -42,6 +46,7 @@ public class ControlPlaneSeedImportConfiguration {
             new ControlPlaneSeedImporter(
                     app,
                     catalogMetadataStore,
+                    apiKeyCredentialService,
                     operatorCredentialStore,
                     objectMapper,
                     resourceLoader)
@@ -49,7 +54,8 @@ public class ControlPlaneSeedImportConfiguration {
                             normalizedCatalogLocation,
                             null,
                             normalizedOperatorCredentialsLocation,
-                            blankToDefault(mode, "apply")
+                            blankToDefault(mode, "apply"),
+                            allowLocalFixtureRawSecrets
                     ));
         };
     }
@@ -59,11 +65,14 @@ public class ControlPlaneSeedImportConfiguration {
     @ConditionalOnProperty(prefix = "mass.control-plane.seed", name = "enabled", havingValue = "true")
     public CommandLineRunner controlPlaneRuleSeedImportRunner(MassSdkApplication app,
                                                               CatalogMetadataStore catalogMetadataStore,
+                                                              ApiKeyCredentialService apiKeyCredentialService,
                                                               OperatorCredentialStore operatorCredentialStore,
                                                               ObjectMapper objectMapper,
                                                               ResourceLoader resourceLoader,
                                                               @Value("${mass.control-plane.seed.rules-location:}") String rulesLocation,
-                                                              @Value("${mass.control-plane.seed.mode:apply}") String mode) {
+                                                              @Value("${mass.control-plane.seed.mode:apply}") String mode,
+                                                              @Value("${mass.control-plane.seed.allow-local-fixture-raw-secrets:false}")
+                                                              boolean allowLocalFixtureRawSecrets) {
         return args -> {
             String normalizedRulesLocation = blankToNull(rulesLocation);
             if (normalizedRulesLocation == null) {
@@ -72,6 +81,7 @@ public class ControlPlaneSeedImportConfiguration {
             new ControlPlaneSeedImporter(
                     app,
                     catalogMetadataStore,
+                    apiKeyCredentialService,
                     operatorCredentialStore,
                     objectMapper,
                     resourceLoader)
@@ -79,7 +89,8 @@ public class ControlPlaneSeedImportConfiguration {
                             null,
                             normalizedRulesLocation,
                             null,
-                            blankToDefault(mode, "apply")
+                            blankToDefault(mode, "apply"),
+                            allowLocalFixtureRawSecrets
                     ));
         };
     }

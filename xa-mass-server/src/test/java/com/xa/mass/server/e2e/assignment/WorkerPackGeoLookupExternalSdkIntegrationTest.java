@@ -11,8 +11,8 @@ import com.xa.mass.client.worker.session.PollingWorkerSession;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
@@ -45,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class WorkerPackGeoLookupExternalSdkIntegrationTest extends AbstractSampleE2eTest {
     private static final int WEBSOCKET_PORT = findFreePort();
@@ -59,17 +59,17 @@ class WorkerPackGeoLookupExternalSdkIntegrationTest extends AbstractSampleE2eTes
     void workerPackGeoLookupRegistersExternallyAndCompletesTaskThroughJavaSdk() throws Exception {
         String workerId = "worker-pack-geo-worker-001";
         String workerKey = "worker-pack-geo-worker-key";
-        String submitterKey = "worker-pack-geo-submitter-key";
+        String taskApiKey = "worker-pack-geo-api-key-key";
         registerWorkerPackCatalogFixture();
-        registerTaskSubmitter("worker-pack-geo-submitter", submitterKey);
-        registerWorkerSubmitter("worker-pack-geo-worker", workerKey, workerId);
+        registerTaskApiKey("worker-pack-geo-api-key", taskApiKey);
+        registerWorkerApiKey("worker-pack-geo-worker", workerKey, workerId);
         sdkApp().replaceDefaultRules(List.of(
                 rule("worker-pack-geo-online", "hasWorkerSchedulingResource == true"),
                 rule("worker-pack-geo-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
 
         MassPlatform workerMass = platform(workerKey);
-        MassPlatform submitterMass = platform(submitterKey);
+        MassPlatform taskApiClient = platform(taskApiKey);
 
         try (PollingWorkerSession ignored = GeoLookupWorkerPack.builder(workerMass)
                 .workerId(workerId)
@@ -79,7 +79,7 @@ class WorkerPackGeoLookupExternalSdkIntegrationTest extends AbstractSampleE2eTes
                 .pollInterval(Duration.ofMillis(50))
                 .heartbeatInterval(Duration.ofMillis(100))
                 .startPolling()) {
-            String taskId = submitterMass.tasks().create(TaskCreateRequest.builder()
+            String taskId = taskApiClient.tasks().create(TaskCreateRequest.builder()
                     .project("workerPackApp")
                     .userId("worker-pack-agent")
                     .contract(TaskContract.BATCH)
@@ -88,11 +88,11 @@ class WorkerPackGeoLookupExternalSdkIntegrationTest extends AbstractSampleE2eTes
                             .batchSize(1)
                             .build())
                     .build()).taskId();
-            submitterMass.tasks().appendItems(taskId, TaskItemBatch.builder()
+            taskApiClient.tasks().appendItems(taskId, TaskItemBatch.builder()
                     .eventCode(GeoLookupTool.EVENT_CODE)
                     .item(Map.of("query", "Beijing"))
                     .build());
-            submitterMass.tasks().seal(taskId);
+            taskApiClient.tasks().seal(taskId);
             assertApiOk(approveTask(taskId));
 
             RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
@@ -100,7 +100,7 @@ class WorkerPackGeoLookupExternalSdkIntegrationTest extends AbstractSampleE2eTes
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
             assertEquals(1, terminal.stats().successCount());
 
-            TaskResultWindow results = submitterMass.tasks().results(taskId,
+            TaskResultWindow results = taskApiClient.tasks().results(taskId,
                     TaskResultReadRequest.builder().limit(10).build());
             assertFalse(results.items().isEmpty());
             assertEquals("CN", results.items().getFirst().output().get("countryCode"));
@@ -134,8 +134,8 @@ class WorkerPackGeoLookupExternalSdkIntegrationTest extends AbstractSampleE2eTes
                 .build();
     }
 
-    private void registerTaskSubmitter(String principalId, String credential) {
-        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+    private void registerTaskApiKey(String principalId, String credential) {
+        sdkApp().registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
@@ -144,8 +144,8 @@ class WorkerPackGeoLookupExternalSdkIntegrationTest extends AbstractSampleE2eTes
                 .build());
     }
 
-    private void registerWorkerSubmitter(String principalId, String credential, String workerId) {
-        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+    private void registerWorkerApiKey(String principalId, String credential, String workerId) {
+        sdkApp().registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))

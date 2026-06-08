@@ -13,8 +13,8 @@ import com.xa.mass.api.auth.iam.UserRolePermissionStore;
 import com.xa.mass.api.auth.operator.InMemoryOperatorCredentialStore;
 import com.xa.mass.api.auth.operator.JdbcOperatorCredentialStore;
 import com.xa.mass.api.auth.operator.OperatorCredentialStore;
-import com.xa.mass.api.auth.session.InMemorySubmitterViewerSessionStore;
-import com.xa.mass.api.auth.session.SubmitterViewerSessionStore;
+import com.xa.mass.api.auth.session.InMemoryApiKeyViewerSessionStore;
+import com.xa.mass.api.auth.session.ApiKeyViewerSessionStore;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerStore;
 import com.xa.mass.api.auth.usage.InMemoryApiUsageLedgerStore;
 import com.xa.mass.api.auth.usage.JdbcApiUsageLedgerStore;
@@ -32,7 +32,7 @@ import org.springframework.core.env.Environment;
 import java.util.Arrays;
 
 @Configuration
-@Profile({"dev", "prod"})
+@Profile({"memory-local", "durable-local"})
 public class ServerControlPlaneStoreConfiguration {
 
     private final Environment environment;
@@ -48,7 +48,7 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcApiKeyApplicationStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return new InMemoryApiKeyApplicationStore();
     }
 
@@ -59,7 +59,7 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcApiKeyCredentialStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return new InMemoryApiKeyCredentialStore();
     }
 
@@ -70,7 +70,7 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcUserRolePermissionStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return InMemoryUserRolePermissionStore.bootstrapDefaults();
     }
 
@@ -86,13 +86,13 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcOperatorCredentialStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return new InMemoryOperatorCredentialStore();
     }
 
     @Bean
-    public SubmitterViewerSessionStore submitterViewerSessionStore() {
-        return new InMemorySubmitterViewerSessionStore();
+    public ApiKeyViewerSessionStore apiKeyViewerSessionStore() {
+        return new InMemoryApiKeyViewerSessionStore();
     }
 
     @Bean
@@ -102,7 +102,7 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcApiUsageLedgerStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return new InMemoryApiUsageLedgerStore();
     }
 
@@ -114,7 +114,7 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcWorkerRegistrationObservationStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return new InMemoryWorkerRegistrationObservationStore();
     }
 
@@ -124,15 +124,15 @@ public class ServerControlPlaneStoreConfiguration {
         return new WorkerRegistrationObservationService(store);
     }
 
-    private void requireNonProdMemoryStore() {
-        if (isProdProfile()) {
-            throw new IllegalStateException("prod requires mass.storage.mode to be JDBC-enabled");
+    private void requireMemoryStoreAllowed() {
+        if (isDurableLocalProfile()) {
+            throw new IllegalStateException("durable-local requires mass.storage.mode to be JDBC-enabled");
         }
     }
 
-    private boolean isProdProfile() {
+    private boolean isDurableLocalProfile() {
         String[] activeProfiles = environment.getActiveProfiles();
         String[] effectiveProfiles = activeProfiles.length == 0 ? environment.getDefaultProfiles() : activeProfiles;
-        return Arrays.asList(effectiveProfiles).contains("prod");
+        return Arrays.asList(effectiveProfiles).contains("durable-local");
     }
 }

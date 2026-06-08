@@ -3,13 +3,11 @@ import {
     getProject,
     listProjectEventDefinitions,
     listProjects,
-    listProjectSubmitters,
 } from '@/api/projects'
 import {
     getProjectReal,
     listProjectEventDefinitionsReal,
     listProjectsReal,
-    listProjectSubmittersReal,
 } from '@/api/projects.real'
 
 function jsonResponse(body: unknown): Response {
@@ -33,16 +31,10 @@ describe('projects API facade', () => {
         const projects = await listProjects()
         const probeProject = await getProject('publicProbe')
         const probeEvents = await listProjectEventDefinitions('publicProbe')
-        const probeSubmitters = await listProjectSubmitters('publicProbe')
 
         expect(projects.some((project) => project.code === 'publicProbe')).toBe(true)
         expect(probeProject.code).toBe('publicProbe')
         expect(probeEvents.map((event) => event.code)).toContain('probe.url.dns')
-        expect(
-            probeSubmitters.some(
-                (submitter) => submitter.principalId === 'public-probe-runner',
-            ),
-        ).toBe(true)
     })
 })
 
@@ -71,28 +63,6 @@ describe('projects.real', () => {
                                 priorityClass: 'STANDARD',
                                 responseMode: 'FINAL_RESULT',
                                 targetScope: 'WORKER',
-                            },
-                        ],
-                    }),
-                )
-            }
-            if (input.endsWith('/api/v1/projects/publicProbe/submitters')) {
-                return Promise.resolve(
-                    jsonResponse({
-                        code: 0,
-                        msg: 'ok',
-                        data: [
-                            {
-                                principalId: 'public-probe-runner',
-                                principalType: 'SERVICE',
-                                keyPrefix: 'pubp',
-                                userId: 'public-probe-runner',
-                                projectScope: 'publicProbe',
-                                permissions: ['task:create'],
-                                projectScopes: ['publicProbe'],
-                                eventScopes: ['probe.url.dns'],
-                                enabled: true,
-                                attributes: {},
                             },
                         ],
                     }),
@@ -135,7 +105,6 @@ describe('projects.real', () => {
         const projects = await listProjectsReal()
         const project = await getProjectReal('publicProbe')
         const events = await listProjectEventDefinitionsReal('publicProbe')
-        const submitters = await listProjectSubmittersReal('publicProbe')
 
         expect(fetchMock).toHaveBeenCalledWith(
             '/backend/api/v1/projects',
@@ -149,14 +118,9 @@ describe('projects.real', () => {
             '/backend/api/v1/projects/publicProbe/events',
             expect.any(Object),
         )
-        expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/v1/projects/publicProbe/submitters',
-            expect.any(Object),
-        )
         expect(projects[0].code).toBe('publicProbe')
         expect(project.code).toBe('publicProbe')
         expect(events[0].code).toBe('probe.url.dns')
         expect(events[0].targetScope).toBe('WORKER')
-        expect(submitters[0].principalId).toBe('public-probe-runner')
     })
 })

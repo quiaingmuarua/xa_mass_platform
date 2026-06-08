@@ -3,33 +3,53 @@ package com.xa.mass.api.internal;
 import com.xa.mass.api.auth.ApiAuthInterceptor;
 import com.xa.mass.api.auth.apikey.ApiKeyCredentialRecord;
 import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
+import com.xa.mass.api.auth.session.ApiKeyViewerSessionService;
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/api-keys")
+@RequestMapping("/api/v1")
 public class ApiKeyController {
 
     private final ApiKeyCredentialService credentialService;
+    private final AuthProvider authProvider;
+    private final ApiKeyViewerSessionService viewerSessionService;
 
     public ApiKeyController(ApiKeyCredentialService credentialService) {
-        this.credentialService = credentialService;
+        this(credentialService, null);
     }
 
-    @PostMapping
+    public ApiKeyController(ApiKeyCredentialService credentialService, AuthProvider authProvider) {
+        this(credentialService, authProvider, null);
+    }
+
+    @Autowired
+    public ApiKeyController(ApiKeyCredentialService credentialService,
+                            AuthProvider authProvider,
+                            ApiKeyViewerSessionService viewerSessionService) {
+        this.credentialService = credentialService;
+        this.authProvider = authProvider;
+        this.viewerSessionService = viewerSessionService;
+    }
+
+    @PostMapping("/api-keys")
     public ApiResponse<ApiKeyCreateResponse> create(@RequestBody ApiKeyCreateRequest request,
                                                     HttpServletRequest servletRequest) {
         PrincipalContext operator = authenticatedPrincipal(servletRequest);
@@ -43,20 +63,50 @@ public class ApiKeyController {
                         operator == null ? null : operator.getPrincipalId(),
                         request.expiresAt(),
                         request.attributes(),
+                        null,
                         null
                 )
         );
         return ApiResponse.success(new ApiKeyCreateResponse(toView(created.record()), created.rawSecret()));
     }
 
-    @GetMapping
+    @GetMapping("/api-keys")
     public ApiResponse<List<ApiKeyCredentialView>> list() {
         return ApiResponse.success(credentialService.list().stream()
                 .map(this::toView)
                 .toList());
     }
 
-    @GetMapping("/{keyId}")
+    @GetMapping("/api-keys:current")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> current(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        PrincipalContext principal = authenticateApiKeyPrincipal(apiKeyHeader, authorizationHeader);
+        if (principal == null) {
+            return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing API key credential"));
+        }
+        String keyId = credentialService.apiKeyId(principal);
+        if (keyId == null) {
+            return ResponseEntity.status(403).body(ApiResponse.error(403, "Current credential is not an API key principal"));
+        }
+        ApiKeyCredentialRecord record = credentialService.get(keyId);
+        if (record == null) {
+            return ResponseEntity.status(401).body(ApiResponse.error(401, "API key credential is no longer active"));
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("credential", toView(record));
+        data.put("principalId", principal.getPrincipalId());
+        data.put("principalType", principal.getPrincipalType().name());
+        data.put("userId", principal.getUserId());
+        data.put("projectScope", principal.getProjectScope());
+        data.put("permissions", principal.getPermissions());
+        data.put("projectScopes", principal.getProjectScopes());
+        data.put("eventScopes", principal.getEventScopes());
+        data.put("attributes", principal.getAttributes());
+        return ResponseEntity.ok(ApiResponse.success(data));
+    }
+
+    @GetMapping("/api-keys/{keyId}")
     public ResponseEntity<ApiResponse<ApiKeyCredentialView>> get(@PathVariable String keyId) {
         ApiKeyCredentialRecord record = credentialService.get(keyId);
         if (record == null) {
@@ -65,7 +115,7 @@ public class ApiKeyController {
         return ResponseEntity.ok(ApiResponse.success(toView(record)));
     }
 
-    @PostMapping("/{keyId}:revoke")
+    @PostMapping("/api-keys/{keyId}:revoke")
     public ResponseEntity<ApiResponse<ApiKeyCredentialView>> revoke(@PathVariable String keyId,
                                                                     @RequestBody(required = false) ApiKeyRevokeRequest request,
                                                                     HttpServletRequest servletRequest) {
@@ -89,6 +139,19 @@ public class ApiKeyController {
     private PrincipalContext authenticatedPrincipal(HttpServletRequest request) {
         Object principal = request.getAttribute(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR);
         return principal instanceof PrincipalContext context ? context : null;
+    }
+
+    private PrincipalContext authenticateApiKeyPrincipal(String apiKeyHeader, String authorizationHeader) {
+        String credential = SdkCredentialAuthSupport.extractCredential(apiKeyHeader, authorizationHeader);
+        if (credential == null) {
+            return null;
+        }
+        PrincipalContext principal = authProvider == null ? null : authProvider.authenticate(credential);
+        principal = credentialService.validateAuthenticatedPrincipal(principal);
+        if (principal != null) {
+            return principal;
+        }
+        return viewerSessionService == null ? null : viewerSessionService.authenticate(credential);
     }
 
     private ApiKeyCredentialView toView(ApiKeyCredentialRecord record) {

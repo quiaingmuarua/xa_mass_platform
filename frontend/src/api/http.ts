@@ -12,7 +12,7 @@ interface ApiResponseEnvelope<T> {
 }
 
 export interface ApiRequestInit extends RequestInit {
-    submitterCredential?: string
+    apiKeyCredential?: string
     includeOperatorAuth?: boolean
 }
 
@@ -32,14 +32,14 @@ export async function requestJson<T>(
     init?: ApiRequestInit,
 ): Promise<T> {
     const {
-        submitterCredential,
+        apiKeyCredential,
         includeOperatorAuth = true,
         headers,
         ...fetchInit
     } = init ?? {}
     const attachOperatorSession = shouldAttachOperatorSession(
         includeOperatorAuth,
-        submitterCredential,
+        apiKeyCredential,
     )
     const response = await fetch(buildApiUrl(input), {
         ...fetchInit,
@@ -48,13 +48,13 @@ export async function requestJson<T>(
             (attachOperatorSession ? 'same-origin' : 'omit'),
         headers: {
             'Content-Type': 'application/json',
-            ...operatorModeHeader(includeOperatorAuth, submitterCredential),
+            ...operatorModeHeader(includeOperatorAuth, apiKeyCredential),
             ...csrfHeader(
                 fetchInit.method,
                 includeOperatorAuth,
-                submitterCredential,
+                apiKeyCredential,
             ),
-            ...submitterCredentialHeader(submitterCredential),
+            ...apiKeyCredentialHeader(apiKeyCredential),
             ...(headers ?? {}),
         },
     })
@@ -91,12 +91,12 @@ export async function requestApiData<T>(
 
 function operatorModeHeader(
     includeOperatorAuth: boolean,
-    submitterCredential: string | undefined,
+    apiKeyCredential: string | undefined,
 ): Record<string, string> {
     if (
         getAppConfig().useMockAuth ||
         !includeOperatorAuth ||
-        hasSubmitterCredential(submitterCredential) ||
+        hasApiKeyCredential(apiKeyCredential) ||
         !currentBackendAuthConfig().operatorHeaderSupported
     ) {
         return {}
@@ -107,7 +107,7 @@ function operatorModeHeader(
     }
 }
 
-function submitterCredentialHeader(
+function apiKeyCredentialHeader(
     credential: string | undefined,
 ): Record<string, string> {
     const normalized = credential?.trim()
@@ -123,12 +123,12 @@ function submitterCredentialHeader(
 function csrfHeader(
     method: string | undefined,
     includeOperatorAuth: boolean,
-    submitterCredential: string | undefined,
+    apiKeyCredential: string | undefined,
 ): Record<string, string> {
     if (
         !shouldAttachOperatorSession(
             includeOperatorAuth,
-            submitterCredential,
+            apiKeyCredential,
         ) ||
         isSafeMethod(method)
     ) {
@@ -139,17 +139,17 @@ function csrfHeader(
 
 function shouldAttachOperatorSession(
     includeOperatorAuth: boolean,
-    submitterCredential: string | undefined,
+    apiKeyCredential: string | undefined,
 ): boolean {
     return (
         !getAppConfig().useMockAuth &&
         includeOperatorAuth &&
-        !hasSubmitterCredential(submitterCredential) &&
+        !hasApiKeyCredential(apiKeyCredential) &&
         currentBackendAuthConfig().sessionCookieSupported
     )
 }
 
-function hasSubmitterCredential(credential: string | undefined): boolean {
+function hasApiKeyCredential(credential: string | undefined): boolean {
     return credential !== undefined && credential.trim().length > 0
 }
 

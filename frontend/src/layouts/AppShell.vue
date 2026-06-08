@@ -60,7 +60,7 @@ function toggleSidebar(): void {
   padding: var(--shell-content-padding);
 }
 
-.shell--submitter-viewer .shell-content,
+.shell--api-key-viewer .shell-content,
 .shell--public .shell-content {
   display: flex;
   justify-content: center;

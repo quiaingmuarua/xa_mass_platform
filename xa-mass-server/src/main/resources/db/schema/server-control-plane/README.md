@@ -16,6 +16,38 @@ It is not a historical migration ledger. During the current pre-release stage,
 schema changes may rewrite the current table design and require deleting or
 recreating local/prod databases.
 
+## Seed And Import Boundary
+
+Server seed/import is for control-plane bootstrap only. It may initialize stable
+configuration and credential bootstrap material, but it must not create runtime
+truth or replace SDK/API actor behavior.
+
+| Data | Seed/import stance | Notes |
+| --- | --- | --- |
+| projects and event catalog | allowed | Server-owned control-plane configuration. |
+| rules and policy configuration | allowed | Seeded config may influence later runtime resolution; resolved policy snapshots are not seed data. |
+| operator credentials | allowed | Hash material only; password hashes stay in `xa_operator_credential`. |
+| API keys | allowed with secret-source controls | Raw secret is import material only. Durable truth is hash, prefix, scopes, permissions, owner, status, expiry, and metadata. |
+| task shells and task items | forbidden | Use task producer SDK/API calls. |
+| seal, approve, pause, resume, cancel | forbidden | Use operator/server-control APIs. |
+| WorkerGroup, AdapterNode, NodeGroupBinding, Worker | forbidden today | Use worker API or Java SDK registration. If WorkerGroup becomes seedable later, define a control-plane owner and runtime projection first. |
+| worker state, capability reports, heartbeat, presence | forbidden | These are external actor/runtime evidence. |
+| ready/delayed queues, leases, assignments, reservations, occupancy, route buckets, dispatch gates, final result rows, command status | forbidden | These belong to runtime owners, not server seed/import. |
+| usage, trace, audit rows, sessions, CSRF tokens | forbidden | Generated evidence must come from real operations. Seed/import itself may emit audit evidence; it must not seed audit evidence. |
+
+Profiles may choose memory/local or persistent/fail-closed infrastructure,
+seed source, local fixture convenience, and sample secret policy. They must not
+change this taxonomy or turn local shortcuts into alternate public API or
+authentication behavior.
+
+Memory runtime is not a seed/import bypass and not a lower-trust product mode.
+When memory infra is used for immediate or RPC-style deployments, API-key,
+operator auth, seedability, worker registration, and runtime-truth boundaries
+remain the same.
+Trusted-auth startup and test proof may use memory or persistent infra; the
+trust requirement is session/CSRF for operator mutations plus API keys for SDK
+and worker-api calls, not a specific runtime backend.
+
 ## Current Tables
 
 Executable DDL lives under
@@ -163,7 +195,7 @@ When adding schema notes or DDL baselines here:
   `xa_principal`
 - represent project/event scopes with explicit omitted, wildcard, and bounded
   modes before persisting them
-- keep submitter-viewer sessions out of SQLite/JDBC
+- keep API-key viewer sessions out of SQLite/JDBC
 - keep worker registration observation rows out of runtime restore,
   scheduling, matching, presence, heartbeat, and transport routing
 - avoid runtime queues, leases, worker presence, dispatch streams, trace

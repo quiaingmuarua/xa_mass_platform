@@ -4,9 +4,7 @@ import com.xa.mass.api.auth.ApiAuthInterceptor;
 import com.xa.mass.base.event.PriorityClass;
 import com.xa.mass.base.event.ResponseMode;
 import com.xa.mass.base.event.TargetScope;
-import com.xa.mass.sdk.SubmitterOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterProfile;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -20,8 +18,6 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -64,27 +60,8 @@ class ProjectApiControllerTest {
                 .description("Test crawler app")
                 .eventCodes(java.util.List.of("crawler.fetch-page"))
                 .build());
-        SubmitterOperations submitterOperations = mock(SubmitterOperations.class);
-        when(submitterOperations.listSubmitters()).thenReturn(List.of(
-                SubmitterProfile.builder()
-                        .principalId("crawler-submitter")
-                        .projectScope("crawlerApp")
-                        .projectScopes(List.of("crawlerApp"))
-                        .enabled(true)
-                        .build(),
-                SubmitterProfile.builder()
-                        .principalId("demo-admin")
-                        .projectScopes(List.of("*"))
-                        .enabled(true)
-                        .build(),
-                SubmitterProfile.builder()
-                        .principalId("test-only")
-                        .projectScopes(List.of("testApp"))
-                        .enabled(true)
-                        .build()
-        ));
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new ProjectApiController(catalog, submitterOperations)
+                new ProjectApiController(catalog)
         ).build();
     }
 
@@ -117,17 +94,7 @@ class ProjectApiControllerTest {
     }
 
     @Test
-    void projectSubmittersReturnScopedAndWildcardPrincipals() throws Exception {
-        mockMvc.perform(get("/api/v1/projects/crawlerApp/submitters"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data[?(@.principalId=='crawler-submitter')]").exists())
-                .andExpect(jsonPath("$.data[?(@.principalId=='demo-admin')]").exists())
-                .andExpect(jsonPath("$.data[?(@.principalId=='test-only')]").doesNotExist());
-    }
-
-    @Test
-    void scopedSubmitterOnlySeesAuthorizedProjectsAndEvents() throws Exception {
+    void scopedCredentialOnlySeesAuthorizedProjectsAndEvents() throws Exception {
         PrincipalContext principal = PrincipalContext.builder()
                 .principalId("crawler-reader")
                 .projectScopes(List.of("crawlerApp"))
@@ -148,7 +115,7 @@ class ProjectApiControllerTest {
     }
 
     @Test
-    void scopedSubmitterCannotEnumerateOtherProjectResources() throws Exception {
+    void scopedCredentialCannotEnumerateOtherProjectResources() throws Exception {
         PrincipalContext principal = PrincipalContext.builder()
                 .principalId("crawler-reader")
                 .projectScopes(List.of("crawlerApp"))
@@ -163,9 +130,6 @@ class ProjectApiControllerTest {
                         .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, principal))
                 .andExpect(status().isNotFound());
 
-        mockMvc.perform(get("/api/v1/projects/demoApp/submitters")
-                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, principal))
-                .andExpect(status().isNotFound());
     }
 
     @Test

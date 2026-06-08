@@ -16,8 +16,10 @@ const defaultConfig: BackendAuthConfig = {
     csrfHeaderName: null,
 }
 
+const CSRF_STORAGE_KEY = 'xa.mass.operator.csrf-token'
+
 const backendAuthConfig = ref<BackendAuthConfig>(defaultConfig)
-const csrfToken = ref<string | null>(null)
+const csrfToken = ref<string | null>(readStoredCsrfToken())
 
 export const backendAuthSnapshot = readonly(backendAuthConfig)
 export const operatorAuthMode = computed(() => backendAuthConfig.value.authMode)
@@ -33,7 +35,7 @@ export function setBackendAuthConfig(config: BackendAuthConfig): void {
         csrfHeaderName: config.csrfHeaderName ?? null,
     }
     if (!backendAuthConfig.value.sessionCookieSupported) {
-        csrfToken.value = null
+        setOperatorCsrfToken(null)
     }
 }
 
@@ -43,7 +45,9 @@ export function currentBackendAuthConfig(): BackendAuthConfig {
 
 export function setOperatorCsrfToken(token: string | null): void {
     const normalized = token?.trim()
-    csrfToken.value = normalized && normalized.length > 0 ? normalized : null
+    const next = normalized && normalized.length > 0 ? normalized : null
+    csrfToken.value = next
+    writeStoredCsrfToken(next)
 }
 
 export function currentOperatorCsrfHeader(): Record<string, string> {
@@ -62,12 +66,16 @@ export function currentOperatorCsrfHeader(): Record<string, string> {
 }
 
 export function clearOperatorSessionAuth(): void {
-    csrfToken.value = null
+    setOperatorCsrfToken(null)
 }
 
 export function resetBackendAuthRuntime(): void {
     backendAuthConfig.value = defaultConfig
-    csrfToken.value = null
+    setOperatorCsrfToken(null)
+}
+
+export function reloadOperatorCsrfTokenFromStorage(): void {
+    csrfToken.value = readStoredCsrfToken()
 }
 
 function normalizeAuthMode(mode: string): BackendAuthMode {
@@ -75,4 +83,26 @@ function normalizeAuthMode(mode: string): BackendAuthMode {
         return mode
     }
     return 'disabled'
+}
+
+function readStoredCsrfToken(): string | null {
+    try {
+        const stored = globalThis.sessionStorage?.getItem(CSRF_STORAGE_KEY)
+        const normalized = stored?.trim()
+        return normalized && normalized.length > 0 ? normalized : null
+    } catch {
+        return null
+    }
+}
+
+function writeStoredCsrfToken(token: string | null): void {
+    try {
+        if (!token) {
+            globalThis.sessionStorage?.removeItem(CSRF_STORAGE_KEY)
+            return
+        }
+        globalThis.sessionStorage?.setItem(CSRF_STORAGE_KEY, token)
+    } catch {
+        // Session auth still works for the current page even if storage is unavailable.
+    }
 }

@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 class TaskApiBlockedRunningIntegrationTest extends AbstractSampleE2eTest {
 

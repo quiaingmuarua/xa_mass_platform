@@ -28,10 +28,10 @@ Representative current direct `ApiResponse.error(...)` paths:
 | --- | --- | --- |
 | `TaskApiController` | 400/401/403/404/409/429 helper methods and status-based `TaskApiException`. | Final-status fallback, with task id excluded from metric tags and log message sanitizer. |
 | `AuthController` | 401 invalid operator credentials. | `originSurface=console`; sanitized auth failure. |
-| `SubmitterViewerSessionController` | 401 missing/invalid submitter credential or viewer session; 400 local handler. | `originSurface=submitter-viewer`. |
-| `CurrentSubmitterController` | 401 invalid/missing submitter credential. | `originSurface=sdk`. |
-| `ApiUsageController` | 401/403 submitter credential failures. | `originSurface=sdk`. |
-| `ApiKeyController` / `ApiKeyApplicationController` | 404 not found and 400 local handlers. | `originSurface=console` unless SDK credential route evidence is added later. |
+| `SubmitterViewerSessionController` | 401 missing/invalid API-key credential or API-key viewer session; 400 local handler. | `originSurface=api-key-viewer`. |
+| `ApiKeyController` current-principal route | 401 invalid/missing API-key credential. | `originSurface=sdk`. |
+| `ApiUsageController` | 401/403 API-key credential failures. | `originSurface=sdk`. |
+| `ApiKeyController` / `ApiKeyApplicationController` | 404 not found and 400 local handlers. | `originSurface=console` unless SDK credential route evidence is present. |
 | `IdentityAccessController` | 400/404 IAM operation failures. | `originSurface=console`. |
 | `CatalogController` / `ProjectApiController` | 404 catalog/project misses. | `originSurface=sdk` for SDK credential attempts, otherwise `console`. |
 | `InternalDebugTaskInvocationController` / `InternalTaskReviewController` | 400/401/403/debug/review failures. | `originSurface=console` for authenticated operator/internal calls. |
@@ -47,16 +47,16 @@ context. It must not rely on browser-only headers.
 | --- | --- |
 | Path starts with `/worker-api/v1/` | `worker-api` |
 | Path starts with `/internal/v1/` | `console` |
-| Path starts with `/api/v1/submitter-sessions` | `submitter-viewer` |
-| Path starts with `/api/v1/submitters/me` or `/api/v1/submitters/me/usage` | `sdk` |
+| Path starts with `/api/v1/api-key-viewer-sessions` | `api-key-viewer` |
+| Path starts with `/api/v1/api-keys:current` or `/api/v1/api-keys:current/usage` | `sdk` |
 | Path starts with `/api/v1/catalog` and SDK credential attempt exists | `sdk` |
 | Path starts with `/api/v1/tasks`, `/api/v1/projects`, or `/api/v1/api-keys/*/usage` and SDK credential attempt exists | `sdk` |
 | Authenticated principal has `PrincipalType.OPERATOR` | `console` |
-| Authenticated principal has `PrincipalType.SERVICE` and the route is an API-key/submitter route | `sdk` |
+| Authenticated principal has `PrincipalType.SERVICE` and the route is an API-key route | `sdk` |
 | Route is `/api/v1/auth/**`, `/api/v1/users/**`, `/api/v1/roles/**`, `/api/v1/permissions`, `/api/v1/api-keys/**`, `/api/v1/api-key-applications/**`, `/api/v1/admin/rules/**`, or `/api/v1/runtime/**` without SDK credential attempt | `console` |
 | Missing or ambiguous route/auth context | `unknown` |
 
-`submitter-viewer` remains a route/auth-derived surface, not a new
+`api-key-viewer` remains a route/auth-derived surface, not a new
 `PrincipalType`. Current public principal types remain `OPERATOR`, `SERVICE`,
 and `WORKER`.
 

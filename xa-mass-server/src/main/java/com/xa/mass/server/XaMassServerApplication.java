@@ -42,7 +42,7 @@ import com.xa.mass.sdk.model.TaskWorkFinalNotification;
 import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 import com.xa.mass.api.auth.CompositePrincipalDirectory;
 import com.xa.mass.api.auth.DefaultOperatorPrincipalDirectory;
-import com.xa.mass.server.auth.jdbc.JdbcSubmitterRegistry;
+import com.xa.mass.server.auth.jdbc.JdbcCredentialPrincipalStore;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -201,11 +201,11 @@ public class XaMassServerApplication {
     }
 
     @Bean(destroyMethod = "close")
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public JdbcStorageRuntime jdbcStorageRuntime() {
         JdbcStorageMode mode = JdbcStorageMode.parse(storageMode);
-        if (isProdProfile() && !mode.isJdbc()) {
-            throw new IllegalStateException("prod requires mass.storage.mode to be JDBC-enabled");
+        if (isDurableLocalProfile() && !mode.isJdbc()) {
+            throw new IllegalStateException("durable-local requires mass.storage.mode to be JDBC-enabled");
         }
         return JdbcStorageRuntime.create(
                 mode,
@@ -216,7 +216,7 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public TaskShellStore taskShellStore(JdbcStorageRuntime jdbcStorageRuntime) {
         if (jdbcStorageRuntime.isEnabled()) {
             return jdbcStorageRuntime.taskShellStore();
@@ -225,7 +225,7 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public CatalogMetadataStore catalogMetadataStore(JdbcStorageRuntime jdbcStorageRuntime) {
         if (jdbcStorageRuntime.isEnabled()) {
             return jdbcStorageRuntime.catalogMetadataStore();
@@ -234,7 +234,7 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public TaskReviewStore taskReviewStore(JdbcStorageRuntime jdbcStorageRuntime) {
         if (jdbcStorageRuntime.isEnabled()) {
             return new JdbcTaskReviewStore(jdbcStorageRuntime.dataSource());
@@ -248,46 +248,46 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public TaskReviewReadModel taskReviewReadModel(TaskReviewStore taskReviewStore) {
         return new TaskReviewStoreTaskReviewReadModel(taskReviewStore);
     }
 
     @Bean
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public TaskReviewMaterializer taskReviewMaterializer(TaskReviewStore taskReviewStore) {
         return new TaskReviewStoreMaterializer(taskReviewStore);
     }
 
     @Bean(destroyMethod = "close")
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public TaskReviewReportQueue taskReviewReportQueue(TaskReviewMaterializer taskReviewMaterializer) {
         return new InProcessTaskReviewReportQueue(taskReviewMaterializer);
     }
 
     @Bean
     @Primary
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public TaskReviewMaterializationPolicy taskReviewMaterializationPolicy() {
         return TaskReviewMaterializationPolicy.fromDefaultMode(taskReviewMaterializationMode);
     }
 
     @Bean
     @Primary
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public TaskReviewReadModelWriter taskReviewReadModelWriter(TaskReviewReportQueue taskReviewReportQueue,
                                                               TaskReviewMaterializationPolicy policy) {
         return new QueueBackedTaskReviewReadModelWriter(taskReviewReportQueue, policy);
     }
 
     @Bean(destroyMethod = "shutdown")
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public TaskWorkRuntime taskWorkRuntime() {
         String normalizedMode = normalizeInfraMode(runtimeMode, "memory");
         if ("redis".equals(normalizedMode)) {
             return new RedisTaskWorkRuntime(redisUri(), runtimeRedisNamespace, runtimeRedisMaxQueuedItems);
         }
-        requireNonProdMode("mass.runtime.mode", "redis", normalizedMode);
+        requireDurableLocalInfraMode("mass.runtime.mode", "redis", normalizedMode);
         if ("memory".equals(normalizedMode)) {
             return new InMemoryTaskWorkRuntime();
         }
@@ -295,13 +295,13 @@ public class XaMassServerApplication {
     }
 
     @Bean(destroyMethod = "shutdown")
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public TaskResultRuntime taskResultRuntime() {
         String normalizedMode = normalizeInfraMode(runtimeMode, "memory");
         if ("redis".equals(normalizedMode)) {
             return new RedisTaskResultRuntime(redisUri(), runtimeRedisNamespace + ":result");
         }
-        requireNonProdMode("mass.runtime.mode", "redis", normalizedMode);
+        requireDurableLocalInfraMode("mass.runtime.mode", "redis", normalizedMode);
         if ("memory".equals(normalizedMode)) {
             return new InMemoryTaskResultRuntime();
         }
@@ -309,7 +309,7 @@ public class XaMassServerApplication {
     }
 
     @Bean(destroyMethod = "stop")
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
                                                           JdbcStorageRuntime jdbcStorageRuntime,
                                                           CatalogMetadataStore catalogMetadataStore,
@@ -319,7 +319,7 @@ public class XaMassServerApplication {
                                                           ObjectProvider<ExecutionEventSink> executionEventSinkProvider) {
         MassSdk.Builder builder = MassSdk.builder();
         if (jdbcStorageRuntime.isEnabled()) {
-            builder.submitterRegistry(new JdbcSubmitterRegistry(
+            builder.credentialPrincipalStore(new JdbcCredentialPrincipalStore(
                     jdbcStorageRuntime.dataSource(),
                     JdbcStorageMode.parse(storageMode)
             ));
@@ -396,7 +396,7 @@ public class XaMassServerApplication {
                     WorkerRouteBucketPolicies.defaultPolicy()
             );
         }
-        requireNonProdMode("mass.runtime.mode", "redis", normalizedMode);
+        requireDurableLocalInfraMode("mass.runtime.mode", "redis", normalizedMode);
         if ("memory".equals(normalizedMode)) {
             return null;
         }
@@ -404,7 +404,7 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     @Order(2)
     public CommandLineRunner fullStackStarter(MassSdkApplication app, JdbcStorageRuntime jdbcStorageRuntime) {
         return args -> {
@@ -444,7 +444,7 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     @Order(4)
     public CommandLineRunner taskReviewReadModelFinalityListener(MassSdkApplication app,
                                                                  @Qualifier("taskReviewReadModelWriter")
@@ -464,7 +464,7 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     @Order(4)
     public CommandLineRunner taskReviewReadModelAttemptClosedListener(MassSdkApplication app,
                                                                       @Qualifier("taskReviewReadModelWriter")
@@ -513,14 +513,14 @@ public class XaMassServerApplication {
      */
     @Bean
     @Primary
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public ControlPlaneCatalog serverControlPlaneCatalog(MassSdkApplication app) {
         return app.catalog();
     }
 
     @Bean
     @Primary
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public PrincipalDirectory serverPrincipalDirectory(DefaultOperatorPrincipalDirectory operatorPrincipalDirectory,
                                                        MassSdkApplication app) {
         return new CompositePrincipalDirectory(List.of(operatorPrincipalDirectory, app));
@@ -528,7 +528,7 @@ public class XaMassServerApplication {
 
     @Bean
     @Primary
-    @Profile({"dev", "prod"})
+    @Profile({"memory-local", "durable-local"})
     public RuntimeDiagnosticsOperations serverRuntimeDiagnosticsOperations(MassSdkApplication app) {
         return app.runtimeDiagnostics();
     }
@@ -562,7 +562,7 @@ public class XaMassServerApplication {
                     transportDeliveryMaxItemsPerRoute
             );
         }
-        requireNonProdMode("mass.transport.delivery.store", "redis", normalizedMode);
+        requireDurableLocalInfraMode("mass.transport.delivery.store", "redis", normalizedMode);
         if ("memory".equals(normalizedMode)) {
             return null;
         }
@@ -581,7 +581,7 @@ public class XaMassServerApplication {
                     transportNodeId
             );
         }
-        requireNonProdMode("mass.transport.presence.store", "redis", normalizedMode);
+        requireDurableLocalInfraMode("mass.transport.presence.store", "redis", normalizedMode);
         if ("memory".equals(normalizedMode)) {
             return null;
         }
@@ -597,18 +597,18 @@ public class XaMassServerApplication {
         return rawValue.trim().toLowerCase(Locale.ROOT);
     }
 
-    private void requireNonProdMode(String property, String requiredValue, String actualValue) {
-        if (isProdProfile()) {
-            throw new IllegalStateException("prod requires " + property + "=" + requiredValue
+    private void requireDurableLocalInfraMode(String property, String requiredValue, String actualValue) {
+        if (isDurableLocalProfile()) {
+            throw new IllegalStateException("durable-local requires " + property + "=" + requiredValue
                     + " (was " + actualValue + ")");
         }
     }
 
-    private boolean isProdProfile() {
+    private boolean isDurableLocalProfile() {
         if (environment == null) {
             return false;
         }
-        return Arrays.asList(effectiveProfiles(environment)).contains("prod");
+        return Arrays.asList(effectiveProfiles(environment)).contains("durable-local");
     }
 
 }

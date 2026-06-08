@@ -6,7 +6,7 @@ The implementation roadmap has been archived. Use this inventory, current
 server code, and `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` as current API
 surface truth.
 
-Current code snapshot date: 2026-06-04.
+Current code snapshot date: 2026-06-06.
 
 This inventory is the route-category owner truth used by server route boundary
 guards. Keep route rows machine-readable: `Method` and `Route` must stay in the
@@ -45,15 +45,12 @@ Deferred decisions:
 | POST | /api/v1/auth/login | AuthController | operator-command | public credential exchange | server auth/session | keep; bounded login; sets HttpOnly session cookie and returns CSRF token | frontend | keep |
 | GET | /api/v1/auth/me | AuthController | console-diagnostics | operator auth-only | server auth/session | keep; bounded principal read | frontend | keep |
 | POST | /api/v1/auth/logout | AuthController | operator-command | operator auth-only + CSRF in session mode | server auth/session | keep; bounded operator session command | frontend | keep |
-| GET | /api/v1/submitters/me | CurrentSubmitterController | public-sdk-read | SDK credential bypass or TASK_VIEW | submitter credential owner | keep; bounded current-principal read | frontend, SDK users | keep |
-| GET | /api/v1/submitters/me/usage | ApiUsageController | public-sdk-read | SDK credential bypass only | API usage owner | keep; bounded current credential usage | frontend | keep |
-| POST | /api/v1/submitter-sessions | SubmitterViewerSessionController | public-sdk-ingress | SDK credential bypass only | submitter viewer session owner | keep; bounded session create | frontend | keep |
-| GET | /api/v1/submitter-sessions/me | SubmitterViewerSessionController | public-sdk-read | SDK credential bypass only | submitter viewer session owner | keep; bounded session read | frontend | keep |
-| POST | /api/v1/submitter-sessions:logout | SubmitterViewerSessionController | operator-command | SDK credential bypass only | submitter viewer session owner | keep; bounded logout command | frontend | keep |
+| POST | /api/v1/api-key-viewer-sessions | ApiKeyViewerSessionController | public-sdk-ingress | SDK credential bypass only | API-key viewer session owner | keep; bounded session create | frontend | keep |
+| GET | /api/v1/api-key-viewer-sessions/me | ApiKeyViewerSessionController | public-sdk-read | SDK credential bypass only | API-key viewer session owner | keep; bounded session read | frontend | keep |
+| POST | /api/v1/api-key-viewer-sessions:logout | ApiKeyViewerSessionController | operator-command | SDK credential bypass only | API-key viewer session owner | keep; bounded logout command | frontend | keep |
 | GET | /api/v1/projects | ProjectApiController | public-sdk-read | SDK-or-operator route | control-plane catalog | keep; bounded metadata list | frontend, SDK users | keep |
 | GET | /api/v1/projects/{projectCode} | ProjectApiController | public-sdk-read | SDK-or-operator route | control-plane catalog | keep; bounded metadata read | frontend, SDK users | keep |
 | GET | /api/v1/projects/{projectCode}/events | ProjectApiController | public-sdk-read | SDK-or-operator route | control-plane catalog | keep; bounded metadata read | frontend, SDK users | keep |
-| GET | /api/v1/projects/{projectCode}/submitters | ProjectApiController | public-sdk-read | SDK-or-operator route | control-plane catalog | keep; bounded metadata read | frontend | keep |
 | GET | /api/v1/catalog/events | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded catalog read | frontend, SDK users | keep |
 | GET | /api/v1/catalog/events/{eventCode} | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded catalog read | frontend, SDK users | keep |
 | GET | /api/v1/catalog/event-capabilities | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded capability read | frontend, SDK users | keep |
@@ -102,6 +99,8 @@ Deferred decisions:
 | GET | /api/v1/permissions | IdentityAccessController | console-diagnostics | ROLE_VIEW | IAM owner | keep; operator IAM read | frontend | keep |
 | GET | /api/v1/api-keys | ApiKeyController | console-diagnostics | API_KEY_VIEW | API key owner | keep; operator read | frontend | keep |
 | POST | /api/v1/api-keys | ApiKeyController | operator-command | API_KEY_APPROVE | API key owner | keep; operator create | frontend | keep |
+| GET | /api/v1/api-keys:current | ApiKeyController | public-sdk-read | SDK credential bypass only | API key owner | keep; current credential-principal read | frontend, SDK users | keep |
+| GET | /api/v1/api-keys:current/usage | ApiUsageController | public-sdk-read | SDK credential bypass only | API usage owner | keep; current credential usage read | frontend | keep |
 | GET | /api/v1/api-keys/{keyId} | ApiKeyController | console-diagnostics | API_KEY_VIEW | API key owner | keep; operator read | frontend | keep |
 | POST | /api/v1/api-keys/{keyId}:revoke | ApiKeyController | operator-command | API_KEY_REVOKE | API key owner | keep; revoke command | frontend | keep |
 | GET | /api/v1/api-keys/{keyId}/usage | ApiUsageController | console-diagnostics | API_USAGE_VIEW | API usage owner | keep; bounded usage read | frontend | keep |

@@ -55,6 +55,61 @@ class JdbcUserRolePermissionStoreTest {
         }
     }
 
+    @Test
+    void bootstrapConvergesExistingSystemRolesToCurrentDefaultPermissions() {
+        try (StorageFixture fixture = h2Fixture()) {
+            JdbcUserRolePermissionStore oldStore =
+                    new JdbcUserRolePermissionStore(fixture.runtime().dataSource(), false);
+            oldStore.createRole(new RoleRecord(
+                    "OPS_ADMIN",
+                    "Ops Admin",
+                    "Old admin role",
+                    Set.of(ApiPermissionNames.TASK_VIEW),
+                    true,
+                    Instant.EPOCH
+            ));
+
+            JdbcUserRolePermissionStore restarted =
+                    new JdbcUserRolePermissionStore(fixture.runtime().dataSource());
+
+            RoleRecord admin = restarted.getRole("OPS_ADMIN");
+            assertThat(admin.description()).isEqualTo("Full server operator access");
+            assertThat(admin.permissions())
+                    .contains(
+                            ApiPermissionNames.API_KEY_VIEW,
+                            ApiPermissionNames.API_KEY_APPROVE,
+                            ApiPermissionNames.API_KEY_REVOKE,
+                            ApiPermissionNames.API_USAGE_VIEW
+                    );
+            assertThat(admin.permissions()).containsExactlyInAnyOrderElementsOf(ApiPermissionNames.ALL);
+        }
+    }
+
+    @Test
+    void bootstrapDoesNotConvergeCustomRoleWithDefaultRoleId() {
+        try (StorageFixture fixture = h2Fixture()) {
+            JdbcUserRolePermissionStore oldStore =
+                    new JdbcUserRolePermissionStore(fixture.runtime().dataSource(), false);
+            oldStore.createRole(new RoleRecord(
+                    "OPS_ADMIN",
+                    "Local Admin",
+                    "Custom local role",
+                    Set.of(ApiPermissionNames.TASK_VIEW),
+                    false,
+                    Instant.EPOCH
+            ));
+
+            JdbcUserRolePermissionStore restarted =
+                    new JdbcUserRolePermissionStore(fixture.runtime().dataSource());
+
+            RoleRecord admin = restarted.getRole("OPS_ADMIN");
+            assertThat(admin.name()).isEqualTo("Local Admin");
+            assertThat(admin.description()).isEqualTo("Custom local role");
+            assertThat(admin.permissions()).containsExactly(ApiPermissionNames.TASK_VIEW);
+            assertThat(admin.systemRole()).isFalse();
+        }
+    }
+
     private void assertUserRolePermissionRestart(StorageFixture fixture) {
         JdbcUserRolePermissionStore store = new JdbcUserRolePermissionStore(fixture.runtime().dataSource());
         assertThat(store.getUser("ops-admin")).isNotNull();

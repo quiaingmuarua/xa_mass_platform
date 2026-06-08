@@ -7,7 +7,7 @@ import com.xa.mass.server.e2e.support.AbstractTraceObservedE2eTest;
 import com.xa.mass.server.e2e.support.ExternalNodeWorkerProcess;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.transport.socket.server.SocketTransportServer;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -48,7 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.socket.enabled=true"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractTraceObservedE2eTest {
 
@@ -127,7 +127,7 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
     }
 
     private void registerWorkerCredential(ExternalWorkerCase spec) {
-        app.registerSubmitter(SubmitterRegistration.builder()
+        app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(spec.workerId() + "-principal")
                 .credential(spec.workerKey())
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))

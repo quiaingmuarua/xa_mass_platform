@@ -34,7 +34,7 @@ describe('route metadata', () => {
         const flatRoutes = walkRoutes(appRoutes)
 
         flatRoutes.forEach((route) => {
-            expect(['operator', 'submitter-viewer', 'public']).toContain(
+            expect(['operator', 'api-key-viewer', 'public']).toContain(
                 route.meta.shell,
             )
         })

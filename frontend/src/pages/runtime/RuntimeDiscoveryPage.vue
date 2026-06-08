@@ -131,42 +131,42 @@
           </el-col>
         </el-row>
 
-        <el-card class="page-card submitter-access-card">
+        <el-card class="page-card api-key-access-card">
           <template #header>
-            <strong>Submitter credential access</strong>
+            <strong>API-key credential access</strong>
           </template>
             <el-alert
-            class="submitter-access-note"
+            class="api-key-access-note"
             type="info"
             :closable="false"
-            title="Submitter credential identity is only for credential-backed task submission through POST /api/v1/tasks. It is not the control-console login state and does not affect menu permissions."
+            title="API-key credential identity is only for credential-backed task submission through POST /api/v1/tasks. It is not the control-console login state and does not affect menu permissions."
           />
           <el-descriptions :column="1" border>
             <el-descriptions-item label="Introspection">
-              <el-tag :type="submitterStatusType">
-                {{ submitterStatusLabel }}
+              <el-tag :type="apiKeyStatusType">
+                {{ apiKeyStatusLabel }}
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="Principal">
-              {{ submitterProfile?.principalId ?? '-' }}
+              {{ apiKeyProfile?.principalId ?? '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Resolved user">
-              {{ submitterProfile?.userId ?? '-' }}
+              {{ apiKeyProfile?.userId ?? '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Project scope">
-              {{ submitterProfile?.projectScope ?? '-' }}
+              {{ apiKeyProfile?.projectScope ?? '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Permissions">
-              {{ submitterProfile?.permissions?.join(', ') || '-' }}
+              {{ apiKeyProfile?.permissions?.join(', ') || '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Project scopes">
-              {{ submitterProfile?.projectScopes?.join(', ') || '-' }}
+              {{ apiKeyProfile?.projectScopes?.join(', ') || '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Event scopes">
-              {{ submitterProfile?.eventScopes?.join(', ') || '-' }}
+              {{ apiKeyProfile?.eventScopes?.join(', ') || '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="Attributes">
-              <pre class="inline-json-block">{{ submitterAttributesText }}</pre>
+              <pre class="inline-json-block">{{ apiKeyAttributesText }}</pre>
             </el-descriptions-item>
             <el-descriptions-item label="Create route">
               Use the same task create route:
@@ -558,14 +558,14 @@ import {computed, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
 import {listEventCapabilities, listEventDefinitions} from '@/api/catalog'
 import {listProjects} from '@/api/projects'
-import {getCurrentSubmitter} from '@/api/current-submitter'
+import {getCurrentApiKey} from '@/api/current-api-key'
 import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {EventCapability, EventInvocationModel, EventDefinition} from '@/types/catalog'
 import type {ProjectDefinition} from '@/types/projects'
-import type {CurrentSubmitterSnapshot} from '@/types/current-submitter'
+import type {CurrentApiKeySnapshot} from '@/types/current-api-key'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
 import {resolveTaskStarterDraft, stringifyStarterItems, stringifyStarterSharedConfig,} from '@/utils/task-starters'
@@ -601,7 +601,7 @@ const projects = ref<ProjectDefinition[]>([])
 const events = ref<EventDefinition[]>([])
 const eventCapabilities = ref<EventCapability[]>([])
 const workers = ref<WorkerListItem[]>([])
-const submitterSnapshot = ref<CurrentSubmitterSnapshot>({
+const apiKeySnapshot = ref<CurrentApiKeySnapshot>({
   state: 'unavailable',
   profile: null,
 })
@@ -777,28 +777,28 @@ const coveredProjectCount = computed(
       (project) => project.enabled && project.onlineWorkerIds.length > 0,
     ).length,
 )
-const submitterProfile = computed(() => submitterSnapshot.value.profile)
-const submitterStatusLabel = computed(() => {
-  if (submitterSnapshot.value.state === 'available') {
+const apiKeyProfile = computed(() => apiKeySnapshot.value.profile)
+const apiKeyStatusLabel = computed(() => {
+  if (apiKeySnapshot.value.state === 'available') {
     return 'Credential resolved'
   }
-  if (submitterSnapshot.value.state === 'unauthorized') {
-    return 'No submitter credential in this browser session'
+  if (apiKeySnapshot.value.state === 'unauthorized') {
+    return 'No API-key credential in this browser session'
   }
   return 'Endpoint unavailable or mock mode'
 })
-const submitterStatusType = computed(() => {
-  if (submitterSnapshot.value.state === 'available') {
+const apiKeyStatusType = computed(() => {
+  if (apiKeySnapshot.value.state === 'available') {
     return 'success'
   }
-  if (submitterSnapshot.value.state === 'unauthorized') {
+  if (apiKeySnapshot.value.state === 'unauthorized') {
     return 'warning'
   }
   return 'info'
 })
-const submitterAttributesText = computed(() =>
-  submitterProfile.value
-    ? JSON.stringify(submitterProfile.value.attributes ?? {}, null, 2)
+const apiKeyAttributesText = computed(() =>
+  apiKeyProfile.value
+    ? JSON.stringify(apiKeyProfile.value.attributes ?? {}, null, 2)
     : '{}',
 )
 const selectedScopeTitle = computed(() => {
@@ -916,26 +916,26 @@ async function loadDiscovery(): Promise<void> {
       eventRowsData,
       eventCapabilityRows,
       workerResponse,
-      submitterSnapshotData,
+      apiKeySnapshotData,
     ] =
       await Promise.all([
         listProjects(),
         listEventDefinitions(),
         listEventCapabilities(),
         listWorkers(),
-        getCurrentSubmitter(),
+        getCurrentApiKey(),
       ])
     projects.value = projectRowsData
     events.value = eventRowsData
     eventCapabilities.value = eventCapabilityRows
     workers.value = workerResponse.items
-    submitterSnapshot.value = submitterSnapshotData
+    apiKeySnapshot.value = apiKeySnapshotData
   } catch (error) {
     projects.value = []
     events.value = []
     eventCapabilities.value = []
     workers.value = []
-    submitterSnapshot.value = {
+    apiKeySnapshot.value = {
       state: 'unavailable',
       profile: null,
     }
@@ -1127,11 +1127,11 @@ watch(
   height: 100%;
 }
 
-.submitter-access-card {
+.api-key-access-card {
   margin-top: 20px;
 }
 
-.submitter-access-note {
+.api-key-access-note {
   margin-bottom: 16px;
   border-radius: 12px;
 }

@@ -1,4 +1,4 @@
-export type AppRouteShell = 'operator' | 'submitter-viewer' | 'public'
+export type AppRouteShell = 'operator' | 'api-key-viewer' | 'public'
 
 export type AppRouteNavGroup =
     | 'dashboard'

@@ -117,7 +117,7 @@ public class ApiRouteAuthorizationCatalog {
                     ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_OR_OPERATOR_ROUTE)
                     : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
         }
-        if (uri.matches("^/api/v1/projects/[^/]+(/events|/submitters)?$") && "GET".equals(method)) {
+        if (uri.matches("^/api/v1/projects/[^/]+(/events)?$") && "GET".equals(method)) {
             return sdkCredentialAttempt
                     ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_OR_OPERATOR_ROUTE)
                     : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
@@ -125,27 +125,17 @@ public class ApiRouteAuthorizationCatalog {
         if (uri.startsWith("/api/v1/catalog/") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS);
         }
-        if (uri.equals("/api/v1/submitters/me") && "GET".equals(method)) {
-            return sdkCredentialAttempt
-                    ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
-                    : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
-        }
-        if (uri.equals("/api/v1/submitters/me/usage") && "GET".equals(method)) {
+        if (uri.equals("/api/v1/api-key-viewer-sessions") && "POST".equals(method)) {
             return sdkCredentialAttempt
                     ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                     : null;
         }
-        if (uri.equals("/api/v1/submitter-sessions") && "POST".equals(method)) {
+        if (uri.equals("/api/v1/api-key-viewer-sessions/me") && "GET".equals(method)) {
             return sdkCredentialAttempt
                     ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                     : null;
         }
-        if (uri.equals("/api/v1/submitter-sessions/me") && "GET".equals(method)) {
-            return sdkCredentialAttempt
-                    ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
-                    : null;
-        }
-        if (uri.equals("/api/v1/submitter-sessions:logout") && "POST".equals(method)) {
+        if (uri.equals("/api/v1/api-key-viewer-sessions:logout") && "POST".equals(method)) {
             return sdkCredentialAttempt
                     ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                     : null;
@@ -193,6 +183,16 @@ public class ApiRouteAuthorizationCatalog {
                 case "POST" -> route(PlatformResourceType.API_KEY, PlatformAction.CREATE, ApiPermissionNames.API_KEY_APPROVE);
                 default -> null;
             };
+        }
+        if (uri.equals("/api/v1/api-keys:current") && "GET".equals(method)) {
+            return sdkCredentialAttempt
+                    ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    : null;
+        }
+        if (uri.equals("/api/v1/api-keys:current/usage") && "GET".equals(method)) {
+            return sdkCredentialAttempt
+                    ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    : null;
         }
         if (uri.matches("^/api/v1/api-keys/[^/:]+$") && "GET".equals(method)) {
             return route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiPermissionNames.API_KEY_VIEW);

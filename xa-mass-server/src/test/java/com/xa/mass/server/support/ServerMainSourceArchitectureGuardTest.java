@@ -223,8 +223,8 @@ class ServerMainSourceArchitectureGuardTest {
         Path applicationYml = Path.of("src/main/resources/application.yml");
         String applicationConfig = Files.readString(applicationYml, StandardCharsets.UTF_8);
 
-        assertTrue(applicationConfig.contains("default: dev"),
-                "application.yml must use Spring's default profile support for no-arg dev startup");
+        assertTrue(applicationConfig.contains("default: durable-local"),
+                "application.yml must use Spring's default profile support for no-arg durable-local startup");
         assertTrue(!applicationConfig.contains("active: local"),
                 "application.yml must not activate the old local profile");
         assertTrue(!source.contains("System.setProperty(\"spring.profiles.active\""),
@@ -232,34 +232,35 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
-    void serverRunnableBeansAreAvailableForDevAndProd() throws IOException {
+    void serverRunnableBeansAreAvailableForMemoryLocalAndDurableLocal() throws IOException {
         Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
         String source = Files.readString(application, StandardCharsets.UTF_8);
 
-        assertTrue(source.contains("@Profile({\"dev\", \"prod\"})"),
-                "server runtime beans must be selectable through both dev and prod profiles");
-        assertTrue(!source.contains("@Profile(\"dev\")\n    public JdbcStorageRuntime"),
-                "server JDBC storage runtime must not be dev-only");
-        assertTrue(!source.contains("@Profile(\"dev\")\n    public MassSdkApplication"),
-                "embedded SDK runtime application must not be dev-only");
+        assertTrue(source.contains("@Profile({\"memory-local\", \"durable-local\"})"),
+                "server runtime beans must be selectable through both memory-local and durable-local profiles");
+        assertTrue(!source.contains("@Profile(\"memory-local\")\n    public JdbcStorageRuntime"),
+                "server JDBC storage runtime must not be memory-local-only");
+        assertTrue(!source.contains("@Profile(\"memory-local\")\n    public MassSdkApplication"),
+                "embedded SDK runtime application must not be memory-local-only");
     }
 
     @Test
-    void prodProfileKeepsStorageRuntimeAndTraceLayersSeparate() throws IOException {
-        String prodConfig = Files.readString(Path.of("src/main/resources/application-prod.yml"), StandardCharsets.UTF_8);
+    void durableLocalProfileKeepsStorageRuntimeAndTraceLayersSeparate() throws IOException {
+        String durableLocalConfig = Files.readString(Path.of("src/main/resources/application-durable-local.yml"),
+                StandardCharsets.UTF_8);
 
-        assertTrue(prodConfig.contains("mode: jdbc-sqlite"),
-                "prod profile must select SQLite control-plane storage");
-        assertTrue(prodConfig.contains("mode: redis"),
-                "prod profile must select Redis runtime");
-        assertTrue(prodConfig.contains("store: redis"),
-                "prod profile must select Redis transport delivery/presence stores");
-        assertTrue(!prodConfig.contains("trace"),
-                "prod profile convergence must not add trace DB ingestion settings");
+        assertTrue(durableLocalConfig.contains("mode: jdbc-sqlite"),
+                "durable-local profile must select SQLite control-plane storage");
+        assertTrue(durableLocalConfig.contains("mode: redis"),
+                "durable-local profile must select Redis runtime");
+        assertTrue(durableLocalConfig.contains("store: redis"),
+                "durable-local profile must select Redis transport delivery/presence stores");
+        assertTrue(!durableLocalConfig.contains("trace"),
+                "durable-local profile convergence must not add trace DB ingestion settings");
     }
 
     @Test
-    void prodInfraAssemblyFailsClosedInsteadOfFallingBackToMemory() throws IOException {
+    void durableLocalInfraAssemblyFailsClosedInsteadOfFallingBackToMemory() throws IOException {
         Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
         String applicationSource = Files.readString(application, StandardCharsets.UTF_8);
         Path storeConfiguration = SERVER_MAIN_SOURCE_ROOT.resolve(
@@ -276,21 +277,21 @@ class ServerMainSourceArchitectureGuardTest {
         assertTrue(!storeConfigurationSource.contains(disabledJdbcFallback),
                 "server control-plane stores must not synthesize a disabled JDBC runtime fallback");
         assertTrue(!applicationSource.contains(taskWorkFallback),
-                "prod runtime assembly must not fallback to in-memory task work runtime when the bean is missing");
+                "durable-local runtime assembly must not fallback to in-memory task work runtime when the bean is missing");
         assertTrue(!applicationSource.contains(taskResultFallback),
-                "prod runtime assembly must not fallback to in-memory task result runtime when the bean is missing");
+                "durable-local runtime assembly must not fallback to in-memory task result runtime when the bean is missing");
         assertTrue(!applicationSource.contains(memoryNullSwitch),
-                "prod transport resolver must not encode memory as a null/default factory fallback");
+                "durable-local transport resolver must not encode memory as a null/default factory fallback");
         assertTrue(!applicationSource.contains(memoryRuntimeSwitch),
-                "prod runtime resolver must not encode memory as the default runtime branch");
-        assertTrue(applicationSource.contains("prod requires mass.storage.mode to be JDBC-enabled"),
-                "prod storage mode must fail closed when it is memory or disabled");
-        assertTrue(applicationSource.contains("requireNonProdMode(\"mass.runtime.mode\", \"redis\""),
-                "prod runtime mode must fail closed unless Redis is selected");
-        assertTrue(applicationSource.contains("requireNonProdMode(\"mass.transport.delivery.store\", \"redis\""),
-                "prod transport delivery must fail closed unless Redis is selected");
-        assertTrue(applicationSource.contains("requireNonProdMode(\"mass.transport.presence.store\", \"redis\""),
-                "prod transport presence must fail closed unless Redis is selected");
+                "durable-local runtime resolver must not encode memory as the default runtime branch");
+        assertTrue(applicationSource.contains("durable-local requires mass.storage.mode to be JDBC-enabled"),
+                "durable-local storage mode must fail closed when it is memory or disabled");
+        assertTrue(applicationSource.contains("requireDurableLocalInfraMode(\"mass.runtime.mode\", \"redis\""),
+                "durable-local runtime mode must fail closed unless Redis is selected");
+        assertTrue(applicationSource.contains("requireDurableLocalInfraMode(\"mass.transport.delivery.store\", \"redis\""),
+                "durable-local transport delivery must fail closed unless Redis is selected");
+        assertTrue(applicationSource.contains("requireDurableLocalInfraMode(\"mass.transport.presence.store\", \"redis\""),
+                "durable-local transport presence must fail closed unless Redis is selected");
     }
 
     @Test
@@ -348,8 +349,10 @@ class ServerMainSourceArchitectureGuardTest {
     @Test
     void endpointMetricsUseActuatorWithoutHandRolledHighCardinalityMeters() throws IOException {
         String pom = Files.readString(Path.of("pom.xml"), StandardCharsets.UTF_8);
-        String devConfig = Files.readString(Path.of("src/main/resources/application-dev.yml"), StandardCharsets.UTF_8);
-        String prodConfig = Files.readString(Path.of("src/main/resources/application-prod.yml"), StandardCharsets.UTF_8);
+        String memoryLocalConfig = Files.readString(Path.of("src/main/resources/application-memory-local.yml"),
+                StandardCharsets.UTF_8);
+        String durableLocalConfig = Files.readString(Path.of("src/main/resources/application-durable-local.yml"),
+                StandardCharsets.UTF_8);
         List<String> violations = new ArrayList<>();
 
         if (!pom.contains("spring-boot-starter-actuator")) {
@@ -358,11 +361,11 @@ class ServerMainSourceArchitectureGuardTest {
         if (pom.contains("micrometer-registry-prometheus")) {
             violations.add("Prometheus registry must remain a later operator-deployment decision");
         }
-        if (!devConfig.contains("include: health,metrics")) {
-            violations.add("dev profile must expose health and metrics actuator endpoints");
+        if (!memoryLocalConfig.contains("include: health,metrics")) {
+            violations.add("memory-local profile must expose health and metrics actuator endpoints");
         }
-        if (!prodConfig.contains("include: health") || prodConfig.contains("include: health,metrics")) {
-            violations.add("prod profile must expose health only by default");
+        if (!durableLocalConfig.contains("include: health") || durableLocalConfig.contains("include: health,metrics")) {
+            violations.add("durable-local profile must expose health only by default");
         }
 
         try (Stream<Path> paths = Files.walk(SERVER_MAIN_SOURCE_ROOT)) {
@@ -404,8 +407,10 @@ class ServerMainSourceArchitectureGuardTest {
                 "com/xa/mass/api/sample/SampleBootstrapController.java");
         Path workerPackController = repoRoot.resolve(
                 "integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/api/SampleBootstrapController.java");
-        String devConfig = Files.readString(Path.of("src/main/resources/application-dev.yml"), StandardCharsets.UTF_8);
-        String prodConfig = Files.readString(Path.of("src/main/resources/application-prod.yml"), StandardCharsets.UTF_8);
+        String memoryLocalConfig = Files.readString(Path.of("src/main/resources/application-memory-local.yml"),
+                StandardCharsets.UTF_8);
+        String durableLocalConfig = Files.readString(Path.of("src/main/resources/application-durable-local.yml"),
+                StandardCharsets.UTF_8);
         List<String> violations = new ArrayList<>();
         try (Stream<Path> paths = Files.walk(SERVER_MAIN_SOURCE_ROOT)) {
             paths.filter(Files::isRegularFile)
@@ -431,42 +436,39 @@ class ServerMainSourceArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "server main source must not expose retired sample bootstrap HTTP path:\n"
                         + String.join("\n", violations));
-        assertTrue(!devConfig.contains("sample.bootstrap")
-                        && !devConfig.contains("bootstrap:\n    enabled: true"),
-                "dev profile must not enable retired sample bootstrap HTTP");
-        assertTrue(!prodConfig.contains("sample.bootstrap")
-                        && !prodConfig.contains("bootstrap:\n    enabled: false"),
-                "prod profile must not carry retired sample bootstrap HTTP config");
+        assertTrue(!memoryLocalConfig.contains("sample.bootstrap")
+                        && !memoryLocalConfig.contains("bootstrap:\n    enabled: true"),
+                "memory-local profile must not enable retired sample bootstrap HTTP");
+        assertTrue(!durableLocalConfig.contains("sample.bootstrap")
+                        && !durableLocalConfig.contains("bootstrap:\n    enabled: false"),
+                "durable-local profile must not carry retired sample bootstrap HTTP config");
+        assertTrue(!durableLocalConfig.contains("integrations/samples/dev/scenario")
+                        && !durableLocalConfig.contains("control-plane-seed/control-console-scenario.json"),
+                "durable-local profile must not default to checked-in scenario seeds that contain devOnly API-key raw secrets");
     }
 
     @Test
-    void apiKeyLifecycleDoesNotDependOnBroadSubmitterResourceOperations() throws IOException {
+    void apiKeyLifecycleDoesNotDependOnBroadLegacyResourceOperations() throws IOException {
         Path service = SERVER_MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/api/auth/apikey/ApiKeyCredentialService.java");
         String source = Files.readString(service, StandardCharsets.UTF_8);
 
-        assertTrue(!source.contains("import com.xa.mass.sdk.SubmitterOperations"),
+        assertTrue(!source.contains("import com.xa.mass.sdk." + "Sub" + "mitterOperations"),
                 "ApiKeyCredentialService must write auth projection through a narrow projection port, "
-                        + "not broad SubmitterOperations");
+                        + "not broad legacy resource operations");
         assertTrue(source.contains("CredentialAuthProjectionWriter"),
                 "ApiKeyCredentialService must depend on CredentialAuthProjectionWriter for auth projection writes");
     }
 
     @Test
-    void submitterRegistryInterfaceDoesNotOwnWriteAuthAndDirectoryTogether() throws IOException {
+    void removedLegacyCredentialRegistryDoesNotReappear() throws IOException {
         Path registry = REPO_ROOT.resolve(
-                "sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/auth/SubmitterRegistry.java");
-        String source = Files.readString(registry, StandardCharsets.UTF_8);
-
-        assertTrue(!source.contains("extends AuthProvider")
-                        && !source.contains("extends PrincipalDirectory")
-                        && !source.contains("AuthProvider, PrincipalDirectory"),
-                "SubmitterRegistry must stay a resource registry; auth provider, principal directory, "
-                        + "and auth projection writes are separate contracts");
+                "sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/auth/" + "Sub" + "mitterRegistry.java");
+        assertTrue(!Files.exists(registry), "legacy credential registry must not reappear");
     }
 
     @Test
-    void submitterViewerSessionsAreNotJdbcControlPlaneStores() throws IOException {
+    void apiKeyViewerSessionsAreNotJdbcControlPlaneStores() throws IOException {
         List<String> violations = new ArrayList<>();
         try (Stream<Path> paths = Files.walk(SERVER_MAIN_SOURCE_ROOT)) {
             paths.filter(Files::isRegularFile)
@@ -474,10 +476,11 @@ class ServerMainSourceArchitectureGuardTest {
                     .forEach(path -> {
                         try {
                             String source = Files.readString(path, StandardCharsets.UTF_8);
-                            if (source.contains("JdbcSubmitterViewerSessionStore")
-                                    || source.contains("SubmitterViewerSessionStore") && source.contains("xa_submitter_viewer_session")
-                                    || source.contains("SubmitterViewerSessionStore") && source.contains("submitter_viewer_session")) {
-                                violations.add(path + " treats SubmitterViewerSessionStore as JDBC/control-plane storage");
+                            String legacySessionTable = "sub" + "mitter_viewer_session";
+                            if (source.contains("JdbcApiKeyViewerSessionStore")
+                                    || source.contains("ApiKeyViewerSessionStore") && source.contains("xa_" + legacySessionTable)
+                                    || source.contains("ApiKeyViewerSessionStore") && source.contains(legacySessionTable)) {
+                                violations.add(path + " treats ApiKeyViewerSessionStore as JDBC/control-plane storage");
                             }
                         } catch (IOException e) {
                             violations.add(path + " could not be read: " + e.getMessage());
@@ -486,7 +489,7 @@ class ServerMainSourceArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "submitter-viewer sessions must remain volatile session state, not JDBC stores:\n"
+                "API-key viewer sessions must remain volatile session state, not JDBC stores:\n"
                         + String.join("\n", violations));
     }
 
@@ -496,7 +499,7 @@ class ServerMainSourceArchitectureGuardTest {
                 "InMemoryApiKeyApplicationStore", "com/xa/mass/api/auth/apikey/InMemoryApiKeyApplicationStore.java",
                 "InMemoryApiKeyCredentialStore", "com/xa/mass/api/auth/apikey/InMemoryApiKeyCredentialStore.java",
                 "InMemoryUserRolePermissionStore", "com/xa/mass/api/auth/iam/InMemoryUserRolePermissionStore.java",
-                "InMemorySubmitterViewerSessionStore", "com/xa/mass/api/auth/session/InMemorySubmitterViewerSessionStore.java",
+                "InMemoryApiKeyViewerSessionStore", "com/xa/mass/api/auth/session/InMemoryApiKeyViewerSessionStore.java",
                 "InMemoryApiUsageLedgerStore", "com/xa/mass/api/auth/usage/InMemoryApiUsageLedgerStore.java",
                 "InMemoryWorkerRegistrationObservationStore",
                 "com/xa/mass/api/worker/registration/InMemoryWorkerRegistrationObservationStore.java"
@@ -583,6 +586,48 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void apiKeyLifecycleDoesNotProjectThroughLegacyCredentialPayload() throws IOException {
+        String source = Files.readString(
+                SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/auth/apikey/ApiKeyCredentialService.java"),
+                StandardCharsets.UTF_8);
+
+        assertTrue(!source.contains("Sub" + "mitterRegistration"),
+                "API-key lifecycle must project credential principals without the legacy credential payload");
+        assertTrue(source.contains("CredentialPrincipalRegistration"),
+                "API-key lifecycle should use the credential-principal projection payload");
+    }
+
+    @Test
+    void sampleControlPlaneSeedsUseApiKeysOnly() throws IOException {
+        List<Path> seedFiles = List.of(
+                SERVER_MAIN_SOURCE_ROOT.resolve("../resources/control-plane-seed/control-console-scenario.json")
+                        .normalize(),
+                REPO_ROOT.resolve("integrations/samples/dev/scenario/bootstrap.json")
+        );
+        List<String> violations = new ArrayList<>();
+        for (Path seedFile : seedFiles) {
+            String source = Files.readString(seedFile, StandardCharsets.UTF_8);
+            String legacySeedField = "\"submit" + "ters\"";
+            if (source.contains(legacySeedField)) {
+                violations.add(seedFile + " still uses legacy credential seed field");
+            }
+            if (!source.contains("\"apiKeys\"")) {
+                violations.add(seedFile + " does not define apiKeys seed field");
+            }
+            String[] lines = source.split("\\R");
+            for (int index = 0; index < lines.length; index++) {
+                if (lines[index].contains("\"rawSecret\"")
+                        && (index == 0 || !lines[index - 1].contains("\"devOnly\": true"))) {
+                    violations.add(seedFile + " rawSecret is missing adjacent devOnly=true marker near line " + (index + 1));
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "sample control-plane seeds must use API-key seed shape:\n" + String.join("\n", violations));
+    }
+
+    @Test
     void serverApiIamUsageSchemaDoesNotMoveToPlatformInfraMigrations() throws IOException {
         List<String> violations = new ArrayList<>();
         Path platformMigrations = REPO_ROOT.resolve(
@@ -597,7 +642,7 @@ class ServerMainSourceArchitectureGuardTest {
                                     || source.contains("xa_operator_credential")
                                     || source.contains("xa_api_usage_")
                                     || source.contains("xa_worker_registration_")
-                                    || source.contains("submitter_viewer_session")) {
+                                    || source.contains("sub" + "mitter_viewer_session")) {
                                 violations.add(path
                                         + " contains server-owned API/IAM/operator/session/usage/worker-observation schema");
                             }
@@ -614,8 +659,8 @@ class ServerMainSourceArchitectureGuardTest {
                     .forEach(path -> {
                         try {
                             String source = Files.readString(path, StandardCharsets.UTF_8);
-                            if (source.contains("submitter_viewer_session")) {
-                                violations.add(path + " persists submitter-viewer sessions in JDBC");
+                            if (source.contains("sub" + "mitter_viewer_session")) {
+                                violations.add(path + " persists API-key viewer sessions in JDBC");
                             }
                             if (source.contains("xa_worker_registration_")
                                     && (source.contains("heartbeat")
@@ -634,7 +679,7 @@ class ServerMainSourceArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "server-owned API-key/IAM/operator/usage/worker-observation schema must stay in xa-mass-server and "
-                        + "submitter-viewer sessions must stay out of JDBC:\n"
+                        + "API-key viewer sessions must stay out of JDBC:\n"
                         + String.join("\n", violations));
     }
 
@@ -675,7 +720,7 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
-    void durableCatalogAssemblyDoesNotExposeDefaultCatalogFallbackForDevOrProd() throws IOException {
+    void durableCatalogAssemblyDoesNotExposeDefaultCatalogFallbackForRunnableProfiles() throws IOException {
         List<String> violations = new ArrayList<>();
         Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
         String applicationSource = Files.readString(application, StandardCharsets.UTF_8);
@@ -691,8 +736,8 @@ class ServerMainSourceArchitectureGuardTest {
 
         Path catalogConfig = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/config/CatalogConfiguration.java");
         String catalogConfigSource = Files.readString(catalogConfig, StandardCharsets.UTF_8);
-        if (!catalogConfigSource.contains("@Profile(\"!dev & !prod\")")) {
-            violations.add("CatalogConfiguration default fallback must be excluded from dev/prod profiles");
+        if (!catalogConfigSource.contains("@Profile(\"!memory-local & !durable-local\")")) {
+            violations.add("CatalogConfiguration default fallback must be excluded from memory-local/durable-local profiles");
         }
 
         Map<String, String> routeControllers = Map.of(
@@ -715,12 +760,12 @@ class ServerMainSourceArchitectureGuardTest {
         });
 
         assertTrue(violations.isEmpty(),
-                "server dev/prod durable catalog truth must not be masked by default/demo catalog fallback:\n"
+                "server memory-local/durable-local catalog truth must not be masked by default/demo catalog fallback:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void productionAuthAssemblyDoesNotCreateImplicitOperatorMemoryFallbacks() throws IOException {
+    void durableLocalAuthAssemblyDoesNotCreateImplicitOperatorMemoryFallbacks() throws IOException {
         Path allowedAssembly = SERVER_MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/server/config/ServerControlPlaneStoreConfiguration.java");
         List<String> violations = new ArrayList<>();
@@ -743,7 +788,7 @@ class ServerMainSourceArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "production auth wiring must not create implicit operator memory fallbacks outside explicit assembly:\n"
+                "durable-local auth wiring must not create implicit operator memory fallbacks outside explicit assembly:\n"
                         + String.join("\n", violations));
     }
 

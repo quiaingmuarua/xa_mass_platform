@@ -7,16 +7,3 @@ export interface ProjectDefinition {
     eventCodes: string[]
     ownerPrincipalId?: string | null
 }
-
-export interface ProjectSubmitterProfile {
-    principalId: string
-    principalType: string
-    keyPrefix: string | null
-    userId: string | null
-    projectScope: string | null
-    permissions: string[]
-    projectScopes: string[]
-    eventScopes: string[]
-    enabled: boolean
-    attributes: Record<string, string>
-}

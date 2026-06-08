@@ -19,13 +19,13 @@ export const utilityRoutes: AppRouteRecordRaw[] = [
         },
     },
     {
-        path: 'submitter-viewer',
-        name: 'submitter-viewer',
-        component: () => import('@/pages/submitter/SubmitterViewerPage.vue'),
+        path: 'api-key-viewer',
+        name: 'api-key-viewer',
+        component: () => import('@/pages/api-key-viewer/ApiKeyViewerPage.vue'),
         meta: {
-            shell: 'submitter-viewer',
+            shell: 'api-key-viewer',
             navGroup: 'viewer',
-            title: 'Submitter Viewer',
+            title: 'API-Key Viewer',
             icon: 'Tickets',
             order: 56,
             hidden: false,

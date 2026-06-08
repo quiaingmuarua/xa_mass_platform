@@ -2,7 +2,6 @@ package com.xa.mass.api.auth;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-import org.springframework.mock.env.MockEnvironment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -10,43 +9,33 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class OperatorAuthPropertiesTest {
 
     @Test
-    void devDefaultsToDevHeaderMode() {
-        MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles("dev");
-
-        OperatorAuthProperties properties = new OperatorAuthProperties(environment, "", false);
-
-        assertThat(properties.mode()).isEqualTo(OperatorAuthMode.DEV_HEADER);
-        assertThat(properties.operatorHeadersEnabled()).isTrue();
-    }
-
-    @Test
-    void prodDefaultsToSessionMode() {
-        MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles("prod");
-
-        OperatorAuthProperties properties = new OperatorAuthProperties(environment, "", false);
+    void blankModeDefaultsToSessionMode() {
+        OperatorAuthProperties properties = new OperatorAuthProperties("", false);
 
         assertThat(properties.mode()).isEqualTo(OperatorAuthMode.SESSION);
         assertThat(properties.operatorHeadersEnabled()).isFalse();
     }
 
     @Test
-    void prodRejectsDevHeaderModeWithoutUnsafeOverride() {
-        MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles("prod");
-        OperatorAuthProperties properties = new OperatorAuthProperties(environment, "dev-header", false);
+    void explicitDevHeaderModeEnablesOperatorHeaders() {
+        OperatorAuthProperties properties = new OperatorAuthProperties("dev-header", true);
 
-        assertThatThrownBy(properties::validateStartup)
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("mass.auth.operator.allow-unsafe-dev-header-in-prod=true");
+        assertThat(properties.mode()).isEqualTo(OperatorAuthMode.DEV_HEADER);
+        assertThat(properties.operatorHeadersEnabled()).isTrue();
     }
 
     @Test
-    void prodAllowsDevHeaderModeOnlyWithUnsafeOverride() {
-        MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles("prod");
-        OperatorAuthProperties properties = new OperatorAuthProperties(environment, "dev-header", true);
+    void devHeaderModeRequiresLocalFixtureOverride() {
+        OperatorAuthProperties properties = new OperatorAuthProperties("dev-header", false);
+
+        assertThatThrownBy(properties::validateStartup)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("mass.auth.operator.allow-local-fixture-header=true");
+    }
+
+    @Test
+    void devHeaderModeAllowsExplicitLocalFixtureOverride() {
+        OperatorAuthProperties properties = new OperatorAuthProperties("dev-header", true);
 
         properties.validateStartup();
 
@@ -56,7 +45,6 @@ class OperatorAuthPropertiesTest {
     @Test
     void springCanInstantiatePropertiesThroughAutowiredConstructor() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.getEnvironment().setActiveProfiles("prod");
             context.register(OperatorAuthProperties.class);
             context.refresh();
 
@@ -69,7 +57,6 @@ class OperatorAuthPropertiesTest {
     @Test
     void invalidModeFailsFast() {
         OperatorAuthProperties properties = new OperatorAuthProperties(
-                new MockEnvironment(),
                 "header-admin",
                 false
         );

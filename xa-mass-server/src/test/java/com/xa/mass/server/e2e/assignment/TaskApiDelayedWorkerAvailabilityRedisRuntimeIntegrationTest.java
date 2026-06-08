@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.engine.task-message-lease-seconds=2"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest extends AbstractSampleE2eTest {
 

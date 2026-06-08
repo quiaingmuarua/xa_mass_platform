@@ -266,17 +266,21 @@
       ]
     }
   ],
-  "submitters": [
+  "apiKeys": [
     {
-      "principalId": "crawler-submitter",
-      "credential": "crawler-submitter-key",
-      "permissions": ["task:create"],
+      "principalId": "crawler-task-api-key",
+      "devOnly": true,
+      "rawSecret": "crawler-task-api-key",
+      "createdForUserId": "ops-admin",
+      "permissions": ["task:create", "task:edit", "task:view"],
       "projectScopes": ["crawlerApp"],
       "eventScopes": ["crawler.fetch-page", "stock.quote.fetch"]
     },
     {
       "principalId": "node-worker-api-001",
-      "credential": "node-worker-key",
+      "devOnly": true,
+      "rawSecret": "node-worker-key",
+      "createdForUserId": "ops-admin",
       "permissions": ["worker:poll"],
       "projectScopes": ["crawlerApp"],
       "eventScopes": ["crawler.fetch-page"],
@@ -286,7 +290,9 @@
     },
     {
       "principalId": "node-worker-realtime-001",
-      "credential": "node-worker-realtime-key",
+      "devOnly": true,
+      "rawSecret": "node-worker-realtime-key",
+      "createdForUserId": "ops-admin",
       "permissions": ["worker:poll"],
       "projectScopes": ["crawlerApp"],
       "eventScopes": ["crawler.fetch-page"],
@@ -296,7 +302,9 @@
     },
     {
       "principalId": "stock-ws-worker-001",
-      "credential": "stock-ws-worker-key",
+      "devOnly": true,
+      "rawSecret": "stock-ws-worker-key",
+      "createdForUserId": "ops-admin",
       "permissions": ["worker:poll"],
       "projectScopes": ["crawlerApp"],
       "eventScopes": ["stock.quote.fetch"],
@@ -306,8 +314,10 @@
     },
     {
       "principalId": "public-probe-ops",
-      "credential": "public-probe-ops-key",
-      "permissions": ["task:create", "task:edit", "task:control", "task:govern"],
+      "devOnly": true,
+      "rawSecret": "public-probe-ops-key",
+      "createdForUserId": "ops-admin",
+      "permissions": ["task:create", "task:edit", "task:view", "task:control", "task:govern"],
       "projectScopes": ["deviceProbe"],
       "eventScopes": ["probe.phone.metadata"],
       "attributes": {
@@ -317,7 +327,9 @@
     {
       "count": 100,
       "principalId": "phone-device-probe-poll-sg-${PAD3}",
-      "credential": "phone-device-probe-poll-sg-${PAD3}-key",
+      "devOnly": true,
+      "rawSecret": "phone-device-probe-poll-sg-${PAD3}-key",
+      "createdForUserId": "ops-admin",
       "permissions": ["worker:poll"],
       "projectScopes": ["deviceProbe"],
       "eventScopes": ["probe.phone.metadata"],

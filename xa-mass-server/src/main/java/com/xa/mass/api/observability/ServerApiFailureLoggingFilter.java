@@ -93,10 +93,10 @@ public class ServerApiFailureLoggingFilter extends OncePerRequestFilter {
         if (uri.startsWith("/internal/v1/")) {
             return "console";
         }
-        if (uri.startsWith("/api/v1/submitter-sessions")) {
-            return "submitter-viewer";
+        if (uri.startsWith("/api/v1/api-key-viewer-sessions")) {
+            return "api-key-viewer";
         }
-        if (uri.startsWith("/api/v1/submitters/me")) {
+        if (uri.startsWith("/api/v1/api-keys:current")) {
             return "sdk";
         }
         if (hasSdkCredentialAttempt(request)

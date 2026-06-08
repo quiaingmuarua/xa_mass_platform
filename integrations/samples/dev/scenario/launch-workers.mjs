@@ -17,7 +17,7 @@ const nodeBin = process.env.NODE_BIN ?? process.execPath;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const workerConfigPath = resolve(repoRoot, "integrations/samples/dev/scenario/workers.json");
 const taskConfigPath = resolve(repoRoot, "integrations/samples/dev/scenario/tasks.json");
-const taskSubmitterKey = process.env.MASS_TASK_SUBMITTER_KEY ?? "crawler-submitter-key";
+const taskApiKeyDefault = process.env.MASS_TASK_API_KEY ?? "crawler-task-api-key";
 
 const children = [];
 let shuttingDown = false;
@@ -193,7 +193,7 @@ async function seedTasks(taskSpecs) {
     return;
   }
   for (const taskSpec of taskSpecs) {
-    const taskApiKey = taskSpec.apiKey ?? taskSubmitterKey;
+    const taskApiKey = taskSpec.apiKey ?? taskApiKeyDefault;
     const requestBody = replacePlaceholders(taskSpec.body ?? {}, {
       MASS_BASE_URL: baseUrl,
       MASS_WS_URL: wsUrl,
@@ -225,19 +225,16 @@ async function seedTasks(taskSpecs) {
       }
     }
     if (!requestBody.keepIntakeOpen) {
-      await executeTaskCommand(taskId, "SEAL", taskApiKey);
+      console.log(
+        `[sample-launcher] task ${taskId} not sealed: lifecycle commands are operator/server-control only`,
+      );
     }
     if (taskSpec.approve && taskId) {
-      await executeTaskCommand(taskId, "APPROVE", taskApiKey);
       console.log(
-        `[sample-launcher] approved seed task project=${requestBody.project} event=${requestBody.eventCode ?? ""}: ${taskId}`,
+        `[sample-launcher] task ${taskId} not approved: lifecycle commands are operator/server-control only`,
       );
     }
   }
-}
-
-async function executeTaskCommand(taskId, command, apiKey = taskSubmitterKey) {
-  await post(`/api/v1/tasks/${encodeURIComponent(taskId)}/commands`, apiKey, { command });
 }
 
 async function post(path, apiKey, body, headerName = "X-Mass-Api-Key") {

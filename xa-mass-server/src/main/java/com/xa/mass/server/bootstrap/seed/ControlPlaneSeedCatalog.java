@@ -7,7 +7,7 @@ import java.util.Map;
 final class ControlPlaneSeedCatalog {
     private List<ProjectSeed> projects = List.of();
     private List<EventSeed> events = List.of();
-    private List<SubmitterSeed> submitters = List.of();
+    private List<ApiKeySeed> apiKeys = List.of();
 
     List<ProjectSeed> getProjects() {
         return projects;
@@ -25,12 +25,12 @@ final class ControlPlaneSeedCatalog {
         this.events = events != null ? events : List.of();
     }
 
-    List<SubmitterSeed> getSubmitters() {
-        return submitters;
+    List<ApiKeySeed> getApiKeys() {
+        return apiKeys;
     }
 
-    public void setSubmitters(List<SubmitterSeed> submitters) {
-        this.submitters = submitters != null ? submitters : List.of();
+    public void setApiKeys(List<ApiKeySeed> apiKeys) {
+        this.apiKeys = apiKeys != null ? apiKeys : List.of();
     }
 
     static final class ProjectSeed {
@@ -174,17 +174,18 @@ final class ControlPlaneSeedCatalog {
         }
     }
 
-    static final class SubmitterSeed {
+    static final class ApiKeySeed {
         private int count = 1;
         private String principalId;
+        private String rawSecret;
         private String credential;
         private String keyPrefix;
-        private String userId;
-        private String projectScope;
+        private String createdForUserId;
         private List<String> permissions = List.of();
         private List<String> projectScopes = List.of();
         private List<String> eventScopes = List.of();
-        private boolean enabled = true;
+        private String createdBy = "system-seed";
+        private boolean devOnly;
         private Map<String, String> attributes = Collections.emptyMap();
 
         int getCount() {
@@ -211,6 +212,14 @@ final class ControlPlaneSeedCatalog {
             this.credential = credential;
         }
 
+        String getRawSecret() {
+            return rawSecret;
+        }
+
+        public void setRawSecret(String rawSecret) {
+            this.rawSecret = rawSecret;
+        }
+
         String getKeyPrefix() {
             return keyPrefix;
         }
@@ -219,20 +228,22 @@ final class ControlPlaneSeedCatalog {
             this.keyPrefix = keyPrefix;
         }
 
-        String getUserId() {
-            return userId;
+        String getCreatedForUserId() {
+            return createdForUserId;
+        }
+
+        public void setCreatedForUserId(String createdForUserId) {
+            this.createdForUserId = createdForUserId;
         }
 
         public void setUserId(String userId) {
-            this.userId = userId;
-        }
-
-        String getProjectScope() {
-            return projectScope;
+            this.createdForUserId = userId;
         }
 
         public void setProjectScope(String projectScope) {
-            this.projectScope = projectScope;
+            if (projectScope != null && !projectScope.isBlank()) {
+                this.projectScopes = List.of(projectScope);
+            }
         }
 
         List<String> getPermissions() {
@@ -259,12 +270,20 @@ final class ControlPlaneSeedCatalog {
             this.eventScopes = eventScopes != null ? eventScopes : List.of();
         }
 
-        boolean isEnabled() {
-            return enabled;
+        String getCreatedBy() {
+            return createdBy;
         }
 
-        public void setEnabled(boolean enabled) {
-            this.enabled = enabled;
+        public void setCreatedBy(String createdBy) {
+            this.createdBy = createdBy;
+        }
+
+        boolean isDevOnly() {
+            return devOnly;
+        }
+
+        public void setDevOnly(boolean devOnly) {
+            this.devOnly = devOnly;
         }
 
         Map<String, String> getAttributes() {

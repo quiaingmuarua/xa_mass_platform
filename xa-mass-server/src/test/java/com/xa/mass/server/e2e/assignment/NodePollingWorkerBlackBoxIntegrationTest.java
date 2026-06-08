@@ -36,14 +36,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 class NodePollingWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String WORKER_ID = "node-worker-api-001";
     private static final String WORKER_KEY = "node-worker-key";
-    private static final String SUBMITTER_KEY = "crawler-submitter-key";
+    private static final String TASK_API_KEY = "crawler-task-api-key";
 
     @Autowired
     private MassSdkApplication app;
@@ -81,7 +81,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eT
             ));
             createBody.put("executionSpec", Map.of("batchSize", 1));
 
-            Map<String, Object> createResponse = createTaskShell(createBody, submitterCredentialHeaders(SUBMITTER_KEY));
+            Map<String, Object> createResponse = createTaskShell(createBody, taskApiKeyHeaders(TASK_API_KEY));
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
             assertApiOk(appendTaskItems(taskId, "crawler.fetch-page",
@@ -177,7 +177,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eT
         assertEquals(expectedState, projection.get("state"));
     }
 
-    private HttpHeaders submitterCredentialHeaders(String credential) {
+    private HttpHeaders taskApiKeyHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

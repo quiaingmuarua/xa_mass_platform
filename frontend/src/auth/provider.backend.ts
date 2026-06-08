@@ -13,6 +13,10 @@ interface OperatorLoginResponse {
     csrfToken: string
 }
 
+interface CurrentOperatorResponse extends AuthUser {
+    csrfToken?: string | null
+}
+
 export const backendAuthProvider: AuthProvider = {
     async loadCurrentUser() {
         return loadCurrentUser()
@@ -75,7 +79,13 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
         return null
     }
     try {
-        return await requestApiData<AuthUser>('/api/v1/auth/me')
+        const current = await requestApiData<CurrentOperatorResponse>(
+            '/api/v1/auth/me',
+        )
+        if (config.authMode === 'session') {
+            setOperatorCsrfToken(current.csrfToken ?? null)
+        }
+        return current
     } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
             return null

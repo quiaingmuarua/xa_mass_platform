@@ -11,6 +11,7 @@ import com.xa.mass.api.auth.ApiRouteAuthorizationCatalog;
 import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
 import com.xa.mass.api.auth.apikey.InMemoryApiKeyCredentialStore;
 import com.xa.mass.api.auth.iam.InMemoryUserRolePermissionStore;
+import com.xa.mass.sdk.auth.InMemoryCredentialPrincipalStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -37,12 +38,12 @@ class ApiKeyControllerTest {
 
     @BeforeEach
     void setUp() {
-        InMemorySubmitterOperations submitters = new InMemorySubmitterOperations();
+        InMemoryCredentialPrincipalStore credentialPrincipals = new InMemoryCredentialPrincipalStore();
         service = new ApiKeyCredentialService(
                 new com.xa.mass.api.auth.apikey.InMemoryApiKeyApplicationStore(),
                 new InMemoryApiKeyCredentialStore(),
                 InMemoryUserRolePermissionStore.bootstrapDefaults(),
-                submitters
+                credentialPrincipals
         );
         ApiAuthInterceptor interceptor = new ApiAuthInterceptor(
                 ApiAuthTestSupport.defaultOperatorAuthService(),
@@ -51,8 +52,7 @@ class ApiKeyControllerTest {
                 new ApiRouteAuthorizationCatalog()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new ApiKeyController(service),
-                        new CurrentSubmitterController(submitters, service, null))
+                        new ApiKeyController(service, credentialPrincipals))
                 .addInterceptors(interceptor)
                 .build();
     }
@@ -82,13 +82,13 @@ class ApiKeyControllerTest {
         String keyId = data.get("credential").get("keyId").asText();
         assertThat(rawSecret).startsWith("mass_sk_");
 
-        mockMvc.perform(get("/api/v1/submitters/me")
+        mockMvc.perform(get("/api/v1/api-keys:current")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, rawSecret))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.credential.keyId").value(keyId))
+                .andExpect(jsonPath("$.data.credential.principalId").value("crawler-api-key"))
                 .andExpect(jsonPath("$.data.principalId").value("crawler-api-key"))
                 .andExpect(jsonPath("$.data.userId").value("ops-admin"))
-                .andExpect(jsonPath("$.data.permissions[?(@=='" + ApiPermissionNames.USER_VIEW + "')]").doesNotExist())
-                .andExpect(jsonPath("$.data.projectScopes[0]").value("crawlerApp"))
                 .andExpect(jsonPath("$.data.attributes.apiKeyId").value(keyId));
 
         mockMvc.perform(get("/api/v1/api-keys/" + keyId))
@@ -104,7 +104,7 @@ class ApiKeyControllerTest {
                 .andExpect(jsonPath("$.data.status").value("REVOKED"))
                 .andExpect(jsonPath("$.data.revokeReason").value("rotated"));
 
-        mockMvc.perform(get("/api/v1/submitters/me")
+        mockMvc.perform(get("/api/v1/api-keys:current")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, rawSecret))
                 .andExpect(status().isUnauthorized());
     }
@@ -153,7 +153,7 @@ class ApiKeyControllerTest {
 
         Thread.sleep(250);
 
-        mockMvc.perform(get("/api/v1/submitters/me")
+        mockMvc.perform(get("/api/v1/api-keys:current")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, rawSecret))
                 .andExpect(status().isUnauthorized());
 

@@ -7,26 +7,26 @@ import com.xa.mass.sdk.authz.PlatformAction;
 import com.xa.mass.sdk.authz.PlatformResourceType;
 
 public enum ApiSecurityScenario {
-    SUBMITTER_TASK_CREATE(
+    TASK_API_KEY_TASK_CREATE(
             "task-create",
             PlatformResourceType.TASK,
             PlatformAction.CREATE,
             PrincipalContext.TASK_CREATE_PERMISSION,
-            CredentialAudience.SUBMITTER
+            CredentialAudience.TASK_API_KEY
     ),
-    SUBMITTER_TASK_VIEW(
+    TASK_API_KEY_TASK_VIEW(
             "task-view",
             PlatformResourceType.TASK,
             PlatformAction.VIEW,
             null,
-            CredentialAudience.SUBMITTER
+            CredentialAudience.TASK_API_KEY
     ),
-    SUBMITTER_TASK_APPEND(
+    TASK_API_KEY_TASK_APPEND(
             "task-append",
             PlatformResourceType.TASK,
             PlatformAction.EDIT,
             PrincipalContext.TASK_CREATE_PERMISSION,
-            CredentialAudience.SUBMITTER
+            CredentialAudience.TASK_API_KEY
     ),
     WORKER_REGISTER(
             "worker-register",
@@ -128,37 +128,37 @@ public enum ApiSecurityScenario {
 
     public String unauthenticatedMessage() {
         return switch (credentialAudience) {
-            case SUBMITTER -> "Invalid or missing submitter credential";
+            case TASK_API_KEY -> "Invalid or missing API-key credential";
             case EXTERNAL_WORKER -> "Invalid or missing worker credential";
         };
     }
 
     public String deniedMessage(AuthorizationDecision decision) {
         if (decision == null || decision.getReason() == null || decision.getReason().isBlank()) {
-            return credentialAudience == CredentialAudience.SUBMITTER ? "Submitter credential authorization denied" : "Worker credential authorization denied";
+            return credentialAudience == CredentialAudience.TASK_API_KEY ? "API-key credential authorization denied" : "Worker credential authorization denied";
         }
         AuthorizationReasonCode reasonCode = decision.getReasonCode();
         String reason = decision.getReason();
         if (reasonCode == AuthorizationReasonCode.PERMISSION_DENIED) {
-            return credentialAudience == CredentialAudience.SUBMITTER ? "Submitter credential permission denied: " + suffixAfter(reason, "permission denied: ") : "Worker credential permission denied: " + suffixAfter(reason, "permission denied: ");
+            return credentialAudience == CredentialAudience.TASK_API_KEY ? "API-key credential permission denied: " + suffixAfter(reason, "permission denied: ") : "Worker credential permission denied: " + suffixAfter(reason, "permission denied: ");
         }
         if (reasonCode == AuthorizationReasonCode.PROJECT_SCOPE_DENIED) {
-            return credentialAudience == CredentialAudience.SUBMITTER ? "Submitter credential project scope denied: " + suffixAfter(reason, "project scope denied: ") : "Worker credential project scope denied: " + suffixAfter(reason, "project scope denied: ");
+            return credentialAudience == CredentialAudience.TASK_API_KEY ? "API-key credential project scope denied: " + suffixAfter(reason, "project scope denied: ") : "Worker credential project scope denied: " + suffixAfter(reason, "project scope denied: ");
         }
         if (reasonCode == AuthorizationReasonCode.EVENT_SCOPE_DENIED) {
-            return credentialAudience == CredentialAudience.SUBMITTER ? "Submitter credential event scope denied: " + suffixAfter(reason, "event scope denied: ") : "Worker credential event scope denied: " + suffixAfter(reason, "event scope denied: ");
+            return credentialAudience == CredentialAudience.TASK_API_KEY ? "API-key credential event scope denied: " + suffixAfter(reason, "event scope denied: ") : "Worker credential event scope denied: " + suffixAfter(reason, "event scope denied: ");
         }
-        if (credentialAudience == CredentialAudience.SUBMITTER
+        if (credentialAudience == CredentialAudience.TASK_API_KEY
                 && reasonCode == AuthorizationReasonCode.USER_SCOPE_DENIED) {
-            return "Submitter credential user scope denied: " + suffixAfter(reason, "user scope denied: ");
+            return "API-key credential user scope denied: " + suffixAfter(reason, "user scope denied: ");
         }
-        if (credentialAudience == CredentialAudience.SUBMITTER
+        if (credentialAudience == CredentialAudience.TASK_API_KEY
                 && reasonCode == AuthorizationReasonCode.OWNERSHIP_STAMP_MISSING) {
             return "Task is missing ownership metadata";
         }
-        if (credentialAudience == CredentialAudience.SUBMITTER
+        if (credentialAudience == CredentialAudience.TASK_API_KEY
                 && reasonCode == AuthorizationReasonCode.OWNER_MISMATCH) {
-            return "Submitter credential owner mismatch: " + suffixAfter(reason, "task owner mismatch: ");
+            return "API-key credential owner mismatch: " + suffixAfter(reason, "task owner mismatch: ");
         }
         if (credentialAudience == CredentialAudience.EXTERNAL_WORKER
                 && reasonCode == AuthorizationReasonCode.WORKER_BINDING_MISSING) {
@@ -182,7 +182,7 @@ public enum ApiSecurityScenario {
     }
 
     private enum CredentialAudience {
-        SUBMITTER,
+        TASK_API_KEY,
         EXTERNAL_WORKER
     }
 }

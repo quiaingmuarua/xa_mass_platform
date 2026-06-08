@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "sample.client.auto-start=false",
                 "sample.worker.auto-start=true",
                 "mass.mock.bootstrap.register-dev-catalog=false",
-                "mass.mock.bootstrap.register-dev-submitters=false",
+                "mass.mock.bootstrap.register-dev-api-keys=false",
                 "mass.mock.bootstrap.load-rules=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.control-plane.seed.rules-location=file:../integrations/samples/dev/scenario/rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 @Tag("secondary-proof")
 class DevSampleWorkerLauncherIntegrationTest extends ReviewReadModelSampleE2eTest {

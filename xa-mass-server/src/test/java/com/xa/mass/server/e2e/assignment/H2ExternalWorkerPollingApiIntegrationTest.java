@@ -6,7 +6,7 @@ import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import org.junit.jupiter.api.Tag;
@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 @Tag("secondary-proof")
 class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2eTest {
@@ -68,22 +68,22 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
     void externalWorkerPollingApiCompletesTaskEndToEndAgainstJdbcStorage() throws Exception {
         String workerId = "polling-h2-worker-001";
         String workerCredential = "polling-h2-worker-key";
-        String submitterCredential = "polling-h2-submitter-key";
+        String taskApiKey = "polling-h2-api-key-key";
 
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "supportsProject == true"),
                 rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
-        registerExternalWorkerSubmitter(
+        registerExternalWorkerCredential(
                 "polling-h2-worker",
                 workerCredential,
                 workerId,
                 "crawlerApp",
                 "crawler.fetch-page"
         );
-        app.registerSubmitter(SubmitterRegistration.builder()
-                .principalId("polling-h2-submitter")
-                .credential(submitterCredential)
+        app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
+                .principalId("polling-h2-api-key")
+                .credential(taskApiKey)
                 .userId("crawler-agent")
                 .permissions(List.of("task:create"))
                 .projectScopes(List.of("crawlerApp"))
@@ -91,7 +91,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
                 .build());
 
         HttpHeaders workerHeaders = credentialHeaders(workerCredential);
-        HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        HttpHeaders taskApiKeyHeaders = credentialHeaders(taskApiKey);
         declareExternalWorkerGroup("polling-jdbc", "crawlerApp", "crawler.fetch-page", workerHeaders);
         bindExternalAdapterNode("polling-h2-node", "polling-jdbc", workerHeaders);
 
@@ -123,7 +123,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
                 "reviewMaterializationMode", "terminal"
         ));
         createBody.put("executionSpec", Map.of("batchSize", 1));
-        Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
+        Map<String, Object> createResponse = createTaskShell(createBody, taskApiKeyHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/h2-page"))));
@@ -218,12 +218,12 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
         assertTrue(condition.getAsBoolean(), failureMessage);
     }
 
-    private void registerExternalWorkerSubmitter(String principalId,
+    private void registerExternalWorkerCredential(String principalId,
                                                  String credential,
                                                  String workerId,
                                                  String projectCode,
                                                  String eventCode) {
-        app.registerSubmitter(SubmitterRegistration.builder()
+        app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId(principalId)
                 .credential(credential)
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
@@ -263,7 +263,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
                     FROM xa_principal
                     WHERE principal_id = ?
                     """)) {
-                ps.setString(1, "polling-h2-submitter");
+                ps.setString(1, "polling-h2-api-key");
                 try (var rs = ps.executeQuery()) {
                     assertTrue(rs.next(), "principal row should exist");
                     assertEquals("SERVICE", rs.getString("principal_type"));

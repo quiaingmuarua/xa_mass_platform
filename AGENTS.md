@@ -197,8 +197,9 @@ Planning rule for multi-file or core changes:
 - do not add scan-heavy observability or reconciliation loops to hot paths
 - trace and query concerns must not reverse-drive runtime ownership or mainline lifecycle design
 - SQLite/control-plane storage must not absorb runtime queue, lease, heartbeat,
-  dispatch, result convergence, or trace/audit truth; dev/prod may change
-  infra and seed source, not public API contracts
+  dispatch, result convergence, or trace/audit truth; server profiles such as
+  `memory-local` and `durable-local` may change infra and seed source, not
+  public API contracts
 - server-owned API-key, IAM, usage, and submitter-viewer schema/store decisions
   stay in `xa-mass-server`; do not add server API/IAM tables or concepts to
   `platform_infra`, and do not persist viewer sessions in JDBC/SQLite

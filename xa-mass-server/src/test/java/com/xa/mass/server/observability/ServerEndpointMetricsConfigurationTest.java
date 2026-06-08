@@ -16,18 +16,18 @@ class ServerEndpointMetricsConfigurationTest {
     private static final Path SERVER_ROOT = Path.of(".");
 
     @Test
-    void devExposesHealthAndMetricsWhileProdExposesOnlyHealthByDefault() throws IOException {
-        String devConfig = read("src/main/resources/application-dev.yml");
-        String prodConfig = read("src/main/resources/application-prod.yml");
+    void memoryLocalExposesHealthAndMetricsWhileDurableLocalExposesOnlyHealthByDefault() throws IOException {
+        String memoryLocalConfig = read("src/main/resources/application-memory-local.yml");
+        String durableLocalConfig = read("src/main/resources/application-durable-local.yml");
 
-        assertTrue(devConfig.contains("management:")
-                        && devConfig.contains("include: health,metrics"),
-                "dev profile must expose health and metrics for local endpoint diagnosis");
-        assertTrue(prodConfig.contains("management:")
-                        && prodConfig.contains("include: health")
-                        && !prodConfig.contains("include: health,metrics")
-                        && !prodConfig.contains("prometheus"),
-                "prod-like profile must not expose broad actuator or prometheus endpoints by default");
+        assertTrue(memoryLocalConfig.contains("management:")
+                        && memoryLocalConfig.contains("include: health,metrics"),
+                "memory-local profile must expose health and metrics for local endpoint diagnosis");
+        assertTrue(durableLocalConfig.contains("management:")
+                        && durableLocalConfig.contains("include: health")
+                        && !durableLocalConfig.contains("include: health,metrics")
+                        && !durableLocalConfig.contains("prometheus"),
+                "durable-local profile must not expose broad actuator or prometheus endpoints by default");
     }
 
     @Test
