@@ -19,13 +19,17 @@ XA Mass infra has three truth layers: control-plane storage, runtime state, and
 trace / audit stream. Do not collapse them just because one layer is currently
 more implemented than another.
 
-- dev/prod profiles may change infrastructure, seed source, logging, and
+- server profiles may change infrastructure, seed source, logging, and
   operational defaults; they must not change public task, worker, credential,
   project, rule, or control-plane API contracts
-- `prod` profile infra is fail-closed: control-plane storage must be
-  JDBC-enabled, runtime state must use Redis, and transport delivery/presence
-  must use Redis. Misconfiguration must fail startup instead of silently
-  reverting to process memory.
+- `memory-local` is the lightweight local server shape: file-backed H2
+  control-plane storage, memory runtime/transport, and explicit local fixture
+  operator auth when enabled.
+- `durable-local` is the current inspectable fail-closed local shape, not a
+  formal production profile: control-plane storage must be JDBC-enabled,
+  runtime state must use Redis, and transport delivery/presence must use Redis.
+  Misconfiguration must fail startup instead of silently reverting to process
+  memory.
 - SQLite-first persistence is a control-plane storage direction only; it must
   not be read as moving runtime queues, leases, heartbeat, result convergence,
   or trace/audit streams into SQLite
@@ -176,7 +180,7 @@ Current product-stage DB rules:
 - Submitter-viewer sessions are runtime/session convenience state. They must
   not be persisted in SQLite/JDBC as control-plane truth; future cross-process
   sharing belongs to a runtime/Redis session design.
-- Submitter-viewer sessions are the current prod-facing memory exception. They
+- Submitter-viewer sessions are the current durable-local memory exception. They
   must not be used as precedent for memory fallback in control-plane storage,
   runtime queues/results, transport delivery, or transport presence.
 - Server API-key lifecycle schema must keep auth projection separate from
@@ -188,7 +192,7 @@ Current product-stage DB rules:
   environment or an explicit local/test fixture.
 - The project does not currently promise commercial-history migration or
   backwards-compatible schema evolution. Schema changes may require deleting
-  and recreating local/prod DBs in the current pre-release phase. A future
+  and recreating local DBs in the current pre-release phase. A future
   schema-version check should fail fast with a clear "recreate or reseed this
   environment" message instead of half-running against stale local data.
 

@@ -45,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.*;
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSampleE2eTest {
 

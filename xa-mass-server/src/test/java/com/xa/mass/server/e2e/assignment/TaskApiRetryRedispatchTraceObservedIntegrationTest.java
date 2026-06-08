@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.engine.assignment-retry-delay-millis=100"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 class TaskApiRetryRedispatchTraceObservedIntegrationTest extends AbstractTraceObservedE2eTest {
 

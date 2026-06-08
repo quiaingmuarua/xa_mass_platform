@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.trace.sink.shutdown-drain-timeout-ms=1500"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 class TaskApiMinimumWorkerGateTraceObservedIntegrationTest extends AbstractTraceObservedE2eTest {
 

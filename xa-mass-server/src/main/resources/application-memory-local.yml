@@ -1,4 +1,4 @@
-# Development profile overrides for the verified server shell.
+# Memory-local profile overrides for the verified server shell.
 mass:
   storage:
     mode: jdbc-h2
@@ -9,13 +9,24 @@ mass:
   control-console:
     scenario:
       enabled: false
+  control-plane:
+    seed:
+      # Enable only when importing local/sample fixture seeds with devOnly
+      # API-key raw secrets.
+      allow-local-fixture-raw-secrets: false
+  auth:
+    operator:
+      # Explicit local fixture mode. This is operator-console convenience only;
+      # SDK and worker-api calls still require API keys.
+      mode: dev-header
+      allow-local-fixture-header: true
   runtime:
     mode: memory
     event-handler-timeout-ms: 5000
     transport-max-pending-tasks: 10000
     event-max-pending-tasks: 2000
   transport:
-    node-id: local-dev-server
+    node-id: memory-local-server
     delivery:
       store: memory
     presence:

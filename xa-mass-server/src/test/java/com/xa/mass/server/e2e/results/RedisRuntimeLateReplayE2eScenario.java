@@ -27,7 +27,7 @@ import java.util.UUID;
                 "mass.engine.task-message-lease-seconds=2"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class RedisRuntimeLateReplayE2eScenario extends RuntimeLateReplayE2eScenario {
 

@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 class TaskApiLifecycleGuardsIntegrationTest extends AbstractSampleE2eTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();

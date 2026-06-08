@@ -42,7 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.socket.enabled=true"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTest {
 

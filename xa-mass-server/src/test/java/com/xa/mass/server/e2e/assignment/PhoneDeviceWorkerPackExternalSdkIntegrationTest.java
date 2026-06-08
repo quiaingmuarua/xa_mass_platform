@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eTest {
     private static final int WEBSOCKET_PORT = findFreePort();

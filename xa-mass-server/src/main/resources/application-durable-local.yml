@@ -1,4 +1,4 @@
-# Production-like profile overrides for the verified server shell.
+# Durable-local profile overrides for the verified server shell.
 mass:
   storage:
     mode: jdbc-sqlite
@@ -8,18 +8,19 @@ mass:
       password:
   control-plane:
     seed:
-      # Prod startup order is seed/import -> operator readiness -> runtime start.
+      # Durable-local startup order is seed/import -> operator readiness -> runtime start.
       # Leave disabled only when xa_operator_credential already has an ACTIVE
-      # login-capable operator credential. Otherwise prod session auth fails
+      # login-capable operator credential. Otherwise session auth fails
       # before runtime starts.
       enabled: false
       mode: apply
-      # Fresh local prod-like environment:
+      allow-local-fixture-raw-secrets: false
+      # Fresh durable-local environment:
       # mass.control-plane.seed.enabled=true
       # operator-credentials-location: classpath:control-plane-seed/operator-credentials.json
-      # Set catalog/rules only to environment-owned external seed files. The
+      # Set catalog/rules only to explicit local seed files. The
       # checked-in sample scenario seed contains devOnly API-key raw secrets and
-      # is rejected by prod seed import.
+      # is rejected unless the import is explicitly marked local fixture.
       catalog-location:
       rules-location:
       # Seed file shape:
@@ -36,18 +37,17 @@ mass:
       operator-credentials-location: classpath:control-plane-seed/operator-credentials.json
   auth:
     operator:
-      # Prod default is session when blank. This is the normal prod trust path.
-      # Set disabled only for local infra-only validation; do not treat it as
-      # production auth.
-      mode:
-      allow-unsafe-dev-header-in-prod: false
+      # Durable-local default is explicit session auth.
+      # dev-header is allowed only by explicit local fixture override.
+      mode: session
+      allow-local-fixture-header: false
   runtime:
     mode: redis
     event-handler-timeout-ms: 5000
     transport-max-pending-tasks: 20000
     event-max-pending-tasks: 5000
   transport:
-    node-id: local-prod-server
+    node-id: durable-local-server
     delivery:
       store: redis
     presence:

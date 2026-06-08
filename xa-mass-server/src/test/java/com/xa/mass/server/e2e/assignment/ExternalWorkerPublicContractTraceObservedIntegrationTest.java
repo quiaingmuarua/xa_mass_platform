@@ -48,7 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.socket.enabled=true"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractTraceObservedE2eTest {
 

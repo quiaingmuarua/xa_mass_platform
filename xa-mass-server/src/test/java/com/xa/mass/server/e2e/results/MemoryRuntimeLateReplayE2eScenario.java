@@ -21,7 +21,7 @@ import org.springframework.test.context.DynamicPropertySource;
                 "mass.engine.task-message-lease-seconds=2"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class MemoryRuntimeLateReplayE2eScenario extends RuntimeLateReplayE2eScenario {
 

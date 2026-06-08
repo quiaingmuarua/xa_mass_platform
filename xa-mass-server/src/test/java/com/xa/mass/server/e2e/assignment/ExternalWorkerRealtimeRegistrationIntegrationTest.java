@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.socket.enabled=true"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 @Tag("secondary-proof")
 class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2eTest {

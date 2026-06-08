@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.control-plane.seed.enabled=false"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 @Tag("secondary-proof")
 public class CatalogMetadataSQLiteRestartIntegrationTest extends AbstractSampleE2eTest {

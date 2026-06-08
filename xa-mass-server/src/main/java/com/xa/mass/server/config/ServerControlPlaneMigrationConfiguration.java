@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 @Configuration
-@Profile({"dev", "prod"})
+@Profile({"memory-local", "durable-local"})
 public class ServerControlPlaneMigrationConfiguration {
 
     @Bean

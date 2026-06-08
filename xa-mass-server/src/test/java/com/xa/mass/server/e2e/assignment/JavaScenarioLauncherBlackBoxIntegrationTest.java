@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.mock.bootstrap.enabled=false"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTest {
     private static final int WEBSOCKET_PORT = findFreePort();

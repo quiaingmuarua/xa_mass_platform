@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.control-plane.seed.rules-location=file:../integrations/samples/dev/scenario/rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 @Tag("secondary-proof")
 public class ControlPlaneSeedImportIntegrationTest extends AbstractSampleE2eTest {

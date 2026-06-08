@@ -32,7 +32,7 @@ import org.springframework.core.env.Environment;
 import java.util.Arrays;
 
 @Configuration
-@Profile({"dev", "prod"})
+@Profile({"memory-local", "durable-local"})
 public class ServerControlPlaneStoreConfiguration {
 
     private final Environment environment;
@@ -48,7 +48,7 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcApiKeyApplicationStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return new InMemoryApiKeyApplicationStore();
     }
 
@@ -59,7 +59,7 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcApiKeyCredentialStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return new InMemoryApiKeyCredentialStore();
     }
 
@@ -70,7 +70,7 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcUserRolePermissionStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return InMemoryUserRolePermissionStore.bootstrapDefaults();
     }
 
@@ -86,7 +86,7 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcOperatorCredentialStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return new InMemoryOperatorCredentialStore();
     }
 
@@ -102,7 +102,7 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcApiUsageLedgerStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return new InMemoryApiUsageLedgerStore();
     }
 
@@ -114,7 +114,7 @@ public class ServerControlPlaneStoreConfiguration {
             migrationRunnerProvider.getObject();
             return new JdbcWorkerRegistrationObservationStore(jdbcStorageRuntime.dataSource());
         }
-        requireNonProdMemoryStore();
+        requireMemoryStoreAllowed();
         return new InMemoryWorkerRegistrationObservationStore();
     }
 
@@ -124,15 +124,15 @@ public class ServerControlPlaneStoreConfiguration {
         return new WorkerRegistrationObservationService(store);
     }
 
-    private void requireNonProdMemoryStore() {
-        if (isProdProfile()) {
-            throw new IllegalStateException("prod requires mass.storage.mode to be JDBC-enabled");
+    private void requireMemoryStoreAllowed() {
+        if (isDurableLocalProfile()) {
+            throw new IllegalStateException("durable-local requires mass.storage.mode to be JDBC-enabled");
         }
     }
 
-    private boolean isProdProfile() {
+    private boolean isDurableLocalProfile() {
         String[] activeProfiles = environment.getActiveProfiles();
         String[] effectiveProfiles = activeProfiles.length == 0 ? environment.getDefaultProfiles() : activeProfiles;
-        return Arrays.asList(effectiveProfiles).contains("prod");
+        return Arrays.asList(effectiveProfiles).contains("durable-local");
     }
 }

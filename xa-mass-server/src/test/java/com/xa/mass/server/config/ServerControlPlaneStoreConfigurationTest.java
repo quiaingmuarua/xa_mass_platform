@@ -34,9 +34,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class ServerControlPlaneStoreConfigurationTest {
 
     @Test
-    void devProfileCreatesOneExplicitBeanForEachServerControlPlaneStoreContract() {
+    void memoryLocalProfileCreatesOneExplicitBeanForEachServerControlPlaneStoreContract() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.getEnvironment().setActiveProfiles("dev");
+            context.getEnvironment().setActiveProfiles("memory-local");
             context.registerBean(JdbcStorageRuntime.class, () -> JdbcStorageRuntime.disabled());
             context.register(ServerControlPlaneStoreConfiguration.class);
             context.refresh();
@@ -54,9 +54,9 @@ class ServerControlPlaneStoreConfigurationTest {
     }
 
     @Test
-    void prodProfileFailsWhenJdbcRuntimeBeanIsMissing() {
+    void durableLocalProfileFailsWhenJdbcRuntimeBeanIsMissing() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.getEnvironment().setActiveProfiles("prod");
+            context.getEnvironment().setActiveProfiles("durable-local");
             context.register(ServerControlPlaneStoreConfiguration.class);
 
             RuntimeException error = assertThrows(RuntimeException.class, context::refresh);
@@ -65,14 +65,14 @@ class ServerControlPlaneStoreConfigurationTest {
     }
 
     @Test
-    void prodProfileFailsWhenStorageRuntimeIsDisabled() {
+    void durableLocalProfileFailsWhenStorageRuntimeIsDisabled() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.getEnvironment().setActiveProfiles("prod");
+            context.getEnvironment().setActiveProfiles("durable-local");
             context.registerBean(JdbcStorageRuntime.class, () -> JdbcStorageRuntime.disabled());
             context.register(ServerControlPlaneStoreConfiguration.class);
 
             RuntimeException error = assertThrows(RuntimeException.class, context::refresh);
-            assertFailureContains(error, "prod requires mass.storage.mode to be JDBC-enabled");
+            assertFailureContains(error, "durable-local requires mass.storage.mode to be JDBC-enabled");
         }
     }
 
@@ -82,7 +82,7 @@ class ServerControlPlaneStoreConfigurationTest {
                 + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false";
         try (JdbcStorageRuntime runtime = JdbcStorageRuntime.create(JdbcStorageMode.JDBC_H2, url, "sa", "");
              AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.getEnvironment().setActiveProfiles("prod");
+            context.getEnvironment().setActiveProfiles("durable-local");
             context.registerBean(JdbcStorageRuntime.class, () -> runtime);
             context.register(ServerControlPlaneMigrationConfiguration.class);
             context.register(ServerControlPlaneStoreConfiguration.class);
@@ -101,12 +101,12 @@ class ServerControlPlaneStoreConfigurationTest {
     }
 
     @Test
-    void prodProfileAllowsJdbcEnabledRuntime() {
+    void durableLocalProfileAllowsJdbcEnabledRuntime() {
         String url = "jdbc:h2:mem:" + UUID.randomUUID()
                 + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false";
         try (JdbcStorageRuntime runtime = JdbcStorageRuntime.create(JdbcStorageMode.JDBC_H2, url, "sa", "");
              AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.getEnvironment().setActiveProfiles("prod");
+            context.getEnvironment().setActiveProfiles("durable-local");
             context.registerBean(JdbcStorageRuntime.class, () -> runtime);
             context.register(ServerControlPlaneMigrationConfiguration.class);
             context.register(ServerControlPlaneStoreConfiguration.class);

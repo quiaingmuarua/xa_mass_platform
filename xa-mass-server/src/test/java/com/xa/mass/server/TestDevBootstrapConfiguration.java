@@ -33,7 +33,7 @@ import java.util.Map;
  * Test-only bootstrap support so dev-app mainline startup can stay external.
  */
 @Configuration
-@Profile("dev")
+@Profile("memory-local")
 public class TestDevBootstrapConfiguration {
 
     private static final Gson GSON = new Gson();

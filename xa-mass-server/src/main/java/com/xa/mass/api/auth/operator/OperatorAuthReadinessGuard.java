@@ -42,7 +42,7 @@ public final class OperatorAuthReadinessGuard implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        if (!authProperties.isProdProfile() || authProperties.mode() != OperatorAuthMode.SESSION) {
+        if (authProperties.mode() != OperatorAuthMode.SESSION) {
             return;
         }
         if (credentialStore.hasActiveCredential()) {
@@ -51,12 +51,12 @@ public final class OperatorAuthReadinessGuard implements CommandLineRunner {
         if (allowEmptyBeforeSeed && seedEnabled && "apply".equalsIgnoreCase(seedMode)
                 && !operatorCredentialsLocation.isBlank()) {
             throw new IllegalStateException(
-                    "prod session auth seed completed but no active operator credential exists; "
+                    "session auth seed completed but no active operator credential exists; "
                             + "check mass.control-plane.seed.operator-credentials-location"
             );
         }
         throw new IllegalStateException(
-                "prod session auth requires at least one active operator credential; configure "
+                "session auth requires at least one active operator credential; configure "
                         + "mass.control-plane.seed.operator-credentials-location or pre-seed xa_operator_credential"
         );
     }

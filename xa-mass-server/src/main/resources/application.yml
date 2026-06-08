@@ -11,7 +11,7 @@ spring:
   flyway:
     enabled: false
   profiles:
-    default: dev
+    default: durable-local
 
 server:
   port: 8088
@@ -29,22 +29,27 @@ mass:
     seed:
       enabled: false
       mode: apply
+      # Explicit local/sample fixture escape hatch. Keep false unless importing
+      # a seed file that is intentionally marked local fixture and contains
+      # devOnly API-key raw secrets.
+      allow-local-fixture-raw-secrets: false
       catalog-location:
       rules-location:
       # Optional hash-only operator credential seed.
-      # In prod + operator session auth, startup fails unless at least one
+      # In durable-local + operator session auth, startup fails unless at least one
       # ACTIVE operator credential exists after this seed/import step.
       # Seed files must use passwordHash; plaintext password is rejected.
       operator-credentials-location:
   auth:
     operator:
-      # Blank means profile default: dev -> dev-header, prod -> session.
+      # New server profiles must set this explicitly. Blank remains only for
+      # isolated test construction and is not a profile contract.
       # Explicit values: dev-header, session, disabled.
       mode:
-      allow-unsafe-dev-header-in-prod: false
+      allow-local-fixture-header: false
       bootstrap:
-        # Local escape hatch only. Keep false for normal prod startup:
-        # prod session auth should fail closed when credentials are missing.
+        # Local escape hatch only. Keep false for normal durable-local startup:
+        # session auth should fail closed when credentials are missing.
         allow-empty-before-seed: false
       session:
         ttl: 8h

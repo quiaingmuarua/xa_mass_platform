@@ -52,7 +52,7 @@ What this module does not own:
 - task review APIs are server-owned console/read-model surfaces, not engine
   scheduling, result convergence, or terminal-policy truth
 - `InternalTaskReviewController` depends on `TaskReviewReadModel`
-- the current `dev` profile wires server-local `TaskReviewStore`,
+- the current `memory-local` and `durable-local` profiles wire server-local `TaskReviewStore`,
   `TaskReviewStoreTaskReviewReadModel`, `TaskReviewStoreMaterializer`, and a
   queue-backed writer; it does not use shared `TaskDetailStore` projection
   residue
@@ -67,10 +67,12 @@ What this module does not own:
 - operator, submitter credential, and external worker HTTP entrypoints now converge on the shared SDK authorization contract
 - `ApiAuthInterceptor` resolves operator principals and forwards route permission checks to `AuthorizationPolicy`
 - operator auth mode is explicit through `mass.auth.operator.mode=dev-header|session|disabled`
-- `dev-header` keeps local/test `X-Mass-User-Mode` fixtures; `session` and
+- `dev-header` keeps explicit local/test `X-Mass-User-Mode` fixtures; `session` and
   `disabled` fail closed for operator headers and missing headers
-- `prod` defaults to `session`; `prod + dev-header` requires the deliberately
-  named unsafe override `mass.auth.operator.allow-unsafe-dev-header-in-prod=true`
+- each server profile sets `mass.auth.operator.mode` explicitly; blank mode
+  resolves to `session` and is not a profile contract
+- `dev-header` requires the explicit fixture unlock
+  `mass.auth.operator.allow-local-fixture-header=true`
 - `GET /api/v1/auth/config` is the public browser contract for operator auth
   mode discovery and exposes only non-sensitive mode flags
 - operator password credential lifecycle is server-owned through
@@ -79,7 +81,7 @@ What this module does not own:
 - control-plane seed import may load operator credentials from
   `mass.control-plane.seed.operator-credentials-location`; seed files must use
   `passwordHash` and plaintext `password` is rejected
-- `prod + session` fails startup when no active login-capable operator
+- `session` mode fails startup when no active login-capable operator
   credential exists after seed/import
 - `POST /api/v1/auth/login` verifies `OperatorCredentialStore` password hashes,
   sets an HttpOnly `XA_MASS_OPERATOR_SESSION` cookie, and returns the
@@ -97,8 +99,8 @@ What this module does not own:
 - task create paths stamp framework-owned ownership metadata into the reserved internal envelope `Task.sharedConfig._massSecurity`
 - task read APIs strip `_massSecurity` from HTTP `sharedConfig` and expose the supported ownership read model through `data.security`
 - current ownership stamp is intentionally minimal: `createdByPrincipalId` and `createdByPrincipalType`
-- default dev-header trust remains intentionally permissive for local tests, but
-  prod operator auth is fail-closed and no longer treats missing headers as
+- `memory-local` may use explicit dev-header trust for local tests, but
+  `session` mode is fail-closed and no longer treats missing headers as
   implicit `ops-admin`
 
 Current boundary note:
@@ -159,14 +161,14 @@ Current worker-state contract note:
   `http.server.requests` metric; the first-pass contract does not add
   hand-rolled endpoint counters, timers, Prometheus registry, or high-cardinality
   tags such as task id, principal id, trace id, raw URL, or query string
-- `dev` exposes `/actuator/health` and `/actuator/metrics`; inspect endpoint
+- `memory-local` exposes `/actuator/health` and `/actuator/metrics`; inspect endpoint
   aggregates with `/actuator/metrics/http.server.requests`
-- `prod` exposes `/actuator/health` only by default; broader metrics export is a
+- `durable-local` exposes `/actuator/health` only by default; broader metrics export is a
   later operator-deployment decision, not enabled implicitly
 
 ## Port Model
 
-The default dev shell uses one HTTP port plus adapter-specific transport ports:
+The default durable-local shell uses one HTTP port plus adapter-specific transport ports:
 
 | Property | Default | Purpose |
 | --- | --- | --- |
@@ -251,7 +253,7 @@ seed/import targets. They must be created through public worker/task APIs or
 SDK clients.
 
 To populate the local control console after metadata is seeded, use the
-external dev scenario launcher:
+external local scenario launcher:
 
 ```bash
 node integrations/samples/dev/scenario/launch-workers.mjs
@@ -269,7 +271,7 @@ For test or explicit fixture paths, embedded sample clients are owned by `xa-mas
 
 Startup behavior:
 
-- enabled in the default dev demo shell through `sample.client.auto-start=true`
+- enabled in the default local fixture shell through `sample.client.auto-start=true`
 - uses `sample.client.websocket-uri=ws://localhost:${mass.websocket.port}/ws` so the embedded sample clients follow the active WebSocket adapter port
 - triggered by `ApplicationReadyEvent`
 - shared startup orchestration is adapter-aware; current embedded Java
@@ -293,7 +295,7 @@ Current fixture behavior:
 - runtime state fields in JSON such as `Worker.status=ONLINE` are ignored; online state comes from transport liveness
 - task JSON fixture bootstrap remains a test-only aggregate fixture input
 - rule JSON continues to replace default rules when non-empty
-- default `dev` profile no longer wires fixture bootstrap at all; those properties are kept in test config only
+- default `durable-local` profile and `memory-local` profile no longer wire fixture bootstrap at all; those properties are kept in test config only
 
 Default worker fixtures now carry a small executor profile:
 
@@ -404,11 +406,11 @@ Observability:
 | `mass.engine.runtime-ready-dispatch-idle-backoff-max-millis` | `30000` | max idle backoff for the default runtime-ready dispatch polling fallback policy |
 | `mass.engine.lease-watchdog-interval-seconds` | `30` | interval for scanning active task-message leases and expiring stalled in-flight attempts |
 | `mass.engine.task-message-lease-seconds` | `300` | lease duration for an in-flight task message before the engine may redispatch it |
-| `mass.storage.mode` | `memory` | server storage mode; normal `dev` uses `jdbc-h2`, normal `prod` uses `jdbc-sqlite`, and manual property overrides may still select `jdbc-postgres` |
+| `mass.storage.mode` | `memory` | base server storage mode; normal `memory-local` uses `jdbc-h2`, normal `durable-local` uses `jdbc-sqlite`, and manual property overrides may still select `jdbc-postgres` |
 | `mass.storage.jdbc.url` | `jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false` | JDBC URL used when `mass.storage.mode` is a JDBC mode |
 | `mass.storage.jdbc.username` | `sa` | JDBC username |
 | `mass.storage.jdbc.password` | empty | JDBC password |
-| `mass.runtime.mode` | `memory` | engine runtime backend; normal `dev` uses `memory`, while normal `prod` uses Redis-backed work/result runtime |
+| `mass.runtime.mode` | `memory` | engine runtime backend; normal `memory-local` uses `memory`, while normal `durable-local` uses Redis-backed work/result runtime |
 | `mass.runtime.redis.namespace` | `xa:mass:runtime:v1` | Redis namespace prefix when `mass.runtime.mode=redis` |
 | `mass.runtime.redis.max-queued-items` | `1000000` | runtime work backpressure cap for the Redis-backed work runtime |
 | `mass.transport.node-id` | random UUID | server transport runtime node id; set explicitly when comparing Redis presence across restarts |
@@ -423,20 +425,21 @@ Observability:
 | `mass.control-plane.seed.mode` | `apply` | `apply` writes parsed seed metadata; `validate` parses/counts without writing |
 | `mass.control-plane.seed.catalog-location` | empty | resource location for event/project/submitter seed JSON |
 | `mass.control-plane.seed.rules-location` | empty | resource location for default rule seed JSON |
-| `sample.client.auto-start` | `true` in `dev` | auto-start embedded sample clients for the default dev demo shell |
+| `sample.client.auto-start` | `true` in `memory-local` | auto-start embedded sample clients for the default local fixture shell |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `sample.client.task-result-status` | `SUCCESS` | force sample result frames to `SUCCESS` or `FAILED` |
-| `sample.worker.auto-start` | `false` in `dev` | keep the external sample supervisor off by default; enable explicitly for the separate cross-process sample shell |
+| `sample.worker.auto-start` | `false` in `memory-local` | keep the external sample supervisor off by default; enable explicitly for the separate cross-process sample shell |
 
 JDBC storage scope:
 
-- `dev` is the default no-arg server profile. It uses file-backed H2 for
+- `memory-local` is the lightweight local server profile. It uses file-backed H2 for
   control-plane storage and memory runtime/transport so local development is
   resident and inspectable without Redis.
-- `prod` is the current single-node inspectable production baseline. It uses
-  SQLite for control-plane storage and Redis for runtime work/result, worker
-  registry, transport delivery, and transport presence.
-- `prod` is fail-closed for infra mode selection: control-plane storage must be
+- `durable-local` is the current default no-arg server profile and the
+  single-node inspectable durable local baseline. It uses SQLite for
+  control-plane storage and Redis for runtime work/result, worker registry,
+  transport delivery, and transport presence.
+- `durable-local` is fail-closed for infra mode selection: control-plane storage must be
   JDBC-enabled, runtime must be Redis, and transport delivery/presence must be
   Redis. Misconfiguration must fail startup instead of falling back to process
   memory.
@@ -460,14 +463,14 @@ JDBC storage scope:
   build the jar first with
   `./mvnw -pl xa-mass-server -am -DskipTests package`, then
   `docker compose up redis server` starts Redis and runs that server jar with
-  `prod`; it is a validation harness with SQLite control-plane storage and
+  `durable-local`; it is a validation harness with SQLite control-plane storage and
   Redis runtime, not a production image contract
 - backend-parity tests should share one scenario body and vary only
   `mass.runtime.mode` plus backend-specific connection properties; do not copy
   the same runtime semantics into backend-specific duplicate tests
 - the non-test Spring Boot entry
   [XaMassServerApplication.java](./src/main/java/com/xa/mass/server/XaMassServerApplication.java)
-  defaults to `dev` when no active profile is supplied, and respects explicit
+  defaults to `durable-local` when no active profile is supplied, and respects explicit
   profiles from `-Dspring.profiles.active`, `SPRING_PROFILES_ACTIVE`, command
   line arguments, and normal Spring config
 - integration tests should keep using isolated in-memory H2 JDBC URLs so DB
@@ -509,15 +512,15 @@ Server control-plane store hard rules:
 - submitter-viewer sessions remain memory-only in the current phase; future
   cross-process sharing belongs to runtime/Redis session design, not SQLite or
   JDBC control-plane storage
-- prod profile must not synthesize memory fallbacks for control-plane storage,
+- durable-local profile must not synthesize memory fallbacks for control-plane storage,
   task work/result runtime, transport delivery, or transport presence. The only
-  current explicit memory exception in prod-facing server auth/session assembly
+  current explicit memory exception in durable-local-facing server auth/session assembly
   is `SubmitterViewerSessionStore`, because it is volatile viewer session state
   and not durable control-plane truth.
-- DB schema changes may require deleting/recreating local/prod DBs in this
+- DB schema changes may require deleting/recreating local DBs in this
   pre-release phase; validation proves clean DB creation and current-schema
   restart behavior, not historical upgrade compatibility
-- server dev/prod catalog reads must not be satisfied by the default/demo
+- server memory-local/durable-local catalog reads must not be satisfied by the default/demo
   catalog fallback. The fallback remains explicit local/embedded/test bootstrap
   behavior only.
 - server API-key lifecycle storage must project authentication state through
@@ -527,7 +530,7 @@ Server control-plane store hard rules:
   or an equivalent representation
 - `TaskMsg`, `TaskMsgAttempt`, runtime queues, leases, worker locks, worker
   registry churn, and heartbeat/presence churn stay in runtime backends, with
-  Redis as the current inspectable `prod` runtime backend
+  Redis as the current inspectable durable-local runtime backend
 - do not use JDBC storage as a cross-task message-status analytics surface;
   large-scale message history, attempt history, heartbeat streams, and failure
   analysis should flow through queues, trace, audit sinks, or downstream

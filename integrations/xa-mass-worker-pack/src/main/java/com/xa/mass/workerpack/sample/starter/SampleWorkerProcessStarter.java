@@ -22,14 +22,14 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Launches the external sample-worker supervisor script for dev-shell runs.
+ * Launches the external sample-worker supervisor script for memory-local runs.
  *
  * <p>The server shell stays responsible only for API-key credentials and HTTP
  * availability. The sample launcher script owns worker registration plus
  * child-process startup under {@code integrations/samples}.
  */
 @Component
-@Profile("dev")
+@Profile("memory-local")
 @ConditionalOnProperty(prefix = "sample.worker", name = "auto-start", havingValue = "true")
 public class SampleWorkerProcessStarter {
 

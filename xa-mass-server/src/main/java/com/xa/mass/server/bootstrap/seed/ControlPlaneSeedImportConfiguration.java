@@ -12,12 +12,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 import org.springframework.core.io.ResourceLoader;
 
 @Configuration
-@Profile({"dev", "prod"})
+@Profile({"memory-local", "durable-local"})
 public class ControlPlaneSeedImportConfiguration {
 
     @Bean
@@ -29,12 +27,13 @@ public class ControlPlaneSeedImportConfiguration {
                                                                OperatorCredentialStore operatorCredentialStore,
                                                                ObjectMapper objectMapper,
                                                                ResourceLoader resourceLoader,
-                                                               Environment environment,
                                                                @Value("${mass.control-plane.seed.catalog-location:}") String catalogLocation,
                                                                @Value("${mass.control-plane.seed.rules-location:}") String rulesLocation,
                                                                @Value("${mass.control-plane.seed.operator-credentials-location:}")
                                                                String operatorCredentialsLocation,
-                                                               @Value("${mass.control-plane.seed.mode:apply}") String mode) {
+                                                               @Value("${mass.control-plane.seed.mode:apply}") String mode,
+                                                               @Value("${mass.control-plane.seed.allow-local-fixture-raw-secrets:false}")
+                                                               boolean allowLocalFixtureRawSecrets) {
         return args -> {
             String normalizedCatalogLocation = blankToNull(catalogLocation);
             String normalizedRulesLocation = blankToNull(rulesLocation);
@@ -56,7 +55,7 @@ public class ControlPlaneSeedImportConfiguration {
                             null,
                             normalizedOperatorCredentialsLocation,
                             blankToDefault(mode, "apply"),
-                            allowDevOnlyApiKeyRawSecrets(environment)
+                            allowLocalFixtureRawSecrets
                     ));
         };
     }
@@ -70,9 +69,10 @@ public class ControlPlaneSeedImportConfiguration {
                                                               OperatorCredentialStore operatorCredentialStore,
                                                               ObjectMapper objectMapper,
                                                               ResourceLoader resourceLoader,
-                                                              Environment environment,
                                                               @Value("${mass.control-plane.seed.rules-location:}") String rulesLocation,
-                                                              @Value("${mass.control-plane.seed.mode:apply}") String mode) {
+                                                              @Value("${mass.control-plane.seed.mode:apply}") String mode,
+                                                              @Value("${mass.control-plane.seed.allow-local-fixture-raw-secrets:false}")
+                                                              boolean allowLocalFixtureRawSecrets) {
         return args -> {
             String normalizedRulesLocation = blankToNull(rulesLocation);
             if (normalizedRulesLocation == null) {
@@ -90,13 +90,9 @@ public class ControlPlaneSeedImportConfiguration {
                             normalizedRulesLocation,
                             null,
                             blankToDefault(mode, "apply"),
-                            allowDevOnlyApiKeyRawSecrets(environment)
+                            allowLocalFixtureRawSecrets
                     ));
         };
-    }
-
-    static boolean allowDevOnlyApiKeyRawSecrets(Environment environment) {
-        return environment == null || !environment.acceptsProfiles(Profiles.of("prod"));
     }
 
     private static String blankToNull(String value) {

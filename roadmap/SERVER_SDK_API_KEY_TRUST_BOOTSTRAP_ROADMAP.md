@@ -10,7 +10,7 @@ elimination and seed taxonomy decisions.
 The problem is not that API keys are seedable. API keys are seedable because
 external Java SDK task producers and external workers need credentials before
 they can call the server. The problem is that independent concerns are still
-easy to collapse into `dev` and `prod` labels. Memory runtime is a valid
+easy to collapse into server profile labels. Memory runtime is a valid
 deployment choice for immediate/RPC-style workloads; it is not automatically a
 toy mode or an auth bypass mode. Fixture-header auth can make authorization
 look healthy while session auth, CSRF, role, seed, and API-key checks fail
@@ -39,13 +39,15 @@ task lifecycle semantics.
   metadata.
 - The checked-in sample scenario seed contains `devOnly=true` API-key raw
   secrets. Persistent/fail-closed import rejects dev-only raw secrets.
-- The current `prod` Spring profile defaults to session operator auth and Redis
-  runtime/transport; treat this as one assembled shape across separate
+- The current `durable-local` Spring profile defaults to session operator auth,
+  SQLite control-plane storage, and Redis runtime/transport; treat this as one
+  assembled shape across separate
   `runtimeInfra`, `authTrustMode`, and `seedSource` axes, not as a different API
   contract.
-- The current `dev` Spring profile defaults to fixture-header operator auth
-  implementation (`dev-header`) and memory runtime/transport; treat this as a
-  local fixture assembly, not as SDK or worker-api trust proof.
+- The current `memory-local` Spring profile defaults to explicit fixture-header
+  operator auth implementation (`dev-header`), H2 control-plane storage, and
+  memory runtime/transport; treat this as a local fixture assembly, not as SDK
+  or worker-api trust proof.
 - `ApiRouteAuthorizationCatalog` allows SDK credential bypass only on specific
   SDK routes such as task create/append/read, catalog read, API-key viewer
   session routes, and current API-key self routes.
@@ -74,8 +76,8 @@ worker state, worker capability reports, runtime queues, leases, dispatch
 gates, assignments, results, trace rows, and usage rows must not become seed
 truth.
 
-Do not use `dev` or `prod` as auth semantics. Treat environment assembly as
-four independent axes:
+Do not use profile names as auth semantics. Treat environment assembly as four
+independent axes:
 
 | Axis | Values | Owns | Must not own |
 | --- | --- | --- | --- |
@@ -84,8 +86,8 @@ four independent axes:
 | `seedSource` | `sample-dev-only`, `external-controlled`, `none` | catalog/rule/credential input source and raw-secret policy | runtime actor/workload truth |
 | `testLane` | `support`, `boundary`, `trusted-auth` | proof strength and fixture budget | production behavior itself |
 
-The existing Spring profiles may continue to assemble convenient defaults from
-these axes, but the axes are the owner vocabulary. A local fixture is allowed
+The existing Spring profiles assemble convenient defaults from these axes, but
+the axes are the owner vocabulary. A local fixture is allowed
 only when it is explicit as `fixture-header` or support coverage. It must never
 be treated as SDK trust proof.
 

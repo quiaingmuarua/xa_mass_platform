@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @Tag("secondary-proof")
 class TaskApiMultiRoundDispatchIntegrationTest extends ReviewReadModelSampleE2eTest {

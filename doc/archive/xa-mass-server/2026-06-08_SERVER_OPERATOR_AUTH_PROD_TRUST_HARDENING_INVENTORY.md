@@ -1,4 +1,12 @@
-# Server Operator Auth Prod Trust Hardening Inventory
+# Archived: Server Operator Auth Prod Trust Hardening Inventory
+
+Archived on: 2026-06-08
+
+Current truth owner: `xa-mass-server/README.md`,
+`doc/INFRA_TRUTH_LAYERS.md`, and current server auth code. This file is
+historical implementation context only. Do not use its `dev` / `prod` profile
+wording or old `allow-unsafe-dev-header-in-prod` property as current behavior
+proof.
 
 Status: current code inventory for
 `SERVER_OPERATOR_AUTH_PROD_TRUST_HARDENING_ROADMAP.md`; AUTH-1 through AUTH-5

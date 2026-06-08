@@ -2,33 +2,27 @@ package com.xa.mass.api.auth;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
 import java.util.Objects;
 
 @Component
 public class OperatorAuthProperties {
 
-    private final Environment environment;
     private final String configuredMode;
-    private final boolean allowUnsafeDevHeaderInProd;
+    private final boolean allowLocalFixtureHeader;
 
     @Autowired
-    public OperatorAuthProperties(Environment environment,
-                                  @Value("${mass.auth.operator.mode:}") String configuredMode,
-                                  @Value("${mass.auth.operator.allow-unsafe-dev-header-in-prod:false}")
-                                  boolean allowUnsafeDevHeaderInProd) {
-        this.environment = environment;
+    public OperatorAuthProperties(@Value("${mass.auth.operator.mode:}") String configuredMode,
+                                  @Value("${mass.auth.operator.allow-local-fixture-header:false}")
+                                  boolean allowLocalFixtureHeader) {
         this.configuredMode = configuredMode;
-        this.allowUnsafeDevHeaderInProd = allowUnsafeDevHeaderInProd;
+        this.allowLocalFixtureHeader = allowLocalFixtureHeader;
     }
 
     private OperatorAuthProperties(OperatorAuthMode mode) {
-        this.environment = null;
         this.configuredMode = Objects.requireNonNull(mode, "mode").configValue();
-        this.allowUnsafeDevHeaderInProd = true;
+        this.allowLocalFixtureHeader = mode == OperatorAuthMode.DEV_HEADER;
     }
 
     public static OperatorAuthProperties devHeaderForTests() {
@@ -47,31 +41,22 @@ public class OperatorAuthProperties {
         if (configuredMode != null && !configuredMode.isBlank()) {
             return OperatorAuthMode.parse(configuredMode);
         }
-        return isProdProfile() ? OperatorAuthMode.SESSION : OperatorAuthMode.DEV_HEADER;
+        return OperatorAuthMode.SESSION;
     }
 
     public boolean operatorHeadersEnabled() {
         return mode() == OperatorAuthMode.DEV_HEADER;
     }
 
-    public boolean allowUnsafeDevHeaderInProd() {
-        return allowUnsafeDevHeaderInProd;
-    }
-
-    public boolean isProdProfile() {
-        if (environment == null) {
-            return false;
-        }
-        String[] activeProfiles = environment.getActiveProfiles();
-        String[] effectiveProfiles = activeProfiles.length == 0 ? environment.getDefaultProfiles() : activeProfiles;
-        return Arrays.asList(effectiveProfiles).contains("prod");
+    public boolean allowLocalFixtureHeader() {
+        return allowLocalFixtureHeader;
     }
 
     public void validateStartup() {
-        if (isProdProfile() && mode() == OperatorAuthMode.DEV_HEADER && !allowUnsafeDevHeaderInProd) {
+        if (mode() == OperatorAuthMode.DEV_HEADER && !allowLocalFixtureHeader) {
             throw new IllegalStateException(
-                    "prod requires mass.auth.operator.mode=session or disabled; dev-header requires "
-                            + "mass.auth.operator.allow-unsafe-dev-header-in-prod=true"
+                    "mass.auth.operator.mode=dev-header requires "
+                            + "mass.auth.operator.allow-local-fixture-header=true"
             );
         }
     }

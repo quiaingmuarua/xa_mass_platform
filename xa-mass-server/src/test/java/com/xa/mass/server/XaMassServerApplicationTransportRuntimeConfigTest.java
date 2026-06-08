@@ -43,45 +43,45 @@ class XaMassServerApplicationTransportRuntimeConfigTest {
     }
 
     @Test
-    void prodProfileRejectsMemoryRuntimeMode() {
-        XaMassServerApplication application = prodApplication();
+    void durableLocalProfileRejectsMemoryRuntimeMode() {
+        XaMassServerApplication application = durableLocalApplication();
         ReflectionTestUtils.setField(application, "runtimeMode", "memory");
 
         assertThatThrownBy(application::taskWorkRuntime)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("prod requires mass.runtime.mode=redis");
+                .hasMessageContaining("durable-local requires mass.runtime.mode=redis");
         assertThatThrownBy(application::taskResultRuntime)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("prod requires mass.runtime.mode=redis");
+                .hasMessageContaining("durable-local requires mass.runtime.mode=redis");
     }
 
     @Test
-    void prodProfileRejectsDisabledStorageMode() {
-        XaMassServerApplication application = prodApplication();
+    void durableLocalProfileRejectsDisabledStorageMode() {
+        XaMassServerApplication application = durableLocalApplication();
         ReflectionTestUtils.setField(application, "storageMode", "memory");
 
         assertThatThrownBy(application::jdbcStorageRuntime)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("prod requires mass.storage.mode to be JDBC-enabled");
+                .hasMessageContaining("durable-local requires mass.storage.mode to be JDBC-enabled");
     }
 
     @Test
-    void prodProfileRejectsMemoryTransportStores() {
-        XaMassServerApplication application = prodApplication();
+    void durableLocalProfileRejectsMemoryTransportStores() {
+        XaMassServerApplication application = durableLocalApplication();
         ReflectionTestUtils.setField(application, "transportDeliveryStore", "memory");
         ReflectionTestUtils.setField(application, "transportPresenceStore", "memory");
 
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(application, "resolveTransportDeliveryStoreFactory"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("prod requires mass.transport.delivery.store=redis");
+                .hasMessageContaining("durable-local requires mass.transport.delivery.store=redis");
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(application, "resolveTransportPresenceStoreFactory"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("prod requires mass.transport.presence.store=redis");
+                .hasMessageContaining("durable-local requires mass.transport.presence.store=redis");
     }
 
     @Test
-    void prodProfileAcceptsRedisTransportModesWithoutInstantiatingRedis() {
-        XaMassServerApplication application = prodApplication();
+    void durableLocalProfileAcceptsRedisTransportModesWithoutInstantiatingRedis() {
+        XaMassServerApplication application = durableLocalApplication();
         ReflectionTestUtils.setField(application, "transportDeliveryStore", "redis");
         ReflectionTestUtils.setField(application, "transportPresenceStore", "redis");
         ReflectionTestUtils.setField(application, "transportDeliveryRedisNamespace", "xa:mass:test:server-delivery");
@@ -104,10 +104,10 @@ class XaMassServerApplicationTransportRuntimeConfigTest {
         assertThat(presenceFactory).isNotNull();
     }
 
-    private XaMassServerApplication prodApplication() {
+    private XaMassServerApplication durableLocalApplication() {
         XaMassServerApplication application = new XaMassServerApplication();
         MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles("prod");
+        environment.setActiveProfiles("durable-local");
         ReflectionTestUtils.setField(application, "environment", environment);
         return application;
     }

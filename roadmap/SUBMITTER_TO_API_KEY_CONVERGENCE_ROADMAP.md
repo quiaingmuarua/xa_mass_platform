@@ -602,9 +602,9 @@ Not recommended as production built-ins:
 - worker/device/account resources
 - historical task data
 
-Default dev/sample API keys:
+Default local/sample API keys:
 
-- provide checked-in dev-only API keys so a clean local server can run the Java
+- provide checked-in local-fixture API keys so a clean local server can run the Java
   scenario launcher without a separate manual credential creation step
 - keep these names stable for samples and docs:
   - `crawler-task-api-key` for default task submission
@@ -614,18 +614,18 @@ Default dev/sample API keys:
   - `phone-device-probe-poll-sg-${PAD3}-key` for generated phone probe workers
 - mark every checked-in raw key seed entry with `devOnly=true`
 - reject checked-in raw key seed entries in production startup/import paths
-- do not expose these as platform defaults outside sample/dev profiles
+- do not expose these as platform defaults outside sample/local fixture profiles
 
-Production initial API keys:
+Deployment initial API keys:
 
-- support initial API-key provisioning in prod so a deployed server can be
+- support initial API-key provisioning for a deployed server so it can be
   usable without manual database writes
 - require the secret material to come from deployment-owned input, for example
   an external seed file, environment-mounted secret, or operator bootstrap
   command
 - attach the API key to an existing or concurrently bootstrapped user such as
   `ops-admin`
-- preserve the same API-key truth model as dev seed:
+- preserve the same API-key truth model as local fixture seed:
   `User -> API Key -> PrincipalContext -> AuthorizationPolicy`
 - do not use `submitter` as the production bootstrap concept
 

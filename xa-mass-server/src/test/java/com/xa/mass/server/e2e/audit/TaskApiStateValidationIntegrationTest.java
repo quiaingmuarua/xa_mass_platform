@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "sample.client.ping-interval=60"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @Tag("secondary-proof")
 public class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {

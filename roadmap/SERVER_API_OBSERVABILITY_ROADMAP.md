@@ -181,7 +181,7 @@ Current active metrics should converge to:
 
 ```text
 /actuator/metrics/http.server.requests
-  local/dev endpoint for request count, status/outcome, and duration
+  memory-local endpoint for request count, status/outcome, and duration
 
 /actuator/prometheus
   optional lightweight scrape endpoint when micrometer-registry-prometheus is
@@ -249,7 +249,7 @@ the route surface safely.
 12. Do not use high-cardinality metric tags such as task id, worker id,
     command id, principal id, trace id, raw URL, or raw query string.
 13. Do not expose Prometheus or broad actuator endpoints publicly by default.
-    Dev/local can expose more; prod-like config must explicitly choose exposed
+    Memory-local can expose more; durable-local config must explicitly choose exposed
     endpoints.
 14. Metrics are aggregate operational signal. They are not audit, trace,
     runtime truth, or billing truth.
@@ -311,8 +311,8 @@ Scope:
   attribute, owns MDC cleanup, and `ApiLogInterceptor.afterCompletion(...)`
   stops clearing MDC.
 - Decide profile exposure for Actuator metrics:
-  - local/dev should expose `/actuator/metrics/http.server.requests`
-  - prod-like profiles must not expose broad actuator endpoints unless the
+  - memory-local should expose `/actuator/metrics/http.server.requests`
+  - durable-local profiles must not expose broad actuator endpoints unless the
     profile explicitly opts in, ideally through a separate management surface
 - Decide the AOB-2 capture strategy:
   - preferred: a post-chain `OncePerRequestFilter` logs in-scope final 4xx/5xx
@@ -343,7 +343,7 @@ Acceptance:
   table.
 - Inventory records the chosen `traceId` lifecycle strategy and the owner of
   MDC cleanup.
-- Inventory records the local/dev and prod-like Actuator exposure policy.
+- Inventory records the memory-local and durable-local Actuator exposure policy.
 - Inventory records forbidden fields that must not appear in the failure log.
 - Inventory records the `safeMessage` sanitizer rules and examples.
 - Inventory records metric tag allowlist/denylist.
@@ -366,8 +366,8 @@ lightest built-in path.
 
 Scope:
 
-- Enable the minimum safe Actuator metrics endpoints for local/dev inspection.
-- Implement the AOB-0 profile exposure decision. Prod-like profiles must either
+- Enable the minimum safe Actuator metrics endpoints for memory-local inspection.
+- Implement the AOB-0 profile exposure decision. durable-local profiles must either
   keep broad actuator endpoints closed or expose only the explicitly approved
   management endpoint set.
 - Confirm `http.server.requests` records route-template `uri`, method, status,
@@ -382,9 +382,9 @@ Scope:
 
 Acceptance:
 
-- `/actuator/metrics/http.server.requests` is available in intended local/dev
+- `/actuator/metrics/http.server.requests` is available in intended memory-local
   mode.
-- Prod-like actuator exposure matches the AOB-0 decision; broad actuator
+- durable-local Actuator exposure matches the AOB-0 decision; broad actuator
   endpoints are not exposed by default.
 - Metric tags do not include task id, worker id, command id, principal id,
   trace id, raw URL, raw query string, or request body fields.
@@ -646,7 +646,7 @@ This roadmap can be marked complete only when:
 | --- | --- |
 | Failure log leaks credentials or payload | Log only method/path/status/failure class/principal/trace id and safe bounded message; add tests/guards for forbidden headers/body |
 | Metrics cardinality explodes | Use route-template URI tags and forbid ids, principals, trace ids, raw query strings, and payload fields as tags |
-| Prometheus exposure becomes an accidental public surface | Keep actuator exposure explicit by profile/config and verify prod-like behavior |
+| Prometheus exposure becomes an accidental public surface | Keep actuator exposure explicit by profile/config and verify durable-local behavior |
 | SDK or worker API failures are mislabeled as frontend failures | AOB-0 classifies route/auth/caller surfaces before implementation |
 | Duplicate failure events make analysis noisy | Central emitter marks/logs once per request or call site owns exactly one emission |
 | Agents edit inactive `logback-json.xml` | AOB-0/AOB-3 must identify active config and AOB-5 removes or classifies residue |

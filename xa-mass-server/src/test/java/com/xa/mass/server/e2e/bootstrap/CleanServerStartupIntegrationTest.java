@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.control-plane.seed.enabled=false"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 @Tag("secondary-proof")
 public class CleanServerStartupIntegrationTest extends AbstractSampleE2eTest {
@@ -40,18 +40,18 @@ public class CleanServerStartupIntegrationTest extends AbstractSampleE2eTest {
     }
 
     @Test
-    void devStartupWithSeedDisabledCreatesNoMetadataOrWorkload() {
+    void memoryLocalStartupWithSeedDisabledCreatesNoMetadataOrWorkload() {
         assertNotNull(app);
         assertNull(app.getProject("crawlerApp"));
         assertNull(app.getEvent("crawler.fetch-page"));
         assertTrue(app.listCredentialPrincipals().isEmpty(),
-                "clean dev startup must not create API-key credential principals");
+                "clean memory-local startup must not create API-key credential principals");
 
         assertTrue(app.listTaskSummaries(0, 10).isEmpty(),
-                "clean dev startup must not create task shells");
+                "clean memory-local startup must not create task shells");
         assertTrue(app.getAllWorkers().isEmpty(),
-                "clean dev startup must not register workers");
+                "clean memory-local startup must not register workers");
         assertTrue(app.listWorkerGroups().isEmpty(),
-                "clean dev startup must not declare WorkerGroups");
+                "clean memory-local startup must not declare WorkerGroups");
     }
 }

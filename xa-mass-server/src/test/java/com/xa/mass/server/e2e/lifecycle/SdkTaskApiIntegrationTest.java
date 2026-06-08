@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "sample.client.ping-interval=60"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 @Tag("secondary-proof")
 class SdkTaskApiIntegrationTest extends ReviewReadModelSampleE2eTest {

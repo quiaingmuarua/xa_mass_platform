@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
-@ActiveProfiles("dev")
+@ActiveProfiles("memory-local")
 @DirtiesContext
 @Tag("secondary-proof")
 public class CatalogApiIntegrationTest extends AbstractSampleE2eTest {

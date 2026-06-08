@@ -1,4 +1,12 @@
-# Server Operator Auth Prod Trust Hardening Roadmap
+# Archived: Server Operator Auth Prod Trust Hardening Roadmap
+
+Archived on: 2026-06-08
+
+Current truth owner: `xa-mass-server/README.md`,
+`doc/INFRA_TRUTH_LAYERS.md`, and current server auth code. This file is
+historical implementation context only. Do not use its `dev` / `prod` profile
+wording or old `allow-unsafe-dev-header-in-prod` property as current behavior
+proof.
 
 Status: implemented mainline; AUTH-0 through AUTH-5 are implemented. AUTH-6 is
 a deferred credential-lifecycle successor direction, not a completion blocker
