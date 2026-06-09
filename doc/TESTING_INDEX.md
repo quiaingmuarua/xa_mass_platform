@@ -16,10 +16,10 @@ Read this section first if you only need the testing-system intent.
   - mainline scheduling / dispatch / retry / release mechanisms
   - core policy behavior that changes who may run work or when work is admitted
   - cross-boundary public contracts such as HTTP, SDK, transport, external worker, and trace
-- integrated abnormal behavior under concurrency, timing, process, transport, or distributed-runtime edges
-- server startup and profile wiring when behavior depends on Spring assembly,
-  profile properties, `@Configuration`, component scanning, `@Value` injection,
-  startup guards, seed/import, or fail-closed infra mode checks
+  - integrated abnormal behavior under concurrency, timing, process, transport, or distributed-runtime edges
+  - server startup and profile wiring when behavior depends on Spring assembly,
+    profile properties, `@Configuration`, component scanning, `@Value` injection,
+    startup guards, seed/import, or fail-closed infra mode checks
 - highest-value proof surface: `engine scheduling correctness`
 - representative real wiring proof: `server E2E / external worker parity`
 - distributed edge proof: `chaos / perf / black-box`
@@ -82,16 +82,75 @@ Agent rule:
   engine support suite must explicitly own downgraded `secondary-proof`
   coverage instead of entering mainline suites
 
-Core proof priority:
+Project proof classes:
 
-1. `Scheduling Correctness`: worker selection, exclusion, contention,
-   redispatch, gating, and contract-aware convergence.
-2. `Kernel Convergence`: lifecycle, retry, expiry, finality, release, and
-   result convergence invariants.
-3. `Platform Viability / Boot-shell E2E`: representative real server, HTTP,
-   SDK, transport, and worker wiring.
-4. `Chaos / Perf / Distributed-readiness`: degraded runtime, pressure,
-   disconnect, replay, and distributed edge behavior.
+| Class | Question | Name | Proves | Primary entrances |
+| --- | --- | --- | --- | --- |
+| 1 | Can it be used? | `Product / API Capability Proof` | Supported external product paths can initialize, authenticate, create work, run workers, and read results. This proves product/API usability, not full policy correctness. | packaged server jar, admin CLI, Java SDK task producer, Java SDK or worker API worker process, result verifier |
+| 2 | Can it be wrong? | `Policy & Safety Correctness Proof` | Scheduling, worker selection, authorization, scope, credential, readiness, occupancy, and no-bypass behavior are correct. The platform must not bind, authorize, or mutate when it should not. | engine deterministic tests, representative server E2E, negative auth/security tests, trace analyzers |
+| 3 | Can it withstand this exact condition? | `Scoped Operational Resilience Proof` | Runtime convergence for the explicitly named load, fault, runtime, duration, and oracle. Fast stable cases may be PR-gated; expensive or nondeterministic cases remain scheduled/manual evidence until calibrated. | scale/contention reports, chaos/fault reports, perf, soak, packaged-process restart |
+
+Proof lines:
+
+| Proof class | Proof line | Owns |
+| --- | --- | --- |
+| `Product / API Capability Proof` | `operator-admin-session` | login, project/rule sync, API-key approval, task seal/approve, and operator commands with a valid operator session that must not be wrongly rejected |
+| `Product / API Capability Proof` | `task-producer-api-key` | create task, append items, and read task/result/archive through allowed task producer surfaces with a valid task API key that must not be wrongly rejected |
+| `Product / API Capability Proof` | `worker-api-key` | worker registration/topology, online/heartbeat/poll, result submit, command ack, state report, and capability report through worker surfaces with a valid worker API key that must not be wrongly rejected |
+| `Policy & Safety Correctness Proof` | `scheduling-policy-correctness` | workerGroup, eventCode capability, target/attributes, candidate bucket boundaries, readiness, occupancy, capacity, locks, retry/wakeup/lease-expiry re-entry into policy-sensitive selection |
+| `Policy & Safety Correctness Proof` | `lifecycle-result-correctness` | lifecycle transition, retry/finality, resource release, result convergence, duplicate callback, and stale callback correctness |
+| `Policy & Safety Correctness Proof` | `authorization-no-bypass-safety` | negative auth/security cases: missing session, wrong credential family, project/event/scope mismatch, worker impersonation, CSRF failure, fixture/dev header exclusion, and route-family fail-closed behavior |
+| `Scoped Operational Resilience Proof` | `scale-contention-evidence` | named concurrency, worker contention, capacity/exclusive-lock pressure, Redis runtime contention, large batch, or many-worker scenario with explicit oracle |
+| `Scoped Operational Resilience Proof` | `fault-recovery-evidence` | named restart, reconnect, worker churn, lease-expiry redispatch, duplicate result, stale callback, delayed/retry recovery, or process/runtime fault with explicit oracle |
+
+End-to-end is an evidence shape, not a proof class. A packaged process flow can
+prove external capability, a representative policy/safety scenario, or a
+restart/convergence edge depending on what it observes and what it asserts. Do
+not use "E2E" as shorthand for full policy, route-permission, or scale proof.
+
+Confidence priority is not marketing priority. "Can it be wrong?" is usually
+more important than chaos/perf/soak terminology because wrong authorization,
+wrong worker selection, wrong lifecycle mutation, or bypassed policy can make a
+usable and fast system untrustworthy. Chaos/perf/soak claims must stay scoped to
+the exact fault/load/duration/oracle in the evidence; they must not imply Redis
+HA, partitions, process kill, clock skew, multi-node presence flap, production
+SLOs, or broad capacity unless those conditions are actually exercised and
+asserted.
+
+Policy correctness is engine deterministic proof first. Server E2E is
+representative real-wiring proof only: it should prove that the selected
+policy/safety invariant survives the real server, HTTP, SDK, transport, auth, or
+Spring assembly path. Do not expand server E2E into the full policy, lifecycle,
+credential, profile, or route-permission matrix. When a policy/safety gap is
+found, strengthen the owning engine deterministic proof first, then add one
+representative server E2E only when the remaining risk is host/API/transport
+wiring.
+
+Capability proof must name the credential or session family it exercised. A
+Task producer API key proving task create/append/read must not be read as proof
+that a Worker API key or operator session can do the same thing, and a happy
+read path must not be read as proof that cross-project/task/archive reads are
+denied. Those denial cases belong to `authorization-no-bypass-safety`.
+
+The positive side of authorization belongs to Product/API capability: when the
+credential/session, route family, scope, project/event, CSRF/request shape, and
+caller role are correct, a 401/403/CSRF/interceptor/route-mapping rejection is a
+first-layer capability failure. `authorization-no-bypass-safety` owns the
+opposite question: wrong credential, wrong scope, wrong route family, missing
+CSRF, fixture/dev header, or impersonation must fail closed.
+
+Core proof priority inside those classes:
+
+1. `Scheduling Correctness`: policy and safety proof for worker selection,
+   exclusion, contention, redispatch, gating, and contract-aware convergence.
+2. `Kernel Convergence`: policy and safety proof for lifecycle, retry, expiry,
+   finality, release, and result convergence invariants.
+3. `Platform Viability / Boot-shell E2E`: external capability/product-path proof
+   for representative real server, HTTP, SDK, transport, worker, auth, and
+   result wiring.
+4. `Chaos / Perf / Distributed-readiness`: resilience and scale proof for
+   degraded runtime, pressure, disconnect, replay, and distributed edge
+   behavior.
 
 Boot-shell E2E is release-gate proof when the risk is real host/runtime wiring,
 transport interplay, external worker parity, or distributed edge behavior. It
@@ -134,6 +193,8 @@ Current testing assumptions:
 - `project` is part of the mainline business boundary, not just a metadata page
 - `transport` is an explicit subsystem and validation surface, not an engine implementation detail
 - the highest-value proof surface is scheduling correctness; host E2E stays the representative integrated wiring proof
+- policy correctness belongs in engine deterministic proof first; host E2E must
+  not grow into a full policy matrix
 - local unit tests are still useful, but new tests should prefer the mainline unless the logic is kernel-critical and easier to prove locally
 - local kernel tests remain first-class PR protection for lifecycle/result invariants; what is being downgraded is projection-first proof style, not local kernel testing itself
 
@@ -370,9 +431,11 @@ Current implications:
 - major proof workflows upload
   `xa-mass-testing/target/proof-summary/summary.json` when the job reaches its
   artifact step. CI invokes the writer with job-scoped input directories so the
-  summary records the job-local surefire/report/profile/auth/analyzer evidence
-  and known non-proof boundaries. Unscoped local summaries are aggregate
-  diagnostics and may include stale `target/` artifacts; no summary replaces
+  summary records the job-local surefire/report/profile/auth/analyzer evidence,
+  `proofClass`, `proofQuestion`, `evidenceShape`, `gateType`, `claimScope`,
+  proof class definitions, and known non-proof boundaries. Unscoped local
+  summaries are aggregate diagnostics and may include stale `target/` artifacts;
+  no summary replaces
   `doc/PROOF_REGISTRY.md` or the owning artifacts.
 
 ## 4. Current Test Asset Map
@@ -388,6 +451,8 @@ Proves:
 - scheduling correctness under contention, retry, lease expiry, and contract-aware convergence
 - lifecycle/result invariants around retry, expiry, release, and finality
 - contract/intake/runtime owner boundaries without treating compatibility projection as hot-path truth
+- the primary policy/safety matrix for worker selection, admission, gating,
+  retry, lifecycle, and result convergence
 
 Does not prove:
 
@@ -445,6 +510,8 @@ Proves:
 Does not prove:
 
 - the full competition matrix by itself; keep that in engine acceptance first
+- the full policy/safety matrix by itself; do not add server E2E permutations
+  when an engine deterministic test can prove the invariant directly
 - long-run throughput
 - distributed recovery on its own; use chaos or black-box when disconnect, replay, late result, or takeover behavior is the real risk
 

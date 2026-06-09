@@ -1,6 +1,6 @@
 # Proof Registry
 
-Last updated: 2026-06-03
+Last updated: 2026-06-09
 
 Status: current project-level proof ledger.
 
@@ -48,6 +48,9 @@ For critical invariants:
 - primary proof is one authoritative deterministic lane
 - representative proof is one real-wiring integrated lane
 - trace proof is one canonical observational path through `xa-mass-trace`
+- policy correctness and lifecycle correctness must start from the primary
+  deterministic lane; representative server E2E must not expand into the full
+  policy or lifecycle matrix
 
 Do not treat all lanes as equal proof for the same invariant.
 
@@ -62,6 +65,31 @@ Current lane roles:
 - `xa-mass-testing` chaos and soak:
   distributed-edge proof
 
+Project-level proof classes are defined in
+[TESTING_INDEX.md](./TESTING_INDEX.md): `Product / API Capability Proof`,
+`Policy & Safety Correctness Proof`, and `Scoped Operational Resilience Proof`.
+This registry remains the invariant ownership ledger. References below to
+specific "classes" or suites mean Java proof classes/suites unless they name
+one of those project-level proof classes explicitly. The registry's
+highest-priority confidence question is usually "can it be wrong?" because a
+usable or fast path is not trustworthy if authorization, scheduling, lifecycle,
+or policy bypass can mutate the wrong state.
+
+Use the project proof lines from `TESTING_INDEX.md` when choosing the next test:
+`task-producer-api-key`, `worker-api-key`, `operator-admin-session`,
+`scheduling-policy-correctness`, `lifecycle-result-correctness`,
+`authorization-no-bypass-safety`, `scale-contention-evidence`, and
+`fault-recovery-evidence`. Capability proof must name the credential/session
+family. Authorization and no-bypass proof must use negative cases; do not treat
+a happy product path as evidence that the wrong credential, scope, route
+family, or CSRF state fails closed.
+
+Route/auth failures with a correct credential/session, correct route family,
+correct scope/project/event, and correct request shape are Product/API
+Capability failures. Route/auth success with an incorrect credential, scope,
+route family, CSRF state, fixture/dev header, or impersonated worker belongs to
+`authorization-no-bypass-safety`.
+
 ## 1. How To Use This Ledger
 
 When a new change needs proof:
@@ -70,9 +98,11 @@ When a new change needs proof:
 2. use the listed primary proof lane first
 3. add representative or trace proof only if the listed status says the pair is
    missing or the changed risk really sits on host/runtime or distributed edge
-4. do not add a new test in another lane when an authoritative proof class
+4. do not add server E2E permutations for policy correctness when an engine
+   deterministic test can prove the invariant directly
+5. do not add a new test in another lane when an authoritative proof class
    already exists for that invariant
-5. if the risk is only implementation coverage or a happy-path duplicate, do
+6. if the risk is only implementation coverage or a happy-path duplicate, do
    not add a test; strengthen the existing proof or delete the low-value case
 
 Mainline rule:

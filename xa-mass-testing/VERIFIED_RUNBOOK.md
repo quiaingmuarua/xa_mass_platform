@@ -21,6 +21,36 @@ semantics.
 
 This file does not define lane ownership, suite layering, or CI gate policy.
 
+## 0. Proof Class Reading
+
+Use [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md) for the authoritative
+proof class model. Runtime commands in this runbook should be read through
+three classes:
+
+| Question | Proof class | Runbook evidence |
+| --- | --- | --- |
+| Can it be used? | `Product / API Capability Proof` | packaged server startup, admin CLI login/env init, API-key setup, task producer calls, worker APIs, Java SDK launchers, and result reads through supported external surfaces |
+| Can it be wrong? | `Policy & Safety Correctness Proof` | engine deterministic suites as primary scheduling/policy proof, plus representative negative auth probes, fail-closed route checks, server E2E, and trace analyzers that show unsafe bind/auth/mutation paths are rejected |
+| Can it withstand this exact condition? | `Scoped Operational Resilience Proof` | chaos, perf, soak, restart, lease-expiry, stale replay, worker churn, Redis/runtime recovery, and high-volume runtime pressure evidence scoped to a named scenario, fault/load, duration, and pass/fail oracle |
+
+End-to-end means the evidence crosses real process/API/runtime boundaries. It
+does not by itself prove every policy, authorization, route-permission, or
+scale invariant. A happy-path smoke can prove that a user path works, but it is
+not proof that unsafe paths fail closed. Chaos/perf/soak wording must not imply
+general resilience unless the command actually exercises and asserts that
+specific condition.
+
+Capability proof must name which family it exercised:
+`operator-admin-session`, `task-producer-api-key`, or `worker-api-key`. Negative
+permission, wrong credential-family, scope mismatch, CSRF, fixture-header, and
+impersonation cases belong to `authorization-no-bypass-safety`, not to the
+capability happy path.
+
+Correct credential/session plus correct route family, scope, project/event, and
+request shape is an authorized-positive Product/API capability proof. If that
+call is rejected by auth, CSRF, an interceptor, route mapping, or
+credential-family handling, treat it as a first-layer capability failure.
+
 ## 1. Verified Entry
 
 Current runtime entry:
@@ -264,9 +294,13 @@ node xa-mass-testing/scripts/write-proof-summary.mjs --job local
 ```
 
 The writer reads existing surefire XML and lane-local JSON artifacts under
-`target/` and writes `xa-mass-testing/target/proof-summary/summary.json`. It is
+`target/` and writes `xa-mass-testing/target/proof-summary/summary.json`. It
+emits project proof class definitions and marks recognized evidence with
+`proofClass`, `proofLines`, `proofQuestion`, `evidenceShape`, `gateType`,
+`credentialRouteFamilies`, `authorizedPositiveChecks`, and `claimScope`. It is
 CI evidence only and does not replace the proof registry or the owning reports.
-Perf/soak release interpretation is sourced from
+Perf/soak release
+interpretation is sourced from
 `xa-mass-testing/proof/perf-soak-release-evidence.json`, which keeps hard
 threshold signals separate from trend-only latency/throughput values.
 Use scoped inputs such as `--test-report-dir`, `--platform-confidence-dir`, and

@@ -64,6 +64,55 @@ Testing-policy note:
 - chaos smoke correctness assertions must be runtime/aggregate/trace first: `TaskWorkRuntime` stats, active leases, task terminal state, and `ExecutionEvent` transitions are the proof surface; compatibility message/attempt views are report payload only unless the runner is explicitly about legacy projection audit
 - transport load correctness assertions must use task terminal state, `TaskWorkRuntime` final counters, delivery diagnostics, and worker receive/result metrics; compatibility projection must not define transport-load pass/fail
 
+## Proof Class Map
+
+The repo-level proof classes are defined in
+[`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md). This module contributes
+to them as follows:
+
+| Question | Proof class | This module's role |
+| --- | --- | --- |
+| Can it be used? | `Product / API Capability Proof` | `platform confidence smoke`, `server default startup smoke`, cross-process launchers, admin CLI, Java SDK task producer, Java SDK or worker API worker process, task creation, worker execution, and result reads through supported external surfaces. These prove product/API usability for named credential/session families, not full policy correctness. |
+| Can it be wrong? | `Policy & Safety Correctness Proof` | Scheduling/policy correctness guards, negative auth checks, proof-registry guards, profile-matrix guards, trace analyzer pairing, and representative reports that show the platform fails closed or refuses unsafe mutation. Primary scheduling/policy correctness is engine deterministic proof first; server E2E is representative real-wiring proof only. This class has higher confidence priority than happy-path or load wording, but it must not grow low-value server E2E matrices. |
+| Can it withstand this exact condition? | `Scoped Operational Resilience Proof` | scale/contention evidence, fault/recovery evidence, chaos, perf, soak, transport load, runtime restart, worker churn, lease-expiry, stale replay, retry, Redis-backed runtime recovery, and scheduled/manual pressure evidence, scoped to the exact scenario, fault/load, duration, and pass/fail oracle. Fast stable cases can be PR-gated; expensive or noisy cases stay scheduled/manual until calibrated. |
+
+Proof lines used by this module:
+
+- `operator-admin-session`: admin CLI login/env init, project/rule/API-key setup,
+  task seal/approve, and operator commands with a valid operator session that
+  must not be wrongly rejected.
+- `task-producer-api-key`: create task, append items, and read allowed
+  task/result/archive data through Java SDK task producer paths with a valid
+  task API key that must not be wrongly rejected.
+- `worker-api-key`: worker registration/topology, online/heartbeat/poll, result
+  submit, command ack, state report, and capability report through worker paths
+  with a valid worker API key that must not be wrongly rejected.
+- `scheduling-policy-correctness`: engine-first selection/admission/gating
+  proof, with server E2E only as representative real wiring.
+- `lifecycle-result-correctness`: lifecycle transition, retry/finality,
+  resource release, result convergence, duplicate callback, and stale callback
+  correctness.
+- `authorization-no-bypass-safety`: negative credential, scope, route-family,
+  CSRF, fixture-header, and impersonation cases.
+- `scale-contention-evidence`: named load/contention/capacity scenario with
+  explicit pass/fail oracle.
+- `fault-recovery-evidence`: named restart/reconnect/lease/stale/duplicate/fault
+  scenario with explicit pass/fail oracle.
+
+Correct credential/session plus correct route family, scope, project/event, and
+request shape must be treated as an authorized-positive capability proof. If it
+is rejected by auth, CSRF, an interceptor, route mapping, or credential-family
+handling, the failure belongs to `Product / API Capability Proof`. Negative
+wrong-credential/scope/route/CSRF/fixture/impersonation checks belong to
+`authorization-no-bypass-safety`.
+
+End-to-end is recorded as `evidenceShape`, not as a proof class. The proof
+summary writer emits `proofClass`, `proofLines`, `proofQuestion`,
+`evidenceShape`, `gateType`, `credentialRouteFamilies`,
+`authorizedPositiveChecks`, and `claimScope` per evidence item so artifacts can
+distinguish a product/API capability smoke from a policy/safety proof or a
+scoped operational resilience report.
+
 ## Runner Map
 
 | Surface | Main runner / entry | Primary risk | Artifact |
@@ -77,7 +126,7 @@ Testing-policy note:
 | `polling scheduling fast soak` | `scripts/run-polling-scheduling-fast-soak.sh` | scheduled/manual polling soak profile with mixed results, late worker join, result sequential read, canonical trace validation, and optional trace analyzer proof; not a PR gate | `target/soak-reports/`, `target/soak-traces/` |
 | `platform confidence smoke` | `scripts/run-platform-confidence-smoke.sh` | packaged server process plus admin CLI env init plus Java SDK worker/task launchers; proves server startup, session operator auth, catalog/rule/API-key preparation, worker registration, task submission, dispatch, and visible result through real process boundaries | `target/platform-confidence/` |
 | `server default startup smoke` | `scripts/run-server-default-startup-smoke.sh` | packaged server jar no-arg startup, default `durable-local` profile/path, process liveness after health, operator seed/login readiness, and same SQLite file restart | `target/server-default-startup/` |
-| `proof summary writer` | `scripts/write-proof-summary.mjs` | CI evidence summary that reads surefire XML plus lane-local JSON reports; keeps proof claims, route/client families, profiles, analyzers, and known non-proof boundaries visible in artifacts | `target/proof-summary/` |
+| `proof summary writer` | `scripts/write-proof-summary.mjs` | CI evidence summary that reads surefire XML plus lane-local JSON reports; keeps proof class, proof line, credential/route families, evidence shape, gate type, profiles, analyzers, and known non-proof boundaries visible in artifacts | `target/proof-summary/` |
 | `chaos: websocket disconnect/reconnect` | `com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner` | worker disconnects inside an active lease, reconnects, submits the delayed result, and later receives follow-up work | `target/chaos-reports/` |
 | `chaos: websocket lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner` | disconnect without result, watchdog expiry, retry reset, takeover by another websocket worker | `target/chaos-reports/`, `target/chaos-traces/` |
 | `chaos: websocket late stale result after lease expiry` | `com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner` | original worker disconnects, lease expires, takeover succeeds, then the stale worker reconnects and replays a late result that must not overwrite runtime finality | `target/chaos-reports/`, `target/chaos-traces/` |
@@ -240,7 +289,13 @@ negative credential probes; positive catalog/rule/API-key/task/worker business
 calls stay inside admin CLI or Java SDK launchers. Negative probes assert the
 standard response envelope `code` and `msg`, and record `failureReason` in
 `credentialChecks`; they are representative credential-family checks, not a
-full route-permission matrix.
+full route-permission matrix. The proof summary marks those checks with
+`authorization-no-bypass-safety` while keeping the overall smoke scoped to
+product/API capability. The positive admin/task/worker paths are
+authorized-positive capability proof for their named credential/session family;
+the summary records them as `authorizedPositiveChecks` with operation names such
+as `operator.login`, `taskProducer.createAndAppendItems`,
+`taskProducer.readResult`, `worker.registerAndPoll`, and `worker.submitResult`.
 
 Server default startup smoke:
 
@@ -269,11 +324,14 @@ node xa-mass-testing/scripts/write-proof-summary.mjs --job local
 
 The summary writer consumes surefire XML, platform-confidence summaries,
 default-startup summaries, and chaos/perf/soak JSON reports that already exist
-under `target/`. It does not run proof itself and does not replace
-`doc/PROOF_REGISTRY.md`. Perf/soak release interpretation is defined in
-`proof/perf-soak-release-evidence.json`: hard pass/fail signals remain runner
-invariants, while latency/throughput values are trend-only until a calibrated
-baseline exists.
+under `target/`. It emits project proof class definitions and marks recognized
+evidence with `proofClass`, `proofLines`, `proofQuestion`, `evidenceShape`,
+`gateType`, `credentialRouteFamilies`, `authorizedPositiveChecks`, and
+`claimScope`. It does not run proof itself and does not replace
+`doc/PROOF_REGISTRY.md`. Perf/soak release
+interpretation is defined in `proof/perf-soak-release-evidence.json`: hard
+pass/fail signals remain runner invariants, while latency/throughput values are
+trend-only until a calibrated baseline exists.
 
 For clean CI evidence, workflows pass scoped input directories such as
 `--test-report-dir`, `--platform-confidence-dir`, `--server-default-startup-dir`,
