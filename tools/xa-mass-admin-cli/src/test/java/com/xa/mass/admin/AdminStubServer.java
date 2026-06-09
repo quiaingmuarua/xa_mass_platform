@@ -105,6 +105,21 @@ final class AdminStubServer implements AutoCloseable {
                 api(exchange, events.stream().map(code -> Map.of("code", code)).toList());
             } else if (path.equals("/api/v1/admin/rules")) {
                 api(exchange, Map.of("items", rules.stream().map(id -> Map.of("id", id)).toList()));
+            } else if (path.equals("/api/v1/runtime/workers")) {
+                api(exchange, Map.of("items", List.of(Map.of(
+                        "workerId", "confidence-worker-001",
+                        "transportOnline", true
+                )), "total", 1, "limit", 200));
+            } else if (path.equals("/api/v1/catalog/worker-capabilities")) {
+                api(exchange, List.of(Map.of(
+                        "workerId", "confidence-worker-001",
+                        "supportedEventCodes", List.of("crawler.fetch-page")
+                )));
+            } else if (path.equals("/api/v1/catalog/worker-group-capabilities")) {
+                api(exchange, List.of(Map.of(
+                        "groupId", "confidence-crawler",
+                        "workerCount", 1
+                )));
             } else if (path.equals("/api/v1/control-plane/catalog:sync")) {
                 requireCsrf(exchange);
                 JsonNode body = read(exchange);

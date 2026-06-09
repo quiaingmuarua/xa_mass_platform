@@ -27,6 +27,15 @@ public final class ScenarioWorkerLauncherMain {
         try {
             System.out.println("[java-scenario-worker-launcher] using initialized server catalog, rules, and credentials");
             WorkerScenarioRegistrar workerRegistrar = new WorkerScenarioRegistrar(options, clientFactory);
+            if (options.registerApiOnlineOnly()) {
+                workerRegistrar.register(files.workerSpecs(), true);
+                System.out.printf("[java-scenario-worker-launcher] registered api-online workers=%d groups=%d adapterNodes=%d bindings=%d%n",
+                        files.workerSpecs().size(),
+                        workerRegistrar.declaredWorkerGroupCount(),
+                        workerRegistrar.registeredAdapterNodeCount(),
+                        workerRegistrar.boundAdapterNodeGroupCount());
+                return;
+            }
             workerRegistrar.register(files.workerSpecs(), false);
             ScenarioIdleTracker idleTracker = new ScenarioIdleTracker();
             try (ScenarioWorkerRuntime workerRuntime = new ScenarioWorkerRuntime(options, clientFactory, idleTracker)) {

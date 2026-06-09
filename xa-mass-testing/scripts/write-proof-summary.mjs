@@ -344,6 +344,7 @@ const releaseEvidenceByScenario = releaseEvidenceMap(releaseEvidenceConfig);
 const evidence = [
   ...collectSurefireReports(),
   ...collectPlatformConfidenceSummaries(),
+  ...collectWorkerReadHealthSummaries(),
   ...collectDefaultStartupSummaries(),
   ...collectReportJson("chaos", dirsFor(args.chaosDirs, [
     path.join(REPO_ROOT, "xa-mass-testing", "target", "chaos-reports"),
@@ -404,6 +405,10 @@ function parseArgs(argv) {
       pushArg(parsed, "platformConfidenceDirs", argv[++index]);
     } else if (value.startsWith("--platform-confidence-dir=")) {
       pushArg(parsed, "platformConfidenceDirs", value.slice("--platform-confidence-dir=".length));
+    } else if (value === "--worker-read-health-dir") {
+      pushArg(parsed, "workerReadHealthDirs", argv[++index]);
+    } else if (value.startsWith("--worker-read-health-dir=")) {
+      pushArg(parsed, "workerReadHealthDirs", value.slice("--worker-read-health-dir=".length));
     } else if (value === "--server-default-startup-dir") {
       pushArg(parsed, "serverDefaultStartupDirs", argv[++index]);
     } else if (value.startsWith("--server-default-startup-dir=")) {
@@ -431,6 +436,7 @@ function hasScopedInputArgs(parsed) {
   return [
     "testReportDirs",
     "platformConfidenceDirs",
+    "workerReadHealthDirs",
     "serverDefaultStartupDirs",
     "chaosDirs",
     "perfDirs",
@@ -529,6 +535,8 @@ function collectPlatformConfidenceSummaries() {
       sdkRouteFamilies: data.sdkRouteFamilies ?? [],
       credentialFamilies: ["operator-session", "task-api-key", "worker-api-key"],
       credentialChecks: credentialChecksFrom(data.credentialChecks),
+      initializerElapsedMs: numberOrNull(data.initializerElapsedMs),
+      apiHealth: apiHealthFrom(data.apiHealth),
       confidenceOverlay: data.confidenceOverlay ?? {},
       knownNonProofBoundaries: [
         "Active-profile API/auth confidence only; no-arg default startup is separate server-default-startup proof.",
@@ -538,6 +546,124 @@ function collectPlatformConfidenceSummaries() {
       runDir: data.runDir ?? null,
     };
   });
+}
+
+function collectWorkerReadHealthSummaries() {
+  const bases = scopedDirs(dirsFor(args.workerReadHealthDirs, [
+    path.join(REPO_ROOT, "xa-mass-testing", "target", "worker-read-health"),
+  ]), []);
+  return bases.flatMap(collectSummaryJson).map((entry) => {
+    const data = entry.data;
+    const workerFixture = workerFixtureFrom(data.workerFixture);
+    const missingFields = workerFixtureMissingFields(workerFixture);
+    const validFixtureScale = missingFields.length === 0 && workerFixture.workerCount >= 100;
+    const proofEligible = data.status === "passed" && validFixtureScale;
+    return {
+      type: "worker-read-health",
+      status: proofEligible ? "passed" : data.status === "passed" ? "downgraded" : data.status ?? "unknown",
+      proofClass: proofEligible ? PROOF_CLASSES.SCOPED_OPERATIONAL_RESILIENCE.id : null,
+      proofLines: proofEligible ? [PROOF_LINES.SCALE_CONTENTION_EVIDENCE.id] : [],
+      proofQuestion: proofEligible
+        ? proofQuestionFor(PROOF_CLASSES.SCOPED_OPERATIONAL_RESILIENCE.id)
+        : null,
+      evidenceRole: proofEligible ? EVIDENCE_ROLES.RUNTIME_PROOF : EVIDENCE_ROLES.ARTIFACT_METADATA,
+      evidenceShape: "packaged-worker-read-health",
+      gateType: "pr-gate",
+      credentialRouteFamilies: [],
+      authorizedPositiveChecks: [],
+      claimScope: proofEligible
+        ? "packaged worker-read route health with at least 100 API-created workers"
+        : "worker-read health artifact without accepted fixture scale",
+      profile: data.profile ?? null,
+      workerFixture,
+      apiHealth: apiHealthFrom(data.apiHealth),
+      knownNonProofBoundaries: [
+        "Worker-read performance proof only; not task execution, result convergence, or full API contract proof.",
+        ...workerFixtureBoundaries(workerFixture, missingFields, validFixtureScale),
+      ],
+      artifactPath: relative(entry.file),
+      runDir: data.runDir ?? null,
+    };
+  });
+}
+
+function workerFixtureFrom(raw) {
+  const value = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  return {
+    workerCount: numberOrNull(value.workerCount),
+    workerGroupCount: numberOrNull(value.workerGroupCount),
+    onlineWorkerCount: numberOrNull(value.onlineWorkerCount),
+    lockedWorkerCount: numberOrNull(value.lockedWorkerCount),
+    sessionCount: numberOrNull(value.sessionCount),
+    creationPath: value.creationPath ?? null,
+    startedWorkerSessionCount: numberOrNull(value.startedWorkerSessionCount),
+  };
+}
+
+function workerFixtureMissingFields(workerFixture) {
+  return [
+    "workerCount",
+    "workerGroupCount",
+    "onlineWorkerCount",
+    "lockedWorkerCount",
+    "sessionCount",
+    "creationPath",
+    "startedWorkerSessionCount",
+  ].filter((field) => workerFixture[field] === null || workerFixture[field] === undefined || workerFixture[field] === "");
+}
+
+function workerFixtureBoundaries(workerFixture, missingFields, validFixtureScale) {
+  const boundaries = [];
+  if (missingFields.length > 0) {
+    boundaries.push(`Missing workerFixture fields: ${missingFields.join(", ")}`);
+  }
+  if (!validFixtureScale) {
+    boundaries.push(`workerFixture.workerCount must be >= 100 for worker-read performance proof; observed ${workerFixture.workerCount ?? "missing"}.`);
+  }
+  if (workerFixture.sessionCount === 0) {
+    boundaries.push("No live worker sessions were started; this proves API-created worker read model scale, not live-session scale.");
+  }
+  if (workerFixture.lockedWorkerCount === 0) {
+    boundaries.push("No locked workers were present in the packaged fixture; locked/lease mix remains covered by bounded fanout or later fixtures.");
+  }
+  return boundaries;
+}
+
+function apiHealthFrom(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  return {
+    status: raw.status ?? "unknown",
+    gateMode: raw.gateMode ?? null,
+    budgetMs: numberOrNull(raw.budgetMs),
+    routeManifestVersion: raw.routeManifestVersion ?? null,
+    exactDtoContractChecked: valueOrNull(raw.exactDtoContractChecked),
+    routeTimings: routeTimingsFrom(raw.routeTimings),
+  };
+}
+
+function routeTimingsFrom(raw) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.map((route) => ({
+    method: route?.method ?? null,
+    path: route?.path ?? null,
+    routeAuthPolicy: route?.routeAuthPolicy ?? null,
+    credentialUsedByHealthRunner: route?.credentialUsedByHealthRunner ?? null,
+    readOrWrite: route?.readOrWrite ?? null,
+    sourceCommand: route?.sourceCommand ?? null,
+    normalDataPresence: route?.normalDataPresence ?? null,
+    repeatable: valueOrNull(route?.repeatable),
+    budgetMs: numberOrNull(route?.budgetMs),
+    elapsedMs: numberOrNull(route?.elapsedMs),
+    httpStatus: numberOrNull(route?.httpStatus),
+    code: numberOrNull(route?.code),
+    responseBytes: numberOrNull(route?.responseBytes),
+    status: route?.status ?? "unknown",
+    message: route?.message ?? null,
+  }));
 }
 
 function credentialChecksFrom(raw) {
@@ -912,9 +1038,21 @@ function collectSummaryJson(base) {
   if (!fs.existsSync(base)) {
     return [];
   }
-  return fs.readdirSync(base, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(base, entry.name, "summary.json"))
+  const stat = fs.statSync(base);
+  const files = [];
+  if (stat.isFile() && path.basename(base) === "summary.json") {
+    files.push(base);
+  }
+  if (stat.isDirectory()) {
+    const directSummary = path.join(base, "summary.json");
+    if (fs.existsSync(directSummary)) {
+      files.push(directSummary);
+    }
+    files.push(...fs.readdirSync(base, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(base, entry.name, "summary.json")));
+  }
+  return unique(files)
     .filter((file) => fs.existsSync(file))
     .map((file) => ({ file, data: readJson(file) }))
     .filter((entry) => entry.data && typeof entry.data === "object");
@@ -1157,6 +1295,9 @@ function totals(evidence) {
     surefireSuiteCount: surefire.length,
     surefireTestcaseCount: surefire.reduce((sum, item) => sum + Number(item.testcaseCount ?? 0), 0),
     platformConfidenceRuns: evidence.filter((item) => item.type === "platform-confidence").length,
+    workerReadHealthRuns: evidence.filter((item) => item.type === "worker-read-health").length,
+    workerReadHealthProofRuns: evidence.filter((item) =>
+      item.type === "worker-read-health" && item.evidenceRole === EVIDENCE_ROLES.RUNTIME_PROOF).length,
     serverDefaultStartupRuns: evidence.filter((item) => item.type === "server-default-startup").length,
     chaosReports: evidence.filter((item) => item.type === "chaos-report").length,
     perfReports: evidence.filter((item) => item.type === "perf-report").length,
@@ -1171,6 +1312,9 @@ function totals(evidence) {
     credentialCheckProofLineCounts: credentialCheckProofLineCounts(evidence),
     authorizedPositiveCheckCount: authorizedPositiveCheckCount(evidence),
     authorizedPositiveProofLineCounts: authorizedPositiveProofLineCounts(evidence),
+    apiHealthRouteTimingCount: apiHealthRouteTimingCount(evidence),
+    apiHealthFailedRouteTimingCount: apiHealthRouteTimingStatusCount(evidence, "failed"),
+    apiHealthWarningRouteTimingCount: apiHealthRouteTimingStatusCount(evidence, "warning"),
   };
 }
 
@@ -1271,6 +1415,15 @@ function authorizedPositiveProofLineCounts(evidence) {
     }
   }
   return counts;
+}
+
+function apiHealthRouteTimingCount(evidence) {
+  return evidence.reduce((sum, item) => sum + (item.apiHealth?.routeTimings?.length ?? 0), 0);
+}
+
+function apiHealthRouteTimingStatusCount(evidence, status) {
+  return evidence.reduce((sum, item) =>
+    sum + (item.apiHealth?.routeTimings ?? []).filter((route) => route?.status === status).length, 0);
 }
 
 function operationCheckExecuted(check) {
@@ -1443,6 +1596,14 @@ function walk(root) {
 
 function valueOrNull(value) {
   return value === undefined ? null : value;
+}
+
+function numberOrNull(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function relative(file) {

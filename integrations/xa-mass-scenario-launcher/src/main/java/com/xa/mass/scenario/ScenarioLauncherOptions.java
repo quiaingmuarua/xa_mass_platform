@@ -15,6 +15,7 @@ record ScenarioLauncherOptions(
         Duration connectTimeout,
         Duration requestTimeout,
         int maxPollingWorkers,
+        boolean registerApiOnlineOnly,
         boolean waitVisibleSuccess,
         Duration resultWaitTimeout,
         boolean help
@@ -50,6 +51,7 @@ record ScenarioLauncherOptions(
         Path cliScenarioDir = null;
         Path configPath = null;
         Integer cliMaxPollingWorkers = null;
+        boolean registerApiOnlineOnly = false;
         boolean waitVisibleSuccess = false;
         Integer resultWaitTimeoutSeconds = null;
         boolean help = false;
@@ -98,6 +100,11 @@ record ScenarioLauncherOptions(
                 index++;
             } else if (arg.startsWith("--max-polling-workers=")) {
                 cliMaxPollingWorkers = parseInt(arg.substring("--max-polling-workers=".length()), "--max-polling-workers");
+            } else if ("--register-api-online-only".equals(arg)) {
+                if (loadTaskConfig) {
+                    throw new IllegalArgumentException("unknown argument: " + arg);
+                }
+                registerApiOnlineOnly = true;
             } else if ("--wait-visible-success".equals(arg)) {
                 waitVisibleSuccess = true;
             } else if ("--result-wait-timeout-seconds".equals(arg)) {
@@ -168,6 +175,7 @@ record ScenarioLauncherOptions(
                 connectTimeout,
                 requestTimeout,
                 maxPollingWorkers,
+                registerApiOnlineOnly,
                 waitVisibleSuccess,
                 resultWaitTimeout,
                 help
@@ -210,6 +218,7 @@ record ScenarioLauncherOptions(
                   --worker-api-key-file <path> Optional explicit worker API key override file
                   --scenario-dir <path>        Scenario JSON directory. Default: integrations/samples/dev/scenario
                   --max-polling-workers <n>    Max polling workers to start in worker launcher. Default: 25. Use 0 for no cap.
+                  --register-api-online-only   Worker launcher only: register topology and mark api-online workers online without starting sessions.
                   --wait-visible-success       Task launcher waits until each created task has at least one visible SUCCESS result.
                   --result-wait-timeout-seconds <n>
                                                 Timeout for --wait-visible-success. Default: 60.

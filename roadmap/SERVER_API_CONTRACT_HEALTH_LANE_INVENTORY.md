@@ -26,7 +26,7 @@ and frontend consumes those contracts through adapters.
 | `integrations/xa-mass-scenario-launcher` | `integrations` | SDK adopter for task producer and worker registration/session proof. | contract proof harness | Proves external task and worker APIs against a real server. |
 | `frontend/src/api/*.real.ts` | `frontend` | Real backend adapters. | frontend consumer | Must track server route/DTO/auth changes when consumed. |
 | `ServerApiFailureLoggingFilter` / `http.server.requests` | `xa-mass-server` | Failure lane and endpoint metrics. | observability support | Helps find contract health failures; not API truth. |
-| `LOCAL_READINESS_AND_API_HEALTH_GATE_ROADMAP.md` | `roadmap` | Local server/env/API timing prerequisite. | readiness proof owner | Initializes and measures the local environment before contract health runs. |
+| `xa-mass-testing/README.md` and `xa-mass-testing/VERIFIED_RUNBOOK.md` | `xa-mass-testing` | Local server/env/API timing prerequisite. | implemented readiness proof owner | Initializes and measures the local environment, then emits packaged `apiHealth.routeTimings` and bounded worker-read health evidence before contract health runs. |
 
 ## Representative Route Families
 
@@ -50,7 +50,7 @@ and frontend consumes those contracts through adapters.
 | Owner Or Roadmap | Relation |
 | --- | --- |
 | `xa-mass-testing/README.md` platform confidence smoke | Prerequisite local readiness: clean DB, env init, task/worker credentials, scenario launcher proof. |
-| `LOCAL_READINESS_AND_API_HEALTH_GATE_ROADMAP.md` | Owns scenario environment initialization and local API route timing gates used before this contract lane. |
+| `xa-mass-testing/README.md` and `xa-mass-testing/VERIFIED_RUNBOOK.md` local readiness entries | Own implemented scenario environment initialization, packaged local API `apiHealth.routeTimings`, and bounded worker-read health evidence consumed before this contract lane. |
 | `SERVER_FRONTEND_STATIC_API_DOCS_ROADMAP.md` | Owns static docs snapshot mechanics and frontend API reference presentation. |
 | `xa-mass-server/README.md` API observability section | Current API failure lane and endpoint metrics used to diagnose contract failures. |
 | `SUBMITTER_TO_API_KEY_CONVERGENCE_ROADMAP.md` | Owns API-key credential model convergence and current API-key routes. |

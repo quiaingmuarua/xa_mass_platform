@@ -138,6 +138,41 @@ final class AdminHttpClient {
                 "execute task command " + command + " for task " + taskId);
     }
 
+    RouteHttpResponse getRoute(String path) {
+        HttpRequest request = baseRequest(path).GET().build();
+        long started = System.nanoTime();
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            long elapsedNanos = System.nanoTime() - started;
+            String body = response.body() == null ? "" : response.body();
+            JsonNode envelope = null;
+            JsonNode data = null;
+            int code = response.statusCode();
+            String message = "";
+            try {
+                envelope = objectMapper.readTree(body);
+                code = envelope.path("code").asInt(response.statusCode());
+                message = envelope.path("msg").asText("");
+                data = envelope.path("data");
+            } catch (IOException ignored) {
+                message = body;
+            }
+            return new RouteHttpResponse(
+                    response.statusCode(),
+                    code,
+                    message,
+                    data,
+                    body.getBytes(StandardCharsets.UTF_8).length,
+                    elapsedNanos
+            );
+        } catch (IOException e) {
+            throw new IllegalStateException("route health GET failed for " + path, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("route health GET interrupted for " + path, e);
+        }
+    }
+
     private JsonNode getData(String path, String description) {
         return sendApiResponse(baseRequest(path).GET().build(), description);
     }
@@ -289,5 +324,20 @@ final class AdminHttpException extends RuntimeException {
 
     int statusCode() {
         return statusCode;
+    }
+}
+
+record RouteHttpResponse(int httpStatus,
+                         int code,
+                         String message,
+                         JsonNode data,
+                         int responseBytes,
+                         long elapsedNanos) {
+    long elapsedMs() {
+        return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(elapsedNanos);
+    }
+
+    boolean successEnvelope() {
+        return httpStatus >= 200 && httpStatus < 300 && code == 0;
     }
 }

@@ -115,3 +115,54 @@ jobs:
             xa-mass-testing/target/server-default-startup/**
             xa-mass-testing/target/proof-summary/**
           if-no-files-found: warn
+
+  worker-read-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ["memory-local", "durable-local"]
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+
+      - name: Run packaged worker-read health smoke
+        env:
+          MASS_OPERATOR_PASSWORD: ops-admin
+          MASS_WORKER_READ_HEALTH_WORKER_COUNT: "100"
+          MASS_WORKER_READ_HEALTH_WORKER_GROUP_COUNT: "5"
+        run: bash xa-mass-testing/scripts/run-worker-read-health-smoke.sh --profile "${{ matrix.profile }}"
+
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job "worker-read-health-${{ matrix.profile }}"
+          --worker-read-health-dir xa-mass-testing/target/worker-read-health
+
+      - name: Upload worker read health artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-read-health-${{ matrix.profile }}
+          path: |
+            xa-mass-testing/target/worker-read-health/**
+            xa-mass-testing/target/proof-summary/**
+          if-no-files-found: warn

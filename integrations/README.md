@@ -18,7 +18,7 @@ Global boundary guard:
 
 | Module | Artifact | Role |
 | --- | --- | --- |
-| [`xa-mass-scenario-launcher`](./xa-mass-scenario-launcher/README.md) | `xa-mass-scenario-task-launcher`, `xa-mass-scenario-worker-launcher`, transitional `xa-mass-scenario-credential-bootstrap` | primary Java external SDK adopter split into task-producer and worker-process launchers against an explicitly initialized server |
+| [`xa-mass-scenario-launcher`](./xa-mass-scenario-launcher/README.md) | `xa-mass-scenario-task-launcher`, `xa-mass-scenario-worker-launcher` | primary Java external SDK adopter split into task-producer and worker-process launchers against an explicitly initialized server |
 | [`xa-mass-worker-pack`](./xa-mass-worker-pack/README.md) | `xa-mass-worker-pack` | worker capability pack and active server E2E harness support |
 | [`samples`](./samples/README.md) | none | historical/dev fixtures only; not a long-term public SDK product surface |
 
@@ -44,10 +44,8 @@ Global boundary guard:
 - Scenario launcher is the primary Java SDK adopter, split into two executable
   process roles: task producer and worker process.
 - Preferred scenario environment initialization is
-  `tools/xa-mass-admin-cli env init --config <file>`. The older scenario
-  credential bootstrap jar is transitional residue for legacy local commands;
-  it is not the long-term environment initializer owner and is not Java SDK
-  public credential management.
+  `tools/xa-mass-admin-cli env init --config <file>`. Scenario launcher no
+  longer packages an operator/admin credential bootstrap jar.
 - Scenario task launcher now supports a human `--config` file for task
   producer runs. Worker launcher config remains deferred and continues to use
   `--scenario-dir` / `workers.json`.

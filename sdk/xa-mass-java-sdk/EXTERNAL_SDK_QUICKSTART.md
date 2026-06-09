@@ -221,12 +221,11 @@ does not depend on optional sample workers or server-owned demo workload state.
 
 Producer traffic uses shell create plus explicit ingest. These calls require a
 real task API key to already exist through normal host credential setup. For
-local scenario work, prefer
-`integrations/xa-mass-scenario-launcher`'s credential bootstrap helper: it
-checks the scenario catalog, validates local task/worker key cache files
-through `/api/v1/api-keys:current`, or logs in as an operator and creates
-task/worker credentials through `POST /api/v1/api-keys`. The checked-in
-raw-secret seed remains an explicit local fixture fallback only.
+local scenario work, prefer `tools/xa-mass-admin-cli env init`: it checks the
+scenario catalog/rules, validates local task/worker key cache files through
+`/api/v1/api-keys:current`, and creates missing credentials through
+server-owned operator/API-key routes. The checked-in raw-secret seed remains an
+explicit local fixture fallback only.
 
 ```bash
 curl -X POST http://127.0.0.1:8088/api/v1/tasks \

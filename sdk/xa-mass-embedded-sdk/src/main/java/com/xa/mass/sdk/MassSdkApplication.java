@@ -59,6 +59,7 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.presence.WorkerPresence;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -649,6 +650,31 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public List<WorkerSnapshot> getAllWorkers() {
         return requireStartedWorkerResourceRuntime().workers().stream()
                 .map(this::toWorkerSnapshot)
+                .toList();
+    }
+
+    @Override
+    public List<String> listOnlineWorkerIds() {
+        if (delegate.getWorkerPresenceStore() != null) {
+            long now = System.currentTimeMillis();
+            return delegate.getWorkerPresenceStore().listActivePresences().stream()
+                    .filter(Objects::nonNull)
+                    .filter(presence -> presence.isLeaseActive(now))
+                    .map(WorkerPresence::getWorkerId)
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(workerId -> !workerId.isEmpty())
+                    .distinct()
+                    .toList();
+        }
+        return requireStartedWorkerResourceRuntime().workers().stream()
+                .filter(Objects::nonNull)
+                .filter(worker -> workerStatusAvailable(worker.statusName()))
+                .map(WorkerResourceRecord::workerId)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(workerId -> !workerId.isEmpty())
+                .distinct()
                 .toList();
     }
 

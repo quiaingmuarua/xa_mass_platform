@@ -208,14 +208,25 @@ public class WorkerApiController {
         if (workers == null || workers.isEmpty()) {
             return Set.of();
         }
-        Set<String> onlineWorkerIds = new LinkedHashSet<>();
-        for (WorkerSnapshot worker : workers) {
-            String workerId = worker == null ? null : worker.getWorkerId();
-            if (workerId != null && !workerId.isBlank() && workerQueries.isWorkerOnline(workerId)) {
-                onlineWorkerIds.add(workerId);
-            }
+        Set<String> visibleWorkerIds = workers.stream()
+                .filter(Objects::nonNull)
+                .map(WorkerSnapshot::getWorkerId)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(workerId -> !workerId.isEmpty())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (visibleWorkerIds.isEmpty()) {
+            return Set.of();
         }
-        return Set.copyOf(onlineWorkerIds);
+        List<String> onlineWorkerIds = workerQueries.listOnlineWorkerIds();
+        if (onlineWorkerIds == null || onlineWorkerIds.isEmpty()) {
+            return Set.of();
+        }
+        return onlineWorkerIds.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(visibleWorkerIds::contains)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     private Set<String> resolveLockedWorkerIds() {

@@ -14,10 +14,8 @@ engine, worker-pack, or transport ownership.
 ## Current Scope
 
 - task launcher can read a human task config file with `--config`
-- credential bootstrap env mode can sync the checked-in local scenario
-  catalog/rules through server control-plane APIs, then validate or create
-  the local task API-key cache and workerId-bound worker credentials through
-  operator login and API-key lifecycle APIs
+- scenario environment initialization is owned by
+  `tools/xa-mass-admin-cli env init`
 - worker launcher still reads existing worker specs under
   `integrations/samples/dev/scenario` through `--scenario-dir`
 - assumes only operator authentication exists on a clean server; scenario
@@ -80,6 +78,21 @@ java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-worker-
   --base-url http://127.0.0.1:8088
 ```
 
+For worker read-model health fixtures, the worker launcher can register worker
+topology and mark `api-online` workers online without starting long-running
+polling sessions:
+
+```bash
+java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-worker-launcher.jar \
+  --base-url http://127.0.0.1:8088 \
+  --scenario-dir xa-mass-testing/target/worker-read-health/<run>/scenario \
+  --register-api-online-only
+```
+
+This mode is for packaged worker read health only. It proves worker read-model
+scale through supported worker APIs; it does not prove task execution or live
+worker-session scale.
+
 Config-internal relative paths, such as `credentials.taskApiKeyFile` and
 `tasks[].items.path`, resolve relative to the config file directory. The task
 config file reads `tasks[]` directly; it does not use `scenarioDir`, and a
@@ -124,43 +137,15 @@ Options:
   are workerId-bound.
 - `--scenario-dir`: scenario JSON directory. Default: `integrations/samples/dev/scenario`
 - `--max-polling-workers`: maximum polling workers to start in worker launcher. Default: `25`; `0` disables the cap
-
-Transitional credential bootstrap options:
-
-The `xa-mass-scenario-credential-bootstrap` jar remains as legacy local
-residue while the admin CLI becomes the environment initializer owner. Prefer
-`tools/xa-mass-admin-cli env init` for new commands and confidence gates.
-
-- `--config`: scenario task config. Reads `server.baseUrl` and
-  `credentials.taskApiKeyFile`.
-- `--kind`: `env`, `task`, or `worker`. Default: `env`. Env mode verifies
-  the checked-in scenario catalog, prepares the task key cache, and registers
-  workerId-bound worker credentials from `workers.json`. Worker credentials use
-  `worker:poll` and wildcard project/event scopes for the checked-in local
-  worker scenario.
-- `--api-key-file`: cache file to validate/write for task mode. Standalone
-  worker mode is legacy; prefer env mode for workerId-bound credentials.
-- `--operator-user`: operator login user. Default: `MASS_OPERATOR_USER` or
-  `ops-admin`.
-- `--operator-password`: operator password. Default: `MASS_OPERATOR_PASSWORD`
-  or `ops-admin`.
-- `--principal-id`: task API-key principal id. Default:
-  `crawler-task-producer-local`.
-- `--project`: comma-separated project scopes. Default:
-  `crawlerApp,deviceProbe` for the checked-in local task scenario.
-- `--event-code`: comma-separated event scopes. Default:
-  `crawler.fetch-page,stock.quote.fetch,probe.phone.metadata` for the
-  checked-in local task scenario.
-- `--no-create`: fail when the cache file is missing.
-- `--no-refresh-stale-cache`: fail when the cache file exists but
-  `/api/v1/api-keys:current` rejects it.
+- `--register-api-online-only`: worker launcher only; register topology and
+  mark `api-online` workers online without starting sessions
 
 ## Boundary
 
 - `xa-mass-java-sdk` stays a pure external API client.
 - catalog/rule/credential storage and authorization are server-owned. This
-  module only provides a local initializer client that calls those server APIs
-  before the task or worker launchers run.
+  module consumes the environment initialized by the admin CLI before the task
+  or worker launchers run.
 - `xa-mass-worker-pack` owns worker capabilities, not task creation or scenario
   orchestration.
 - task and worker launchers are separate process roles. Do not reintroduce a
@@ -171,9 +156,7 @@ residue while the admin CLI becomes the environment initializer owner. Prefer
   with task API-key credentials.
 - task config is not a credential/bootstrap mechanism. API keys referenced by
   config files must already exist in the target server.
-- credential bootstrap is local/integration-test tooling. It may call server
-  operator login, control-plane catalog/rule sync APIs, and API-key lifecycle
-  APIs, but it is not an SDK public contract and must not print raw secrets
-  after writing the cache file.
+- operator login, control-plane catalog/rule sync APIs, and API-key lifecycle
+  APIs stay in `tools/xa-mass-admin-cli`; do not add them back to this module.
 - worker config, `workers[]`, and worker credential files are deferred; use the
   existing worker launcher with `--scenario-dir` until that path is designed.

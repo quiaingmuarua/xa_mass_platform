@@ -25,6 +25,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -96,7 +97,7 @@ class WorkerApiControllerTest {
         );
 
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
-        when(workerQueries.isWorkerOnline("worker-001")).thenReturn(true);
+        when(workerQueries.listOnlineWorkerIds()).thenReturn(List.of("worker-001"));
         when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of("worker-001"));
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-001",
@@ -139,7 +140,7 @@ class WorkerApiControllerTest {
         WorkerSnapshot worker1 = workerSnapshot("worker-001");
         WorkerSnapshot worker2 = workerSnapshot("worker-002");
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker1, worker2));
-        when(workerQueries.isWorkerOnline("worker-001")).thenReturn(true);
+        when(workerQueries.listOnlineWorkerIds()).thenReturn(List.of("worker-001", "worker-002"));
         when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of());
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of());
 
@@ -149,8 +150,39 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.limit").value(1))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].workerId").value("worker-001"));
-        verify(workerQueries, times(1)).isWorkerOnline("worker-001");
+        verify(workerQueries, times(1)).listOnlineWorkerIds();
         verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
+    }
+
+    @Test
+    void listWorkersReadsRuntimeFactsFromBoundedSnapshotsWithLargeFixture() throws Exception {
+        List<WorkerSnapshot> workers = largeWorkerFixture(120, 5);
+        when(workerQueries.getAllWorkers()).thenReturn(workers);
+        when(workerQueries.listOnlineWorkerIds()).thenReturn(onlineWorkerIds(workers, 2));
+        when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of(
+                "worker-0003",
+                "worker-0042",
+                "worker-0099"
+        ));
+        when(runtimeDiagnostics.listSessions()).thenReturn(sessionFacts(workers, 20));
+
+        mockMvc.perform(get("/api/v1/runtime/workers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.total").value(120))
+                .andExpect(jsonPath("$.data.limit").value(200))
+                .andExpect(jsonPath("$.data.items.length()").value(120))
+                .andExpect(jsonPath("$.data.items[0].workerId").value("worker-0001"))
+                .andExpect(jsonPath("$.data.items[0].transportOnline").value(false))
+                .andExpect(jsonPath("$.data.items[1].workerId").value("worker-0002"))
+                .andExpect(jsonPath("$.data.items[1].transportOnline").value(true))
+                .andExpect(jsonPath("$.data.items[2].locked").value(true))
+                .andExpect(jsonPath("$.data.items[19].connections[0].endpointId").value("endpoint-worker-0020"));
+
+        verify(workerQueries, times(1)).getAllWorkers();
+        verify(workerQueries, times(1)).listOnlineWorkerIds();
+        verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
+        verify(runtimeDiagnostics, times(1)).listSessions();
     }
 
     @Test
@@ -283,6 +315,61 @@ class WorkerApiControllerTest {
                 null,
                 LocalDateTime.of(2026, 4, 21, 10, 16)
         );
+    }
+
+    private List<WorkerSnapshot> largeWorkerFixture(int workerCount, int groupCount) {
+        List<WorkerSnapshot> workers = new ArrayList<>();
+        for (int index = 1; index <= workerCount; index++) {
+            String workerId = "worker-%04d".formatted(index);
+            String groupId = "group-%02d".formatted((index - 1) % groupCount);
+            workers.add(new WorkerSnapshot(
+                    workerId,
+                    index % 3 == 0 ? "OFFLINE" : "ONLINE",
+                    "1.2.%d".formatted(index % 10),
+                    LocalDateTime.of(2026, 4, 21, 10, index % 60),
+                    List.of("demoApp"),
+                    List.of("demo.dispatch"),
+                    List.of(),
+                    groupId,
+                    "node-%02d".formatted((index - 1) % groupCount),
+                    "polling",
+                    "polling",
+                    3,
+                    Map.of(
+                            "region", index % 2 == 0 ? "us" : "sg",
+                            "fixture", "bounded-fanout"
+                    ),
+                    null,
+                    LocalDateTime.of(2026, 4, 21, 11, index % 60)
+            ));
+        }
+        return workers;
+    }
+
+    private List<String> onlineWorkerIds(List<WorkerSnapshot> workers, int everyNthWorker) {
+        return workers.stream()
+                .filter(worker -> numericSuffix(worker.getWorkerId()) % everyNthWorker == 0)
+                .map(WorkerSnapshot::getWorkerId)
+                .toList();
+    }
+
+    private List<Map<String, Object>> sessionFacts(List<WorkerSnapshot> workers, int everyNthWorker) {
+        return workers.stream()
+                .filter(worker -> numericSuffix(worker.getWorkerId()) % everyNthWorker == 0)
+                .map(worker -> Map.<String, Object>of(
+                        "workerId", worker.getWorkerId(),
+                        "connections", List.of(Map.of(
+                                "active", true,
+                                "endpointId", "endpoint-" + worker.getWorkerId(),
+                                "routeKey", "route-" + worker.getWorkerId(),
+                                "adapterId", "polling"
+                        ))
+                ))
+                .toList();
+    }
+
+    private int numericSuffix(String workerId) {
+        return Integer.parseInt(workerId.substring(workerId.lastIndexOf('-') + 1));
     }
 
     private WorkerCommandSnapshot workerCommand(String commandId, Instant now) {

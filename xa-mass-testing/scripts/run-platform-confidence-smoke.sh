@@ -67,6 +67,7 @@ server_log="${RUN_DIR}/logs/server.log"
 admin_auth_config_log="${RUN_DIR}/logs/admin-auth-config.log"
 admin_auth_login_log="${RUN_DIR}/logs/admin-auth-login.log"
 admin_env_log="${RUN_DIR}/logs/admin-env-init.log"
+admin_api_health_log="${RUN_DIR}/logs/admin-api-health.log"
 admin_task_command_log="${RUN_DIR}/logs/admin-task-command.log"
 negative_operator_log="${RUN_DIR}/logs/negative-operator-auth.log"
 negative_task_key_log="${RUN_DIR}/logs/negative-task-api-key.log"
@@ -99,6 +100,8 @@ TASK_CREATE_APPEND_CHECK="not-run"
 TASK_READ_RESULT_CHECK="not-run"
 WORKER_REGISTER_POLL_CHECK="not-run"
 WORKER_SUBMIT_RESULT_CHECK="not-run"
+API_HEALTH_JSON="null"
+ADMIN_ENV_INIT_ELAPSED_MS="null"
 
 json_scalar() {
   local field="$1"
@@ -284,11 +287,14 @@ write_summary() {
     "allowLocalFixtureHeader": false,
     "operatorCredentialSeed": true
   },
+  "initializerElapsedMs": ${ADMIN_ENV_INIT_ELAPSED_MS},
+  "apiHealth": ${API_HEALTH_JSON},
   "runDir": "${RUN_DIR}",
   "serverLog": "${server_log}",
   "adminAuthConfigLog": "${admin_auth_config_log}",
   "adminAuthLoginLog": "${admin_auth_login_log}",
   "adminEnvLog": "${admin_env_log}",
+  "adminApiHealthLog": "${admin_api_health_log}",
   "adminTaskCommandLog": "${admin_task_command_log}",
   "negativeOperatorLog": "${negative_operator_log}",
   "negativeTaskKeyLog": "${negative_task_key_log}",
@@ -325,6 +331,7 @@ cleanup() {
     dump_tail "${admin_auth_config_log}"
     dump_tail "${admin_auth_login_log}"
     dump_tail "${admin_env_log}"
+    dump_tail "${admin_api_health_log}"
     dump_tail "${admin_task_command_log}"
     dump_tail "${negative_operator_log}"
     dump_tail "${negative_task_key_log}"
@@ -502,7 +509,9 @@ java -jar "${ADMIN_JAR}" auth login \
 OPERATOR_LOGIN_CHECK="passed"
 
 CURRENT_STEP="admin-env-init"
+admin_env_init_started_seconds=${SECONDS}
 java -jar "${ADMIN_JAR}" env init --config "${ADMIN_CONFIG}" >"${admin_env_log}" 2>&1
+ADMIN_ENV_INIT_ELAPSED_MS=$(((SECONDS - admin_env_init_started_seconds) * 1000))
 OPERATOR_ENV_INIT_CHECK="passed"
 if [[ ! -s "${TASK_KEY_FILE}" ]]; then
   echo "task API-key file was not created: ${TASK_KEY_FILE}" >&2
@@ -659,6 +668,24 @@ if ! grep -q "visible success taskId=" "${task_verify_log}"; then
 fi
 TASK_READ_RESULT_CHECK="passed"
 WORKER_SUBMIT_RESULT_CHECK="passed"
+
+CURRENT_STEP="api-health"
+set +e
+java -jar "${ADMIN_JAR}" api health --config "${ADMIN_CONFIG}" >"${admin_api_health_log}" 2>&1
+api_health_status=$?
+set -e
+api_health_json_line="$(sed -n '/^{/p' "${admin_api_health_log}" | tail -n 1)"
+if [[ -z "${api_health_json_line}" ]]; then
+  echo "admin api health did not emit a JSON report" >&2
+  cat "${admin_api_health_log}" >&2
+  exit 1
+fi
+API_HEALTH_JSON="${api_health_json_line}"
+if [[ ${api_health_status} -ne 0 ]]; then
+  echo "admin api health failed" >&2
+  cat "${admin_api_health_log}" >&2
+  exit 1
+fi
 
 write_summary "passed" "none" "platform confidence smoke passed"
 echo "PASSED profile=${PROFILE} runDir=${RUN_DIR}"

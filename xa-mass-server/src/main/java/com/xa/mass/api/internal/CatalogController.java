@@ -228,11 +228,29 @@ public class CatalogController {
                 .toList();
     }
 
-    private boolean isTransportOnline(String workerId) {
-        return workerQueries != null
-                && workerId != null
-                && !workerId.isBlank()
-                && workerQueries.isWorkerOnline(workerId);
+    private Set<String> resolveOnlineWorkerIds(List<WorkerSnapshot> workers) {
+        if (workerQueries == null || workers == null || workers.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> visibleWorkerIds = workers.stream()
+                .filter(Objects::nonNull)
+                .map(WorkerSnapshot::getWorkerId)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(workerId -> !workerId.isEmpty())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (visibleWorkerIds.isEmpty()) {
+            return Set.of();
+        }
+        List<String> onlineWorkerIds = workerQueries.listOnlineWorkerIds();
+        if (onlineWorkerIds == null || onlineWorkerIds.isEmpty()) {
+            return Set.of();
+        }
+        return onlineWorkerIds.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(visibleWorkerIds::contains)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     private Map<String, WorkerGroupSnapshot> workerGroupsById() {
@@ -364,24 +382,6 @@ public class CatalogController {
         item.put("dispatchEligibleCount", dispatchEligibleCount);
         item.put("fingerprintDistribution", fingerprintDistribution);
         return item;
-    }
-
-    private boolean isWorkerLocked(String workerId) {
-        return runtimeDiagnostics != null && runtimeDiagnostics.isWorkerLocked(workerId);
-    }
-
-    private Set<String> resolveOnlineWorkerIds(List<WorkerSnapshot> workers) {
-        if (workerQueries == null || workers == null || workers.isEmpty()) {
-            return Set.of();
-        }
-        Set<String> workerIds = new LinkedHashSet<>();
-        for (WorkerSnapshot worker : workers) {
-            String workerId = worker == null ? null : worker.getWorkerId();
-            if (workerId != null && !workerId.isBlank() && isTransportOnline(workerId)) {
-                workerIds.add(workerId);
-            }
-        }
-        return Set.copyOf(workerIds);
     }
 
     private Set<String> resolveLockedWorkerIds(List<WorkerSnapshot> workers) {

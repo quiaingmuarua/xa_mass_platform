@@ -19,9 +19,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -75,9 +78,7 @@ class CatalogControllerTest {
                 List.of("demoApp"), List.of());
         workerQueries = mock(WorkerQueryOperations.class);
         when(workerQueries.getAllWorkers()).thenReturn(List.of(crawlerWorker, offlineChatWorker, scopeOnlyWorker));
-        when(workerQueries.isWorkerOnline("crawler-worker-1")).thenReturn(true);
-        when(workerQueries.isWorkerOnline("chat-worker-1")).thenReturn(false);
-        when(workerQueries.isWorkerOnline("scope-only-worker")).thenReturn(false);
+        when(workerQueries.listOnlineWorkerIds()).thenReturn(List.of("crawler-worker-1"));
         runtimeDiagnostics = mock(RuntimeDiagnosticsOperations.class);
         when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of("chat-worker-1"));
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of(
@@ -215,14 +216,64 @@ class CatalogControllerTest {
     }
 
     @Test
-    void workerGroupCapabilitiesReadsRuntimeFactsOncePerWorker() throws Exception {
+    void workerGroupCapabilitiesReadsRuntimeFactsFromOnePresenceSnapshot() throws Exception {
         mockMvc.perform(get("/api/v1/catalog/worker-group-capabilities"))
                 .andExpect(status().isOk());
 
-        verify(workerQueries, times(1)).isWorkerOnline("crawler-worker-1");
-        verify(workerQueries, times(1)).isWorkerOnline("chat-worker-1");
-        verify(workerQueries, times(1)).isWorkerOnline("scope-only-worker");
+        verify(workerQueries, times(1)).listOnlineWorkerIds();
         verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
+    }
+
+    @Test
+    void workerCapabilitiesReadsRuntimeFactsFromBoundedSnapshotsWithLargeFixture() throws Exception {
+        LargeWorkerFixture fixture = largeWorkerFixture(125, 5);
+        reset(workerQueries, workerTopology, runtimeDiagnostics);
+        when(workerQueries.getAllWorkers()).thenReturn(fixture.workers());
+        when(workerQueries.listOnlineWorkerIds()).thenReturn(fixture.onlineWorkerIds());
+        when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(fixture.lockedWorkerIds());
+        when(runtimeDiagnostics.listSessions()).thenReturn(fixture.sessions());
+        when(workerTopology.listWorkerGroups()).thenReturn(fixture.groups());
+
+        mockMvc.perform(get("/api/v1/catalog/worker-capabilities"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.length()").value(125))
+                .andExpect(jsonPath("$.data[?(@.workerId=='worker-0002' && @.online==true)]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='worker-0003' && @.locked==true)]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='worker-0005' && @.connections[0].endpointId=='endpoint-worker-0005')]").exists());
+
+        verify(workerQueries, times(1)).getAllWorkers();
+        verify(workerQueries, times(1)).listOnlineWorkerIds();
+        verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
+        verify(runtimeDiagnostics, times(1)).listSessions();
+        verify(workerTopology, times(1)).listWorkerGroups();
+    }
+
+    @Test
+    void workerGroupCapabilitiesReadsRuntimeFactsFromBoundedSnapshotsWithLargeFixture() throws Exception {
+        LargeWorkerFixture fixture = largeWorkerFixture(125, 5);
+        reset(workerQueries, workerTopology, runtimeDiagnostics);
+        when(workerQueries.getAllWorkers()).thenReturn(fixture.workers());
+        when(workerQueries.listOnlineWorkerIds()).thenReturn(fixture.onlineWorkerIds());
+        when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(fixture.lockedWorkerIds());
+        when(workerTopology.listWorkerGroups()).thenReturn(fixture.groups());
+        when(workerTopology.listAdapterNodes()).thenReturn(fixture.adapterNodes());
+        when(workerTopology.listNodeGroupBindings()).thenReturn(fixture.nodeGroupBindings());
+
+        mockMvc.perform(get("/api/v1/catalog/worker-group-capabilities"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.length()").value(5))
+                .andExpect(jsonPath("$.data[?(@.groupId=='group-00' && @.workerCount==25)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='group-00' && @.dispatchEligibleCount > 0)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='group-02' && @.lockedCount > 0)]").exists());
+
+        verify(workerQueries, times(1)).getAllWorkers();
+        verify(workerQueries, times(1)).listOnlineWorkerIds();
+        verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
+        verify(workerTopology, times(1)).listWorkerGroups();
+        verify(workerTopology, times(1)).listAdapterNodes();
+        verify(workerTopology, times(1)).listNodeGroupBindings();
     }
 
     @Test
@@ -262,5 +313,114 @@ class CatalogControllerTest {
                 null,
                 null
         );
+    }
+
+    private LargeWorkerFixture largeWorkerFixture(int workerCount, int groupCount) {
+        List<WorkerSnapshot> workers = new ArrayList<>();
+        List<WorkerGroupSnapshot> groups = new ArrayList<>();
+        List<AdapterNodeSnapshot> adapterNodes = new ArrayList<>();
+        List<NodeGroupBindingSnapshot> bindings = new ArrayList<>();
+        for (int groupIndex = 0; groupIndex < groupCount; groupIndex++) {
+            String groupId = "group-%02d".formatted(groupIndex);
+            String adapterNodeId = "node-%02d".formatted(groupIndex);
+            groups.add(new WorkerGroupSnapshot(
+                    groupId,
+                    List.of(WorkerEventBinding.builder()
+                            .eventCode("crawler.fetch-page")
+                            .projectCodes(List.of("crawlerApp", "demoApp"))
+                            .build()),
+                    List.of("crawlerApp", "demoApp"),
+                    Map.of("fixture", "bounded-fanout"),
+                    2));
+            adapterNodes.add(new AdapterNodeSnapshot(
+                    adapterNodeId,
+                    "polling",
+                    "1",
+                    "endpoint-" + adapterNodeId,
+                    true,
+                    true,
+                    null,
+                    null,
+                    Map.of()));
+            bindings.add(new NodeGroupBindingSnapshot(
+                    adapterNodeId,
+                    groupId,
+                    "1",
+                    "bounded-fanout",
+                    true,
+                    false,
+                    null,
+                    null,
+                    Map.of()));
+        }
+        for (int index = 1; index <= workerCount; index++) {
+            String workerId = "worker-%04d".formatted(index);
+            int groupIndex = (index - 1) % groupCount;
+            workers.add(new WorkerSnapshot(
+                    workerId,
+                    index % 3 == 0 ? "OFFLINE" : "ONLINE",
+                    "1.2.%d".formatted(index % 10),
+                    null,
+                    List.of("legacyProject"),
+                    List.of("legacy.event"),
+                    List.of(),
+                    "group-%02d".formatted(groupIndex),
+                    "node-%02d".formatted(groupIndex),
+                    "polling",
+                    "polling",
+                    2,
+                    Map.of(
+                            "fingerprintProfile", "fp-%02d".formatted(index % 4),
+                            "fixture", "bounded-fanout"
+                    ),
+                    null,
+                    null
+            ));
+        }
+        return new LargeWorkerFixture(
+                List.copyOf(workers),
+                List.copyOf(groups),
+                List.copyOf(adapterNodes),
+                List.copyOf(bindings),
+                onlineWorkerIds(workers, 2),
+                List.of("worker-0003", "worker-0042", "worker-0099"),
+                sessionFacts(workers, 5)
+        );
+    }
+
+    private List<String> onlineWorkerIds(List<WorkerSnapshot> workers, int everyNthWorker) {
+        return workers.stream()
+                .filter(worker -> numericSuffix(worker.getWorkerId()) % everyNthWorker == 0)
+                .map(WorkerSnapshot::getWorkerId)
+                .toList();
+    }
+
+    private List<Map<String, Object>> sessionFacts(List<WorkerSnapshot> workers, int everyNthWorker) {
+        return workers.stream()
+                .filter(worker -> numericSuffix(worker.getWorkerId()) % everyNthWorker == 0)
+                .map(worker -> Map.<String, Object>of(
+                        "workerId", worker.getWorkerId(),
+                        "connections", List.of(Map.of(
+                                "active", true,
+                                "endpointId", "endpoint-" + worker.getWorkerId(),
+                                "routeKey", "route-" + worker.getWorkerId(),
+                                "adapterId", "polling"
+                        ))
+                ))
+                .toList();
+    }
+
+    private int numericSuffix(String workerId) {
+        return Integer.parseInt(workerId.substring(workerId.lastIndexOf('-') + 1));
+    }
+
+    private record LargeWorkerFixture(
+            List<WorkerSnapshot> workers,
+            List<WorkerGroupSnapshot> groups,
+            List<AdapterNodeSnapshot> adapterNodes,
+            List<NodeGroupBindingSnapshot> nodeGroupBindings,
+            List<String> onlineWorkerIds,
+            List<String> lockedWorkerIds,
+            List<Map<String, Object>> sessions) {
     }
 }

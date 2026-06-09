@@ -11,10 +11,11 @@ external flows, frontend adapters, and generated API docs still describe the
 same product surface.
 
 This roadmap is separate from local environment readiness. Current local
-readiness is owned by `LOCAL_READINESS_AND_API_HEALTH_GATE_ROADMAP.md`: clean
-server startup, scenario environment initialization through real server APIs,
-operator credentials, task/worker API keys, and local route timing gates. This
-roadmap uses that stable environment to prove API contract health.
+readiness is owned by the `xa-mass-testing` confidence runners and runbook:
+clean server startup, scenario environment initialization through real server
+APIs, operator credentials, task/worker API keys, packaged
+`apiHealth.routeTimings`, and bounded worker-read health gates. This roadmap
+uses that stable environment to prove API contract health.
 
 ## Current Code Observations
 
@@ -36,9 +37,10 @@ roadmap uses that stable environment to prove API contract health.
 - `xa-mass-testing/README.md` documents the platform confidence smoke used as
   the local readiness prerequisite for clean DB, env init, and real task/worker
   API-key preparation.
-- `LOCAL_READINESS_AND_API_HEALTH_GATE_ROADMAP.md` owns local readiness and
-  route timing gates so API contract health does not depend on manual browser
-  inspection.
+- `xa-mass-testing/README.md` and `xa-mass-testing/VERIFIED_RUNBOOK.md` document
+  the implemented local readiness, packaged `apiHealth.routeTimings`, and
+  bounded worker-read health gates. Contract health consumes those packaged
+  signals instead of doing manual browser inspection.
 
 ## Owner Review
 
@@ -263,6 +265,7 @@ Scope:
   - catalog/rules/operator seed
   - task API-key cache file
   - worker API-key cache/spec preparation for selected worker specs
+  - packaged `apiHealth.routeTimings` for selected repeatable read routes
 - Run scenario task launcher with `--config`.
 - Run scenario worker launcher or an equivalent SDK-backed worker registration
   proof.

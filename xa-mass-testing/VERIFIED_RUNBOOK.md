@@ -253,6 +253,16 @@ MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-platform-confidence
 MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile durable-local
 ```
 
+Windows local proof should use Git Bash explicitly from PowerShell:
+
+```powershell
+$env:MASS_OPERATOR_PASSWORD='ops-admin'
+& 'C:\Program Files\Git\bin\bash.exe' xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile memory-local
+```
+
+The WindowsApps `bash.exe` WSL launcher is not the supported shell for this
+packaged proof because it can run Linux Java against Windows-built artifacts.
+
 This is the current packaged-process confidence gate. It packages the server,
 admin CLI, and Java scenario launchers; starts the real server jar; requires
 session operator auth; disables fixture-header auth; asserts the actual
@@ -264,13 +274,38 @@ API-key requests fail closed with the expected `ApiResponse.code/msg` envelope;
 starts the Java SDK worker launcher as a background process; runs the Java SDK
 task launcher to create and append work;
 executes task approval through `xa-mass-admin task command`; and waits for a
-visible success result through the Java SDK result verifier. Failure artifacts
-and `summary.json` are written under
+visible success result through the Java SDK result verifier. It then runs
+`xa-mass-admin api health` and writes `apiHealth.routeTimings` into the summary
+so route reachability and local latency are captured without browser
+inspection. Failure artifacts and `summary.json` are written under
 `xa-mass-testing/target/platform-confidence/`.
 
 Durable-local requires Redis on `localhost:6379`. The active-profile confidence
 script uses explicit profile arguments and does not prove the no-arg startup
 contract.
+
+Packaged worker read health proof:
+
+```bash
+MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-worker-read-health-smoke.sh --profile memory-local
+MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-worker-read-health-smoke.sh --profile durable-local
+```
+
+Windows local proof:
+
+```powershell
+$env:MASS_OPERATOR_PASSWORD='ops-admin'
+& 'C:\Program Files\Git\bin\bash.exe' xa-mass-testing/scripts/run-worker-read-health-smoke.sh --profile memory-local
+```
+
+This proof is separate from platform confidence. It starts a packaged server,
+runs `xa-mass-admin env init`, creates workerId-bound credentials for 100
+workers, registers those workers through the Java worker launcher with
+`--register-api-online-only`, and then runs `xa-mass-admin api health`. The
+summary is written under `xa-mass-testing/target/worker-read-health/` with
+`workerFixture` scale metadata. Proof summary counts the run as worker-read
+`scale-contention-evidence` only when the run passes and
+`workerFixture.workerCount >= 100`.
 
 Packaged default startup and durable restart proof:
 

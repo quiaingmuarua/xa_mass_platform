@@ -100,6 +100,22 @@ class ScenarioLauncherOptionsTest {
     }
 
     @Test
+    void workerLauncherParsesRegisterApiOnlineOnlyMode() {
+        ScenarioLauncherOptions options = ScenarioLauncherOptions.parseWorker(new String[]{
+                "--register-api-online-only"
+        });
+
+        assertEquals(true, options.registerApiOnlineOnly());
+    }
+
+    @Test
+    void taskLauncherRejectsWorkerRegisterApiOnlineOnlyMode() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> ScenarioLauncherOptions.parse(new String[]{"--register-api-online-only"}));
+        assertTrue(error.getMessage().contains("unknown argument"));
+    }
+
+    @Test
     void helpIsParsedByBothEntrypoints() {
         ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{"--help"});
 

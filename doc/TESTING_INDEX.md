@@ -88,7 +88,7 @@ Project proof classes:
 | --- | --- | --- | --- | --- |
 | 1 | Can it be used? | `Product / API Capability Proof` | Supported external product paths can initialize, authenticate, create work, run workers, and read results. This proves product/API usability, not full policy correctness. | packaged server jar, admin CLI, Java SDK task producer, Java SDK or worker API worker process, result verifier |
 | 2 | Can it be wrong? | `Policy & Safety Correctness Proof` | Scheduling, worker selection, authorization, scope, credential, readiness, occupancy, and no-bypass behavior are correct. The platform must not bind, authorize, or mutate when it should not. | engine deterministic tests, representative server E2E, negative auth/security tests, trace analyzers |
-| 3 | Can it withstand this exact condition? | `Scoped Operational Resilience Proof` | Runtime convergence for the explicitly named load, fault, runtime, duration, and oracle. Fast stable cases may be PR-gated; expensive or nondeterministic cases remain scheduled/manual evidence until calibrated. | scale/contention reports, chaos/fault reports, perf, soak, packaged-process restart |
+| 3 | Can it withstand this exact condition? | `Scoped Operational Resilience Proof` | Runtime convergence for the explicitly named load, fault, runtime, duration, and oracle. Fast stable cases may be PR-gated; expensive or nondeterministic cases remain scheduled/manual evidence until calibrated. | scale/contention reports, worker-read health, chaos/fault reports, perf, soak, packaged-process restart |
 
 Proof lines:
 
@@ -433,6 +433,11 @@ Current implications:
 - platform confidence is a packaged-process PR gate for explicit `memory-local`
   and `durable-local`; it proves real HTTP/API/auth boundaries through external
   admin/task/worker processes, not internal Java service calls
+- worker-read health is a separate packaged-process PR gate for explicit
+  worker read-model scale. It requires `workerFixture.workerCount >= 100` in
+  the artifact before proof summary may count it as
+  `scale-contention-evidence`; the one-worker platform confidence smoke is not
+  worker-read performance proof
 - server default startup/restart is a packaged-process PR gate for the no-arg
   `durable-local` operator startup path and same-SQLite restart proof
 - perf smoke remains scheduled/manual and is not a PR gate

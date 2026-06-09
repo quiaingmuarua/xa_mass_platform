@@ -19,6 +19,7 @@ public final class AdminCliMain {
         switch (args[0]) {
             case "health" -> health(commandArgs(args), objectMapper);
             case "auth" -> auth(commandArgs(args), objectMapper);
+            case "api" -> api(commandArgs(args), objectMapper);
             case "api-key" -> apiKey(commandArgs(args), objectMapper);
             case "task" -> task(commandArgs(args), objectMapper);
             case "env" -> env(commandArgs(args), objectMapper);
@@ -96,6 +97,24 @@ public final class AdminCliMain {
                 "principalId", current.principalId(),
                 "createdForUserId", current.createdForUserId()
         )));
+    }
+
+    private static void api(String[] args, ObjectMapper objectMapper) throws Exception {
+        if (args.length == 0 || !"health".equals(args[0])) {
+            throw new IllegalArgumentException("supported api subcommand: health");
+        }
+        String configPath = option(commandArgs(args), "--config", null);
+        if (configPath == null || configPath.isBlank()) {
+            throw new IllegalArgumentException("--config is required");
+        }
+        AdminEnvConfig.Loaded loaded = AdminEnvConfig.load(Path.of(configPath));
+        AdminApiHealthService service = new AdminApiHealthService(objectMapper, Clock.systemUTC());
+        try {
+            System.out.println(objectMapper.writeValueAsString(service.health(loaded)));
+        } catch (ApiHealthFailure failure) {
+            System.out.println(objectMapper.writeValueAsString(failure.report()));
+            throw failure;
+        }
     }
 
     private static void task(String[] args, ObjectMapper objectMapper) throws Exception {
@@ -177,6 +196,7 @@ public final class AdminCliMain {
                   xa-mass-admin task command --base-url http://127.0.0.1:8088 --operator-user ops-admin --operator-password secret --task-id <task-id> --command APPROVE
                   xa-mass-admin env verify --config <admin-env.json>
                   xa-mass-admin env init --config <admin-env.json>
+                  xa-mass-admin api health --config <admin-env.json>
                 """;
     }
 

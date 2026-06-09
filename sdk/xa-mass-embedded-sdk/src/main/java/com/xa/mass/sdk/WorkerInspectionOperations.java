@@ -14,6 +14,14 @@ public interface WorkerInspectionOperations {
     List<WorkerSnapshot> getAllWorkers();
 
     /**
+     * Returns worker ids that currently have transport reachability.
+     *
+     * <p>List/read models should prefer this snapshot over calling
+     * {@link #isWorkerOnline(String)} once per row.</p>
+     */
+    List<String> listOnlineWorkerIds();
+
+    /**
      * Returns whether the worker currently has transport reachability.
      *
      * <p>When transport presence is available this query reflects transport

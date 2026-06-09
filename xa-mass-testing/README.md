@@ -145,6 +145,7 @@ into the platform confidence smoke.
 | `polling scheduling soak` | `scripts/run-polling-scheduling-soak.sh` | manual/scheduled polling-worker pressure on engine scheduling; proves structured runtime invariants, configured success/failure and late-worker-join profiles, result sequential read, active lease drain, and canonical trace validate/stats | `target/soak-reports/`, `target/soak-traces/` |
 | `polling scheduling fast soak` | `scripts/run-polling-scheduling-fast-soak.sh` | scheduled/manual polling soak profile with mixed results, late worker join, result sequential read, canonical trace validation, and optional trace analyzer proof; not a PR gate | `target/soak-reports/`, `target/soak-traces/` |
 | `platform confidence smoke` | `scripts/run-platform-confidence-smoke.sh` | packaged server process plus admin CLI env init plus Java SDK worker/task launchers; proves server startup, session operator auth, catalog/rule/API-key preparation, worker registration, task submission, dispatch, and visible result through real process boundaries | `target/platform-confidence/` |
+| `worker read health smoke` | `scripts/run-worker-read-health-smoke.sh` | packaged server process plus admin CLI env init plus Java SDK worker launcher register-api-online mode; proves selected worker read routes against an explicit 100-worker API-created fixture and emits `workerFixture` scale metadata | `target/worker-read-health/` |
 | `server default startup smoke` | `scripts/run-server-default-startup-smoke.sh` | packaged server jar no-arg startup, default `durable-local` profile/path, process liveness after health, operator seed/login readiness, and same SQLite file restart | `target/server-default-startup/` |
 | `proof summary writer` | `scripts/write-proof-summary.mjs` | CI evidence summary that reads surefire XML plus lane-local JSON reports; keeps proof class, proof line, credential/route families, evidence shape, gate type, profiles, analyzers, and known non-proof boundaries visible in artifacts | `target/proof-summary/` |
 | `chaos: websocket disconnect/reconnect` | `com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner` | worker disconnects inside an active lease, reconnects, submits the delayed result, and later receives follow-up work | `target/chaos-reports/` |
@@ -293,6 +294,17 @@ MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-platform-confidence
 MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile durable-local
 ```
 
+On Windows, run the script from Git Bash when invoking it from PowerShell:
+
+```powershell
+$env:MASS_OPERATOR_PASSWORD='ops-admin'
+& 'C:\Program Files\Git\bin\bash.exe' xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile memory-local
+```
+
+Do not use the WindowsApps `bash.exe` WSL launcher for this local proof. It can
+mix a Linux shell/Java runtime with Windows-built jars and is not the supported
+confidence-smoke execution environment.
+
 The confidence lane is a packaged-process gate, not a unit test. It starts the
 real server jar with session operator auth, disables fixture-header auth,
 enables the minimal operator credential seed, asserts `/api/v1/auth/config`
@@ -304,18 +316,52 @@ worker launcher as a background process, runs the Java SDK task launcher to
 create and append work, executes the operator `APPROVE` command through
 `xa-mass-admin task command`, then waits for visible success through the Java
 SDK result verifier. It writes categorized logs and `summary.json` under
-`target/platform-confidence/`. The script may use `curl` for health and the
-negative credential probes; positive catalog/rule/API-key/task/worker business
-calls stay inside admin CLI or Java SDK launchers. Negative probes assert the
-standard response envelope `code` and `msg`, and record `failureReason` in
-`credentialChecks`; they are representative credential-family checks, not a
-full route-permission matrix. The proof summary marks those checks with
-`authorization-no-bypass-safety` while keeping the overall smoke scoped to
-product/API capability. The positive admin/task/worker paths are
-authorized-positive capability proof for their named credential/session family;
-the summary records them as `authorizedPositiveChecks` with operation names such
-as `operator.login`, `taskProducer.createAndAppendItems`,
-`taskProducer.readResult`, `worker.registerAndPoll`, and `worker.submitResult`.
+`target/platform-confidence/`. It then runs `xa-mass-admin api health` and
+embeds the resulting `apiHealth.routeTimings` in `summary.json`; route timings
+record route auth policy, credential used by the health runner, HTTP status,
+envelope code, response bytes, and elapsed milliseconds. The first health lane
+checks reachability, success envelopes, normal data presence, and local latency;
+exact DTO shape belongs to API contract and adapter tests.
+
+The script may use `curl` for health and the negative credential probes;
+positive catalog/rule/API-key/task/worker business calls stay inside admin CLI
+or Java SDK launchers. Negative probes assert the standard response envelope
+`code` and `msg`, and record `failureReason` in `credentialChecks`; they are
+representative credential-family checks, not a full route-permission matrix.
+The proof summary marks those checks with `authorization-no-bypass-safety`
+while keeping the overall smoke scoped to product/API capability. The positive
+admin/task/worker paths are authorized-positive capability proof for their named
+credential/session family; the summary records them as `authorizedPositiveChecks`
+with operation names such as `operator.login`,
+`taskProducer.createAndAppendItems`, `taskProducer.readResult`,
+`worker.registerAndPoll`, and `worker.submitResult`.
+
+Worker read health smoke:
+
+```bash
+MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-worker-read-health-smoke.sh --profile memory-local
+MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-worker-read-health-smoke.sh --profile durable-local
+```
+
+On Windows:
+
+```powershell
+$env:MASS_OPERATOR_PASSWORD='ops-admin'
+& 'C:\Program Files\Git\bin\bash.exe' xa-mass-testing/scripts/run-worker-read-health-smoke.sh --profile memory-local
+```
+
+This smoke is separate from platform confidence. Platform confidence currently
+uses a one-worker fixture and proves Product/API capability only. Worker read
+health starts a packaged server, runs `xa-mass-admin env init`, creates 100
+worker API-key credentials from a generated worker spec, registers 100 workers
+through the Java SDK worker launcher in `--register-api-online-only` mode, then
+runs `xa-mass-admin api health`. Its `summary.json` records `workerFixture`
+with `workerCount`, `workerGroupCount`, `onlineWorkerCount`,
+`lockedWorkerCount`, `sessionCount`, `creationPath`, and
+`startedWorkerSessionCount`. The proof summary counts it as
+`scoped-operational-resilience` / `scale-contention-evidence` only when the
+run passes and `workerFixture.workerCount >= 100`; otherwise it remains
+artifact metadata.
 
 Server default startup smoke:
 

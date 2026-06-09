@@ -93,6 +93,11 @@ class ProofSummaryWorkflowGuardTest {
                 "Policy & Safety Correctness Proof",
                 "policy-safety-correctness",
                 "platform-confidence",
+                "worker-read-health",
+                "workerFixture",
+                "workerReadHealthRuns",
+                "workerReadHealthProofRuns",
+                "packaged-worker-read-health",
                 "server-default-startup",
                 "server-default-startup-restart",
                 "authorization-no-bypass-matrix-schema-guard",
@@ -112,6 +117,7 @@ class ProofSummaryWorkflowGuardTest {
                 "Missing scenario contract fields",
                 "--test-report-dir",
                 "--platform-confidence-dir",
+                "--worker-read-health-dir",
                 "--server-default-startup-dir",
                 "--chaos-dir",
                 "--perf-dir",
@@ -129,12 +135,15 @@ class ProofSummaryWorkflowGuardTest {
         Path surefireDir = tempDir.resolve("surefire-reports");
         Path platformDir = tempDir.resolve("platform-confidence");
         Path platformRunDir = platformDir.resolve("memory-local-fixture");
+        Path workerReadHealthDir = tempDir.resolve("worker-read-health");
+        Path workerReadHealthRunDir = workerReadHealthDir.resolve("memory-local-worker-read-fixture");
         Path startupDir = tempDir.resolve("server-default-startup");
         Path chaosDir = tempDir.resolve("chaos");
         Path perfDir = tempDir.resolve("perf");
         Path soakDir = tempDir.resolve("soak");
         Files.createDirectories(surefireDir);
         Files.createDirectories(platformRunDir);
+        Files.createDirectories(workerReadHealthRunDir);
         Files.createDirectories(startupDir);
         Files.createDirectories(chaosDir);
         Files.createDirectories(perfDir);
@@ -285,12 +294,96 @@ class ProofSummaryWorkflowGuardTest {
                               "failureReason": "Invalid or missing API-key credential"
                             }
                           },
+                          "initializerElapsedMs": 1200,
+                          "apiHealth": {
+                            "status": "passed",
+                            "gateMode": "hard",
+                            "budgetMs": 1000,
+                            "routeManifestVersion": 1,
+                            "exactDtoContractChecked": false,
+                            "routeTimings": [
+                              {
+                                "method": "GET",
+                                "path": "/api/v1/auth/config",
+                                "routeAuthPolicy": "public",
+                                "credentialUsedByHealthRunner": "none",
+                                "readOrWrite": "read",
+                                "sourceCommand": "admin CLI api health",
+                                "normalDataPresence": "auth mode exists",
+                                "repeatable": true,
+                                "budgetMs": 1000,
+                                "elapsedMs": 12,
+                                "httpStatus": 200,
+                                "code": 0,
+                                "responseBytes": 120,
+                                "status": "passed"
+                              },
+                              {
+                                "method": "GET",
+                                "path": "/api/v1/catalog/worker-group-capabilities",
+                                "routeAuthPolicy": "SDK_CREDENTIAL_BYPASS read",
+                                "credentialUsedByHealthRunner": "none",
+                                "readOrWrite": "read",
+                                "sourceCommand": "admin CLI api health",
+                                "normalDataPresence": "worker group capability rows exist",
+                                "repeatable": true,
+                                "budgetMs": 1000,
+                                "elapsedMs": 18,
+                                "httpStatus": 200,
+                                "code": 0,
+                                "responseBytes": 240,
+                                "status": "passed"
+                              }
+                            ]
+                          },
                           "adminAuthLoginLog": "logs/admin-auth-login.log",
                           "adminEnvLog": "logs/admin-env-init.log",
                           "adminTaskCommandLog": "logs/admin-task-command.log",
                           "workerLog": "logs/worker-launcher.log",
                           "taskLog": "logs/task-launcher.log",
                           "taskVerifyLog": "logs/task-result-verifier.log"
+                        }
+                        """,
+                StandardCharsets.UTF_8);
+
+        Files.writeString(workerReadHealthRunDir.resolve("summary.json"),
+                """
+                        {
+                          "status": "passed",
+                          "profile": "memory-local",
+                          "runDir": "target/worker-read-health/memory-local-worker-read-fixture",
+                          "workerFixture": {
+                            "workerCount": 100,
+                            "workerGroupCount": 5,
+                            "onlineWorkerCount": 100,
+                            "lockedWorkerCount": 0,
+                            "sessionCount": 0,
+                            "creationPath": "worker-api register-api-online-only",
+                            "startedWorkerSessionCount": 0
+                          },
+                          "apiHealth": {
+                            "status": "passed",
+                            "gateMode": "hard",
+                            "budgetMs": 1000,
+                            "routeTimings": [
+                              {
+                                "method": "GET",
+                                "path": "/api/v1/runtime/workers",
+                                "routeAuthPolicy": "operator-session",
+                                "credentialUsedByHealthRunner": "operator-session",
+                                "readOrWrite": "read",
+                                "sourceCommand": "admin CLI api health",
+                                "normalDataPresence": "initialized worker rows exist",
+                                "repeatable": true,
+                                "budgetMs": 1000,
+                                "elapsedMs": 42,
+                                "httpStatus": 200,
+                                "code": 0,
+                                "responseBytes": 4096,
+                                "status": "passed"
+                              }
+                            ]
+                          }
                         }
                         """,
                 StandardCharsets.UTF_8);
@@ -422,6 +515,7 @@ class ProofSummaryWorkflowGuardTest {
                 "--job", "fixture",
                 "--test-report-dir", surefireDir.toString(),
                 "--platform-confidence-dir", platformDir.toString(),
+                "--worker-read-health-dir", workerReadHealthDir.toString(),
                 "--server-default-startup-dir", startupDir.toString(),
                 "--chaos-dir", chaosDir.toString(),
                 "--perf-dir", perfDir.toString(),
@@ -452,15 +546,20 @@ class ProofSummaryWorkflowGuardTest {
         Map<?, ?> totals = map(summary.get("totals"));
         assertEquals(10, totals.get("authorizedPositiveCheckCount"));
         assertEquals(2, totals.get("credentialCheckCount"));
+        assertEquals(3, totals.get("apiHealthRouteTimingCount"));
+        assertEquals(0, totals.get("apiHealthFailedRouteTimingCount"));
+        assertEquals(0, totals.get("apiHealthWarningRouteTimingCount"));
+        assertEquals(1, totals.get("workerReadHealthRuns"));
+        assertEquals(1, totals.get("workerReadHealthProofRuns"));
         Map<?, ?> roleCounts = map(totals.get("evidenceRoleCounts"));
         assertEquals(1, roleCounts.get("deterministic-proof"));
-        assertEquals(5, roleCounts.get("runtime-proof"));
+        assertEquals(6, roleCounts.get("runtime-proof"));
         assertEquals(1, roleCounts.get("source-guard"));
         assertEquals(1, roleCounts.get("artifact-metadata"));
         Map<?, ?> proofLineCounts = map(totals.get("proofLineCounts"));
         assertEquals(1, proofLineCounts.get("scheduling-policy-correctness"));
         assertEquals(1, proofLineCounts.get("fault-recovery-evidence"));
-        assertEquals(2, proofLineCounts.get("scale-contention-evidence"));
+        assertEquals(3, proofLineCounts.get("scale-contention-evidence"));
         Map<?, ?> guardProofLineCounts = map(totals.get("guardProofLineCounts"));
         assertEquals(1, guardProofLineCounts.get("authorization-no-bypass-safety"));
 
@@ -494,6 +593,26 @@ class ProofSummaryWorkflowGuardTest {
         assertEquals("taskProducer.listTasksWithInvalidApiKey", invalidTaskKey.get("operation"));
         assertEquals("authorization-no-bypass-safety", invalidTaskKey.get("proofLine"));
         assertEquals("representative task credential fail-closed check", invalidTaskKey.get("claimScope"));
+
+        assertEquals(1200, platformEvidence.get("initializerElapsedMs"));
+        Map<?, ?> apiHealth = map(platformEvidence.get("apiHealth"));
+        assertEquals("passed", apiHealth.get("status"));
+        assertEquals("hard", apiHealth.get("gateMode"));
+        assertEquals(1000, apiHealth.get("budgetMs"));
+        Map<?, ?> workerGroupTiming = routeTiming(platformEvidence, "/api/v1/catalog/worker-group-capabilities");
+        assertEquals("SDK_CREDENTIAL_BYPASS read", workerGroupTiming.get("routeAuthPolicy"));
+        assertEquals("none", workerGroupTiming.get("credentialUsedByHealthRunner"));
+        assertEquals(18, workerGroupTiming.get("elapsedMs"));
+        assertEquals("passed", workerGroupTiming.get("status"));
+
+        Map<?, ?> workerReadHealthEvidence = evidenceByType(summary, "worker-read-health");
+        assertEquals("scoped-operational-resilience", workerReadHealthEvidence.get("proofClass"));
+        assertEquals("runtime-proof", workerReadHealthEvidence.get("evidenceRole"));
+        assertTrue(list(workerReadHealthEvidence.get("proofLines")).contains("scale-contention-evidence"));
+        Map<?, ?> workerFixture = map(workerReadHealthEvidence.get("workerFixture"));
+        assertEquals(100, workerFixture.get("workerCount"));
+        assertEquals(5, workerFixture.get("workerGroupCount"));
+        assertEquals("worker-api register-api-online-only", workerFixture.get("creationPath"));
 
         Map<?, ?> engineEvidence = evidenceBySuite(summary, "com.xa.mass.engine.EngineSchedulingCoreSuite");
         assertEquals("policy-safety-correctness", engineEvidence.get("proofClass"));
@@ -541,6 +660,144 @@ class ProofSummaryWorkflowGuardTest {
         assertEquals("polling", soakEvidence.get("transport"));
         assertEquals("noisy-mixed-result", soakEvidence.get("faultShape"));
         assertEquals("complete", map(soakEvidence.get("scenarioContract")).get("status"));
+    }
+
+    @Test
+    void proofSummaryWriterAcceptsDirectPlatformConfidenceRunDirectory(@TempDir Path tempDir)
+            throws IOException, InterruptedException {
+        Path platformDir = tempDir.resolve("platform-confidence");
+        Path platformRunDir = platformDir.resolve("memory-local-direct-fixture");
+        Path staleSiblingDir = platformDir.resolve("stale-sibling-fixture");
+        Files.createDirectories(platformRunDir);
+        Files.createDirectories(staleSiblingDir);
+        Files.writeString(platformRunDir.resolve("summary.json"),
+                """
+                        {
+                          "status": "passed",
+                          "profile": "memory-local-direct",
+                          "authMode": "session",
+                          "apiHealth": {
+                            "status": "passed",
+                            "gateMode": "hard",
+                            "budgetMs": 1000,
+                            "routeTimings": [
+                              {
+                                "method": "GET",
+                                "path": "/api/v1/auth/config",
+                                "elapsedMs": 9,
+                                "httpStatus": 200,
+                                "status": "passed"
+                              }
+                            ]
+                          }
+                        }
+                        """,
+                StandardCharsets.UTF_8);
+        Files.writeString(staleSiblingDir.resolve("summary.json"),
+                """
+                        {
+                          "status": "passed",
+                          "profile": "stale-sibling",
+                          "authMode": "session"
+                        }
+                        """,
+                StandardCharsets.UTF_8);
+
+        Path output = tempDir.resolve("summary.json");
+        Process process = new ProcessBuilder(
+                "node",
+                SUMMARY_WRITER.toString(),
+                "--job", "direct-platform-run-fixture",
+                "--platform-confidence-dir", platformRunDir.toString(),
+                "--output", output.toString())
+                .redirectErrorStream(true)
+                .start();
+        boolean exited = process.waitFor(30, TimeUnit.SECONDS);
+        String processOutput = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        if (!exited) {
+            process.destroyForcibly();
+            fail("proof summary writer timed out; output=" + processOutput);
+        }
+        assertEquals(0, process.exitValue(), "proof summary writer failed: " + processOutput);
+
+        Map<String, Object> summary = OBJECT_MAPPER.readValue(Files.readString(output, StandardCharsets.UTF_8),
+                new TypeReference<>() {
+                });
+        List<?> platformEvidence = list(summary.get("evidence")).stream()
+                .map(ProofSummaryWorkflowGuardTest::map)
+                .filter(item -> "platform-confidence".equals(item.get("type")))
+                .toList();
+        assertEquals(1, platformEvidence.size(), "direct run-dir input must not include sibling runs");
+        assertEquals("memory-local-direct", map(platformEvidence.get(0)).get("profile"));
+        Map<?, ?> totals = map(summary.get("totals"));
+        assertEquals(1, totals.get("apiHealthRouteTimingCount"));
+    }
+
+    @Test
+    void proofSummaryWriterDoesNotCountSmallWorkerReadHealthFixtureAsProof(@TempDir Path tempDir)
+            throws IOException, InterruptedException {
+        Path workerReadHealthDir = tempDir.resolve("worker-read-health");
+        Path workerReadHealthRunDir = workerReadHealthDir.resolve("one-worker-fixture");
+        Files.createDirectories(workerReadHealthRunDir);
+        Files.writeString(workerReadHealthRunDir.resolve("summary.json"),
+                """
+                        {
+                          "status": "passed",
+                          "profile": "memory-local",
+                          "workerFixture": {
+                            "workerCount": 1,
+                            "workerGroupCount": 1,
+                            "onlineWorkerCount": 1,
+                            "lockedWorkerCount": 0,
+                            "sessionCount": 0,
+                            "creationPath": "worker-api register-api-online-only",
+                            "startedWorkerSessionCount": 0
+                          },
+                          "apiHealth": {
+                            "status": "passed",
+                            "routeTimings": [
+                              {
+                                "method": "GET",
+                                "path": "/api/v1/runtime/workers",
+                                "elapsedMs": 8,
+                                "httpStatus": 200,
+                                "status": "passed"
+                              }
+                            ]
+                          }
+                        }
+                        """,
+                StandardCharsets.UTF_8);
+
+        Path output = tempDir.resolve("summary.json");
+        Process process = new ProcessBuilder(
+                "node",
+                SUMMARY_WRITER.toString(),
+                "--job", "small-worker-read-fixture",
+                "--worker-read-health-dir", workerReadHealthRunDir.toString(),
+                "--output", output.toString())
+                .redirectErrorStream(true)
+                .start();
+        boolean exited = process.waitFor(30, TimeUnit.SECONDS);
+        String processOutput = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        if (!exited) {
+            process.destroyForcibly();
+            fail("proof summary writer timed out; output=" + processOutput);
+        }
+        assertEquals(0, process.exitValue(), "proof summary writer failed: " + processOutput);
+
+        Map<String, Object> summary = OBJECT_MAPPER.readValue(Files.readString(output, StandardCharsets.UTF_8),
+                new TypeReference<>() {
+                });
+        Map<?, ?> evidence = evidenceByType(summary, "worker-read-health");
+        assertEquals("downgraded", evidence.get("status"));
+        assertEquals("artifact-metadata", evidence.get("evidenceRole"));
+        assertEquals(null, evidence.get("proofClass"));
+        assertTrue(list(evidence.get("proofLines")).isEmpty());
+        Map<?, ?> totals = map(summary.get("totals"));
+        assertEquals(1, totals.get("workerReadHealthRuns"));
+        assertEquals(0, totals.get("workerReadHealthProofRuns"));
+        assertTrue(!map(totals.get("proofLineCounts")).containsKey("scale-contention-evidence"));
     }
 
     @Test
@@ -689,6 +946,7 @@ class ProofSummaryWorkflowGuardTest {
                     workflow + " must write a proof summary before artifact upload");
             assertTrue(source.contains("--test-report-dir")
                             || source.contains("--platform-confidence-dir")
+                            || source.contains("--worker-read-health-dir")
                             || source.contains("--server-default-startup-dir")
                             || source.contains("--chaos-dir")
                             || source.contains("--perf-dir")
@@ -733,6 +991,15 @@ class ProofSummaryWorkflowGuardTest {
                 .filter(item -> operation.equals(item.get("operation")))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("missing authorized positive check " + operation));
+    }
+
+    private static Map<?, ?> routeTiming(Map<?, ?> evidence, String path) {
+        Map<?, ?> apiHealth = map(evidence.get("apiHealth"));
+        return list(apiHealth.get("routeTimings")).stream()
+                .map(ProofSummaryWorkflowGuardTest::map)
+                .filter(item -> path.equals(item.get("path")))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("missing route timing " + path));
     }
 
     @SuppressWarnings("unchecked")
