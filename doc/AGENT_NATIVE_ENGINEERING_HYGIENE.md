@@ -30,6 +30,11 @@ The goal is not to make every agent write perfect code on the first attempt.
 The goal is to make the system continuously tell the next agent what is true,
 where change belongs, how it is proven, and what should be deleted.
 
+This discipline becomes more important after the MVP phase. Early exploration
+may intentionally optimize for learning speed, but production convergence
+requires the project to identify which facts now participate in runtime,
+policy, API, auth, or proof decisions.
+
 ## 2. Core Governance
 
 ### Truth Lane
@@ -43,12 +48,17 @@ Common categories:
 - `hint`: a wakeup, cache, route suggestion, or best-effort signal
 - `evidence`: trace, diagnostics, audit, timing, or observation output
 - `residue`: old compatibility state, old names, or migration-only code waiting for removal
+- `experimental`: prototype or brainstorm-only shape that must have an owner,
+  expiry, and a rule that prevents it from entering mainline decisions
 
 Agent rule:
 
 - never promote projection, hint, evidence, or residue into mainline truth
 - when adding a field, route, key, or test, name which category it belongs to
 - if two lanes can mutate the same fact, stop and converge before expanding behavior
+- allow experimental or evidence-only work during discovery, but keep it out of
+  runtime truth, public API contracts, and mainline proof claims until it is
+  intentionally promoted
 
 Examples in this repo:
 
@@ -56,6 +66,28 @@ Examples in this repo:
 - runtime queue, lease, and result convergence belong to runtime owners, not SQLite control-plane storage
 - trace observes lifecycle and runtime behavior; it must not drive runtime ownership backward
 - control-console pages display server/API truth; they must not invent production-only frontend models
+
+### Lane Promotion And Demotion
+
+Lane changes are design decisions, not incidental refactors.
+
+Rules:
+
+- `experimental -> truth` requires an owner, runtime consumer, proof line,
+  owner-doc update, and residue plan for the prototype shape
+- `evidence -> truth` is forbidden by default; if evidence must become truth,
+  define a new owner instead of letting the observation path mutate runtime
+- `projection -> truth` requires deleting or disabling the old truth writer;
+  two mutable lanes for the same fact are not allowed
+- `truth -> projection` requires caller migration and removal of write
+  authority from the downgraded lane
+- `hint -> truth` requires explicit admission into the owner model; otherwise
+  hints stay best-effort and replay-safe
+- `residue -> removed` requires caller migration, focused proof, current-doc
+  backfill, and archive or deletion of stale planning text
+
+Do not let temporary fields, caches, compatibility aliases, or test fixtures
+become mainline by accident.
 
 ### Roadmap Review
 
@@ -69,11 +101,47 @@ Use a roadmap when the change touches:
 - auth, profile, startup, env init, seed/import, or CI proof lanes
 - deleting or replacing an old concept across modules
 
+Roadmaps may also be used as brainstorm or direction records. Writing a
+roadmap does not mean it must be executed. Mark the status honestly:
+
+- `brainstorm`: option space, not an approved direction
+- `proposed`: direction exists, execution not started
+- `active`: high-ROI convergence work is being executed in slices
+- `superseded` or `archived`: not current execution truth
+
+Only move a roadmap into active goal-mode execution when the owner boundary,
+current high-ROI slice, proof surface, and residue expectation are clear enough
+to keep each slice independently verifiable.
+
+Roadmap activation and stop rules:
+
+- an active roadmap must explain `why now`
+- an active roadmap must have a current high-ROI slice
+- if owner boundaries are unclear, mark the roadmap `proposed` or `blocked`
+  instead of implementing through ambiguity
+- if implementation proves the target direction wrong, stop and revise the
+  roadmap rather than forcing the original plan through
+- if proof cost exceeds the expected confidence gain, reduce scope or defer the
+  slice explicitly
+- goal-mode execution does not require finishing every phase; stop when the
+  mainline is unblocked, ROI drops, or a later phase needs a new owner decision
+
 Preferred phase shape:
 
 1. `Converge`: inventory facts, reduce call sites, clarify owners, add guards
 2. `Modify`: change one atomic boundary at a time with local verification
 3. `Delete Residue`: remove old paths, old tests, old docs, old names, and fallback logic
+
+Roadmap and goal-mode fit:
+
+- a one-turn plan is useful for a small, well-bounded implementation slice
+- a roadmap is a multi-turn convergence artifact, not a one-turn checklist
+- complex cross-module work usually needs goal-mode progression: review the
+  boundary, implement one slice, verify, scan residue, then continue
+- do not compress unknown owner decisions, proof gaps, migration residue, and
+  deletion work into a single "plan complete" response
+- do not force small local fixes into a roadmap when the owner, truth lane,
+  proof surface, and residue boundary are already obvious
 
 Roadmap review is not bureaucracy. It prevents an agent from solving a local
 symptom by creating a second owner, bypass, wrapper, or compatibility layer.
@@ -155,6 +223,32 @@ Rules:
 If a proof summary cannot explain what executed, which proof line it belongs
 to, and what it does not prove, treat it as support evidence until it is
 classified.
+
+### Proof Failure Response
+
+A failed proof is a signal to classify, not an excuse to weaken the proof.
+
+Classify failures first:
+
+- implementation bug: owner truth or behavior is wrong
+- proof bug: test/operator/assertion does not match the intended contract
+- environment issue: process, dependency, port, file, Redis, or profile setup failed
+- overclaim: artifact claims more than it executed
+- owner-boundary drift: caller, credential, route, runtime, or storage owner moved
+  without matching docs/proof updates
+
+Rules:
+
+- do not add dev bypass, fixture-only auth, weakened assertions, or compatibility
+  fallback just to make CI green
+- if a proof operator fails while deterministic owner proof passes, inspect
+  wiring, auth, startup, profile, process, or fixture setup before changing kernel
+- if deterministic owner proof fails, fix the owner truth before adding E2E
+  workarounds
+- if proof failure exposes a wrong claim, update the proof summary, docs, or
+  registry instead of hiding the non-proof boundary
+- after the fix, add or update a guard only when it prevents the same class of
+  drift from returning
 
 ### Archive Discipline
 
@@ -321,7 +415,9 @@ Use this workflow for nontrivial changes:
 1. Read current owner docs and code, not just old roadmaps.
 2. Identify the truth lane and the owner boundary.
 3. Decide whether the change needs a roadmap.
-4. If it needs a roadmap, review the plan before implementation.
+4. If it needs a roadmap, use it as a goal-mode convergence artifact: review
+   the boundary before implementation, then advance one independently
+   verifiable slice at a time.
 5. Converge old call sites and name the current owner.
 6. Modify one runtime or API boundary at a time.
 7. Add proof in the correct proof class, and name the proof line, evidence shape, and non-proof boundary.
