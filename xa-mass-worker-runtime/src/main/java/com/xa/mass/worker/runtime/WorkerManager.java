@@ -208,6 +208,11 @@ public class WorkerManager implements WorkerResourceRuntime,
     }
 
     @Override
+    public List<String> getExclusiveLeaseWorkerIds() {
+        return admissionOwner.getExclusiveLeaseWorkerIds();
+    }
+
+    @Override
     public List<WorkerResourceRecord> workers() {
         return resourceOwner.getAllWorkers().stream()
                 .map(WorkerManager::toWorkerResourceRecord)

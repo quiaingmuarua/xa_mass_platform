@@ -22,6 +22,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.List;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -31,6 +33,7 @@ class CatalogControllerTest {
 
     private MockMvc mockMvc;
     private RuntimeDiagnosticsOperations runtimeDiagnostics;
+    private WorkerQueryOperations workerQueries;
     private WorkerTopologyOperations workerTopology;
     @BeforeEach
     void setUp() {
@@ -70,15 +73,13 @@ class CatalogControllerTest {
                 List.of("demoApp"), List.of("chatbot.reply"));
         WorkerSnapshot scopeOnlyWorker = worker("scope-only-worker", "ONLINE",
                 List.of("demoApp"), List.of());
-        WorkerQueryOperations workerQueries = mock(WorkerQueryOperations.class);
+        workerQueries = mock(WorkerQueryOperations.class);
         when(workerQueries.getAllWorkers()).thenReturn(List.of(crawlerWorker, offlineChatWorker, scopeOnlyWorker));
         when(workerQueries.isWorkerOnline("crawler-worker-1")).thenReturn(true);
         when(workerQueries.isWorkerOnline("chat-worker-1")).thenReturn(false);
         when(workerQueries.isWorkerOnline("scope-only-worker")).thenReturn(false);
         runtimeDiagnostics = mock(RuntimeDiagnosticsOperations.class);
-        when(runtimeDiagnostics.isWorkerLocked("crawler-worker-1")).thenReturn(false);
-        when(runtimeDiagnostics.isWorkerLocked("chat-worker-1")).thenReturn(true);
-        when(runtimeDiagnostics.isWorkerLocked("scope-only-worker")).thenReturn(false);
+        when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of("chat-worker-1"));
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of(
                 java.util.Map.of(
                         "workerId", "crawler-worker-1",
@@ -211,6 +212,17 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.lockedCount==0)]").exists())
                 .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.dispatchEligibleCount==1)]").exists())
                 .andExpect(jsonPath("$.data[?(@.groupId=='chat' && @.dispatchEligibleCount==0)]").exists());
+    }
+
+    @Test
+    void workerGroupCapabilitiesReadsRuntimeFactsOncePerWorker() throws Exception {
+        mockMvc.perform(get("/api/v1/catalog/worker-group-capabilities"))
+                .andExpect(status().isOk());
+
+        verify(workerQueries, times(1)).isWorkerOnline("crawler-worker-1");
+        verify(workerQueries, times(1)).isWorkerOnline("chat-worker-1");
+        verify(workerQueries, times(1)).isWorkerOnline("scope-only-worker");
+        verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
     }
 
     @Test

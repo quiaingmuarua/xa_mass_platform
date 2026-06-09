@@ -108,10 +108,30 @@ wrong-credential/scope/route/CSRF/fixture/impersonation checks belong to
 
 End-to-end is recorded as `evidenceShape`, not as a proof class. The proof
 summary writer emits `proofClass`, `proofLines`, `proofQuestion`,
-`evidenceShape`, `gateType`, `credentialRouteFamilies`,
-`authorizedPositiveChecks`, and `claimScope` per evidence item so artifacts can
-distinguish a product/API capability smoke from a policy/safety proof or a
-scoped operational resilience report.
+`evidenceRole`, `evidenceShape`, `gateType`, `credentialRouteFamilies`,
+`authorizedPositiveChecks`, `credentialChecks`, and `claimScope` per evidence
+item so artifacts can distinguish a product/API capability smoke from a
+policy/safety proof, a scoped operational resilience report, a source/schema
+guard, or downgraded artifact metadata.
+
+Proof summary counts are role-aware:
+
+- `runtime-proof`, `deterministic-proof`, and `integrated-proof` evidence may
+  increase `proofClassCounts` and `proofLineCounts`.
+- `source-guard`, `schema-guard`, and `release-policy-guard` evidence protects
+  proof shape but counts under `guardCounts` / `guardProofLineCounts`.
+- `artifact-metadata` keeps incomplete or downgraded reports visible without
+  adding proof line counts.
+- Operation-level `authorizedPositiveChecks` and `credentialChecks` totals count
+  only executed checks with `passed` or `failed` status. `not-run` and
+  `not-confirmed` checks remain in the source artifact but do not increase
+  operation-level counts.
+
+The bounded no-bypass matrix lives in
+[`proof/authorization-no-bypass-matrix.json`](proof/authorization-no-bypass-matrix.json).
+Rows owned by platform confidence must be emitted as structured
+`credentialChecks`; rows owned by API contract health are linked, not duplicated
+into the platform confidence smoke.
 
 ## Runner Map
 
@@ -315,6 +335,12 @@ health/login checks, `sameSqliteRestart`, `redisNamespaceMode`, and
 `logFailureScan`. The profile-name field is a log-observed signal; the stronger
 default-startup proof is no-arg jar startup, default SQLite path creation,
 health, operator login, and same-file restart.
+
+The smoke intentionally uses the default no-arg server port. If
+`http://127.0.0.1:8088/actuator/health` is already serving before the smoke
+starts, the runner writes a `blocked` / `port-precheck` summary. The proof
+summary writer keeps that artifact visible as `artifact-metadata` and does not
+count it as startup, restart, or operation-level proof.
 
 Proof summary artifact:
 

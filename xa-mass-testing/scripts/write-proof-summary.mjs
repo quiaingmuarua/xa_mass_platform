@@ -90,10 +90,34 @@ const PROOF_LINES = {
   },
 };
 
+const EVIDENCE_ROLES = {
+  DETERMINISTIC_PROOF: "deterministic-proof",
+  INTEGRATED_PROOF: "integrated-proof",
+  RUNTIME_PROOF: "runtime-proof",
+  SUPPORT_PROOF: "support-proof",
+  SOURCE_GUARD: "source-guard",
+  SCHEMA_GUARD: "schema-guard",
+  RELEASE_POLICY_GUARD: "release-policy-guard",
+  ARTIFACT_METADATA: "artifact-metadata",
+};
+
+const COUNTED_PROOF_ROLES = new Set([
+  EVIDENCE_ROLES.DETERMINISTIC_PROOF,
+  EVIDENCE_ROLES.INTEGRATED_PROOF,
+  EVIDENCE_ROLES.RUNTIME_PROOF,
+]);
+
+const GUARD_ROLES = new Set([
+  EVIDENCE_ROLES.SOURCE_GUARD,
+  EVIDENCE_ROLES.SCHEMA_GUARD,
+  EVIDENCE_ROLES.RELEASE_POLICY_GUARD,
+]);
+
 const SUITE_CLASSIFICATION = {
   EngineSchedulingCoreSuite: {
     proofClass: PROOF_CLASSES.POLICY_SAFETY.id,
     proofLines: [PROOF_LINES.SCHEDULING_POLICY_CORRECTNESS.id],
+    evidenceRole: EVIDENCE_ROLES.DETERMINISTIC_PROOF,
     evidenceShape: "deterministic-engine-suite",
     gateType: "pr-gate",
     claimScope: "primary deterministic scheduling/policy matrix",
@@ -116,6 +140,7 @@ const SUITE_CLASSIFICATION = {
   EngineKernelConvergenceSuite: {
     proofClass: PROOF_CLASSES.POLICY_SAFETY.id,
     proofLines: [PROOF_LINES.LIFECYCLE_RESULT_CORRECTNESS.id],
+    evidenceRole: EVIDENCE_ROLES.DETERMINISTIC_PROOF,
     evidenceShape: "deterministic-engine-convergence-suite",
     gateType: "pr-gate",
     claimScope: "primary deterministic lifecycle/result convergence matrix",
@@ -133,6 +158,7 @@ const SUITE_CLASSIFICATION = {
   ServerSchedulingE2eSuite: {
     proofClass: PROOF_CLASSES.POLICY_SAFETY.id,
     proofLines: [PROOF_LINES.SCHEDULING_POLICY_CORRECTNESS.id],
+    evidenceRole: EVIDENCE_ROLES.INTEGRATED_PROOF,
     evidenceShape: "representative-server-e2e",
     gateType: "pr-gate",
     claimScope: "representative real-wiring scheduling proof only",
@@ -154,6 +180,7 @@ const SUITE_CLASSIFICATION = {
   ServerLifecycleResultConvergenceSuite: {
     proofClass: PROOF_CLASSES.POLICY_SAFETY.id,
     proofLines: [PROOF_LINES.LIFECYCLE_RESULT_CORRECTNESS.id],
+    evidenceRole: EVIDENCE_ROLES.INTEGRATED_PROOF,
     evidenceShape: "representative-server-e2e",
     gateType: "pr-gate",
     claimScope: "representative real-wiring lifecycle/result proof only",
@@ -172,6 +199,7 @@ const SUITE_CLASSIFICATION = {
   ExternalWorkerParitySuite: {
     proofClass: PROOF_CLASSES.PRODUCT_API_CAPABILITY.id,
     proofLines: [PROOF_LINES.TASK_PRODUCER_API_KEY.id, PROOF_LINES.WORKER_API_KEY.id],
+    evidenceRole: EVIDENCE_ROLES.INTEGRATED_PROOF,
     evidenceShape: "cross-language-black-box",
     gateType: "pr-gate",
     gate: "external worker parity proof",
@@ -185,6 +213,7 @@ const SUITE_CLASSIFICATION = {
       PROOF_LINES.LIFECYCLE_RESULT_CORRECTNESS.id,
       PROOF_LINES.AUTHORIZATION_NO_BYPASS_SAFETY.id,
     ],
+    evidenceRole: EVIDENCE_ROLES.SOURCE_GUARD,
     evidenceShape: "proof-registry-source-guard",
     gateType: "pr-gate",
     gate: "proof registry closure guard",
@@ -196,6 +225,7 @@ const SUITE_CLASSIFICATION = {
   WorkerFaultScenarioIndexTest: {
     proofClass: PROOF_CLASSES.SCOPED_OPERATIONAL_RESILIENCE.id,
     proofLines: [PROOF_LINES.FAULT_RECOVERY_EVIDENCE.id],
+    evidenceRole: EVIDENCE_ROLES.SOURCE_GUARD,
     evidenceShape: "scenario-ledger-source-guard",
     gateType: "pr-gate",
     gate: "worker fault scenario index guard",
@@ -207,6 +237,7 @@ const SUITE_CLASSIFICATION = {
   WorkerFaultReportMetadataTest: {
     proofClass: PROOF_CLASSES.SCOPED_OPERATIONAL_RESILIENCE.id,
     proofLines: [PROOF_LINES.FAULT_RECOVERY_EVIDENCE.id],
+    evidenceRole: EVIDENCE_ROLES.SCHEMA_GUARD,
     evidenceShape: "report-schema-source-guard",
     gateType: "pr-gate",
     gate: "worker fault report metadata guard",
@@ -222,6 +253,7 @@ const SUITE_CLASSIFICATION = {
       PROOF_LINES.TASK_PRODUCER_API_KEY.id,
       PROOF_LINES.WORKER_API_KEY.id,
     ],
+    evidenceRole: EVIDENCE_ROLES.SOURCE_GUARD,
     evidenceShape: "profile-matrix-source-guard",
     gateType: "pr-gate",
     gate: "platform confidence profile guard",
@@ -230,9 +262,22 @@ const SUITE_CLASSIFICATION = {
       "Profile/matrix/schema guard only; packaged process smokes carry the runtime proof.",
     ],
   },
+  AuthorizationNoBypassMatrixGuardTest: {
+    proofClass: PROOF_CLASSES.POLICY_SAFETY.id,
+    proofLines: [PROOF_LINES.AUTHORIZATION_NO_BYPASS_SAFETY.id],
+    evidenceRole: EVIDENCE_ROLES.SCHEMA_GUARD,
+    evidenceShape: "authorization-no-bypass-matrix-schema-guard",
+    gateType: "pr-gate",
+    gate: "authorization no-bypass matrix guard",
+    criticalInvariantIds: [],
+    knownNonProofBoundaries: [
+      "No-bypass matrix guard only; platform confidence and API contract health lanes execute the negative auth scenarios.",
+    ],
+  },
   ServerStartupProfileSuite: {
     proofClass: PROOF_CLASSES.PRODUCT_API_CAPABILITY.id,
     proofLines: [PROOF_LINES.OPERATOR_ADMIN_SESSION.id],
+    evidenceRole: EVIDENCE_ROLES.SUPPORT_PROOF,
     evidenceShape: "spring-profile-context-suite",
     gateType: "pr-gate",
     gate: "server startup profile context support",
@@ -243,6 +288,7 @@ const SUITE_CLASSIFICATION = {
   },
   ProofSummaryWorkflowGuardTest: {
     proofClass: null,
+    evidenceRole: EVIDENCE_ROLES.SCHEMA_GUARD,
     evidenceShape: "proof-summary-schema-source-guard",
     gateType: "pr-gate",
     gate: "proof summary schema guard",
@@ -254,6 +300,7 @@ const SUITE_CLASSIFICATION = {
   PerfSoakReleaseEvidenceGuardTest: {
     proofClass: PROOF_CLASSES.SCOPED_OPERATIONAL_RESILIENCE.id,
     proofLines: [PROOF_LINES.SCALE_CONTENTION_EVIDENCE.id],
+    evidenceRole: EVIDENCE_ROLES.RELEASE_POLICY_GUARD,
     evidenceShape: "release-evidence-policy-guard",
     gateType: "pr-gate",
     gate: "perf/soak release evidence guard",
@@ -290,6 +337,7 @@ const GLOBAL_NON_PROOF_BOUNDARIES = [
 ];
 
 const args = parseArgs(process.argv.slice(2));
+const HAS_SCOPED_INPUTS = hasScopedInputArgs(args);
 const output = path.resolve(REPO_ROOT, args.output ?? DEFAULT_OUTPUT);
 const releaseEvidenceConfig = readJson(RELEASE_EVIDENCE_FILE) ?? {};
 const releaseEvidenceByScenario = releaseEvidenceMap(releaseEvidenceConfig);
@@ -297,9 +345,15 @@ const evidence = [
   ...collectSurefireReports(),
   ...collectPlatformConfidenceSummaries(),
   ...collectDefaultStartupSummaries(),
-  ...collectReportJson("chaos", args.chaosDirs ?? [path.join(REPO_ROOT, "xa-mass-testing", "target", "chaos-reports")]),
-  ...collectReportJson("perf", args.perfDirs ?? [path.join(REPO_ROOT, "xa-mass-testing", "target", "perf-reports")]),
-  ...collectReportJson("soak", args.soakDirs ?? [path.join(REPO_ROOT, "xa-mass-testing", "target", "soak-reports")]),
+  ...collectReportJson("chaos", dirsFor(args.chaosDirs, [
+    path.join(REPO_ROOT, "xa-mass-testing", "target", "chaos-reports"),
+  ])),
+  ...collectReportJson("perf", dirsFor(args.perfDirs, [
+    path.join(REPO_ROOT, "xa-mass-testing", "target", "perf-reports"),
+  ])),
+  ...collectReportJson("soak", dirsFor(args.soakDirs, [
+    path.join(REPO_ROOT, "xa-mass-testing", "target", "soak-reports"),
+  ])),
 ];
 
 const summary = {
@@ -373,6 +427,24 @@ function parseArgs(argv) {
   return parsed;
 }
 
+function hasScopedInputArgs(parsed) {
+  return [
+    "testReportDirs",
+    "platformConfidenceDirs",
+    "serverDefaultStartupDirs",
+    "chaosDirs",
+    "perfDirs",
+    "soakDirs",
+  ].some((key) => Array.isArray(parsed[key]) && parsed[key].length > 0);
+}
+
+function dirsFor(explicitDirs, defaults) {
+  if (Array.isArray(explicitDirs)) {
+    return explicitDirs;
+  }
+  return HAS_SCOPED_INPUTS ? [] : defaults;
+}
+
 function pushArg(parsed, key, value) {
   if (!parsed[key]) {
     parsed[key] = [];
@@ -381,7 +453,7 @@ function pushArg(parsed, key, value) {
 }
 
 function collectSurefireReports() {
-  const reportDirs = scopedDirs(args.testReportDirs, [REPO_ROOT]);
+  const reportDirs = scopedDirs(dirsFor(args.testReportDirs, [REPO_ROOT]), []);
   const reports = unique(reportDirs.flatMap((dir) => walk(dir)))
     .filter((file) => {
       const normalized = slash(file);
@@ -414,6 +486,7 @@ function parseSurefireXml(file) {
     proofClass: classification.proofClass ?? null,
     proofLines: classification.proofLines ?? [],
     proofQuestion: proofQuestionFor(classification.proofClass),
+    evidenceRole: classification.evidenceRole ?? EVIDENCE_ROLES.ARTIFACT_METADATA,
     evidenceShape: classification.evidenceShape ?? "surefire-suite",
     gateType: classification.gateType ?? "job-local-test",
     credentialRouteFamilies: [],
@@ -426,9 +499,9 @@ function parseSurefireXml(file) {
 }
 
 function collectPlatformConfidenceSummaries() {
-  const bases = scopedDirs(args.platformConfidenceDirs, [
+  const bases = scopedDirs(dirsFor(args.platformConfidenceDirs, [
     path.join(REPO_ROOT, "xa-mass-testing", "target", "platform-confidence"),
-  ]);
+  ]), []);
   return bases.flatMap(collectSummaryJson).map((entry) => {
     const data = entry.data;
     return {
@@ -441,6 +514,7 @@ function collectPlatformConfidenceSummaries() {
         PROOF_LINES.WORKER_API_KEY.id,
       ],
       proofQuestion: proofQuestionFor(PROOF_CLASSES.PRODUCT_API_CAPABILITY.id),
+      evidenceRole: EVIDENCE_ROLES.RUNTIME_PROOF,
       evidenceShape: "packaged-process-external-api-smoke",
       gateType: "pr-gate",
       credentialRouteFamilies: credentialRouteFamiliesFrom(data),
@@ -473,12 +547,19 @@ function credentialChecksFrom(raw) {
   return Object.fromEntries(Object.entries(raw).map(([name, value]) => {
     if (value && typeof value === "object" && !Array.isArray(value)) {
       return [name, {
+        matrixRowId: value.matrixRowId ?? name,
+        operation: value.operation ?? null,
+        credentialFamily: value.credentialFamily ?? null,
+        routeFamily: value.routeFamily ?? null,
         status: value.status ?? "unknown",
         httpStatus: value.httpStatus ?? null,
+        expectedHttpStatus: value.expectedHttpStatus ?? null,
         code: value.code ?? null,
+        expectedCode: value.expectedCode ?? null,
+        expectedReason: value.expectedReason ?? null,
         failureReason: value.failureReason ?? null,
-        proofLine: PROOF_LINES.AUTHORIZATION_NO_BYPASS_SAFETY.id,
-        claimScope: "representative credential-family fail-closed check",
+        proofLine: value.proofLine ?? PROOF_LINES.AUTHORIZATION_NO_BYPASS_SAFETY.id,
+        claimScope: value.claimScope ?? "representative credential-family fail-closed check",
       }];
     }
     return [name, {
@@ -523,6 +604,10 @@ function credentialRouteFamiliesFrom(data) {
 }
 
 function authorizedPositiveChecksFrom(data) {
+  const runnerNativeChecks = normalizeAuthorizedPositiveChecks(data.authorizedPositiveChecks);
+  if (runnerNativeChecks) {
+    return runnerNativeChecks;
+  }
   return [
     authorizedPositiveCheck(
       "operator.login",
@@ -584,6 +669,10 @@ function authorizedPositiveChecksFrom(data) {
 }
 
 function defaultStartupAuthorizedPositiveChecksFrom(data) {
+  const runnerNativeChecks = normalizeAuthorizedPositiveChecks(data.authorizedPositiveChecks);
+  if (runnerNativeChecks) {
+    return runnerNativeChecks;
+  }
   return [
     authorizedPositiveCheck(
       "server.health",
@@ -612,6 +701,29 @@ function defaultStartupAuthorizedPositiveChecksFrom(data) {
   ];
 }
 
+function normalizeAuthorizedPositiveChecks(raw) {
+  if (!Array.isArray(raw)) {
+    return null;
+  }
+  return raw.map((item) => {
+    const check = item && typeof item === "object" && !Array.isArray(item) ? item : {};
+    return {
+      operation: check.operation ?? null,
+      proofLine: check.proofLine ?? null,
+      credentialFamily: check.credentialFamily ?? null,
+      routeFamilies: Array.isArray(check.routeFamilies) ? check.routeFamilies : [],
+      authorizationExpectation: check.authorizationExpectation ?? "authorized-positive",
+      wrongRejectionProofClass: check.wrongRejectionProofClass ?? PROOF_CLASSES.PRODUCT_API_CAPABILITY.id,
+      status: check.status ?? "unknown",
+      claimScope: check.claimScope ?? "valid credential/session must not be wrongly rejected",
+      sourceLog: check.sourceLog ?? check.sourceArtifact ?? null,
+      sourceArtifact: check.sourceArtifact ?? check.sourceLog ?? null,
+      sourceProcess: check.sourceProcess ?? null,
+      failureReason: check.failureReason ?? null,
+    };
+  });
+}
+
 function authorizedPositiveCheck(operation, proofLine, credentialFamily, routeFamilies, sourceLog, status) {
   return {
     operation,
@@ -623,32 +735,22 @@ function authorizedPositiveCheck(operation, proofLine, credentialFamily, routeFa
     status: status === "passed" ? "passed" : "not-confirmed",
     claimScope: "valid credential/session must not be wrongly rejected",
     sourceLog: sourceLog ?? null,
+    sourceArtifact: sourceLog ?? null,
+    sourceProcess: null,
   };
 }
 
 function collectDefaultStartupSummaries() {
-  const bases = scopedDirs(args.serverDefaultStartupDirs, [
+  const bases = scopedDirs(dirsFor(args.serverDefaultStartupDirs, [
     path.join(REPO_ROOT, "xa-mass-testing", "target", "server-default-startup"),
-  ]);
-  return bases.flatMap(collectSummaryJson).map((entry) => {
+  ]), []);
+  return bases.flatMap(collectSummaryJson).flatMap((entry) => {
     const data = entry.data;
-    return {
-      type: "server-default-startup",
-      status: data.status ?? "unknown",
-      proofClass: PROOF_CLASSES.PRODUCT_API_CAPABILITY.id,
-      proofLines: [PROOF_LINES.OPERATOR_ADMIN_SESSION.id],
-      proofQuestion: proofQuestionFor(PROOF_CLASSES.PRODUCT_API_CAPABILITY.id),
-      evidenceShape: "packaged-process-startup-restart-smoke",
-      gateType: "pr-gate",
-      credentialRouteFamilies: [{
-        proofLine: PROOF_LINES.OPERATOR_ADMIN_SESSION.id,
-        credentialFamily: "operator-session",
-        routeFamilies: ["/actuator/health", "/api/v1/auth"],
-        authorizationExpectation: "authorized-positive",
-        wrongRejectionProofClass: PROOF_CLASSES.PRODUCT_API_CAPABILITY.id,
-      }],
-      authorizedPositiveChecks: defaultStartupAuthorizedPositiveChecksFrom(data),
-      claimScope: "default-startup-restart-smoke",
+    const startupAttempted = defaultStartupProcessAttempted(data);
+    const restartAttempted = defaultStartupRestartAttempted(data);
+    const shared = {
+      baseUrl: data.baseUrl ?? null,
+      portPrecheck: data.portPrecheck ?? null,
       defaultProfile: data.defaultProfile ?? null,
       defaultProfileLogObserved: valueOrNull(data.defaultProfileLogObserved),
       workDir: data.workDir ?? null,
@@ -661,13 +763,98 @@ function collectDefaultStartupSummaries() {
       sameSqliteRestart: valueOrNull(data.sameSqliteRestart),
       redisNamespaceMode: data.redisNamespaceMode ?? null,
       logFailureScan: data.logFailureScan ?? null,
-      knownNonProofBoundaries: [
-        "Default startup/restart proof only; not task/worker scheduling proof.",
-        "Not a full API route-permission matrix.",
-      ],
       artifactPath: relative(entry.file),
     };
+    return [{
+      type: "server-default-startup",
+      status: data.status ?? "unknown",
+      proofClass: startupAttempted ? PROOF_CLASSES.PRODUCT_API_CAPABILITY.id : null,
+      proofLines: startupAttempted ? [PROOF_LINES.OPERATOR_ADMIN_SESSION.id] : [],
+      proofQuestion: proofQuestionFor(startupAttempted ? PROOF_CLASSES.PRODUCT_API_CAPABILITY.id : null),
+      evidenceRole: startupAttempted ? EVIDENCE_ROLES.RUNTIME_PROOF : EVIDENCE_ROLES.ARTIFACT_METADATA,
+      evidenceShape: "packaged-process-startup-capability-smoke",
+      gateType: "pr-gate",
+      credentialRouteFamilies: [{
+        proofLine: PROOF_LINES.OPERATOR_ADMIN_SESSION.id,
+        credentialFamily: "operator-session",
+        routeFamilies: ["/actuator/health", "/api/v1/auth"],
+        authorizationExpectation: "authorized-positive",
+        wrongRejectionProofClass: PROOF_CLASSES.PRODUCT_API_CAPABILITY.id,
+      }],
+      authorizedPositiveChecks: defaultStartupAuthorizedPositiveChecksFrom(data),
+      claimScope: "default-startup-operator-capability-smoke",
+      ...shared,
+      knownNonProofBoundaries: [
+        "Default startup health/login capability only; same-SQLite restart is a separate scoped resilience claim.",
+        "Not a full API route-permission matrix.",
+        ...defaultStartupPreProofBoundaries(data, startupAttempted),
+      ],
+    }, {
+      type: "server-default-startup-restart",
+      status: defaultStartupRestartStatus(data),
+      proofClass: restartAttempted ? PROOF_CLASSES.SCOPED_OPERATIONAL_RESILIENCE.id : null,
+      proofLines: restartAttempted ? [PROOF_LINES.FAULT_RECOVERY_EVIDENCE.id] : [],
+      proofQuestion: proofQuestionFor(restartAttempted ? PROOF_CLASSES.SCOPED_OPERATIONAL_RESILIENCE.id : null),
+      evidenceRole: restartAttempted ? EVIDENCE_ROLES.RUNTIME_PROOF : EVIDENCE_ROLES.ARTIFACT_METADATA,
+      evidenceShape: "packaged-process-restart-smoke",
+      gateType: "pr-gate",
+      credentialRouteFamilies: [],
+      authorizedPositiveChecks: [],
+      claimScope: "same-sqlite packaged-process restart/idempotence smoke",
+      ...shared,
+      knownNonProofBoundaries: [
+        "Same local SQLite restart only; not Redis process kill, partition/failover, lease-clock skew, or multi-node resilience.",
+        "Not task/worker scheduling proof and not a full API route-permission matrix.",
+        ...defaultStartupRestartPreProofBoundaries(data, restartAttempted),
+      ],
+    }];
   });
+}
+
+function defaultStartupProcessAttempted(data) {
+  return Number(data.restartCount ?? 0) > 0
+    || data.firstHealth !== undefined && data.firstHealth !== "not-run"
+    || data.firstOperatorLogin !== undefined && data.firstOperatorLogin !== "not-run";
+}
+
+function defaultStartupRestartAttempted(data) {
+  return Number(data.restartCount ?? 0) > 1
+    || data.secondHealth !== undefined && data.secondHealth !== "not-run"
+    || data.secondOperatorLogin !== undefined && data.secondOperatorLogin !== "not-run"
+    || valueOrNull(data.sameSqliteRestart) === true;
+}
+
+function defaultStartupPreProofBoundaries(data, startupAttempted) {
+  if (startupAttempted) {
+    return [];
+  }
+  if (data.portPrecheck === "occupied") {
+    return ["Default startup port precheck found an existing health endpoint; packaged process was not started."];
+  }
+  return ["Default startup packaged process was not started; this artifact is not startup proof."];
+}
+
+function defaultStartupRestartPreProofBoundaries(data, restartAttempted) {
+  if (restartAttempted) {
+    return [];
+  }
+  if (data.portPrecheck === "occupied") {
+    return ["Default startup port precheck blocked the run before restart proof could execute."];
+  }
+  return ["Default startup restart path was not attempted; this artifact is not restart proof."];
+}
+
+function defaultStartupRestartStatus(data) {
+  if (!defaultStartupRestartAttempted(data)) {
+    return data.status ?? "unknown";
+  }
+  if (data.status === "failed") {
+    return "failed";
+  }
+  if (valueOrNull(data.sameSqliteRestart) === true) {
+    return "passed";
+  }
+  return "unknown";
 }
 
 function collectReportJson(reportType, dirs) {
@@ -687,26 +874,35 @@ function collectReportJson(reportType, dirs) {
       const scenarioId = scenarioIdFrom(data);
       const traceAnalyzerIds = traceAnalyzerIdsFrom(data);
       const releaseEvidence = releaseEvidenceFrom(releaseEvidenceByScenario.get(scenarioId), data);
+      const scenarioContract = reportScenarioContract(reportType, data, scenarioId, releaseEvidence);
+      const proofEligible = scenarioContract.status === "complete";
+      const proofClass = proofEligible ? reportProofClass(reportType) : null;
       return {
         type: `${reportType}-report`,
-        status: reportStatus(reportType, data, releaseEvidence),
-        proofClass: reportProofClass(reportType),
-        proofLines: reportProofLines(reportType, scenarioId),
-        proofQuestion: proofQuestionFor(reportProofClass(reportType)),
+        status: proofEligible ? reportStatus(reportType, data, releaseEvidence) : "downgraded",
+        proofClass,
+        proofLines: proofEligible ? reportProofLines(reportType, scenarioId) : [],
+        proofQuestion: proofQuestionFor(proofClass),
+        evidenceRole: proofEligible ? EVIDENCE_ROLES.RUNTIME_PROOF : EVIDENCE_ROLES.ARTIFACT_METADATA,
         evidenceShape: reportEvidenceShape(reportType),
         gateType: reportGateType(reportType),
         credentialRouteFamilies: [],
         claimScope: reportClaimScope(reportType, scenarioId),
         scenarioId,
-        runtimeBackend: nestedGet(data, "runtimeBackend") ?? nestedGet(data, "config", "runtimeBackend") ?? nestedGet(data, "proof", "matrixProfile", "runtimeBackend") ?? null,
-        transport: nestedGet(data, "transport") ?? nestedGet(data, "runtime", "transport") ?? nestedGet(data, "proof", "matrixProfile", "transport") ?? null,
-        workerProfile: nestedGet(data, "workerProfile") ?? nestedGet(data, "proof", "matrixProfile", "workerProfile") ?? null,
-        faultShape: nestedGet(data, "faultShape") ?? nestedGet(data, "proof", "matrixProfile", "faultShape") ?? null,
+        runtimeBackend: runtimeBackendFrom(data),
+        transport: transportFrom(data),
+        workerProfile: workerProfileFrom(data),
+        faultShape: faultShapeFrom(data),
+        durationOrVolume: durationOrVolumeFrom(data),
         traceAnalyzerIds,
         criticalInvariantIds: invariantIds(scenarioId, traceAnalyzerIds),
+        scenarioContract,
         releaseEvidence,
         scheduledManualEvidence: reportType === "perf" || reportType === "soak",
-        knownNonProofBoundaries: reportBoundaries(reportType),
+        knownNonProofBoundaries: [
+          ...reportBoundaries(reportType),
+          ...scenarioContract.knownNonProofBoundaries,
+        ],
         artifactPath: relative(entry.file),
       };
     });
@@ -757,6 +953,89 @@ function invariantIds(scenarioId, traceAnalyzerIds) {
     }
   }
   return [...new Set(ids)].sort();
+}
+
+function reportScenarioContract(reportType, data, scenarioId, releaseEvidence = null) {
+  const missingFields = [];
+  if (!scenarioId) {
+    missingFields.push("scenarioId");
+  }
+  if (!runtimeBackendFrom(data)) {
+    missingFields.push("runtimeBackend");
+  }
+  if (!transportFrom(data)) {
+    missingFields.push("transport");
+  }
+  if (!faultShapeFrom(data)) {
+    missingFields.push("faultOrLoadShape");
+  }
+  if (!durationOrVolumeFrom(data)) {
+    missingFields.push("durationOrVolume");
+  }
+  if (!reportHasPassFailOracle(reportType, data, releaseEvidence)) {
+    missingFields.push("passFailOracle");
+  }
+  const complete = missingFields.length === 0;
+  return {
+    status: complete ? "complete" : "incomplete",
+    missingFields,
+    knownNonProofBoundaries: complete
+      ? []
+      : [`Missing scenario contract fields (${missingFields.join(", ")}); artifact is not counted as scoped resilience proof.`],
+  };
+}
+
+function runtimeBackendFrom(data) {
+  return nestedGet(data, "runtimeBackend")
+    ?? nestedGet(data, "config", "runtimeBackend")
+    ?? nestedGet(data, "proof", "matrixProfile", "runtimeBackend")
+    ?? null;
+}
+
+function transportFrom(data) {
+  return nestedGet(data, "transport")
+    ?? nestedGet(data, "runtime", "transport")
+    ?? nestedGet(data, "config", "transport")
+    ?? nestedGet(data, "proof", "matrixProfile", "transport")
+    ?? null;
+}
+
+function workerProfileFrom(data) {
+  return nestedGet(data, "workerProfile")
+    ?? nestedGet(data, "config", "workerProfile")
+    ?? nestedGet(data, "proof", "matrixProfile", "workerProfile")
+    ?? null;
+}
+
+function faultShapeFrom(data) {
+  return nestedGet(data, "faultShape")
+    ?? nestedGet(data, "config", "faultShape")
+    ?? nestedGet(data, "proof", "matrixProfile", "faultShape")
+    ?? null;
+}
+
+function durationOrVolumeFrom(data) {
+  return nestedGet(data, "duration", "wallClockMillis")
+    ?? nestedGet(data, "wallClock", "totalMillis")
+    ?? nestedGet(data, "config", "durationSeconds")
+    ?? nestedGet(data, "config", "awaitSeconds")
+    ?? nestedGet(data, "tasksSubmitted")
+    ?? nestedGet(data, "workItemsSubmitted")
+    ?? nestedGet(data, "config", "bulkMessages")
+    ?? null;
+}
+
+function reportHasPassFailOracle(reportType, data, releaseEvidence = null) {
+  if (releaseEvidence && releaseEvidence.thresholdSignals.length > 0) {
+    return true;
+  }
+  if (reportType === "soak") {
+    return nestedGet(data, "proof", "runtimeInvariants", "ok") != null;
+  }
+  if (reportType === "chaos") {
+    return nestedGet(data, "task", "status") === "TERMINAL" || traceAnalysesPassed(data);
+  }
+  return false;
 }
 
 function reportStatus(reportType, data, releaseEvidence = null) {
@@ -883,8 +1162,11 @@ function totals(evidence) {
     perfReports: evidence.filter((item) => item.type === "perf-report").length,
     soakReports: evidence.filter((item) => item.type === "soak-report").length,
     releaseEvidenceReports: evidence.filter((item) => item.releaseEvidence).length,
+    evidenceRoleCounts: evidenceRoleCounts(evidence),
     proofClassCounts: proofClassCounts(evidence),
     proofLineCounts: proofLineCounts(evidence),
+    guardCounts: guardCounts(evidence),
+    guardProofLineCounts: guardProofLineCounts(evidence),
     credentialCheckCount: credentialCheckCount(evidence),
     credentialCheckProofLineCounts: credentialCheckProofLineCounts(evidence),
     authorizedPositiveCheckCount: authorizedPositiveCheckCount(evidence),
@@ -895,7 +1177,7 @@ function totals(evidence) {
 function proofClassCounts(evidence) {
   const counts = {};
   for (const item of evidence) {
-    if (!item.proofClass) {
+    if (!isCountedProofEvidence(item) || !item.proofClass) {
       continue;
     }
     counts[item.proofClass] = (counts[item.proofClass] ?? 0) + 1;
@@ -906,6 +1188,9 @@ function proofClassCounts(evidence) {
 function proofLineCounts(evidence) {
   const counts = {};
   for (const item of evidence) {
+    if (!isCountedProofEvidence(item)) {
+      continue;
+    }
     for (const line of item.proofLines ?? []) {
       counts[line] = (counts[line] ?? 0) + 1;
     }
@@ -913,15 +1198,55 @@ function proofLineCounts(evidence) {
   return counts;
 }
 
+function evidenceRoleCounts(evidence) {
+  const counts = {};
+  for (const item of evidence) {
+    const role = item.evidenceRole ?? EVIDENCE_ROLES.ARTIFACT_METADATA;
+    counts[role] = (counts[role] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function guardCounts(evidence) {
+  const counts = {};
+  for (const item of evidence) {
+    const role = item.evidenceRole ?? EVIDENCE_ROLES.ARTIFACT_METADATA;
+    if (!GUARD_ROLES.has(role)) {
+      continue;
+    }
+    counts[role] = (counts[role] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function guardProofLineCounts(evidence) {
+  const counts = {};
+  for (const item of evidence) {
+    const role = item.evidenceRole ?? EVIDENCE_ROLES.ARTIFACT_METADATA;
+    if (!GUARD_ROLES.has(role)) {
+      continue;
+    }
+    for (const line of item.proofLines ?? []) {
+      counts[line] = (counts[line] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
+function isCountedProofEvidence(item) {
+  return COUNTED_PROOF_ROLES.has(item.evidenceRole);
+}
+
 function credentialCheckCount(evidence) {
-  return evidence.reduce((sum, item) => sum + Object.keys(item.credentialChecks ?? {}).length, 0);
+  return evidence.reduce((sum, item) =>
+    sum + Object.values(item.credentialChecks ?? {}).filter(operationCheckExecuted).length, 0);
 }
 
 function credentialCheckProofLineCounts(evidence) {
   const counts = {};
   for (const item of evidence) {
     for (const check of Object.values(item.credentialChecks ?? {})) {
-      if (!check?.proofLine) {
+      if (!operationCheckExecuted(check) || !check?.proofLine) {
         continue;
       }
       counts[check.proofLine] = (counts[check.proofLine] ?? 0) + 1;
@@ -931,20 +1256,25 @@ function credentialCheckProofLineCounts(evidence) {
 }
 
 function authorizedPositiveCheckCount(evidence) {
-  return evidence.reduce((sum, item) => sum + (item.authorizedPositiveChecks ?? []).length, 0);
+  return evidence.reduce((sum, item) =>
+    sum + (item.authorizedPositiveChecks ?? []).filter(operationCheckExecuted).length, 0);
 }
 
 function authorizedPositiveProofLineCounts(evidence) {
   const counts = {};
   for (const item of evidence) {
     for (const check of item.authorizedPositiveChecks ?? []) {
-      if (!check?.proofLine) {
+      if (!operationCheckExecuted(check) || !check?.proofLine) {
         continue;
       }
       counts[check.proofLine] = (counts[check.proofLine] ?? 0) + 1;
     }
   }
   return counts;
+}
+
+function operationCheckExecuted(check) {
+  return check?.status === "passed" || check?.status === "failed";
 }
 
 function releaseEvidenceMap(config) {
@@ -959,13 +1289,17 @@ function releaseEvidenceFrom(definition, data) {
     return null;
   }
   return {
+    owner: definition.owner ?? releaseEvidenceConfig.workflowPolicy?.owner ?? null,
     lane: definition.lane ?? null,
     workflow: definition.workflow ?? null,
     runner: definition.runner ?? null,
     reportGlob: definition.reportGlob ?? null,
     prGate: releaseEvidenceConfig.workflowPolicy?.prGate ?? false,
+    gateEligibility: definition.gateEligibility ?? releaseEvidenceConfig.workflowPolicy?.gateEligibility ?? null,
     comparisonTarget: releaseEvidenceConfig.workflowPolicy?.comparisonTarget ?? null,
     thresholdPolicy: releaseEvidenceConfig.workflowPolicy?.thresholdPolicy ?? null,
+    promotionCriteria: releaseEvidenceConfig.workflowPolicy?.promotionCriteria ?? [],
+    demotionTriggers: releaseEvidenceConfig.workflowPolicy?.demotionTriggers ?? [],
     thresholdSignals: Array.isArray(definition.thresholdSignals)
       ? definition.thresholdSignals.map((signal) => evaluateThresholdSignal(signal, data))
       : [],

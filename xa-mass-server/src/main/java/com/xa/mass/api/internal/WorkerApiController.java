@@ -83,13 +83,17 @@ public class WorkerApiController {
         Map<String, List<Map<String, Object>>> connectionsByWorker =
                 WorkerCapabilityViewSupport.groupConnectionsByWorker(runtimeDiagnostics);
         List<WorkerSnapshot> allWorkers = workerQueries.getAllWorkers();
-        List<Map<String, Object>> items = allWorkers.stream()
+        List<WorkerSnapshot> visibleWorkers = allWorkers.stream()
                 .sorted(Comparator.comparing(WorkerSnapshot::getWorkerId, Comparator.nullsLast(String::compareTo)))
                 .limit(resolvedLimit)
+                .toList();
+        Set<String> onlineWorkerIds = resolveOnlineWorkerIds(visibleWorkers);
+        Set<String> lockedWorkerIds = resolveLockedWorkerIds();
+        List<Map<String, Object>> items = visibleWorkers.stream()
                 .map(worker -> {
                     List<Map<String, Object>> connections =
                             connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
-                    boolean transportOnline = workerQueries.isWorkerOnline(worker.getWorkerId());
+                    boolean transportOnline = onlineWorkerIds.contains(worker.getWorkerId());
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("workerId", worker.getWorkerId());
                     item.put("status", worker.getStatus());
@@ -107,7 +111,7 @@ public class WorkerApiController {
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
                     item.put("lastHeartbeat", formatDateTime(worker.getLastHeartbeat()));
-                    item.put("locked", runtimeDiagnostics != null && runtimeDiagnostics.isWorkerLocked(worker.getWorkerId()));
+                    item.put("locked", lockedWorkerIds.contains(worker.getWorkerId()));
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
                     item.put("updateTime", formatDateTime(worker.getUpdateTime()));
@@ -198,6 +202,35 @@ public class WorkerApiController {
             throw new IllegalStateException("Worker control operations are not available");
         }
         return workerControl;
+    }
+
+    private Set<String> resolveOnlineWorkerIds(List<WorkerSnapshot> workers) {
+        if (workers == null || workers.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> onlineWorkerIds = new LinkedHashSet<>();
+        for (WorkerSnapshot worker : workers) {
+            String workerId = worker == null ? null : worker.getWorkerId();
+            if (workerId != null && !workerId.isBlank() && workerQueries.isWorkerOnline(workerId)) {
+                onlineWorkerIds.add(workerId);
+            }
+        }
+        return Set.copyOf(onlineWorkerIds);
+    }
+
+    private Set<String> resolveLockedWorkerIds() {
+        if (runtimeDiagnostics == null) {
+            return Set.of();
+        }
+        List<String> lockedWorkerIds = runtimeDiagnostics.listLockedWorkerIds();
+        if (lockedWorkerIds == null || lockedWorkerIds.isEmpty()) {
+            return Set.of();
+        }
+        return lockedWorkerIds.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(workerId -> !workerId.isEmpty())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     private String resolveWorkerId(String pathWorkerId, String requestWorkerId) {

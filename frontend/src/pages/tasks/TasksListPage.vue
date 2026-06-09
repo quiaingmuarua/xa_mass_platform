@@ -19,7 +19,7 @@
     <PageErrorState
       v-if="errorMessage"
       :message="errorMessage"
-      @retry="loadTasks"
+      @retry="reloadTasks"
     />
 
     <el-card v-else class="page-card">
@@ -28,19 +28,19 @@
           v-model="filters.keyword"
           clearable
           placeholder="Search by task name or id"
-          @keyup.enter="loadTasks"
+          @keyup.enter="reloadTasks"
         />
         <el-input
           v-model="filters.project"
           clearable
           placeholder="Project"
-          @keyup.enter="loadTasks"
+          @keyup.enter="reloadTasks"
         />
         <el-select
           v-model="filters.status"
           clearable
           placeholder="Status"
-          @change="loadTasks"
+          @change="reloadTasks"
         >
           <el-option
             v-for="status in statuses"
@@ -49,7 +49,7 @@
             :value="status"
           />
         </el-select>
-        <el-button @click="loadTasks">Search</el-button>
+        <el-button @click="reloadTasks">Search</el-button>
       </FilterToolbar>
 
       <PageSectionSkeleton v-if="loading" />
@@ -291,12 +291,19 @@ const projectOptionsError = ref('')
 const projectOptionsLoading = ref(false)
 const projectOptions = ref<string[]>([])
 const handledDraftSignature = ref('')
+const lastRouteLoadSignature = ref('')
 const starterGuidance = ref<string[]>([])
 const filters = reactive({
   keyword: '',
   project: '',
   status: '' as TaskListItem['status'] | '',
 })
+let activeTaskLoad:
+  | {
+      signature: string
+      promise: Promise<void>
+    }
+  | null = null
 const createForm = reactive({
   project: '',
   eventCode: '',
@@ -342,12 +349,58 @@ function tagForStatus(
   return tagType[status]
 }
 
-async function loadTasks(): Promise<void> {
+interface LoadTasksOptions {
+  force?: boolean
+}
+
+async function loadTasks(options: LoadTasksOptions = {}): Promise<void> {
+  const signature = taskFilterSignature()
+  if (
+    !options.force &&
+    activeTaskLoad !== null &&
+    activeTaskLoad.signature === signature
+  ) {
+    return activeTaskLoad.promise
+  }
+
+  const promise = doLoadTasks()
+  activeTaskLoad = {
+    signature,
+    promise,
+  }
+  try {
+    await promise
+  } finally {
+    if (activeTaskLoad?.promise === promise) {
+      activeTaskLoad = null
+    }
+  }
+}
+
+function reloadTasks(): void {
+  void loadTasks({ force: true })
+}
+
+function loadTasksFromRouteQuery(): void {
+  applyTaskFiltersFromQuery()
+  const signature = taskFilterSignature()
+  if (lastRouteLoadSignature.value !== signature) {
+    lastRouteLoadSignature.value = signature
+    void loadTasks()
+  }
+  maybeOpenCreateDialogFromQuery()
+}
+
+async function doLoadTasks(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
 
   try {
-    const response = await listTasks(filters)
+    const response = await listTasks({
+      keyword: filters.keyword,
+      project: filters.project,
+      status: filters.status,
+    })
     rows.value = response.items
   } catch (error) {
     rows.value = []
@@ -355,6 +408,14 @@ async function loadTasks(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+function taskFilterSignature(): string {
+  return JSON.stringify({
+    keyword: filters.keyword,
+    project: filters.project,
+    status: filters.status,
+  })
 }
 
 function applyTaskFiltersFromQuery(): void {
@@ -580,9 +641,7 @@ function goToTask(taskId: string): void {
 }
 
 onMounted(() => {
-  applyTaskFiltersFromQuery()
-  void loadTasks()
-  maybeOpenCreateDialogFromQuery()
+  loadTasksFromRouteQuery()
 })
 
 onActivated(() => {
@@ -593,9 +652,7 @@ onActivated(() => {
 watch(
   () => route.query,
   () => {
-    applyTaskFiltersFromQuery()
-    void loadTasks()
-    maybeOpenCreateDialogFromQuery()
+    loadTasksFromRouteQuery()
   },
 )
 </script>

@@ -76,11 +76,6 @@
               {{ row.dispatchEligibleCount }} / {{ row.workerCount }}
             </template>
           </el-table-column>
-          <el-table-column label="Tasks" min-width="100">
-            <template #default="{ row }">
-              {{ row.taskCount }}
-            </template>
-          </el-table-column>
           <el-table-column label="Owner" min-width="180">
             <template #default="{ row }">
               <span class="mono">{{ row.ownerPrincipalId || '-' }}</span>
@@ -113,15 +108,11 @@ import {
 import {
   listProjects,
 } from '@/api/projects'
-import {listTasks} from '@/api/tasks'
-import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {ProjectDefinition} from '@/types/projects'
-import type {TaskListItem} from '@/types/tasks'
 import type {WorkerGroupCapability} from '@/types/catalog'
-import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
 
 interface ProjectRow extends ProjectDefinition {
@@ -129,7 +120,6 @@ interface ProjectRow extends ProjectDefinition {
   workerGroupCount: number
   dispatchEligibleCount: number
   workerCount: number
-  taskCount: number
 }
 
 const router = useRouter()
@@ -137,8 +127,6 @@ const router = useRouter()
 const loading = ref(false)
 const errorMessage = ref('')
 const projects = ref<ProjectDefinition[]>([])
-const tasks = ref<TaskListItem[]>([])
-const workers = ref<WorkerListItem[]>([])
 const workerGroups = ref<WorkerGroupCapability[]>([])
 
 const enabledProjectCount = computed(
@@ -154,8 +142,10 @@ const projectRows = computed<ProjectRow[]>(() =>
         (sum, group) => sum + group.dispatchEligibleCount,
         0,
       ),
-      workerCount: workersForProject(project).length,
-      taskCount: tasks.value.filter((task) => task.project === project.code).length,
+      workerCount: workerGroupsForProject(project).reduce(
+        (sum, group) => sum + group.workerCount,
+        0,
+      ),
     }))
     .sort((left, right) => left.code.localeCompare(right.code)),
 )
@@ -164,21 +154,15 @@ async function loadProjects(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [projectItems, workerResponse, taskResponse, workerGroupRows] = await Promise.all([
+    const [projectItems, workerGroupRows] = await Promise.all([
       listProjects(),
-      listWorkers(),
-      listTasks(),
       listWorkerGroupCapabilities(),
     ])
     projects.value = projectItems
-    workers.value = workerResponse.items
     workerGroups.value = workerGroupRows
-    tasks.value = taskResponse.items
   } catch (error) {
     projects.value = []
-    workers.value = []
     workerGroups.value = []
-    tasks.value = []
     errorMessage.value = toErrorMessage(error, 'Failed to load projects.')
   } finally {
     loading.value = false
@@ -195,25 +179,6 @@ function workerGroupsForProject(project: ProjectDefinition): WorkerGroupCapabili
       (binding) =>
         binding.projectCodes.includes(project.code) ||
         authorizedEventCodes.has(binding.eventCode),
-    )
-  })
-}
-
-function workersForProject(project: ProjectDefinition): WorkerListItem[] {
-  const authorizedEventCodes = new Set(project.eventCodes)
-  return workers.value.filter((worker) => {
-    if (worker.supportedProjects.includes(project.code)) {
-      return true
-    }
-    if (
-      worker.eventBindings?.some((binding) =>
-        binding.projectCodes.includes(project.code),
-      )
-    ) {
-      return true
-    }
-    return worker.supportedEventCodes.some((eventCode) =>
-      authorizedEventCodes.has(eventCode),
     )
   })
 }

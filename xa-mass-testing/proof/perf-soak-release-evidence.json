@@ -2,14 +2,32 @@
   "schemaVersion": 1,
   "workflowPolicy": {
     "prGate": false,
+    "owner": "xa-mass-testing",
     "lane": "scheduled/manual",
+    "gateEligibility": "not-pr-gate-until-promoted",
     "comparisonTarget": "latest green scheduled or manually dispatched artifact",
     "thresholdPolicy": "Only runner pass/fail invariants are hard thresholds in this slice; latency and throughput values are trend-only until a calibrated baseline exists.",
-    "releaseInterpretation": "Release confidence may cite the latest green perf-smokes and soak-smokes summaries plus their source reports, but PRs are not blocked by these trend lanes."
+    "releaseInterpretation": "Release confidence may cite the latest green perf-smokes and soak-smokes summaries plus their source reports, but PRs are not blocked by these trend lanes.",
+    "promotionCriteria": [
+      "scenario id is stable and present in WorkerFaultScenarioIndex",
+      "runner has deterministic pass/fail threshold signals",
+      "runtime is bounded enough for PR execution",
+      "flake rate is acceptable across scheduled/manual observation",
+      "trend-only latency/throughput values remain separate from hard thresholds",
+      "proof summary emits gateType=pr-gate after promotion"
+    ],
+    "demotionTriggers": [
+      "scenario becomes nondeterministic or exceeds PR runtime budget",
+      "threshold oracle becomes ambiguous or trend-only",
+      "runner report loses scenario contract fields",
+      "flake rate exceeds release owner tolerance"
+    ]
   },
   "stableScenarios": [
     {
       "scenarioId": "workload-mix-slow-bulk-interactive-isolation",
+      "owner": "xa-mass-testing",
+      "gateEligibility": "scheduled/manual-only",
       "lane": "perf",
       "workflow": "perf-smokes",
       "runner": "com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner",
@@ -61,6 +79,8 @@
     },
     {
       "scenarioId": "interactive-retry-wakeup",
+      "owner": "xa-mass-testing",
+      "gateEligibility": "scheduled/manual-only",
       "lane": "perf",
       "workflow": "perf-smokes",
       "runner": "com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner",
@@ -117,6 +137,8 @@
     },
     {
       "scenarioId": "polling-soak-noisy-mixed-result",
+      "owner": "xa-mass-testing",
+      "gateEligibility": "scheduled/manual-only",
       "lane": "soak",
       "workflow": "soak-smokes",
       "runner": "com.xa.mass.testing.soak.SdkPollingSchedulingSoakRunner",

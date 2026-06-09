@@ -21,10 +21,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Read-only control-plane catalog endpoints.
@@ -84,6 +86,7 @@ public class CatalogController {
     @GetMapping("/event-capabilities")
     public ResponseEntity<ApiResponse<List<EventCapabilityView>>> listEventCapabilities() {
         List<WorkerSnapshot> workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
+        Set<String> onlineWorkerIdSet = resolveOnlineWorkerIds(workers);
         Map<String, WorkerGroupSnapshot> groupsById = workerGroupsById();
         List<EventCapabilityView> items = catalog.listEvents().stream()
                 .sorted(Comparator.comparing(EventDefinition::getCode, String::compareToIgnoreCase))
@@ -94,7 +97,7 @@ public class CatalogController {
                             .toList();
                     List<String> onlineWorkerIds = workers.stream()
                             .filter(worker -> groupIds.contains(worker.getWorkerGroupId()))
-                            .filter(worker -> isTransportOnline(worker.getWorkerId()))
+                            .filter(worker -> onlineWorkerIdSet.contains(worker.getWorkerId()))
                             .map(worker -> worker.getWorkerId())
                             .filter(Objects::nonNull)
                             .distinct()
@@ -138,7 +141,10 @@ public class CatalogController {
         Map<String, List<Map<String, Object>>> connectionsByWorker =
                 WorkerCapabilityViewSupport.groupConnectionsByWorker(runtimeDiagnostics);
         Map<String, WorkerGroupSnapshot> groupsById = workerGroupsById();
-        List<Map<String, Object>> items = workerQueries.getAllWorkers().stream()
+        List<WorkerSnapshot> workers = workerQueries.getAllWorkers();
+        Set<String> onlineWorkerIds = resolveOnlineWorkerIds(workers);
+        Set<String> lockedWorkerIds = resolveLockedWorkerIds(workers);
+        List<Map<String, Object>> items = workers.stream()
                 .sorted(Comparator.comparing(worker -> worker.getWorkerId(), Comparator.nullsLast(String::compareTo)))
                 .map(worker -> {
                     WorkerGroupSnapshot group = groupsById.get(worker.getWorkerGroupId());
@@ -156,10 +162,10 @@ public class CatalogController {
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
-                    item.put("online", isTransportOnline(worker.getWorkerId()));
+                    item.put("online", onlineWorkerIds.contains(worker.getWorkerId()));
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
-                    item.put("locked", runtimeDiagnostics != null && runtimeDiagnostics.isWorkerLocked(worker.getWorkerId()));
+                    item.put("locked", lockedWorkerIds.contains(worker.getWorkerId()));
                     item.put("fieldSources", WorkerCapabilityViewSupport.catalogWorkerFieldSources());
                     return item;
                 })
@@ -173,6 +179,8 @@ public class CatalogController {
             return ResponseEntity.ok(ApiResponse.success(List.of()));
         }
         List<WorkerSnapshot> workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
+        Set<String> onlineWorkerIds = resolveOnlineWorkerIds(workers);
+        Set<String> lockedWorkerIds = resolveLockedWorkerIds(workers);
         List<AdapterNodeSnapshot> adapterNodes = workerTopology.listAdapterNodes();
         List<NodeGroupBindingSnapshot> nodeGroupBindings = workerTopology.listNodeGroupBindings();
         Map<String, AdapterNodeSnapshot> adapterNodesById = adapterNodes.stream()
@@ -186,7 +194,13 @@ public class CatalogController {
         List<Map<String, Object>> items = workerTopology.listWorkerGroups().stream()
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(WorkerGroupSnapshot::groupId, String::compareToIgnoreCase))
-                .map(group -> workerGroupCapability(group, workers, adapterNodesById, nodeGroupBindings))
+                .<Map<String, Object>>map(group -> workerGroupCapability(
+                        group,
+                        workers,
+                        adapterNodesById,
+                        nodeGroupBindings,
+                        onlineWorkerIds,
+                        lockedWorkerIds))
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(items));
     }
@@ -280,7 +294,9 @@ public class CatalogController {
     private Map<String, Object> workerGroupCapability(WorkerGroupSnapshot group,
                                                       List<WorkerSnapshot> workers,
                                                       Map<String, AdapterNodeSnapshot> adapterNodesById,
-                                                      List<NodeGroupBindingSnapshot> nodeGroupBindings) {
+                                                      List<NodeGroupBindingSnapshot> nodeGroupBindings,
+                                                      Set<String> onlineWorkerIds,
+                                                      Set<String> lockedWorkerIds) {
         List<WorkerSnapshot> groupWorkers = workers.stream()
                 .filter(worker -> group.groupId().equals(worker.getWorkerGroupId()))
                 .sorted(Comparator.comparing(WorkerSnapshot::getWorkerId, Comparator.nullsLast(String::compareTo)))
@@ -305,7 +321,7 @@ public class CatalogController {
                         LinkedHashMap::new,
                         java.util.stream.Collectors.counting()));
         Map<String, Long> transportOnlineCounts = groupWorkers.stream()
-                .filter(worker -> isTransportOnline(worker.getWorkerId()))
+                .filter(worker -> onlineWorkerIds.contains(worker.getWorkerId()))
                 .collect(java.util.stream.Collectors.groupingBy(
                         worker -> normalizeTransport(worker.getOnlineStrategy()),
                         LinkedHashMap::new,
@@ -324,10 +340,10 @@ public class CatalogController {
                         LinkedHashMap::new,
                         java.util.stream.Collectors.counting()));
 
-        long lockedCount = groupWorkers.stream().filter(worker -> isWorkerLocked(worker.getWorkerId())).count();
+        long lockedCount = groupWorkers.stream().filter(worker -> lockedWorkerIds.contains(worker.getWorkerId())).count();
         long dispatchEligibleCount = groupWorkers.stream()
-                .filter(worker -> isTransportOnline(worker.getWorkerId()))
-                .filter(worker -> !isWorkerLocked(worker.getWorkerId()))
+                .filter(worker -> onlineWorkerIds.contains(worker.getWorkerId()))
+                .filter(worker -> !lockedWorkerIds.contains(worker.getWorkerId()))
                 .filter(worker -> hasAvailableBinding(worker, bindings, adapterNodesById))
                 .count();
 
@@ -352,6 +368,35 @@ public class CatalogController {
 
     private boolean isWorkerLocked(String workerId) {
         return runtimeDiagnostics != null && runtimeDiagnostics.isWorkerLocked(workerId);
+    }
+
+    private Set<String> resolveOnlineWorkerIds(List<WorkerSnapshot> workers) {
+        if (workerQueries == null || workers == null || workers.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> workerIds = new LinkedHashSet<>();
+        for (WorkerSnapshot worker : workers) {
+            String workerId = worker == null ? null : worker.getWorkerId();
+            if (workerId != null && !workerId.isBlank() && isTransportOnline(workerId)) {
+                workerIds.add(workerId);
+            }
+        }
+        return Set.copyOf(workerIds);
+    }
+
+    private Set<String> resolveLockedWorkerIds(List<WorkerSnapshot> workers) {
+        if (runtimeDiagnostics == null || workers == null || workers.isEmpty()) {
+            return Set.of();
+        }
+        List<String> lockedWorkerIds = runtimeDiagnostics.listLockedWorkerIds();
+        if (lockedWorkerIds == null || lockedWorkerIds.isEmpty()) {
+            return Set.of();
+        }
+        return lockedWorkerIds.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(workerId -> !workerId.isEmpty())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     private boolean hasAvailableBinding(WorkerSnapshot worker,

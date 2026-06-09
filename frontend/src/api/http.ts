@@ -27,6 +27,8 @@ export class ApiError extends Error {
     }
 }
 
+const inFlightGetRequests = new Map<string, Promise<unknown>>()
+
 export async function requestJson<T>(
     input: string,
     init?: ApiRequestInit,
@@ -41,24 +43,52 @@ export async function requestJson<T>(
         includeOperatorAuth,
         apiKeyCredential,
     )
-    const response = await fetch(buildApiUrl(input), {
+    const requestUrl = buildApiUrl(input)
+    const normalizedMethod = normalizeMethod(fetchInit.method)
+    const requestHeaders = {
+        'Content-Type': 'application/json',
+        ...operatorModeHeader(includeOperatorAuth, apiKeyCredential),
+        ...csrfHeader(
+            fetchInit.method,
+            includeOperatorAuth,
+            apiKeyCredential,
+        ),
+        ...apiKeyCredentialHeader(apiKeyCredential),
+        ...(headers ?? {}),
+    }
+    const requestOptions = {
         ...fetchInit,
+        method: normalizedMethod,
         credentials:
             fetchInit.credentials ??
             (attachOperatorSession ? 'same-origin' : 'omit'),
-        headers: {
-            'Content-Type': 'application/json',
-            ...operatorModeHeader(includeOperatorAuth, apiKeyCredential),
-            ...csrfHeader(
-                fetchInit.method,
-                includeOperatorAuth,
-                apiKeyCredential,
-            ),
-            ...apiKeyCredentialHeader(apiKeyCredential),
-            ...(headers ?? {}),
-        },
-    })
+        headers: requestHeaders,
+    }
+    const dedupeKey = getDedupeKey(requestUrl, requestOptions)
+    if (dedupeKey) {
+        const existingRequest = inFlightGetRequests.get(dedupeKey)
+        if (existingRequest) {
+            return existingRequest as Promise<T>
+        }
+    }
 
+    const requestPromise = sendJsonRequest<T>(requestUrl, requestOptions)
+    if (!dedupeKey) {
+        return requestPromise
+    }
+    inFlightGetRequests.set(dedupeKey, requestPromise)
+    try {
+        return await requestPromise
+    } finally {
+        inFlightGetRequests.delete(dedupeKey)
+    }
+}
+
+async function sendJsonRequest<T>(
+    requestUrl: string,
+    requestOptions: RequestInit,
+): Promise<T> {
+    const response = await fetch(requestUrl, requestOptions)
     const payload = await response.json().catch(() => null)
 
     if (!response.ok) {
@@ -154,12 +184,33 @@ function hasApiKeyCredential(credential: string | undefined): boolean {
 }
 
 function isSafeMethod(method: string | undefined): boolean {
-    const normalized = method?.trim().toUpperCase() ?? 'GET'
+    const normalized = normalizeMethod(method)
     return (
         normalized === 'GET' ||
         normalized === 'HEAD' ||
         normalized === 'OPTIONS'
     )
+}
+
+function normalizeMethod(method: string | undefined): string {
+    return method?.trim().toUpperCase() || 'GET'
+}
+
+function getDedupeKey(
+    requestUrl: string,
+    requestOptions: RequestInit,
+): string | null {
+    if (normalizeMethod(requestOptions.method) !== 'GET') {
+        return null
+    }
+    if (requestOptions.body !== undefined) {
+        return null
+    }
+    return JSON.stringify({
+        url: requestUrl,
+        credentials: requestOptions.credentials ?? null,
+        headers: requestOptions.headers ?? {},
+    })
 }
 
 function isApiResponseEnvelope<T>(

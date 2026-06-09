@@ -2,6 +2,8 @@ package com.xa.mass.worker.runtime.admission;
 
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 
+import java.util.List;
+
 /**
  * Runtime admission and occupancy surface for matched workers.
  */
@@ -22,6 +24,8 @@ public interface WorkerAdmissionRuntime {
     void releaseWorkerExclusiveLease(String workerId);
 
     boolean hasWorkerExclusiveLease(String workerId);
+
+    List<String> getExclusiveLeaseWorkerIds();
 
     WorkerLoadSnapshot getWorkerLoad(String workerId);
 

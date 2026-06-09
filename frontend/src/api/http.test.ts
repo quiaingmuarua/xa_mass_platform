@@ -73,6 +73,55 @@ describe('http API helpers', () => {
         } satisfies Partial<ApiError>)
     })
 
+    it('deduplicates identical in-flight GET requests', async () => {
+        let resolveFetch:
+            | ((value: Response | PromiseLike<Response>) => void)
+            | undefined
+        const fetchMock = vi.fn(
+            () =>
+                new Promise<Response>((resolve) => {
+                    resolveFetch = resolve
+                }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const firstRequest = requestApiData('/api/v1/runtime/workers')
+        const secondRequest = requestApiData('/api/v1/runtime/workers')
+
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+
+        resolveFetch?.(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: { items: [], total: 0 },
+            }),
+        )
+
+        await expect(firstRequest).resolves.toEqual({ items: [], total: 0 })
+        await expect(secondRequest).resolves.toEqual({ items: [], total: 0 })
+    })
+
+    it('does not deduplicate mutating requests', async () => {
+        const fetchMock = vi.fn().mockImplementation(() =>
+            Promise.resolve(
+                jsonResponse({
+                    code: 0,
+                    msg: 'ok',
+                    data: { accepted: true },
+                }),
+            ),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        await Promise.all([
+            requestApiData('/api/v1/tasks', { method: 'POST', body: '{}' }),
+            requestApiData('/api/v1/tasks', { method: 'POST', body: '{}' }),
+        ])
+
+        expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
     it('rejects successful responses that are not API envelopes', async () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(null)))
 

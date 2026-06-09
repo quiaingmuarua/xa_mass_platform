@@ -11,9 +11,10 @@ external flows, frontend adapters, and generated API docs still describe the
 same product surface.
 
 This roadmap is separate from local environment readiness. Current local
-readiness is the platform confidence path: clean server startup, admin CLI
-environment initialization, operator credentials, and task/worker API keys.
-This roadmap uses that stable environment to prove API contract health.
+readiness is owned by `LOCAL_READINESS_AND_API_HEALTH_GATE_ROADMAP.md`: clean
+server startup, scenario environment initialization through real server APIs,
+operator credentials, task/worker API keys, and local route timing gates. This
+roadmap uses that stable environment to prove API contract health.
 
 ## Current Code Observations
 
@@ -35,6 +36,9 @@ This roadmap uses that stable environment to prove API contract health.
 - `xa-mass-testing/README.md` documents the platform confidence smoke used as
   the local readiness prerequisite for clean DB, env init, and real task/worker
   API-key preparation.
+- `LOCAL_READINESS_AND_API_HEALTH_GATE_ROADMAP.md` owns local readiness and
+  route timing gates so API contract health does not depend on manual browser
+  inspection.
 
 ## Owner Review
 

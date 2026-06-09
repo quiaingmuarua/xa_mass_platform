@@ -139,7 +139,7 @@ jobs:
       - name: Run proof registry and confidence guard tests
         run: >-
           ./mvnw -q -pl xa-mass-testing -am
-          -Dtest=ProofRegistryClosureGuardTest,WorkerFaultScenarioIndexTest,WorkerFaultReportMetadataTest,PlatformConfidenceProfileMatrixGuardTest,ProofSummaryWorkflowGuardTest,PerfSoakReleaseEvidenceGuardTest
+          -Dtest=ProofRegistryClosureGuardTest,WorkerFaultScenarioIndexTest,WorkerFaultReportMetadataTest,PlatformConfidenceProfileMatrixGuardTest,ProofSummaryWorkflowGuardTest,PerfSoakReleaseEvidenceGuardTest,AuthorizationNoBypassMatrixGuardTest
           -Dsurefire.failIfNoSpecifiedTests=false
           test
       - name: Verify proof credibility guard tests executed real testcases

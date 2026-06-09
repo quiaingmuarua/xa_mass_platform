@@ -92,6 +92,14 @@ UNAUTHENTICATED_OPERATOR_REASON=""
 INVALID_TASK_API_KEY_REASON=""
 INVALID_WORKER_API_KEY_REASON=""
 
+OPERATOR_LOGIN_CHECK="not-run"
+OPERATOR_ENV_INIT_CHECK="not-run"
+OPERATOR_TASK_APPROVE_CHECK="not-run"
+TASK_CREATE_APPEND_CHECK="not-run"
+TASK_READ_RESULT_CHECK="not-run"
+WORKER_REGISTER_POLL_CHECK="not-run"
+WORKER_SUBMIT_RESULT_CHECK="not-run"
+
 json_scalar() {
   local field="$1"
   local file="$2"
@@ -112,6 +120,15 @@ json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
+java_readable_path() {
+  local value="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "${value}"
+  else
+    printf '%s' "${value}"
+  fi
+}
+
 write_summary() {
   local status="$1"
   local category="$2"
@@ -128,23 +145,136 @@ write_summary() {
   "sessionCookieSupported": ${SESSION_COOKIE_SUPPORTED},
   "adminRouteFamilies": ["/api/v1/auth", "/api/v1/control-plane", "/api/v1/api-keys", "/api/v1/tasks/{taskId}/commands"],
   "sdkRouteFamilies": ["/api/v1/tasks", "/worker-api/v1"],
+  "authorizedPositiveChecks": [
+    {
+      "operation": "operator.login",
+      "proofLine": "operator-admin-session",
+      "credentialFamily": "operator-session",
+      "routeFamilies": ["/api/v1/auth"],
+      "authorizationExpectation": "authorized-positive",
+      "wrongRejectionProofClass": "product-api-capability",
+      "status": "${OPERATOR_LOGIN_CHECK}",
+      "claimScope": "valid credential/session must not be wrongly rejected",
+      "sourceProcess": "admin-cli",
+      "sourceArtifact": "${admin_auth_login_log}"
+    },
+    {
+      "operation": "operator.envInit",
+      "proofLine": "operator-admin-session",
+      "credentialFamily": "operator-session",
+      "routeFamilies": ["/api/v1/control-plane", "/api/v1/api-keys"],
+      "authorizationExpectation": "authorized-positive",
+      "wrongRejectionProofClass": "product-api-capability",
+      "status": "${OPERATOR_ENV_INIT_CHECK}",
+      "claimScope": "valid credential/session must not be wrongly rejected",
+      "sourceProcess": "admin-cli",
+      "sourceArtifact": "${admin_env_log}"
+    },
+    {
+      "operation": "operator.taskApprove",
+      "proofLine": "operator-admin-session",
+      "credentialFamily": "operator-session",
+      "routeFamilies": ["/api/v1/tasks/{taskId}/commands"],
+      "authorizationExpectation": "authorized-positive",
+      "wrongRejectionProofClass": "product-api-capability",
+      "status": "${OPERATOR_TASK_APPROVE_CHECK}",
+      "claimScope": "valid credential/session must not be wrongly rejected",
+      "sourceProcess": "admin-cli",
+      "sourceArtifact": "${admin_task_command_log}"
+    },
+    {
+      "operation": "taskProducer.createAndAppendItems",
+      "proofLine": "task-producer-api-key",
+      "credentialFamily": "task-api-key",
+      "routeFamilies": ["/api/v1/tasks"],
+      "authorizationExpectation": "authorized-positive",
+      "wrongRejectionProofClass": "product-api-capability",
+      "status": "${TASK_CREATE_APPEND_CHECK}",
+      "claimScope": "valid credential/session must not be wrongly rejected",
+      "sourceProcess": "scenario-task-launcher",
+      "sourceArtifact": "${task_log}"
+    },
+    {
+      "operation": "taskProducer.readResult",
+      "proofLine": "task-producer-api-key",
+      "credentialFamily": "task-api-key",
+      "routeFamilies": ["/api/v1/tasks"],
+      "authorizationExpectation": "authorized-positive",
+      "wrongRejectionProofClass": "product-api-capability",
+      "status": "${TASK_READ_RESULT_CHECK}",
+      "claimScope": "valid credential/session must not be wrongly rejected",
+      "sourceProcess": "scenario-result-verifier",
+      "sourceArtifact": "${task_verify_log}"
+    },
+    {
+      "operation": "worker.registerAndPoll",
+      "proofLine": "worker-api-key",
+      "credentialFamily": "worker-api-key",
+      "routeFamilies": ["/worker-api/v1"],
+      "authorizationExpectation": "authorized-positive",
+      "wrongRejectionProofClass": "product-api-capability",
+      "status": "${WORKER_REGISTER_POLL_CHECK}",
+      "claimScope": "valid credential/session must not be wrongly rejected",
+      "sourceProcess": "scenario-worker-launcher",
+      "sourceArtifact": "${worker_log}"
+    },
+    {
+      "operation": "worker.submitResult",
+      "proofLine": "worker-api-key",
+      "credentialFamily": "worker-api-key",
+      "routeFamilies": ["/worker-api/v1"],
+      "authorizationExpectation": "authorized-positive",
+      "wrongRejectionProofClass": "product-api-capability",
+      "status": "${WORKER_SUBMIT_RESULT_CHECK}",
+      "claimScope": "valid credential/session must not be wrongly rejected",
+      "sourceProcess": "scenario-worker-launcher",
+      "sourceArtifact": "${worker_log}"
+    }
+  ],
   "credentialChecks": {
     "unauthenticatedOperatorRoute": {
+      "matrixRowId": "unauthenticatedOperatorRoute",
+      "operation": "operator.catalogSyncWithoutSession",
+      "credentialFamily": "none",
+      "routeFamily": "/api/v1/control-plane",
+      "proofLine": "authorization-no-bypass-safety",
+      "claimScope": "representative missing-session fail-closed check",
       "status": "${UNAUTHENTICATED_OPERATOR_CHECK}",
       "httpStatus": ${UNAUTHENTICATED_OPERATOR_HTTP_STATUS},
+      "expectedHttpStatus": 401,
       "code": ${UNAUTHENTICATED_OPERATOR_CODE},
+      "expectedCode": 401,
+      "expectedReason": "Authentication is required",
       "failureReason": "$(json_escape "${UNAUTHENTICATED_OPERATOR_REASON}")"
     },
     "invalidTaskApiKey": {
+      "matrixRowId": "invalidTaskApiKey",
+      "operation": "taskProducer.listTasksWithInvalidApiKey",
+      "credentialFamily": "task-api-key",
+      "routeFamily": "/api/v1/tasks",
+      "proofLine": "authorization-no-bypass-safety",
+      "claimScope": "representative task credential fail-closed check",
       "status": "${INVALID_TASK_API_KEY_CHECK}",
       "httpStatus": ${INVALID_TASK_API_KEY_HTTP_STATUS},
+      "expectedHttpStatus": 401,
       "code": ${INVALID_TASK_API_KEY_CODE},
+      "expectedCode": 401,
+      "expectedReason": "Invalid or missing API-key credential",
       "failureReason": "$(json_escape "${INVALID_TASK_API_KEY_REASON}")"
     },
     "invalidWorkerApiKey": {
+      "matrixRowId": "invalidWorkerApiKey",
+      "operation": "worker.pollWithInvalidApiKey",
+      "credentialFamily": "worker-api-key",
+      "routeFamily": "/worker-api/v1",
+      "proofLine": "authorization-no-bypass-safety",
+      "claimScope": "representative worker credential fail-closed check",
       "status": "${INVALID_WORKER_API_KEY_CHECK}",
       "httpStatus": ${INVALID_WORKER_API_KEY_HTTP_STATUS},
+      "expectedHttpStatus": 401,
       "code": ${INVALID_WORKER_API_KEY_CODE},
+      "expectedCode": 401,
+      "expectedReason": "Invalid or missing worker credential",
       "failureReason": "$(json_escape "${INVALID_WORKER_API_KEY_REASON}")"
     }
   },
@@ -228,6 +358,12 @@ RULES_MANIFEST="${REPO_ROOT}/integrations/samples/dev/scenario/rules.json"
 TASK_KEY_FILE="${RUN_DIR}/secrets/task-api-key.txt"
 MARKER_FILE="${RUN_DIR}/state/env-init.json"
 
+WORKER_SPEC_FOR_JAVA="$(java_readable_path "${WORKER_SPEC}")"
+CATALOG_MANIFEST_FOR_JAVA="$(java_readable_path "${CATALOG_MANIFEST}")"
+RULES_MANIFEST_FOR_JAVA="$(java_readable_path "${RULES_MANIFEST}")"
+TASK_KEY_FILE_FOR_JAVA="$(java_readable_path "${TASK_KEY_FILE}")"
+MARKER_FILE_FOR_JAVA="$(java_readable_path "${MARKER_FILE}")"
+
 for required_file in "${SERVER_JAR}" "${ADMIN_JAR}" "${WORKER_JAR}" "${TASK_JAR}" "${TASK_CONFIG}" "${WORKER_SPEC}" "${CATALOG_MANIFEST}" "${RULES_MANIFEST}"; do
   if [[ ! -f "${required_file}" ]]; then
     echo "required artifact not found: ${required_file}" >&2
@@ -250,21 +386,21 @@ cat >"${ADMIN_CONFIG}" <<EOF
   },
   "environment": {
     "mode": "apply",
-    "catalogManifest": "${CATALOG_MANIFEST}",
-    "rulesManifest": "${RULES_MANIFEST}"
+    "catalogManifest": "${CATALOG_MANIFEST_FOR_JAVA}",
+    "rulesManifest": "${RULES_MANIFEST_FOR_JAVA}"
   },
   "credentials": {
     "taskCredential": {
-      "apiKeyFile": "${TASK_KEY_FILE}",
+      "apiKeyFile": "${TASK_KEY_FILE_FOR_JAVA}",
       "principalId": "scenario-task-producer",
       "createdForUserId": "${OPERATOR_USER}",
       "permissions": ["task:create", "task:edit", "task:view"],
       "projectScopes": ["crawlerApp"],
       "eventScopes": ["crawler.fetch-page"],
-      "rawSecretFile": "${TASK_KEY_FILE}"
+      "rawSecretFile": "${TASK_KEY_FILE_FOR_JAVA}"
     },
     "workerCredentials": {
-      "workerSpecFile": "${WORKER_SPEC}",
+      "workerSpecFile": "${WORKER_SPEC_FOR_JAVA}",
       "principalIdTemplate": "scenario-worker-\${workerId}",
       "createdForUserId": "${OPERATOR_USER}",
       "permissions": ["worker:poll"],
@@ -277,7 +413,7 @@ cat >"${ADMIN_CONFIG}" <<EOF
   },
   "state": {
     "mode": "file",
-    "markerFile": "${MARKER_FILE}"
+    "markerFile": "${MARKER_FILE_FOR_JAVA}"
   },
   "verify": {
     "requiredProjects": ["crawlerApp"],
@@ -363,9 +499,11 @@ java -jar "${ADMIN_JAR}" auth login \
   --operator-user "${OPERATOR_USER}" \
   --operator-password "${MASS_OPERATOR_PASSWORD}" \
   >"${admin_auth_login_log}" 2>&1
+OPERATOR_LOGIN_CHECK="passed"
 
 CURRENT_STEP="admin-env-init"
 java -jar "${ADMIN_JAR}" env init --config "${ADMIN_CONFIG}" >"${admin_env_log}" 2>&1
+OPERATOR_ENV_INIT_CHECK="passed"
 if [[ ! -s "${TASK_KEY_FILE}" ]]; then
   echo "task API-key file was not created: ${TASK_KEY_FILE}" >&2
   exit 1
@@ -480,6 +618,7 @@ until grep -q "running workerSessions=1" "${worker_log}" 2>/dev/null; do
   fi
   sleep 1
 done
+WORKER_REGISTER_POLL_CHECK="passed"
 
 CURRENT_STEP="task-launcher"
 MASS_TASK_API_KEY="${MASS_TASK_API_KEY}" java -jar "${TASK_JAR}" \
@@ -492,6 +631,7 @@ if [[ -z "${TASK_ID}" ]]; then
   echo "task launcher did not report a taskId" >&2
   exit 1
 fi
+TASK_CREATE_APPEND_CHECK="passed"
 
 CURRENT_STEP="operator-task-command"
 java -jar "${ADMIN_JAR}" task command \
@@ -501,6 +641,7 @@ java -jar "${ADMIN_JAR}" task command \
   --task-id "${TASK_ID}" \
   --command APPROVE \
   >"${admin_task_command_log}" 2>&1
+OPERATOR_TASK_APPROVE_CHECK="passed"
 
 CURRENT_STEP="task-result-verify"
 MASS_TASK_API_KEY="${MASS_TASK_API_KEY}" java -cp "${TASK_JAR}" \
@@ -516,6 +657,8 @@ if ! grep -q "visible success taskId=" "${task_verify_log}"; then
   echo "task result verifier did not report visible success" >&2
   exit 1
 fi
+TASK_READ_RESULT_CHECK="passed"
+WORKER_SUBMIT_RESULT_CHECK="passed"
 
 write_summary "passed" "none" "platform confidence smoke passed"
 echo "PASSED profile=${PROFILE} runDir=${RUN_DIR}"

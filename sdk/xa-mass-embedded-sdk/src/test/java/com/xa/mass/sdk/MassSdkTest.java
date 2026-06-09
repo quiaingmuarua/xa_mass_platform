@@ -3336,6 +3336,7 @@ class MassSdkTest {
                 () -> app.getWorker("worker-1"),
                 app::getAllWorkers,
                 () -> runtimeDiagnostics(app).isWorkerLocked("worker-1"),
+                () -> runtimeDiagnostics(app).listLockedWorkerIds(),
                 () -> app.isWorkerOnline("worker-1"),
                 () -> app.declareWorkerGroup(WorkerGroupDeclaration.builder().groupId("group-1").build()),
                 () -> app.registerWorker(WorkerRegistration.builder().workerId("worker-1").build()),

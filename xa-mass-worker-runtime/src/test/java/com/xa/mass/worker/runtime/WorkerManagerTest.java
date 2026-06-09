@@ -936,9 +936,11 @@ public class WorkerManagerTest {
         addWorker(worker("w6", "us"));
         assertTrue(manager.tryAcquireWorkerExclusiveLease("w6"));
         assertTrue(manager.hasWorkerExclusiveLease("w6"));
+        assertEquals(List.of("w6"), manager.getExclusiveLeaseWorkerIds());
 
         manager.releaseWorkerExclusiveLease("w6");
         assertFalse(manager.hasWorkerExclusiveLease("w6"));
+        assertTrue(manager.getExclusiveLeaseWorkerIds().isEmpty());
     }
 
     @Test

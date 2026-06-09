@@ -31,6 +31,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -96,7 +97,7 @@ class WorkerApiControllerTest {
 
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
         when(workerQueries.isWorkerOnline("worker-001")).thenReturn(true);
-        when(runtimeDiagnostics.isWorkerLocked("worker-001")).thenReturn(true);
+        when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of("worker-001"));
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-001",
                 "connections", List.of(Map.of(
@@ -139,6 +140,7 @@ class WorkerApiControllerTest {
         WorkerSnapshot worker2 = workerSnapshot("worker-002");
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker1, worker2));
         when(workerQueries.isWorkerOnline("worker-001")).thenReturn(true);
+        when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of());
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of());
 
         mockMvc.perform(get("/api/v1/runtime/workers").param("limit", "1"))
@@ -147,6 +149,8 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.limit").value(1))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].workerId").value("worker-001"));
+        verify(workerQueries, times(1)).isWorkerOnline("worker-001");
+        verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
     }
 
     @Test

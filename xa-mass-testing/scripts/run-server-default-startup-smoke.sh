@@ -28,9 +28,11 @@ LOG_FAILURE_SCAN="not-run"
 DEFAULT_PROFILE_LOG_OBSERVED="false"
 SQLITE_RESTART_REUSED="false"
 REDIS_NAMESPACE_MODE="default"
+PORT_PRECHECK="not-run"
 
 mkdir -p "${RUN_DIR}/logs" "${WORK_DIR}"
 
+port_precheck_log="${RUN_DIR}/logs/port-precheck-health.json"
 first_server_log="${RUN_DIR}/logs/server-first.log"
 second_server_log="${RUN_DIR}/logs/server-second.log"
 first_auth_config_log="${RUN_DIR}/logs/auth-config-first.log"
@@ -47,6 +49,8 @@ write_summary() {
   "status": "${status}",
   "category": "${category}",
   "message": "${message}",
+  "baseUrl": "${BASE_URL}",
+  "portPrecheck": "${PORT_PRECHECK}",
   "defaultProfile": "durable-local",
   "defaultProfileLogObserved": ${DEFAULT_PROFILE_LOG_OBSERVED},
   "workDir": "${WORK_DIR}",
@@ -59,8 +63,47 @@ write_summary() {
   "sameSqliteRestart": ${SQLITE_RESTART_REUSED},
   "redisNamespaceMode": "${REDIS_NAMESPACE_MODE}",
   "logFailureScan": "${LOG_FAILURE_SCAN}",
+  "authorizedPositiveChecks": [
+    {
+      "operation": "server.health",
+      "proofLine": "operator-admin-session",
+      "credentialFamily": "operator-session",
+      "routeFamilies": ["/actuator/health"],
+      "authorizationExpectation": "authorized-positive",
+      "wrongRejectionProofClass": "product-api-capability",
+      "status": "${FIRST_HEALTH}",
+      "claimScope": "valid credential/session must not be wrongly rejected",
+      "sourceProcess": "curl",
+      "sourceArtifact": "${first_server_log}"
+    },
+    {
+      "operation": "operator.login",
+      "proofLine": "operator-admin-session",
+      "credentialFamily": "operator-session",
+      "routeFamilies": ["/api/v1/auth"],
+      "authorizationExpectation": "authorized-positive",
+      "wrongRejectionProofClass": "product-api-capability",
+      "status": "${FIRST_OPERATOR_LOGIN}",
+      "claimScope": "valid credential/session must not be wrongly rejected",
+      "sourceProcess": "admin-cli",
+      "sourceArtifact": "${first_auth_login_log}"
+    },
+    {
+      "operation": "operator.loginAfterRestart",
+      "proofLine": "operator-admin-session",
+      "credentialFamily": "operator-session",
+      "routeFamilies": ["/api/v1/auth"],
+      "authorizationExpectation": "authorized-positive",
+      "wrongRejectionProofClass": "product-api-capability",
+      "status": "${SECOND_OPERATOR_LOGIN}",
+      "claimScope": "valid credential/session must not be wrongly rejected",
+      "sourceProcess": "admin-cli",
+      "sourceArtifact": "${second_auth_login_log}"
+    }
+  ],
   "firstServerLog": "${first_server_log}",
   "secondServerLog": "${second_server_log}",
+  "portPrecheckLog": "${port_precheck_log}",
   "firstAuthConfigLog": "${first_auth_config_log}",
   "secondAuthConfigLog": "${second_auth_config_log}",
   "firstAuthLoginLog": "${first_auth_login_log}",
@@ -101,10 +144,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if curl -fsS "${BASE_URL}/actuator/health" >/dev/null 2>&1; then
+CURRENT_STEP="port-precheck"
+if curl -fsS "${BASE_URL}/actuator/health" >"${port_precheck_log}" 2>&1; then
+  PORT_PRECHECK="occupied"
+  write_summary "blocked" "${CURRENT_STEP}" "default startup port is already serving health"
   echo "default startup port is already serving health: ${BASE_URL}" >&2
+  trap - EXIT
   exit 2
 fi
+PORT_PRECHECK="passed"
 
 CURRENT_STEP="package"
 if [[ "${MASS_DEFAULT_STARTUP_SKIP_PACKAGE:-false}" != "true" ]]; then

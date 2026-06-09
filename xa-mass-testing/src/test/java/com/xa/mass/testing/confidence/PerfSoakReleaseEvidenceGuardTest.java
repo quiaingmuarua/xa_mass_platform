@@ -37,8 +37,14 @@ class PerfSoakReleaseEvidenceGuardTest {
         Map<?, ?> workflowPolicy = map(evidence.get("workflowPolicy"));
         assertEquals(Boolean.FALSE, workflowPolicy.get("prGate"),
                 "perf/soak release evidence must stay scheduled/manual until thresholds are calibrated");
+        assertEquals("xa-mass-testing", workflowPolicy.get("owner"));
+        assertEquals("not-pr-gate-until-promoted", workflowPolicy.get("gateEligibility"));
         assertNotNull(workflowPolicy.get("comparisonTarget"));
         assertNotNull(workflowPolicy.get("thresholdPolicy"));
+        assertFalse(list(workflowPolicy.get("promotionCriteria")).isEmpty(),
+                "release evidence policy must name promotion criteria before any PR-gate promotion");
+        assertFalse(list(workflowPolicy.get("demotionTriggers")).isEmpty(),
+                "release evidence policy must name demotion triggers");
 
         List<?> scenarios = list(evidence.get("stableScenarios"));
         assertEquals(Set.of(
@@ -55,6 +61,10 @@ class PerfSoakReleaseEvidenceGuardTest {
             assertTrue(ledgerRow.proofLineOwner() == WorkerFaultScenarioIndex.ProofLineOwner.PERF_SMOKE
                             || ledgerRow.proofLineOwner() == WorkerFaultScenarioIndex.ProofLineOwner.POLLING_SOAK,
                     scenarioId + " must be perf or soak release evidence");
+            assertEquals("xa-mass-testing", scenario.get("owner"),
+                    scenarioId + " must name the release-evidence owner");
+            assertEquals("scheduled/manual-only", scenario.get("gateEligibility"),
+                    scenarioId + " must not silently become a PR gate");
             assertFalse(list(scenario.get("thresholdSignals")).isEmpty(),
                     scenarioId + " must name hard threshold signals");
             assertFalse(list(scenario.get("trendSignals")).isEmpty(),
@@ -84,6 +94,9 @@ class PerfSoakReleaseEvidenceGuardTest {
                 "releaseEvidenceReports",
                 "thresholdSignals",
                 "trendSignals",
+                "gateEligibility",
+                "promotionCriteria",
+                "demotionTriggers",
                 "comparisonTarget")) {
             assertTrue(writer.contains(token), "proof summary writer must keep token: " + token);
         }

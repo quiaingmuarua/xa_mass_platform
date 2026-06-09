@@ -139,6 +139,18 @@ first-layer capability failure. `authorization-no-bypass-safety` owns the
 opposite question: wrong credential, wrong scope, wrong route family, missing
 CSRF, fixture/dev header, or impersonation must fail closed.
 
+Proof summary counts use `evidenceRole`, not only `proofClass` or `proofLines`.
+Only executed proof roles (`runtime-proof`, `deterministic-proof`,
+`integrated-proof`) may increase `proofClassCounts` and `proofLineCounts`.
+`source-guard`, `schema-guard`, and `release-policy-guard` evidence protects
+the proof system but does not execute the named scenario; it must count under
+guard-specific totals. `artifact-metadata` keeps incomplete or downgraded
+reports visible without inflating proof counts.
+Operation-level `authorizedPositiveChecks` and `credentialChecks` totals count
+only checks that actually executed with `passed` or `failed` status; `not-run`
+or `not-confirmed` checks remain visible in the artifact but do not increase
+operation proof counts.
+
 Core proof priority inside those classes:
 
 1. `Scheduling Correctness`: policy and safety proof for worker selection,

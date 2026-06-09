@@ -34,7 +34,8 @@ public interface WorkerPresenceStore extends WorkerDispatchRouteOwnerView {
     WorkerPresence getPresence(String workerId);
 
     default boolean isWorkerOnline(String workerId) {
-        return hasOnlineOwner(workerId);
+        WorkerPresence presence = getPresence(workerId);
+        return presence != null && presence.isLeaseActive(System.currentTimeMillis());
     }
 
     boolean isRouteOnline(String adapterId, String routeKey);

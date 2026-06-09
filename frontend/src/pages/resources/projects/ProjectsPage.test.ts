@@ -51,7 +51,7 @@ describe('ProjectsPage', () => {
         expect(wrapper.text()).toContain('publicProbe')
         expect(wrapper.text()).toContain('deviceProbe')
         expect(wrapper.text()).toContain('WorkerGroups')
-        expect(wrapper.text()).toContain('Scoped principals')
+        expect(wrapper.text()).toContain('Online capacity')
 
         const openDetailButton = wrapper
             .findAll('button')
