@@ -1,6 +1,15 @@
 # Scenario Environment External Initialization Roadmap
 
-Status: proposed roadmap.
+Status: superseded by `PLATFORM_CONFIDENCE_GATE_ROADMAP.md` and
+`ADMIN_ENV_INIT_STATE_MODEL_ROADMAP.md`.
+
+Supersession note:
+
+- Do not implement `ScenarioEnvironmentInitializerMain` from this roadmap.
+- Environment initialization owner is now `tools/xa-mass-admin-cli env init`.
+- Scenario launcher keeps only task-producer and worker-process roles.
+- Keep this document only as historical background until it is archived during
+  PCG residue cleanup.
 
 ## Summary
 

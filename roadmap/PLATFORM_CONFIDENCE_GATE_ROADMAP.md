@@ -232,6 +232,18 @@ Scope:
   - either explicit command-line overrides for session auth, or
   - a dedicated memory-local confidence profile
   - no `dev-header` in the confidence lane
+  - operator credential seed/import source is explicit
+  - fixture-header auth is disabled
+  - admin CLI `auth login` succeeds before `env init`
+- Decide worker launcher orchestration:
+  - background process start
+  - PID capture
+  - ready signal or bounded log/probe wait
+  - timeout
+  - cleanup on success and failure
+- Decide active roadmap ownership:
+  - mark `SCENARIO_ENVIRONMENT_EXTERNAL_INITIALIZATION_ROADMAP.md` as
+    superseded by PCG/admin CLI, or archive it before implementation starts
 - Decide exact output files:
   - server log
   - admin CLI log
@@ -253,8 +265,14 @@ Acceptance:
   `tools/xa-mass-admin-cli`.
 - Inventory records the exact session-auth startup command for memory-local
   confidence proof.
+- Inventory records the exact operator credential seed/import source used by
+  the memory-local confidence command.
+- Inventory records that worker launcher orchestration includes PID capture,
+  readiness wait, timeout, log capture, and cleanup.
 - Inventory records that PCG supersedes the SEI initializer owner; scenario
   launcher keeps only task/worker process roles.
+- Active roadmap index or SEI roadmap status no longer presents
+  `ScenarioEnvironmentInitializerMain` as a valid future owner.
 - No implementation relies on script-level business HTTP calls.
 - No behavior changes are required in this slice.
 
@@ -336,8 +354,10 @@ Verification:
 ./mvnw -q -pl tools/xa-mass-admin-cli -am test
 rg -n "xa-mass-java-sdk|MassPlatform|TaskClient|WorkerClient" tools/xa-mass-admin-cli pom.xml
 rg -n "auth/login|api-keys" sdk/xa-mass-java-sdk/src/main/java
-test ! -d sdk/xa-mass-http-client-core
 ```
+
+The absence of `sdk/xa-mass-http-client-core` should be guarded by a
+cross-platform source test, not a shell-only assertion.
 
 ## PCG-2A Catalog/Rule Operator Write API Confirmation
 
@@ -375,7 +395,7 @@ Acceptance:
 Verification:
 
 ```bash
-./mvnw -q -pl xa-mass-server -am "-Dtest=*Catalog*Api*Test,*Rule*Api*Test,*ApiAuth*Test" "-Dsurefire.failIfNoSpecifiedTests=false" test
+./mvnw -q -pl xa-mass-server -am "-Dtest=CatalogControllerTest,RuleApiControllerTest,ControlPlaneInitializationControllerTest,ApiAuthInterceptorTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 rg -n "PostMapping|PutMapping|PatchMapping|catalog|rules|rule:edit|catalog:edit" xa-mass-server/src/main/java xa-mass-server/src/test/java -g "*.java"
 ```
 
@@ -451,9 +471,16 @@ xa-mass-testing/scripts/run-platform-confidence-smoke.sh
   - package server/admin/scenario artifacts
   - start server jar with `memory-local` plus explicit no-bypass operator auth
     overrides, or with a dedicated no-bypass memory confidence profile
+  - ensure minimal operator credential seed/import is enabled and points to the
+    intended credential source
+  - ensure fixture-header auth is disabled
   - wait for `/actuator/health`
+  - run admin CLI `auth config` and `auth login` before `env init`
   - invoke admin CLI `env init`
-  - start scenario worker launcher
+  - start scenario worker launcher as a background process
+  - capture worker launcher PID
+  - wait for worker registration/session readiness through a bounded ready
+    signal, log marker, or SDK/admin verification command
   - invoke scenario task launcher
   - wait for visible task result through SDK/admin verification command
   - stop processes
@@ -468,8 +495,13 @@ Acceptance:
 
 - A real packaged server process starts in `memory-local`.
 - `/api/v1/auth/config` reports session auth, not dev-header.
+- Operator credential readiness is explicit: admin CLI `auth login` succeeds
+  before `env init`.
+- The memory-local confidence command disables fixture-header auth.
 - Admin CLI prepares catalog/rules/API keys through real HTTP.
 - Scenario worker launcher registers and runs one worker.
+- Worker launcher is backgrounded with PID capture, bounded readiness wait,
+  timeout, log capture, and guaranteed cleanup.
 - Scenario task launcher creates and appends work.
 - At least one task reaches visible success result.
 - Failure artifacts include categorized logs.
