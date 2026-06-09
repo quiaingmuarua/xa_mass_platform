@@ -61,6 +61,26 @@ class ScenarioLauncherOptionsTest {
     }
 
     @Test
+    void taskApiKeyOverrideDoesNotRequireConfiguredSecretFile() throws Exception {
+        Path config = tempDir.resolve("scenario.json");
+        Files.writeString(config, """
+                {
+                  "credentials": {
+                    "taskApiKeyFile": "./secrets/missing-task-key.txt"
+                  },
+                  "tasks": []
+                }
+                """, StandardCharsets.UTF_8);
+
+        ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
+                "--config", config.toString(),
+                "--task-api-key", "task-key-from-cli"
+        });
+
+        assertEquals("task-key-from-cli", options.taskApiKey());
+    }
+
+    @Test
     void readsWorkerApiKeyFromExplicitFile() throws Exception {
         Path workerKeyFile = tempDir.resolve("worker-api-key.txt");
         Files.writeString(workerKeyFile, "worker-key-from-file\n", StandardCharsets.UTF_8);

@@ -128,13 +128,7 @@ record ScenarioLauncherOptions(
                 System.getenv("MASS_WEBSOCKET_URL"),
                 null
         ), "webSocketUrl");
-        String taskApiKey = firstNonBlank(
-                cliTaskApiKey,
-                System.getenv("MASS_TASK_API_KEY"),
-                taskApiKeyFromConfig(loadedConfig, credentialsConfig),
-                taskApiKeyFromDefaultFile(),
-                DEFAULT_TASK_API_KEY
-        );
+        String taskApiKey = resolveTaskApiKey(cliTaskApiKey, loadedConfig, credentialsConfig);
         String workerApiKey = firstNonBlank(
                 cliWorkerApiKey,
                 System.getenv("MASS_WORKER_API_KEY"),
@@ -257,6 +251,20 @@ record ScenarioLauncherOptions(
         } catch (java.io.IOException e) {
             throw new IllegalArgumentException("failed to read config file: " + configPath, e);
         }
+    }
+
+    private static String resolveTaskApiKey(String cliTaskApiKey,
+                                            ScenarioLauncherConfig.Loaded loadedConfig,
+                                            ScenarioLauncherConfig.CredentialsConfig credentialsConfig) {
+        String override = firstNonBlank(cliTaskApiKey, System.getenv("MASS_TASK_API_KEY"));
+        if (override != null) {
+            return override;
+        }
+        String configured = taskApiKeyFromConfig(loadedConfig, credentialsConfig);
+        if (configured != null) {
+            return configured;
+        }
+        return firstNonBlank(taskApiKeyFromDefaultFile(), DEFAULT_TASK_API_KEY);
     }
 
     private static String taskApiKeyFromConfig(ScenarioLauncherConfig.Loaded loadedConfig,
