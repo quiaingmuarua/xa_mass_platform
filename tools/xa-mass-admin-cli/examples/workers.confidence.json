@@ -4,8 +4,9 @@
     "workerKey": "confidence-worker-001-key",
     "workerGroupId": "sample-websocket-crawler",
     "adapterNodeId": "sample-websocket-node",
-    "adapterId": "websocket",
-    "transportHint": "realtime",
+    "adapterId": "polling",
+    "transportHint": "polling",
+    "startMode": "api-online",
     "attributes": {
       "lang": "java-admin-cli-fixture",
       "runtime": "confidence-worker",

@@ -15,6 +15,8 @@ record ScenarioLauncherOptions(
         Duration connectTimeout,
         Duration requestTimeout,
         int maxPollingWorkers,
+        boolean waitVisibleSuccess,
+        Duration resultWaitTimeout,
         boolean help
 ) {
     private static final String DEFAULT_BASE_URL = "http://127.0.0.1:8088";
@@ -25,6 +27,7 @@ record ScenarioLauncherOptions(
     private static final int DEFAULT_MAX_POLLING_WORKERS = 25;
     private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration DEFAULT_RESULT_WAIT_TIMEOUT = Duration.ofSeconds(60);
 
     static ScenarioLauncherOptions parse(String[] args) {
         return parseTask(args);
@@ -47,6 +50,8 @@ record ScenarioLauncherOptions(
         Path cliScenarioDir = null;
         Path configPath = null;
         Integer cliMaxPollingWorkers = null;
+        boolean waitVisibleSuccess = false;
+        Integer resultWaitTimeoutSeconds = null;
         boolean help = false;
 
         for (int index = 0; index < args.length; index++) {
@@ -93,6 +98,15 @@ record ScenarioLauncherOptions(
                 index++;
             } else if (arg.startsWith("--max-polling-workers=")) {
                 cliMaxPollingWorkers = parseInt(arg.substring("--max-polling-workers=".length()), "--max-polling-workers");
+            } else if ("--wait-visible-success".equals(arg)) {
+                waitVisibleSuccess = true;
+            } else if ("--result-wait-timeout-seconds".equals(arg)) {
+                resultWaitTimeoutSeconds = parseInt(requiredArg(args, index, arg), arg);
+                index++;
+            } else if (arg.startsWith("--result-wait-timeout-seconds=")) {
+                resultWaitTimeoutSeconds = parseInt(
+                        arg.substring("--result-wait-timeout-seconds=".length()),
+                        "--result-wait-timeout-seconds");
             } else {
                 throw new IllegalArgumentException("unknown argument: " + arg);
             }
@@ -141,6 +155,11 @@ record ScenarioLauncherOptions(
                 DEFAULT_REQUEST_TIMEOUT,
                 "server.requestTimeoutSeconds"
         );
+        Duration resultWaitTimeout = durationFromSeconds(
+                resultWaitTimeoutSeconds,
+                DEFAULT_RESULT_WAIT_TIMEOUT,
+                "--result-wait-timeout-seconds"
+        );
 
         if (maxPollingWorkers < 0) {
             throw new IllegalArgumentException("maxPollingWorkers must be >= 0");
@@ -155,6 +174,8 @@ record ScenarioLauncherOptions(
                 connectTimeout,
                 requestTimeout,
                 maxPollingWorkers,
+                waitVisibleSuccess,
+                resultWaitTimeout,
                 help
         );
     }
@@ -195,6 +216,9 @@ record ScenarioLauncherOptions(
                   --worker-api-key-file <path> Optional explicit worker API key override file
                   --scenario-dir <path>        Scenario JSON directory. Default: integrations/samples/dev/scenario
                   --max-polling-workers <n>    Max polling workers to start in worker launcher. Default: 25. Use 0 for no cap.
+                  --wait-visible-success       Task launcher waits until each created task has at least one visible SUCCESS result.
+                  --result-wait-timeout-seconds <n>
+                                                Timeout for --wait-visible-success. Default: 60.
                   -h, --help                   Show this help.
                 """;
     }

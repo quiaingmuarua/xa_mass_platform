@@ -58,6 +58,19 @@ java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-task-la
   --config integrations/xa-mass-scenario-launcher/examples/scenario.local.example.json
 ```
 
+For packaged confidence runs, prefer the testing script because it keeps actor
+roles separated: the task launcher creates and appends work, `xa-mass-admin
+task command` performs the operator-only `APPROVE`, and the Java SDK verifier
+waits for result readback:
+
+```bash
+MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile memory-local
+```
+
+The task launcher still supports `--wait-visible-success` for already-approved
+or externally controlled tasks, but it deliberately does not send task
+`/commands` requests with task API-key credentials.
+
 The default worker launcher uses each `workers.json` entry's `workerKey`.
 Those keys are registered by the initializer with matching `workerId`
 bindings:

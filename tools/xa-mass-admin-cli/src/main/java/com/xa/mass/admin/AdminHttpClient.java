@@ -7,9 +7,11 @@ import java.io.IOException;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -125,6 +127,13 @@ final class AdminHttpClient {
                 "revoke API key " + keyId);
     }
 
+    JsonNode executeTaskCommand(String taskId, String command) {
+        return postData("/api/v1/tasks/" + encodePathSegment(taskId) + "/commands",
+                Map.of("command", command),
+                true,
+                "execute task command " + command + " for task " + taskId);
+    }
+
     private JsonNode getData(String path, String description) {
         return sendApiResponse(baseRequest(path).GET().build(), description);
     }
@@ -195,6 +204,11 @@ final class AdminHttpClient {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
         return normalized;
+    }
+
+    private static String encodePathSegment(String value) {
+        return URLEncoder.encode(AdminEnvConfig.required(value, "path segment"), StandardCharsets.UTF_8)
+                .replace("+", "%20");
     }
 }
 

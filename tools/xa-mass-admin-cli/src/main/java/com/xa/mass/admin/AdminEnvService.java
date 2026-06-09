@@ -157,7 +157,7 @@ final class AdminEnvService {
         }
         JsonNode data = client.getRules();
         JsonNode items = data.path("items");
-        Set<String> existing = valuesByField(items.isMissingNode() ? data : items, "id");
+        Set<String> existing = valuesByAnyField(items.isMissingNode() ? data : items, "id", "ruleId");
         for (String rule : requiredRules) {
             if (!existing.contains(rule)) {
                 throw new EnvInitFailure("rule", "missing required rule: " + rule);
@@ -239,6 +239,21 @@ final class AdminEnvService {
                 String value = item.path(field).asText("");
                 if (!value.isBlank()) {
                     values.add(value);
+                }
+            });
+        }
+        return values;
+    }
+
+    private Set<String> valuesByAnyField(JsonNode node, String... fields) {
+        Set<String> values = new LinkedHashSet<>();
+        if (node != null && node.isArray()) {
+            node.forEach(item -> {
+                for (String field : fields) {
+                    String value = item.path(field).asText("");
+                    if (!value.isBlank()) {
+                        values.add(value);
+                    }
                 }
             });
         }

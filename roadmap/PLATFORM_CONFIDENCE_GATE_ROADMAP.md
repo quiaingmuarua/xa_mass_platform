@@ -1,6 +1,7 @@
 # Platform Confidence Gate Roadmap
 
-Status: proposed roadmap; revised after the admin env-init baseline landed.
+Status: implemented mainline confidence gate; keep as a completion record until
+post-CI residue review decides whether to archive it.
 
 Current implementation baseline:
 
@@ -8,8 +9,8 @@ Current implementation baseline:
 - `xa-mass-admin env verify/init --config <file>` exists and is the preferred
   environment preparation path.
 - `ScenarioCredentialBootstrapMain` is transitional residue only.
-- The next implementation work should start from the real-process confidence
-  lane, not from recreating admin CLI or env-init.
+- The real-process confidence lane exists under
+  `xa-mass-testing/scripts/run-platform-confidence-smoke.sh`.
 
 ## Summary
 
@@ -26,8 +27,9 @@ package server jar
   -> wait for health
   -> run server-owned admin CLI over real HTTP
   -> prepare catalog/rules/API keys
-  -> run Java SDK task launcher
   -> run Java SDK worker launcher
+  -> run Java SDK task launcher
+  -> run operator task APPROVE through admin CLI
   -> observe at least one visible result
   -> collect categorized logs on failure
 ```
@@ -62,6 +64,7 @@ duplication justifies extraction.
   - `auth config`
   - `auth login`
   - `api-key current`
+  - `task command`
   - `env verify`
   - `env init`
 - `tools/xa-mass-admin-cli/examples/admin-env.local.json` is the first small
@@ -136,7 +139,8 @@ script
   -> admin CLI env init
   -> scenario worker launcher
   -> scenario task launcher
-  -> admin CLI or SDK result verify
+  -> admin CLI operator task command
+  -> SDK result verify
   -> stop server and collect logs
 ```
 
@@ -482,6 +486,7 @@ xa-mass-testing/scripts/run-platform-confidence-smoke.sh
   - wait for worker registration/session readiness through a bounded ready
     signal, log marker, or SDK/admin verification command
   - invoke scenario task launcher
+  - invoke admin CLI `task command --command APPROVE` for the created task
   - wait for visible task result through SDK/admin verification command
   - stop processes
   - collect logs

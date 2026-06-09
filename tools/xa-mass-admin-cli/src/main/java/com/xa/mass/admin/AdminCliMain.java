@@ -20,6 +20,7 @@ public final class AdminCliMain {
             case "health" -> health(commandArgs(args), objectMapper);
             case "auth" -> auth(commandArgs(args), objectMapper);
             case "api-key" -> apiKey(commandArgs(args), objectMapper);
+            case "task" -> task(commandArgs(args), objectMapper);
             case "env" -> env(commandArgs(args), objectMapper);
             default -> throw new IllegalArgumentException("unknown command: " + args[0]);
         }
@@ -92,6 +93,37 @@ public final class AdminCliMain {
         )));
     }
 
+    private static void task(String[] args, ObjectMapper objectMapper) throws Exception {
+        if (args.length == 0 || !"command".equals(args[0])) {
+            throw new IllegalArgumentException("supported task subcommand: command");
+        }
+        String[] commandArgs = commandArgs(args);
+        BaseOptions options = BaseOptions.parse(commandArgs);
+        String user = option(commandArgs, "--operator-user", "ops-admin");
+        String password = option(commandArgs, "--operator-password", null);
+        String taskId = option(commandArgs, "--task-id", null);
+        String command = option(commandArgs, "--command", null);
+        if (password == null || password.isBlank()) {
+            throw new IllegalArgumentException("--operator-password is required");
+        }
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("--task-id is required");
+        }
+        if (command == null || command.isBlank()) {
+            throw new IllegalArgumentException("--command is required");
+        }
+        AdminHttpClient client = new AdminHttpClient(
+                options.baseUrl(),
+                java.time.Duration.ofSeconds(5),
+                java.time.Duration.ofSeconds(30),
+                objectMapper
+        );
+        client.authConfig();
+        client.login(user, password);
+        client.requireCurrentOperator();
+        System.out.println(objectMapper.writeValueAsString(client.executeTaskCommand(taskId, command)));
+    }
+
     private static void env(String[] args, ObjectMapper objectMapper) throws Exception {
         if (args.length == 0) {
             throw new IllegalArgumentException("env subcommand is required");
@@ -137,6 +169,7 @@ public final class AdminCliMain {
                   xa-mass-admin auth config --base-url http://127.0.0.1:8088
                   xa-mass-admin auth login --base-url http://127.0.0.1:8088 --operator-user ops-admin --operator-password secret
                   xa-mass-admin api-key current --base-url http://127.0.0.1:8088 --api-key <raw-secret>
+                  xa-mass-admin task command --base-url http://127.0.0.1:8088 --operator-user ops-admin --operator-password secret --task-id <task-id> --command APPROVE
                   xa-mass-admin env verify --config <admin-env.json>
                   xa-mass-admin env init --config <admin-env.json>
                 """;

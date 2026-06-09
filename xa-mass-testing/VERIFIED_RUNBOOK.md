@@ -216,6 +216,25 @@ WorkerGroup and scheduling selects the worker whose attributes satisfy the
 task's fingerprint requirement. The server fixture starts without preseeded
 workers; catalog metadata is test setup, not privileged worker startup.
 
+Packaged platform confidence proof:
+
+```bash
+MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile memory-local
+```
+
+This is the current packaged-process confidence gate. It packages the server,
+admin CLI, and Java scenario launchers; starts the real server jar; requires
+session operator auth; disables fixture-header auth; seeds only the minimal
+operator credential; runs `xa-mass-admin env init` over HTTP; starts the Java
+SDK worker launcher as a background process; runs the Java SDK task launcher to
+create and append work; executes task approval through `xa-mass-admin task
+command`; and waits for a visible success result through the Java SDK result
+verifier. Failure artifacts are written under
+`xa-mass-testing/target/platform-confidence/`.
+
+Durable-local uses the same script with `--profile durable-local` and requires
+Redis on `localhost:6379`.
+
 ## 4. Runtime Facts To Trust
 
 Task create/update:

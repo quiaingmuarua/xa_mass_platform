@@ -9,8 +9,8 @@
   },
   "environment": {
     "mode": "apply",
-    "catalogManifest": "../../integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json",
-    "rulesManifest": "../../integrations/samples/dev/scenario/rules.json"
+    "catalogManifest": "../../../integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json",
+    "rulesManifest": "../../../integrations/samples/dev/scenario/rules.json"
   },
   "credentials": {
     "taskCredential": {

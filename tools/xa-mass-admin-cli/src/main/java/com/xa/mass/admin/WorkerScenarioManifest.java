@@ -19,6 +19,7 @@ record WorkerScenarioSpec(String workerId,
                           String adapterNodeId,
                           String adapterId,
                           String transportHint,
+                          String startMode,
                           Map<String, String> attributes,
                           List<EventBindingSpec> eventBindings) {
     WorkerScenarioSpec {

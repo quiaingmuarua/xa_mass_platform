@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -23,7 +24,9 @@ class ScenarioLauncherOptionsTest {
                 "--task-api-key=task-key",
                 "--worker-api-key", "worker-key",
                 "--scenario-dir", "custom/scenario",
-                "--max-polling-workers=7"
+                "--max-polling-workers=7",
+                "--wait-visible-success",
+                "--result-wait-timeout-seconds", "12"
         });
 
         assertEquals("http://localhost:8088", options.baseUrl());
@@ -31,6 +34,8 @@ class ScenarioLauncherOptionsTest {
         assertEquals("worker-key", options.workerApiKey());
         assertEquals(Path.of("custom/scenario"), options.scenarioDir());
         assertEquals(7, options.maxPollingWorkers());
+        assertEquals(true, options.waitVisibleSuccess());
+        assertEquals(Duration.ofSeconds(12), options.resultWaitTimeout());
     }
 
     @Test

@@ -28,6 +28,9 @@ public final class ScenarioTaskLauncherMain {
                     ? ScenarioFiles.load(options.scenarioDir(), objectMapper).taskSpecs()
                     : ScenarioTaskConfigLoader.load(options.configPath(), objectMapper);
             List<TaskScenarioSeeder.SeededTask> seededTasks = taskSeeder.seed(taskSpecs);
+            if (options.waitVisibleSuccess()) {
+                new ScenarioTaskResultVerifier(clientFactory, options).waitForVisibleSuccess(seededTasks);
+            }
             System.out.printf("[java-scenario-task-launcher] complete tasks=%d%n", seededTasks.size());
         } catch (MassHttpException e) {
             throw new IllegalStateException(ScenarioFailureDiagnostics.diagnoseHttpFailure(options, e), e);

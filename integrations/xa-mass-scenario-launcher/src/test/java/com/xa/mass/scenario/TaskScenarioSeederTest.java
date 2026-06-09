@@ -124,6 +124,41 @@ class TaskScenarioSeederTest {
         }
     }
 
+    @Test
+    void waitsForVisibleSuccessThroughSdkResultClient() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        List<RecordedRequest> requests = new ArrayList<>();
+        try (RecordingServer server = RecordingServer.start(requests)) {
+            ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
+                    "--base-url", server.baseUrl(),
+                    "--task-api-key", "task-api-key",
+                    "--wait-visible-success",
+                    "--result-wait-timeout-seconds", "1"
+            });
+            ScenarioClientFactory clientFactory = new ScenarioClientFactory(
+                    server.baseUrl(),
+                    Duration.ofSeconds(5),
+                    Duration.ofSeconds(30),
+                    objectMapper);
+            TaskScenarioSeeder seeder = new TaskScenarioSeeder(options, objectMapper, clientFactory);
+
+            List<TaskScenarioSeeder.SeededTask> seededTasks = seeder.seed(List.of(new TaskScenarioSpec(
+                    null,
+                    1,
+                    Map.of(
+                            "project", "demoApp",
+                            "userId", "sample",
+                            "eventCode", "demo.dispatch",
+                            "items", List.of(Map.of("id", "item-1"))
+                    )
+            )));
+            new ScenarioTaskResultVerifier(clientFactory, options).waitForVisibleSuccess(seededTasks);
+
+            assertEquals("/api/v1/tasks/task-001/results", requests.get(2).path());
+            assertEquals(3, requests.size());
+        }
+    }
+
     private record RecordedRequest(String path, Map<String, String> headers, String body) {
     }
 
@@ -158,9 +193,24 @@ class TaskScenarioSeederTest {
                     Map.of("X-mass-api-key", exchange.getRequestHeaders().getFirst("X-Mass-Api-Key")),
                     body
             ));
-            String responseBody = path.equals("/api/v1/tasks")
-                    ? "{\"code\":0,\"data\":{\"taskId\":\"task-001\"}}"
-                    : "{\"code\":0,\"data\":{}}";
+            String responseBody;
+            if (path.equals("/api/v1/tasks")) {
+                responseBody = "{\"code\":0,\"data\":{\"taskId\":\"task-001\"}}";
+            } else if (path.equals("/api/v1/tasks/task-001/results")) {
+                responseBody = """
+                        {"code":0,"data":{
+                          "mode":"WINDOW",
+                          "taskId":"task-001",
+                          "taskTerminal":false,
+                          "archiveReady":false,
+                          "items":[{"seq":1,"messageId":"message-1","eventCode":"demo.dispatch","status":"SUCCESS"}],
+                          "nextAfterSeq":1,
+                          "hasMore":false
+                        }}
+                        """;
+            } else {
+                responseBody = "{\"code\":0,\"data\":{}}";
+            }
             byte[] response = responseBody.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.length);

@@ -75,6 +75,7 @@ Testing-policy note:
 | `SDK transport harness` | `scripts/run-sdk-transport-load.sh` | embedded runtime composition across polling / websocket / socket, with runtime-counter finality and source guardrails against projection-first pass/fail | `target/concurrency-reports/` |
 | `polling scheduling soak` | `scripts/run-polling-scheduling-soak.sh` | manual/scheduled polling-worker pressure on engine scheduling; proves structured runtime invariants, configured success/failure and late-worker-join profiles, result sequential read, active lease drain, and canonical trace validate/stats | `target/soak-reports/`, `target/soak-traces/` |
 | `polling scheduling fast soak` | `scripts/run-polling-scheduling-fast-soak.sh` | scheduled/manual polling soak profile with mixed results, late worker join, result sequential read, canonical trace validation, and optional trace analyzer proof; not a PR gate | `target/soak-reports/`, `target/soak-traces/` |
+| `platform confidence smoke` | `scripts/run-platform-confidence-smoke.sh` | packaged server process plus admin CLI env init plus Java SDK worker/task launchers; proves server startup, session operator auth, catalog/rule/API-key preparation, worker registration, task submission, dispatch, and visible result through real process boundaries | `target/platform-confidence/` |
 | `chaos: websocket disconnect/reconnect` | `com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner` | worker disconnects inside an active lease, reconnects, submits the delayed result, and later receives follow-up work | `target/chaos-reports/` |
 | `chaos: websocket lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner` | disconnect without result, watchdog expiry, retry reset, takeover by another websocket worker | `target/chaos-reports/`, `target/chaos-traces/` |
 | `chaos: websocket late stale result after lease expiry` | `com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner` | original worker disconnects, lease expires, takeover succeeds, then the stale worker reconnects and replays a late result that must not overwrite runtime finality | `target/chaos-reports/`, `target/chaos-traces/` |
@@ -208,6 +209,24 @@ Polling scheduling soak:
 xa-mass-testing/scripts/run-polling-scheduling-soak.sh -Dmass.soak.durationSeconds=120 -Dmass.soak.workerCount=16
 xa-mass-testing/scripts/run-polling-scheduling-fast-soak.sh
 ```
+
+Platform confidence smoke:
+
+```bash
+MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile memory-local
+MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile durable-local
+```
+
+The confidence lane is a packaged-process gate, not a unit test. It starts the
+real server jar with session operator auth, disables fixture-header auth,
+enables the minimal operator credential seed, runs `xa-mass-admin env init`,
+starts the Java SDK polling worker launcher as a background process, runs the
+Java SDK task launcher to create and append work, executes the operator
+`APPROVE` command through `xa-mass-admin task command`, then waits for visible
+success through the Java SDK result verifier. It writes categorized logs and
+`summary.json` under `target/platform-confidence/`. The script may use `curl`
+only for health; catalog/rule/API-key/task/worker business calls stay inside
+admin CLI or Java SDK launchers.
 
 The polling scheduling soak is a manual or scheduled lane, not a PR gate. It drives SDK polling workers through the engine scheduling mainline and writes report JSON plus canonical trace JSONL under `target/soak-reports/` and `target/soak-traces/`. Its pass/fail proof is runtime/aggregate/result/trace-first: task terminal state, `TaskWorkRuntime` counters, active lease drain, SDK result windows, worker metrics, `JsonlExecutionEventSink` drop count, and `xa-mass-trace` validation/stats. The report includes `proof.runtimeInvariants`, a structured issue list that identifies whether failure came from task terminal count, runtime work counters, visible results, active lease drain, trace validation/drop, late-worker participation, trace analyzer failure, or worker failures. The `proof` bundle also groups `resultSequentialRead`, `workerMetrics`, `workerLifecycle`, `deliveryDiagnostics`, `trace`, and `failureSamples` so scheduled runs have one stable diagnostic entry point. Set `-Dmass.soak.failureEveryNth=N` to run mixed-result or all-failed profiles; the runner verifies expected terminal reasons and success/failed runtime counters from that profile and, when trace is enabled, binds a representative sample task into the named `mixed-result-terminal-convergence` or `all-failed-terminal-convergence` analyzer. Set `-Dmass.soak.processingJitterMillis=N -Dmass.soak.processingJitterSeed=S` to make processing jitter deterministic and report-visible in `config` and `proof.matrixProfile`. Set `-Dmass.soak.scenarioId=polling-soak-noisy-mixed-result` to select the current scenario-ledger noisy mixed-result row inside the runner; it defaults to deterministic jitter seed `20260602`, jitter bound `25ms`, and `failureEveryNth=5`, while explicit JVM properties still override those defaults. This row is seeded mixed-result soak proof, not dropped-result/retry proof. Set `-Dmass.soak.initialWorkerCount=N -Dmass.soak.lateWorkerStartAfterMillis=M -Dmass.soak.requireLateWorkerWork=true` to run a late-worker-join profile where only part of the polling fleet is online at the start; when trace is enabled, the runner records an actual late-worker task sample and runs the `late-worker-backfill` trace analyzer into `proof.trace.analyses`. Named soak analyzers receive the trace sink dropped count, so known dropped trace events cannot silently pass analyzer proof. See [`SOAK_TESTING_ROADMAP.md`](SOAK_TESTING_ROADMAP.md).
 

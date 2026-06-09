@@ -23,4 +23,13 @@ class AdminCliArchitectureGuardTest {
         assertFalse(text.contains("<artifactId>xa-mass-engine</artifactId>"));
         assertTrue(text.contains("<artifactId>jackson-databind</artifactId>"));
     }
+
+    @Test
+    void sharedHttpClientCoreIsNotIntroducedPrematurely() {
+        Path rootRelative = Path.of("sdk/xa-mass-http-client-core");
+        Path moduleRelative = Path.of("../..").resolve(rootRelative).normalize();
+
+        assertFalse(Files.exists(rootRelative) || Files.exists(moduleRelative),
+                "do not add sdk/xa-mass-http-client-core without a recorded owner decision");
+    }
 }
