@@ -54,7 +54,11 @@ final class AdminHttpClient {
         if (csrfHeader != null && !csrfHeader.isBlank()) {
             csrfHeaderName = csrfHeader;
         }
-        return new AuthConfig(mode, data.path("sessionCookieSupported").asBoolean(false), csrfHeader);
+        return new AuthConfig(
+                mode,
+                data.path("operatorHeaderSupported").asBoolean(false),
+                data.path("sessionCookieSupported").asBoolean(false),
+                csrfHeader);
     }
 
     void login(String user, String password) {
@@ -212,7 +216,10 @@ final class AdminHttpClient {
     }
 }
 
-record AuthConfig(String authMode, boolean sessionCookieSupported, String csrfHeaderName) {
+record AuthConfig(String authMode,
+                  boolean operatorHeaderSupported,
+                  boolean sessionCookieSupported,
+                  String csrfHeaderName) {
 }
 
 record CurrentApiKey(String principalId,

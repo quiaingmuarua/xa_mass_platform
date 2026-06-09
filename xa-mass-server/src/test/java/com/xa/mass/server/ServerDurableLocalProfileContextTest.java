@@ -41,7 +41,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ServerDurableLocalProfileContextTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
-    private static final String REDIS_URI = "redis://127.0.0.1:6379/0";
+    private static final String REDIS_HOST = System.getProperty("mass.test.redis.host", "127.0.0.1");
+    private static final int REDIS_PORT = Integer.getInteger("mass.test.redis.port", 6379);
+    private static final String REDIS_URI = "redis://" + REDIS_HOST + ":" + REDIS_PORT + "/0";
     private static final String NAMESPACE = "xa:mass:test:durable-local-profile:" + UUID.randomUUID();
     private static final Path SQLITE_DB = createTempSqliteDbPath();
 
@@ -52,8 +54,8 @@ class ServerDurableLocalProfileContextTest extends AbstractSampleE2eTest {
     static void registerProperties(DynamicPropertyRegistry registry) {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
         registerJdbcStorageProperties(registry, "jdbc-sqlite", "jdbc:sqlite:" + SQLITE_DB, "", "");
-        registry.add("spring.redis.host", () -> "127.0.0.1");
-        registry.add("spring.redis.port", () -> 6379);
+        registry.add("spring.redis.host", () -> REDIS_HOST);
+        registry.add("spring.redis.port", () -> REDIS_PORT);
         registry.add("spring.redis.database", () -> 0);
         registry.add("mass.runtime.redis.namespace", () -> NAMESPACE + ":runtime");
         registry.add("mass.transport.delivery.redis.namespace", () -> NAMESPACE + ":delivery");

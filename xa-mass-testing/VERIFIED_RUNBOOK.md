@@ -1,6 +1,6 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-06-02
+Last updated: 2026-06-09
 
 Status: current verified runtime runbook.
 
@@ -220,20 +220,58 @@ Packaged platform confidence proof:
 
 ```bash
 MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile memory-local
+MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile durable-local
 ```
 
 This is the current packaged-process confidence gate. It packages the server,
 admin CLI, and Java scenario launchers; starts the real server jar; requires
-session operator auth; disables fixture-header auth; seeds only the minimal
-operator credential; runs `xa-mass-admin env init` over HTTP; starts the Java
-SDK worker launcher as a background process; runs the Java SDK task launcher to
-create and append work; executes task approval through `xa-mass-admin task
-command`; and waits for a visible success result through the Java SDK result
-verifier. Failure artifacts are written under
+session operator auth; disables fixture-header auth; asserts the actual
+`/api/v1/auth/config` response reports `authMode=session`,
+`sessionCookieSupported=true`, and `operatorHeaderSupported=false`; seeds only
+the minimal operator credential; runs `xa-mass-admin env init` over HTTP;
+checks unauthenticated operator, invalid task API-key, and invalid worker
+API-key requests fail closed with the expected `ApiResponse.code/msg` envelope;
+starts the Java SDK worker launcher as a background process; runs the Java SDK
+task launcher to create and append work;
+executes task approval through `xa-mass-admin task command`; and waits for a
+visible success result through the Java SDK result verifier. Failure artifacts
+and `summary.json` are written under
 `xa-mass-testing/target/platform-confidence/`.
 
-Durable-local uses the same script with `--profile durable-local` and requires
-Redis on `localhost:6379`.
+Durable-local requires Redis on `localhost:6379`. The active-profile confidence
+script uses explicit profile arguments and does not prove the no-arg startup
+contract.
+
+Packaged default startup and durable restart proof:
+
+```bash
+MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-server-default-startup-smoke.sh
+```
+
+This smoke starts the packaged server jar with no application arguments from an
+isolated working directory. It proves default `durable-local` startup reaches
+`/actuator/health`, remains alive after health, avoids `Application run failed`,
+uses the default relative SQLite path
+`./data/xa-mass-sqlite/xa_mass.db`, logs in through the seeded operator
+credential, and then succeeds again against the same SQLite file after restart.
+The output summary classifies the Redis namespace as `default` or
+`ci-isolated`; current CI uses default localhost Redis namespace proof.
+
+Proof summary artifact:
+
+```bash
+node xa-mass-testing/scripts/write-proof-summary.mjs --job local
+```
+
+The writer reads existing surefire XML and lane-local JSON artifacts under
+`target/` and writes `xa-mass-testing/target/proof-summary/summary.json`. It is
+CI evidence only and does not replace the proof registry or the owning reports.
+Perf/soak release interpretation is sourced from
+`xa-mass-testing/proof/perf-soak-release-evidence.json`, which keeps hard
+threshold signals separate from trend-only latency/throughput values.
+Use scoped inputs such as `--test-report-dir`, `--platform-confidence-dir`, and
+`--perf-dir` for job-clean evidence; unscoped local runs can include stale
+`target/` reports from earlier commands.
 
 ## 4. Runtime Facts To Trust
 
@@ -355,6 +393,10 @@ Current bundle contents:
 Use the bundle when the goal is to validate current workspace runtime behavior after engine perf/concurrency changes. It refreshes sibling artifacts for the active workspace and then runs with a direct runtime classpath, so the smoke results come from the current workspace state instead of whatever was last installed manually.
 
 The bundle pins a more stable interactive retry-delay JVM property for the retry-wakeup smoke so cross-environment timing is less fragile.
+It also defaults the workload-mix runner to the stable
+`workload-mix-slow-bulk-interactive-isolation` release-evidence row; override
+with `MASS_WORKLOAD_SMOKE_SCENARIO_ID` only when deliberately comparing another
+scenario.
 
 Scheduled/manual CI workflow:
 
@@ -440,6 +482,10 @@ Verified evidence:
 - `failureProfile=every-5`
 - `processingJitterSeed=20260602`
 - one terminal mixed-result task with five visible results, four successes, and one synthetic failure
+
+The scheduled/manual fast soak script now defaults to this same scenario id via
+`MASS_SOAK_SCENARIO_ID=polling-soak-noisy-mixed-result`, while still allowing
+explicit JVM properties to tune duration, late-worker, and rate parameters.
 
 SDK WebSocket disconnect/reconnect chaos harness:
 

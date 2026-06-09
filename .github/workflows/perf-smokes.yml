@@ -17,11 +17,21 @@ jobs:
           distribution: "temurin"
           cache: maven
       - name: Run perf smoke bundle
+        env:
+          MASS_WORKLOAD_SMOKE_SCENARIO_ID: "workload-mix-slow-bulk-interactive-isolation"
         run: bash xa-mass-testing/scripts/run-perf-smokes.sh
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job perf-smokes
+          --perf-dir xa-mass-testing/target/perf-reports
       - name: Upload perf smoke reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: perf-smoke-reports
-          path: xa-mass-testing/target/perf-reports/
+          path: |
+            xa-mass-testing/target/perf-reports/
+            xa-mass-testing/target/proof-summary/**
           if-no-files-found: warn

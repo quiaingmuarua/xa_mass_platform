@@ -36,6 +36,13 @@ jobs:
           node-version: "22"
       - name: Run cross-language external worker black-box validation
         run: ./scripts/run-external-worker-samples.sh
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job cross-language-blackbox
+          --test-report-dir xa-mass-server/target/surefire-reports
+          --test-report-dir xa-mass-server/target/failsafe-reports
       - name: Upload external worker sample reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -44,5 +51,6 @@ jobs:
           path: |
             xa-mass-server/target/surefire-reports/**
             xa-mass-server/target/failsafe-reports/**
+            xa-mass-testing/target/proof-summary/**
             logs/**
           if-no-files-found: warn

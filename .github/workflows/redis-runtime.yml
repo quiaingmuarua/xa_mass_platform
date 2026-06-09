@@ -66,6 +66,16 @@ jobs:
           -Dsurefire.failIfNoSpecifiedTests=false
           test
 
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job redis-runtime
+          --test-report-dir platform_infra/mass-runtime-redis/target/surefire-reports
+          --test-report-dir platform_infra/mass-runtime-redis/target/failsafe-reports
+          --test-report-dir xa-mass-server/target/surefire-reports
+          --test-report-dir xa-mass-server/target/failsafe-reports
+
       - name: Upload Redis runtime test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -76,4 +86,5 @@ jobs:
             platform_infra/mass-runtime-redis/target/failsafe-reports/**
             xa-mass-server/target/surefire-reports/**
             xa-mass-server/target/failsafe-reports/**
+            xa-mass-testing/target/proof-summary/**
           if-no-files-found: warn

@@ -20,6 +20,7 @@ jobs:
       - name: Run polling scheduling fast soak
         env:
           MASS_SOAK_DURATION_SECONDS: "6"
+          MASS_SOAK_SCENARIO_ID: "polling-soak-noisy-mixed-result"
           MASS_SOAK_WORKER_COUNT: "4"
           MASS_SOAK_INITIAL_WORKER_COUNT: "1"
           MASS_SOAK_LATE_WORKER_START_AFTER_MILLIS: "1000"
@@ -32,6 +33,12 @@ jobs:
           MASS_SOAK_DRAIN_TIMEOUT_SECONDS: "60"
           MASS_SOAK_TRACE: "true"
         run: bash xa-mass-testing/scripts/run-polling-scheduling-fast-soak.sh
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job polling-scheduling-fast-soak
+          --soak-dir xa-mass-testing/target/soak-reports
       - name: Upload soak reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -40,4 +47,5 @@ jobs:
           path: |
             xa-mass-testing/target/soak-reports/**
             xa-mass-testing/target/soak-traces/**
+            xa-mass-testing/target/proof-summary/**
           if-no-files-found: warn

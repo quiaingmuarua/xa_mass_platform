@@ -90,6 +90,11 @@ for runner in "${RUNNERS[@]}"; do
       "-Dmass.retrywakeup.smoke.minRetryDispatchDelayMillis=${MASS_RETRYWAKEUP_SMOKE_MIN_DELAY_MILLIS:-80}"
     )
   fi
+  if [[ "${runner}" == "com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner" ]]; then
+    JAVA_ARGS+=(
+      "-Dmass.workload.smoke.scenarioId=${MASS_WORKLOAD_SMOKE_SCENARIO_ID:-workload-mix-slow-bulk-interactive-isolation}"
+    )
+  fi
   if [[ ${#JAVA_ARGS[@]} -gt 0 ]]; then
     java "${JAVA_ARGS[@]}" -cp "${RUNTIME_CLASSPATH}" "${runner}"
   else

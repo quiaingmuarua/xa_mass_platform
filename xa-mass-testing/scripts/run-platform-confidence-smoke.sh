@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 PROFILE="memory-local"
+PROFILE_ALLOWLIST_FILE="${REPO_ROOT}/xa-mass-testing/proof/platform-confidence-profiles.txt"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile)
@@ -23,8 +24,21 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "${PROFILE}" != "memory-local" && "${PROFILE}" != "durable-local" ]]; then
+if [[ ! -f "${PROFILE_ALLOWLIST_FILE}" ]]; then
+  echo "profile allowlist not found: ${PROFILE_ALLOWLIST_FILE}" >&2
+  exit 2
+fi
+mapfile -t SUPPORTED_PROFILES < <(sed 's/#.*//' "${PROFILE_ALLOWLIST_FILE}" | sed '/^[[:space:]]*$/d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+PROFILE_SUPPORTED=false
+for supported_profile in "${SUPPORTED_PROFILES[@]}"; do
+  if [[ "${PROFILE}" == "${supported_profile}" ]]; then
+    PROFILE_SUPPORTED=true
+    break
+  fi
+done
+if [[ "${PROFILE_SUPPORTED}" != "true" ]]; then
   echo "unsupported profile: ${PROFILE}" >&2
+  echo "supported profiles: ${SUPPORTED_PROFILES[*]}" >&2
   exit 2
 fi
 
@@ -54,9 +68,49 @@ admin_auth_config_log="${RUN_DIR}/logs/admin-auth-config.log"
 admin_auth_login_log="${RUN_DIR}/logs/admin-auth-login.log"
 admin_env_log="${RUN_DIR}/logs/admin-env-init.log"
 admin_task_command_log="${RUN_DIR}/logs/admin-task-command.log"
+negative_operator_log="${RUN_DIR}/logs/negative-operator-auth.log"
+negative_task_key_log="${RUN_DIR}/logs/negative-task-api-key.log"
+negative_worker_key_log="${RUN_DIR}/logs/negative-worker-api-key.log"
 worker_log="${RUN_DIR}/logs/worker-launcher.log"
 task_log="${RUN_DIR}/logs/task-launcher.log"
 task_verify_log="${RUN_DIR}/logs/task-result-verifier.log"
+
+AUTH_MODE=""
+OPERATOR_HEADER_SUPPORTED="null"
+SESSION_COOKIE_SUPPORTED="null"
+FIXTURE_HEADER_DISABLED="null"
+UNAUTHENTICATED_OPERATOR_CHECK="not-run"
+INVALID_TASK_API_KEY_CHECK="not-run"
+INVALID_WORKER_API_KEY_CHECK="not-run"
+UNAUTHENTICATED_OPERATOR_HTTP_STATUS="null"
+INVALID_TASK_API_KEY_HTTP_STATUS="null"
+INVALID_WORKER_API_KEY_HTTP_STATUS="null"
+UNAUTHENTICATED_OPERATOR_CODE="null"
+INVALID_TASK_API_KEY_CODE="null"
+INVALID_WORKER_API_KEY_CODE="null"
+UNAUTHENTICATED_OPERATOR_REASON=""
+INVALID_TASK_API_KEY_REASON=""
+INVALID_WORKER_API_KEY_REASON=""
+
+json_scalar() {
+  local field="$1"
+  local file="$2"
+  sed -n "s/.*\"${field}\":\\(\"[^\"]*\"\\|true\\|false\\|null\\|[0-9][0-9]*\\).*/\\1/p" "${file}" | tail -n 1
+}
+
+json_string() {
+  local field="$1"
+  local file="$2"
+  local value
+  value="$(json_scalar "${field}" "${file}")"
+  value="${value#\"}"
+  value="${value%\"}"
+  printf '%s' "${value}"
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
 
 write_summary() {
   local status="$1"
@@ -68,12 +122,47 @@ write_summary() {
   "profile": "${PROFILE}",
   "category": "${category}",
   "message": "${message}",
+  "authMode": "${AUTH_MODE}",
+  "operatorHeaderSupported": ${OPERATOR_HEADER_SUPPORTED},
+  "fixtureHeaderDisabled": ${FIXTURE_HEADER_DISABLED},
+  "sessionCookieSupported": ${SESSION_COOKIE_SUPPORTED},
+  "adminRouteFamilies": ["/api/v1/auth", "/api/v1/control-plane", "/api/v1/api-keys", "/api/v1/tasks/{taskId}/commands"],
+  "sdkRouteFamilies": ["/api/v1/tasks", "/worker-api/v1"],
+  "credentialChecks": {
+    "unauthenticatedOperatorRoute": {
+      "status": "${UNAUTHENTICATED_OPERATOR_CHECK}",
+      "httpStatus": ${UNAUTHENTICATED_OPERATOR_HTTP_STATUS},
+      "code": ${UNAUTHENTICATED_OPERATOR_CODE},
+      "failureReason": "$(json_escape "${UNAUTHENTICATED_OPERATOR_REASON}")"
+    },
+    "invalidTaskApiKey": {
+      "status": "${INVALID_TASK_API_KEY_CHECK}",
+      "httpStatus": ${INVALID_TASK_API_KEY_HTTP_STATUS},
+      "code": ${INVALID_TASK_API_KEY_CODE},
+      "failureReason": "$(json_escape "${INVALID_TASK_API_KEY_REASON}")"
+    },
+    "invalidWorkerApiKey": {
+      "status": "${INVALID_WORKER_API_KEY_CHECK}",
+      "httpStatus": ${INVALID_WORKER_API_KEY_HTTP_STATUS},
+      "code": ${INVALID_WORKER_API_KEY_CODE},
+      "failureReason": "$(json_escape "${INVALID_WORKER_API_KEY_REASON}")"
+    }
+  },
+  "confidenceOverlay": {
+    "springProfile": "${PROFILE}",
+    "operatorMode": "session",
+    "allowLocalFixtureHeader": false,
+    "operatorCredentialSeed": true
+  },
   "runDir": "${RUN_DIR}",
   "serverLog": "${server_log}",
   "adminAuthConfigLog": "${admin_auth_config_log}",
   "adminAuthLoginLog": "${admin_auth_login_log}",
   "adminEnvLog": "${admin_env_log}",
   "adminTaskCommandLog": "${admin_task_command_log}",
+  "negativeOperatorLog": "${negative_operator_log}",
+  "negativeTaskKeyLog": "${negative_task_key_log}",
+  "negativeWorkerKeyLog": "${negative_worker_key_log}",
   "workerLog": "${worker_log}",
   "taskLog": "${task_log}",
   "taskVerifyLog": "${task_verify_log}"
@@ -107,6 +196,9 @@ cleanup() {
     dump_tail "${admin_auth_login_log}"
     dump_tail "${admin_env_log}"
     dump_tail "${admin_task_command_log}"
+    dump_tail "${negative_operator_log}"
+    dump_tail "${negative_task_key_log}"
+    dump_tail "${negative_worker_key_log}"
     dump_tail "${worker_log}"
     dump_tail "${task_log}"
     dump_tail "${task_verify_log}"
@@ -237,8 +329,32 @@ done
 
 CURRENT_STEP="operator-auth"
 java -jar "${ADMIN_JAR}" auth config --base-url "${BASE_URL}" >"${admin_auth_config_log}" 2>&1
-if ! grep -q '"authMode":"session"' "${admin_auth_config_log}"; then
+AUTH_MODE="$(json_string "authMode" "${admin_auth_config_log}")"
+OPERATOR_HEADER_SUPPORTED="$(json_scalar "operatorHeaderSupported" "${admin_auth_config_log}")"
+SESSION_COOKIE_SUPPORTED="$(json_scalar "sessionCookieSupported" "${admin_auth_config_log}")"
+if [[ -z "${OPERATOR_HEADER_SUPPORTED}" ]]; then
+  OPERATOR_HEADER_SUPPORTED="null"
+fi
+if [[ -z "${SESSION_COOKIE_SUPPORTED}" ]]; then
+  SESSION_COOKIE_SUPPORTED="null"
+fi
+if [[ "${OPERATOR_HEADER_SUPPORTED}" == "false" ]]; then
+  FIXTURE_HEADER_DISABLED="true"
+else
+  FIXTURE_HEADER_DISABLED="false"
+fi
+if [[ "${AUTH_MODE}" != "session" ]]; then
   echo "confidence lane requires session auth; got:" >&2
+  cat "${admin_auth_config_log}" >&2
+  exit 1
+fi
+if [[ "${SESSION_COOKIE_SUPPORTED}" != "true" ]]; then
+  echo "confidence lane requires session cookies; got:" >&2
+  cat "${admin_auth_config_log}" >&2
+  exit 1
+fi
+if [[ "${OPERATOR_HEADER_SUPPORTED}" != "false" ]]; then
+  echo "confidence lane requires operator fixture headers to be disabled; got:" >&2
   cat "${admin_auth_config_log}" >&2
   exit 1
 fi
@@ -256,6 +372,93 @@ if [[ ! -s "${TASK_KEY_FILE}" ]]; then
 fi
 export MASS_TASK_API_KEY
 MASS_TASK_API_KEY="$(<"${TASK_KEY_FILE}")"
+
+expect_fail_closed() {
+  local variable_prefix="$1"
+  local check_name="$2"
+  local output_file="$3"
+  local expected_status="$4"
+  local expected_code="$5"
+  local expected_reason="$6"
+  shift 6
+  local status
+  status="$(curl -sS -o "${output_file}" -w "%{http_code}" "$@" || true)"
+  local response_code
+  local response_reason
+  response_code="$(json_scalar "code" "${output_file}")"
+  response_reason="$(json_string "msg" "${output_file}")"
+  if [[ -z "${response_code}" ]]; then
+    response_code="null"
+  fi
+  case "${variable_prefix}" in
+    UNAUTHENTICATED_OPERATOR)
+      UNAUTHENTICATED_OPERATOR_HTTP_STATUS="${status}"
+      UNAUTHENTICATED_OPERATOR_CODE="${response_code}"
+      UNAUTHENTICATED_OPERATOR_REASON="${response_reason}"
+      ;;
+    INVALID_TASK_API_KEY)
+      INVALID_TASK_API_KEY_HTTP_STATUS="${status}"
+      INVALID_TASK_API_KEY_CODE="${response_code}"
+      INVALID_TASK_API_KEY_REASON="${response_reason}"
+      ;;
+    INVALID_WORKER_API_KEY)
+      INVALID_WORKER_API_KEY_HTTP_STATUS="${status}"
+      INVALID_WORKER_API_KEY_CODE="${response_code}"
+      INVALID_WORKER_API_KEY_REASON="${response_reason}"
+      ;;
+    *)
+      echo "unknown fail-closed check variable prefix: ${variable_prefix}" >&2
+      return 1
+      ;;
+  esac
+  {
+    echo
+    echo "status=${status}"
+    echo "code=${response_code}"
+    echo "failureReason=${response_reason}"
+  } >>"${output_file}"
+  if [[ "${status}" == "${expected_status}" \
+        && "${response_code}" == "${expected_code}" \
+        && "${response_reason}" == "${expected_reason}" ]]; then
+    return 0
+  fi
+  echo "expected ${expected_status}/${expected_code}/${expected_reason} for ${check_name}; got ${status}/${response_code}/${response_reason}" >&2
+  return 1
+}
+
+CURRENT_STEP="negative-auth-checks"
+if expect_fail_closed "UNAUTHENTICATED_OPERATOR" "unauthenticated operator route" "${negative_operator_log}" \
+  "401" "401" "Authentication is required" \
+  -X POST \
+  -H "Content-Type: application/json" \
+  --data '{"projects":[],"events":[]}' \
+  "${BASE_URL}/api/v1/control-plane/catalog:sync"; then
+  UNAUTHENTICATED_OPERATOR_CHECK="passed"
+else
+  UNAUTHENTICATED_OPERATOR_CHECK="failed"
+  exit 1
+fi
+if expect_fail_closed "INVALID_TASK_API_KEY" "invalid task API key" "${negative_task_key_log}" \
+  "401" "401" "Invalid or missing API-key credential" \
+  -H "X-Mass-Api-Key: invalid-task-api-key" \
+  "${BASE_URL}/api/v1/tasks"; then
+  INVALID_TASK_API_KEY_CHECK="passed"
+else
+  INVALID_TASK_API_KEY_CHECK="failed"
+  exit 1
+fi
+if expect_fail_closed "INVALID_WORKER_API_KEY" "invalid worker API key" "${negative_worker_key_log}" \
+  "401" "401" "Invalid or missing worker credential" \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Mass-Api-Key: invalid-worker-api-key" \
+  --data '{}' \
+  "${BASE_URL}/worker-api/v1/workers/confidence-worker-001:poll"; then
+  INVALID_WORKER_API_KEY_CHECK="passed"
+else
+  INVALID_WORKER_API_KEY_CHECK="failed"
+  exit 1
+fi
 
 CURRENT_STEP="worker-launcher"
 java -jar "${WORKER_JAR}" \

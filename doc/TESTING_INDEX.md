@@ -1,6 +1,6 @@
 # Testing Index
 
-Last updated: 2026-06-02
+Last updated: 2026-06-09
 
 Status: current project-level testing index.
 
@@ -326,24 +326,54 @@ PR/push gates:
 - `.github/workflows/maven.yml`
   - `reactor-core`
   - `scheduling-core`
+  - `proof-credibility`
   - `server-scheduling-e2e`
   - `lifecycle-integration`
   - `chaos-smokes`
+- `.github/workflows/platform-confidence.yml`
+  - `packaged-process-confidence`
+  - `server-default-startup`
 - `.github/workflows/external-worker-samples.yml`
   - `cross-language-blackbox`
+
+Path-filtered or conditional PR gates:
+
+- `.github/workflows/redis-runtime.yml`
+  - Redis runtime focused tests and server Redis runtime smoke
+- `.github/workflows/frontend.yml`
+  - frontend lint, typecheck, tests, and build
 
 Scheduled/manual only:
 
 - `.github/workflows/perf-smokes.yml`
   - `perf-smokes`
+- `.github/workflows/soak-smokes.yml`
+  - polling scheduling fast soak
 
 Current implications:
 
 - `xa-mass-testing` is compiled on PR via the `reactor-core` compilation gate
+- proof registry closure and platform-confidence matrix guards are PR-gated by
+  `proof-credibility`
 - scheduling correctness is an explicit PR gate through engine-first and representative server E2E jobs
 - chaos smoke probes are PR-gated
+- platform confidence is a packaged-process PR gate for explicit `memory-local`
+  and `durable-local`; it proves real HTTP/API/auth boundaries through external
+  admin/task/worker processes, not internal Java service calls
+- server default startup/restart is a packaged-process PR gate for the no-arg
+  `durable-local` operator startup path and same-SQLite restart proof
 - perf smoke remains scheduled/manual and is not a PR gate
+- soak smoke remains scheduled/manual and is not a PR gate
 - cross-language black-box remains part of PR validation
+- frontend workflow success is frontend quality/adapter proof only; it is not
+  server/kernel/API authorization proof
+- major proof workflows upload
+  `xa-mass-testing/target/proof-summary/summary.json` when the job reaches its
+  artifact step. CI invokes the writer with job-scoped input directories so the
+  summary records the job-local surefire/report/profile/auth/analyzer evidence
+  and known non-proof boundaries. Unscoped local summaries are aggregate
+  diagnostics and may include stale `target/` artifacts; no summary replaces
+  `doc/PROOF_REGISTRY.md` or the owning artifacts.
 
 ## 4. Current Test Asset Map
 
@@ -524,7 +554,7 @@ Report-only support:
   delayed retry visibility is consumed from `TaskWorkRuntime`.
 - workload-mix perf matching uses WorkerGroup capability truth for project
   support. `workload-mix-slow-bulk-interactive-isolation` is a current
-  scenario-ledger row selected through `mass.workload.smoke.scenarioId`; it is
+  scenario-ledger row selected by default in `run-perf-smokes.sh`; it is
   scheduled/manual perf-smoke evidence, not a PR chaos row.
 - SDK transport load includes current mode-specific delivery-diagnostics rows
   selected through `mass.sdk.load.scenarioId`: polling, websocket, and socket.
@@ -535,10 +565,15 @@ Report-only support:
   close/reconnect through the worker client surface and records churn
   disconnect/reconnect counters in `workerMetrics`.
 - scheduled/manual polling soak includes the current
-  `polling-soak-noisy-mixed-result` worker-fault row. It selects seeded jitter
-  and every-N synthetic failure through `mass.soak.scenarioId`, records the
+  `polling-soak-noisy-mixed-result` worker-fault row. The fast soak script
+  selects it by default through `mass.soak.scenarioId`, records the
   scenario/profile/seed in `config` and `proof.matrixProfile`, and remains
   mixed-result soak proof rather than dropped-result/retry proof.
+- `xa-mass-testing/proof/perf-soak-release-evidence.json` is the current
+  release-evidence interpretation for scheduled/manual perf and soak. It names
+  stable scenario ids, hard runner-invariant threshold signals, and trend-only
+  latency/throughput signals. These reports support release confidence, but
+  they are not PR gates until calibrated thresholds are explicitly promoted.
 - when chaos/perf runners claim trace coverage, consume canonical trace through
   `xa-mass-trace` or the same query backend path rather than grepping raw logs
 

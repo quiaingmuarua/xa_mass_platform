@@ -37,7 +37,7 @@ public final class AdminCliMain {
         System.out.println("{\"status\":\"ok\"}");
     }
 
-    private static void auth(String[] args, ObjectMapper objectMapper) {
+    private static void auth(String[] args, ObjectMapper objectMapper) throws Exception {
         if (args.length == 0) {
             throw new IllegalArgumentException("auth subcommand is required");
         }
@@ -51,7 +51,12 @@ public final class AdminCliMain {
         switch (args[0]) {
             case "config" -> {
                 AuthConfig config = client.authConfig();
-                System.out.println("{\"authMode\":\"" + config.authMode() + "\"}");
+                java.util.Map<String, Object> output = new java.util.LinkedHashMap<>();
+                output.put("authMode", config.authMode());
+                output.put("operatorHeaderSupported", config.operatorHeaderSupported());
+                output.put("sessionCookieSupported", config.sessionCookieSupported());
+                output.put("csrfHeaderName", config.csrfHeaderName());
+                System.out.println(objectMapper.writeValueAsString(output));
             }
             case "login" -> {
                 String user = option(commandArgs(args), "--operator-user", "ops-admin");

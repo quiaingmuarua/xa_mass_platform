@@ -45,10 +45,73 @@ jobs:
           MASS_CONFIDENCE_RESULT_TIMEOUT_SECONDS: "60"
         run: bash xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile "${{ matrix.profile }}"
 
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job "packaged-process-confidence-${{ matrix.profile }}"
+          --platform-confidence-dir xa-mass-testing/target/platform-confidence
+
       - name: Upload platform confidence artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: platform-confidence-${{ matrix.profile }}
-          path: xa-mass-testing/target/platform-confidence/**
+          path: |
+            xa-mass-testing/target/platform-confidence/**
+            xa-mass-testing/target/proof-summary/**
+          if-no-files-found: warn
+
+  server-default-startup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+
+      - name: Run startup profile suite
+        run: |
+          ./mvnw -q -pl xa-mass-server -am \
+            -Dtest=ServerStartupProfileSuite \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+          .github/scripts/assert-surefire-executed-tests.sh xa-mass-server/target/surefire-reports
+
+      - name: Run server default startup and durable restart smoke
+        env:
+          MASS_OPERATOR_PASSWORD: ops-admin
+        run: bash xa-mass-testing/scripts/run-server-default-startup-smoke.sh
+
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job server-default-startup
+          --test-report-dir xa-mass-server/target/surefire-reports
+          --server-default-startup-dir xa-mass-testing/target/server-default-startup
+
+      - name: Upload server default startup artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-default-startup
+          path: |
+            xa-mass-server/target/surefire-reports/**
+            xa-mass-testing/target/server-default-startup/**
+            xa-mass-testing/target/proof-summary/**
           if-no-files-found: warn

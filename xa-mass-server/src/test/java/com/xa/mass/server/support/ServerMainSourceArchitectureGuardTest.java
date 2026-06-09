@@ -245,6 +245,27 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void workerApiRoutesStayOnExternalWorkerCredentialAuth() throws IOException {
+        Path webMvcConfig = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/config/WebMvcConfig.java");
+        String webMvcSource = Files.readString(webMvcConfig, StandardCharsets.UTF_8);
+        Path workerController = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/api/internal/ExternalWorkerApiController.java");
+        String workerControllerSource = Files.readString(workerController, StandardCharsets.UTF_8);
+
+        assertTrue(webMvcSource.contains("registry.addInterceptor(apiAuthInterceptor)\n"
+                        + "                .addPathPatterns(\"/api/v1/**\", \"/internal/v1/**\");"),
+                "ApiAuthInterceptor must stay limited to operator/API-shell routes");
+        assertTrue(!webMvcSource.contains("registry.addInterceptor(apiAuthInterceptor)\n"
+                        + "                .addPathPatterns(\"/api/v1/**\", \"/internal/v1/**\", \"/worker-api/v1/**\")"),
+                "worker-api routes must not be absorbed into operator/session ApiAuthInterceptor; "
+                        + "ExternalWorkerApiController owns worker API-key credential auth");
+        assertTrue(workerControllerSource.contains("requireAuthorizedWorkerCredential("),
+                "ExternalWorkerApiController must keep worker API-key credential authorization on worker-api routes");
+        assertTrue(workerControllerSource.contains("SdkCredentialAuthSupport.API_KEY_HEADER"),
+                "ExternalWorkerApiController must authenticate worker clients through the public X-Mass-Api-Key header");
+    }
+
+    @Test
     void durableLocalProfileKeepsStorageRuntimeAndTraceLayersSeparate() throws IOException {
         String durableLocalConfig = Files.readString(Path.of("src/main/resources/application-durable-local.yml"),
                 StandardCharsets.UTF_8);

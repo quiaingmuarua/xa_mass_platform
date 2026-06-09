@@ -76,6 +76,8 @@ Testing-policy note:
 | `polling scheduling soak` | `scripts/run-polling-scheduling-soak.sh` | manual/scheduled polling-worker pressure on engine scheduling; proves structured runtime invariants, configured success/failure and late-worker-join profiles, result sequential read, active lease drain, and canonical trace validate/stats | `target/soak-reports/`, `target/soak-traces/` |
 | `polling scheduling fast soak` | `scripts/run-polling-scheduling-fast-soak.sh` | scheduled/manual polling soak profile with mixed results, late worker join, result sequential read, canonical trace validation, and optional trace analyzer proof; not a PR gate | `target/soak-reports/`, `target/soak-traces/` |
 | `platform confidence smoke` | `scripts/run-platform-confidence-smoke.sh` | packaged server process plus admin CLI env init plus Java SDK worker/task launchers; proves server startup, session operator auth, catalog/rule/API-key preparation, worker registration, task submission, dispatch, and visible result through real process boundaries | `target/platform-confidence/` |
+| `server default startup smoke` | `scripts/run-server-default-startup-smoke.sh` | packaged server jar no-arg startup, default `durable-local` profile/path, process liveness after health, operator seed/login readiness, and same SQLite file restart | `target/server-default-startup/` |
+| `proof summary writer` | `scripts/write-proof-summary.mjs` | CI evidence summary that reads surefire XML plus lane-local JSON reports; keeps proof claims, route/client families, profiles, analyzers, and known non-proof boundaries visible in artifacts | `target/proof-summary/` |
 | `chaos: websocket disconnect/reconnect` | `com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner` | worker disconnects inside an active lease, reconnects, submits the delayed result, and later receives follow-up work | `target/chaos-reports/` |
 | `chaos: websocket lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner` | disconnect without result, watchdog expiry, retry reset, takeover by another websocket worker | `target/chaos-reports/`, `target/chaos-traces/` |
 | `chaos: websocket late stale result after lease expiry` | `com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner` | original worker disconnects, lease expires, takeover succeeds, then the stale worker reconnects and replays a late result that must not overwrite runtime finality | `target/chaos-reports/`, `target/chaos-traces/` |
@@ -100,7 +102,7 @@ Fastest current-workspace perf smoke bundle:
 xa-mass-testing/scripts/run-perf-smokes.sh
 ```
 
-This script first refreshes sibling module artifacts with `-pl xa-mass-testing -am -Dmaven.test.skip=true install`, then runs the smoke mains through a direct runtime classpath. Use it when `xa-mass-engine` changed in the current workspace and you want one reliable perf-smoke entrypoint without being blocked by unrelated test-compilation drift in sibling modules.
+This script first refreshes sibling module artifacts with `-pl xa-mass-testing -am -DskipTests install`, then runs the smoke mains through a direct runtime classpath. Use it when `xa-mass-engine` changed in the current workspace and you want one reliable perf-smoke entrypoint without being blocked by unrelated test-compilation drift in sibling modules.
 
 To include the task-flow runtime backend proof in the same script, opt in with
 the backend list:
@@ -127,7 +129,7 @@ Current perf smoke modeling:
 - workload mix uses a lane-aware matcher with one reserved interactive worker; bulk still creates background pressure, but it cannot consume every worker and turn the smoke into a starvation test
 - workload mix reads project support from WorkerGroup capability truth, not from worker declaration residue
 - workload mix uses a one-item interactive task because the smoke measures first-dispatch latency, not multi-round dispatch
-- set `-Dmass.workload.smoke.scenarioId=workload-mix-slow-bulk-interactive-isolation` to select the current slow-bulk matrix row; the runner writes `workerProfile=SLOW_BULK` and `faultShape=slow-bulk-interactive-isolation` in the report
+- `scripts/run-perf-smokes.sh` defaults the workload-mix runner to `workload-mix-slow-bulk-interactive-isolation`; set `MASS_WORKLOAD_SMOKE_SCENARIO_ID` or `-Dmass.workload.smoke.scenarioId=...` to override it deliberately. The runner writes `workerProfile=SLOW_BULK` and `faultShape=slow-bulk-interactive-isolation` in the report.
 - interactive retry wakeup starts `RuntimeReadyDispatchPump`; delayed retry visibility is therefore proven through runtime ready truth
 
 Perf load model:
@@ -210,6 +212,11 @@ xa-mass-testing/scripts/run-polling-scheduling-soak.sh -Dmass.soak.durationSecon
 xa-mass-testing/scripts/run-polling-scheduling-fast-soak.sh
 ```
 
+`scripts/run-polling-scheduling-fast-soak.sh` defaults to the stable
+`polling-soak-noisy-mixed-result` scenario row through
+`MASS_SOAK_SCENARIO_ID`, so scheduled reports have a comparable scenario id
+instead of relying on implicit runner defaults.
+
 Platform confidence smoke:
 
 ```bash
@@ -219,14 +226,59 @@ MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-platform-confidence
 
 The confidence lane is a packaged-process gate, not a unit test. It starts the
 real server jar with session operator auth, disables fixture-header auth,
-enables the minimal operator credential seed, runs `xa-mass-admin env init`,
-starts the Java SDK polling worker launcher as a background process, runs the
-Java SDK task launcher to create and append work, executes the operator
-`APPROVE` command through `xa-mass-admin task command`, then waits for visible
-success through the Java SDK result verifier. It writes categorized logs and
-`summary.json` under `target/platform-confidence/`. The script may use `curl`
-only for health; catalog/rule/API-key/task/worker business calls stay inside
-admin CLI or Java SDK launchers.
+enables the minimal operator credential seed, asserts `/api/v1/auth/config`
+reports `authMode=session`, `sessionCookieSupported=true`, and
+`operatorHeaderSupported=false`, runs `xa-mass-admin env init`, performs
+representative fail-closed checks for unauthenticated operator, invalid task
+API-key, and invalid worker API-key credentials, starts the Java SDK polling
+worker launcher as a background process, runs the Java SDK task launcher to
+create and append work, executes the operator `APPROVE` command through
+`xa-mass-admin task command`, then waits for visible success through the Java
+SDK result verifier. It writes categorized logs and `summary.json` under
+`target/platform-confidence/`. The script may use `curl` for health and the
+negative credential probes; positive catalog/rule/API-key/task/worker business
+calls stay inside admin CLI or Java SDK launchers. Negative probes assert the
+standard response envelope `code` and `msg`, and record `failureReason` in
+`credentialChecks`; they are representative credential-family checks, not a
+full route-permission matrix.
+
+Server default startup smoke:
+
+```bash
+MASS_OPERATOR_PASSWORD=ops-admin xa-mass-testing/scripts/run-server-default-startup-smoke.sh
+```
+
+This smoke is separate from active-profile API/auth confidence. It packages the
+server and admin CLI, starts the server jar with no application arguments from
+an isolated working directory, observes the default `durable-local` path, waits
+for health, keeps the process alive long enough to catch post-Tomcat startup
+failures, checks logs for `Application run failed`, logs in through the seeded
+operator credential, stops the process, then repeats startup/login against the
+same `./data/xa-mass-sqlite/xa_mass.db` file. Its `summary.json` records
+`defaultProfile`, `defaultProfileLogObserved`, `sqlitePath`, `restartCount`,
+health/login checks, `sameSqliteRestart`, `redisNamespaceMode`, and
+`logFailureScan`. The profile-name field is a log-observed signal; the stronger
+default-startup proof is no-arg jar startup, default SQLite path creation,
+health, operator login, and same-file restart.
+
+Proof summary artifact:
+
+```bash
+node xa-mass-testing/scripts/write-proof-summary.mjs --job local
+```
+
+The summary writer consumes surefire XML, platform-confidence summaries,
+default-startup summaries, and chaos/perf/soak JSON reports that already exist
+under `target/`. It does not run proof itself and does not replace
+`doc/PROOF_REGISTRY.md`. Perf/soak release interpretation is defined in
+`proof/perf-soak-release-evidence.json`: hard pass/fail signals remain runner
+invariants, while latency/throughput values are trend-only until a calibrated
+baseline exists.
+
+For clean CI evidence, workflows pass scoped input directories such as
+`--test-report-dir`, `--platform-confidence-dir`, `--server-default-startup-dir`,
+`--chaos-dir`, `--perf-dir`, and `--soak-dir`. An unscoped local summary is an
+aggregate view and may include stale `target/` artifacts from earlier runs.
 
 The polling scheduling soak is a manual or scheduled lane, not a PR gate. It drives SDK polling workers through the engine scheduling mainline and writes report JSON plus canonical trace JSONL under `target/soak-reports/` and `target/soak-traces/`. Its pass/fail proof is runtime/aggregate/result/trace-first: task terminal state, `TaskWorkRuntime` counters, active lease drain, SDK result windows, worker metrics, `JsonlExecutionEventSink` drop count, and `xa-mass-trace` validation/stats. The report includes `proof.runtimeInvariants`, a structured issue list that identifies whether failure came from task terminal count, runtime work counters, visible results, active lease drain, trace validation/drop, late-worker participation, trace analyzer failure, or worker failures. The `proof` bundle also groups `resultSequentialRead`, `workerMetrics`, `workerLifecycle`, `deliveryDiagnostics`, `trace`, and `failureSamples` so scheduled runs have one stable diagnostic entry point. Set `-Dmass.soak.failureEveryNth=N` to run mixed-result or all-failed profiles; the runner verifies expected terminal reasons and success/failed runtime counters from that profile and, when trace is enabled, binds a representative sample task into the named `mixed-result-terminal-convergence` or `all-failed-terminal-convergence` analyzer. Set `-Dmass.soak.processingJitterMillis=N -Dmass.soak.processingJitterSeed=S` to make processing jitter deterministic and report-visible in `config` and `proof.matrixProfile`. Set `-Dmass.soak.scenarioId=polling-soak-noisy-mixed-result` to select the current scenario-ledger noisy mixed-result row inside the runner; it defaults to deterministic jitter seed `20260602`, jitter bound `25ms`, and `failureEveryNth=5`, while explicit JVM properties still override those defaults. This row is seeded mixed-result soak proof, not dropped-result/retry proof. Set `-Dmass.soak.initialWorkerCount=N -Dmass.soak.lateWorkerStartAfterMillis=M -Dmass.soak.requireLateWorkerWork=true` to run a late-worker-join profile where only part of the polling fleet is online at the start; when trace is enabled, the runner records an actual late-worker task sample and runs the `late-worker-backfill` trace analyzer into `proof.trace.analyses`. Named soak analyzers receive the trace sink dropped count, so known dropped trace events cannot silently pass analyzer proof. See [`SOAK_TESTING_ROADMAP.md`](SOAK_TESTING_ROADMAP.md).
 

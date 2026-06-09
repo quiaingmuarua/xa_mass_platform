@@ -105,6 +105,14 @@ jobs:
         run: |
           rm -rf xa-mass-engine/target/surefire-reports-kernel-convergence
           cp -R xa-mass-engine/target/surefire-reports xa-mass-engine/target/surefire-reports-kernel-convergence
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job scheduling-core
+          --test-report-dir xa-mass-engine/target/surefire-reports
+          --test-report-dir xa-mass-engine/target/surefire-reports-scheduling-core
+          --test-report-dir xa-mass-engine/target/surefire-reports-kernel-convergence
       - name: Upload Maven test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -113,7 +121,44 @@ jobs:
           path: |
             **/target/surefire-reports*/**
             **/target/failsafe-reports/**
+            xa-mass-testing/target/proof-summary/**
             logs/**
+          if-no-files-found: warn
+
+  proof-credibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+      - name: Run proof registry and confidence guard tests
+        run: >-
+          ./mvnw -q -pl xa-mass-testing -am
+          -Dtest=ProofRegistryClosureGuardTest,WorkerFaultScenarioIndexTest,WorkerFaultReportMetadataTest,PlatformConfidenceProfileMatrixGuardTest,ProofSummaryWorkflowGuardTest,PerfSoakReleaseEvidenceGuardTest
+          -Dsurefire.failIfNoSpecifiedTests=false
+          test
+      - name: Verify proof credibility guard tests executed real testcases
+        run: .github/scripts/assert-surefire-executed-tests.sh xa-mass-testing/target/surefire-reports
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job proof-credibility
+          --test-report-dir xa-mass-testing/target/surefire-reports
+      - name: Upload proof credibility reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-proof-credibility-reports
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+            xa-mass-testing/target/proof-summary/**
           if-no-files-found: warn
 
   server-scheduling-e2e:
@@ -151,6 +196,12 @@ jobs:
           test
       - name: Verify server scheduling suite executed real testcases
         run: .github/scripts/assert-surefire-executed-tests.sh xa-mass-server/target/surefire-reports
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job server-scheduling-e2e
+          --test-report-dir xa-mass-server/target/surefire-reports
       - name: Upload Maven test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -159,6 +210,7 @@ jobs:
           path: |
             **/target/surefire-reports/**
             **/target/failsafe-reports/**
+            xa-mass-testing/target/proof-summary/**
             logs/**
           if-no-files-found: warn
 
@@ -193,6 +245,12 @@ jobs:
           test
       - name: Verify lifecycle suite executed real testcases
         run: .github/scripts/assert-surefire-executed-tests.sh xa-mass-server/target/surefire-reports
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job lifecycle-integration
+          --test-report-dir xa-mass-server/target/surefire-reports
       - name: Upload Maven test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -201,6 +259,7 @@ jobs:
           path: |
             **/target/surefire-reports/**
             **/target/failsafe-reports/**
+            xa-mass-testing/target/proof-summary/**
             logs/**
           if-no-files-found: warn
 
@@ -220,6 +279,12 @@ jobs:
           CHAOS_TIMEOUT_SECONDS: "30"
           CHAOS_PROCESSING_DELAY: "10"
         run: xa-mass-testing/scripts/run-chaos-smokes.sh
+      - name: Write proof summary
+        if: always()
+        run: >-
+          node xa-mass-testing/scripts/write-proof-summary.mjs
+          --job chaos-smokes
+          --chaos-dir xa-mass-testing/target/chaos-reports
       - name: Upload chaos reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -227,4 +292,5 @@ jobs:
           name: chaos-smoke-reports
           path: |
             **/target/chaos-reports/**
+            xa-mass-testing/target/proof-summary/**
           if-no-files-found: warn

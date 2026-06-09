@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 exec "${SCRIPT_DIR}/run-polling-scheduling-soak.sh" \
+  -Dmass.soak.scenarioId="${MASS_SOAK_SCENARIO_ID:-polling-soak-noisy-mixed-result}" \
   -Dmass.soak.durationSeconds="${MASS_SOAK_DURATION_SECONDS:-20}" \
   -Dmass.soak.workerCount="${MASS_SOAK_WORKER_COUNT:-4}" \
   -Dmass.soak.initialWorkerCount="${MASS_SOAK_INITIAL_WORKER_COUNT:-2}" \
