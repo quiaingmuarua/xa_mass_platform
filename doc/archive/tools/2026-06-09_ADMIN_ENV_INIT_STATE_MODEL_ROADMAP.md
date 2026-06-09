@@ -1,5 +1,15 @@
 # Admin Env Init State Model Roadmap
 
+Archived on 2026-06-09.
+
+Current truth owner: `tools/xa-mass-admin-cli/README.md` for `xa-mass-admin
+env init/verify`, typed env config, marker semantics, and admin HTTP
+automation boundaries.
+
+This document is historical roadmap context only. Do not use it as proof of
+current behavior; verify against current code, tests, owner README files, and
+`xa-mass-testing` confidence-smoke docs.
+
 Status: mainline implemented. AEI-1, AEI-2, AEI-3, and AEI-5 are implemented
 through `tools/xa-mass-admin-cli`; AEI-4 remains a deferred optional mode.
 `ScenarioCredentialBootstrapMain` remains only as transitional legacy residue

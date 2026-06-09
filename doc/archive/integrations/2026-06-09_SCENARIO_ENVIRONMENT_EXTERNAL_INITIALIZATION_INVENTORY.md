@@ -1,5 +1,14 @@
 # Scenario Environment External Initialization Inventory
 
+Archived on 2026-06-09.
+
+Current truth owner: `tools/xa-mass-admin-cli/README.md` for environment
+initialization and `integrations/xa-mass-scenario-launcher/README.md` for task
+and worker process launchers.
+
+This superseded inventory is historical context only. Do not use its
+`ScenarioEnvironmentInitializerMain` target as current direction.
+
 Status: current code inventory for
 `SCENARIO_ENVIRONMENT_EXTERNAL_INITIALIZATION_ROADMAP.md`.
 

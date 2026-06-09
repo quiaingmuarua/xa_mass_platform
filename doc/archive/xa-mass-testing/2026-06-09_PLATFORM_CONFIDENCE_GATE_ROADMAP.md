@@ -1,5 +1,15 @@
 # Platform Confidence Gate Roadmap
 
+Archived on 2026-06-09.
+
+Current truth owner: `xa-mass-testing/README.md` and
+`xa-mass-testing/VERIFIED_RUNBOOK.md` for packaged confidence-smoke commands,
+artifacts, and proof scope; `tools/xa-mass-admin-cli/README.md` for env init.
+
+This document is historical roadmap context only. Do not use it as proof of
+current behavior; verify against current scripts, workflow files, owner
+READMEs, and current test results.
+
 Status: implemented mainline confidence gate; keep as a completion record until
 post-CI residue review decides whether to archive it.
 

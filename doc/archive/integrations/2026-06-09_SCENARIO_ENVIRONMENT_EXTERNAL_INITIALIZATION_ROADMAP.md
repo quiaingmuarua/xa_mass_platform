@@ -1,5 +1,15 @@
 # Scenario Environment External Initialization Roadmap
 
+Archived on 2026-06-09.
+
+Current truth owner: `tools/xa-mass-admin-cli/README.md` for environment
+initialization and `integrations/xa-mass-scenario-launcher/README.md` for task
+and worker process launchers.
+
+This superseded roadmap is historical context only. Do not implement
+`ScenarioEnvironmentInitializerMain` from this document; current environment
+initialization belongs to `xa-mass-admin env init`.
+
 Status: superseded by `PLATFORM_CONFIDENCE_GATE_ROADMAP.md` and
 `ADMIN_ENV_INIT_STATE_MODEL_ROADMAP.md`.
 

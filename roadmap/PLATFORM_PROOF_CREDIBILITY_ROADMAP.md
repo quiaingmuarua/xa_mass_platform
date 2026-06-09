@@ -17,7 +17,8 @@ green CI
   -> which critical invariants were actually proven?
   -> which workflows are PR gates versus scheduled evidence?
   -> did a suite execute real testcases?
-  -> did the default packaged startup path run?
+  -> did every supported active profile run through real HTTP APIs and auth?
+  -> did any confidence lane bypass permissions or call internal services?
   -> are trace analyzers and proof rows still resolvable?
   -> which distributed faults are still explicitly not proven?
 ```
@@ -45,8 +46,34 @@ system without replacing the existing engine/server/SDK/trace proof owners.
 - `platform-confidence.yml` now runs a packaged-process confidence smoke for
   explicit `memory-local` and explicit `durable-local`.
 - `application.yml` defaults to `durable-local`, while the confidence smoke
-  passes `--spring.profiles.active=<profile>` explicitly. That proves explicit
-  profile startup, not the no-arg packaged startup contract by itself.
+  passes `--spring.profiles.active=<profile>` explicitly. The default no-arg
+  path is therefore only profile-selection convenience; the confidence proof
+  should focus on every supported active profile.
+- The default durable-local path uses `./data/xa-mass-sqlite/xa_mass.db`,
+  Redis runtime/transport, session operator auth, and
+  `classpath:control-plane-seed/operator-credentials.json`.
+- `ServerDurableLocalProfileContextTest` and
+  `ServerMemoryLocalProfileContextTest` exist, but current workflows do not
+  run them as a named startup-profile suite. The durable-local context test
+  uses a temp SQLite path and dynamic properties, so it is not proof of the
+  default `./data/...` packaged-process startup path.
+- No current PR lane starts the packaged server jar with no application
+  arguments from an isolated working directory, observes the default
+  durable-local profile/path, restarts against the same SQLite file, and checks
+  seed/operator readiness at process level.
+- `run-platform-confidence-smoke.sh` starts the packaged server jar, requires
+  session operator auth, disables the local fixture header, runs the admin CLI,
+  worker launcher, task launcher, operator task command, and task-result
+  verifier as external processes.
+- `tools/xa-mass-admin-cli` uses Java `HttpClient` against `/api/v1/auth/*`,
+  `/api/v1/control-plane/*`, `/api/v1/api-keys`, and task command routes. Its
+  production dependencies do not include server or engine modules.
+- `integrations/xa-mass-scenario-launcher` depends on `xa-mass-java-sdk`, not
+  server or engine internals. The SDK uses `MassHttpClient` with API-key
+  headers against `/api/v1/*` and `/worker-api/v1/*`.
+- Existing architecture guards prevent the scenario launcher from importing
+  platform internals and prevent Java integrations from hard-coding public
+  platform routes outside the SDK boundary.
 - `perf-smokes.yml` and `soak-smokes.yml` are scheduled/manual evidence lanes,
   not PR gates.
 - `redis-runtime.yml` is a focused Redis runtime workflow. It does not prove
@@ -54,8 +81,10 @@ system without replacing the existing engine/server/SDK/trace proof owners.
   presence flap.
 - `frontend.yml` proves frontend lint/typecheck/test/build. It is not kernel,
   server route, or backend authorization proof.
-- `PLATFORM_CONFIDENCE_GATE_ROADMAP.md` is implemented mainline and should be
-  consumed rather than duplicated.
+- The packaged-process confidence gate is implemented and documented by
+  `xa-mass-testing/README.md`, `xa-mass-testing/VERIFIED_RUNBOOK.md`, and
+  `.github/workflows/platform-confidence.yml`; consume those owner records
+  rather than duplicating the archived completion roadmap.
 - `SERVER_API_CONTRACT_HEALTH_LANE_ROADMAP.md` already owns route/auth/DTO/SDK/
   frontend contract health; this roadmap should not absorb that lane.
 
@@ -91,7 +120,8 @@ Workflow gates
 
 Proof manifest
   -> records what ran, testcase counts, analyzers, scenarios, profiles,
-     artifacts, and known non-proof boundaries
+     auth modes, API/client boundaries, artifacts, and known non-proof
+     boundaries
 
 Testing index
   -> explains current CI truth and minimum verification
@@ -106,19 +136,25 @@ reviewable.
 1. Do not replace engine scheduling/core convergence tests with broader E2E.
 2. Do not add tests only to raise coverage. Every new gate must name the risk
    class or invariant it proves.
-3. Do not claim explicit-profile confidence smoke proves no-arg startup unless
-   no-arg packaged startup actually ran.
-4. Do not claim Redis infra-fault proof for process kill, partition/failover,
+3. Do not spend proof budget on no-arg startup unless it represents a distinct
+   supported runtime contract. Default no-arg profile selection is not a
+   stronger proof than proving the active profile it selects.
+4. Every active-profile confidence claim must prove real HTTP routes and auth
+   boundaries; internal Java service calls, direct DB writes, or fixture
+   headers are not platform confidence proof.
+5. Default startup and durable restart proof is operator-startup confidence.
+   It must not replace PPC-2 API/auth confidence or engine/server E2E proof.
+6. Do not claim Redis infra-fault proof for process kill, partition/failover,
    lease-clock skew, or multi-node presence flap until a deterministic harness
    or seam exists.
-5. Do not use frontend tests as backend route/auth/kernel proof.
-6. Do not make proof manifests source of runtime truth. They are CI evidence.
-7. Do not let support or `secondary-proof` tests leak back into mainline suites.
-8. Do not duplicate existing `PLATFORM_CONFIDENCE_GATE_ROADMAP.md` or
+7. Do not use frontend tests as backend route/auth/kernel proof.
+8. Do not make proof manifests source of runtime truth. They are CI evidence.
+9. Do not let support or `secondary-proof` tests leak back into mainline suites.
+10. Do not duplicate existing packaged-process confidence-smoke or
    `SERVER_API_CONTRACT_HEALTH_LANE_ROADMAP.md` responsibilities.
-9. Any workflow or testing-doc change must keep `doc/TESTING_INDEX.md`,
+11. Any workflow or testing-doc change must keep `doc/TESTING_INDEX.md`,
    `doc/PROOF_REGISTRY.md`, and the actual workflow files consistent.
-10. Every new CI gate must fail if no testcase/scenario actually executed.
+12. Every new CI gate must fail if no testcase/scenario actually executed.
 
 ## Non-Goals
 
@@ -134,10 +170,11 @@ reviewable.
 
 ## Do Not Start With
 
-Do not start by adding another broad E2E suite or coverage target. The current
-weakness is not lack of tests; it is that proof claims, workflow truth, startup
-contracts, and artifact interpretation are not yet all mechanically tied
-together.
+Do not start by replacing the active-profile API/auth proof with a no-arg
+startup gate. The current proof-credibility weakness is not only that
+`java -jar` omits a profile argument; it is that proof claims, workflow truth,
+active-profile API/auth boundaries, default durable startup, and artifact
+interpretation are not yet all mechanically tied together.
 
 Do not start by faking Redis infra faults through worker state, local flags, or
 test-only runtime shortcuts. The repo already records those faults as
@@ -214,44 +251,116 @@ Verification:
 .github/scripts/assert-surefire-executed-tests.sh xa-mass-testing/target/surefire-reports
 ```
 
-## PPC-2 No-Arg Packaged Startup Contract Proof
+## PPC-2 Active Profile API/Auth Confidence Matrix
 
-Goal: prove the human/default packaged startup contract separately from
-explicit-profile confidence smoke.
+Goal: prove that every supported active profile runs the packaged server and
+external clients through real HTTP APIs and permission checks, without internal
+service, DB, or fixture-header shortcuts.
 
 Scope:
 
-- Add a focused no-arg packaged startup proof, either:
-  - a new mode in `run-platform-confidence-smoke.sh`, or
-  - a small dedicated startup smoke script.
-- Start the packaged server jar without `--spring.profiles.active`.
-- Observe that it resolves to `spring.profiles.default=durable-local`.
-- Preserve the durable-local startup order:
-  - seed/import,
-  - operator credential readiness,
-  - runtime start.
-- Verify readiness after `CommandLineRunner` guards, not only Tomcat listener
-  start.
-- Keep this separate from the full task/worker confidence flow unless the
-  script can clearly report the owner category.
+- Inventory supported active profiles from `xa-mass-server` profile resources
+  and workflow inputs. Current active profiles are `memory-local` and
+  `durable-local`.
+- Keep profile selection explicit in CI: run `run-platform-confidence-smoke.sh`
+  once for each supported active profile.
+- For each profile, start the packaged server jar and run external admin,
+  worker, task, operator-command, and result-verifier processes.
+- Require `mass.auth.operator.mode=session` and
+  `mass.auth.operator.allow-local-fixture-header=false` in the confidence lane.
+- Require admin bootstrap and operator commands to use `/api/v1/auth/*`,
+  `/api/v1/control-plane/*`, `/api/v1/api-keys`, and task command HTTP routes.
+- Require task and worker flows to use the external Java SDK through
+  `/api/v1/*` and `/worker-api/v1/*` with API-key headers.
+- Add or preserve architecture guards that fail if admin/scenario production
+  code imports server, engine, runtime, storage, or worker-pack internals.
+- Add one representative fail-closed check per credential family:
+  unauthenticated operator route fails, invalid task API key fails, and invalid
+  worker API key fails. Full route-permission matrix remains owned by ACH.
+- Document no-arg startup as default profile selection only. Do not create a
+  no-arg-only proof lane unless the repo adds a distinct no-arg runtime
+  contract beyond selecting `durable-local`.
 
 Acceptance:
 
-- A clean no-arg packaged server starts to healthy readiness when expected seed
-  inputs are present.
-- Failure output distinguishes Tomcat started from full application readiness.
-- Missing operator credentials fail with the readiness-guard category and
-  explicit message.
-- The no-arg proof is documented as a startup contract proof, not scheduling
-  or external-worker proof.
-- `platform-confidence.yml` or a separate workflow runs this proof on PR, or
-  the roadmap records why it is staged scheduled/manual first.
+- The confidence workflow matrix covers all supported active profiles.
+- Each profile produces evidence for server jar startup, auth mode, local
+  fixture-header disabled status, admin HTTP routes, SDK task routes, SDK
+  worker routes, operator task command, and task-result visibility.
+- The confidence lane fails if operator auth is not session-backed.
+- The confidence lane fails if local fixture-header auth is enabled.
+- The confidence lane fails if external launcher/admin modules gain production
+  dependencies or imports on server/engine/runtime internals.
+- Representative invalid credential checks fail closed and are reported as
+  auth/API-boundary evidence, not full ACH replacement.
+- No PPC-2 acceptance criterion depends on no-arg packaged startup proof.
 
 Verification:
 
 ```powershell
-./mvnw.cmd -q -pl xa-mass-server,tools/xa-mass-admin-cli,integrations/xa-mass-scenario-launcher -am -DskipTests package
-rg -n "spring.profiles.default|durable-local|OperatorAuthReadinessGuard|Started XaMassServerApplication|actuator/health" xa-mass-server xa-mass-testing .github -g "*.java" -g "*.yml" -g "*.sh" -g "*.md"
+rg --files xa-mass-server/src/main/resources | rg "application-.*\.yml"
+xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile memory-local
+xa-mass-testing/scripts/run-platform-confidence-smoke.sh --profile durable-local
+./mvnw.cmd -q -pl tools/xa-mass-admin-cli,integrations/xa-mass-scenario-launcher,sdk/xa-mass-java-sdk -am "-Dtest=AdminEnvServiceTest,ScenarioLauncherArchitectureGuardTest,JavaExternalSdkArchitectureGuardTest" test
+rg -n "allow-local-fixture-header|authMode|/api/v1|/worker-api/v1|X-Mass-Api-Key|com\\.xa\\.mass\\.(server|engine|runtime|storage)" xa-mass-testing tools/xa-mass-admin-cli integrations/xa-mass-scenario-launcher sdk/xa-mass-java-sdk -g "*.java" -g "*.sh" -g "*.xml"
+```
+
+## PPC-2B Server Default Startup And Durable Restart Smoke
+
+Goal: prove the human/operator default server startup contract separately from
+active-profile API/auth confidence.
+
+Scope:
+
+- Add a focused server default startup smoke, either as a dedicated script under
+  `xa-mass-testing/scripts/` or as a clearly named mode that is not confused
+  with `run-platform-confidence-smoke.sh`.
+- Add a named `ServerStartupProfileSuite` that includes
+  `ServerMemoryLocalProfileContextTest` and
+  `ServerDurableLocalProfileContextTest` as profile-assembly support proof.
+- Package `xa-mass-server` and start the packaged jar with no application
+  arguments from an isolated working directory.
+- Do not pass `--spring.profiles.active`; observe that the default profile is
+  `durable-local`.
+- Let durable-local use its default local SQLite path relative to the isolated
+  working directory: `./data/xa-mass-sqlite/xa_mass.db`.
+- Use the Redis service on localhost and the durable-local default Redis
+  namespace unless the script explicitly documents CI isolation for Redis keys.
+- Wait for `/actuator/health`, then keep observing briefly so a post-Tomcat
+  startup failure cannot be missed.
+- Assert the server process remains alive and the log does not contain
+  `Application run failed`.
+- Run admin operator login through the admin CLI after health so the smoke
+  proves seed/import -> operator credential readiness -> runtime start.
+- Stop the server, start it a second time from the same working directory and
+  same SQLite file, then repeat health, process-alive, log, and operator-login
+  checks.
+- Keep task/worker scenario launcher coverage out of this first slice unless it
+  is split into a separate human-config smoke. PPC-2 owns API/auth confidence.
+
+Acceptance:
+
+- PR CI or a documented scheduled lane starts the packaged server jar without
+  `spring.profiles.active`.
+- `ServerStartupProfileSuite` runs the memory-local and durable-local profile
+  context tests as a named suite and reports executed testcases.
+- The smoke proves default `durable-local` startup reaches health and stays
+  alive after health.
+- The smoke fails when the log contains `Application run failed`.
+- Operator login succeeds after the default seed/import path, proving session
+  credentials are usable at process level.
+- A second startup against the same SQLite file succeeds, proving durable-local
+  seed idempotence, schema sidecar compatibility, and operator credential
+  persistence for the current default local path.
+- The smoke output explicitly classifies this as default startup/restart proof,
+  not scheduling, task/worker, or full route-permission proof.
+
+Verification:
+
+```powershell
+./mvnw.cmd -q -pl xa-mass-server -am "-Dtest=ServerStartupProfileSuite" "-Dsurefire.failIfNoSpecifiedTests=false" test
+./mvnw.cmd -q -pl xa-mass-server,tools/xa-mass-admin-cli -am -DskipTests package
+rg -n "spring.profiles.default|default: durable-local|./data/xa-mass-sqlite/xa_mass.db|operator-credentials-location|Application run failed|auth login" xa-mass-server xa-mass-testing tools/xa-mass-admin-cli -g "*.yml" -g "*.java" -g "*.sh"
 ```
 
 ## PPC-3 Proof Manifest And Artifact Summary
@@ -269,6 +378,8 @@ Scope:
   - critical invariant ids when mapped,
   - trace analyzer ids when mapped,
   - profile/runtime backend,
+  - auth mode and credential family,
+  - public route family or SDK client used,
   - artifact paths,
   - known non-proof boundaries.
 - Keep this as CI evidence only. Do not make it a runtime API or database
@@ -283,7 +394,10 @@ Acceptance:
 - Server E2E output names representative suite and testcase counts.
 - Chaos smoke output names the three PR scenarios and their analyzer/proof
   relation where stable.
-- Platform confidence output names profile, auth mode, and result path.
+- Platform confidence output names profile, auth mode, fixture-header status,
+  admin CLI route family, SDK route family, credential family, and result path.
+- Default startup output names default profile, working directory, SQLite path,
+  restart count, health result, operator-login result, and log-failure scan.
 - The manifest explicitly says perf/soak are scheduled/manual evidence when
   they did not run in PR.
 - The manifest does not overclaim Redis infra-fault proof.
@@ -417,7 +531,8 @@ git diff --check
 | Server lifecycle/result E2E | `ServerLifecycleResultConvergenceSuite` |
 | External worker parity | `ExternalWorkerParitySuite` / external worker samples workflow |
 | Packaged process confidence | `run-platform-confidence-smoke.sh --profile memory-local` and `--profile durable-local` |
-| No-arg startup | PPC-2 startup proof command or workflow |
+| Active-profile API/auth confidence | PPC-2 confidence matrix and architecture guards |
+| Default startup / durable restart | PPC-2B packaged jar no-arg smoke with same SQLite file restart |
 | Chaos smoke | `run-chaos-smokes.sh` |
 | Redis runtime parity | `redis-runtime.yml` focused module/server smoke |
 | Perf/soak evidence | scheduled `perf-smokes.yml` and `soak-smokes.yml` reports |
@@ -430,7 +545,9 @@ git diff --check
 | Proof roadmap becomes a test-count project | Adds noise without increasing trust | Every slice names the invariant or risk class it proves. |
 | E2E replaces engine proof | Slower, weaker localization and hidden matrix gaps | Keep engine suites as primary proof in registry and CI. |
 | CI docs drift again | Agents and maintainers misread green runs | PPC-0 updates testing index and PPC-6 residue scans it. |
-| No-arg startup remains unproven | Human local startup can fail while explicit profile CI passes | PPC-2 makes default startup its own contract. |
+| Confidence lane bypasses auth/API | Green run can hide permission or route breakage | PPC-2 requires session auth, fixture-header-off proof, external clients, and invalid-credential checks. |
+| Default startup fails after Tomcat start | Human local startup can print early started logs and still fail during readiness guards | PPC-2B waits for health, observes process liveness, scans logs, and runs operator login. |
+| Local SQLite restart breaks seed/auth readiness | A clean CI DB can hide default durable-local persistence failures | PPC-2B restarts the same working-directory SQLite file and proves operator credentials remain usable. |
 | Registry guard is local-only | Registry can name stale classes/analyzers silently | PPC-1 makes it a PR gate. |
 | Proof manifest overclaims | Green summary becomes misleading | Manifest must include known non-proof boundaries. |
 | Redis infra faults are faked | False confidence around distributed recovery | PPC-4 requires deterministic harness/seam or explicit non-proof status. |
@@ -445,18 +562,22 @@ This roadmap can be marked complete only when:
    scheduled/manual, and frontend workflows.
 2. Registry closure guard tests run in CI and fail on stale proof rows,
    missing proof classes, or missing trace analyzers.
-3. No-arg packaged startup is separately proven or explicitly documented as a
-   known gap with owner and successor.
-4. CI emits or uploads a proof summary that maps major gates to suites,
-   testcase counts, profiles, scenarios, analyzers, and artifacts.
-5. Platform confidence evidence distinguishes explicit profile proofs from
-   no-arg startup proof.
-6. Redis infra-fault non-proof boundaries are either split into an active
+3. Every supported active profile is covered by packaged-process confidence
+   proof through real HTTP APIs and auth boundaries.
+4. Default packaged startup and same-SQLite durable-local restart are either
+   PR-gated or explicitly recorded as scheduled evidence with owner and
+   promotion criteria.
+5. CI emits or uploads a proof summary that maps major gates to suites,
+   testcase counts, profiles, auth modes, route/client families, scenarios,
+   analyzers, and artifacts.
+6. Platform confidence evidence distinguishes real API/auth proof from support
+   lanes that use lower-level harnesses.
+7. Redis infra-fault non-proof boundaries are either split into an active
    successor roadmap or remain clearly marked as not-current-proof in docs and
    proof summaries.
-7. Perf/soak reports have stable scenario ids and release-facing interpretation.
-8. Frontend workflow success is documented as frontend quality/adapter proof
+8. Perf/soak reports have stable scenario ids and release-facing interpretation.
+9. Frontend workflow success is documented as frontend quality/adapter proof
    only, not server/kernel proof.
-9. Residue scan finds no active doc claiming proof that the workflows do not
+10. Residue scan finds no active doc claiming proof that the workflows do not
    actually run.
-10. Current facts are moved into owner docs before this roadmap is archived.
+11. Current facts are moved into owner docs before this roadmap is archived.
