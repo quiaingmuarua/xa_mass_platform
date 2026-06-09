@@ -45,14 +45,14 @@ through operator control-plane APIs.
 ```
 
 For local scenario runs, initialize the scenario environment first. The
-initializer syncs the checked-in scenario catalog and rules through server
-control-plane APIs, then prepares the task API-key cache file and registers
-workerId-bound worker credentials for every expanded `workers.json` worker
-through operator login and the real API-key lifecycle route:
+preferred initializer is the server-owned admin CLI. It syncs the configured
+catalog/rules manifests through server control-plane APIs, verifies/creates
+task and worker API keys from typed desired credential state, and writes only
+configured gitignored cache/marker files:
 
 ```bash
-java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-credential-bootstrap.jar \
-  --config integrations/xa-mass-scenario-launcher/examples/scenario.local.example.json
+java -jar tools/xa-mass-admin-cli/target/xa-mass-admin-cli.jar \
+  env init --config tools/xa-mass-admin-cli/examples/admin-env.local.json
 
 java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-task-launcher.jar \
   --config integrations/xa-mass-scenario-launcher/examples/scenario.local.example.json
@@ -112,7 +112,11 @@ Options:
 - `--scenario-dir`: scenario JSON directory. Default: `integrations/samples/dev/scenario`
 - `--max-polling-workers`: maximum polling workers to start in worker launcher. Default: `25`; `0` disables the cap
 
-Credential bootstrap options:
+Transitional credential bootstrap options:
+
+The `xa-mass-scenario-credential-bootstrap` jar remains as legacy local
+residue while the admin CLI becomes the environment initializer owner. Prefer
+`tools/xa-mass-admin-cli env init` for new commands and confidence gates.
 
 - `--config`: scenario task config. Reads `server.baseUrl` and
   `credentials.taskApiKeyFile`.

@@ -64,6 +64,8 @@ __pycache__/
 *.jks
 *.keystore
 /integrations/xa-mass-scenario-launcher/examples/secrets/
+/tools/xa-mass-admin-cli/examples/secrets/
+/tools/xa-mass-admin-cli/examples/.state/
 /tmp/
 /data/
 /identifier.sqlite

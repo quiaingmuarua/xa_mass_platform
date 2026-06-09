@@ -44,6 +44,7 @@
         <module>sdk/xa-mass-embedded-sdk</module>
         <module>sdk/xa-mass-java-sdk</module>
         <module>integrations/xa-mass-scenario-launcher</module>
+        <module>tools/xa-mass-admin-cli</module>
         <module>xa-mass-testing</module>
         <module>integrations/xa-mass-worker-pack</module>
         <module>xa-mass-server</module>

@@ -200,6 +200,9 @@ Current integration boundary rule:
 - `sdk/xa-mass-java-sdk`: external Java client/session/handler SDK for task producers and external workers
 - `sdk/xa-mass-embedded-sdk-api`: embedded SDK-facing auth, catalog, event, and model contracts
 - `sdk/xa-mass-embedded-sdk`: embedding entry and runtime composition for JVM callers
+- `tools/xa-mass-admin-cli`: server-owned operator/admin HTTP CLI for health,
+  auth, API-key inspection, and typed env init against a running server; not a
+  public SDK and not a task/worker actor client
 - `xa-mass-testing`: acceptance tooling, load harnesses, and chaos probes
 - `integrations/xa-mass-worker-pack`: official worker capability pack, dev/E2E
   harness support, and worker-side command runtime
@@ -215,6 +218,8 @@ Top-level non-reactor directories are intentionally narrow:
 - `roadmap/`: active cross-module planning, inventories, and decision records;
   use only when the task touches planned convergence or future direction, and
   verify against code before treating it as current truth
+- `tools/`: executable local/admin tools that are cross-module entry points but
+  not SDK product surfaces; current owner is `tools/xa-mass-admin-cli`
 
 ## Pointers
 

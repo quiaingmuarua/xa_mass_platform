@@ -1,0 +1,24 @@
+[
+  {
+    "workerId": "confidence-worker-001",
+    "workerKey": "confidence-worker-001-key",
+    "workerGroupId": "sample-websocket-crawler",
+    "adapterNodeId": "sample-websocket-node",
+    "adapterId": "websocket",
+    "transportHint": "realtime",
+    "attributes": {
+      "lang": "java-admin-cli-fixture",
+      "runtime": "confidence-worker",
+      "workerType": "crawler",
+      "routingTags": "web,us"
+    },
+    "eventBindings": [
+      {
+        "eventCode": "crawler.fetch-page",
+        "projectCodes": [
+          "crawlerApp"
+        ]
+      }
+    ]
+  }
+]

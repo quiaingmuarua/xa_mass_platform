@@ -1,12 +1,30 @@
 # Admin Env Init State Model Roadmap
 
-Status: proposed prerequisite roadmap.
+Status: mainline implemented. AEI-1, AEI-2, AEI-3, and AEI-5 are implemented
+through `tools/xa-mass-admin-cli`; AEI-4 remains a deferred optional mode.
+`ScenarioCredentialBootstrapMain` remains only as transitional legacy residue
+for existing scenario-launcher commands/tests.
 
 ## Summary
 
 `PLATFORM_CONFIDENCE_GATE_ROADMAP.md` depends on a reliable environment
 initialization path, but the initialization semantics should be decided before
 the confidence gate starts using it as proof.
+
+Execution order with PCG:
+
+```text
+PCG-1
+  -> create tools/xa-mass-admin-cli module skeleton
+AEI-1/2/3
+  -> define typed config, verify, apply, and marker semantics in that module
+PCG-2B+
+  -> consume xa-mass-admin env init/verify as the confidence setup owner
+```
+
+This roadmap is a prerequisite for PCG env-init behavior. It still depends on
+PCG-1 for the admin CLI module skeleton; do not start AEI implementation by
+creating a second initializer elsewhere.
 
 This roadmap defines `xa-mass-admin env init` as an operator/admin HTTP flow
 driven by a typed JSON config model plus an optional local marker file. The
@@ -102,12 +120,39 @@ First-slice shape:
   },
   "environment": {
     "mode": "apply",
-    "catalogManifest": "scenario.catalog.manifest.json",
-    "rulesManifest": "scenario.rules.manifest.json"
+    "catalogManifest": "scenario.catalog.seed.json",
+    "rulesManifest": "../../samples/dev/scenario/rules.json"
   },
   "credentials": {
-    "taskApiKeyFile": "secrets/task-api-key.txt",
-    "workerSpecFile": "../../samples/dev/scenario/workers.json"
+    "taskCredential": {
+      "apiKeyFile": "secrets/task-api-key.txt",
+      "principalId": "scenario-task-producer",
+      "createdForUserId": "ops-admin",
+      "permissions": [
+        "task:create",
+        "task:edit",
+        "task:view"
+      ],
+      "projectScopes": [
+        "crawlerApp"
+      ],
+      "eventScopes": [
+        "crawler.fetch-page"
+      ],
+      "rawSecretFile": "secrets/task-api-key.txt"
+    },
+    "workerCredentials": {
+      "workerSpecFile": "workers.confidence.json",
+      "principalIdTemplate": "scenario-worker-${workerId}",
+      "createdForUserId": "ops-admin",
+      "permissions": [
+        "worker:poll"
+      ],
+      "projectScopesFromWorkerBindings": true,
+      "eventScopesFromWorkerBindings": true,
+      "rawSecretSource": "workerSpec.workerKey",
+      "workerIdAttribute": "workerId"
+    }
   },
   "state": {
     "mode": "file",
@@ -151,6 +196,37 @@ enum EnvStateMode {
     FILE
 }
 ```
+
+Credential config is desired credential state, not just cache file location.
+For every task or worker API key that env init creates or verifies, the typed
+model must provide either explicit fields or an explicit derivation rule for:
+
+- `principalId`
+- `createdForUserId`
+- `permissions`
+- `projectScopes`
+- `eventScopes`
+- raw secret source or generated-secret output file
+- credential attributes that affect auth, especially worker `workerId`
+  binding
+
+Verification must compare the current API-key principal against this desired
+state. A key that exists but has the wrong user, scope, permission, or
+workerId binding is not current.
+
+First confidence config must use a small worker spec. Do not point the first
+lane at `integrations/samples/dev/scenario/workers.json`, because that fixture
+expands to the broad sample topology. Use a dedicated one-worker fixture or an
+explicit bounded worker selection in config.
+
+Manifest naming transition:
+
+- First implementation may point at existing files:
+  - `integrations/xa-mass-scenario-launcher/examples/scenario.catalog.seed.json`
+  - `integrations/samples/dev/scenario/rules.json`
+- AEI-0 must decide whether to copy/rename them to manifest names before
+  AEI-1 tests reference those names.
+- Do not make example config point to non-existent manifest files.
 
 ## State Semantics
 
@@ -199,7 +275,8 @@ Suggested marker shape:
   "catalogManifestSha256": "...",
   "rulesManifestSha256": "...",
   "workerSpecSha256": "...",
-  "taskApiKeyFile": "secrets/task-api-key.txt",
+  "taskCredentialSha256": "...",
+  "workerCredentialPolicySha256": "...",
   "requiredProjects": [
     "crawlerApp",
     "deviceProbe"
@@ -257,12 +334,33 @@ Suggested marker shape:
 4. Do not add env init or operator login to `xa-mass-java-sdk`.
 5. Do not make confidence scripts implement catalog/rule/API-key HTTP calls.
 6. Relative paths in config resolve relative to the config file directory.
-7. `operator.passwordEnv` or `operator.passwordFile` is required unless the
-   auth mode explicitly supports a test fixture header.
+7. `operator.passwordEnv` or `operator.passwordFile` is required for process
+   confidence and real server verification. Dev-header or fixture auth may
+   exist only in isolated unit/stub tests and must not be the env-init proof
+   path.
 8. `state.mode=file` requires `state.markerFile`.
 9. `state.mode=memory` must not use marker file for skip/no-op decisions.
 10. API-key raw secrets may be written only to configured gitignored cache
     files and must not be printed.
+11. Operator login/readiness is the first auth precondition. If a clean server
+    has no active login-capable operator credential, fail as
+    `operator-auth/readiness`; do not continue and report catalog/API-key
+    failures.
+12. Task and worker API-key verification must validate principal, user, scopes,
+    permissions, and required attributes, not only whether a raw secret
+    authenticates.
+
+## Do Not Start With
+
+- Do not copy `ScenarioCredentialBootstrapMain` into admin CLI as a bulk
+  implementation. Inventory it, then rebuild typed config and verify/apply
+  slices explicitly.
+- Do not start by writing marker skip behavior. Marker is useful only after
+  typed config parsing and server verification exist.
+- Do not start with the full sample worker fixture. The first confidence lane
+  needs one worker / one task scale before broader scenario coverage.
+- Do not preserve both `ScenarioCredentialBootstrapMain --kind env` and
+  `xa-mass-admin env init` as independent long-term owners.
 
 ## Non-Goals
 
@@ -290,6 +388,21 @@ Scope:
 - Decide manifest naming that does not imply startup seed. Target names are:
   - `scenario.catalog.manifest.json`
   - `scenario.rules.manifest.json`
+- Decide whether first-slice examples use existing file names or create/copy
+  the manifest-named files immediately. Examples and tests must reference
+  files that exist in the same slice.
+- Inventory current task and worker API-key creation fields:
+  - principal ID
+  - created-for user
+  - permissions
+  - project scopes
+  - event scopes
+  - raw secret source
+  - workerId-bound attributes
+- Decide the small first confidence worker fixture or explicit worker
+  selection mechanism. Do not use the broad expanded sample fixture as the
+  first proof lane.
+- Inventory minimal operator credential startup/readiness requirements.
 - Inventory current password/env defaults and failure messages.
 - Decide first config file path and example name.
 - Decide gitignore location for marker and API-key cache files.
@@ -301,6 +414,12 @@ Acceptance:
 - Inventory states selected marker path and cache file paths.
 - Inventory records how old `*.seed.json` or sample fixture names migrate to
   manifest names without preserving startup seed semantics.
+- Inventory records credential desired-state fields and current-key equality
+  rules.
+- Inventory records the operator-readiness diagnostic that must run before
+  catalog/rule/API-key checks.
+- Inventory records first confidence gate worker scale as one worker or an
+  explicitly bounded selection.
 - Inventory states first confidence gate should use `environment.mode=apply`.
 - No code behavior changes.
 
@@ -327,6 +446,9 @@ Scope:
   - JSON parsing
   - relative path resolution from config file directory
   - enum parsing for `environment.mode` and `state.mode`
+  - typed task credential desired state
+  - typed worker credential desired state or explicit derivation rules from
+    worker specs
   - validation errors with field paths
 - Add example config file.
 
@@ -334,6 +456,15 @@ Acceptance:
 
 - Config parser rejects unknown/missing critical fields with actionable
   messages.
+- Config parser rejects task credential config that lacks principal, user,
+  permissions, scopes, and raw secret source/output.
+- Config parser rejects worker credential config that lacks worker spec input,
+  principal derivation, permissions, scope derivation, raw secret source, and
+  workerId binding attribute.
+- Example config references existing catalog/rule files or files created in
+  this slice.
+- Example config uses the small first confidence worker fixture or an explicit
+  bounded worker selection.
 - `state.mode=FILE` without marker file fails.
 - `state.mode=MEMORY` with marker file does not use it as skip input.
 - `operator.passwordEnv` resolves from environment at runtime, not at parse
@@ -359,19 +490,23 @@ Scope:
 - Verify:
   - server health
   - auth config
-  - operator login when required
+  - operator credential readiness and operator login when required
   - required projects/events
-  - task API-key current
-  - worker API-key current for every configured worker in the first confidence
-    config; larger configs may later add a sampled verification mode with an
-    explicit count summary
+  - task API-key current against configured desired credential state
+  - worker API-key current against configured desired credential state for
+    every configured worker in the first confidence config; larger configs may
+    later add a sampled verification mode with an explicit count summary
 - Do not write catalog/rules/API keys.
 - Do not write marker.
 
 Acceptance:
 
+- A clean server without an active login-capable operator credential fails as
+  `operator-auth/readiness`, before catalog/rule/API-key diagnostics.
 - Clean uninitialized server fails verify with missing-fact diagnostics.
 - Initialized server passes verify.
+- API key that authenticates but has wrong principal, user, scope, permission,
+  or workerId binding fails as stale/mismatched credential.
 - Invalid task API key and worker API key failures are categorized separately.
 - Marker-matched no-op still verifies server health, required projects/events,
   task API key, and configured worker API keys.
@@ -402,8 +537,9 @@ Scope:
 - Apply path:
   - catalog sync/upsert
   - rules sync/upsert
-  - task API-key validate/create
-  - worker API-key validate/create based on worker specs
+  - task API-key validate/create from configured credential desired state
+  - worker API-key validate/create from configured worker credential desired
+    state and worker specs
 
 Acceptance:
 
@@ -412,6 +548,8 @@ Acceptance:
 - Marker mismatch triggers apply/verify/rewrite.
 - Memory mode never uses marker to skip.
 - Marker never contains raw API-key secrets.
+- Created task and worker API keys match configured principal, user, scopes,
+  permissions, and workerId binding attributes.
 - Failure output distinguishes auth, catalog, rule, task-key, worker-key, and
   verify failures.
 

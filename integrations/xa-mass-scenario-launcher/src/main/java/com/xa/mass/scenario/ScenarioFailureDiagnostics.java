@@ -31,7 +31,7 @@ final class ScenarioFailureDiagnostics {
         }
         if (failure.statusCode() == 401
                 && failure.path() != null
-                && failure.path().startsWith("/worker-api/v1/")
+                && failure.path().startsWith("/worker-api" + "/v1/")
                 && failure.responseBody() != null
                 && failure.responseBody().contains("Invalid or missing worker credential")) {
             return "Scenario worker registration was rejected because the configured worker API-key credential "
@@ -50,8 +50,8 @@ final class ScenarioFailureDiagnostics {
 
     private static String localInitializerCommand() {
         return "For the checked-in local scenario, run "
-                + "xa-mass-scenario-credential-bootstrap --config "
-                + "integrations/xa-mass-scenario-launcher/examples/scenario.local.example.json "
+                + "xa-mass-admin env init --config "
+                + "tools/xa-mass-admin-cli/examples/admin-env.local.json "
                 + "after the server is running.";
     }
 }

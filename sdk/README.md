@@ -33,10 +33,9 @@ Global boundary guard:
 - `integrations/xa-mass-scenario-launcher` owns human task-launcher config
   ergonomics. This is integration wiring around `xa-mass-java-sdk`, not a new
   SDK DTO or server bootstrap path.
-- Local scenario credential bootstrap belongs to
-  `integrations/xa-mass-scenario-launcher` and server operator/API-key routes.
-  `xa-mass-java-sdk` consumes API keys; it must not grow username/password
-  operator login or API-key lifecycle helpers.
+- Operator/admin environment setup belongs to `tools/xa-mass-admin-cli` and
+  server operator/API-key routes. `xa-mass-java-sdk` consumes API keys; it must
+  not grow username/password operator login or API-key lifecycle helpers.
 - In-process JVM embedding callers should start from `xa-mass-embedded-sdk`.
 - Public HTTP wire DTOs belong in `xa-mass-public-contract` only when the owning
   Controller method and route role are documented by

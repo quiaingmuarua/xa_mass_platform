@@ -39,6 +39,7 @@ keys for SDK/worker-api calls.
 | `integrations/xa-mass-scenario-launcher` | Java external SDK adopter | executable proof that external SDK registration, worker sessions, and task submission work against a running server |
 | `integrations/xa-mass-worker-pack` | worker capability pack | reusable worker capabilities plus explicitly documented dev/E2E harness support |
 | `integrations/samples` | protocol/dev fixtures | external-process validation fixtures only; not the public SDK product surface |
+| `tools/xa-mass-admin-cli` | server admin CLI | operator/admin HTTP automation for health, auth, API-key inspection, and typed env init; not a public SDK and not a task/worker actor client |
 | `xa-mass-server` | reference host | HTTP/auth/project/tenant/user/API-key/console shell; validates public paths without redefining kernel ownership |
 
 ## Hard Rules
@@ -113,12 +114,13 @@ two live truths.
 - `integrations/xa-mass-scenario-launcher` may compose SDK calls into an
   executable scenario that proves real external registration, worker sessions,
   task creation, item append, and result convergence.
-- `integrations/xa-mass-scenario-launcher` may also provide local credential
-  preparation tooling that calls server operator login and API-key lifecycle
-  routes, validates `credentials.taskApiKeyFile` through
-  `/api/v1/api-keys:current`, and writes the one-time raw secret to a
-  gitignored cache file. This is an explicit integration-tool exception, not
-  Java SDK public credential management.
+- `tools/xa-mass-admin-cli` owns local/admin environment initialization. It may
+  call server operator login, CSRF-protected control-plane sync routes, and
+  API-key lifecycle routes over real HTTP. It must not depend on
+  `xa-mass-java-sdk`, and it must not become a task/worker actor client.
+- `integrations/xa-mass-scenario-launcher` may retain transitional local
+  credential preparation tooling only as bounded residue. New environment
+  initialization should use `tools/xa-mass-admin-cli`.
 - Scenario-launcher should assume the target server environment has already
   been initialized through real control-plane storage or explicit seed/import;
   it should not call server-owned sample bootstrap APIs as part of the SDK

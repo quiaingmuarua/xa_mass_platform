@@ -105,7 +105,7 @@ class ScenarioLauncherOptionsTest {
 
         assertTrue(message.contains("server catalog does not contain an event"));
         assertTrue(message.contains("integrations/samples/dev/scenario/workers.json"));
-        assertTrue(message.contains("xa-mass-scenario-credential-bootstrap"));
+        assertTrue(message.contains("xa-mass-admin env init"));
         assertTrue(!message.contains("--mass.control-plane.seed.enabled=true"));
     }
 
@@ -125,7 +125,7 @@ class ScenarioLauncherOptionsTest {
         assertTrue(message.contains("task API-key credential does not exist"));
         assertTrue(message.contains("--task-api-key"));
         assertTrue(message.contains("MASS_TASK_API_KEY"));
-        assertTrue(message.contains("xa-mass-scenario-credential-bootstrap"));
+        assertTrue(message.contains("xa-mass-admin env init"));
         assertTrue(!message.contains("--mass.control-plane.seed.enabled=true"));
     }
 
@@ -144,7 +144,7 @@ class ScenarioLauncherOptionsTest {
 
         assertTrue(message.contains("worker API-key credential"));
         assertTrue(message.contains("workerId-bound credentials"));
-        assertTrue(message.contains("xa-mass-scenario-credential-bootstrap"));
+        assertTrue(message.contains("xa-mass-admin env init"));
         assertTrue(message.contains("MASS_WORKER_API_KEY"));
     }
 
