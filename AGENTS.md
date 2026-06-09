@@ -98,6 +98,9 @@ For a new session, read only these before changing behavior:
 Then jump to the owning module README or owner contract. Use
 [doc/README.md](doc/README.md) as the expanded reading map only when needed.
 
+For complex cross-module iteration methodology, read
+[doc/AGENT_NATIVE_ENGINEERING_HYGIENE.md](doc/AGENT_NATIVE_ENGINEERING_HYGIENE.md).
+
 ## 2. Trust Order
 
 1. code

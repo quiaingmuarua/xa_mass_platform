@@ -13,6 +13,7 @@ Read the fewest files possible:
 | File | Purpose |
 | --- | --- |
 | [AGENT_BASELINE.md](./AGENT_BASELINE.md) | global platform baseline and hard guardrails |
+| [AGENT_NATIVE_ENGINEERING_HYGIENE.md](./AGENT_NATIVE_ENGINEERING_HYGIENE.md) | agent-native truth/proof/roadmap/archive hygiene for fast complex iteration |
 | [TASK_LIFECYCLE_BASELINE.md](./TASK_LIFECYCLE_BASELINE.md) | Task/Worker/Scheduling/Matching lifecycle, result-side ownership, and terminal invariants |
 | [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | control-plane/runtime/trace placement matrix plus DB hot-write guardrails |
 | [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | required trace surface |
