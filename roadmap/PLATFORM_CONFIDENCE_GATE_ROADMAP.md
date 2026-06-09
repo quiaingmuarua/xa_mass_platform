@@ -1,6 +1,15 @@
 # Platform Confidence Gate Roadmap
 
-Status: proposed roadmap.
+Status: proposed roadmap; revised after the admin env-init baseline landed.
+
+Current implementation baseline:
+
+- `tools/xa-mass-admin-cli` exists and owns module-local operator/admin HTTP.
+- `xa-mass-admin env verify/init --config <file>` exists and is the preferred
+  environment preparation path.
+- `ScenarioCredentialBootstrapMain` is transitional residue only.
+- The next implementation work should start from the real-process confidence
+  lane, not from recreating admin CLI or env-init.
 
 ## Summary
 
@@ -23,10 +32,10 @@ package server jar
   -> collect categorized logs on failure
 ```
 
-The first implementation slice intentionally does not create a shared HTTP
+The next implementation slice intentionally does not create a shared HTTP
 client core. `xa-mass-admin-cli` is an internal/operator tooling surface, not a
-public SDK promise. Its first HTTP helper should stay module-local and narrow
-until real duplication justifies extraction.
+public SDK promise. Its HTTP helper stays module-local and narrow until real
+duplication justifies extraction.
 
 ## Current Code Observations
 
@@ -44,12 +53,29 @@ until real duplication justifies extraction.
   - `ScenarioTaskLauncherMain`
   - `ScenarioWorkerLauncherMain`
 - `ScenarioCredentialBootstrapMain` already calls real server HTTP routes for
-  `/api/v1/auth/login`, `/api/v1/api-keys:current`, and API-key creation.
+  `/api/v1/auth/login`, `/api/v1/api-keys:current`, and API-key creation, but
+  it is no longer the preferred environment initializer.
 - `ScenarioTaskLauncherMain` and `ScenarioWorkerLauncherMain` use
   `MassPlatform` / `xa-mass-java-sdk` for external task and worker behavior.
+- `tools/xa-mass-admin-cli` now provides:
+  - `health`
+  - `auth config`
+  - `auth login`
+  - `api-key current`
+  - `env verify`
+  - `env init`
+- `tools/xa-mass-admin-cli/examples/admin-env.local.json` is the first small
+  confidence config. It uses a one-worker fixture and writes secrets/marker
+  under gitignored example-local paths.
 - `xa-mass-server` has memory-local and durable-local profile context tests,
   but the current CI shape does not guarantee a packaged server process plus
   initializer plus task/worker launchers all work together.
+- `application-memory-local.yml` currently uses `operator.mode=dev-header`.
+  That is not acceptable for the confidence lane. The memory-local confidence
+  command must run with explicit session auth and fixture-header disabled, or a
+  dedicated no-bypass memory profile must be added before PCG-3.
+- `application-durable-local.yml` already uses session auth and seeds only the
+  minimal operator credential by default.
 - Existing direction docs already separate:
   - scenario environment initialization,
   - server API contract health,
@@ -130,18 +156,22 @@ script
    Startup may provide minimal operator credential only.
 7. Do not treat `memory-local` as a toy profile. It is a valid process/runtime
    shape and must pass the same external task/worker confidence flow.
-8. Do not treat `durable-local` as proven by context load alone. It must pass a
+8. The confidence lane must not use `dev-header` operator auth. If the existing
+   `memory-local` profile remains dev-header for console convenience, the
+   confidence smoke must override it to session auth or use a dedicated
+   no-bypass memory profile.
+9. Do not treat `durable-local` as proven by context load alone. It must pass a
    real packaged-process confidence flow with Redis/SQLite.
-9. Failure output must categorize owner: server-startup, health, operator-auth,
+10. Failure output must categorize owner: server-startup, health, operator-auth,
    admin-env-init, API-key, catalog-rule, task-launcher, worker-launcher,
    scheduling-result, or cleanup.
-10. Raw API-key secrets must not be printed in logs. Cache file paths and
+11. Raw API-key secrets must not be printed in logs. Cache file paths and
     principal IDs are acceptable.
-11. Any profile/startup/auth/config changes must include startup or real
+12. Any profile/startup/auth/config changes must include startup or real
     process proof, not only constructor tests.
-12. `xa-mass-public-contract` may be used by both SDK and admin CLI only for
+13. `xa-mass-public-contract` may be used by both SDK and admin CLI only for
     recorded Controller-exposed wire DTOs/constants.
-13. Do not implement two environment initializers. `ScenarioCredentialBootstrapMain`
+14. Do not implement two environment initializers. `ScenarioCredentialBootstrapMain`
     and any planned `ScenarioEnvironmentInitializerMain` are residue once
     `tools/xa-mass-admin-cli env init` exists.
 
@@ -162,24 +192,29 @@ script
 
 Do not start by adding another large E2E that embeds HTTP requests directly in a
 test class or shell script. That would make the test pass once while increasing
-future route-change cost. First create the admin CLI as the owner of environment
-preparation, with only module-local HTTP helper code.
+future route-change cost.
 
-## PCG-0 Inventory And Gate Contract
+Do not start by recreating the admin CLI skeleton or copying
+`ScenarioCredentialBootstrapMain`. The admin CLI and env-init model already
+exist; the next slice must consume them through a real packaged-process smoke.
 
-Goal: define the first executable confidence lane and close open owner
-questions without changing behavior.
+## PCG-0 Current Baseline Refresh And Gate Contract
+
+Goal: refresh the first executable confidence lane against current code and
+close open owner questions without changing behavior.
 
 Scope:
 
-- Inventory current process entries:
+- Inventory current process entries and confirm which are mainline versus
+  residue:
   - server jar startup command
+  - `tools/xa-mass-admin-cli env init`
   - `ScenarioCredentialBootstrapMain`
   - any planned or existing `ScenarioEnvironmentInitializerMain`
   - `ScenarioTaskLauncherMain`
   - `ScenarioWorkerLauncherMain`
 - Inventory current HTTP client helpers in `xa-mass-java-sdk`, scenario
-  launcher, and the planned admin CLI local helper boundary.
+  launcher, and the existing admin CLI local helper boundary.
 - Inventory current scenario manifests and credential cache files.
 - Inventory current catalog/rule operator write API status:
   - route shape
@@ -193,6 +228,10 @@ Scope:
   - one polling worker
   - one task
   - small item count
+- Decide the memory-local no-bypass startup shape:
+  - either explicit command-line overrides for session auth, or
+  - a dedicated memory-local confidence profile
+  - no `dev-header` in the confidence lane
 - Decide exact output files:
   - server log
   - admin CLI log
@@ -210,6 +249,10 @@ Acceptance:
 - Inventory records the owner category taxonomy for failures.
 - Inventory records whether catalog/rule write APIs already exist or must be
   implemented before PCG-2 env init.
+- Inventory records whether PCG-1 and PCG-2B are already satisfied by
+  `tools/xa-mass-admin-cli`.
+- Inventory records the exact session-auth startup command for memory-local
+  confidence proof.
 - Inventory records that PCG supersedes the SEI initializer owner; scenario
   launcher keeps only task/worker process roles.
 - No implementation relies on script-level business HTTP calls.
@@ -222,10 +265,10 @@ rg -n "MassHttpClient|HttpClient|ScenarioCredentialBootstrapMain|ScenarioEnviron
 rg -n "memory-local|durable-local|api-keys:current|auth/login|catalog|rules|scenario" xa-mass-server integrations roadmap doc -g "*.java" -g "*.yml" -g "*.md"
 ```
 
-## PCG-1 Admin CLI Skeleton
+## PCG-1 Admin CLI Baseline Confirmation
 
-Goal: introduce a server-owned admin CLI over real HTTP without adding a shared
-SDK HTTP core.
+Goal: confirm the existing server-owned admin CLI baseline over real HTTP
+without adding a shared SDK HTTP core.
 
 Target module:
 
@@ -256,30 +299,32 @@ Forbidden responsibilities:
 
 Scope:
 
-- Add `tools/xa-mass-admin-cli` to the root reactor.
-- Depend on:
-  - `sdk/xa-mass-public-contract` only where current recorded DTOs exist
-  - Jackson / small CLI parser as needed
-- Do not depend on:
+- Do not create a second admin CLI module.
+- Confirm `tools/xa-mass-admin-cli` is in the root reactor.
+- Confirm it does not depend on:
   - `xa-mass-java-sdk`
   - `xa-mass-server`
   - `xa-mass-engine`
   - embedded SDK
   - platform runtime/storage implementations
-- Implement first commands:
+- Confirm first commands exist:
   - `health`
   - `auth config`
   - `auth login`
-  - `auth whoami` or equivalent current principal check
   - `api-key current`
-- Support session cookie and CSRF capture from real `/api/v1/auth/login`.
-- Write command output with redacted secrets.
+  - `env verify`
+  - `env init`
+- Confirm session cookie and CSRF capture from real `/api/v1/auth/login`.
+- Confirm command output redacts secrets.
+- Add only missing guards/tests discovered by PCG-0.
 
 Acceptance:
 
 - Admin CLI can log in against a real server in session auth mode.
 - Admin CLI discovers auth mode through `/api/v1/auth/config` before login.
 - Admin CLI can validate an API key through `/api/v1/api-keys:current`.
+- Admin CLI exposes `env verify/init` as the preferred environment
+  preparation path.
 - Admin CLI does not expose task/worker actor behavior.
 - Source guard proves admin CLI does not depend on `xa-mass-java-sdk`.
 - Source guard proves `xa-mass-java-sdk` still has no operator/admin methods.
@@ -294,9 +339,10 @@ rg -n "auth/login|api-keys" sdk/xa-mass-java-sdk/src/main/java
 test ! -d sdk/xa-mass-http-client-core
 ```
 
-## PCG-2A Minimal Catalog/Rule Operator Write API
+## PCG-2A Catalog/Rule Operator Write API Confirmation
 
-Goal: make the server externally initializable without startup scenario seed.
+Goal: confirm or complete the server APIs that make the server externally
+initializable without startup scenario seed.
 
 Scope:
 
@@ -333,9 +379,9 @@ Verification:
 rg -n "PostMapping|PutMapping|PatchMapping|catalog|rules|rule:edit|catalog:edit" xa-mass-server/src/main/java xa-mass-server/src/test/java -g "*.java"
 ```
 
-## PCG-2B Admin Env Init
+## PCG-2B Admin Env Init Baseline Confirmation
 
-Goal: move scenario environment preparation into the admin CLI owner.
+Goal: confirm scenario environment preparation is already owned by admin CLI.
 
 Dependencies:
 
@@ -348,11 +394,12 @@ Dependencies:
 
 Scope:
 
-- Implement or consume `env init --config <file>` according to
+- Consume the existing `env init --config <file>` implementation according to
   `ADMIN_ENV_INIT_STATE_MODEL_ROADMAP.md`.
-- Read the typed config model from that roadmap rather than interpreting JSON
-  ad hoc.
-- Use real HTTP:
+- Do not reimplement env init in scenario launcher or scripts.
+- Confirm the typed config model is used rather than ad hoc JSON
+  interpretation.
+- Confirm `env init` uses real HTTP:
   - auth config
   - operator login
   - catalog import/upsert
@@ -361,11 +408,12 @@ Scope:
 - Keep raw secret output limited to gitignored cache files.
 - Keep scenario launchers consuming the prepared API keys.
 - Do not start workers or create tasks in `env init`.
+- Add only missing diagnostics/guards discovered by PCG-0.
 
 Acceptance:
 
 - Clean memory-local server can be made scenario-ready by admin CLI after
-  startup.
+  startup under session auth, not dev-header auth.
 - Clean durable-local server can be made scenario-ready by admin CLI after
   startup.
 - `env init` writes or verifies its marker according to the separate env-init
@@ -385,7 +433,7 @@ Verification:
 rg -n "ScenarioCredentialBootstrapMain|ScenarioEnvironmentInitializerMain|credential-bootstrap|sample-api/bootstrap|seed.catalog-location|seed.rules-location" integrations sdk xa-mass-server roadmap doc -g "*.java" -g "*.md" -g "*.xml" -g "*.yml"
 ```
 
-## PCG-3 Memory-Local Process Confidence Smoke
+## PCG-3 Memory-Local No-Bypass Process Confidence Smoke
 
 Goal: prove the packaged memory-local product path works through real
 processes.
@@ -401,7 +449,8 @@ xa-mass-testing/scripts/run-platform-confidence-smoke.sh
 
 - Script responsibilities only:
   - package server/admin/scenario artifacts
-  - start server jar with `memory-local`
+  - start server jar with `memory-local` plus explicit no-bypass operator auth
+    overrides, or with a dedicated no-bypass memory confidence profile
   - wait for `/actuator/health`
   - invoke admin CLI `env init`
   - start scenario worker launcher
@@ -410,10 +459,15 @@ xa-mass-testing/scripts/run-platform-confidence-smoke.sh
   - stop processes
   - collect logs
 - Keep business HTTP inside admin CLI or Java SDK launchers.
+- Use `tools/xa-mass-admin-cli/examples/admin-env.local.json` or an equivalent
+  small confidence config. Do not use the broad sample worker fixture as the
+  first confidence lane.
+- Ensure the operator password is provided through environment, not logs.
 
 Acceptance:
 
 - A real packaged server process starts in `memory-local`.
+- `/api/v1/auth/config` reports session auth, not dev-header.
 - Admin CLI prepares catalog/rules/API keys through real HTTP.
 - Scenario worker launcher registers and runs one worker.
 - Scenario task launcher creates and appends work.
@@ -541,7 +595,8 @@ Contract/support tests:
 
 Process proof:
 
-- Memory-local packaged server confidence smoke.
+- Memory-local packaged server confidence smoke with session auth/no dev-header
+  bypass.
 - Durable-local packaged server confidence smoke.
 
 Guards:
@@ -575,6 +630,7 @@ Failure classification:
 | Durable smoke is flaky before infrastructure stabilizes | CI noise | Start as scheduled/manual if needed, but memory smoke should become required first |
 | Startup seed returns through convenience pressure | Real auth/control-plane path remains unproven | Guard active docs and scripts against seed-first scenario readiness |
 | Raw API-key secrets leak in logs | Credential exposure | Redaction in admin CLI and artifact checks |
+| Memory-local keeps using dev-header in confidence runs | Green smoke still misses real operator auth failures | First smoke must assert `/api/v1/auth/config` reports session auth |
 
 ## Final Target
 
