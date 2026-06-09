@@ -1,3 +1,10 @@
+> Archived on 2026-06-09.
+>
+> Historical implementation record only. Current scenario task launcher config
+> behavior lives in `integrations/xa-mass-scenario-launcher/README.md`. Worker
+> launcher config remains deferred and should use a new roadmap if pursued.
+> Do not use this roadmap as proof of current behavior.
+
 # Scenario Launcher Human Config Roadmap
 
 Status: implemented mainline; worker config remains deferred by Non-Goals.

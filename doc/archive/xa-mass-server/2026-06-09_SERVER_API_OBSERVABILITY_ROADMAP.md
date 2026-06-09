@@ -1,3 +1,10 @@
+> Archived on 2026-06-09.
+>
+> Historical implementation record only. Current API failure logging,
+> endpoint metrics, and log retention behavior live in `xa-mass-server/README.md`
+> and current server code/tests. Do not use this roadmap as proof of current
+> behavior.
+
 # Server API Observability Roadmap
 
 Status: implemented mainline.

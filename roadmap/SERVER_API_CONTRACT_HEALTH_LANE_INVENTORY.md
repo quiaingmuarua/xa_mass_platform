@@ -44,15 +44,15 @@ and frontend consumes those contracts through adapters.
 | `/worker-api/v1/workers/{workerId}:poll` | server + SDK | external worker session | poll auth/runtime dispatch drift | SDK session proof. |
 | `/worker-api/v1/workers/{workerId}:submit-result` | server + SDK | external worker session | result submit contract drift | SDK result submit proof. |
 
-## Related Active Roadmaps
+## Related Current Owners And Active Roadmaps
 
-| Roadmap | Relation |
+| Owner Or Roadmap | Relation |
 | --- | --- |
-| `LOCAL_ENV_SCHEMA_RESET_AND_SCENARIO_CREDENTIAL_ROADMAP.md` | Prerequisite local readiness: clean DB, seed/import, task/worker credentials, scenario launcher proof. |
+| `xa-mass-testing/README.md` platform confidence smoke | Prerequisite local readiness: clean DB, env init, task/worker credentials, scenario launcher proof. |
 | `SERVER_FRONTEND_STATIC_API_DOCS_ROADMAP.md` | Owns static docs snapshot mechanics and frontend API reference presentation. |
-| `SERVER_API_OBSERVABILITY_ROADMAP.md` | Owns API failure lane and endpoint metrics used to diagnose contract failures. |
+| `xa-mass-server/README.md` API observability section | Current API failure lane and endpoint metrics used to diagnose contract failures. |
 | `SUBMITTER_TO_API_KEY_CONVERGENCE_ROADMAP.md` | Owns API-key credential model convergence and current API-key routes. |
-| `SCENARIO_LAUNCHER_HUMAN_CONFIG_ROADMAP.md` | Implemented task config entry used by contract-health scenario runs. |
+| `integrations/xa-mass-scenario-launcher/README.md` | Current task config entry used by contract-health scenario runs. |
 
 ## Current Gaps
 

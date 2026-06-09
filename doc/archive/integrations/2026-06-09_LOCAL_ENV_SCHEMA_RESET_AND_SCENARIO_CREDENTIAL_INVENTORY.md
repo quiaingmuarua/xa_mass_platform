@@ -1,3 +1,10 @@
+> Archived on 2026-06-09.
+>
+> Historical implementation inventory only. Current local schema reset rules
+> live in `xa-mass-server/README.md`; current scenario environment
+> initialization uses `tools/xa-mass-admin-cli env init` and the platform
+> confidence smoke. Do not use this inventory as proof of current behavior.
+
 # Local Env Schema Reset And Scenario Credential Inventory
 
 Status: current code inventory for

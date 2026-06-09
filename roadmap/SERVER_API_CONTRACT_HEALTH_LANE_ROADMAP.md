@@ -10,11 +10,10 @@ routes, auth behavior, public DTOs, Java SDK typed clients, scenario-launcher
 external flows, frontend adapters, and generated API docs still describe the
 same product surface.
 
-This roadmap is separate from
-`LOCAL_ENV_SCHEMA_RESET_AND_SCENARIO_CREDENTIAL_ROADMAP.md`. Local environment
-readiness prepares a clean server, catalog/rules, operator credentials, and
-task/worker API keys. This roadmap uses that stable environment to prove API
-contract health.
+This roadmap is separate from local environment readiness. Current local
+readiness is the platform confidence path: clean server startup, admin CLI
+environment initialization, operator credentials, and task/worker API keys.
+This roadmap uses that stable environment to prove API contract health.
 
 ## Current Code Observations
 
@@ -31,10 +30,10 @@ contract health.
   producer and worker registration/session flows against a running server.
 - `SERVER_FRONTEND_STATIC_API_DOCS_ROADMAP.md` owns static API docs snapshot
   mechanics and frontend API reference presentation.
-- `SERVER_API_OBSERVABILITY_ROADMAP.md` owns API failure logging and endpoint
+- `xa-mass-server/README.md` documents current API failure logging and endpoint
   metrics that can diagnose contract-health failures.
-- `LOCAL_ENV_SCHEMA_RESET_AND_SCENARIO_CREDENTIAL_ROADMAP.md` is the intended
-  local readiness prerequisite for clean DB, seed/import, and real task/worker
+- `xa-mass-testing/README.md` documents the platform confidence smoke used as
+  the local readiness prerequisite for clean DB, env init, and real task/worker
   API-key preparation.
 
 ## Owner Review
@@ -91,14 +90,14 @@ contract health lane
 
 ## Non-Goals
 
-- No local DB reset implementation; that belongs to
-  `LOCAL_ENV_SCHEMA_RESET_AND_SCENARIO_CREDENTIAL_ROADMAP.md`.
+- No local DB reset implementation; current local reset behavior is server
+  profile/config ownership documented by `xa-mass-server/README.md`.
 - No full OpenAPI client generation for Java SDK or frontend.
 - No production API portal publication.
 - No broad frontend productionization.
 - No new server API routes purely for health checks.
-- No worker config support in scenario launcher unless the local readiness
-  roadmap decides it.
+- No worker config support in scenario launcher unless a new dedicated roadmap
+  decides it.
 - No Redis/runtime/SSE implementation.
 - No commercial migration compatibility.
 

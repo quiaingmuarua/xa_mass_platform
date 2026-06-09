@@ -215,8 +215,10 @@ Acceptance:
   startup seed inputs for each active path.
 - Inventory records the memory-profile test automation rule.
 - No implementation slice is allowed to treat startup seed as the external API.
-- `LOCAL_ENV_SCHEMA_RESET_AND_SCENARIO_CREDENTIAL_ROADMAP.md` is cross-linked
-  as an implemented prerequisite, not as the owner of runtime initialization.
+- Current local schema reset and scenario credential readiness are documented by
+  `xa-mass-server/README.md`, `tools/xa-mass-admin-cli/README.md`, and the
+  platform confidence smoke; they are prerequisites, not runtime
+  initialization owners.
 
 Verification:
 
@@ -476,10 +478,12 @@ The roadmap can be marked complete only when all of these are true:
 
 ## Related Roadmaps
 
-- `LOCAL_ENV_SCHEMA_RESET_AND_SCENARIO_CREDENTIAL_ROADMAP.md` implemented the
-  local schema reset and initial API-key cache helper. This roadmap supersedes
-  its seed-first scenario readiness residue.
+- Current local schema reset and API-key cache readiness are documented by
+  `xa-mass-server/README.md`, `tools/xa-mass-admin-cli/README.md`, and the
+  platform confidence smoke. This superseded roadmap must not revive
+  seed-first scenario readiness residue.
 - `SERVER_API_CONTRACT_HEALTH_LANE_ROADMAP.md` should use this roadmap's final
   three-process setup as the environment prerequisite for contract health.
-- `SCENARIO_LAUNCHER_HUMAN_CONFIG_ROADMAP.md` owns human task config shape. It
-  does not own worker config or environment initialization.
+- `integrations/xa-mass-scenario-launcher/README.md` documents current human
+  task config shape. Worker config and environment initialization remain
+  separate ownership decisions.
