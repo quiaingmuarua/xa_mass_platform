@@ -235,7 +235,8 @@ mass.workers().registerWorker(WorkerSpec.builder()
         .attribute("region", "sg")
         .build());
 
-mass.workers().online("phone-worker-sg-001", "startup");
+String sessionToken = UUID.randomUUID().toString();
+mass.workers().online("phone-worker-sg-001", sessionToken, "startup");
 WorkerPollResult poll = mass.workers().poll("phone-worker-sg-001",
         WorkerPollRequest.builder().maxMessages(10).timeoutMs(500L).build());
 ```

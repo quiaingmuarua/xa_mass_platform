@@ -78,6 +78,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSam
     @Test
     void externalWorkerPollingApiCompletesTaskEndToEndAgainstPostgresStorage() throws Exception {
         String workerId = "polling-pg-worker-001";
+        String sessionToken = "session-polling-pg-worker-001";
         String workerCredential = "polling-pg-worker-key";
         String taskApiKey = "polling-pg-api-key-key";
 
@@ -120,9 +121,8 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSam
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));
 
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
-                "reason", "postgres-storage-online"
-        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST,
+                presenceBody(sessionToken, "postgres-storage-online"), workerHeaders));
         waitUntil(() -> app.isWorkerOnline(workerId), "worker transport presence should be online before task approval");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
@@ -169,9 +169,8 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSam
         assertEquals("TERMINAL", terminal.task().get("status"));
         assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
 
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST, Map.of(
-                "reason", "postgres-storage-offline"
-        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST,
+                presenceBody(sessionToken, "postgres-storage-offline"), workerHeaders));
         waitUntil(() -> !app.isWorkerOnline(workerId), "worker transport presence should be offline after explicit disconnect");
 
         assertJdbcProjection(taskId, String.valueOf(item.get("messageId")), workerId);
@@ -181,6 +180,13 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSam
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;
+    }
+
+    private Map<String, Object> presenceBody(String sessionToken, String reason) {
+        return Map.of(
+                "sessionToken", sessionToken,
+                "reason", reason
+        );
     }
 
     @SuppressWarnings("unchecked")

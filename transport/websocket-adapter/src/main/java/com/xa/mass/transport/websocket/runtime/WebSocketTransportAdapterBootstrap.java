@@ -53,7 +53,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                             config.getAdapterId(),
                             new WebSocketTaskDispatchChannel(dispatcherContext, context.getDeliveryService())
                     )
-            ).routeKeyResolver(TransportRouteKeyResolvers.workerId()).build());
+            ).routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject()).build());
             context.registerRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(config.getAdapterId(), endpointRegistry));
         }
 

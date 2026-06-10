@@ -13,6 +13,7 @@ import java.util.Objects;
 public final class ResolvedPullWorkerTransport {
 
     private final String workerId;
+    private final String workerGroupId;
     private final String adapterId;
     private final String transportHint;
     private final TaskPullChannel taskPullChannel;
@@ -21,6 +22,7 @@ public final class ResolvedPullWorkerTransport {
     private final WorkerPresenceStore workerPresenceStore;
 
     public ResolvedPullWorkerTransport(String workerId,
+                                       String workerGroupId,
                                        String adapterId,
                                        String transportHint,
                                        TaskPullChannel taskPullChannel,
@@ -28,6 +30,7 @@ public final class ResolvedPullWorkerTransport {
                                        WorkerSystemEventChannel systemEventChannel,
                                        WorkerPresenceStore workerPresenceStore) {
         this.workerId = Objects.requireNonNull(workerId, "workerId");
+        this.workerGroupId = Objects.requireNonNull(workerGroupId, "workerGroupId");
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
         this.transportHint = Objects.requireNonNull(transportHint, "transportHint");
         this.taskPullChannel = Objects.requireNonNull(taskPullChannel, "taskPullChannel");
@@ -38,6 +41,10 @@ public final class ResolvedPullWorkerTransport {
 
     public String getWorkerId() {
         return workerId;
+    }
+
+    public String getWorkerGroupId() {
+        return workerGroupId;
     }
 
     public String getAdapterId() {

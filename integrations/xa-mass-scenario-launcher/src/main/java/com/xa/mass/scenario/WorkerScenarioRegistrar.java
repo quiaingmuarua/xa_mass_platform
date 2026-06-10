@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 
 final class WorkerScenarioRegistrar {
     private final ScenarioLauncherOptions options;
@@ -124,7 +125,7 @@ final class WorkerScenarioRegistrar {
                 .filter(value -> value != null && !value.isBlank())
                 .distinct()
                 .toList();
-        client.workers().online(workerId, "java-scenario-launcher-api-online");
+        client.workers().online(workerId, UUID.randomUUID().toString(), "java-scenario-launcher-api-online");
         client.workers().reportCapability(workerId, WorkerCapabilityReport.builder()
                 .workerId(workerId)
                 .availableEventCodes(eventCodes)

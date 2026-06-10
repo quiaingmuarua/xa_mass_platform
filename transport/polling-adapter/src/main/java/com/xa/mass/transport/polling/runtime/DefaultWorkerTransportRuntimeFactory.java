@@ -55,7 +55,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
                                                    TransportDeliveryService deliveryService) {
         PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(systemEventChannel, workerPresenceStore, deliveryService);
         return TransportBinding.builder(pollingAdapter)
-                .routeKeyResolver(TransportRouteKeyResolvers.workerId())
+                .routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject())
                 .taskPullChannel(pollingAdapter)
                 .build();
     }

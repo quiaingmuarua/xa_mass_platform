@@ -146,6 +146,18 @@ class TransportDeliveryServiceTest {
     }
 
     @Test
+    void queuedEnvelopeRemainsReachableAfterAdapterTakeoverForSameRouteKey() {
+        TransportDeliveryService service = service();
+        TaskDispatchItem item = item("msg-1", "worker-1");
+        service.enqueue(List.of(envelope("delivery-msg-1", "websocket", "worker-1", item)));
+
+        assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
+                .map(TransportDeliveryService::toDispatchView)
+                .map(TaskDispatchItem::getMessageId)
+                .toList());
+    }
+
+    @Test
     void pollDispatchResultPreservesEmptyAndInvalidRequestStatuses() {
         TransportDeliveryService service = service();
 

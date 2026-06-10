@@ -37,31 +37,33 @@ class InMemoryWorkerPresenceStoreTest {
     }
 
     @Test
-    void workerCanExposeMultipleOnlineRouteOwnersAndOfflineOneRouteOnly() {
+    void routeKeyTakeoverReplacesCurrentOwnerAcrossAdapters() {
         InMemoryWorkerPresenceStore store = new InMemoryWorkerPresenceStore(30_000L, "runtime-a");
 
         store.markOnline("worker-1", "websocket", "route-1", "conn-1", "connected");
-        store.markOnline("worker-1", "socket", "route-9", "conn-9", "reconnected");
+        store.markOnline("worker-1", "socket", "route-1", "conn-9", "reconnected");
 
-        assertTrue(store.isRouteOnline("websocket", "route-1"));
-        assertTrue(store.isRouteOnline("socket", "route-9"));
-        assertEquals(2, store.findOwners("worker-1").size());
+        assertFalse(store.isRouteOnline("websocket", "route-1"));
+        assertTrue(store.isRouteOnline("socket", "route-1"));
+        assertEquals(1, store.findOwners("worker-1").size());
+        assertEquals("socket", store.currentOwner("route-1").orElseThrow().adapterId());
 
         WorkerPresence onlinePresence = store.getPresence("worker-1");
         assertNotNull(onlinePresence);
         assertEquals("socket", onlinePresence.getAdapterId());
-        assertEquals("route-9", onlinePresence.getRouteKey());
+        assertEquals("route-1", onlinePresence.getRouteKey());
         assertEquals(WorkerPresenceState.ONLINE, onlinePresence.getPresenceState());
 
-        store.markOffline("worker-1", "socket", "route-9", "conn-9", "disconnect");
+        store.markOffline("worker-1", "websocket", "route-1", "conn-1", "stale-disconnect");
+        assertTrue(store.isRouteOnline("socket", "route-1"));
+
+        store.markOffline("worker-1", "socket", "route-1", "conn-9", "disconnect");
 
         WorkerPresence remainingPresence = store.getPresence("worker-1");
         assertNotNull(remainingPresence);
-        assertEquals(WorkerPresenceState.ONLINE, remainingPresence.getPresenceState());
-        assertEquals("websocket", remainingPresence.getAdapterId());
-        assertFalse(store.isRouteOnline("socket", "route-9"));
-        assertTrue(store.isRouteOnline("websocket", "route-1"));
-        assertEquals(1, store.findOwners("worker-1").size());
+        assertEquals(WorkerPresenceState.OFFLINE, remainingPresence.getPresenceState());
+        assertFalse(store.isRouteOnline("socket", "route-1"));
+        assertTrue(store.findOwners("worker-1").isEmpty());
     }
 
     @Test

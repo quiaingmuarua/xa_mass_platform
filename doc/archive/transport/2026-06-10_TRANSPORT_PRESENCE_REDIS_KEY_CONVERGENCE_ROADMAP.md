@@ -1,16 +1,39 @@
 # Transport Presence Redis Key Convergence Roadmap
 
-Status: active priority roadmap; Redis proof-runner work is deferred until this
-keyspace converges.
+Status: superseded and archived on 2026-06-10.
 
-This roadmap converges the Redis key model for transport-owned worker
-reachability and route ownership. It also records the boundary between
-transport presence keys and the worker runtime Redis keys discussed in
-[2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md](../doc/archive/core/2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md).
+Superseded by
+[WORKER_RUNTIME_BOUNDARY_CONVERGENCE_ROADMAP.md](./2026-06-10_WORKER_RUNTIME_BOUNDARY_CONVERGENCE_ROADMAP.md)
+for implementation. Keep this file only as historical starting inventory and
+key-proof rationale.
 
-This roadmap is the prerequisite for
-[REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md](./REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md),
-not the other way around. The reusable proof runner should be built after the
+The executable convergence owner is now WRB. Do not implement the old TPRK
+phases below directly. They describe the pre-WRB Redis key problem and the
+proof bar that motivated the route-key owner convergence.
+
+Current implementation truth as of 2026-06-10:
+
+- `routeKey` for worker delivery is canonicalized by
+  `CanonicalWorkerRouteKeyCodec` from `workerGroupId + workerId`.
+- `RedisWorkerPresenceStore` stores the canonical route owner in
+  `{namespace}:owner:{shard}` hash fields keyed by `routeKey`.
+- Lease pruning is backed by `{namespace}:deadline:{shard}` zsets keyed by
+  `routeKey`.
+- `worker-route:{workerId}`, `workers`, and `owner-shards` are derived
+  compatibility/operator indexes, not canonical worker metadata truth.
+- The old `route-presence:{adapterId}\0{routeKey}`,
+  `route:{adapterId}\0{routeKey}`, `worker-routes:{workerId}`, and `routes`
+  families are no longer the target implementation.
+- Delivery queues are routeKey-owned; `adapterId` is delivery request/owner
+  value metadata, not queue identity.
+
+This document still records the boundary between transport presence keys and
+the worker runtime Redis keys discussed in
+[2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md](../core/2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md).
+
+WRB is now the prerequisite for
+[REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md](../../../roadmap/REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md),
+not this historical TPRK file. The reusable proof runner should be built after the
 transport presence keyspace is converged enough that it is worth codifying.
 During this roadmap, committed Python or Node utilities may be used for local
 Redis inventory/probes, including third-party Redis libraries. Avoid Bash-only
@@ -22,23 +45,26 @@ family should exist. The proof target is key-existence reasonableness: every
 retained key family must have a distinct owner, production query, lifecycle, and
 truth/derivation rule.
 
-## Current Code Observations
+## Historical Starting Observations
 
-Current transport presence implementation:
+These observations describe the state that existed before the WRB route-key /
+presence implementation slice. They are not current implementation truth.
+
+Original transport presence implementation:
 
 - `RedisWorkerPresenceStore` owns transport reachability projection behind
   `WorkerPresenceStore`.
 - The default namespace is `xa:mass:transport:presence`.
 - Server assembly may pass a versioned namespace such as
   `xa:mass:transport:presence:v1`.
-- `route-presence` keys are currently shaped as
+- `route-presence` keys were originally shaped as
   `{namespace}:route-presence:{adapterId}\0{routeKey}`.
-- Polling currently calls `markOnline(workerId, "polling", workerId, workerId,
+- Polling originally called `markOnline(workerId, "polling", workerId, workerId,
   reason)`, so polling route keys commonly equal worker ids.
 - `routeKey = workerId` is current polling binding policy, not transport-wide
   truth. Transport docs allow adapter ingress to use explicit route keys.
 
-Current Redis presence writes:
+Original Redis presence writes:
 
 ```text
 {namespace}:route-presence:{adapterId}\0{routeKey}  HASH   full WorkerPresence
@@ -49,7 +75,7 @@ Current Redis presence writes:
 {namespace}:workers                                 SET    workerId
 ```
 
-Current issue:
+Original issue:
 
 - `route-presence` and `worker` both store complete `WorkerPresence` payloads.
 - `workers` is currently written by `RedisWorkerPresenceStore` but has no known
@@ -68,7 +94,8 @@ Current issue:
 - Any key family without an independent production query or cleanup invariant is
   residue, even if its memory cost is small in local Redis.
 
-Current worker runtime Redis implementation from the archived WRSI roadmap:
+Worker runtime Redis implementation from the archived WRSI roadmap, still
+separate from transport presence:
 
 - `group:{groupId}:slots` remains the canonical Redis worker aggregate.
 - `worker:meta:{workerId}`, `worker:occupancy:{workerId}`, and
@@ -100,6 +127,7 @@ They may share only stable identity references:
 
 ```text
 workerId
+workerGroupId
 adapterId
 routeKey
 ```
@@ -107,19 +135,20 @@ routeKey
 They must not share writable worker metadata, capability, readiness,
 occupancy, reservation, lease, candidate-bucket, or dispatch-gate facts.
 
-Target transport presence truth:
+Current WRB transport presence truth:
 
 ```text
 route owner canonical:
-  (adapterId, routeKey)
+  routeKey
     -> workerId
+    -> adapterId
     -> connectionId
     -> presenceState
     -> lease/heartbeat timestamps
     -> transportInstanceId
 
 worker presence:
-  derived latest/read projection over route owners for one workerId
+  derived compatibility/operator projection over route owners for one workerId
 ```
 
 Target worker runtime truth stays as defined by WRSI:
@@ -171,12 +200,15 @@ The following are not proof:
 
 | Key Family | Classification | Current Reader / Query | Existence Proof Required | Current Risk |
 | --- | --- | --- | --- | --- |
-| `transport:presence:*:route-presence:{adapterId}\0{routeKey}` | candidate canonical route owner | `isRouteOnline`, route materialization, cleanup, route-owner validation | dispatch and route checks are driven by route-owner state; stale connection events cannot revoke newer owner | must become the only full presence truth |
-| `transport:presence:*:worker:{workerId}` | derived latest projection/cache or residue | `getPresence`, default `isWorkerOnline` projection | corruption cannot make dispatch possible; value can be rebuilt from route owners; stale projection is not authoritative | currently duplicates full `WorkerPresence` payload |
-| `transport:presence:*:route:{adapterId}\0{routeKey}` | weak derived cleanup guard or residue | `markOffline` / `clearPreviousRoute` deletion guard | either prove independent route->worker lookup need or remove because `route-presence` already stores `workerId` | may be redundant |
-| `transport:presence:*:worker-routes:{workerId}` | derived lookup index | currently `getPresence`; target `findOwners(workerId)` | Redis `findOwners(workerId)` uses this index and avoids full-route scan in dispatch routing | not currently wired to dispatch owner query |
-| `transport:presence:*:routes` | bounded global route index | `listActivePresences`, default `findOwners`, `pruneExpired` | justified only for diagnostic/list/prune; dispatch must not require global route scan | can hide hot-path scan if `findOwners` is not overridden |
-| `transport:presence:*:workers` | residue unless inventory finds reader | no known reader in `RedisWorkerPresenceStore` | delete unless TPRK-0 finds a production query that cannot use route owners | currently write-only |
+| `transport:presence:*:owner:{shard}` | current canonical route owner hash | `currentOwner(routeKey)`, route materialization, compatibility projection, diagnostics | dispatch route selection is driven by bounded routeKey owner reads; stale connection events cannot revoke newer owner | current implementation owner |
+| `transport:presence:*:deadline:{shard}` | current derived cleanup index | `pruneExpired` | cleanup removes expired owners from the canonical owner hash and derived projections | cleanup/support index only |
+| `transport:presence:*:worker-route:{workerId}` | current derived compatibility projection | `getPresence(workerId)`, default `isWorkerOnline(workerId)` projection | corruption cannot make dispatch possible; value can be rebuilt from route owners; stale projection is not authoritative | compatibility/operator surface only |
+| `transport:presence:*:workers` | current derived compatibility/operator index | projection cleanup / support list behavior | cannot drive scheduling or route selection; may be removed only after compatibility readers disappear | not canonical worker metadata |
+| `transport:presence:*:owner-shards` | current derived operator/prune index | owner shard discovery for bounded support scans | support scans remain bounded to known owner shards, not full Redis keyspace | diagnostic/prune support only |
+| `transport:presence:*:route-presence:{adapterId}\0{routeKey}` | historical removed target | none in current main code | old family must not be reintroduced as a parallel owner | superseded by routeKey owner hash |
+| `transport:presence:*:route:{adapterId}\0{routeKey}` | historical removed target | none in current main code | old cleanup guard must not be reintroduced as a second route mapping | superseded |
+| `transport:presence:*:worker-routes:{workerId}` | historical removed target | none in current main code | old multi-route worker index must not reintroduce one-worker-many-owner semantics | superseded |
+| `transport:presence:*:routes` | historical removed target | none in current main code | old global route index must not become a hot-path fallback | superseded |
 | `runtime:*:worker:group:{groupId}:slots` | worker registry canonical truth | worker scheduling/admission runtime | not part of transport key convergence; must not absorb route owner fields | separate owner |
 | `runtime:*:worker:group:{groupId}:heartbeat:0` | worker registry heartbeat deadline index | worker scheduling reachability/admission | not part of transport key convergence; must not absorb connection or route owner truth | separate owner |
 | `runtime:*:worker:group:{groupId}:bucket:*:workers` | worker registry candidate hint | scheduling candidate source | not part of transport key convergence; must not depend on transport route keys | separate owner |
@@ -192,7 +224,8 @@ The following are not proof:
    transport presence.
 3. Do not move transport `connectionId`, `routeKey`, adapter route ownership,
    or presence lease timestamps into `WorkerRegistry` slot truth.
-4. `route-presence` is not worker metadata. It is route-owner reachability.
+4. Historical `route-presence` keys were route-owner reachability, not worker
+   metadata. Current WRB code uses routeKey-sharded owner hashes instead.
 5. `worker:{workerId}` in the transport presence namespace must be either
    removed or documented and enforced as a derived projection/cache.
 6. Every presence mutation must have a single writer operation for its canonical
@@ -223,9 +256,12 @@ The following are not proof:
 
 ## Do Not Start With
 
-Do not start by deleting `route-presence` keys or by adding a single broad
-`worker:meta` hash that tries to include transport, scheduling, and declaration
-facts.
+Historical wrong-order note: the old TPRK plan should not have started by
+deleting `route-presence` keys or by adding a single broad `worker:meta` hash
+that tried to include transport, scheduling, and declaration facts.
+
+Current execution note: do not start new implementation from TPRK-0/1. Continue
+from WRB's remaining phases, or archive this file after WRB residue cleanup.
 
 Do not start with memory/key-count optimization. The first useful work is to
 classify every current transport presence key as:
@@ -238,9 +274,10 @@ cleanup membership index
 residue
 ```
 
-## TPRK-0: Inventory And Classification
+## TPRK-0: Inventory And Classification (Historical)
 
-Goal: create a current key/caller inventory before changing storage shape.
+Goal at original creation time: create a key/caller inventory before changing
+storage shape. This has been superseded by WRB inventory and implementation.
 
 Scope:
 
@@ -320,9 +357,10 @@ Temporary probe guidance:
 # over explicit namespace prefixes. It must not use KEYS or delete data.
 ```
 
-## TPRK-1: Canonical Presence Owner Decision
+## TPRK-1: Canonical Presence Owner Decision (Historical)
 
-Goal: lock the transport presence canonical record and projection rules.
+Goal at original creation time: lock the transport presence canonical record
+and projection rules. The current decision is WRB's routeKey owner hash.
 
 Scope:
 

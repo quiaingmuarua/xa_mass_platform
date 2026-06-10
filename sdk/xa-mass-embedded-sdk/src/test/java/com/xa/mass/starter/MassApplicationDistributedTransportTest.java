@@ -13,6 +13,7 @@ import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.presence.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.presence.WorkerPresence;
@@ -23,6 +24,7 @@ import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import com.xa.mass.transport.worker.WorkerAdapter;
@@ -58,8 +60,8 @@ class MassApplicationDistributedTransportTest {
 
         InMemoryWorkerPresenceStore nodeOnePresence = new InMemoryWorkerPresenceStore(30_000L, "node-1");
         InMemoryWorkerPresenceStore nodeTwoPresence = new InMemoryWorkerPresenceStore(30_000L, "node-2");
-        nodeOnePresence.markOnline("worker-1", "websocket", "route-1", "conn-1", "connected");
-        nodeTwoPresence.markOnline("worker-2", "websocket", "route-2", "conn-2", "connected");
+        nodeOnePresence.markOnline("worker-1", "websocket", routeKey("worker-1"), "conn-1", "connected");
+        nodeTwoPresence.markOnline("worker-2", "websocket", routeKey("worker-2"), "conn-2", "connected");
         CombinedPresenceStore presenceStore = new CombinedPresenceStore(List.of(nodeOnePresence, nodeTwoPresence));
 
         InMemoryTransportNodeRegistry nodeRegistry = new InMemoryTransportNodeRegistry();
@@ -124,6 +126,7 @@ class MassApplicationDistributedTransportTest {
         try {
             assertTrue(adapter.awaitDispatch(2, TimeUnit.SECONDS), "transport consumer should drain its local node inbox");
             assertEquals(List.of("msg-node-1"), adapter.dispatchedMessageIds());
+            assertEquals(List.of(routeKey("worker-1")), adapter.dispatchedRouteKeys());
             assertTrue(handoff.polledNodes().stream().allMatch("node-1"::equals));
             assertEquals(List.of("msg-node-2"), messages(handoff.poll("node-2", 0)));
         } finally {
@@ -155,6 +158,7 @@ class MassApplicationDistributedTransportTest {
     private static Worker worker(String workerId) {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
+        worker.setWorkerGroupId("demo-workers");
         worker.setAdapterId("websocket");
         worker.setOnlineStrategy(WorkerTransportHints.REALTIME);
         return worker;
@@ -181,7 +185,7 @@ class MassApplicationDistributedTransportTest {
     }
 
     private static TaskDispatchBinding binding(String messageId, String workerId) {
-        return new TaskDispatchBinding(
+        return TaskDispatchBinding.workerLevelWithEvidence(
                 "task-1",
                 messageId,
                 "demo.event",
@@ -192,8 +196,16 @@ class MassApplicationDistributedTransportTest {
                 1,
                 "lease-" + messageId,
                 workerId,
-                "batch-1"
+                "batch-1",
+                "demo-workers",
+                null,
+                null,
+                "test-fixture"
         );
+    }
+
+    private static String routeKey(String workerId) {
+        return CanonicalWorkerRouteKeyCodec.encode("demo-workers", workerId);
     }
 
     private static List<String> messages(TaskDispatchBatch batch) {
@@ -314,7 +326,7 @@ class MassApplicationDistributedTransportTest {
         @Override
         public void contribute(TransportAdapterBootstrapContext context) {
             context.registerTransportBinding(TransportBinding.builder(adapter)
-                    .routeKeyResolver((dispatchBinding, routeContext) -> dispatchBinding.workerId())
+                    .routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject())
                     .build());
         }
     }
@@ -323,6 +335,7 @@ class MassApplicationDistributedTransportTest {
         private final String adapterId;
         private final CountDownLatch dispatchLatch;
         private final List<String> dispatchedMessageIds = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> dispatchedRouteKeys = Collections.synchronizedList(new ArrayList<>());
 
         private RecordingAdapter(String adapterId, int expectedDispatches) {
             this.adapterId = adapterId;
@@ -344,6 +357,7 @@ class MassApplicationDistributedTransportTest {
             List<DispatchOutcome> outcomes = new ArrayList<>();
             for (TransportDispatchEnvelope envelope : envelopes) {
                 dispatchedMessageIds.add(envelope.getPacket().messageId());
+                dispatchedRouteKeys.add(envelope.getRouteKey());
                 outcomes.add(DispatchOutcome.sent(adapterId, envelope));
                 dispatchLatch.countDown();
             }
@@ -357,6 +371,12 @@ class MassApplicationDistributedTransportTest {
         private List<String> dispatchedMessageIds() {
             synchronized (dispatchedMessageIds) {
                 return List.copyOf(dispatchedMessageIds);
+            }
+        }
+
+        private List<String> dispatchedRouteKeys() {
+            synchronized (dispatchedRouteKeys) {
+                return List.copyOf(dispatchedRouteKeys);
             }
         }
     }

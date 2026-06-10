@@ -264,7 +264,7 @@ public class ExternalWorkerApiController {
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_ONLINE, workerId, null, null);
         String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "online");
-        workerClient.workerOnline(boundWorkerId, requestBody == null ? null : requestBody.getReason());
+        workerClient.workerOnline(boundWorkerId, presenceSessionToken(requestBody), requestBody.getReason());
         return ApiResponse.success(presenceResponse(
                 boundWorkerId,
                 "online",
@@ -283,7 +283,7 @@ public class ExternalWorkerApiController {
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_HEARTBEAT, workerId, null, null);
         String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "heartbeat");
-        workerClient.workerHeartbeat(boundWorkerId, requestBody == null ? null : requestBody.getReason());
+        workerClient.workerHeartbeat(boundWorkerId, presenceSessionToken(requestBody), requestBody.getReason());
         return ApiResponse.success(presenceResponse(
                 boundWorkerId,
                 "heartbeat",
@@ -302,7 +302,7 @@ public class ExternalWorkerApiController {
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_OFFLINE, workerId, null, null);
         String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "offline");
-        workerClient.workerOffline(boundWorkerId, requestBody == null ? null : requestBody.getReason());
+        workerClient.workerOffline(boundWorkerId, presenceSessionToken(requestBody), requestBody.getReason());
         return ApiResponse.success(presenceResponse(
                 boundWorkerId,
                 "offline",
@@ -517,10 +517,18 @@ public class ExternalWorkerApiController {
     }
 
     private void validatePresenceRequest(ExternalWorkerPresenceApiRequest requestBody) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("worker presence request body is required");
+        }
         if (requestBody != null && requestBody.hasUnknownFields()) {
             throw new IllegalArgumentException("Unsupported worker presence fields: "
                     + String.join(", ", requestBody.getUnknownFieldNames()));
         }
+        requireNonBlank(requestBody.getSessionToken(), "sessionToken");
+    }
+
+    private String presenceSessionToken(ExternalWorkerPresenceApiRequest requestBody) {
+        return requireNonBlank(requestBody.getSessionToken(), "sessionToken");
     }
 
     private void validatePollRequest(ExternalWorkerPollApiRequest requestBody) {

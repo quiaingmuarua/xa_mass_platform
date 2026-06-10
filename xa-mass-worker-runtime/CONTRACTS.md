@@ -328,13 +328,18 @@ contract packages above.
 Runtime outcome proof:
 
 ```powershell
-mvn -pl xa-mass-worker-runtime,xa-mass-engine -am '-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,TaskCandidateWarmPoolTest,TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskSchedulingBindingEntryBypassTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
+.\mvnw.cmd -pl xa-mass-worker-runtime `
+  "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,TaskCandidateWarmPoolTest" test
+
+.\mvnw.cmd -pl xa-mass-engine `
+  "-Dtest=TaskWorkerEligibilityTest,WorkerStateReportSchedulingIntegrationTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskSchedulingBindingEntryBypassTest,EngineSchedulingCoreSuite" test
 ```
 
 Boundary residue sanity:
 
 ```powershell
-mvn -pl xa-mass-engine -am '-Dtest=EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
+rg -n "WorkerRegistry|WorkerSlot|WorkerMeta|ReserveResult|ReserveStatus" `
+  xa-mass-engine/src/main/java --glob '!**/target/**'
 ```
 
 The completed WRX/WRA convergence records are historical archive entries. This

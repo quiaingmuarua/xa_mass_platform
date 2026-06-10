@@ -92,14 +92,10 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         if (evt instanceof WebSocketServerProtocolHandler.HandshakeComplete handshakeComplete) {
             String workerId = extractWorkerIdFromRequestUri(handshakeComplete.requestUri());
             String routeKey = extractRouteKeyFromRequestUri(handshakeComplete.requestUri());
-            if (workerId == null) {
-                logger.warn("WebSocket handshake completed without workerId query parameter");
+            if (workerId == null || routeKey == null) {
+                logger.warn("WebSocket handshake completed without workerId/routeKey query parameter");
             } else {
-                registerSessionIfNeeded(
-                        WebSocketStringValues.firstNonBlank(routeKey, workerId),
-                        workerId,
-                        ctx
-                );
+                registerSessionIfNeeded(routeKey, workerId, ctx);
             }
         }
         super.userEventTriggered(ctx, evt);
@@ -161,8 +157,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
     private String resolveRouteKey(JsonObject frame, String workerId, ChannelHandlerContext ctx) {
         return WebSocketStringValues.firstNonBlank(
                 frameCodec.extractRouteKey(frame),
-                sessionManager.getRouteKey(ctx.channel()),
-                workerId
+                sessionManager.getRouteKey(ctx.channel())
         );
     }
 

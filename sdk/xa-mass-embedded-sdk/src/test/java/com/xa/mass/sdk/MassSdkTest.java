@@ -103,6 +103,7 @@ import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
+import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
@@ -123,6 +124,7 @@ import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -398,7 +400,8 @@ class MassSdkTest {
                          new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
                  BufferedReader ignoredReader = new BufferedReader(
                          new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
-                writer.write("{\"type\":\"hello\",\"workerId\":\"sdk-socket-worker\"}");
+                String routeKey = CanonicalWorkerRouteKeyCodec.encode("sdk-socket-workers", "sdk-socket-worker");
+                writer.write("{\"type\":\"hello\",\"workerId\":\"sdk-socket-worker\",\"routeKey\":\"" + routeKey + "\"}");
                 writer.newLine();
                 writer.flush();
 
@@ -2720,7 +2723,7 @@ class MassSdkTest {
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,
-                List.of(workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
+                List.of(canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -2762,8 +2765,8 @@ class MassSdkTest {
                 systemEventChannel,
                 workerPresenceStore,
                 List.of(
-                        workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
-                        workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
+                        canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
+                        canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                 )
         );
 
@@ -2806,8 +2809,8 @@ class MassSdkTest {
                 systemEventChannel,
                 workerPresenceStore,
                 List.of(
-                        workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
-                        workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
+                        canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
+                        canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                 )
         );
 
@@ -2849,8 +2852,8 @@ class MassSdkTest {
                 systemEventChannel,
                 workerPresenceStore,
                 List.of(
-                        workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
-                        workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
+                        canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
+                        canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                 )
         );
 
@@ -2947,7 +2950,7 @@ class MassSdkTest {
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,
-                List.of(workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
+                List.of(canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -2991,7 +2994,7 @@ class MassSdkTest {
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,
-                List.of(workerIdRouteBinding(
+                List.of(canonicalRouteBinding(
                         new StubPullCapableAdapter("queue-consumer", "queue-consumer"),
                         new StubPullCapableAdapter("queue-consumer", "queue-consumer")))
         );
@@ -3038,7 +3041,7 @@ class MassSdkTest {
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,
-                List.of(workerIdRouteBinding(pollingAdapter, pollingAdapter))
+                List.of(canonicalRouteBinding(pollingAdapter, pollingAdapter))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -3050,9 +3053,20 @@ class MassSdkTest {
                 .build();
 
         try {
+            registerExampleTaskCatalog(app);
             app.start();
+            app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                    .groupId("polling-canonical-group")
+                    .eventBindings(List.of(WorkerEventBinding.builder()
+                            .eventCode("crawler.fetch-page")
+                            .projectCodes(List.of("demoApp"))
+                            .build()))
+                    .build());
+            bindSdkTestNode(app, "polling-canonical-group");
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("polling-worker-canonical")
+                    .adapterNodeId("sdk-test-node")
+                    .workerGroupId("polling-canonical-group")
                     .transportHint("polling")
                     .build());
 
@@ -3442,15 +3456,15 @@ class MassSdkTest {
         Assertions.assertThrows(NoSuchMethodException.class, () -> type.getDeclaredMethod(methodName, parameterTypes));
     }
 
-    private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter) {
+    private static TransportBinding canonicalRouteBinding(WorkerAdapter adapter) {
         return TransportBinding.builder(adapter)
-                .routeKeyResolver((dispatchBinding, routeContext) -> dispatchBinding != null ? dispatchBinding.workerId() : null)
+                .routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject())
                 .build();
     }
 
-    private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter, TaskPullChannel taskPullChannel) {
+    private static TransportBinding canonicalRouteBinding(WorkerAdapter adapter, TaskPullChannel taskPullChannel) {
         return TransportBinding.builder(adapter)
-                .routeKeyResolver((dispatchBinding, routeContext) -> dispatchBinding != null ? dispatchBinding.workerId() : null)
+                .routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject())
                 .taskPullChannel(taskPullChannel)
                 .build();
     }

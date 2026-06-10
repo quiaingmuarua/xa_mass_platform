@@ -129,19 +129,25 @@ class WorkerClientTest {
     @Test
     void directPollingWorkerCallsUseDocumentedRoutes() throws Exception {
         List<String> observed = new ArrayList<>();
+        String sessionToken = "session-phone-worker-sg-001";
         startServer(exchange -> {
             String method = exchange.getRequestMethod();
             String path = exchange.getRequestURI().getRawPath();
             observed.add(method + " " + path);
             String body = readBody(exchange);
             if ("POST".equals(method) && "/worker-api/v1/workers/phone-worker-sg-001:online".equals(path)) {
-                assertEquals("startup", OBJECT_MAPPER.readTree(body).get("reason").asText());
+                JsonNode request = OBJECT_MAPPER.readTree(body);
+                assertEquals(sessionToken, request.get("sessionToken").asText());
+                assertEquals("startup", request.get("reason").asText());
                 respond(exchange, 200, """
                         {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"online","adapterId":"polling","transportHint":"polling"}}
                         """);
                 return;
             }
             if ("POST".equals(method) && "/worker-api/v1/workers/phone-worker-sg-001:heartbeat".equals(path)) {
+                JsonNode request = OBJECT_MAPPER.readTree(body);
+                assertEquals(sessionToken, request.get("sessionToken").asText());
+                assertFalse(request.has("reason"));
                 respond(exchange, 200, """
                         {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"heartbeat","adapterId":"polling","transportHint":"polling"}}
                         """);
@@ -182,6 +188,9 @@ class WorkerClientTest {
                 return;
             }
             if ("POST".equals(method) && "/worker-api/v1/workers/phone-worker-sg-001:offline".equals(path)) {
+                JsonNode request = OBJECT_MAPPER.readTree(body);
+                assertEquals(sessionToken, request.get("sessionToken").asText());
+                assertEquals("shutdown", request.get("reason").asText());
                 respond(exchange, 200, """
                         {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"offline","adapterId":"polling","transportHint":"polling"}}
                         """);
@@ -191,8 +200,8 @@ class WorkerClientTest {
         });
 
         WorkerClient workers = platform().workers();
-        assertEquals("online", workers.online("phone-worker-sg-001", "startup").action());
-        assertEquals("heartbeat", workers.heartbeat("phone-worker-sg-001", null).action());
+        assertEquals("online", workers.online("phone-worker-sg-001", sessionToken, "startup").action());
+        assertEquals("heartbeat", workers.heartbeat("phone-worker-sg-001", sessionToken, null).action());
 
         WorkerPollResult poll = workers.poll("phone-worker-sg-001", WorkerPollRequest.builder()
                 .maxMessages(10)
@@ -216,7 +225,7 @@ class WorkerClientTest {
         WorkerCommandAckResult ack = workers.ackCommand("phone-worker-sg-001", "cmd-1",
                 WorkerCommandAck.deliveryAccepted("accepted"));
         assertEquals("DELIVERY_ACCEPTED", ack.currentStatus());
-        assertEquals("offline", workers.offline("phone-worker-sg-001", "shutdown").action());
+        assertEquals("offline", workers.offline("phone-worker-sg-001", sessionToken, "shutdown").action());
 
         assertEquals(List.of(
                 "POST /worker-api/v1/workers/phone-worker-sg-001:online",

@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InMemoryTransportDeliveryStoreTest {
 
     @Test
-    void enqueueStoresAndDrainsByAdapterAndWorker() {
+    void routeKeyQueueAllowsAdapterTakeoverDrain() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
         TaskDispatchItem pollingItem = item("msg-1", "worker-1");
         TaskDispatchItem websocketItem = item("msg-2", "worker-1");
@@ -34,8 +34,8 @@ class InMemoryTransportDeliveryStoreTest {
 
         assertEquals(DispatchOutcomeStatus.QUEUED, pollingOutcome.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, websocketOutcome.getStatus());
-        assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 10)));
-        assertEquals(List.of("msg-2"), messageIds(store.drain("websocket", "worker-1", 10)));
+        assertEquals(List.of("msg-1", "msg-2"), messageIds(store.drain("polling", "worker-1", 10)));
+        assertTrue(store.drain("websocket", "worker-1", 10).isEmpty());
     }
 
     @Test

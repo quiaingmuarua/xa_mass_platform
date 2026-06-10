@@ -130,9 +130,11 @@ When runtime reachability needs cross-instance truth, configure shared transport
 presence through `redisDistributedChannels(...)`, `redisPresenceStore(...)`, or
 `presenceStoreFactory(...)`. Adapters still own local
 session/connect/heartbeat ingress, but shared presence projection belongs to
-transport runtime rather than engine-local worker status. A worker may have
-multiple route owners; dispatch routing reads the route-owner view and then
-writes the assigned batch to the selected `transportNodeId` inbox.
+transport runtime rather than engine-local worker status. A canonical worker
+`routeKey` has one current delivery owner; dispatch routing reads the
+route-owner view and then writes the assigned batch to the selected
+`transportNodeId` inbox. Worker runtime capacity and multi-binding behavior
+remain owned by worker-runtime scheduling/admission, not by transport presence.
 
 Task result reads are exposed through `TaskResultQueryOperations`, separate
 from task aggregate query. `readTaskResults(...)` and archive streaming read
@@ -441,8 +443,9 @@ Runtime executor diagnostics for transport and optional event-handler execution
 are surfaced through the explicit operator/runtime `app.runtimeDiagnostics().getQueueDetail()`
 view and the Boot-shell `/api/v1/runtime/queues` response. That HTTP route is
 operator/console diagnostics, not an external public SDK contract. Delivery-store diagnostics also expose
-`app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
-per-`adapterId` queue breakdown and is not tied to one store implementation.
+`app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is a legacy
+queue-path breakdown name rather than queue ownership truth. RouteKey-owned stores may aggregate this
+diagnostic under a route-owner bucket instead of preserving adapter-specific queue identity.
 Realtime direct-send counters are intentionally separate under
 `app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
 language with queued delivery but they do not imply queue ownership, dequeue,

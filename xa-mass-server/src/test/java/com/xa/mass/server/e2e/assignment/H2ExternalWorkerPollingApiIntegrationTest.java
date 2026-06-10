@@ -67,6 +67,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
     @Test
     void externalWorkerPollingApiCompletesTaskEndToEndAgainstJdbcStorage() throws Exception {
         String workerId = "polling-h2-worker-001";
+        String sessionToken = "session-polling-h2-worker-001";
         String workerCredential = "polling-h2-worker-key";
         String taskApiKey = "polling-h2-api-key-key";
 
@@ -109,9 +110,8 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));
 
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
-                "reason", "jdbc-storage-online"
-        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST,
+                presenceBody(sessionToken, "jdbc-storage-online"), workerHeaders));
         waitUntil(() -> app.isWorkerOnline(workerId), "worker transport presence should be online before task approval");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
@@ -178,9 +178,8 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
         assertTrue(terminalValidation.isValid());
         assertFalse(terminalValidation.isNeedsResolution());
 
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST, Map.of(
-                "reason", "jdbc-storage-offline"
-        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST,
+                presenceBody(sessionToken, "jdbc-storage-offline"), workerHeaders));
         waitUntil(() -> !app.isWorkerOnline(workerId), "worker transport presence should be offline after explicit disconnect");
 
         assertJdbcProjection(taskId);
@@ -190,6 +189,13 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;
+    }
+
+    private Map<String, Object> presenceBody(String sessionToken, String reason) {
+        return Map.of(
+                "sessionToken", sessionToken,
+                "reason", reason
+        );
     }
 
     @SuppressWarnings("unchecked")

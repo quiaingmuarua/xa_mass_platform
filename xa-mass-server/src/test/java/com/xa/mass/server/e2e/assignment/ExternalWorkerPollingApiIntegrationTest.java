@@ -97,6 +97,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     @Test
     void externalWorkerPollingApiCompletesTaskEndToEnd() throws Exception {
         String workerId = "node-worker-api-001";
+        String sessionToken = "session-node-worker-api-001";
         String credential = "node-worker-key";
         String taskApiKey = "crawler-task-api-key";
         app.replaceDefaultRules(List.of(
@@ -124,14 +125,16 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         assertFalse(app.isWorkerOnline(workerId), "registration must not create external worker transport presence");
 
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
-                "reason", "external-worker-api-online"
-        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST,
+                presenceBody(sessionToken, "external-worker-api-online"), workerHeaders));
         waitUntil(() -> app.isWorkerOnline(workerId), "external worker online should surface transport presence");
 
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":heartbeat", HttpMethod.POST, Map.of(
-                "reason", "external-worker-api-heartbeat"
-        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":heartbeat", HttpMethod.POST,
+                presenceBody(sessionToken, "external-worker-api-heartbeat"), workerHeaders));
+
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST,
+                presenceBody("stale-" + sessionToken, "stale-offline-must-not-win"), workerHeaders));
+        assertTrue(app.isWorkerOnline(workerId), "stale session token must not revoke current transport presence");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "crawlerApp");
@@ -187,15 +190,15 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
         assertEquals(1, terminal.stats().successCount());
 
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST, Map.of(
-                "reason", "external-worker-api-offline"
-        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST,
+                presenceBody(sessionToken, "external-worker-api-offline"), workerHeaders));
         waitUntil(() -> !app.isWorkerOnline(workerId), "external worker offline should converge transport presence");
     }
 
     @Test
     void externalWorkerPollingApiCanAcknowledgeOperatorIssuedCommand() throws Exception {
         String workerId = "node-worker-api-002";
+        String sessionToken = "session-node-worker-api-002";
         String credential = "node-worker-ack-key";
         String taskApiKey = "crawler-task-api-key";
         registerExternalWorkerCredential(
@@ -222,9 +225,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 )
         ), workerHeaders);
         assertApiOk(registerResponse);
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
-                "reason", "command-ack-online"
-        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST,
+                presenceBody(sessionToken, "command-ack-online"), workerHeaders));
         waitUntil(() -> app.isWorkerOnline(workerId), "command-ack worker should reach transport-online state");
 
         Map<String, Object> commandResponse = exchange("/api/v1/runtime/workers/" + workerId + "/commands", HttpMethod.POST, Map.of(
@@ -350,6 +352,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     @Test
     void drainingStateStopsNewAssignmentsUntilWorkerReportsAvailable() throws Exception {
         String workerId = "node-worker-draining-001";
+        String sessionToken = "session-node-worker-draining-001";
         String credential = "node-worker-draining-key";
         String taskApiKey = "crawler-task-api-key";
         app.replaceDefaultRules(List.of(
@@ -379,9 +382,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                         "region", "us"
                 )
         ), workerHeaders));
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
-                "reason", "draining-online"
-        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST,
+                presenceBody(sessionToken, "draining-online"), workerHeaders));
         waitUntil(() -> app.isWorkerOnline(workerId), "draining worker should reach transport-online state");
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":report-state", HttpMethod.POST, Map.of(
@@ -437,6 +439,13 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;
+    }
+
+    private Map<String, Object> presenceBody(String sessionToken, String reason) {
+        return Map.of(
+                "sessionToken", sessionToken,
+                "reason", reason
+        );
     }
 
     @SuppressWarnings("unchecked")

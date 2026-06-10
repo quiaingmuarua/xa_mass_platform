@@ -13,18 +13,19 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 
 /**
- * Legacy observer for process-local runtime worker system events.
+ * Legacy observer for process-local runtime worker heartbeat events.
  *
  * <p>Reachability truth lives in transport presence. This bridge only refreshes
- * model heartbeat evidence for existing worker rows.</p>
+ * worker-registry heartbeat evidence for existing worker rows. It must not be
+ * treated as worker status, online/offline, or declaration-store truth.</p>
  */
-public final class WorkerStatusEventListener {
-    private static final Logger log = LoggerFactory.getLogger(WorkerStatusEventListener.class);
+public final class WorkerHeartbeatProjectionListener {
+    private static final Logger log = LoggerFactory.getLogger(WorkerHeartbeatProjectionListener.class);
 
     private final WorkerResourceRuntime workerResourceRuntime;
     private final Runnable dispatchWakeupCallback;
 
-    WorkerStatusEventListener(WorkerResourceRuntime workerResourceRuntime, Runnable dispatchWakeupCallback) {
+    WorkerHeartbeatProjectionListener(WorkerResourceRuntime workerResourceRuntime, Runnable dispatchWakeupCallback) {
         this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
         this.dispatchWakeupCallback = dispatchWakeupCallback != null ? dispatchWakeupCallback : () -> {
         };

@@ -5,6 +5,7 @@ BASE_URL="${BASE_URL:-http://127.0.0.1:8088}"
 TASK_API_KEY="${TASK_API_KEY:-external-proof-task-api-key}"
 WORKER_KEY="${WORKER_KEY:-external-proof-worker-key}"
 WORKER_ID="${WORKER_ID:-external-proof-polling-worker-001}"
+WORKER_SESSION_TOKEN="${WORKER_SESSION_TOKEN:-external-proof-polling-session-001}"
 WORKER_GROUP_ID="${WORKER_GROUP_ID:-external-proof-polling}"
 PROJECT="${PROJECT:-demoApp}"
 EVENT_CODE="${EVENT_CODE:-external.proof.echo}"
@@ -123,8 +124,20 @@ JSON
 )" >/dev/null
 
 log "mark worker online and report owner-backed state/capability"
-api POST "/worker-api/v1/workers/${WORKER_ID}:online" "$WORKER_KEY" '{"reason":"cli-proof-online"}' >/dev/null
-api POST "/worker-api/v1/workers/${WORKER_ID}:heartbeat" "$WORKER_KEY" '{"reason":"cli-proof-heartbeat"}' >/dev/null
+api POST "/worker-api/v1/workers/${WORKER_ID}:online" "$WORKER_KEY" "$(cat <<JSON
+{
+  "sessionToken": $(json_escape "$WORKER_SESSION_TOKEN"),
+  "reason": "cli-proof-online"
+}
+JSON
+)" >/dev/null
+api POST "/worker-api/v1/workers/${WORKER_ID}:heartbeat" "$WORKER_KEY" "$(cat <<JSON
+{
+  "sessionToken": $(json_escape "$WORKER_SESSION_TOKEN"),
+  "reason": "cli-proof-heartbeat"
+}
+JSON
+)" >/dev/null
 api POST "/worker-api/v1/workers/${WORKER_ID}:report-capability" "$WORKER_KEY" "$(cat <<JSON
 {
   "availableEventCodes": [$(json_escape "$EVENT_CODE")],
@@ -266,6 +279,12 @@ JSON
 api POST "/worker-api/v1/workers/${WORKER_ID}/commands/${COMMAND_ID}:ack" "$WORKER_KEY" '{"status":"DELIVERY_ACCEPTED","reason":"cli-proof-ack"}' >/dev/null
 
 log "mark worker offline"
-api POST "/worker-api/v1/workers/${WORKER_ID}:offline" "$WORKER_KEY" '{"reason":"cli-proof-offline"}' >/dev/null
+api POST "/worker-api/v1/workers/${WORKER_ID}:offline" "$WORKER_KEY" "$(cat <<JSON
+{
+  "sessionToken": $(json_escape "$WORKER_SESSION_TOKEN"),
+  "reason": "cli-proof-offline"
+}
+JSON
+)" >/dev/null
 
 log "passed taskId=${TASK_ID} messageId=${MESSAGE_ID} workerId=${WORKER_ID}"

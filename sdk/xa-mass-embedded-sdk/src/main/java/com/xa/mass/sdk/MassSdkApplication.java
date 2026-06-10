@@ -709,18 +709,18 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public void workerOnline(String workerId, String reason) {
-        externalPullWorkerSession(workerId).connect(reason);
+    public void workerOnline(String workerId, String sessionToken, String reason) {
+        externalPullWorkerSession(workerId, sessionToken).connect(reason);
     }
 
     @Override
-    public void workerHeartbeat(String workerId, String reason) {
-        externalPullWorkerSession(workerId).heartbeat(reason);
+    public void workerHeartbeat(String workerId, String sessionToken, String reason) {
+        externalPullWorkerSession(workerId, sessionToken).heartbeat(reason);
     }
 
     @Override
-    public void workerOffline(String workerId, String reason) {
-        externalPullWorkerSession(workerId).disconnect(reason);
+    public void workerOffline(String workerId, String sessionToken, String reason) {
+        externalPullWorkerSession(workerId, sessionToken).disconnect(reason);
     }
 
     @Override
@@ -1393,6 +1393,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     private PullWorkerSession externalPullWorkerSession(String workerId) {
         return pullWorker(requireWorkerId(workerId));
+    }
+
+    private PullWorkerSession externalPullWorkerSession(String workerId, String sessionToken) {
+        return delegate.openPullWorkerSession(requireWorkerId(workerId), requireNonBlank(sessionToken, "sessionToken"));
     }
 
     private WorkerGroupRecord toWorkerGroupRecord(WorkerGroupDeclaration declaration) {

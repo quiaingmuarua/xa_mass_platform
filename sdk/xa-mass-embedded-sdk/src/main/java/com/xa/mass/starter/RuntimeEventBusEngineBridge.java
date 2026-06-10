@@ -23,7 +23,7 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
     private final EventBusFacade<?> eventBus;
     private Consumer<Task> taskCreatedListener;
     private Consumer<Task> taskAssignedListener;
-    private WorkerStatusEventListener workerStatusEventListener;
+    private WorkerHeartbeatProjectionListener workerHeartbeatProjectionListener;
     private TaskEventListenerRegistrar registeredEventListeners;
 
     private RuntimeEventBusEngineBridge(EventBusFacade<?> eventBus) {
@@ -51,8 +51,11 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
         this.taskAssignedListener = task -> bus.post(new TaskAssignedEvent(task, null, null));
         registeredEventListeners.addTaskCreatedListener(taskCreatedListener);
         registeredEventListeners.addTaskAssignedListener(taskAssignedListener);
-        this.workerStatusEventListener = new WorkerStatusEventListener(workerResourceRuntime, dispatchWakeupCallback);
-        eventBus.register(workerStatusEventListener);
+        this.workerHeartbeatProjectionListener = new WorkerHeartbeatProjectionListener(
+                workerResourceRuntime,
+                dispatchWakeupCallback
+        );
+        eventBus.register(workerHeartbeatProjectionListener);
     }
 
     @Override
@@ -65,16 +68,16 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
                 registeredEventListeners.removeTaskAssignedListener(taskAssignedListener);
             }
         }
-        if (workerStatusEventListener != null) {
+        if (workerHeartbeatProjectionListener != null) {
             try {
-                eventBus.unregister(workerStatusEventListener);
+                eventBus.unregister(workerHeartbeatProjectionListener);
             } catch (RuntimeException ignored) {
                 // Best-effort cleanup for legacy shell bridge listeners.
             }
         }
         taskCreatedListener = null;
         taskAssignedListener = null;
-        workerStatusEventListener = null;
+        workerHeartbeatProjectionListener = null;
         registeredEventListeners = null;
     }
 }

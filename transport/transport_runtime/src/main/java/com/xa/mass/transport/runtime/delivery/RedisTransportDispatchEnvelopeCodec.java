@@ -29,20 +29,14 @@ final class RedisTransportDispatchEnvelopeCodec {
 
     String encodeKeyPart(DeliveryQueueKey key) {
         Objects.requireNonNull(key, "key");
-        return encodeKeyToken(key.adapterId()) + ":" + encodeKeyToken(key.routeKey());
+        return encodeKeyToken(key.routeKey());
     }
 
     DeliveryQueueKey decodeKeyPart(String encodedKeyPart) {
         if (encodedKeyPart == null || encodedKeyPart.isBlank()) {
             throw new IllegalArgumentException("encodedKeyPart must not be blank");
         }
-        int delimiter = encodedKeyPart.indexOf(':');
-        if (delimiter <= 0 || delimiter == encodedKeyPart.length() - 1) {
-            throw new IllegalArgumentException("encodedKeyPart must contain adapter and route tokens");
-        }
-        String adapterToken = encodedKeyPart.substring(0, delimiter);
-        String routeToken = encodedKeyPart.substring(delimiter + 1);
-        return new DeliveryQueueKey(decodeKeyToken(adapterToken), decodeKeyToken(routeToken));
+        return new DeliveryQueueKey("route-owner", decodeKeyToken(encodedKeyPart));
     }
 
     byte[] encodeEntry(KeyedQueueEntry<TransportDispatchEnvelope> entry) {

@@ -16,6 +16,7 @@ import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
 import com.xa.mass.client.worker.handler.WorkerEventHandlers;
 import com.xa.mass.client.worker.handler.WorkerEventInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -90,7 +91,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         this.deploymentVersion = builder.deploymentVersion;
         this.attributes = Map.copyOf(builder.attributes);
         this.endpoint = Objects.requireNonNull(builder.endpoint, "endpoint is required");
-        this.routeKey = firstNonBlank(builder.routeKey, workerId);
+        this.routeKey = CanonicalWorkerRouteKeyCodec.encode(workerGroupId, workerId);
         this.connectTimeout = builder.connectTimeout;
         this.reconnectBackoff = builder.reconnectBackoff;
         this.maxReconnectBackoff = builder.maxReconnectBackoff;
@@ -379,6 +380,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         Map<String, Object> frame = new LinkedHashMap<>();
         frame.put("messageId", dispatch.messageId());
         frame.put("taskId", dispatch.taskId());
+        frame.put("routeKey", firstNonBlank(dispatch.rawItem().routeKey(), routeKey));
         frame.put("success", result.success());
         frame.put("detail", result.detail());
         frame.put("errorCode", result.errorCode());
@@ -514,7 +516,6 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         private String deploymentVersion;
         private Map<String, String> attributes = new LinkedHashMap<>();
         private URI endpoint;
-        private String routeKey;
         private Duration connectTimeout = Duration.ofSeconds(10);
         private Duration reconnectBackoff = Duration.ofMillis(500);
         private Duration maxReconnectBackoff = Duration.ofSeconds(10);
@@ -583,11 +584,6 @@ public final class WebSocketWorkerSession implements AutoCloseable {
 
         public Builder endpoint(URI endpoint) {
             this.endpoint = endpoint;
-            return this;
-        }
-
-        public Builder routeKey(String routeKey) {
-            this.routeKey = routeKey;
             return this;
         }
 

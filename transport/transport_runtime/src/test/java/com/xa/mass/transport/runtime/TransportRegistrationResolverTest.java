@@ -85,7 +85,7 @@ class TransportRegistrationResolverTest {
     @Test
     void fromBindingsUsesCanonicalAdapterIdsOnly() {
         TransportRegistrationResolver resolver = TransportRegistrationResolver.fromBindings(List.of(
-                workerIdRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
+                canonicalRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
         ));
 
         assertEquals("websocket", resolver.resolveRegistrationAdapterId("websocket", "realtime"));
@@ -119,9 +119,9 @@ class TransportRegistrationResolverTest {
                 error.getMessage());
     }
 
-    private static TransportBinding workerIdRouteBinding(com.xa.mass.transport.worker.WorkerAdapter adapter) {
+    private static TransportBinding canonicalRouteBinding(com.xa.mass.transport.worker.WorkerAdapter adapter) {
         return TransportBinding.builder(adapter)
-                .routeKeyResolver((dispatchBinding, routeContext) -> dispatchBinding != null ? dispatchBinding.workerId() : null)
+                .routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject())
                 .build();
     }
 

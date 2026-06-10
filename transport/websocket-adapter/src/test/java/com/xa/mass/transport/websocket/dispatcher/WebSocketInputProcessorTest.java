@@ -77,7 +77,7 @@ class WebSocketInputProcessorTest {
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
         assertEquals("websocket", capturedEnvelope.get().getAdapterId());
-        assertEquals("worker-1", capturedEnvelope.get().getRouteKey());
+        assertEquals("route-1", capturedEnvelope.get().getRouteKey());
         assertEquals("task-1", capturedEnvelope.get().getTaskId());
         assertEquals("msg-1", capturedEnvelope.get().getMessageId());
         assertTrue(capturedEnvelope.get().getReport().isSuccess());
@@ -265,6 +265,7 @@ class WebSocketInputProcessorTest {
         frame.addProperty("messageId", messageId);
         frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
         frame.addProperty(TransportPacket.PAYLOAD_PROJECT, "proj");
+        frame.addProperty("routeKey", "route-1");
         frame.addProperty("taskId", taskId);
         frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, success);
         frame.addProperty(TransportPacket.PAYLOAD_DETAIL, detail);

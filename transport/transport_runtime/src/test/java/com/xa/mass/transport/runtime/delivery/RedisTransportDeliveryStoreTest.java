@@ -76,25 +76,26 @@ class RedisTransportDeliveryStoreTest {
     }
 
     @Test
-    void enqueueDrainAndPollUseCanonicalAdapterAndRouteKeys() throws Exception {
+    void enqueueDrainAndPollUseCanonicalRouteKeyAcrossAdapters() throws Exception {
         DispatchOutcome first = store.enqueue(envelope(" Polling ", item("msg-1", " worker-1 ")));
         store.enqueue(envelope("websocket", item("msg-2", "worker-1")));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
         assertEquals("polling", first.getAdapterId());
         assertEquals("worker-1", first.getRouteKey());
-        assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 10)));
+        assertEquals(List.of("msg-1", "msg-2"), messageIds(store.drain("polling", "worker-1", 10)));
 
         CompletableFuture<List<TransportDispatchEnvelope>> polled = CompletableFuture.supplyAsync(() -> {
             try {
-                return store.poll("websocket", "worker-1", 10, 1, TimeUnit.SECONDS).getEnvelopes();
+                return store.poll("polling", "worker-2", 10, 1, TimeUnit.SECONDS).getEnvelopes();
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
                 return List.of();
             }
         });
 
-        assertEquals(List.of("msg-2"), messageIds(polled.get(2, TimeUnit.SECONDS)));
+        store.enqueue(envelope("websocket", item("msg-3", "worker-2")));
+        assertEquals(List.of("msg-3"), messageIds(polled.get(2, TimeUnit.SECONDS)));
     }
 
     @Test
@@ -117,16 +118,16 @@ class RedisTransportDeliveryStoreTest {
     }
 
     @Test
-    void statsExposeAdapterBreakdownAndShutdownClearing() {
+    void statsExposeRouteOwnerBreakdownAndShutdownClearing() {
         store.enqueue(envelope("polling", item("msg-1", "worker-1")));
         store.enqueue(envelope("websocket", item("msg-2", "worker-2")));
 
         TransportDeliveryStoreStats queued = store.stats();
         assertEquals(2, queued.getQueuedItems());
         assertEquals(2, queued.getQueueCount());
-        assertEquals(2, queued.getQueueByAdapter().size());
-        assertEquals(1, queued.getQueueByAdapter().get("polling").getQueuedItems());
-        assertEquals(1, queued.getQueueByAdapter().get("websocket").getQueuedItems());
+        assertEquals(1, queued.getQueueByAdapter().size());
+        assertEquals(2, queued.getQueueByAdapter().get("route-owner").getQueuedItems());
+        assertEquals(2, queued.getQueueByAdapter().get("route-owner").getQueueCount());
 
         store.shutdown();
 

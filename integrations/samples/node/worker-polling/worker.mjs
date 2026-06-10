@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
+import { randomUUID } from "node:crypto";
+
 const baseUrl = normalizeBaseUrl(process.env.MASS_BASE_URL ?? "http://127.0.0.1:8088");
 const workerId = requiredEnv("MASS_WORKER_ID", "node-worker-api-001");
 const workerKey = requiredEnv("MASS_WORKER_KEY", "node-worker-key");
+const sessionToken = process.env.MASS_WORKER_SESSION_TOKEN ?? randomUUID();
 const workerGroupId = process.env.MASS_WORKER_GROUP_ID ?? "node-runtime";
 const adapterNodeId = process.env.MASS_ADAPTER_NODE_ID ?? `${workerGroupId}-node`;
 const project = process.env.MASS_PROJECT ?? "crawlerApp";
@@ -29,6 +32,7 @@ async function main() {
 
   await registerWorker();
   await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:online`, {
+    sessionToken,
     reason: "node-worker-online",
   });
   await reportWorkerCapability();
@@ -36,6 +40,7 @@ async function main() {
 
   heartbeatTimer = setInterval(() => {
     post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:heartbeat`, {
+      sessionToken,
       reason: "node-worker-heartbeat",
     }).catch((error) => {
       console.error("[worker] heartbeat failed:", error.message);
@@ -308,7 +313,7 @@ async function shutdown(signal) {
 
 async function safeOffline(reason) {
   try {
-    await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:offline`, { reason });
+    await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:offline`, { sessionToken, reason });
   } catch (error) {
     console.error("[worker] offline failed:", error.message);
   }

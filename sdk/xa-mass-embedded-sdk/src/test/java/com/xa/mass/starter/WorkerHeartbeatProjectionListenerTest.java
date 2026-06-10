@@ -22,13 +22,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-class WorkerStatusEventListenerTest {
+class WorkerHeartbeatProjectionListenerTest {
 
     @Test
     void workerOnlineEventRefreshesHeartbeatAndLeavesModelStatusUntouched() {
         AtomicInteger wakeups = new AtomicInteger();
         FakeWorkerResourceRuntime runtime = new FakeWorkerResourceRuntime();
-        WorkerStatusEventListener listener = new WorkerStatusEventListener(runtime, wakeups::incrementAndGet);
+        WorkerHeartbeatProjectionListener listener = new WorkerHeartbeatProjectionListener(runtime, wakeups::incrementAndGet);
         runtime.addWorker(worker("w9", WorkerStatus.OFFLINE));
 
         listener.onWorkerOnline(new WorkerOnlineEvent("w9", "connected", null));
@@ -46,7 +46,7 @@ class WorkerStatusEventListenerTest {
     void workerHeartbeatEventRefreshesLastHeartbeatWithoutChangingWorkerModelAvailability() {
         AtomicInteger wakeups = new AtomicInteger();
         FakeWorkerResourceRuntime runtime = new FakeWorkerResourceRuntime();
-        WorkerStatusEventListener listener = new WorkerStatusEventListener(runtime, wakeups::incrementAndGet);
+        WorkerHeartbeatProjectionListener listener = new WorkerHeartbeatProjectionListener(runtime, wakeups::incrementAndGet);
         runtime.addWorker(worker("w10", WorkerStatus.OFFLINE));
 
         listener.onWorkerHeartbeat(new WorkerHeartbeatEvent("w10", "heartbeat", null));
@@ -193,7 +193,7 @@ class WorkerStatusEventListenerTest {
         }
 
         private static UnsupportedOperationException unsupported() {
-            return new UnsupportedOperationException("not needed by worker status listener test");
+            return new UnsupportedOperationException("not needed by worker heartbeat projection listener test");
         }
     }
 }

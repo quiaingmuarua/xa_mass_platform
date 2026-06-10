@@ -21,7 +21,7 @@ class RedisTransportDispatchEnvelopeCodecTest {
         String encoded = codec.encodeKeyPart(key);
         DeliveryQueueKey decoded = codec.decodeKeyPart(encoded);
 
-        assertEquals("websocket-public", decoded.adapterId());
+        assertEquals("route-owner", decoded.adapterId());
         assertEquals("worker/route:cn?demo=1", decoded.routeKey());
     }
 

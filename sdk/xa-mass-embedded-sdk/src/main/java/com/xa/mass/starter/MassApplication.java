@@ -51,9 +51,11 @@ import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.presence.WorkerPresence;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.presence.WorkerPresenceState;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -64,6 +66,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -347,23 +350,28 @@ public class MassApplication {
             }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 engineConfig.setWorkerReachabilityView(workerId -> {
-                    if (workerPresenceStore == null || workerPresenceStore.findOwners(workerId).isEmpty()) {
-                        WorkerPresence presence = workerPresenceStore != null ? workerPresenceStore.getPresence(workerId) : null;
-                        if (presence == null) {
-                            return com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.OFFLINE;
-                        }
-                        return switch (presence.getPresenceState()) {
-                            case ONLINE -> com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.ONLINE;
-                            case STALE -> com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.STALE;
-                            case OFFLINE -> com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.OFFLINE;
-                        };
+                    if (workerPresenceStore == null || workerId == null || workerId.isBlank()) {
+                        return com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.OFFLINE;
                     }
-                    boolean hasDispatchableOwner = workerPresenceStore.findOwners(workerId).stream()
-                            .anyMatch(owner -> owner.isOnline(System.currentTimeMillis())
-                                    && (transportNodeRegistry == null || transportNodeRegistry.isNodeOnline(owner.transportNodeId())));
-                    return hasDispatchableOwner
-                            ? com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.ONLINE
-                            : com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.OFFLINE;
+                    WorkerResourceRecord worker = engineConfig.getWorkerResourceRuntime()
+                            .worker(workerId.trim())
+                            .orElse(null);
+                    if (worker == null || worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
+                        return com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.OFFLINE;
+                    }
+                    String routeKey = CanonicalWorkerRouteKeyCodec.encode(worker.workerGroupId(), worker.workerId());
+                    return workerPresenceStore.currentOwner(routeKey)
+                            .map(owner -> {
+                                long now = System.currentTimeMillis();
+                                if (owner.isOnline(now)
+                                        && (transportNodeRegistry == null || transportNodeRegistry.isNodeOnline(owner.transportNodeId()))) {
+                                    return com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.ONLINE;
+                                }
+                                return owner.state() == WorkerPresenceState.STALE
+                                        ? com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.STALE
+                                        : com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.OFFLINE;
+                            })
+                            .orElse(com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.OFFLINE);
                 });
                 taskDispatchHandoff = transportRuntimeComposition.resolveTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 if (runtimeRole == TransportRuntimeRole.EMBEDDED) {
@@ -430,8 +438,7 @@ public class MassApplication {
                 && handoff instanceof NodeTargetedTaskDispatchHandoff nodeTargetedHandoff) {
             WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                     workerPresenceStore,
-                    transportNodeRegistry,
-                    transportRuntimeComposition.resolveAdapterTransportHintsById()
+                    transportNodeRegistry
             );
             return new NodeTargetedTaskDispatchSubmitter(
                     nodeTargetedHandoff,
@@ -693,19 +700,32 @@ public class MassApplication {
     }
 
     public PullWorkerSession openPullWorkerSession(String workerId) {
+        return openPullWorkerSession(workerId, UUID.randomUUID().toString());
+    }
+
+    public PullWorkerSession openPullWorkerSession(String workerId, String sessionToken) {
         if (transportRuntimeRegistry == null) {
             throw new IllegalStateException("Pull worker transport is unavailable for this runtime");
         }
         ResolvedPullWorkerTransport resolved = transportRuntimeRegistry.resolvePullWorkerTransport(workerId);
         return new PullWorkerSession(
                 resolved.getWorkerId(),
+                resolved.getWorkerGroupId(),
                 resolved.getAdapterId(),
+                requireText(sessionToken, "sessionToken"),
                 resolved.getTaskPullChannel(),
                 resolved.getTaskResultIngestChannel(),
                 resolved.getSystemEventChannel(),
                 resolved.getWorkerPresenceStore(),
                 resolved.getTransportHint()
         );
+    }
+
+    private static String requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 
     public WorkerPresenceStore getWorkerPresenceStore() {

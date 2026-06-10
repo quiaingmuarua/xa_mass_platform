@@ -12,15 +12,13 @@ import java.util.Map;
  *
  * <ul>
  *   <li>hard contract fields:
- *     {@code queuedItems}, {@code queueCount}, {@code maxQueuedItems},
- *     {@code queueByAdapter[*].queuedItems}, and
- *     {@code queueByAdapter[*].queueCount}
+ *     {@code queuedItems}, {@code queueCount}, and {@code maxQueuedItems}
  *   <li>best-effort fields:
- *     {@code waitingPollers}, {@code oldestQueuedAgeMillis},
+ *     {@code queueByAdapter}, {@code waitingPollers}, {@code oldestQueuedAgeMillis},
  *     {@code enqueuedItems}, {@code drainedItems},
  *     {@code backpressureRejectedItems}, {@code invalidItems},
  *     {@code unavailableItems}, {@code shutdownClearedItems}, and the
- *     per-adapter mirrors of those diagnostics
+ *     nested breakdown mirrors of those diagnostics
  * </ul>
  *
  * <p>"Best effort" here means the field should stay meaningful and monotonic
@@ -148,10 +146,11 @@ public final class TransportDeliveryStoreStats {
     }
 
     /**
-     * Queue-path only per-adapter breakdown keyed by canonical {@code adapterId}.
+     * Queue-path only legacy breakdown.
      *
-     * <p>{@code queuedItems} and {@code queueCount} are hard contract fields.
-     * Other nested fields are best-effort diagnostics.
+     * <p>This field keeps the old name for diagnostic API stability. It is not
+     * queue ownership truth; routeKey-owned stores may aggregate under a
+     * route-owner bucket instead of preserving adapter-specific queue identity.
      */
     public Map<String, TransportDeliveryQueueStats> getQueueByAdapter() {
         return queueByAdapter;

@@ -10,6 +10,7 @@ import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -27,16 +29,15 @@ class NodeTargetedTaskDispatchSubmitterTest {
     void splitsBatchBySelectedTransportNodeAndCompensatesMissingOwner() {
         InMemoryWorkerPresenceStore presenceNodeOne = new InMemoryWorkerPresenceStore(30_000L, "node-1");
         InMemoryWorkerPresenceStore presenceNodeTwo = new InMemoryWorkerPresenceStore(30_000L, "node-2");
-        presenceNodeOne.markOnline("worker-1", "websocket", "route-1", "conn-1", "connected");
-        presenceNodeTwo.markOnline("worker-2", "websocket", "route-2", "conn-2", "connected");
+        presenceNodeOne.markOnline("worker-1", "websocket", routeKey("worker-1"), "conn-1", "connected");
+        presenceNodeTwo.markOnline("worker-2", "websocket", routeKey("worker-2"), "conn-2", "connected");
         CombinedRouteView routeView = new CombinedRouteView(List.of(presenceNodeOne, presenceNodeTwo));
         InMemoryTransportNodeRegistry nodes = new InMemoryTransportNodeRegistry();
         nodes.register("node-1", List.of("websocket"), 1L);
         nodes.register("node-2", List.of("websocket"), 1L);
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                 routeView,
-                nodes,
-                Map.of("websocket", WorkerTransportHints.REALTIME)
+                nodes
         );
         CapturingNodeTargetedHandoff handoff = new CapturingNodeTargetedHandoff();
         List<TaskDispatchBinding> compensated = new ArrayList<>();
@@ -67,14 +68,13 @@ class NodeTargetedTaskDispatchSubmitterTest {
     @Test
     void compensatesWhenRouteOwnerNodeIsOffline() {
         InMemoryWorkerPresenceStore presence = new InMemoryWorkerPresenceStore(30_000L, "node-1");
-        presence.markOnline("worker-1", "websocket", "route-1", "conn-1", "connected");
+        presence.markOnline("worker-1", "websocket", routeKey("worker-1"), "conn-1", "connected");
         InMemoryTransportNodeRegistry nodes = new InMemoryTransportNodeRegistry();
         nodes.register("node-1", List.of("websocket"), 1L);
         nodes.markOffline("node-1");
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                 presence,
-                nodes,
-                Map.of("websocket", WorkerTransportHints.REALTIME)
+                nodes
         );
         CapturingNodeTargetedHandoff handoff = new CapturingNodeTargetedHandoff();
         List<TaskDispatchBinding> compensated = new ArrayList<>();
@@ -120,6 +120,7 @@ class NodeTargetedTaskDispatchSubmitterTest {
     private static Worker worker(String workerId) {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
+        worker.setWorkerGroupId("group-1");
         worker.setAdapterId("websocket");
         worker.setOnlineStrategy(WorkerTransportHints.REALTIME);
         return worker;
@@ -168,11 +169,24 @@ class NodeTargetedTaskDispatchSubmitterTest {
         }
 
         @Override
+        public Optional<com.xa.mass.transport.presence.WorkerDispatchRouteOwner> currentOwner(String routeKey) {
+            return stores.stream()
+                    .map(store -> store.currentOwner(routeKey))
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .findFirst();
+        }
+
+        @Override
         public List<com.xa.mass.transport.presence.WorkerDispatchRouteOwner> findOwners(String workerId) {
             return stores.stream()
                     .flatMap(store -> store.findOwners(workerId).stream())
                     .toList();
         }
+    }
+
+    private static String routeKey(String workerId) {
+        return CanonicalWorkerRouteKeyCodec.encode("group-1", workerId);
     }
 
     private static final class CapturingNodeTargetedHandoff implements NodeTargetedTaskDispatchHandoff {

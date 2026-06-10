@@ -74,11 +74,13 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         Objects.requireNonNull(baseUrl, "baseUrl");
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(workerKey, "workerKey");
+        String sessionToken = "external-node-session-" + workerId;
 
         Map<String, String> environment = new LinkedHashMap<>(Map.of(
                 "MASS_BASE_URL", baseUrl,
                 "MASS_WORKER_ID", workerId,
                 "MASS_WORKER_KEY", workerKey,
+                "MASS_WORKER_SESSION_TOKEN", sessionToken,
                 "MASS_POLL_INTERVAL_MS", "200",
                 "MASS_HEARTBEAT_INTERVAL_MS", "1000"
         ));
@@ -86,7 +88,7 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
             environment.put("MASS_WORKER_GROUP_ID", workerGroupId);
         }
         return startRepoScript("integrations/samples/node/worker-polling/worker.mjs", environment,
-                () -> postWorkerOffline(baseUrl, workerId, workerKey));
+                () -> postWorkerOffline(baseUrl, workerId, workerKey, sessionToken));
     }
 
     public boolean isAlive() {
@@ -201,13 +203,15 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
 
     private static void postWorkerOffline(String baseUrl,
                                           String workerId,
-                                          String workerKey) throws Exception {
+                                          String workerKey,
+                                          String sessionToken) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(normalizeBaseUrl(baseUrl)
                         + "/worker-api/v1/workers/" + workerId + ":offline"))
                 .header("Content-Type", "application/json")
                 .header("X-Mass-Api-Key", workerKey)
-                .POST(HttpRequest.BodyPublishers.ofString("{\"reason\":\"external-node-process-close\"}"))
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        "{\"sessionToken\":\"" + sessionToken + "\",\"reason\":\"external-node-process-close\"}"))
                 .build();
         HttpResponse<String> response = HttpClient.newHttpClient()
                 .send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));

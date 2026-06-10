@@ -157,7 +157,9 @@ async function registerWorker(spec) {
   });
   console.log(`[sample-launcher] registered worker ${spec.workerId}: ${JSON.stringify(response.data)}`);
   if (spec.startMode === "api-online") {
+    const sessionToken = spec.sessionToken ?? `sample-launcher-${spec.workerId}-session`;
     await post(`/worker-api/v1/workers/${encodeURIComponent(spec.workerId)}:online`, spec.workerKey, {
+      sessionToken,
       reason: "sample-launcher-api-online",
     });
     await post(`/worker-api/v1/workers/${encodeURIComponent(spec.workerId)}:report-capability`, spec.workerKey, {

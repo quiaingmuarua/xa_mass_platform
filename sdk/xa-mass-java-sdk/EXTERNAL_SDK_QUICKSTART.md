@@ -130,6 +130,9 @@ and state snapshots, and acknowledge owner-issued worker commands. In current
 mainline, `report-state(DRAINING)` stops new dispatches to that worker but does
 not revoke or interrupt already in-flight work. Acknowledging a `DRAIN` command
 to an accepted state converges to the same dispatch-gate behavior.
+Presence calls (`online`, `heartbeat`, and `offline`) require a stable
+per-session `sessionToken`; stale tokens must not revoke a newer active worker
+session.
 
 Example dispatch payload:
 

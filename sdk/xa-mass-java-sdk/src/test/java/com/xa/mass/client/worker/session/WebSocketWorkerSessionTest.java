@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -95,7 +96,6 @@ class WebSocketWorkerSessionTest {
                 .adapterNodeId("ws-node-sg-1")
                 .attribute("region", "sg")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .routeKey("route-worker-001")
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of(
                         "workerId", dispatch.workerId(),
                         "title", dispatch.input().requiredString("title"),
@@ -110,7 +110,9 @@ class WebSocketWorkerSessionTest {
                 })
                 .start()) {
             assertTrue(session.isRunning());
-            assertEquals("workerId=ws-worker-001&routeKey=route-worker-001", connectedUri.get().getRawQuery());
+            assertEquals("workerId=ws-worker-001&routeKey="
+                            + CanonicalWorkerRouteKeyCodec.encode("realtime-probe", "ws-worker-001"),
+                    connectedUri.get().getRawQuery());
 
             listenerRef.get().onText(webSocket, """
                     {"messageId":"msg-1","taskId":"task-1","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{"title":"hello"},"sharedConfig":{"routingCode":"sg"}}

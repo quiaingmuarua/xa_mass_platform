@@ -7,6 +7,7 @@ import com.xa.mass.api.model.AbstractUnknownFieldRequest;
 public class ExternalWorkerPresenceApiRequest extends AbstractUnknownFieldRequest {
 
     private String reason;
+    private String sessionToken;
 
     public String getReason() {
         return reason;
@@ -14,5 +15,13 @@ public class ExternalWorkerPresenceApiRequest extends AbstractUnknownFieldReques
 
     public void setReason(String reason) {
         this.reason = reason;
+    }
+
+    public String getSessionToken() {
+        return sessionToken;
+    }
+
+    public void setSessionToken(String sessionToken) {
+        this.sessionToken = sessionToken;
     }
 }

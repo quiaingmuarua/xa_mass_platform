@@ -18,11 +18,11 @@ public interface WorkerClientOperations {
 
     PullWorkerSession pullWorker(String workerId);
 
-    void workerOnline(String workerId, String reason);
+    void workerOnline(String workerId, String sessionToken, String reason);
 
-    void workerHeartbeat(String workerId, String reason);
+    void workerHeartbeat(String workerId, String sessionToken, String reason);
 
-    void workerOffline(String workerId, String reason);
+    void workerOffline(String workerId, String sessionToken, String reason);
 
     default TaskPullResult pollTasksResult(String workerId, int maxMessages) {
         return pollTasksResult(workerId, maxMessages, 0L);

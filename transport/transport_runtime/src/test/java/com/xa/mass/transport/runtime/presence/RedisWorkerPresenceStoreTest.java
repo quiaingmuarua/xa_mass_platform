@@ -74,6 +74,11 @@ class RedisWorkerPresenceStoreTest {
         assertEquals("websocket", online.getAdapterId());
         assertEquals("route-1", online.getRouteKey());
         assertTrue(store.isRouteOnline("websocket", "route-1"));
+        assertEquals("worker-1", store.currentOwner("route-1").orElseThrow().workerId());
+        assertEquals("route-1", observerCommands.get(workerRouteKey("worker-1")));
+        assertNotNull(observerCommands.hget(ownerHash("route-1"), "route-1"));
+        assertTrue(observerCommands.keys(namespacePrefix + ":route:*").isEmpty());
+        assertTrue(observerCommands.keys(namespacePrefix + ":route-presence:*").isEmpty());
 
         store.refreshHeartbeat("worker-1", "websocket", "route-1", "conn-1", "heartbeat");
         assertEquals(WorkerPresenceState.ONLINE, store.getPresence("worker-1").getPresenceState());
@@ -102,24 +107,29 @@ class RedisWorkerPresenceStoreTest {
             assertEquals(1, shortLeaseStore.pruneExpired());
             assertTrue(shortLeaseStore.listActivePresences().isEmpty());
             assertNull(shortLeaseStore.getPresence("worker-2"));
-            assertNull(observerCommands.get(namespacePrefix + ":route:socket" + '\u0000' + "route-2"));
+            assertNull(observerCommands.hget(ownerHash("route-2"), "route-2"));
+            assertNull(observerCommands.get(workerRouteKey("worker-2")));
         }
     }
 
     @Test
-    void workerCanExposeMultipleOnlineRouteOwners() {
+    void routeKeyTakeoverReplacesCurrentOwnerAcrossAdapters() {
         store.markOnline("worker-3", "websocket", "route-old", "conn-1", "connected");
-        store.markOnline("worker-3", "socket", "route-new", "conn-2", "reconnected");
+        store.markOnline("worker-3", "socket", "route-old", "conn-2", "reconnected");
 
-        assertTrue(store.isRouteOnline("websocket", "route-old"));
-        assertTrue(store.isRouteOnline("socket", "route-new"));
-        assertEquals(2, store.findOwners("worker-3").size());
-        assertEquals("socket", store.getPresence("worker-3").getAdapterId());
-        assertEquals("worker-3", observerCommands.get(namespacePrefix + ":route:socket" + '\u0000' + "route-new"));
-        store.markOffline("worker-3", "socket", "route-new", "conn-2", "disconnect");
-        assertTrue(store.isRouteOnline("websocket", "route-old"));
-        assertFalse(store.isRouteOnline("socket", "route-new"));
+        assertFalse(store.isRouteOnline("websocket", "route-old"));
+        assertTrue(store.isRouteOnline("socket", "route-old"));
         assertEquals(1, store.findOwners("worker-3").size());
+        assertEquals("socket", store.getPresence("worker-3").getAdapterId());
+        assertEquals("socket", store.currentOwner("route-old").orElseThrow().adapterId());
+        assertEquals("route-old", observerCommands.get(workerRouteKey("worker-3")));
+
+        store.markOffline("worker-3", "websocket", "route-old", "conn-1", "stale-disconnect");
+        assertTrue(store.isRouteOnline("socket", "route-old"));
+
+        store.markOffline("worker-3", "socket", "route-old", "conn-2", "disconnect");
+        assertFalse(store.isRouteOnline("socket", "route-old"));
+        assertTrue(store.findOwners("worker-3").isEmpty());
     }
 
     @Test
@@ -240,5 +250,13 @@ class RedisWorkerPresenceStoreTest {
             assertFalse(shortLeaseWriter.isRouteOnline("socket", "route-5"));
             assertTrue(shortLeaseWriter.listActivePresences().isEmpty());
         }
+    }
+
+    private String ownerHash(String routeKey) {
+        return namespacePrefix + ":owner:" + Math.floorMod(routeKey.hashCode(), 64);
+    }
+
+    private String workerRouteKey(String workerId) {
+        return namespacePrefix + ":worker-route:" + workerId;
     }
 }

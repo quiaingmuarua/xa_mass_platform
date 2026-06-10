@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-06-02
+Last updated: 2026-06-10
 
 Status: current transport boundary baseline.
 
@@ -20,8 +20,8 @@ Transport owns delivery mechanics for workers:
 
 - worker endpoint connectivity and endpoint metadata
 - worker presence truth as a shared readable runtime view keyed by worker with
-  one or more route-owner records addressed by `adapterId + routeKey +
-  transportNodeId`
+  a current route-owner record addressed by canonical `routeKey` and carrying
+  `adapterId`, `transportNodeId`, and connection evidence in the owner value
 - adapter registration and adapter selection by `adapterId`
 - task dispatch delivery, queueing, draining, and dispatch outcomes
 - task result ingress wrapping with transport metadata
@@ -93,6 +93,7 @@ lifecycle state.
 - transport-neutral dispatch/result/system-event interfaces
 - endpoint registry contracts
 - transport-neutral models that adapters must exchange with runtime
+- canonical worker route-key codec contract for the WRB convergence target
 
 `transport_runtime` owns runtime-only coordination:
 
@@ -134,11 +135,12 @@ but transport owns the online truth itself. Heartbeat expiry is a transport
 lease rule, not an engine selector heuristic. `STALE` is transport-owned
 diagnostic state and must be treated as not dispatchable on the engine side.
 Shared-store implementations such as Redis must preserve the same route-owner
-semantics as the in-memory default. A worker may have multiple route owners;
-`getPresence(workerId)` is only a compatibility projection, while
-`findOwners(workerId)` is the route-owner view for dispatch routing. Engine
-must not write presence, read adapter sessions, or treat presence as a schedule
-owner.
+semantics as the in-memory default. One canonical `routeKey` has one current
+delivery owner. `getPresence(workerId)`, `isWorkerOnline(workerId)`, and
+`findOwners(workerId)` are compatibility/operator projections derived from
+route-owner truth; dispatch routing must resolve the current owner by canonical
+`routeKey`. Engine must not write presence, read adapter sessions, or treat
+presence as a schedule owner.
 
 ## Worker Registration Relation Baseline
 
@@ -209,7 +211,8 @@ The split runtime uses three transport/runtime channels:
   `NodeTargetedTaskDispatchHandoff` queues keyed by `transportNodeId` so each
   transport JVM consumes only its own inbox.
 - delivery inbox: transport routes dispatch envelopes into
-  `TransportDeliveryStore` by `adapterId + routeKey`
+  `TransportDeliveryStore` by canonical `routeKey`; `adapterId` remains
+  delivery request metadata and diagnostics
 - result/compensation inboxes: transport writes `TransportResultEnvelope`
   values and retryable dispatch-failure events to Redis-backed inboxes; the
   engine process drains those inboxes into its local result ingest and
@@ -259,10 +262,12 @@ worker lookup, result finality, retry, release, or task state mutation.
 
 Presence owner semantics are also part of the transport contract:
 
-- `workerId` identifies the canonical shared presence record
-- `connectionId` identifies the current live owner for that worker route
-- `markOnline(...)` may install or replace the owner with a new
-  `adapterId + routeKey + connectionId`
+- canonical `routeKey` identifies the shared route-owner record
+- `workerId` is execution identity and projection evidence attached to that
+  route owner
+- `connectionId` identifies the current live owner for that route
+- `markOnline(...)` may install or replace the owner value for the same
+  canonical `routeKey` with a new `adapterId + transportNodeId + connectionId`
 - `refreshHeartbeat(...)` and `markOffline(...)` must only mutate shared
   presence when the incoming `connectionId` still matches the stored owner
 - stale heartbeat or disconnect events from an older connection must never
@@ -328,10 +333,10 @@ maps repeatedly across hot paths.
 fields such as `routeKey`, `attemptId`, and `leaseToken` may be used by runtime
 validation, but old workers that only submit `TaskResultReport` remain valid
 until the security model explicitly changes. `routeKey` is the transport
-address truth; enveloped result ingress must therefore carry non-blank
-`adapterId + routeKey`. Adapter-local worker/session/connection identities are
-local diagnostics only and do not belong on the shared result-envelope
-mainline.
+address truth; enveloped result ingress must therefore carry a non-blank
+route key when route-owner evidence is enforced. Adapter-local
+worker/session/connection identities are local diagnostics only and do not
+belong on the shared result-envelope mainline.
 
 When envelope identity validation rejects stale attempt or lease evidence,
 transport result ingress returns accepted-noop semantics: the envelope was
@@ -347,41 +352,56 @@ and rejection semantics.
 Transport delivery addressing is the pair:
 
 - `adapterId`: concrete adapter identity such as `polling`, `websocket`, `socket`
-- `routeKey`: adapter-local delivery address such as worker id / session id / endpoint id
+- `routeKey`: canonical worker delivery subject minted from `workerGroupId + workerId`
 
 Current runtime rules:
 
 - `adapterId` is canonicalized by trim + lowercase
 - `routeKey` is canonicalized by trim only; case is preserved
-- route-key assembly is owned by transport runtime binding composition; the
-  current default resolver uses worker id, but listeners must not hard-code
-  worker id as the only valid delivery address
+- route-key assembly for worker delivery is owned by
+  `CanonicalWorkerRouteKeyCodec`; listeners and adapters must not hard-code raw
+  worker id as the delivery address
 - transport bindings must declare their route-key resolver explicitly at
   assembly time; runtime must not hide `workerId -> routeKey` policy behind
   builder defaults or shared fallback helpers
-- mainline polling/websocket/socket bindings currently resolve `routeKey` from
-  worker id explicitly at binding assembly time; that is a current policy, not
-  a transport-global invariant
-- adapter ingress may also register a session with an explicit `routeKey`
-  provided by handshake / hello metadata and fall back to `workerId` only when
-  no route key is supplied
+- mainline polling/websocket/socket bindings use the canonical worker subject
+  resolver
+- adapter ingress must receive an explicit routeKey; public managed SDK
+  sessions generate that key from worker group + worker id. Handshake / hello
+  fallback to raw worker id is not a target path.
 - realtime endpoint registries may still be keyed by worker id today, but
   their direct-send contract is route-based: send and online checks should
   speak in terms of `routeKey`, not imply that worker identity is the only
   valid address key
 - blank `routeKey` is invalid for both queued delivery and direct-send delivery
-- queue ownership and poll/drain isolation key off canonical `(adapterId, routeKey)`
-- `routeKey` meaning is adapter-local; transport runtime must not reinterpret it as
-  task, attempt, lease, or business routing truth
+- queue ownership and poll/drain isolation key off canonical `routeKey`;
+  `adapterId` remains delivery request metadata, not queue identity
+- for worker delivery, `routeKey` is the canonical worker delivery subject;
+  transport runtime must not reinterpret it as task, attempt, lease, or
+  business routing truth
 - route-only endpoint helpers may exist only inside one concrete adapter
   implementation; the shared runtime/registry contract must use adapter-scoped
   route operations rather than inferring ownership from endpoint snapshots
 - worker-addressed debug/raw side-channels are not route truth; if they remain,
-  they must first resolve one unique active `(adapterId, routeKey)` from
-  endpoint state before adapter send, and the send contract itself should stay
-  adapter-scoped rather than reviving route-only shared operations
+  they must first resolve the current route owner for the canonical `routeKey`
+  before adapter send, and the send contract itself should stay adapter-scoped
+  rather than reviving route-only shared operations
 - future Redis/JDBC queue replacements must preserve the same canonical addressing
   rules and must not require hot-path scans to recover queue ownership
+
+WRB convergence note:
+
+- `CanonicalWorkerRouteKeyCodec` names the target platform worker route-key
+  contract: route identity is minted from `workerGroupId + workerId`. This
+  contract is implemented on the current production adapter/bootstrap and
+  managed SDK paths.
+- Redis-backed presence uses routeKey-sharded owner hashes plus deadline zsets;
+  `currentOwner(routeKey)` is a bounded read.
+- Delivery queues are routeKey-owned. Adapter change for the same routeKey does
+  not strand already queued envelopes in an old adapter-specific queue.
+- `adapterId`, `transportNodeId`, and `connectionId` remain delivery-owner
+  evidence. They must stay in owner values or queue metadata, not become the
+  platform worker route-key identity.
 
 ## Forbidden Drift
 
@@ -447,17 +467,20 @@ engine-owned task lifecycle state.
 For Redis-ready queue diagnostics, treat the stats contract in two tiers:
 
 - hard contract fields:
-  `queuedItems`, `queueCount`, `maxQueuedItems`, and the per-adapter
-  `queuedItems` / `queueCount` breakdown
+  `queuedItems`, `queueCount`, and `maxQueuedItems`
 - best-effort diagnostics:
-  `waitingPollers`, `oldestQueuedAgeMillis`, `enqueuedItems`,
+  `queueByAdapter` legacy breakdown, `waitingPollers`,
+  `oldestQueuedAgeMillis`, `enqueuedItems`,
   `drainedItems`, `backpressureRejectedItems`, `invalidItems`,
-  `unavailableItems`, `shutdownClearedItems`, and the per-adapter mirrors of
+  `unavailableItems`, `shutdownClearedItems`, and nested breakdown mirrors of
   those values
 
-Best-effort diagnostics must remain meaningful, but future distributed queue
-implementations are not required to preserve the exact local JVM waiter or
-snapshot timing model of the current in-memory store.
+`queueByAdapter` keeps its legacy field name for existing diagnostics, but it
+is not queue ownership truth. RouteKey-owned Redis queues may aggregate that
+field under a route-owner bucket instead of preserving adapter-specific queue
+identity. Best-effort diagnostics must remain meaningful, but future
+distributed queue implementations are not required to preserve the exact local
+JVM waiter or snapshot timing model of the current in-memory store.
 
 Queue mechanics such as keyed FIFO storage, blocking poll coordination,
 per-key/global admission, and queue snapshot counters may live under
@@ -488,7 +511,7 @@ Keep these rules:
 - `SENT` does not imply durable store ownership, ack tracking, or later dequeue
 - `QUEUED` means store admission only; engine lifecycle truth still lives outside transport
 - queue stats such as `queueByAdapter`, backlog age, waiting pollers, and queued-item counts
-  are queue-path diagnostics only
+  are queue-path diagnostics only; `queueByAdapter` is not canonical queue ownership truth
 - direct-send counters are separate transport diagnostics and must not appear as
   synthetic queue occupancy or queue ownership
 - do not add a transport-owned retry/lease/state machine that merges direct-send

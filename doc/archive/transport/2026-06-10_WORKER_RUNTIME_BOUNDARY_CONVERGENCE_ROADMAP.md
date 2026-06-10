@@ -1,6 +1,28 @@
 # Worker Runtime Boundary Convergence Roadmap
 
-Status: proposed convergence roadmap.
+Status: completed and archived on 2026-06-10.
+
+Implementation state as of 2026-06-10:
+
+- WRB-0 inventory exists and has been refreshed after the route-key/presence
+  implementation slice.
+- WRB-1 canonical route-key contract is implemented by
+  `CanonicalWorkerRouteKeyCodec` in `transport_api`.
+- WRB-2 production carrier retarget is implemented for transport bootstraps,
+  embedded pull, public Java SDK polling/websocket sessions, and server worker
+  presence APIs.
+- WRB-3 transport presence Redis physical convergence is implemented for
+  `RedisWorkerPresenceStore` route-owner keys and delivery queue route-key
+  ownership.
+- WRB-4 engine ownership scan and focused scheduling proof commands have been
+  run against the current slice.
+- WRB-5 focused proof now covers public SDK/server session-token behavior,
+  canonical route-key transport routing, route-key-owned delivery queues,
+  engine scheduling, and worker declaration/read-model separation.
+- WRB-6 residue cleanup is implemented for current route-owner, heartbeat,
+  projection, child-roadmap, and owner-doc alignment.
+- Current implementation truth has been moved into owner docs and proof
+  indexes. This file is a historical completion record.
 
 This roadmap converges the ownership boundary between:
 
@@ -17,22 +39,22 @@ and scheduling consumption?
 ```
 
 This roadmap must land before treating
-[TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md](./TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md)
+[TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md](./2026-06-10_TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md)
 as executable implementation work. Redis transport key convergence is a child
 slice of this owner-boundary decision, not the first source of truth.
 
 Read with:
 
-- [AGENTS.md](../AGENTS.md)
-- [doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md)
-- [doc/INFRA_TRUTH_LAYERS.md](../doc/INFRA_TRUTH_LAYERS.md)
-- [xa-mass-worker-runtime/README.md](../xa-mass-worker-runtime/README.md)
-- [xa-mass-worker-runtime/CONTRACTS.md](../xa-mass-worker-runtime/CONTRACTS.md)
-- [transport/AGENTS.md](../transport/AGENTS.md)
-- [transport/TRANSPORT_BOUNDARY_BASELINE.md](../transport/TRANSPORT_BOUNDARY_BASELINE.md)
-- [xa-mass-engine/README.md](../xa-mass-engine/README.md)
-- [xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md](../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md)
-- [doc/archive/core/2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md](../doc/archive/core/2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md)
+- [AGENTS.md](../../../AGENTS.md)
+- [doc/AGENT_BASELINE.md](../../../doc/AGENT_BASELINE.md)
+- [doc/INFRA_TRUTH_LAYERS.md](../../../doc/INFRA_TRUTH_LAYERS.md)
+- [xa-mass-worker-runtime/README.md](../../../xa-mass-worker-runtime/README.md)
+- [xa-mass-worker-runtime/CONTRACTS.md](../../../xa-mass-worker-runtime/CONTRACTS.md)
+- [transport/AGENTS.md](../../../transport/AGENTS.md)
+- [transport/TRANSPORT_BOUNDARY_BASELINE.md](../../../transport/TRANSPORT_BOUNDARY_BASELINE.md)
+- [xa-mass-engine/README.md](../../../xa-mass-engine/README.md)
+- [xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md](../../../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md)
+- [doc/archive/core/2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md](../core/2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md)
 
 ## Problem
 
@@ -46,32 +68,55 @@ owners:
 - engine owns task scheduling orchestration, rule/rank/allocation, dispatch
   binding, compensation, and result convergence.
 
-Current code mostly follows this dependency direction, but several shapes still
-make the boundary easy to misread:
+At roadmap start, code mostly followed this dependency direction, but several
+shapes made the boundary easy to misread:
 
-1. `RedisWorkerPresenceStore` writes the same `WorkerPresence` fact into both
-   `worker:{workerId}` and `route-presence:{adapterId}\0{routeKey}`. That is a
+1. `RedisWorkerPresenceStore` wrote the same `WorkerPresence` fact into both
+   `worker:{workerId}` and `route-presence:{adapterId}\0{routeKey}`. That was a
    physical duplicate truth risk, not just key clutter.
-2. `WorkerPresenceStore#findOwners(workerId)` defaults to
+2. `WorkerPresenceStore#findOwners(workerId)` defaulted to
    `listActivePresences().stream().filter(...)`, so the route-owner read path is
-   not guaranteed to be bounded even though Redis already writes
+   not guaranteed to be bounded even though Redis already wrote
    `worker-routes:{workerId}`.
-3. `MassApplication` still falls back from `findOwners(workerId)` to
-   `getPresence(workerId)` for engine reachability. That keeps the compatibility
+3. `MassApplication` fell back from `findOwners(workerId)` to
+   `getPresence(workerId)` for engine reachability. That kept the compatibility
    worker projection close to scheduling truth.
-4. `WorkerStatusEventListener` still refreshes heartbeat evidence through
+4. `WorkerStatusEventListener` refreshed heartbeat evidence through
    `WorkerResourceRuntime.updateWorker(...)`. Declaration storage does not
    persist heartbeat, but the call shape still reads like worker-row online
    truth.
 5. `WorkerSchedulingView` lives in `xa-mass-engine`. This is acceptable as an
    engine scheduling candidate view, but it must stay explicitly downstream of
    worker-runtime evidence and must not become a second worker state owner.
-6. Transport delivery route keys are still resolved as `workerId` by default.
-   That keeps delivery queue ownership, presence lookup, and scheduling identity
-   too close together.
-7. Presence tests still protect "one worker, multiple active route owners".
-   That is old transport semantics, not the target if workerId is already the
+6. Transport delivery route keys were resolved as `workerId` by default. That
+   kept delivery queue ownership, presence lookup, and scheduling identity too
+   close together.
+7. Presence tests protected "one worker, multiple active route owners". That
+   was old transport semantics, not the target if workerId is already the
    smallest schedulable execution identity.
+8. External polling worker APIs and public Java SDK sessions exposed presence as
+   `workerId + reason`. They did not carry a session/epoch owner token, so stale
+   heartbeat/offline calls from an older worker process could not be
+   distinguished from the current owner.
+9. Public realtime sessions allowed caller-supplied `routeKey` and fallback to
+   `workerId`. That was legacy delivery addressing, not the target canonical
+   routeKey contract.
+10. Transport delivery queues were keyed by `(adapterId, routeKey)`. If the
+    current route owner changed adapter after an envelope was queued, the old
+    queue could retain unreachable work.
+
+Current residual boundaries are narrower:
+
+1. `getPresence(workerId)`, `isWorkerOnline(workerId)`, `findOwners(workerId)`,
+   and `listActivePresences()` remain compatibility/operator/support surfaces.
+   They must not re-enter scheduling or dispatch route selection.
+2. The old `WorkerStatusEventListener` class has been renamed to
+   `WorkerHeartbeatProjectionListener`; it remains a bounded compatibility
+   projection from process-local worker events into registry heartbeat
+   evidence, not a transport reachability or declaration truth owner.
+3. Distributed route-owner churn beyond the deterministic/session-token proof
+   remains future chaos/proof-runner work; this roadmap does not claim
+   partitions, Redis HA, or multi-node presence flap proof.
 
 ## Dependency Model
 
@@ -145,18 +190,20 @@ presence or low-level worker registry state.
   lock, evaluates rules, ranks, and then calls `WorkerAdmissionRuntime`.
 - `TransportRuntimeRegistry` reads worker declaration/adapter hints through
   `WorkerResourceQueryRuntime`; it does not own worker declaration truth.
-- `WorkerDispatchRouteSelector` selects a current route owner only after engine
-  has already produced concrete `TaskDispatchBinding` values.
+- `WorkerDispatchRouteSelector` mints canonical routeKey from
+  `workerGroupId + workerId` and selects the current route owner only after
+  engine has already produced concrete `TaskDispatchBinding` values.
 - `NodeTargetedTaskDispatchSubmitter` writes post-assignment dispatch batches to
   route-owner node inboxes and compensates unresolved route owners through
   engine-owned dispatch failure handling.
 - `RedisWorkerRegistry` stores canonical worker runtime state in
   `group:{groupId}:slots`; candidate buckets, heartbeat zsets, worker group
   maps, and bucket-membership keys are indexes or cleanup aids.
-- `RedisWorkerPresenceStore` currently stores route-owner presence through
-  multiple overlapping key families:
-  `route-presence:*`, `worker:*`, `route:*`, `worker-routes:*`, `routes`, and
-  `workers`.
+- `RedisWorkerPresenceStore` stores route-owner presence in routeKey-sharded
+  owner hashes and deadline zsets. WorkerId projection is derived
+  compatibility output, not writable route-owner truth.
+- `TransportDeliveryStore` queue ownership is routeKey-based; adapterId remains
+  delivery request metadata and diagnostics.
 
 ## Boundary Decision
 
@@ -269,6 +316,17 @@ Do not collapse these two chains into one owner.
     lifecycle directly.
 19. Redis proof tooling must not be built first over known-bad key families.
     Proof follows owner/key convergence; it does not freeze duplicate truth.
+20. Public worker presence APIs and SDK-managed sessions are production route
+    owner paths. They must carry or derive the same session/epoch owner token
+    as adapter-local presence writes; server-side `workerId + reason` presence
+    calls are legacy residue after WRB-2.
+21. Caller-supplied public `routeKey` is not scheduling or transport identity in
+    the target path. Public SDKs may accept it only as documented legacy
+    compatibility until the canonical routeKey contract replaces it.
+22. Adapter takeover must not silently orphan queued envelopes in an old
+    `(adapterId, routeKey)` delivery queue. A slice that claims adapter-change
+    takeover must define and prove queue migration, invalidation with
+    compensation, or a bounded retry/expiry policy.
 
 ## Do Not Start With
 
@@ -300,7 +358,7 @@ Goal: record the current owner/caller/key map before changing behavior.
 
 Artifact:
 
-- `WORKER_RUNTIME_BOUNDARY_CONVERGENCE_INVENTORY.md`
+- `2026-06-10_WORKER_RUNTIME_BOUNDARY_CONVERGENCE_INVENTORY.md`
 
 Scope:
 
@@ -310,7 +368,7 @@ Scope:
    - `WorkerPresenceStore#listActivePresences`
    - `WorkerPresenceStore#isWorkerOnline`
    - `WorkerReachabilityView`
-   - `WorkerStatusEventListener`
+   - `WorkerHeartbeatProjectionListener`
    - `WorkerResourceRuntime#updateWorker`
    - `WorkerCandidateRuntime`
    - `WorkerSchedulingViewRuntime`
@@ -323,13 +381,21 @@ Scope:
    - adapter poll/drain route-key usage
    - worker group lookup during post-assignment route selection
    - `connectionId` generation and reuse in each adapter/session path
+   - `ExternalWorkerApiController` online/heartbeat/offline endpoints
+   - `ExternalWorkerPresenceApiRequest` and public worker presence response
+     shape
+   - `sdk/xa-mass-java-sdk` `WorkerClient`, `PollingWorkerSession`, and
+     `WebSocketWorkerSession`
+   - `sdk/xa-mass-embedded-sdk` `WorkerClientOperations` and
+     `PullWorkerSession`
+   - `TransportDeliveryStore` / `DeliveryQueueKey` queue ownership
 2. Inventory Redis transport presence key families:
-   - `route-presence:*`
-   - `worker:*`
-   - `route:*`
-   - `worker-routes:*`
-   - `routes`
-   - `workers`
+   - current canonical route-owner hash: `owner:{shard}`
+   - current cleanup index: `deadline:{shard}`
+   - current derived worker projection: `worker-route:{workerId}`
+   - current derived support indexes: `workers`, `owner-shards`
+   - historical residue scan targets: `route-presence:*`, `worker:*`,
+     `route:*`, `worker-routes:*`, `routes`
 3. Inventory Redis worker runtime key families:
    - `group:{groupId}:slots`
    - `group:{groupId}:heartbeat:{shard}`
@@ -357,7 +423,8 @@ Scope:
    - `WorkerResourceRecord`,
    - fallback worker-runtime lookup.
 7. Record where `routeKey` is currently generated or consumed:
-   - `TransportRouteKeyResolvers.workerId()`,
+   - `CanonicalWorkerRouteKeyCodec`,
+   - `TransportRouteKeyResolvers.canonicalWorkerSubject()`,
    - `TransportDispatchRouteContext`,
    - `TransportBinding#resolveRouteKey`,
    - adapter connection registration,
@@ -365,9 +432,21 @@ Scope:
 8. Record where `connectionId` is generated or reused:
    - polling worker adapter,
    - SDK pull session,
+   - public Java SDK polling session,
    - websocket sessions,
    - socket sessions,
+   - external worker HTTP API request/response contract,
    - Redis presence fallback UUID generation.
+9. Record where public or adapter-local code can supply `routeKey` directly:
+   - Java SDK websocket builder,
+   - websocket handshake query,
+   - websocket/socket frame fields,
+   - transport delivery queue poll/drain inputs.
+10. Record how queued transport envelopes are owned:
+    - adapter-specific queue key,
+    - routeKey subject,
+    - delivery owner at enqueue time,
+    - behavior after route owner replacement before drain/poll.
 
 Acceptance:
 
@@ -375,11 +454,18 @@ Acceptance:
 2. Every current transport presence key family has a named owner classification.
 3. Every scheduling or dispatch route caller of `WorkerPresenceStore` is named.
 4. Every route-owner path that can scan all active presences is named.
-5. `WorkerStatusEventListener` is classified as mainline, compatibility
+5. `WorkerHeartbeatProjectionListener` is classified as mainline, compatibility
    residue, or removal target.
 6. Redis worker runtime key families are classified separately from transport
    presence key families.
 7. Every adapter/session path that reuses `workerId` as `connectionId` is named.
+8. Every public worker presence API path that cannot carry a session/epoch owner
+   token is named.
+9. Every public or adapter-local caller-supplied routeKey path is named and
+   classified as current behavior, target behavior, or residue.
+10. Delivery queue ownership is classified separately from route-owner presence
+    truth; queued-envelope takeover behavior is recorded as current behavior or
+    a proof gap.
 
 Suggested checks:
 
@@ -388,7 +474,7 @@ rg -n "findOwners\\(|getPresence\\(|listActivePresences\\(|isWorkerOnline\\(" `
   transport sdk xa-mass-server xa-mass-engine xa-mass-worker-runtime `
   --glob '!**/target/**'
 
-rg -n "WorkerReachabilityView|WorkerStatusEventListener|WorkerResourceRuntime|WorkerCandidateRuntime|WorkerSchedulingViewRuntime|WorkerAdmissionRuntime|WorkerDispatchGateRuntime|WorkerRegistry" `
+rg -n "WorkerReachabilityView|WorkerHeartbeatProjectionListener|WorkerStatusEventListener|WorkerResourceRuntime|WorkerCandidateRuntime|WorkerSchedulingViewRuntime|WorkerAdmissionRuntime|WorkerDispatchGateRuntime|WorkerRegistry" `
   sdk xa-mass-server xa-mass-engine xa-mass-worker-runtime transport `
   --glob '!**/target/**'
 
@@ -396,12 +482,20 @@ rg -n "route-presence|worker-routes|routesKey|workersKey|workerKey\\(|routeKey\\
   transport/transport_runtime/src/main/java `
   --glob '!**/target/**'
 
-rg -n "TransportRouteKeyResolvers\\.workerId\\(|resolveRouteKey\\(|TransportDispatchRouteContext|drainEnvelopes\\(|pollEnvelopes\\(" `
+rg -n "TransportRouteKeyResolvers\\.workerId\\(|CanonicalWorkerRouteKeyCodec|resolveRouteKey\\(|TransportDispatchRouteContext|drainEnvelopes\\(|pollEnvelopes\\(" `
   transport/transport_runtime/src/main/java transport/polling-adapter/src/main/java transport/websocket-adapter/src/main/java transport/socket-adapter/src/main/java `
   --glob '!**/target/**'
 
 rg -n "markOnline\\(|refreshHeartbeat\\(|markOffline\\(|connectionId|publishWorkerOnline|publishWorkerHeartbeat|publishWorkerOffline" `
   transport sdk/xa-mass-embedded-sdk xa-mass-server `
+  --glob '!**/target/**'
+
+rg -n "ExternalWorkerPresenceApiRequest|workerOnline\\(|workerHeartbeat\\(|workerOffline\\(|public WorkerPresenceResult online|public WorkerPresenceResult heartbeat|public WorkerPresenceResult offline|routeKey\\(" `
+  xa-mass-server/src/main/java sdk/xa-mass-java-sdk/src/main/java sdk/xa-mass-embedded-sdk/src/main/java `
+  --glob '!**/target/**'
+
+rg -n "DeliveryQueueKey|TransportDeliveryStore|drain\\(|poll\\(|enqueue\\(" `
+  transport/transport_runtime/src/main/java `
   --glob '!**/target/**'
 
 rg -n "groupSlotsHash|groupHeartbeatDeadlinesZset|groupCandidateBucket|workerBucketMembershipSet|taskActiveWorkersSet" `
@@ -434,7 +528,13 @@ selected workerGroupId + workerId -> canonical routeKey
    - fail fast, or
    - bounded lookup through worker-runtime evidence.
    Silent fallback to raw `workerId` is not allowed in the target path.
-5. Define the route-owner read contract shape, for example:
+5. Define public routeKey exposure:
+   - preferred target: SDK/server uses the shared canonical routeKey contract
+     or a server-returned canonical token,
+   - caller-supplied routeKey overrides are legacy/residue unless explicitly
+     justified as a separate external protocol identity,
+   - fallback to raw `workerId` is not allowed in the target path.
+6. Define the route-owner read contract shape, for example:
 
 ```text
 currentOwner(routeKey)
@@ -442,11 +542,14 @@ currentOwner(routeKey)
 
    This is contract definition only. Production callers may still use the old
    path until WRB-2.
-6. Classify current `findOwners(workerId)`, `getPresence(workerId)`, and
+7. Classify current `findOwners(workerId)`, `getPresence(workerId)`, and
    `listActivePresences()` as compatibility/operator/support surfaces for now.
-7. Do not rewrite Redis physical keys in this phase.
-8. Do not delete old APIs or tests in this phase unless they block compilation.
-9. Update `transport/TRANSPORT_BOUNDARY_BASELINE.md` with a current-vs-target
+8. Classify public Java SDK `routeKey(...)` builder usage and websocket
+   handshake/frame routeKey fallback as legacy/residue unless WRB-1 explicitly
+   accepts them as a separate protocol identity.
+9. Do not rewrite Redis physical keys in this phase.
+10. Do not delete old APIs or tests in this phase unless they block compilation.
+11. Update `transport/TRANSPORT_BOUNDARY_BASELINE.md` with a current-vs-target
    note: canonical routeKey contract exists or is being introduced, while any
    production path still using adapter-local routeKey semantics remains
    compatibility/residue until WRB-2/WRB-3.
@@ -460,18 +563,20 @@ Acceptance:
 3. Adapter modules do not define their own canonical routeKey rule.
 4. Missing group evidence handling is explicit and cannot silently collapse to
    raw `workerId`.
-5. The proposed `currentOwner(routeKey)`-style read contract is named, even if
+5. Public routeKey override/fallback behavior is classified as target behavior
+   or residue; it is not left implicit in SDK/session code.
+6. The proposed `currentOwner(routeKey)`-style read contract is named, even if
    production callers are not retargeted until WRB-2.
-6. Existing old-path APIs are classified but not removed.
-7. The transport owner baseline no longer presents adapter-local routeKey as the
+7. Existing old-path APIs are classified but not removed.
+8. The transport owner baseline no longer presents adapter-local routeKey as the
    unqualified target model once the canonical routeKey contract is introduced.
 
 Primary proof:
 
 - codec contract tests for deterministic routeKey minting from worker subject
   evidence.
-- compile proof that adapter modules reference the shared codec/contract when
-  they need canonical routeKey behavior.
+- compile proof that the runtime canonical resolver uses the shared
+  codec/contract. Adapter retarget is WRB-2.
 
 Support only:
 
@@ -481,14 +586,17 @@ Support only:
 Suggested checks:
 
 ```powershell
-.\mvnw.cmd -pl transport/transport_runtime -am `
-  "-Dtest=CanonicalWorkerRouteKeyCodecTest" test
+.\mvnw.cmd -pl transport/transport_api,transport/transport_runtime `
+  "-Dtest=CanonicalWorkerRouteKeyCodecTest,TransportRouteKeyResolversTest" test
 
 rg -n "TransportRouteKeyResolvers\\.workerId\\(|routeContext\\.workerId\\(|routeKeyResolver\\(" `
   transport/transport_runtime/src/main/java transport/polling-adapter/src/main/java transport/websocket-adapter/src/main/java transport/socket-adapter/src/main/java `
   --glob '!**/target/**'
 
-rg -n "canonical routeKey|adapter-local delivery address|multiple route owners" `
+rg -n "CanonicalWorkerRouteKeyCodec|one current delivery owner" `
+  transport/TRANSPORT_BOUNDARY_BASELINE.md
+
+rg -n "worker may have multiple route owners|adapter-local routeKey is canonical" `
   transport/TRANSPORT_BOUNDARY_BASELINE.md
 ```
 
@@ -504,6 +612,9 @@ Scope:
    - worker connection registration / markOnline input,
    - dispatch envelope route-key resolution,
    - adapter poll/drain route key.
+   - public Java SDK polling/websocket session route-key production,
+   - external worker HTTP API presence path when it mints or echoes route
+     identity.
 2. Introduce or retarget non-Redis route-owner read contracts to canonical
    routeKey where they can be bounded without physical storage changes:
 
@@ -526,14 +637,39 @@ currentOwner(routeKey)
 6. Ensure every adapter/session path has a real session/epoch `connectionId`
    owner token. Polling and pull-session paths must not reuse `workerId` as the
    owner token after this phase.
-7. Ensure missing, stale, or offline route owners produce engine-owned
+7. Retarget external polling worker presence contract:
+   - `ExternalWorkerPresenceApiRequest` must carry or derive a session/epoch
+     owner token,
+   - `ExternalWorkerApiController` must pass that token through to the worker
+     client/runtime path,
+   - Java SDK `WorkerClient` and managed `PollingWorkerSession` must preserve
+     the token across online, heartbeat, and offline,
+   - stale heartbeat/offline from an older token cannot revoke the newer
+     route owner.
+8. Retarget public realtime sessions:
+   - `WebSocketWorkerSession` must use canonical routeKey generation or a
+     server-returned canonical routeKey,
+   - caller-supplied routeKey override/fallback to `workerId` is removed from
+     the target path or remains explicitly legacy and outside WRB-2 proof,
+   - websocket/socket server handshake and frame fallback must not silently
+     mint a non-canonical routeKey in the target path.
+9. Define adapter takeover behavior for already queued envelopes before
+   claiming adapter-change replacement is complete. Acceptable policies are:
+   - migrate the queued envelope to the new delivery owner,
+   - invalidate old-adapter queued envelopes and compensate through the engine
+     dispatch failure path,
+   - expire old-adapter queued envelopes with bounded retry/compensation, or
+   - explicitly defer cross-adapter queued-envelope takeover to WRB-3 and limit
+     WRB-2 proof to reconnect/takeover within the same adapter queue.
+   Silent orphaning in the old `(adapterId, routeKey)` queue is not acceptable.
+10. Ensure missing, stale, or offline route owners produce engine-owned
    compensation/retry after assignment, not transport-owned rescheduling.
-8. Preserve worker concurrency semantics: multiple task dispatch bindings may
+11. Preserve worker concurrency semantics: multiple task dispatch bindings may
    target the same canonical routeKey when worker-runtime admission/capacity
    allows them.
-9. Do not remove the old workerId route resolver or old presence APIs in this
+12. Do not remove the old workerId route resolver or old presence APIs in this
    phase unless all production callers have already moved and tests prove it.
-10. Update `transport/TRANSPORT_BOUNDARY_BASELINE.md` to record the production
+13. Update `transport/TRANSPORT_BOUNDARY_BASELINE.md` to record the production
     routeKey carrier state reached by this phase without describing WRB-3 Redis
     owner lookup as already implemented.
 
@@ -544,16 +680,23 @@ Acceptance:
 2. Redis-backed route-owner lookup is either explicitly deferred to WRB-3 or
    backed by a named minimal routeKey owner index introduced in this phase.
 3. No adapter/session path reuses `workerId` as `connectionId`.
-4. Scheduling reachability does not gain a new worker projection fallback.
-5. Dispatch route selection has no fallback to worker declaration or projection
-   online state.
-6. `listActivePresences()` is not on the scheduling or route-selection mainline.
-7. Reconnect/takeover still prevents stale heartbeat/offline from revoking a
+4. External polling worker API and Java SDK managed polling sessions carry or
+   derive a session/epoch token; old-token heartbeat/offline does not revoke a
    newer route owner.
-8. Missing route owner after assignment compensates through the engine dispatch
+5. Public realtime session routeKey behavior is canonical or explicitly
+   classified as legacy outside the target path.
+6. Cross-adapter route takeover has a named queued-envelope policy. If deferred
+   to WRB-3, WRB-2 does not claim adapter-change takeover complete.
+7. Scheduling reachability does not gain a new worker projection fallback.
+8. Dispatch route selection has no fallback to worker declaration or projection
+   online state.
+9. `listActivePresences()` is not on the scheduling or route-selection mainline.
+10. Reconnect/takeover still prevents stale heartbeat/offline from revoking a
+   newer route owner.
+11. Missing route owner after assignment compensates through the engine dispatch
    failure path.
-9. There is at most one active delivery owner for a presence subject.
-10. Multiple dispatch bindings can use the same routeKey when
+12. There is at most one active delivery owner for a presence subject.
+13. Multiple dispatch bindings can use the same routeKey when
    `WorkerAdmissionRuntime` and `WorkerRegistry` capacity allow it.
 
 Primary proof:
@@ -565,6 +708,9 @@ Primary proof:
   non-Redis stores or for a named minimal routeKey owner index.
 - node-targeted dispatch test proving unresolved route owner triggers
   compensation.
+- public worker API / Java SDK tests proving session-token propagation through
+  online, heartbeat, and offline.
+- delivery queue takeover test proving the chosen queued-envelope policy.
 - integration proof that transport presence changes reachability through
   `WorkerReachabilityView`.
 
@@ -577,16 +723,22 @@ Support only:
 Suggested checks:
 
 ```powershell
-.\mvnw.cmd -pl transport/transport_runtime -am `
+.\mvnw.cmd -pl transport/transport_runtime `
   "-Dtest=RedisWorkerPresenceStoreTest,InMemoryWorkerPresenceStoreTest,WorkerDispatchRouteSelectorTest,NodeTargetedTaskDispatchSubmitterTest" test
 
-.\mvnw.cmd -pl transport/polling-adapter -am `
+.\mvnw.cmd -pl transport/polling-adapter `
   "-Dtest=PollingWorkerAdapterTest" test
 
-.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -am `
+.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk `
   "-Dtest=PullWorkerSessionTest,MassApplicationDistributedTransportTest" test
 
-.\mvnw.cmd -pl xa-mass-engine -am `
+.\mvnw.cmd -pl sdk/xa-mass-java-sdk `
+  "-Dtest=WorkerClientTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest" test
+
+.\mvnw.cmd -pl xa-mass-server `
+  "-Dtest=ExternalWorkerApiControllerTest" test
+
+.\mvnw.cmd -pl xa-mass-engine `
   "-Dtest=TaskSchedulingGateAndTargetingTest" test
 
 rg -n "listActivePresences\\(|getPresence\\(" `
@@ -601,6 +753,10 @@ rg -n "TransportRouteKeyResolvers\\.workerId\\(|routeContext\\.workerId\\(|findO
 
 rg -n "markOnline\\([^\\n]*workerId[^\\n]*workerId|refreshHeartbeat\\([^\\n]*workerId[^\\n]*workerId|markOffline\\([^\\n]*workerId[^\\n]*workerId" `
   transport sdk/xa-mass-embedded-sdk `
+  --glob '!**/target/**'
+
+rg -n "workerOnline\\(|workerHeartbeat\\(|workerOffline\\(|public WorkerPresenceResult online|public WorkerPresenceResult heartbeat|public WorkerPresenceResult offline|this\\.routeKey = firstNonBlank\\([^\\n]*workerId|routeKey=|DeliveryQueueKey" `
+  xa-mass-server/src/main/java sdk/xa-mass-java-sdk/src/main/java transport/transport_runtime/src/main/java `
   --glob '!**/target/**'
 ```
 
@@ -661,9 +817,25 @@ Scope:
    - route takeover.
 9. Define cleanup indexes:
    - routeKey-shard deadline zset,
+   - derived workerId-to-routeKey projection index if `getPresence(workerId)`
+     or `isWorkerOnline(workerId)` remains supported,
    - optional transport-node delivery-owner index,
    - optional adapter/transport-node sets.
-10. Define cutover:
+10. Define compatibility read behavior:
+    - `getPresence(workerId)` and `isWorkerOnline(workerId)` must read through
+      a bounded derived projection, codec-derived routeKey, or an explicitly
+      operator-only bounded scan,
+    - compatibility projection must not be writable truth beside canonical
+      routeKey owner truth,
+    - SDK/server display APIs must not require an all-presence scan on the
+      production path.
+11. Reconcile delivery queue ownership with canonical route owner storage:
+    - keep `(adapterId, routeKey)` queue ownership only if adapter takeover has
+      a bounded migration/invalidating/expiry policy,
+    - or converge delivery queues to a routeKey-owner mediated shape in the
+      child Redis roadmap,
+    - do not leave queued envelopes in an unreachable old adapter queue.
+12. Define cutover:
    - clean-runtime recreation is allowed for local/pre-release runtime Redis,
    - no rolling dual-write truth unless a later production migration decision
      explicitly proves why it is required.
@@ -677,22 +849,32 @@ Acceptance:
 4. Presence lookup by canonical `routeKey` remains bounded.
 5. Redis-backed `currentOwner(routeKey)` no longer requires adapterId as an
    input.
-6. Presence cleanup by routeKey-shard deadline remains bounded.
-7. No new key shape uses NUL-delimited key names.
-8. `adapterId`, `transportNodeId`, and `connectionId` are not canonical key
+6. WorkerId compatibility projection, if retained, is bounded and derived from
+   canonical routeKey owner truth; it is not a second writable presence truth.
+7. SDK/server display APIs do not depend on unbounded `listActivePresences()`
+   scans in the production path.
+8. Delivery queue ownership and route-owner takeover semantics are compatible;
+   old adapter queues cannot retain unreachable work indefinitely.
+9. Presence cleanup by routeKey-shard deadline remains bounded.
+10. No new key shape uses NUL-delimited key names.
+11. `adapterId`, `transportNodeId`, and `connectionId` are not canonical key
    subjects.
-9. The old key families have explicit removal conditions.
-10. `TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md` is updated or
+12. The old key families have explicit removal conditions.
+13. `TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md` is updated or
    superseded to reflect this decision before implementation starts.
 
 Suggested checks:
 
 ```powershell
-.\mvnw.cmd -pl transport/transport_runtime -am `
+.\mvnw.cmd -pl transport/transport_runtime `
   "-Dtest=RedisWorkerPresenceStoreTest,InMemoryWorkerPresenceStoreTest" test
 
 rg -n "route-presence|worker-routes|routesKey|workersKey|workerKey\\(|routePresenceKey|routeKey\\(" `
   transport/transport_runtime/src/main/java `
+  --glob '!**/target/**'
+
+rg -n "getPresence\\(|isWorkerOnline\\(|listActivePresences\\(|DeliveryQueueKey|TransportDeliveryStore" `
+  transport/transport_runtime/src/main/java transport/transport_api/src/main/java sdk xa-mass-server/src/main/java `
   --glob '!**/target/**'
 ```
 
@@ -739,7 +921,7 @@ rg -n "RedisWorkerPresenceStore|InMemoryWorkerPresenceStore|WorkerPresenceStore|
   xa-mass-engine/src/main/java `
   --glob '!**/target/**'
 
-.\mvnw.cmd -pl xa-mass-engine -am `
+.\mvnw.cmd -pl xa-mass-engine `
   "-Dtest=TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskSchedulingBindingEntryBypassTest" test
 ```
 
@@ -773,12 +955,28 @@ Required proof scenarios:
      canonical `routeKey`,
    - stale owner cannot revoke the newer owner,
    - worker projection does not override route-owner view.
-6. One delivery owner does not cap task concurrency:
+6. External polling session replacement:
+   - worker process A marks online with token A,
+   - worker process B takes over the same canonical routeKey with token B,
+   - stale heartbeat/offline from token A does not revoke token B,
+   - proof starts at server/API or public Java SDK, not only
+     `WorkerPresenceStore`.
+7. Adapter-change takeover with queued work:
+   - work is assigned and enqueued for the old adapter/routeKey,
+   - current route owner changes to a new adapter before drain/poll,
+   - the chosen policy migrates, compensates, expires/retries, or explicitly
+     rejects old-adapter delivery,
+   - no work remains silently stranded in the old adapter queue.
+8. Public realtime routeKey convergence:
+   - Java SDK websocket session and server handshake/frame path use canonical
+     routeKey behavior or documented legacy exclusion,
+   - fallback to raw `workerId` is not part of the target proof.
+9. One delivery owner does not cap task concurrency:
    - same canonical routeKey,
    - multiple `TaskDispatchBinding` values are produced only when
      worker-runtime capacity/admission allows,
    - transport route owner selects delivery target but does not decide capacity.
-7. Candidate source remains group/bucket bounded:
+10. Candidate source remains group/bucket bounded:
    - no event-code all-worker scan,
    - explicit worker group selector controls candidate universe.
 
@@ -802,26 +1000,36 @@ engine binding -> canonical routeKey -> transport route selection
 
 4. At least one proof verifies that envelope routeKey and adapter poll/drain
    routeKey are the same canonical token used by presence owner lookup.
-5. Low-level unit tests may remain as support regression only when integrated
+5. At least one proof starts from public worker API or public Java SDK managed
+   session and observes route-owner token behavior.
+6. At least one proof covers adapter-change queued-envelope behavior. If WRB-2
+   deferred this to WRB-3, WRB-5 must run after WRB-3 resolves the policy.
+7. Low-level unit tests may remain as support regression only when integrated
    proof would be excessively expensive.
-6. `rg` scans are residue sanity only; they are not proof of runtime behavior.
+8. `rg` scans are residue sanity only; they are not proof of runtime behavior.
 
 Suggested checks:
 
 ```powershell
-.\mvnw.cmd -pl xa-mass-worker-runtime -am `
+.\mvnw.cmd -pl xa-mass-worker-runtime `
   "-Dtest=WorkerManagerTest,WorkerAdmissionOwnerTest" test
 
-.\mvnw.cmd -pl transport/transport_runtime -am `
+.\mvnw.cmd -pl transport/transport_runtime `
   "-Dtest=RedisWorkerPresenceStoreTest,InMemoryWorkerPresenceStoreTest,WorkerDispatchRouteSelectorTest,NodeTargetedTaskDispatchSubmitterTest" test
 
-.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -am `
+.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk `
   "-Dtest=MassApplicationDistributedTransportTest" test
 
-.\mvnw.cmd -pl xa-mass-engine -am `
+.\mvnw.cmd -pl sdk/xa-mass-java-sdk `
+  "-Dtest=WorkerClientTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest" test
+
+.\mvnw.cmd -pl xa-mass-server `
+  "-Dtest=ExternalWorkerApiControllerTest,ExternalWorkerPollingApiIntegrationTest,ExternalWorkerRealtimeRegistrationIntegrationTest" test
+
+.\mvnw.cmd -pl xa-mass-engine `
   "-Dtest=TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest" test
 
-.\mvnw.cmd -pl xa-mass-engine -am `
+.\mvnw.cmd -pl xa-mass-engine `
   "-Dtest=EngineSchedulingCoreSuite" test
 
 git diff --check
@@ -840,41 +1048,49 @@ Scope:
    workerIds if they are independently schedulable.
 3. Remove tests that protect old multi-owner semantics and replace them with
    canonical routeKey replacement tests.
-4. Decide the fate of `WorkerStatusEventListener`:
-   - delete if no longer production mainline,
-   - or rename/narrow it as process-local compatibility heartbeat projection.
-5. Ensure worker declaration writes cannot become heartbeat or online/offline
+4. Remove or explicitly mark legacy public routeKey overrides and raw
+   workerId fallback in Java SDK websocket/server handshake paths.
+5. Remove or explicitly mark legacy public presence APIs that accept only
+   `workerId + reason` without a session/epoch owner token.
+6. Keep `WorkerHeartbeatProjectionListener` only as a process-local
+   compatibility heartbeat projection, or delete it if the runtime event-bus
+   bridge is removed. It must not be renamed back to status ownership or made
+   a transport reachability owner.
+7. Ensure worker declaration writes cannot become heartbeat or online/offline
    truth.
-6. Ensure `WorkerResourceRuntime#updateWorker(...)` is not the default path for
+8. Ensure `WorkerResourceRuntime#updateWorker(...)` is not the default path for
    heartbeat refresh.
-7. Keep `WorkerRuntimeStateRecord` as read evidence assembled from runtime
+9. Keep `WorkerRuntimeStateRecord` as read evidence assembled from runtime
    owners, not persisted declaration truth.
-8. Keep `statusName` display compatibility out of scheduling predicates.
-9. Update `xa-mass-worker-runtime/README.md` and `CONTRACTS.md` if worker
+10. Keep `statusName` display compatibility out of scheduling predicates.
+11. Update `xa-mass-worker-runtime/README.md` and `CONTRACTS.md` if worker
    runtime evidence or dispatch-gate ownership changes.
-10. Update `transport/TRANSPORT_BOUNDARY_BASELINE.md` if route-owner read or
+12. Update `transport/TRANSPORT_BOUNDARY_BASELINE.md` if route-owner read or
     storage semantics change.
-11. Update `xa-mass-engine/README.md` or scheduling baseline if engine
+13. Update `xa-mass-engine/README.md` or scheduling baseline if engine
     `WorkerSchedulingView` ownership wording changes.
-12. Update `TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md` as the
+14. Update `TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md` as the
     physical Redis child roadmap or mark it superseded.
-13. Keep `REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md` deferred until the
+15. Keep `REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md` deferred until the
     transport presence key model is converged enough to prove.
-14. Run residue scans before archiving this roadmap.
+16. Run residue scans before archiving this roadmap.
 
 Acceptance:
 
 1. No production route-key path uses raw workerId fallback.
 2. No test protects one workerId having multiple active delivery owners.
-3. A worker online/offline event cannot update declaration truth as online
+3. No target public worker presence path remains `workerId + reason` only.
+4. Public routeKey override/fallback residue is removed or explicitly marked
+   legacy and excluded from target proof.
+5. A worker online/offline event cannot update declaration truth as online
    authority.
-4. Any remaining heartbeat refresh path is documented as compatibility residue
+6. Any remaining heartbeat refresh path is documented as compatibility residue
    or worker-registry evidence refresh, not transport reachability truth.
-5. `WorkerDeclarationRecord` remains free of heartbeat, online/offline,
+7. `WorkerDeclarationRecord` remains free of heartbeat, online/offline,
    reservation, lease, and dispatch-gate fields.
-6. Active docs agree on owner boundaries and do not describe target key shapes
+8. Active docs agree on owner boundaries and do not describe target key shapes
    as current behavior.
-7. Child roadmap status reflects whether it is blocked, active, or superseded
+9. Child roadmap status reflects whether it is blocked, active, or superseded
    by WRB decisions.
 
 Suggested checks:
@@ -891,6 +1107,39 @@ rg -n "workerCanExposeMultipleOnlineRouteOwners|multiple active route owners|upd
 git diff --check
 ```
 
+## WRB Proof Summary
+
+Current proof owner: [doc/PROOF_REGISTRY.md](../../../doc/PROOF_REGISTRY.md)
+invariant `transport.worker-route-owner`.
+
+Primary behavior evidence:
+
+| Requirement group | Evidence |
+| --- | --- |
+| canonical routeKey contract | `CanonicalWorkerRouteKeyCodecTest`, `TransportRouteKeyResolversTest` |
+| bounded Redis/in-memory route-owner truth | `RedisWorkerPresenceStoreTest`, `InMemoryWorkerPresenceStoreTest`, `WorkerDispatchRouteSelectorTest` |
+| routeKey-owned delivery queue and adapter takeover | `RedisTransportDeliveryStoreTest`, `InMemoryTransportDeliveryStoreTest`, `TransportDeliveryServiceTest` |
+| engine binding -> route owner -> delivery/compensation | `TransportRoutingTaskDispatchListenerTest`, `NodeTargetedTaskDispatchSubmitterTest` |
+| public SDK/server session-token ownership | `WorkerClientTest`, `PollingWorkerSessionTest`, `WebSocketWorkerSessionTest`, `ExternalWorkerApiControllerTest`, `ExternalWorkerPollingApiIntegrationTest`, `ExternalWorkerRealtimeRegistrationIntegrationTest` |
+| transport presence -> worker-runtime evidence -> engine assignment | `MassApplicationDistributedTransportTest`, `TaskWorkerEligibilityTest`, `WorkerStateReportSchedulingIntegrationTest`, `TaskSchedulingGateAndTargetingTest`, `TaskSchedulingContentionTest`, `TaskSchedulingBindingEntryBypassTest`, `EngineSchedulingCoreSuite` |
+| worker declaration remains declaration-only | `WorkerManagerTest`, `WorkerDeclarationBoundaryGuardTest`, `WorkerHeartbeatProjectionListenerTest` |
+| one route owner does not cap worker capacity or multi-binding dispatch | `TaskSchedulingContentionTest`, `TransportRoutingTaskDispatchListenerTest` |
+
+Residue sanity is intentionally separate from proof:
+
+```powershell
+rg -n "workerIdRouteBinding|TransportRouteKeyResolvers\.workerId\(|connectionId = workerId|sessionToken = workerId" `
+  transport sdk xa-mass-server integrations scripts --glob '!**/target/**'
+
+rg -n "RedisWorkerPresenceStore|InMemoryWorkerPresenceStore|WorkerPresenceStore|WorkerRegistry|WorkerSlot|WorkerMeta|ReserveResult|ReserveStatus" `
+  xa-mass-engine/src/main/java --glob '!**/target/**'
+
+git diff --check
+```
+
+These scans may reject residue, but they do not prove behavior without the test
+lanes above.
+
 ## Completion Criteria
 
 This roadmap is complete only when:
@@ -905,28 +1154,40 @@ This roadmap is complete only when:
 5. `getPresence(workerId)` is not a scheduling truth fallback.
 6. No adapter/session path reuses `workerId` as `connectionId`; stale
    heartbeat/offline commands cannot revoke a newer route owner.
-7. Redis-backed `currentOwner(routeKey)` is a bounded read that does not require
+7. External polling worker API and public Java SDK managed sessions carry or
+   derive session/epoch owner tokens; stale public heartbeat/offline cannot
+   revoke a newer route owner.
+8. Public realtime routeKey behavior is canonical or explicitly classified as
+   legacy outside the target path; raw `workerId` fallback is not a target
+   production path.
+9. Adapter-change takeover has a defined queued-envelope policy; old
+   `(adapterId, routeKey)` queues cannot silently retain unreachable work.
+10. Redis-backed `currentOwner(routeKey)` is a bounded read that does not require
    caller-provided `adapterId`.
-8. Transport presence has one chosen canonical writable Redis owner model keyed
+11. Transport presence has one chosen canonical writable Redis owner model keyed
    by canonical `routeKey`.
-9. `WorkerStatusEventListener` heartbeat/status residue is removed or explicitly
-   classified and bounded.
-10. Engine matching consumes worker-runtime contracts, not transport presence or
+12. WorkerId compatibility projection, if retained, is bounded and derived from
+    canonical routeKey owner truth rather than a second writable presence truth.
+13. `WorkerStatusEventListener` heartbeat/status residue is removed or replaced
+   by the explicitly bounded `WorkerHeartbeatProjectionListener`.
+14. Engine matching consumes worker-runtime contracts, not transport presence or
    low-level registry primitives.
-11. Integrated proof covers both:
+15. Integrated proof covers both:
    - transport presence -> worker-runtime evidence -> engine assignment, and
    - engine binding -> transport route owner -> inbox/compensation.
-12. Presence lookup, dispatch envelope route resolution, and adapter poll/drain
+16. Presence lookup, dispatch envelope route resolution, and adapter poll/drain
    use the same canonical routeKey.
-13. Proof shows that one delivery owner for a routeKey does not reduce
+17. Proof includes public worker API / Java SDK session-token behavior.
+18. Proof covers adapter-change queued-envelope behavior.
+19. Proof shows that one delivery owner for a routeKey does not reduce
     worker-runtime capacity or multi-binding task dispatch behavior.
-14. `TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md` is updated as a child
+20. `TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md` is updated as a child
    roadmap or superseded.
-15. `REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md` remains deferred until key
+21. `REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md` remains deferred until key
     convergence is real.
-16. Owner docs are updated in the phase that changes current facts; WRB-6 is
+22. Owner docs are updated in the phase that changes current facts; WRB-6 is
     final alignment, not the first owner-doc update.
-17. Residue scan passes for old duplicate presence truth and scheduling
+23. Residue scan passes for old duplicate presence truth and scheduling
     projection fallback paths.
 
 ## Risks
@@ -936,7 +1197,10 @@ This roadmap is complete only when:
 | Redis key cleanup starts before owner decision | WRB-0 / WRB-1 first; WRB-3 owns physical rewrite only after route-key contract and production path converge |
 | Worker projection remains de facto scheduling truth | WRB-2 removes scheduling fallback to `getPresence(workerId)` |
 | Runtime proof freezes duplicate transport presence keys | WRB-5 runs after WRB-3 owner/key convergence, not before |
+| External worker API bypasses session-token ownership | WRB-0 inventories server/Java SDK callers; WRB-2 requires public token propagation; WRB-5 proves stale public token rejection |
+| Adapter takeover strands queued envelopes in the old queue | WRB-2 requires a named queued-envelope policy; if deferred, WRB-3 resolves it before WRB-5 proves behavior |
+| Public realtime SDK keeps routeKey as caller-owned identity | WRB-1 classifies routeKey override; WRB-2 retargets or marks legacy outside proof |
 | Engine starts importing transport implementation for reachability | Hard Rules 1 and 3 plus WRB-4 scans |
 | Transport starts mutating worker runtime state to compensate dispatch failures | Node-targeted compensation must go through engine failure handler |
-| Worker declaration updates keep carrying heartbeat truth | WRB-6 classifies or removes `WorkerStatusEventListener` residue |
+| Worker declaration updates keep carrying heartbeat truth | WRB-6 keeps only bounded `WorkerHeartbeatProjectionListener` compatibility projection and proves declaration rows stay declaration-only |
 | Broad wrapper hides ownership instead of clarifying it | Do Not Start With forbids generic boundary service/facade |

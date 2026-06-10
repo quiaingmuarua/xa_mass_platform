@@ -165,10 +165,11 @@ public final class SocketTransportServer implements TransportServer {
                 }
                 if (frameCodec.isHelloFrame(frame)) {
                     boundWorkerId = frameCodec.extractWorkerId(frame);
-                    if (boundWorkerId == null) {
+                    boundRouteKey = frameCodec.extractRouteKey(frame);
+                    if (boundWorkerId == null || boundRouteKey == null) {
+                        logger.warn("Ignoring socket hello without workerId/routeKey: endpointId={}", endpointId);
                         continue;
                     }
-                    boundRouteKey = firstNonBlank(frameCodec.extractRouteKey(frame), boundWorkerId);
                     sessionManager.addSession(boundRouteKey, boundWorkerId, endpointId, socket, writer);
                     continue;
                 }

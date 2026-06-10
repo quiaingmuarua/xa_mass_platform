@@ -6,9 +6,10 @@ and worker runtime Redis key convergence produce stable key-family boundaries.
 This roadmap creates a dedicated tools module for proving Redis runtime
 keyspace ownership, lifecycle, and residue after the runtime Redis key model is
 reasonable enough to codify. It is not a prerequisite for
-[TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md](./TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md).
-TPRK comes first; this proof runner follows once transport presence and worker
-runtime Redis key families have stable owners, callers, and lifecycle rules.
+[WORKER_RUNTIME_BOUNDARY_CONVERGENCE_ROADMAP.md](../doc/archive/transport/2026-06-10_WORKER_RUNTIME_BOUNDARY_CONVERGENCE_ROADMAP.md).
+WRB owns the transport presence / worker-runtime key boundary convergence;
+this proof runner follows only after those key families have stable owners,
+callers, and lifecycle rules.
 
 The target module is:
 
@@ -50,8 +51,9 @@ Current ordering decision:
   when they are implemented in Python or Node, are replayable, use bounded
   namespace `SCAN`, and avoid Bash-only pipelines.
 - This roadmap must not codify unstable or known-unreasonable Redis key
-  structures. If TPRK or worker-runtime convergence changes canonical key
-  families, RRKP specs should be created after those decisions land.
+  structures. WRB is the active transport presence / worker-runtime boundary
+  convergence owner; RRKP specs should be created only after WRB decisions land
+  and the key families are stable enough to prove.
 - The proof runner focuses on key structure: key family, Redis type,
   cardinality/length, TTL/PTTL, namespace, and lifecycle deltas. Item payload,
   task/result field schema, worker declaration schema, and value semantics
@@ -384,13 +386,15 @@ Acceptance:
 6. The roadmap defines how specs stay aligned with owner key builders without
    production-scope dependency on runtime writer modules.
 7. The roadmap defines the minimum owner manifest schema for first-batch specs.
-8. `TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md` references this roadmap
-   as proof infrastructure.
+8. The archived `WORKER_RUNTIME_BOUNDARY_CONVERGENCE_ROADMAP.md` and superseded
+   `TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md` records point to this
+   roadmap only as deferred proof infrastructure, not as a prerequisite for
+   WRB.
 
 ## RRKP-1: Maven Module Skeleton
 
-Prerequisite: TPRK has converged transport presence key families enough that
-the specs would not preserve known residue as a second truth track.
+Prerequisite: WRB has converged transport presence key families enough that the
+specs would not preserve known residue as a second truth track.
 
 Goal: create the read-only tool module.
 
@@ -526,7 +530,7 @@ Acceptance:
    - `worker-routes` must either feed `findOwners(workerId)` or become residue,
    - `worker:{workerId}` is projection/cache, not canonical route-owner truth.
 4. No task work/result runtime placeholder is added to RRKP-3A.
-5. RRKP-3A may encode the transport presence shape that TPRK converged, but it
+5. RRKP-3A may encode the transport presence shape that WRB converged, but it
    must not be implemented early merely to freeze current residue.
 
 ## RRKP-3B: Worker Registry Boundary Specs
@@ -562,7 +566,7 @@ Acceptance:
 3. Derived worker registry key families name rebuild/invalidation rules.
 4. Any tool-local worker registry spec has an automated owner-source drift
    guard.
-5. RRKP-3B can be implemented after TPRK is unblocked; it is not required for
+5. RRKP-3B can be implemented after WRB is unblocked; it is not required for
    RRKP-3A acceptance.
 
 ## Deferred Specs: Task Work And Result Runtime
@@ -649,7 +653,7 @@ Acceptance:
 5. Scenario reports fail if the manifest omits producer id, namespace, expected
    family deltas, producer exit code, producer artifact digest, snapshot tool
    version, Redis db/namespace, timestamp source, or proof status.
-6. Task/result runtime scenarios are not required for post-TPRK
+6. Task/result runtime scenarios are not required for post-WRB
    scenario-report integration.
 7. Scenario reports remain artifact metadata unless the producer command,
    producer exit code, artifact digest, and optional trace analyzer status are
@@ -657,8 +661,8 @@ Acceptance:
 
 ## RRKP-5A: Transport Presence Structural Integration
 
-Goal: replace TPRK's temporary structural probes with this module only after
-TPRK converges the transport presence keyspace.
+Goal: replace WRB-era temporary structural probes with this module only after
+WRB converges the transport presence keyspace.
 
 Scope:
 
@@ -669,38 +673,38 @@ Scope:
    - one online polling route,
    - multi-route worker,
    - stale/offline/pruned route.
-3. Update TPRK follow-up verification to call this module for `snapshot`,
+3. Update WRB follow-up verification to call this module for `snapshot`,
    `classify`, and `assert` key-family proof.
-4. Keep production TPRK code changes separate from this tools roadmap.
+4. Keep production WRB code changes separate from this tools roadmap.
 
 Acceptance:
 
-1. TPRK's converged key families can be replayed through `snapshot`,
+1. WRB's converged key families can be replayed through `snapshot`,
    `classify`, and `assert` as structural key-existence support proof.
-2. Temporary Python/Node probes used during TPRK can be retired after their
+2. Temporary Python/Node probes used during WRB can be retired after their
    evidence is covered by this module.
 3. The report must not preserve pre-convergence residue such as write-only
-   `workers` or unused `worker-routes` as proven families unless TPRK resolves
+   `workers` or unused `worker-routes` as proven families unless WRB resolves
    them with a named production query.
 4. RRKP-5A does not require `diff` or `scenario`; those belong to RRKP-5B after
    RRKP-4 exists.
 
 ## RRKP-5B: Transport Presence Scenario Report Integration
 
-Goal: make post-TPRK verification consume diff/scenario proof after the report
+Goal: make post-WRB verification consume diff/scenario proof after the report
 assembler exists.
 
 Scope:
 
-1. Update post-TPRK verification to include `diff` and `scenario` reports
+1. Update post-WRB verification to include `diff` and `scenario` reports
    produced by RRKP-4.
 2. Use behavior-producing transport presence evidence as the scenario input.
-3. Keep broader worker-registry and task/result scenarios outside TPRK
+3. Keep broader worker-registry and task/result scenarios outside WRB
    acceptance.
 
 Acceptance:
 
-1. Post-TPRK verification can use `diff` and `scenario` reports after RRKP-4 is
+1. Post-WRB verification can use `diff` and `scenario` reports after RRKP-4 is
    implemented.
 2. Transport presence scenario reports fail when expected key-family deltas are
    missing.
@@ -741,7 +745,7 @@ Acceptance:
 
 ## Suggested Implementation Order
 
-0. Complete or materially converge TPRK enough that transport presence key
+0. Complete or materially converge WRB enough that transport presence key
    families have stable owners, callers, and lifecycle rules.
 1. RRKP-0 roadmap dependency repair.
 2. RRKP-1 Maven module skeleton.
@@ -749,8 +753,8 @@ Acceptance:
 4. RRKP-3A transport presence specs from the converged key model.
 5. RRKP-3B worker registry boundary specs only after its key model is stable.
 6. RRKP-4 diff/scenario reports.
-7. RRKP-5A post-TPRK structural integration.
-8. RRKP-5B post-TPRK scenario report integration after RRKP-4 exists.
+7. RRKP-5A post-WRB structural integration.
+8. RRKP-5B post-WRB scenario report integration after RRKP-4 exists.
 9. RRKP-6 proof registry/testing index and CI placement.
 
 ## Roadmap Completion Criteria
@@ -768,7 +772,7 @@ This roadmap is complete only when:
 6. First-batch specs are tied to owner manifests, generated fixtures, or
    owner-doc/residue-scan drift guards.
 7. It can produce diff and scenario reports from before/after snapshots.
-8. Post-TPRK verification can use structural proof and scenario report proof
+8. Post-WRB verification can use structural proof and scenario report proof
    without preserving the temporary Python/Node probes as a second proof
    surface.
 9. Active docs explain that Redis key proof is support proof, not behavior

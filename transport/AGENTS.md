@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-05-21
+Last updated: 2026-06-10
 
 Status: current transport owner handoff.
 
@@ -14,12 +14,17 @@ entry for `transport/`.
 - `transport_runtime` owns shared runtime assembly and delivery semantics.
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
 - `adapterId` is concrete runtime truth. `transportHint` is only a coarse family.
-- `routeKey` is the transport delivery address. Current mainline bindings resolve
-  it from `workerId` by default, but adapter ingress may bind an explicit
-  `routeKey` instead. That is policy, not a transport-global invariant.
-- route-only endpoint helpers may exist inside one concrete adapter, but the
-  transport-neutral runtime surface must route with `adapterId + routeKey`
-  only. Composite registries must not guess ownership from route-only access.
+- `routeKey` is the transport delivery address. For worker delivery, the
+  canonical route key is minted by `CanonicalWorkerRouteKeyCodec` from
+  `workerGroupId + workerId`; callers must treat the encoded value as opaque.
+- `CanonicalWorkerRouteKeyCodec` is the current worker route identity contract.
+  Production adapter bootstraps, Redis route-owner storage, public SDK managed
+  sessions, server worker presence APIs, and delivery queues now use the
+  canonical route-key subject.
+- route-only endpoint helpers may exist inside one concrete adapter, but shared
+  runtime delivery must first resolve the current route owner for `routeKey`
+  and then dispatch through the owner value's `adapterId + routeKey`.
+  Composite registries must not guess ownership from route-only access.
 - raw/debug worker side-channels are also adapter-scoped. They may resolve one
   concrete active route for a worker, but once resolved they must dispatch via
   the serving adapter identity instead of reviving route-only shared semantics.
@@ -28,7 +33,7 @@ entry for `transport/`.
   must not re-own transport online truth through worker heartbeat folding.
   Presence ownership is connection-aware: reconnect may replace the current
   owner, while heartbeat/offline only apply when the caller still holds the
-  stored `connectionId`.
+  stored `connectionId` / public `sessionToken`.
 - `WorkerSystemEventChannel` is current worker presence ingress only. It is not
   the lifecycle owner for future worker command, worker state-report, or
   capability self-report flows.
@@ -101,9 +106,9 @@ Use this order for transport changes:
 Prefer these after transport changes:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,RuntimeTaskResultIngestChannelTest,TransportRoutingTaskMsgDispatchListenerTest
-./mvnw -q -pl transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,PollingWorkerAdapterTest
-./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest=MassSdkTest
+./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,TransportRouteKeyResolversTest,TransportRoutingTaskDispatchListenerTest,WorkerDispatchRouteSelectorTest,NodeTargetedTaskDispatchSubmitterTest
+./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerRouteKeyCodecTest,WebSocketInputProcessorTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest
+./mvnw -q -pl sdk/xa-mass-embedded-sdk test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest
 ```
 
 Acceptance focus:

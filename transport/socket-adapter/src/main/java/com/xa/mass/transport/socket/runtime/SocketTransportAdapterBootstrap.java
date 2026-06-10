@@ -45,7 +45,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                             frameCodec,
                             context.getDeliveryService()
                     ))
-            ).routeKeyResolver(TransportRouteKeyResolvers.workerId()).build());
+            ).routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject()).build());
             context.registerRawWorkerMessageChannel(new SocketRawWorkerMessageChannel(config.getAdapterId(), sessionManager));
         }
         if (config.isServerEnabled()) {

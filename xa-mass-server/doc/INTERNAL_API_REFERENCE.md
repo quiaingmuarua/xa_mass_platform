@@ -902,17 +902,32 @@ Notes:
 - Path: `/worker-api/v1/workers/{workerId}:online`
 - Status: `Implemented`
 
+Request body:
+
+- required `sessionToken`: current polling session owner token
+- optional `reason`
+
 ### 6.5 Worker Heartbeat
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}:heartbeat`
 - Status: `Implemented`
 
+Request body:
+
+- required `sessionToken`: must match the current polling session owner token
+- optional `reason`
+
 ### 6.6 Worker Offline
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}:offline`
 - Status: `Implemented`
+
+Request body:
+
+- required `sessionToken`: must match the current polling session owner token
+- optional `reason`
 
 ### 6.7 Poll Tasks
 

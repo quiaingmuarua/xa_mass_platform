@@ -83,11 +83,11 @@ class SocketTransportServerTest {
             try (Socket socket = new Socket("127.0.0.1", port);
                  BufferedWriter writer = new BufferedWriter(
                          new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
-                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\"}");
+                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"routeKey\":\"socket-route-9\"}");
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> sessionManager.isAdapterRouteOnline("socket", "worker-1"),
+                waitUntil(() -> sessionManager.isAdapterRouteOnline("socket", "socket-route-9"),
                         "hello frame should register worker socket session");
             }
         } finally {

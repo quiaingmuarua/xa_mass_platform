@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
@@ -41,6 +42,7 @@ public final class PollingWorkerSession implements AutoCloseable {
     private final String endpointId;
     private final String pluginVersion;
     private final String deploymentVersion;
+    private final String sessionToken;
     private final Map<String, String> attributes;
     private final int maxMessages;
     private final long pollTimeoutMs;
@@ -66,6 +68,7 @@ public final class PollingWorkerSession implements AutoCloseable {
         this.endpointId = firstNonBlank(builder.endpointId, adapterNodeId);
         this.pluginVersion = builder.pluginVersion;
         this.deploymentVersion = builder.deploymentVersion;
+        this.sessionToken = UUID.randomUUID().toString();
         this.attributes = Map.copyOf(builder.attributes);
         this.maxMessages = builder.maxMessages;
         this.pollTimeoutMs = builder.pollTimeoutMs;
@@ -116,7 +119,7 @@ public final class PollingWorkerSession implements AutoCloseable {
                     .build());
             lastSuccessful = WorkerSessionStartupStep.REGISTER_WORKER;
 
-            workerClient.online(registration.workerId(), "polling-session-start");
+            workerClient.online(registration.workerId(), sessionToken, "polling-session-start");
             offlineOnClose = true;
             lastSuccessful = WorkerSessionStartupStep.ONLINE;
 
@@ -160,6 +163,10 @@ public final class PollingWorkerSession implements AutoCloseable {
         return running.get();
     }
 
+    public String sessionToken() {
+        return sessionToken;
+    }
+
     @Override
     public void close() {
         boolean wasRunning = running.getAndSet(false);
@@ -174,7 +181,7 @@ public final class PollingWorkerSession implements AutoCloseable {
         }
         if (offlineOnClose && wasRunning) {
             try {
-                workerClient.offline(workerId, "polling-session-close");
+                workerClient.offline(workerId, sessionToken, "polling-session-close");
             } catch (Throwable failure) {
                 listener.onShutdownFailure(workerId, failure);
             }
@@ -186,7 +193,7 @@ public final class PollingWorkerSession implements AutoCloseable {
             return;
         }
         try {
-            workerClient.heartbeat(workerId, "polling-session-heartbeat");
+            workerClient.heartbeat(workerId, sessionToken, "polling-session-heartbeat");
             consecutiveHeartbeatFailures.set(0);
         } catch (Throwable failure) {
             int failures = consecutiveHeartbeatFailures.incrementAndGet();

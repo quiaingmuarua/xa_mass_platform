@@ -110,6 +110,7 @@ public final class TransportRuntimeRegistry {
         }
         return new ResolvedPullWorkerTransport(
                 normalizedWorkerId,
+                requireWorkerGroupId(worker),
                 binding.getAdapterId(),
                 binding.getTransportHint(),
                 binding.getTaskPullChannel(),
@@ -137,6 +138,13 @@ public final class TransportRuntimeRegistry {
             throw new IllegalArgumentException("workerId must not be blank");
         }
         return workerId.trim();
+    }
+
+    private String requireWorkerGroupId(WorkerResourceRecord worker) {
+        if (worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
+            throw new IllegalStateException("Worker workerGroupId is not set: " + worker.workerId());
+        }
+        return worker.workerGroupId().trim();
     }
 
     private TransportBinding resolveBindingForWorker(WorkerResourceRecord worker) {

@@ -65,27 +65,27 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     }
 
     @Override
-    public TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages, long timeoutMillis) {
-        if (workerId == null || workerId.isBlank() || maxMessages <= 0) {
+    public TaskPullResult pollTaskMessagesResult(String routeKey, int maxMessages, long timeoutMillis) {
+        if (routeKey == null || routeKey.isBlank() || maxMessages <= 0) {
             return TaskPullResult.invalidRequest();
         }
-        TransportDeliveryPollResult result = deliveryService.pollEnvelopeResult(PROTOCOL, workerId, maxMessages, timeoutMillis);
+        TransportDeliveryPollResult result = deliveryService.pollEnvelopeResult(PROTOCOL, routeKey, maxMessages, timeoutMillis);
         return TaskPullResult.of(mapStatus(result.getStatus()), TransportDeliveryService.toDispatchViews(result.getEnvelopes()));
     }
 
-    public void announceWorkerOnline(String workerId, String reason) {
-        workerPresenceStore.markOnline(workerId, PROTOCOL, workerId, workerId, reason);
-        systemEventChannel.publishWorkerOnline(workerId, reason, workerId);
+    public void announceWorkerOnline(String workerId, String routeKey, String connectionId, String reason) {
+        workerPresenceStore.markOnline(workerId, PROTOCOL, routeKey, connectionId, reason);
+        systemEventChannel.publishWorkerOnline(workerId, reason, connectionId);
     }
 
-    public void announceWorkerOffline(String workerId, String reason) {
-        workerPresenceStore.markOffline(workerId, PROTOCOL, workerId, workerId, reason);
-        systemEventChannel.publishWorkerOffline(workerId, reason, workerId);
+    public void announceWorkerOffline(String workerId, String routeKey, String connectionId, String reason) {
+        workerPresenceStore.markOffline(workerId, PROTOCOL, routeKey, connectionId, reason);
+        systemEventChannel.publishWorkerOffline(workerId, reason, connectionId);
     }
 
-    public void publishWorkerHeartbeat(String workerId, String reason) {
-        workerPresenceStore.refreshHeartbeat(workerId, PROTOCOL, workerId, workerId, reason);
-        systemEventChannel.publishWorkerHeartbeat(workerId, reason, workerId);
+    public void publishWorkerHeartbeat(String workerId, String routeKey, String connectionId, String reason) {
+        workerPresenceStore.refreshHeartbeat(workerId, PROTOCOL, routeKey, connectionId, reason);
+        systemEventChannel.publishWorkerHeartbeat(workerId, reason, connectionId);
     }
 
     private static TaskPullStatus mapStatus(TransportDeliveryPollStatus status) {

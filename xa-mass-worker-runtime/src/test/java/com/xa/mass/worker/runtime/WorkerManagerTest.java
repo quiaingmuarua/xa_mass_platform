@@ -38,10 +38,12 @@ import static org.junit.jupiter.api.Assertions.*;
 public class WorkerManagerTest {
 
     private WorkerManager manager;
+    private TestWorkerDeclarationStore workerDeclarationStore;
 
     @BeforeEach
     void setUp() {
-        manager = new WorkerManager(new TestWorkerDeclarationStore(), platformRegistry());
+        workerDeclarationStore = new TestWorkerDeclarationStore();
+        manager = new WorkerManager(workerDeclarationStore, platformRegistry());
     }
 
     // ---- add / get ----
@@ -190,6 +192,31 @@ public class WorkerManagerTest {
         assertTrue(updateWorker(updated));
 
         assertEquals(4, manager.getWorkerLoad("worker-capacity-update").declaredCapacity());
+    }
+
+    @Test
+    void updateWorkerHeartbeatRefreshesRegistryEvidenceButNotDeclarationTruth() {
+        Worker worker = worker("worker-heartbeat-projection", "us");
+        worker.setAgentVersion("declared-v1");
+        worker.setLastHeartbeat(null);
+        addWorker(worker);
+
+        LocalDateTime heartbeat = LocalDateTime.of(2026, 6, 10, 10, 30);
+        Worker update = worker("worker-heartbeat-projection", "us");
+        update.setAgentVersion("declared-v2");
+        update.setStatus(WorkerStatus.ONLINE);
+        update.setLastHeartbeat(heartbeat);
+        assertTrue(updateWorker(update));
+
+        Worker readModel = workerModel("worker-heartbeat-projection");
+        assertEquals(heartbeat, readModel.getLastHeartbeat());
+        assertEquals(WorkerStatus.ONLINE, readModel.getStatus());
+
+        WorkerDeclarationRecord declaration = workerDeclarationStore.getWorker("worker-heartbeat-projection")
+                .orElseThrow();
+        assertEquals("declared-v2", declaration.agentVersion());
+        assertEquals("us", declaration.workerGroupId());
+        assertEquals("worker-heartbeat-projection", declaration.workerId());
     }
 
     @Test

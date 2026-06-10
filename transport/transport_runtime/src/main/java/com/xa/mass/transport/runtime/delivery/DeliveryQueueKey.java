@@ -22,10 +22,6 @@ final class DeliveryQueueKey implements Comparable<DeliveryQueueKey> {
 
     @Override
     public int compareTo(DeliveryQueueKey other) {
-        int adapterCompare = adapterId.compareTo(other.adapterId);
-        if (adapterCompare != 0) {
-            return adapterCompare;
-        }
         return routeKey.compareTo(other.routeKey);
     }
 
@@ -37,11 +33,11 @@ final class DeliveryQueueKey implements Comparable<DeliveryQueueKey> {
         if (!(object instanceof DeliveryQueueKey other)) {
             return false;
         }
-        return adapterId.equals(other.adapterId) && routeKey.equals(other.routeKey);
+        return routeKey.equals(other.routeKey);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(adapterId, routeKey);
+        return Objects.hash(routeKey);
     }
 }

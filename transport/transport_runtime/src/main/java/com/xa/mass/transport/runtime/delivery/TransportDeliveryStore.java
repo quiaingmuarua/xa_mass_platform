@@ -10,9 +10,11 @@ import java.util.concurrent.TimeUnit;
  * Runtime-owned storage boundary for transport delivery handoff.
  *
  * <p>This contract is transport-specific but intentionally Redis-friendly:
- * queue ownership is always the canonical {@code (adapterId, routeKey)} pair,
- * FIFO is per queue key, and callers must not depend on JVM-local queue scans
- * or waiter identity.
+ * queue ownership is the canonical {@code routeKey}. {@code adapterId} remains
+ * request metadata for protocol-level callers and diagnostics, but it must not
+ * strand already queued work when a routeKey changes adapter owner. FIFO is per
+ * routeKey, and callers must not depend on JVM-local queue scans or waiter
+ * identity.
  *
  * <p>{@link #poll(String, String, int, long, TimeUnit)} returns transport
  * delivery status, but store implementations should throw

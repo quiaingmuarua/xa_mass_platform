@@ -90,21 +90,21 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
-    void handshakeWithWorkerIdRegistersSessionBeforeTextFramesArrive() throws Exception {
+    void handshakeWithWorkerIdAndRouteKeyRegistersSessionBeforeTextFramesArrive() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
-                "/ws?workerId=worker-1",
+                "/ws?workerId=worker-1&routeKey=ws-route-1",
                 new DefaultHttpHeaders(),
                 null
         ));
 
         assertEquals(1, sessionManager.getWorkerConnectionCount());
-        assertNotNull(sessionManager.getChannelContext("worker-1"));
+        assertNotNull(sessionManager.getChannelContext("ws-route-1"));
     }
 
     @Test
     void messageWithoutInlineWorkerIdUsesHandshakeRegisteredWorkerId() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
-                "/ws?workerId=worker-1",
+                "/ws?workerId=worker-1&routeKey=ws-route-1",
                 new DefaultHttpHeaders(),
                 null
         ));
@@ -125,11 +125,11 @@ class DispatcherInboundHandlerTest {
         assertNull(sentFrame.get());
         assertEquals(controlJson, acceptedInboundMessage.get().getRawJson());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
-        assertEquals("worker-1", acceptedInboundMessage.get().getRouteKey());
+        assertEquals("ws-route-1", acceptedInboundMessage.get().getRouteKey());
         assertEquals("test-ch", acceptedInboundMessage.get().getEndpointId());
         assertNotNull(acceptedInboundMessage.get().getParsedFrame());
         assertEquals(1, sessionManager.getWorkerConnectionCount());
-        assertNotNull(sessionManager.getChannelContext("worker-1"));
+        assertNotNull(sessionManager.getChannelContext("ws-route-1"));
     }
 
     @Test
@@ -178,7 +178,7 @@ class DispatcherInboundHandlerTest {
     @Test
     void eventFirstControlFrameWithoutMsgTypeStillEnqueuesRawJson() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
-                "/ws?workerId=worker-1",
+                "/ws?workerId=worker-1&routeKey=ws-route-1",
                 new DefaultHttpHeaders(),
                 null
         ));
@@ -201,7 +201,7 @@ class DispatcherInboundHandlerTest {
         assertNotNull(accepted);
         assertTrue(accepted.contains("\"eventCode\": \"mock.state.get\"")
                 || accepted.contains("\"eventCode\":\"mock.state.get\""));
-        assertNotNull(sessionManager.getChannelContext("worker-1"));
+        assertNotNull(sessionManager.getChannelContext("ws-route-1"));
     }
 
     @Test
@@ -216,7 +216,7 @@ class DispatcherInboundHandlerTest {
     @Test
     void controlFrameWithoutMessageIdStillEnqueuesRawJson() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
-                "/ws?workerId=worker-1",
+                "/ws?workerId=worker-1&routeKey=ws-route-1",
                 new DefaultHttpHeaders(),
                 null
         ));
@@ -231,7 +231,7 @@ class DispatcherInboundHandlerTest {
         assertNull(sentFrame.get());
         assertNotNull(acceptedInboundMessage.get());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
-        assertEquals("worker-1", acceptedInboundMessage.get().getRouteKey());
+        assertEquals("ws-route-1", acceptedInboundMessage.get().getRouteKey());
     }
 
     @Test

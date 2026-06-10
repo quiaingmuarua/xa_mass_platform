@@ -1,6 +1,6 @@
 # Testing Index
 
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 
 Status: current project-level testing index.
 
@@ -317,6 +317,7 @@ Objects:
 - adapter routing
 - result-ingest boundary
 - adapter-specific reachability and delivery behavior
+- worker route-owner presence and canonical route-key delivery ownership
 
 Purpose:
 
@@ -329,6 +330,8 @@ Preferred surfaces:
 - Boot-shell E2E when host/runtime integration is involved
 - trace-observed integration when the risk includes callback/result-ingest
   visibility or adapter lifecycle visibility
+- for WRB route-owner changes, use `PROOF_REGISTRY.md` invariant
+  `transport.worker-route-owner`; residue scans are support only
 
 Does not prove:
 
@@ -708,7 +711,7 @@ Use first when:
 | trace schema / event emission / operator trace query | sink or emitter tests + `xa-mass-trace` integration tests against canonical output | Boot-shell or chaos trace-observed scenario when integrated lifecycle visibility changed |
 | `TaskResultRuntime` / stable-final result rows / repair barriers / result read window | runtime contract tests for memory + Redis implementations, plus engine result convergence coverage | Boot-shell `/results` or archive E2E when public result/API shape changes |
 | runtime backend parity (`memory` vs `redis`) | shared runtime contract tests plus one shared Boot-shell scenario with backend-specific subclasses; Redis tests must use isolated namespace prefixes and explicit fixture cleanup, not `shutdown()` cleanup | add backend-specific tests only for implementation-only keyspace/script behavior, namespace isolation, or restart recovery tied to an existing invariant such as `sched.retry-redispatch`; Redis-backed runtime owner restart/reconnect has scheduled/manual chaos coverage, while process kill, partition/failover, lease-clock skew, and multi-node presence flap require a deterministic infra-fault harness before proof claims |
-| transport runtime / adapter / routing / result ingress | transport module tests + Boot-shell E2E | chaos for recovery behavior |
+| transport runtime / adapter / routing / result ingress | transport module tests + Boot-shell E2E; for worker route-owner changes use `transport.worker-route-owner` in `PROOF_REGISTRY.md` | chaos for recovery behavior |
 | host page / filter / shell read model | server integration tests or frontend tests | one Boot-shell smoke if host behavior can drift into mainline |
 | hot-path performance / runtime counters | perf smoke + targeted engine acceptance | Boot-shell smoke if external behavior can drift |
 | disconnect / delay / late replay / lease expiry | chaos | deterministic engine surrogate when a race needs isolation |

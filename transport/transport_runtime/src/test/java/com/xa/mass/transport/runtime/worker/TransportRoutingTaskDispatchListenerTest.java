@@ -14,7 +14,9 @@ import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
+import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -39,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransportRoutingTaskDispatchListenerTest {
+    private static final String TEST_WORKER_GROUP_ID = "test-workers";
 
     @Test
     void routesDispatchByWorkerOnlineStrategy() {
@@ -72,6 +75,8 @@ class TransportRoutingTaskDispatchListenerTest {
 
         assertEquals(List.of("msg-ws"), webSocketAdapter.dispatchedMessageIds);
         assertEquals(List.of("msg-poll"), pollingAdapter.dispatchedMessageIds);
+        assertEquals(List.of(routeKey("ws-worker")), webSocketAdapter.dispatchedRouteKeys());
+        assertEquals(List.of(routeKey("poll-worker")), pollingAdapter.dispatchedRouteKeys());
         assertEquals(List.of(DispatchOutcomeStatus.SENT), webSocketAdapter.outcomeStatuses());
         assertEquals(List.of(DispatchOutcomeStatus.SENT), pollingAdapter.outcomeStatuses());
     }
@@ -293,7 +298,7 @@ class TransportRoutingTaskDispatchListenerTest {
                         report -> true,
                         new NoopWorkerSystemEventChannel(),
                         new InMemoryWorkerPresenceStore(),
-                        List.of(workerIdRouteBinding(pollingAdapter))
+                        List.of(canonicalRouteBinding(pollingAdapter))
                 )
         );
 
@@ -441,6 +446,10 @@ class TransportRoutingTaskDispatchListenerTest {
         private List<DispatchOutcomeStatus> outcomeStatuses() {
             return outcomes.stream().map(DispatchOutcome::getStatus).toList();
         }
+
+        private List<String> dispatchedRouteKeys() {
+            return lastEnvelopes.stream().map(TransportDispatchEnvelope::getRouteKey).toList();
+        }
     }
 
     private static final class BlockingRecordingAdapter extends RecordingAdapter {
@@ -494,7 +503,7 @@ class TransportRoutingTaskDispatchListenerTest {
                 new NoopWorkerSystemEventChannel(),
                 new InMemoryWorkerPresenceStore(),
                 Arrays.stream(adapters)
-                        .map(TransportRoutingTaskDispatchListenerTest::workerIdRouteBinding)
+                        .map(TransportRoutingTaskDispatchListenerTest::canonicalRouteBinding)
                         .toList()
         );
     }
@@ -502,6 +511,7 @@ class TransportRoutingTaskDispatchListenerTest {
     private static Worker worker(String workerId, String adapterId, String transportHint) {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
+        worker.setWorkerGroupId(TEST_WORKER_GROUP_ID);
         worker.setAdapterId(adapterId);
         worker.setOnlineStrategy(transportHint);
         return worker;
@@ -515,7 +525,7 @@ class TransportRoutingTaskDispatchListenerTest {
                 worker.getLastHeartbeat(),
                 worker.getSupportedProjects(),
                 worker.getSupportedEventCodes(),
-                worker.getWorkerGroupId(),
+                worker.getWorkerGroupId() == null ? TEST_WORKER_GROUP_ID : worker.getWorkerGroupId(),
                 worker.getAdapterNodeId(),
                 worker.getAdapterId(),
                 worker.getOnlineStrategy(),
@@ -526,14 +536,9 @@ class TransportRoutingTaskDispatchListenerTest {
         ));
     }
 
-    private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter) {
+    private static TransportBinding canonicalRouteBinding(WorkerAdapter adapter) {
         return TransportBinding.builder(adapter)
-                .routeKeyResolver((dispatchBinding, routeContext) -> {
-                    if (routeContext != null && routeContext.workerId() != null && !routeContext.workerId().isBlank()) {
-                        return routeContext.workerId();
-                    }
-                    return dispatchBinding != null ? dispatchBinding.workerId() : null;
-                })
+                .routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject())
                 .build();
     }
 
@@ -542,7 +547,7 @@ class TransportRoutingTaskDispatchListenerTest {
                                                String attemptId,
                                                String workerId,
                                                String batchId) {
-        return new TaskDispatchBinding(
+        return TaskDispatchBinding.workerLevelWithEvidence(
                 taskId,
                 messageId,
                 null,
@@ -553,8 +558,16 @@ class TransportRoutingTaskDispatchListenerTest {
                 1,
                 null,
                 workerId,
-                batchId
+                batchId,
+                TEST_WORKER_GROUP_ID,
+                null,
+                null,
+                "test-fixture"
         );
+    }
+
+    private static String routeKey(String workerId) {
+        return CanonicalWorkerRouteKeyCodec.encode(TEST_WORKER_GROUP_ID, workerId);
     }
 
     private static TaskDispatchContext taskContext(Task task) {
