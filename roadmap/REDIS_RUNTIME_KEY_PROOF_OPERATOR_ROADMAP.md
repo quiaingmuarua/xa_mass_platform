@@ -1,4 +1,4 @@
-# Redis Runtime Key Proof Operator Roadmap
+# Redis Runtime Key Proof Runner Roadmap
 
 Status: proposed direction document.
 
@@ -13,9 +13,10 @@ The target module is:
 tools/xa-mass-redis-runtime-proof
 ```
 
-It is the Redis-runtime analogue of `xa-mass-trace`: an operator-facing read and
-analysis surface over runtime artifacts. It does not own runtime truth and it
-does not replace runtime, trace, engine, server, or SDK behavior proof.
+It is the Redis-runtime analogue of `xa-mass-trace`: a proof-runner and analysis
+surface over runtime artifacts. It does not own runtime truth, does not provide
+a general Redis CLI, and does not replace runtime, trace, engine, server, or SDK
+behavior proof.
 
 ## Current Facts
 
@@ -60,7 +61,7 @@ Redis runtime key truth belongs to the runtime owners that write it:
 - `transport/transport_runtime` for transport presence, dispatch handoff,
   delivery, result, and dispatch-failure inbox keyspaces.
 
-`tools/xa-mass-redis-runtime-proof` owns only a read-only operator proof surface:
+`tools/xa-mass-redis-runtime-proof` owns only a read-only proof surface:
 
 - snapshot Redis keyspace,
 - classify keys by owner/spec,
@@ -74,6 +75,7 @@ It must not become:
 - a cleanup tool,
 - a production recovery loop,
 - a server/admin HTTP client,
+- a general Redis CLI or Redis admin shell,
 - a trace analyzer replacement,
 - a source of public SDK/server key contracts.
 
@@ -99,17 +101,17 @@ tools/xa-mass-redis-runtime-proof
     transport adapter implementations
 
   test scope may use fixtures or generated examples from owner modules only when
-  the purpose is drift detection and those dependencies do not enter the CLI
-  runtime classpath.
+  the purpose is drift detection and those dependencies do not enter the proof
+  runner runtime classpath.
 
   may reference owner docs, owner manifests, and local proof specs, but must not
-  require production runtime code to execute the CLI.
+  require production runtime code to execute the proof runner.
 ```
 
-The module may define key-family proof specs as operator proof contracts. These
-specs are not runtime truth. When a spec disagrees with production code, the
-result is a proof failure or spec-update task, not a reason to make the tool a
-runtime owner.
+The module may define key-family proof specs as proof contracts. These specs are
+not runtime truth. When a spec disagrees with production code, the result is a
+proof failure or spec-update task, not a reason to make the tool a runtime
+owner.
 
 Specs must not become a second hand-written Redis key dictionary. Each spec
 family needs at least one drift guard:
@@ -119,8 +121,31 @@ family needs at least one drift guard:
 - an owner baseline section plus a residue scan that finds current production
   key builders.
 
+Minimum owner manifest fields:
+
+```text
+familyId
+ownerModule
+namespacePattern
+keyPattern
+redisType
+classification
+writerSymbol
+readerSymbol
+productionQuery
+lifecycleRule
+derivedFrom
+driftSource
+status
+```
+
 The tool reads those artifacts as proof inputs. It must not import production
-runtime writer classes to discover key names at CLI runtime.
+runtime writer classes to discover key names at proof-runner runtime.
+
+Specs are scenario-driven. A key family becomes proven only when a current
+consumer roadmap or behavior-producing scenario needs that family and supplies
+owner, lifecycle, and drift evidence. Families discovered without such evidence
+stay `unknown-current`, `needs-owner-review`, or placeholder entries.
 
 ## Proof Grammar
 
@@ -142,23 +167,28 @@ A Redis key family passes key-existence proof only when the report can name:
 8. reader owner,
 9. cleanup or expiry rule,
 10. rebuild or invalidation rule if derived,
-11. forbidden facts that must not appear in the value,
+11. forbidden key families, key patterns, or owner classifications,
 12. behavioral scenario that proves the key matters.
 
-Forbidden-fact proof requires bounded value-shape capture. A snapshot must be
-able to record shape without dumping business payloads:
+Snapshot proof is structural. It must not inspect item fields, payload schemas,
+handler envelopes, business values, or JSON/member field names. Those contracts
+belong to engine, transport, trace, or scenario tests.
 
-- hash: field names, field count, selected redacted scalar samples when allowed,
-- set/zset: member count, member token-shape samples, score range when useful,
-- list/stream: length, entry field names, redacted sample envelope shape,
-- string: byte length, optional digest, optional redacted structured field names
-  when the value is a known JSON envelope.
+The snapshot layer may record only key-level and Redis-type structural metadata:
 
-Default snapshot mode must not emit raw task payloads, `payloadJson`, API keys,
-tokens, credentials, secrets, authorization material, or full business values.
-Specs may define `requiredFields`, `forbiddenFields`, and `allowedSampleFields`.
-The assertion path must be able to fail on forbidden field names without reading
-or printing the forbidden value itself.
+- key count and sample key names,
+- Redis type,
+- TTL/PTTL, including the current `no-expiry` state when no TTL is set,
+- type-specific length/cardinality: `HLEN`, `SCARD`, `ZCARD`, `LLEN`, `XLEN`,
+  or string byte length,
+- optional Redis `MEMORY USAGE` when explicitly enabled.
+
+Default snapshot mode must not emit raw task payloads, item payload fields,
+hash field names, set/zset members, list entries, stream entry fields, string
+values, `payloadJson`, API keys, tokens, credentials, secrets, authorization
+material, or full business values. Specs may define required/forbidden key
+families and structural metric expectations, but not required/forbidden item or
+value fields.
 
 The following must never pass as proof by themselves:
 
@@ -167,11 +197,16 @@ The following must never pass as proof by themselves:
 - physical key existence,
 - a Java unit test that copies fields,
 - an assertion that a key matches a string path,
+- Redis value field inspection,
 - a scan with no owner/query/lifecycle classification.
 
-## Target CLI Shape
+## Target Proof Runner Surface
 
-Initial commands:
+The module does not provide a Redis CLI obligation. It may expose a minimal
+proof runner command surface so CI, local verification, and dependent roadmaps
+can produce deterministic proof artifacts.
+
+Initial proof verbs:
 
 ```text
 snapshot
@@ -191,9 +226,10 @@ scenario
   metadata, and optional trace analyzer output into one proof report
 ```
 
-The first implementation should not run destructive Redis cleanup. If a future
-operator cleanup command is needed, it must get a separate roadmap because it
-would change the module from read-only proof to mutation tooling.
+The first implementation should not expose arbitrary Redis query functions or
+run destructive Redis cleanup. If future Redis mutation or cleanup support is
+needed, it must get a separate roadmap because it would change the module from
+read-only proof to mutation tooling.
 
 ## Report Model
 
@@ -213,7 +249,7 @@ unknownKeys[]
 residueFindings[]
 assertions[]
 ownerManifests[]
-valueShapePolicy
+snapshotPolicy
 scenario
 verificationInputs
 ```
@@ -227,18 +263,19 @@ classification
 keyPattern
 redisType
 keyCount
-logicalItemCount
+structuralCount
+lengthMetrics
 ttlPolicy
 sampleKeys
-valueShape
-requiredFields
-forbiddenFields
-redactionPolicy
+noValueCapturePolicy
+requiredKeyFamilies
+forbiddenKeyFamilies
+forbiddenKeyPatterns
 ownerManifest
 productionQuery
 lifecycleRule
 derivedFrom
-forbiddenFacts
+forbiddenClassifications
 status
 ```
 
@@ -264,14 +301,25 @@ status
     explicitly.
 12. Physical Redis key names remain implementation artifacts. They must not leak
     into public SDK/server contracts.
-13. Snapshot output must be redacted by default and must not print raw payload,
-    token, secret, credential, or authorization values.
-14. Production CLI code must not import runtime writer modules to discover key
-    builders.
+13. Snapshot output must avoid value capture by default and must not print raw
+    payload, token, secret, credential, or authorization values.
+14. Production proof-runner code must not import runtime writer modules to
+    discover key builders.
+15. Key-family specs must not become a second hand-written Redis key dictionary.
+    Specs should come from an owner-module manifest or generated owner fixture
+    by default. A tool-local spec is allowed only when paired with an automated
+    source drift guard that fails CI when the owner keyspace changes.
+16. Snapshot proof needs one isolated live Redis smoke. Generated fixtures are
+    sufficient for offline classify/assert behavior, but not for proving the
+    proof-runner entry can scan, filter, inspect type/length/TTL metadata, avoid
+    value capture, and clean up a real Redis namespace.
+17. No key family may be marked proven only from closed-room specs. A proven
+    family needs a current scenario or consumer roadmap that produces or
+    consumes the key family.
 
 ## Non-Goals
 
-- No Redis cleanup command in the first roadmap.
+- No Redis cleanup or mutation support in the first roadmap.
 - No production reconciliation or recovery loop.
 - No Redis HA, cluster, failover, partition, or process-kill proof.
 - No replacement for `xa-mass-trace` analyzers.
@@ -279,11 +327,12 @@ status
 - No admin HTTP workflow or operator auth support.
 - No public contract for Redis physical key names.
 - No change to runtime key writers in the first slice.
+- No item payload, handler envelope, JSON field, or Redis value-schema proof.
 
 ## Do Not Start With
 
-Do not start by optimizing Redis memory, deleting keys, or adding a cleanup
-command.
+Do not start by optimizing Redis memory, deleting keys, or adding cleanup or
+mutation support.
 
 The first useful work is to define the proof grammar and build a read-only
 snapshot/classification module. Production key convergence roadmaps can then use
@@ -303,8 +352,9 @@ Scope:
    - `xa-mass-trace`,
    - `platform_infra/mass-runtime-redis`,
    - `transport/transport_runtime`.
-5. Define bounded value-shape capture and redaction rules.
-6. Define owner-manifest or fixture drift guard requirements.
+5. Define structural snapshot capture and no-value-capture rules.
+6. Define owner-manifest or fixture drift guard requirements, including the
+   minimum owner manifest schema.
 7. Cross-link dependent Redis key convergence roadmaps.
 
 Acceptance:
@@ -313,11 +363,12 @@ Acceptance:
 2. The roadmap states that this module is read-only in the first roadmap.
 3. The roadmap defines why local key count/memory is not proof.
 4. The roadmap defines minimum report fields and key-family proof fields.
-5. The roadmap defines how forbidden facts can be checked without dumping raw
-   Redis values.
+5. The roadmap states that item/value field proof belongs to behavior/scenario
+   tests, not this proof runner.
 6. The roadmap defines how specs stay aligned with owner key builders without
    production-scope dependency on runtime writer modules.
-7. `TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md` references this roadmap
+7. The roadmap defines the minimum owner manifest schema for first-batch specs.
+8. `TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md` references this roadmap
    as proof infrastructure.
 
 ## RRKP-1: Maven Module Skeleton
@@ -331,22 +382,31 @@ Scope:
 3. Add module README with:
    - role,
    - non-goals,
-   - command list,
+   - proof verb list,
    - relationship to `xa-mass-trace` and admin-cli,
    - proof grammar summary.
-4. Add a CLI entrypoint.
-5. Add a minimal test proving the CLI can parse commands without Redis.
+4. Add a minimal proof runner entrypoint for CI/local verification.
+5. Add a minimal test proving the proof runner can parse bounded proof verbs
+   without Redis.
+6. Add CI ownership for the new module:
+   - offline proof-runner/fixture tests must run in `.github/workflows/maven.yml`
+     under the proof-credibility path,
+   - workflow path filters must include `tools/xa-mass-redis-runtime-proof/**`.
 
 Acceptance:
 
-1. `mvn -pl tools/xa-mass-redis-runtime-proof -am test` passes.
+1. `./mvnw -pl tools/xa-mass-redis-runtime-proof -am test` passes.
 2. The module does not depend on `xa-mass-engine`, `xa-mass-server`, SDK
    modules, `platform_infra/mass-runtime-redis`, `transport/transport_runtime`,
    or transport adapter implementation modules in production scope.
 3. The root module list includes only this new tool module change.
 4. The README explicitly says the module is read-only proof tooling.
 5. Any test-scope dependency on owner modules is justified as fixture/drift
-   proof and does not enter the CLI runtime classpath.
+   proof and does not enter the proof runner runtime classpath.
+6. CI runs the module's offline skeleton/fixture tests and proof summaries
+   identify Redis key proof as support proof rather than runtime behavior proof.
+7. RRKP-1 does not require a live Redis snapshot smoke; that belongs to RRKP-2
+   after `snapshot` exists.
 
 ## RRKP-2: Snapshot And Classify Atoms
 
@@ -357,14 +417,12 @@ Scope:
 1. Implement `snapshot`:
    - requires `--namespace`,
    - uses `SCAN`, not `KEYS`,
-   - captures type, TTL/PTTL, logical size, optional memory usage, and sample
-     key names,
-   - captures bounded value shape by Redis type:
-     - hash field names and field count,
-     - set/zset/list/stream member or entry shape samples with redaction,
-     - string length, digest, and optional redacted JSON field names,
-   - rejects raw-value dump unless a future roadmap explicitly adds an unsafe
-     forensic mode,
+   - captures type, TTL/PTTL, key count, type-specific length/cardinality,
+     optional memory usage, and sample key names,
+   - records current no-expiry behavior explicitly when TTL is absent,
+   - never captures hash field names, set/zset members, list entries, stream
+     fields, string values, item payload fields, or JSON field names,
+   - rejects raw-value or field-name dump modes,
    - emits JSON.
 2. Implement `classify`:
    - reads snapshot JSON,
@@ -373,35 +431,52 @@ Scope:
 3. Implement `assert`:
    - fails unknown keys in strict mode,
    - fails key families missing owner/query/lifecycle classification,
-   - fails forbidden fact markers.
+   - fails forbidden key families, key patterns, or owner classifications.
 4. Add tests using generated snapshot fixtures, not a live Redis dependency.
+5. Add one isolated live Redis snapshot smoke:
+   - uses test harness or test fixture code to create keys under a unique
+     namespace,
+   - invokes the public proof-runner `snapshot` path against Redis,
+   - proves namespace filtering, SCAN-based traversal, type/length/TTL capture,
+     no value capture, and explicit test-harness cleanup,
+   - does not use `KEYS` or scan unrelated namespaces,
+   - does not expose setup, cleanup, delete, or mutation as proof-runner verbs,
+   - leaves classify/assert behavior covered by fixture-based tests.
 
 Acceptance:
 
 1. Snapshot requires explicit namespace filters.
 2. Classification can run offline from a JSON snapshot.
 3. Strict assertion fails unknown key families.
-4. Snapshot output can prove forbidden field-name presence or absence without
-   printing forbidden values.
+4. Snapshot output proves structural metadata only and does not expose item,
+   payload, or Redis value fields.
 5. Tests cover:
    - known key,
    - unknown key,
-   - forbidden fact marker,
-   - redacted hash field-name capture,
-   - raw payload/token/secret value suppression,
+   - forbidden key family or key pattern,
+   - type/length/TTL capture, including current no-expiry behavior,
+   - raw payload/token/secret value non-capture,
    - derived key without canonical owner,
    - no namespace supplied.
+6. A Redis-backed smoke proves the real `snapshot` entry against an isolated
+   namespace, including test-harness-owned cleanup and no value capture.
+7. The smoke or Redis-client instrumentation proves snapshot traversal uses
+   SCAN semantics and never needs `KEYS`.
+8. The proof runner remains read-only; Redis writes/deletes for the live smoke
+   are owned by test harness setup/cleanup code, not by proof-runner commands.
 
 Suggested verification:
 
 ```powershell
-mvn -pl tools/xa-mass-redis-runtime-proof -am test
+.\mvnw.cmd -pl tools/xa-mass-redis-runtime-proof -am test
+.\mvnw.cmd -pl tools/xa-mass-redis-runtime-proof -am -Dtest=RedisRuntimeProofLiveSnapshotSmokeTest test
 ```
 
-## RRKP-3: First Consumer Key-Family Specs
+## RRKP-3A: Transport Presence First Consumer Specs
 
 Goal: encode the first proof specs needed by the transport presence key
-convergence roadmap without blocking on the full task/result Redis keyspace.
+convergence roadmap without blocking on worker registry or full task/result
+Redis keyspace.
 
 Scope:
 
@@ -412,38 +487,83 @@ Scope:
    - `worker-routes`,
    - `routes`,
    - `workers`.
-2. Add first-batch worker registry boundary specs:
+2. Add owner-manifest or generated-fixture drift guards for transport presence
+   specs. The default source is the transport owner module. A tool-local spec
+   must include an automated source drift guard that checks the owner keyspace
+   source or generated fixture and fails CI on drift.
+3. Mark any uncertain family as `unknown-current` or `needs-owner-review`, not
+   as proven.
+
+Acceptance:
+
+1. Every spec names owner, classification, production query, lifecycle rule,
+   forbidden key families/patterns/classifications, and the scenario or
+   consumer roadmap that needs the family.
+2. Every transport presence spec names its owner-module manifest, generated
+   fixture, or automated owner-source drift guard.
+3. The transport presence specs encode current known gaps:
+   - `workers` is write-only unless a reader is proven,
+   - `worker-routes` must either feed `findOwners(workerId)` or become residue,
+   - `worker:{workerId}` is projection/cache, not canonical route-owner truth.
+4. No task work/result runtime placeholder is added to RRKP-3A.
+5. `TRANSPORT_PRESENCE_REDIS_KEY_CONVERGENCE_ROADMAP.md` depends only on
+   RRKP-3A, not on worker registry specs.
+
+## RRKP-3B: Worker Registry Boundary Specs
+
+Goal: add worker registry key-family specs as the next consumer without making
+them a prerequisite for transport presence convergence.
+
+Scope:
+
+1. Add first-batch worker registry boundary specs:
    - group slots,
    - group heartbeat deadlines,
    - candidate buckets,
    - worker bucket membership,
    - worker group map,
    - task-worker active count.
-3. Add owner-manifest or generated-fixture drift guards for the first-batch
-   specs. The manifest may live in the owner module or in this tool module, but
-   it must name its owner source and verification scan.
-4. Add task work/result runtime only as deferred family-level placeholders:
-   - ready/delayed/lease/counter groups,
-   - stable-final result rows,
-   - result barriers or repair anchors where currently identifiable.
-5. Mark any uncertain family as `unknown-current` or `needs-owner-review`, not
-   as proven.
+2. Preserve `group:{groupId}:slots` as canonical current worker aggregate.
+3. Mark candidate buckets, membership sets, and active counts as derived views
+   unless current code proves they are canonical truth.
+4. Require owner-module manifests or generated owner fixtures from the worker
+   runtime/Redis owner. Tool-local specs must include automated owner-source
+   drift guards and CI failure on drift.
+5. Do not add task/result runtime key families to RRKP-3B; follow the Deferred
+   Specs section instead.
 
 Acceptance:
 
-1. Every spec names owner, classification, production query, lifecycle rule,
-   and forbidden facts.
-2. Every first-batch spec names its owner-manifest, generated fixture, or
-   owner-doc/residue-scan drift guard.
-3. The transport presence specs encode current known gaps:
-   - `workers` is write-only unless a reader is proven,
-   - `worker-routes` must either feed `findOwners(workerId)` or become residue,
-   - `worker:{workerId}` is projection/cache, not canonical route-owner truth.
-4. Worker registry specs preserve `group:{groupId}:slots` as canonical current
-   worker aggregate.
-5. Task/result key families remain placeholders unless a separate TaskWork or
-   TaskResult Redis key convergence roadmap promotes them.
-6. Uncertain task/result key families are not promoted to proven status.
+1. Every worker registry spec names owner, classification, production query,
+   lifecycle rule, derivation source, forbidden key families/patterns/
+   classifications, and the scenario or consumer roadmap that needs the family.
+2. `group:{groupId}:slots` remains the canonical current worker aggregate in
+   the spec and report language.
+3. Derived worker registry key families name rebuild/invalidation rules.
+4. Any tool-local worker registry spec has an automated owner-source drift
+   guard.
+5. RRKP-3B can be implemented after TPRK is unblocked; it is not required for
+   RRKP-3A acceptance.
+
+## Deferred Specs: Task Work And Result Runtime
+
+Goal: keep non-consumer Redis families visible without turning RRKP-3A into a
+closed-room key dictionary.
+
+Deferred families:
+
+- task ready/delayed/lease/counter groups,
+- stable-final result rows,
+- result barriers or repair anchors where currently identifiable.
+
+Rules:
+
+1. Deferred task/result families are not part of RRKP-3A acceptance.
+2. They stay unproven until a TaskWork or TaskResult Redis key convergence
+   roadmap names a scenario or consumer that needs them.
+3. If discovered by snapshot before such a roadmap exists, they must be reported
+   as `unknown-current`, `needs-owner-review`, or placeholder entries.
+4. They must not be promoted to proven status by local key presence alone.
 
 ## RRKP-4: Diff And Scenario Reports
 
@@ -469,7 +589,7 @@ Scope:
    - `result-runtime-stable-final-read`.
 5. Scenario report generation must not execute the runtime scenario in the
    first implementation. It assembles evidence produced by existing tests,
-   smoke runs, or manual commands.
+   smoke runs, or manual proof runs.
 
 Minimum scenario manifest fields:
 
@@ -478,7 +598,14 @@ scenarioId
 producerType
 producerId
 producerCommand
+producerExitCode
+producerArtifactPath
+producerArtifactDigest
 namespacePrefixes
+redisDb
+snapshotCommand
+snapshotToolVersion
+timestampSource
 startedAt
 endedAt
 beforeSnapshot
@@ -486,43 +613,74 @@ afterSnapshot
 expectedFamilyDeltas[]
 externalProofPaths[]
 traceAnalyzerResult
+traceAnalyzerStatus
+traceAnalyzerExitCode
 proofStatus
 ```
 
 Acceptance:
 
-1. Diff reports added/removed/changed key families and logical item deltas.
+1. Diff reports added/removed/changed key families and structural key/count/
+   TTL deltas.
 2. Scenario reports fail when required key-family deltas are missing.
 3. Scenario reports can include a `xa-mass-trace` analyzer result as
    observational proof but do not parse raw logs.
 4. No scenario report claims behavior without a named behavior-producing input.
 5. Scenario reports fail if the manifest omits producer id, namespace, expected
-   family deltas, or proof status.
-6. Task/result runtime scenarios are not required for the first TPRK-enabling
-   implementation.
+   family deltas, producer exit code, producer artifact digest, snapshot tool
+   version, Redis db/namespace, timestamp source, or proof status.
+6. Task/result runtime scenarios are not required for TPRK scenario-report
+   integration.
+7. Scenario reports remain artifact metadata unless the producer command,
+   producer exit code, artifact digest, and optional trace analyzer status are
+   present and consistent.
 
-## RRKP-5: Transport Presence Consumer Integration
+## RRKP-5A: Transport Presence Structural Integration
 
-Goal: make TPRK use the module instead of temporary scripts.
+Goal: make TPRK use the module's structural key-family proof surface instead
+of temporary scripts.
 
 Scope:
 
-1. Add a sample command sequence for transport presence key proof.
+1. Add a sample proof-runner sequence for transport presence key proof.
 2. Add fixture snapshots for:
    - empty namespace,
    - one online polling route,
    - multi-route worker,
    - stale/offline/pruned route.
-3. Update TPRK verification to call this module for key-family proof.
+3. Update TPRK verification to call this module for `snapshot`, `classify`, and
+   `assert` key-family proof.
 4. Keep production TPRK code changes separate from this tools roadmap.
 
 Acceptance:
 
-1. TPRK can use `snapshot`, `classify`, `diff`, and `scenario` reports as its
+1. TPRK can use `snapshot`, `classify`, and `assert` as its structural
    key-existence proof surface.
 2. Temporary scripts are no longer required for TPRK review.
 3. The report flags `workers` and Redis `findOwners`/`worker-routes` gaps until
    production code resolves them.
+4. RRKP-5A does not require `diff` or `scenario`; those belong to RRKP-5B after
+   RRKP-4 exists.
+
+## RRKP-5B: Transport Presence Scenario Report Integration
+
+Goal: make TPRK consume diff/scenario proof after the report assembler exists.
+
+Scope:
+
+1. Update TPRK verification to include `diff` and `scenario` reports produced
+   by RRKP-4.
+2. Use behavior-producing transport presence evidence as the scenario input.
+3. Keep broader worker-registry and task/result scenarios outside TPRK
+   acceptance.
+
+Acceptance:
+
+1. TPRK can use `diff` and `scenario` reports after RRKP-4 is implemented.
+2. TPRK scenario reports fail when expected transport presence key-family
+   deltas are missing.
+3. No TPRK scenario report claims runtime behavior without named
+   behavior-producing evidence.
 
 ## RRKP-6: Proof Registry And Testing Index Placement
 
@@ -537,6 +695,14 @@ Scope:
 3. Update `platform_infra/mass-runtime-redis/README.md` and
    `transport/TRANSPORT_BOUNDARY_BASELINE.md` only with cross-links after the
    module exists.
+4. Update CI workflows so the new module cannot drift outside protected
+   verification:
+   - `.github/workflows/maven.yml` proof-credibility runs offline module tests,
+   - `.github/workflows/redis-runtime.yml` includes
+     `tools/xa-mass-redis-runtime-proof/**` path filters and runs the live
+     Redis snapshot smoke,
+   - proof summary inputs include the tool module reports and label the result
+     as support proof.
 
 Acceptance:
 
@@ -544,16 +710,21 @@ Acceptance:
 2. Docs say Redis key proof is a companion for runtime truth owner review and
    residue detection.
 3. No registry row claims Redis key proof alone as primary behavior proof.
+4. CI gates run offline tests and the Redis-backed snapshot smoke for
+   `tools/xa-mass-redis-runtime-proof`.
+5. CI proof summaries identify Redis key proof as support proof.
 
 ## Suggested Implementation Order
 
 1. RRKP-0 roadmap and TPRK dependency link.
 2. RRKP-1 Maven module skeleton.
 3. RRKP-2 snapshot/classify/assert atoms.
-4. RRKP-3 first consumer key-family specs.
-5. RRKP-4 diff/scenario reports.
-6. RRKP-5 TPRK consumer integration.
-7. RRKP-6 proof registry/testing index placement.
+4. RRKP-3A transport presence first consumer specs.
+5. RRKP-5A TPRK structural integration can start after RRKP-3A is accepted.
+6. RRKP-3B worker registry boundary specs.
+7. RRKP-4 diff/scenario reports.
+8. RRKP-5B TPRK scenario report integration after RRKP-4 exists.
+9. RRKP-6 proof registry/testing index and CI placement.
 
 ## Roadmap Completion Criteria
 
@@ -565,20 +736,22 @@ This roadmap is complete only when:
    status, while marking deferred task/result families as placeholders or
    `needs-owner-review`.
 4. It can fail unknown/residue/forbidden key families in strict mode.
-5. It can check forbidden field names through bounded redacted value-shape
-   capture.
+5. It can snapshot structural metadata without reading or emitting item,
+   payload, member, entry, hash-field, or string values.
 6. First-batch specs are tied to owner manifests, generated fixtures, or
    owner-doc/residue-scan drift guards.
 7. It can produce diff and scenario reports from before/after snapshots.
-8. TPRK can use it as the key-existence proof surface.
+8. TPRK can use structural proof and scenario report proof without temporary
+   scripts.
 9. Active docs explain that Redis key proof is support proof, not behavior
    proof by itself.
-10. Focused module tests pass.
+10. Focused module tests and the isolated live Redis snapshot smoke pass.
+11. CI workflows run the module tests/smoke and collect proof summary reports.
 
 ## Open Decisions
 
 1. Whether the first implementation should use only built-in specs or allow
-   external JSON spec files from the command line.
+   external JSON spec files as bounded proof-runner inputs.
 2. Whether live Redis snapshot should include `MEMORY USAGE` by default or only
    behind an explicit flag.
 3. Whether future scenario command execution belongs in this module or remains
