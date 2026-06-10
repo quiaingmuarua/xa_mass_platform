@@ -1453,6 +1453,39 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void upperRuntimeCallersUseWorkerRegistrySemanticOperations() throws IOException {
+        Path repo = repositoryRoot();
+        Map<String, Path> productionRoots = Map.of(
+                "engine", repo.resolve("xa-mass-engine/src/main/java"),
+                "worker-runtime", repo.resolve("xa-mass-worker-runtime/src/main/java")
+        );
+        Map<String, Pattern> forbiddenPatterns = Map.of(
+                "slotByWorkerId", Pattern.compile("\\.slotByWorkerId\\s*\\("),
+                "markSlotRemoving", Pattern.compile("\\.markSlotRemoving\\s*\\("),
+                "workerIdsByGroupId", Pattern.compile("\\.workerIdsByGroupId\\s*\\("),
+                "workerIdsByAdapterNodeGroup", Pattern.compile("\\.workerIdsByAdapterNodeGroup\\s*\\(")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : productionRoots.values()) {
+            for (Path sourcePath : javaSourceFiles(root)) {
+                String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+                for (Map.Entry<String, Pattern> forbidden : forbiddenPatterns.entrySet()) {
+                    if (forbidden.getValue().matcher(source).find()) {
+                        violations.add(sourcePath + " calls physical WorkerRegistry operation: " + forbidden.getKey());
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Engine and worker-runtime production callers must consume WorkerRegistry semantic operations "
+                        + "such as workerMeta, worker-id admission, and node/group bulk gates. "
+                        + "Slot and worker-id-set APIs are implementation/contract surfaces only:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerManagerDoesNotOwnSecondWorkerRowCopy() throws IOException {
         Path workerManagerPath = WORKER_MANAGER_SOURCE;
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
@@ -1874,6 +1907,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "RandomWorkerCandidateSamplingPolicy.java",
                 "ReserveResult.java",
                 "ReserveStatus.java",
+                "WorkerAdmissionSnapshot.java",
                 "WorkerCandidateSamplingContext.java",
                 "WorkerCandidateSamplingPolicy.java",
                 "WorkerMeta.java",

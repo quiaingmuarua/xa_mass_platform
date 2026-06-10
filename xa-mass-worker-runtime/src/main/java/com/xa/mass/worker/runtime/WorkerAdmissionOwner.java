@@ -2,7 +2,6 @@ package com.xa.mass.worker.runtime;
 
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.ReserveResult;
-import com.xa.mass.runtime.worker.ReserveStatus;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 
@@ -21,14 +20,11 @@ public final class WorkerAdmissionOwner {
     }
 
     public boolean tryAcquireWorkerExclusiveLease(String workerId) {
-        return workerRegistry.slotByWorkerId(workerId)
-                .map(slot -> workerRegistry.tryAcquireExclusiveLease(slot.groupId(), slot.workerId()))
-                .orElse(false);
+        return workerRegistry.tryAcquireExclusiveLease(workerId);
     }
 
     public void releaseWorkerExclusiveLease(String workerId) {
-        workerRegistry.slotByWorkerId(workerId)
-                .ifPresent(slot -> workerRegistry.releaseExclusiveLease(slot.groupId(), slot.workerId()));
+        workerRegistry.releaseExclusiveLease(workerId);
     }
 
     public boolean hasWorkerExclusiveLease(String workerId) {
@@ -40,12 +36,12 @@ public final class WorkerAdmissionOwner {
     }
 
     public WorkerLoadSnapshot getWorkerLoad(String workerId) {
-        return workerRegistry.slotByWorkerId(workerId)
-                .map(slot -> new WorkerLoadSnapshot(
-                        slot.workerId(),
-                        slot.activeLeaseCount(),
-                        slot.reservedCount(),
-                        slot.declaredCapacity()
+        return workerRegistry.workerAdmissionSnapshot(workerId)
+                .map(snapshot -> new WorkerLoadSnapshot(
+                        snapshot.workerId(),
+                        snapshot.activeLeaseCount(),
+                        snapshot.reservedCount(),
+                        snapshot.declaredCapacity()
                 ))
                 .orElseGet(() -> WorkerLoadSnapshot.empty(workerId));
     }
@@ -55,36 +51,23 @@ public final class WorkerAdmissionOwner {
     }
 
     public WorkerAdmissionResult reserveWorkerCapacity(String workerId, String taskId) {
-        ReserveResult reserveResult = workerRegistry.slotByWorkerId(workerId)
-                .map(slot -> workerRegistry.tryReserve(
-                        slot.groupId(),
-                        slot.workerId(),
-                        taskId,
-                        1,
-                        System.currentTimeMillis()
-                ))
-                .orElseGet(() -> ReserveResult.rejected(ReserveStatus.MISSING_SLOT, "worker slot missing"));
+        ReserveResult reserveResult = workerRegistry.tryReserve(workerId, taskId, 1, System.currentTimeMillis());
         return WorkerAdmissionResult.fromReserveResult(reserveResult);
     }
 
     public boolean confirmWorkerReservation(String workerId, String taskId) {
-        return workerRegistry.slotByWorkerId(workerId)
-                .map(slot -> workerRegistry.confirmReservation(slot.groupId(), slot.workerId(), taskId, 1))
-                .orElse(false);
+        return workerRegistry.confirmReservation(workerId, taskId, 1);
     }
 
     public void releaseWorkerReservation(String workerId, String taskId) {
-        workerRegistry.slotByWorkerId(workerId)
-                .ifPresent(slot -> workerRegistry.releaseReservation(slot.groupId(), slot.workerId(), taskId, 1));
+        workerRegistry.releaseReservation(workerId, taskId, 1);
     }
 
     public void recordWorkClaimed(String workerId, String taskId) {
-        workerRegistry.slotByWorkerId(workerId)
-                .ifPresent(slot -> workerRegistry.recordWorkClaimed(slot.groupId(), slot.workerId(), taskId, 1));
+        workerRegistry.recordWorkClaimed(workerId, taskId, 1);
     }
 
     public void recordWorkFinal(String workerId, String taskId) {
-        workerRegistry.slotByWorkerId(workerId)
-                .ifPresent(slot -> workerRegistry.recordWorkFinal(slot.groupId(), slot.workerId(), taskId, 1));
+        workerRegistry.recordWorkFinal(workerId, taskId, 1);
     }
 }

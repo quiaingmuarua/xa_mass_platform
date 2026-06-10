@@ -3,7 +3,7 @@ package com.xa.mass.worker.runtime;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
-import com.xa.mass.runtime.worker.WorkerSlot;
+import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 
@@ -126,27 +126,27 @@ public final class WorkerCandidateIndex {
         if (normalizedWorkerId == null) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.MISSING_WORKER);
         }
-        Optional<WorkerSlot> slot = workerRegistry.slotByWorkerId(normalizedWorkerId);
-        if (slot.isEmpty()) {
+        Optional<WorkerMeta> meta = workerRegistry.workerMeta(normalizedWorkerId);
+        if (meta.isEmpty()) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.MISSING_SLOT);
         }
-        WorkerSlot currentSlot = slot.orElseThrow();
+        WorkerMeta currentMeta = meta.orElseThrow();
         String normalizedGroupId = normalizeNullable(selectedGroupId);
-        if (normalizedGroupId == null || !normalizedGroupId.equals(currentSlot.groupId())) {
+        if (normalizedGroupId == null || !normalizedGroupId.equals(currentMeta.groupId())) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.GROUP_MISMATCH);
         }
-        if (snapshot.group(currentSlot.groupId()).isEmpty()) {
+        if (snapshot.group(currentMeta.groupId()).isEmpty()) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.MISSING_GROUP);
         }
         String normalizedAdapterNodeId = normalizeNullable(observedAdapterNodeId);
-        if (normalizedAdapterNodeId != null && !normalizedAdapterNodeId.equals(currentSlot.adapterNodeId())) {
+        if (normalizedAdapterNodeId != null && !normalizedAdapterNodeId.equals(currentMeta.adapterNodeId())) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.ADAPTER_NODE_MISMATCH);
         }
         String candidateBucketKey = normalizeNullable(observedCandidateBucketKey);
         if (candidateBucketKey == null) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.CANDIDATE_BUCKET_MISMATCH);
         }
-        Set<String> currentWorkerCandidateBucketKeys = candidateBucketPolicy.candidateBucketKeysForWorkerMeta(currentSlot.meta());
+        Set<String> currentWorkerCandidateBucketKeys = candidateBucketPolicy.candidateBucketKeysForWorkerMeta(currentMeta);
         if (!currentWorkerCandidateBucketKeys.contains(candidateBucketKey)) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.CANDIDATE_BUCKET_MISMATCH);
         }

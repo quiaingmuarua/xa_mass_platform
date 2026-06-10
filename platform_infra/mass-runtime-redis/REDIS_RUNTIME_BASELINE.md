@@ -289,6 +289,9 @@ Per-group heartbeat, slot, and candidate indexes:
   - owns current worker metadata projection, dispatch-gate inputs, reservation
     counters, active lease counters, exclusive lease flag, and removing flag as
     one encoded aggregate
+  - upper runtime callers should not depend on this physical aggregate; they
+    should use `WorkerRegistry` semantic methods such as `workerMeta(workerId)`,
+    worker-id admission operations, and dispatch-gate operations
 - `...:group:{groupId}:bucket:{candidateBucketKey}:workers`
   - `SET`
   - member: `workerId`

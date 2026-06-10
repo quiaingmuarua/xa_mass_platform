@@ -6,7 +6,7 @@ Status: current shared runtime contract module.
 
 - owns the `TaskWorkRuntime` abstraction
 - owns queue/lease/result/counter value types used by runtime hot paths
-- owns the shared `WorkerRegistry` / `WorkerSlot` contract plus worker
+- owns the shared `WorkerRegistry` semantic contract plus current worker
   registry primitives used by memory and Redis worker registry implementations
 - provides a shared boundary for engine, transport runtime, server bootstrap, and test harnesses
 
@@ -16,8 +16,11 @@ Status: current shared runtime contract module.
 - active lease truth
 - runtime result-apply outcomes
 - runtime counters and bounded runtime stats
-- worker registry slot, reserve, gate-source, candidate-bucket SPI, and candidate
-  sampling contracts
+- worker registry metadata lookup, worker-id admission/gate operations,
+  candidate acquisition, and candidate sampling contracts
+- current slot/group-scoped registry primitives required by memory and Redis
+  implementation parity while worker-runtime callers converge on semantic
+  methods
 
 ## What Does Not Belong Here
 

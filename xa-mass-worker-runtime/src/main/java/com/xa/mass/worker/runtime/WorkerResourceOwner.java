@@ -74,7 +74,7 @@ public final class WorkerResourceOwner {
         boolean deleted = workerStorage.deleteWorker(workerId);
         if (deleted) {
             synchronized (lock) {
-                markWorkerRegistrySlotRemoving(existing, "worker deleted");
+                markWorkerRemoving(existing, "worker deleted");
             }
         }
         return deleted;
@@ -99,12 +99,12 @@ public final class WorkerResourceOwner {
         workerRegistry.upsertSlot(meta, worker.getMaxConcurrentWork(), groupOwner.eventBindingCeilingFor(meta.groupId()));
     }
 
-    private void markWorkerRegistrySlotRemoving(Worker worker, String reason) {
+    private void markWorkerRemoving(Worker worker, String reason) {
         WorkerMeta meta = workerMeta(worker);
         if (meta == null) {
             return;
         }
-        workerRegistry.markSlotRemoving(meta.groupId(), meta.workerId(), reason);
+        workerRegistry.markWorkerRemoving(meta.workerId(), reason);
     }
 
     private WorkerMeta workerMeta(Worker worker) {
@@ -168,8 +168,7 @@ public final class WorkerResourceOwner {
 
     private Worker toWorkerWithRuntimeState(WorkerDeclarationRecord declaration) {
         Worker worker = toWorker(declaration);
-        workerRegistry.slotByWorkerId(worker.getWorkerId()).ifPresent(slot -> {
-            WorkerMeta meta = slot.meta();
+        workerRegistry.workerMeta(worker.getWorkerId()).ifPresent(meta -> {
             worker.setStatus(toWorkerStatus(meta.diagnosticStatus()));
             if (meta.lastHeartbeatMillis() > 0L) {
                 worker.setLastHeartbeat(LocalDateTime.ofInstant(

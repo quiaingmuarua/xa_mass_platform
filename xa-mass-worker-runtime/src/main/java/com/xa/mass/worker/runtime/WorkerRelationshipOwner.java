@@ -231,9 +231,9 @@ public final class WorkerRelationshipOwner {
         synchronized (lock) {
             NodeGroupBindingRecord binding = nodeGroupBindingsByKey.get(NodeGroupBindingKey.from(adapterNodeId, groupId));
             if (binding != null && (!binding.enabled() || binding.draining())) {
-                disableWorkerDispatch(worker.getWorkerId());
+                workerRegistry.disableDispatch(worker.getWorkerId(), NODE_GROUP_BINDING);
             } else if (binding != null) {
-                clearWorkerDispatchDisable(worker.getWorkerId());
+                workerRegistry.clearDispatchDisable(worker.getWorkerId(), NODE_GROUP_BINDING);
             }
         }
     }
@@ -253,45 +253,31 @@ public final class WorkerRelationshipOwner {
     }
 
     private void applyNodeGroupBindingDispatchGate(NodeGroupBindingRecord binding) {
-        Set<String> workerIds = workerRegistry.workerIdsByAdapterNodeGroup(
-                binding.adapterNodeId(),
-                binding.groupId()
-        );
-        for (String workerId : workerIds) {
-            if (!binding.enabled() || binding.draining()) {
-                disableWorkerDispatch(workerId);
-            } else {
-                clearWorkerDispatchDisable(workerId);
-            }
+        if (!binding.enabled() || binding.draining()) {
+            disableWorkerDispatchForNodeGroup(binding);
+        } else {
+            clearWorkerDispatchDisableForNodeGroup(binding);
         }
     }
 
     private void applyNodeGroupBindingUnavailable(NodeGroupBindingRecord binding) {
-        Set<String> workerIds = workerRegistry.workerIdsByAdapterNodeGroup(
+        disableWorkerDispatchForNodeGroup(binding);
+    }
+
+    private void disableWorkerDispatchForNodeGroup(NodeGroupBindingRecord binding) {
+        workerRegistry.disableDispatchForAdapterNodeGroup(
                 binding.adapterNodeId(),
-                binding.groupId()
+                binding.groupId(),
+                NODE_GROUP_BINDING
         );
-        for (String workerId : workerIds) {
-            disableWorkerDispatch(workerId);
-        }
     }
 
-    private void disableWorkerDispatch(String workerId) {
-        workerRegistry.slotByWorkerId(workerId)
-                .ifPresent(slot -> workerRegistry.disableDispatch(
-                        slot.groupId(),
-                        slot.workerId(),
-                        NODE_GROUP_BINDING
-                ));
-    }
-
-    private void clearWorkerDispatchDisable(String workerId) {
-        workerRegistry.slotByWorkerId(workerId)
-                .ifPresent(slot -> workerRegistry.clearDispatchDisable(
-                        slot.groupId(),
-                        slot.workerId(),
-                        NODE_GROUP_BINDING
-                ));
+    private void clearWorkerDispatchDisableForNodeGroup(NodeGroupBindingRecord binding) {
+        workerRegistry.clearDispatchDisableForAdapterNodeGroup(
+                binding.adapterNodeId(),
+                binding.groupId(),
+                NODE_GROUP_BINDING
+        );
     }
 
     private void notifyDispatchWakeup(String reason) {

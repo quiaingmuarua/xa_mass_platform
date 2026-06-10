@@ -62,6 +62,36 @@ public abstract class WorkerRegistryContractTest {
     }
 
     @Test
+    void workerIdSemanticAdmissionMethodsDoNotRequireCallerToKnowGroupStorage() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(meta("worker-1", "group-a"), 2, Set.of(eventKey()));
+
+        assertEquals("group-a", registry.workerMeta("worker-1").orElseThrow().groupId());
+        assertTrue(registry.tryReserve("worker-1", "task-1", 1, 1000).accepted());
+        assertEquals(1, registry.workerAdmissionSnapshot("worker-1").orElseThrow().reservedCount());
+        assertTrue(registry.confirmReservation("worker-1", "task-1", 1));
+        assertEquals(1, registry.workerAdmissionSnapshot("worker-1").orElseThrow().activeLeaseCount());
+
+        registry.recordWorkFinal("worker-1", "task-1", 1);
+        assertEquals(0, registry.workerAdmissionSnapshot("worker-1").orElseThrow().activeLeaseCount());
+        assertEquals(0, registry.activeWorkerCountForTask("task-1"));
+    }
+
+    @Test
+    void workerIdSemanticDispatchGateMethodsHideSlotGroupLookup() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));
+
+        assertTrue(registry.isDispatchEnabled("worker-1"));
+        assertTrue(registry.disableDispatch("worker-1", WORKER_COMMAND));
+        assertFalse(registry.isDispatchEnabled("worker-1"));
+        assertEquals(ReserveStatus.DISPATCH_DISABLED,
+                registry.tryReserve("worker-1", "task-1", 1, 1000).status());
+        assertTrue(registry.clearDispatchDisable("worker-1", WORKER_COMMAND));
+        assertTrue(registry.isDispatchEnabled("worker-1"));
+    }
+
+    @Test
     void slotMembershipQueriesComeFromRegistryTruth() {
         WorkerRegistry registry = createRegistry();
         registry.upsertSlot(meta("worker-a", "group-a"), 1, Set.of(eventKey()));
@@ -71,6 +101,39 @@ public abstract class WorkerRegistryContractTest {
         assertEquals(Set.of("worker-a", "worker-b"), registry.workerIdsByGroupId("group-a"));
         assertEquals(Set.of("worker-a", "worker-b"), registry.workerIdsByAdapterNodeGroup("node-a", "group-a"));
         assertEquals(Set.of(), registry.workerIdsByAdapterNodeGroup("node-b", "group-a"));
+    }
+
+    @Test
+    void bulkGroupRemovalIsSemanticAndDoesNotRequireCallerToListWorkers() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(meta("worker-a", "group-a"), 1, Set.of(eventKey()));
+        registry.upsertSlot(meta("worker-b", "group-a"), 1, Set.of(eventKey()));
+        registry.upsertSlot(meta("worker-c", "group-b"), 1, Set.of(eventKey()));
+
+        assertEquals(2, registry.markWorkersRemovingByGroup("group-a", "group deleted"));
+        assertEquals(ReserveStatus.REMOVING_SLOT,
+                registry.tryReserve("worker-a", "task-a", 1, 1000).status());
+        assertEquals(ReserveStatus.REMOVING_SLOT,
+                registry.tryReserve("worker-b", "task-b", 1, 1000).status());
+        assertTrue(registry.tryReserve("worker-c", "task-c", 1, 1000).accepted());
+    }
+
+    @Test
+    void bulkNodeGroupDispatchGateIsSemanticAndDoesNotRequireCallerToListWorkers() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(meta("worker-a", "group-a"), 1, Set.of(eventKey()));
+        registry.upsertSlot(meta("worker-b", "group-a"), 1, Set.of(eventKey()));
+        registry.upsertSlot(meta("worker-c", "group-b"), 1, Set.of(eventKey()));
+
+        assertEquals(2, registry.disableDispatchForAdapterNodeGroup("node-a", "group-a", WORKER_STATE));
+        assertFalse(registry.isDispatchEnabled("worker-a"));
+        assertFalse(registry.isDispatchEnabled("worker-b"));
+        assertTrue(registry.isDispatchEnabled("worker-c"));
+        assertEquals(0, registry.disableDispatchForAdapterNodeGroup("node-b", "group-a", WORKER_STATE));
+
+        assertEquals(2, registry.clearDispatchDisableForAdapterNodeGroup("node-a", "group-a", WORKER_STATE));
+        assertTrue(registry.isDispatchEnabled("worker-a"));
+        assertTrue(registry.isDispatchEnabled("worker-b"));
     }
 
     @Test

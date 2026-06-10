@@ -58,9 +58,7 @@ public final class WorkerGroupOwner {
             if (removed == null) {
                 return false;
             }
-            for (String workerId : workerRegistry.workerIdsByGroupId(normalizedGroupId)) {
-                workerRegistry.markSlotRemoving(normalizedGroupId, workerId, "worker group deleted");
-            }
+            workerRegistry.markWorkersRemovingByGroup(normalizedGroupId, "worker group deleted");
             return true;
         }
     }

@@ -316,21 +316,15 @@ public class WorkerManager implements WorkerResourceRuntime,
     }
 
     public boolean isWorkerDispatchEnabled(String workerId) {
-        return workerRegistry.slotByWorkerId(workerId)
-                .map(slot -> !slot.removing() && slot.dispatchEnabled())
-                .orElse(false);
+        return workerRegistry.isDispatchEnabled(workerId);
     }
 
     public boolean disableWorkerDispatch(String workerId, DispatchAvailabilitySource source, String reason) {
-        return workerRegistry.slotByWorkerId(workerId)
-                .map(slot -> workerRegistry.disableDispatch(slot.groupId(), slot.workerId(), source))
-                .orElse(false);
+        return workerRegistry.disableDispatch(workerId, source);
     }
 
     public boolean clearWorkerDispatchDisable(String workerId, DispatchAvailabilitySource source, String reason) {
-        return workerRegistry.slotByWorkerId(workerId)
-                .map(slot -> workerRegistry.clearDispatchDisable(slot.groupId(), slot.workerId(), source))
-                .orElse(false);
+        return workerRegistry.clearDispatchDisable(workerId, source);
     }
 
     public void setDispatchWakeupCallback(Runnable dispatchWakeupCallback) {
