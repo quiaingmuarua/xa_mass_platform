@@ -1,17 +1,20 @@
 # Transport Presence Redis Key Convergence Roadmap
 
-Status: proposed direction document.
+Status: active priority roadmap; Redis proof-runner work is deferred until this
+keyspace converges.
 
 This roadmap converges the Redis key model for transport-owned worker
 reachability and route ownership. It also records the boundary between
 transport presence keys and the worker runtime Redis keys discussed in
 [2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md](../doc/archive/core/2026-06-08_WORKER_RUNTIME_STATE_DIMENSION_INDEXING_ROADMAP.md).
 
-This roadmap depends on
-[REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md](./REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md)
-for reusable Redis key-family proof. Temporary scripts may be used for local
-inventory while that module does not exist, but they cannot close this roadmap's
-key-existence proof.
+This roadmap is the prerequisite for
+[REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md](./REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md),
+not the other way around. The reusable proof runner should be built after the
+transport presence keyspace is converged enough that it is worth codifying.
+During this roadmap, committed Python or Node utilities may be used for local
+Redis inventory/probes, including third-party Redis libraries. Avoid Bash-only
+scripts because they are hard to reuse across local and CI environments.
 
 This is not a Redis sizing roadmap. Local Redis scans may inventory current
 key families, but they do not prove scale risk and they do not prove that a key
@@ -274,9 +277,14 @@ Scope:
    them directly.
 7. Local Redis keyspace scans may be included as empirical samples, but only as
    inventory evidence. They must not be used as scale proof.
-8. If `tools/xa-mass-redis-runtime-proof` is not implemented yet, any temporary
-   scan output is recorded as provisional inventory and must be replayed through
-   that module before TPRK completion.
+8. Temporary inventory/probe tooling may be implemented in Python or Node, may
+   use third-party Redis libraries, and must be committed or otherwise
+   replayable. One-off Bash pipelines or console screenshots are not accepted
+   as roadmap evidence.
+9. Temporary probes should record only structural key evidence needed for this
+   roadmap: key family, Redis type, key count/cardinality, TTL/PTTL, namespace,
+   and sample key names. They must not validate item payload schema, worker
+   declaration fields, or task/result value structure.
 
 Acceptance:
 
@@ -293,6 +301,8 @@ Acceptance:
    as derived-cache or residue, not canonical truth.
 6. No implementation change is made in this slice except inventory/doc
    corrections.
+7. If a temporary Redis probe is added, it is documented as support inventory
+   for TPRK only, not as a reusable proof-runner contract.
 
 Suggested checks:
 
@@ -300,6 +310,14 @@ Suggested checks:
 rg -n "markOnline\\(|refreshHeartbeat\\(|markOffline\\(|getPresence\\(|findOwners\\(|isRouteOnline\\(|listActivePresences\\(|pruneExpired\\(" transport xa-mass-server sdk integrations --glob '!**/target/**'
 rg -n "route-presence|worker-routes|routeKey\\(|workerKey\\(|workerRoutesKey\\(|routesKey\\(" transport/transport_runtime/src/main/java transport/transport_runtime/src/test/java --glob '!**/target/**'
 rg -n "groupSlotsHash|groupHeartbeatDeadlinesZset|groupCandidateBucket|workerBucketMembershipSet|taskWorkerActiveCountsHash" platform_infra/mass-runtime-redis/src/main/java platform_infra/mass-runtime-redis/src/test/java --glob '!**/target/**'
+```
+
+Temporary probe guidance:
+
+```powershell
+# Prefer a committed Python or Node script when Redis samples are useful.
+# The script may use a normal Redis client library and must use bounded SCAN
+# over explicit namespace prefixes. It must not use KEYS or delete data.
 ```
 
 ## TPRK-1: Canonical Presence Owner Decision
@@ -470,10 +488,10 @@ Acceptance:
 Suggested verification:
 
 ```powershell
-mvn -pl transport/transport_runtime -am "-Dtest=RedisWorkerPresenceStoreTest,InMemoryWorkerPresenceStoreTest,WorkerDispatchRouteSelectorTest,NodeTargetedTaskDispatchSubmitterTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+.\mvnw.cmd -pl transport/transport_runtime -am "-Dtest=RedisWorkerPresenceStoreTest,InMemoryWorkerPresenceStoreTest,WorkerDispatchRouteSelectorTest,NodeTargetedTaskDispatchSubmitterTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 
 # If Spring/server assembly changes:
-mvn -pl xa-mass-server -am "-Dtest=ExternalWorkerPollingApiIntegrationTest,JavaExternalSdkPollingSessionIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+.\mvnw.cmd -pl xa-mass-server -am "-Dtest=ExternalWorkerPollingApiIntegrationTest,JavaExternalSdkPollingSessionIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## Suggested Implementation Order
@@ -485,9 +503,11 @@ mvn -pl xa-mass-server -am "-Dtest=ExternalWorkerPollingApiIntegrationTest,JavaE
 5. TPRK-4 docs and guards.
 6. TPRK-5 proof bundle.
 
-Do not mark TPRK complete until `tools/xa-mass-redis-runtime-proof` or an
-equivalent committed module can produce key-family classification and scenario
-reports for the transport presence namespace.
+Do not build `tools/xa-mass-redis-runtime-proof` as part of this roadmap unless
+TPRK has already converged the keyspace and the remaining work is only to
+codify stable structural proof. Temporary Python/Node probes are acceptable
+support evidence during TPRK; the reusable proof-runner is a successor
+roadmap.
 
 ## Roadmap Completion Criteria
 
@@ -509,8 +529,10 @@ This roadmap is complete only when:
    WRSI worker runtime key roadmap.
 9. Focused Redis/memory transport presence tests and route-owner dispatch tests
    pass.
-10. Redis key-family proof is generated by the committed proof module from
-    `REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md`, not only by ad hoc scripts.
+10. Redis key-family evidence is captured by focused behavior tests plus
+    replayable Python/Node structural probes. The successor proof-runner
+    roadmap may later replace the temporary probes after the key model is
+    stable.
 
 ## Open Decisions
 
