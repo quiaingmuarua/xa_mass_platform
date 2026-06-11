@@ -85,6 +85,7 @@ public final class RouteTargetedTaskDispatchListener implements RouteTargetedTas
                             delivery.adapterId(),
                             delivery.routeKey(),
                             null,
+                            delivery.selectedWorkerId(),
                             payload
                     ));
         }

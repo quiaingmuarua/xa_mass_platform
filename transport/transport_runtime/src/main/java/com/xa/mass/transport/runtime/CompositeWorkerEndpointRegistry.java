@@ -57,9 +57,9 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
     }
 
     @Override
-    public synchronized boolean sendToAdapterRoute(String adapterId, String routeKey, String workerId, String message) {
+    public synchronized boolean sendToSelectedWorker(String adapterId, String selectedWorkerId, String message) {
         WorkerEndpointRegistry registry = registryForAdapter(adapterId);
-        return registry != null && registry.sendToAdapterRoute(adapterId, routeKey, workerId, message);
+        return registry != null && registry.sendToSelectedWorker(adapterId, selectedWorkerId, message);
     }
 
     @Override

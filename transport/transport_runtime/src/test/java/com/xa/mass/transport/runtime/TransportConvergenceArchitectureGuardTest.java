@@ -99,10 +99,47 @@ class TransportConvergenceArchitectureGuardTest {
     void directDispatchChannelsUseEnvelopeSelectedWorkerConstraint() throws IOException {
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher"),
-                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher")
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketTaskDispatchChannel.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java")
                 ),
-                "payloadString(TransportPacket.PAYLOAD_WORKER_ID)"
+                "payloadString(TransportPacket.PAYLOAD_WORKER_ID)",
+                "sendToAdapterRoute("
+        );
+    }
+
+    @Test
+    void endpointRegistryCannotFallbackSelectedWorkerSendToRouteOnlySend() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointRegistry.java")),
+                "default boolean sendToAdapterRoute",
+                "return sendToAdapterRoute(adapterId, routeKey, message)"
+        );
+    }
+
+    @Test
+    void routeTargetedProducerDoesNotUseRouteOwnerScansForSelectedWorkerLookup() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/worker/RouteTargetedTaskDispatchSubmitter.java")),
+                "activeOwners(",
+                "currentOwners("
+        );
+    }
+
+    @Test
+    void routeTargetedDispatchCodecDoesNotNestTaskBatchJson() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/dispatch/RouteTargetedTaskDispatchBatchCodec.java")),
+                "taskBatchJson"
+        );
+    }
+
+    @Test
+    void redisDispatchHandoffUsesAdapterLaneQueues() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/dispatch/RedisRouteTargetedTaskDispatchHandoff.java")),
+                "\":route:\"",
+                "ready-routes",
+                "routeQueueKey("
         );
     }
 

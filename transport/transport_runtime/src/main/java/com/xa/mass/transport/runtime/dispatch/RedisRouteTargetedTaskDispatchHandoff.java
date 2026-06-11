@@ -12,12 +12,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Redis-backed route-key dispatch handoff.
+ * Redis-backed adapter-lane dispatch handoff.
  */
 public final class RedisRouteTargetedTaskDispatchHandoff implements RouteTargetedTaskDispatchHandoff, AutoCloseable {
 
     public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.DISPATCH_ROUTE;
-    public static final int DEFAULT_MAX_QUEUED_BATCHES_PER_ROUTE = 100_000;
+    public static final int DEFAULT_MAX_QUEUED_BATCHES_PER_LANE = 100_000;
     private static final long POLL_SLEEP_MILLIS = 50L;
     private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
 
@@ -26,7 +26,7 @@ public final class RedisRouteTargetedTaskDispatchHandoff implements RouteTargete
     private final RedisCommands<String, String> commands;
     private final String namespacePrefix;
     private final String localTransportNodeId;
-    private final int maxQueuedBatchesPerRoute;
+    private final int maxQueuedBatchesPerLane;
     private final boolean ownsClient;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final RouteTargetedTaskDispatchBatchCodec codec = new RouteTargetedTaskDispatchBatchCodec();
@@ -34,12 +34,12 @@ public final class RedisRouteTargetedTaskDispatchHandoff implements RouteTargete
     public RedisRouteTargetedTaskDispatchHandoff(String redisUri,
                                                  String namespacePrefix,
                                                  String localTransportNodeId,
-                                                 int maxQueuedBatchesPerRoute) {
+                                                 int maxQueuedBatchesPerLane) {
         this(
                 RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 namespacePrefix,
                 localTransportNodeId,
-                maxQueuedBatchesPerRoute,
+                maxQueuedBatchesPerLane,
                 true
         );
     }
@@ -47,14 +47,14 @@ public final class RedisRouteTargetedTaskDispatchHandoff implements RouteTargete
     RedisRouteTargetedTaskDispatchHandoff(RedisClient redisClient,
                                           String namespacePrefix,
                                           String localTransportNodeId,
-                                          int maxQueuedBatchesPerRoute,
+                                          int maxQueuedBatchesPerLane,
                                           boolean ownsClient) {
         this(
                 redisClient,
                 Objects.requireNonNull(redisClient, "redisClient").connect(),
                 namespacePrefix,
                 localTransportNodeId,
-                maxQueuedBatchesPerRoute,
+                maxQueuedBatchesPerLane,
                 ownsClient
         );
     }
@@ -62,25 +62,25 @@ public final class RedisRouteTargetedTaskDispatchHandoff implements RouteTargete
     RedisRouteTargetedTaskDispatchHandoff(StatefulRedisConnection<String, String> connection,
                                           String namespacePrefix,
                                           String localTransportNodeId,
-                                          int maxQueuedBatchesPerRoute) {
-        this(null, connection, namespacePrefix, localTransportNodeId, maxQueuedBatchesPerRoute, false);
+                                          int maxQueuedBatchesPerLane) {
+        this(null, connection, namespacePrefix, localTransportNodeId, maxQueuedBatchesPerLane, false);
     }
 
     private RedisRouteTargetedTaskDispatchHandoff(RedisClient redisClient,
                                                   StatefulRedisConnection<String, String> connection,
                                                   String namespacePrefix,
                                                   String localTransportNodeId,
-                                                  int maxQueuedBatchesPerRoute,
+                                                  int maxQueuedBatchesPerLane,
                                                   boolean ownsClient) {
-        if (maxQueuedBatchesPerRoute <= 0) {
-            throw new IllegalArgumentException("maxQueuedBatchesPerRoute must be positive");
+        if (maxQueuedBatchesPerLane <= 0) {
+            throw new IllegalArgumentException("maxQueuedBatchesPerLane must be positive");
         }
         this.redisClient = redisClient;
         this.connection = Objects.requireNonNull(connection, "connection");
         this.commands = connection.sync();
         this.namespacePrefix = normalizeRequired(namespacePrefix, "namespacePrefix");
         this.localTransportNodeId = normalizeNullable(localTransportNodeId);
-        this.maxQueuedBatchesPerRoute = maxQueuedBatchesPerRoute;
+        this.maxQueuedBatchesPerLane = maxQueuedBatchesPerLane;
         this.ownsClient = ownsClient;
     }
 
@@ -91,14 +91,15 @@ public final class RedisRouteTargetedTaskDispatchHandoff implements RouteTargete
             throw new IllegalStateException("route-targeted task dispatch handoff is stopped");
         }
         String targetTransportNodeId = batch.targetTransportNodeId();
-        String routeQueueKey = routeQueueKey(batch.routeKey(), targetTransportNodeId);
+        String laneKey = batch.adapterLane().key();
+        String laneQueueKey = laneQueueKey(laneKey);
         String encoded = codec.encode(batch);
         while (running.get()) {
-            long queued = commands.llen(routeQueueKey);
-            if (queued < maxQueuedBatchesPerRoute) {
-                commands.rpush(routeQueueKey, encoded);
-                commands.sadd(routesKey(), batch.routeKey());
-                commands.sadd(readyRoutesKey(targetTransportNodeId), batch.routeKey());
+            long queued = commands.llen(laneQueueKey);
+            if (queued < maxQueuedBatchesPerLane) {
+                commands.rpush(laneQueueKey, encoded);
+                commands.sadd(lanesKey(), laneKey);
+                commands.sadd(readyLanesKey(targetTransportNodeId), laneKey);
                 return;
             }
             try {
@@ -118,13 +119,13 @@ public final class RedisRouteTargetedTaskDispatchHandoff implements RouteTargete
         }
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
         do {
-            String routeKey = commands.spop(readyRoutesKey(localTransportNodeId));
-            if (routeKey != null && !routeKey.isBlank()) {
-                String routeQueueKey = routeQueueKey(routeKey, localTransportNodeId);
-                String json = commands.lpop(routeQueueKey);
+            String laneKey = commands.spop(readyLanesKey(localTransportNodeId));
+            if (laneKey != null && !laneKey.isBlank()) {
+                String laneQueueKey = laneQueueKey(laneKey);
+                String json = commands.lpop(laneQueueKey);
                 if (json != null) {
-                    if (commands.llen(routeQueueKey) > 0L) {
-                        commands.sadd(readyRoutesKey(localTransportNodeId), routeKey);
+                    if (commands.llen(laneQueueKey) > 0L) {
+                        commands.sadd(readyLanesKey(localTransportNodeId), laneKey);
                     }
                     return codec.decode(json);
                 }
@@ -157,34 +158,34 @@ public final class RedisRouteTargetedTaskDispatchHandoff implements RouteTargete
         }
     }
 
-    int queuedBatches(String routeKey) {
+    int queuedBatches(AdapterDispatchLane adapterLane) {
         if (localTransportNodeId == null) {
             return 0;
         }
-        return Math.toIntExact(commands.llen(routeQueueKey(routeKey, localTransportNodeId)));
+        return Math.toIntExact(commands.llen(laneQueueKey(adapterLane.key())));
     }
 
-    void clearForTest(String routeKey) {
+    void clearForTest(AdapterDispatchLane adapterLane) {
+        String laneKey = adapterLane.key();
         if (localTransportNodeId != null) {
-            commands.del(routeQueueKey(routeKey, localTransportNodeId));
-            commands.srem(readyRoutesKey(localTransportNodeId), routeKey);
+            commands.del(laneQueueKey(laneKey));
+            commands.srem(readyLanesKey(localTransportNodeId), laneKey);
         }
-        commands.srem(routesKey(), routeKey);
+        commands.srem(lanesKey(), laneKey);
     }
 
-    private String routeQueueKey(String routeKey, String transportNodeId) {
+    private String laneQueueKey(String laneKey) {
         return namespacePrefix
-                + ":route:" + encodeToken(normalizeRequired(routeKey, "routeKey"))
-                + ":node:" + encodeToken(normalizeRequired(transportNodeId, "transportNodeId"))
+                + ":lane:" + encodeToken(normalizeRequired(laneKey, "laneKey"))
                 + ":q";
     }
 
-    private String routesKey() {
-        return namespacePrefix + ":routes";
+    private String lanesKey() {
+        return namespacePrefix + ":lanes";
     }
 
-    private String readyRoutesKey(String transportNodeId) {
-        return namespacePrefix + ":node:" + normalizeRequired(transportNodeId, "transportNodeId") + ":ready-routes";
+    private String readyLanesKey(String transportNodeId) {
+        return namespacePrefix + ":node:" + normalizeRequired(transportNodeId, "transportNodeId") + ":ready-lanes";
     }
 
     private static String encodeToken(String value) {

@@ -39,7 +39,19 @@ public final class RouteTargetedDispatchFixtures {
     }
 
     public static RouteTargetedTaskDispatchBinding delivery(String messageId, String workerId) {
-        return new RouteTargetedTaskDispatchBinding("route-1", "websocket", binding(messageId, workerId));
+        return delivery("route-1", "node-1", messageId, workerId);
+    }
+
+    public static RouteTargetedTaskDispatchBinding delivery(String routeKey,
+                                                            String lanePartition,
+                                                            String messageId,
+                                                            String workerId) {
+        return new RouteTargetedTaskDispatchBinding(
+                routeKey,
+                AdapterDispatchLane.forTransportNode("websocket", lanePartition),
+                workerId,
+                binding(messageId, workerId)
+        );
     }
 
     public static RouteTargetedTaskDispatchBatch batch(String routeKey,

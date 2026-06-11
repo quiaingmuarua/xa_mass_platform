@@ -44,9 +44,8 @@ public final class SocketTaskDispatchChannel implements TaskDispatchChannel {
                 envelopes,
                 envelope -> {
                     String rawJson = frameCodec.encodeCanonicalTaskDispatch(envelope.getPacket());
-                    boolean sent = sessionManager.sendToAdapterRoute(
+                    boolean sent = sessionManager.sendToSelectedWorker(
                             adapterId,
-                            envelope.getRouteKey(),
                             envelope.getSelectedWorkerId(),
                             rawJson
                     );

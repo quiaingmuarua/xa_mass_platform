@@ -44,10 +44,10 @@ public final class TaskDispatchBatchCodec {
                 .toList());
     }
 
-    private record TaskDispatchBatchRecord(TaskDispatchContextRecord task,
-                                           List<TaskDispatchBindingRecord> dispatchBindings) {
+    record TaskDispatchBatchRecord(TaskDispatchContextRecord task,
+                                   List<TaskDispatchBindingRecord> dispatchBindings) {
 
-        private static TaskDispatchBatchRecord from(TaskDispatchBatch batch) {
+        static TaskDispatchBatchRecord from(TaskDispatchBatch batch) {
             return new TaskDispatchBatchRecord(
                     TaskDispatchContextRecord.from(batch.task()),
                     batch.dispatchBindings().stream()
@@ -57,14 +57,14 @@ public final class TaskDispatchBatchCodec {
         }
     }
 
-    private record TaskDispatchContextRecord(String taskId,
-                                             String taskName,
-                                             String project,
-                                             String userId,
-                                             String eventCode,
-                                             Map<String, Object> sharedConfig) {
+    record TaskDispatchContextRecord(String taskId,
+                                     String taskName,
+                                     String project,
+                                     String userId,
+                                     String eventCode,
+                                     Map<String, Object> sharedConfig) {
 
-        private static TaskDispatchContextRecord from(TaskDispatchContext context) {
+        static TaskDispatchContextRecord from(TaskDispatchContext context) {
             return new TaskDispatchContextRecord(
                     context.taskId(),
                     context.taskName(),
@@ -75,7 +75,7 @@ public final class TaskDispatchBatchCodec {
             );
         }
 
-        private TaskDispatchContext toContext() {
+        TaskDispatchContext toContext() {
             return new TaskDispatchContext(
                     taskId,
                     taskName,
@@ -87,25 +87,25 @@ public final class TaskDispatchBatchCodec {
         }
     }
 
-    private record TaskDispatchBindingRecord(String taskId,
-                                             String messageId,
-                                             String eventCode,
-                                             Map<String, Object> payload,
-                                             String payloadRef,
-                                             int retryCount,
-                                             String attemptId,
-                                             int attemptNo,
-                                             String leaseToken,
-                                             String workerId,
-                                             String batchId,
-                                             String workerGroupId,
-                                             String adapterNodeId,
-                                             String adapterId,
-                                             String onlineStrategy,
-                                             String eventBindingKey,
-                                             String workerCandidateSource) {
+    record TaskDispatchBindingRecord(String taskId,
+                                     String messageId,
+                                     String eventCode,
+                                     Map<String, Object> payload,
+                                     String payloadRef,
+                                     int retryCount,
+                                     String attemptId,
+                                     int attemptNo,
+                                     String leaseToken,
+                                     String workerId,
+                                     String batchId,
+                                     String workerGroupId,
+                                     String adapterNodeId,
+                                     String adapterId,
+                                     String onlineStrategy,
+                                     String eventBindingKey,
+                                     String workerCandidateSource) {
 
-        private static TaskDispatchBindingRecord from(TaskDispatchBinding binding) {
+        static TaskDispatchBindingRecord from(TaskDispatchBinding binding) {
             return new TaskDispatchBindingRecord(
                     binding.taskId(),
                     binding.messageId(),
@@ -127,7 +127,7 @@ public final class TaskDispatchBatchCodec {
             );
         }
 
-        private TaskDispatchBinding toBinding() {
+        TaskDispatchBinding toBinding() {
             return TaskDispatchBinding.workerLevelWithTransportEvidence(
                     taskId,
                     messageId,

@@ -45,9 +45,8 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
                 envelopes,
                 envelope -> {
                     String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(envelope.getPacket());
-                    boolean sent = context.getEndpointRegistry().sendToAdapterRoute(
+                    boolean sent = context.getEndpointRegistry().sendToSelectedWorker(
                             adapterId(),
-                            envelope.getRouteKey(),
                             envelope.getSelectedWorkerId(),
                             rawJson
                     );

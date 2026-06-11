@@ -28,6 +28,7 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
     private final ConcurrentMap<String, ConcurrentMap<String, TransportRouteOwnerRecord>> ownersByRouteKey =
             new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> latestRouteKeyByWorkerId = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, TransportRouteOwnerRecord> latestOwnerByAdapterWorker = new ConcurrentHashMap<>();
 
     public InMemoryTransportRouteOwnerStore() {
         this(DEFAULT_LEASE_MILLIS);
@@ -187,6 +188,23 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
     }
 
     @Override
+    public java.util.Optional<WorkerDispatchRouteOwner> activeOwnerForSelectedWorker(String adapterId,
+                                                                                    String selectedWorkerId) {
+        String key = adapterWorkerKey(adapterId, selectedWorkerId);
+        if (key == null) {
+            return java.util.Optional.empty();
+        }
+        TransportRouteOwnerRecord owner = latestOwnerByAdapterWorker.get(key);
+        if (owner == null || !owner.isLeaseActive(System.currentTimeMillis())) {
+            if (owner != null) {
+                latestOwnerByAdapterWorker.remove(key, owner);
+            }
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(WorkerDispatchRouteOwner.fromRecord(owner));
+    }
+
+    @Override
     public List<TransportRouteOwnerRecord> listActiveRouteOwners() {
         long now = System.currentTimeMillis();
         List<TransportRouteOwnerRecord> active = new ArrayList<>();
@@ -231,6 +249,7 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
                 .put(next.getConnectionId(), next);
         if (next.getWorkerId() != null) {
             latestRouteKeyByWorkerId.put(next.getWorkerId(), next.getRouteKey());
+            latestOwnerByAdapterWorker.put(adapterWorkerKey(next.getAdapterId(), next.getWorkerId()), next);
         }
         return next;
     }
@@ -250,6 +269,14 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
                 latestRouteKeyByWorkerId.remove(owner.getWorkerId(), owner.getRouteKey());
             } else {
                 latestRouteKeyByWorkerId.put(owner.getWorkerId(), latest.getRouteKey());
+            }
+        }
+        String adapterWorkerKey = adapterWorkerKey(owner.getAdapterId(), owner.getWorkerId());
+        if (adapterWorkerKey != null) {
+            latestOwnerByAdapterWorker.remove(adapterWorkerKey, owner);
+            TransportRouteOwnerRecord latest = getLatestOwnerByWorker(owner.getWorkerId());
+            if (latest != null && owner.getAdapterId().equals(latest.getAdapterId())) {
+                latestOwnerByAdapterWorker.put(adapterWorkerKey, latest);
             }
         }
     }
@@ -285,5 +312,14 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
             return null;
         }
         return value.trim();
+    }
+
+    private static String adapterWorkerKey(String adapterId, String workerId) {
+        String normalizedAdapterId = normalizeNullable(adapterId);
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedAdapterId == null || normalizedWorkerId == null) {
+            return null;
+        }
+        return normalizedAdapterId + "\n" + normalizedWorkerId;
     }
 }

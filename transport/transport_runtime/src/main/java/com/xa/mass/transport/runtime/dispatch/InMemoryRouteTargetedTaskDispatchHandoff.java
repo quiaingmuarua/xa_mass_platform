@@ -6,7 +6,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Default in-process route-key dispatch handoff.
+ * Default in-process adapter-lane dispatch handoff.
  */
 public final class InMemoryRouteTargetedTaskDispatchHandoff implements RouteTargetedTaskDispatchHandoff {
 

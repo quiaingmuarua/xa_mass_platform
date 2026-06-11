@@ -3,12 +3,14 @@
 Status: superseded for transport route-owner and dispatch-handoff details.
 
 Transport route-key and dispatch-handoff truth has moved to
-`roadmap/TRANSPORT_ROUTE_KEY_DISPATCH_HANDOFF_CONVERGENCE_ROADMAP.md` and
-`transport/TRANSPORT_BOUNDARY_BASELINE.md`: current SDK/starter routeKey minting
-is worker-group-level, transport treats routeKey as opaque, transport route
-evidence is not worker online/offline truth, and distributed dispatch handoff is
-route-targeted rather than node-targeted or worker-resource-resolving. The
-remaining worker-selection cleanup in this roadmap must be re-read through that
+`transport/TRANSPORT_BOUNDARY_BASELINE.md` and `doc/PROOF_REGISTRY.md`: current
+SDK/starter routeKey minting is worker-group-level, transport treats routeKey
+as opaque metadata, transport route evidence is not worker online/offline
+truth, and distributed dispatch handoff uses adapter-lane physical queues with
+selected-worker delivery constraints rather than node-targeted or
+worker-resource-resolving dispatch. Historical transport convergence records
+are archived under `doc/archive/transport/2026-06-12_*TRANSPORT_*`. The
+remaining worker-selection cleanup in this roadmap must be re-read through the
 current transport baseline before implementation.
 
 Predecessors:

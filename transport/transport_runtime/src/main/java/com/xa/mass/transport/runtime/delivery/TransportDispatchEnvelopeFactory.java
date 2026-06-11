@@ -43,6 +43,14 @@ public final class TransportDispatchEnvelopeFactory {
                                             String routeKey,
                                             String traceId,
                                             TaskDispatchItem dispatchView) {
+        return create(adapterId, routeKey, traceId, dispatchView != null ? dispatchView.getWorkerId() : null, dispatchView);
+    }
+
+    public TransportDispatchEnvelope create(String adapterId,
+                                            String routeKey,
+                                            String traceId,
+                                            String selectedWorkerId,
+                                            TaskDispatchItem dispatchView) {
         String deliveryId = deliveryIdSupplier.get();
         TransportPacket packet = packetFactory.fromDispatchView(
                 deliveryId,
@@ -54,7 +62,7 @@ public final class TransportDispatchEnvelopeFactory {
         return new TransportDispatchEnvelope(
                 deliveryId,
                 resolveDeliveryQueueKey(adapterId),
-                dispatchView.getWorkerId(),
+                selectedWorkerId,
                 packet,
                 currentTimeMillis.getAsLong()
         );

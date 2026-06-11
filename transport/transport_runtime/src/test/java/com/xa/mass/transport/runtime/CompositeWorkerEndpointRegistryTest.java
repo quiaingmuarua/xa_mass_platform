@@ -88,11 +88,37 @@ class CompositeWorkerEndpointRegistryTest {
         assertFalse(socket.sendInvoked);
     }
 
+    @Test
+    void selectedWorkerSendUsesAdapterScopedRegistryWithoutRouteFallback() {
+        CompositeWorkerEndpointRegistry registry = new CompositeWorkerEndpointRegistry();
+        TestRegistry websocket = new TestRegistry(
+                List.of(new WorkerEndpointSnapshot("shared-route", "worker-a", true, "endpoint-a", "websocket")),
+                true,
+                true
+        );
+        TestRegistry socket = new TestRegistry(
+                List.of(new WorkerEndpointSnapshot("shared-route", "worker-b", true, "endpoint-b", "socket")),
+                true,
+                true
+        );
+
+        registry.register("websocket", websocket);
+        registry.register("socket", socket);
+
+        assertTrue(registry.sendToSelectedWorker("websocket", "worker-a", "{\"hello\":1}"));
+        assertTrue(websocket.selectedWorkerSendInvoked);
+        assertEquals("worker-a", websocket.lastSelectedWorkerId);
+        assertFalse(websocket.sendInvoked);
+        assertFalse(socket.selectedWorkerSendInvoked);
+    }
+
     private static final class TestRegistry implements WorkerEndpointRegistry, WorkerEndpointInspector {
         private final List<WorkerEndpointSnapshot> snapshots;
         private final boolean onlineResult;
         private final boolean sendResult;
         private boolean sendInvoked;
+        private boolean selectedWorkerSendInvoked;
+        private String lastSelectedWorkerId;
 
         private TestRegistry(List<WorkerEndpointSnapshot> snapshots,
                              boolean onlineResult,
@@ -105,6 +131,13 @@ class CompositeWorkerEndpointRegistryTest {
         @Override
         public boolean sendToAdapterRoute(String adapterId, String routeKey, String message) {
             sendInvoked = true;
+            return sendResult;
+        }
+
+        @Override
+        public boolean sendToSelectedWorker(String adapterId, String selectedWorkerId, String message) {
+            selectedWorkerSendInvoked = true;
+            lastSelectedWorkerId = selectedWorkerId;
             return sendResult;
         }
 

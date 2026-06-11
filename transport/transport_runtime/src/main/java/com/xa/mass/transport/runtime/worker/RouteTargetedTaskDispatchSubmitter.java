@@ -8,6 +8,7 @@ import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import com.xa.mass.transport.runtime.TransportDispatchRouteContext;
 import com.xa.mass.transport.runtime.TransportRouteKeyResolver;
+import com.xa.mass.transport.runtime.dispatch.AdapterDispatchLane;
 import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchBatch;
 import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchBinding;
 import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchHandoff;
@@ -16,11 +17,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Engine-side submitter that writes already assigned work into route-key owned
@@ -64,25 +65,33 @@ public final class RouteTargetedTaskDispatchSubmitter implements TaskDispatchBat
                 unresolved.add(binding);
                 continue;
             }
+            String selectedWorkerId = normalize(binding.workerId());
+            if (selectedWorkerId == null) {
+                unresolved.add(binding);
+                continue;
+            }
             String routeKey = resolveRouteKey(task, binding);
             if (routeKey == null) {
                 unresolved.add(binding);
                 continue;
             }
-            List<WorkerDispatchRouteOwner> owners = selectDeliveryOwners(routeKey, adapterId, binding);
-            if (owners.isEmpty()) {
+            Optional<WorkerDispatchRouteOwner> selectedOwner = selectDeliveryOwner(adapterId, selectedWorkerId);
+            if (selectedOwner.isEmpty()) {
                 unresolved.add(binding);
                 continue;
             }
-            List<String> targetTransportNodeIds = owners.stream()
-                    .map(WorkerDispatchRouteOwner::transportNodeId)
-                    .distinct()
-                    .toList();
+            WorkerDispatchRouteOwner owner = selectedOwner.get();
+            AdapterDispatchLane adapterLane = AdapterDispatchLane.forTransportNode(adapterId, owner.transportNodeId());
             RouteGroup group = groups.computeIfAbsent(
-                    routeKey + "\n" + String.join(",", targetTransportNodeIds),
-                    ignored -> new RouteGroup(routeKey, targetTransportNodeIds.getFirst())
+                    routeKey + "\n" + adapterLane.key(),
+                    ignored -> new RouteGroup(routeKey, adapterLane)
             );
-            group.deliveries.add(new RouteTargetedTaskDispatchBinding(routeKey, adapterId, binding));
+            group.deliveries.add(new RouteTargetedTaskDispatchBinding(
+                    routeKey,
+                    adapterLane,
+                    selectedWorkerId,
+                    binding
+            ));
         }
 
         compensate(task, unresolved, "transport route consumer is unavailable after assignment");
@@ -92,7 +101,7 @@ public final class RouteTargetedTaskDispatchSubmitter implements TaskDispatchBat
                 handoff.submit(new RouteTargetedTaskDispatchBatch(
                         task,
                         group.routeKey,
-                        group.targetTransportNodeId,
+                        group.adapterLane.lanePartition(),
                         group.deliveries
                 ));
             } catch (RuntimeException e) {
@@ -125,28 +134,9 @@ public final class RouteTargetedTaskDispatchSubmitter implements TaskDispatchBat
         }
     }
 
-    private List<WorkerDispatchRouteOwner> selectDeliveryOwners(String routeKey,
-                                                                String adapterId,
-                                                                TaskDispatchBinding binding) {
-        List<WorkerDispatchRouteOwner> owners = routeOwnerView.activeOwners(routeKey, adapterId, null).stream()
-                .filter(this::isNodeUsable)
-                .filter(owner -> matchesWorkerConstraint(owner, binding.workerId()))
-                .toList();
-        if (owners.isEmpty()) {
-            return List.of();
-        }
-        return owners.stream()
-                .max(Comparator.comparingLong(WorkerDispatchRouteOwner::updatedAtEpochMillis))
-                .map(List::of)
-                .orElseGet(List::of);
-    }
-
-    private boolean matchesWorkerConstraint(WorkerDispatchRouteOwner owner, String workerId) {
-        String normalizedWorkerId = normalize(workerId);
-        if (normalizedWorkerId == null) {
-            return true;
-        }
-        return normalizedWorkerId.equals(owner.workerId());
+    private Optional<WorkerDispatchRouteOwner> selectDeliveryOwner(String adapterId, String selectedWorkerId) {
+        return routeOwnerView.activeOwnerForSelectedWorker(adapterId, selectedWorkerId)
+                .filter(this::isNodeUsable);
     }
 
     private boolean isNodeUsable(WorkerDispatchRouteOwner owner) {
@@ -181,12 +171,12 @@ public final class RouteTargetedTaskDispatchSubmitter implements TaskDispatchBat
 
     private static final class RouteGroup {
         private final String routeKey;
-        private final String targetTransportNodeId;
+        private final AdapterDispatchLane adapterLane;
         private final List<RouteTargetedTaskDispatchBinding> deliveries = new ArrayList<>();
 
-        private RouteGroup(String routeKey, String targetTransportNodeId) {
+        private RouteGroup(String routeKey, AdapterDispatchLane adapterLane) {
             this.routeKey = routeKey;
-            this.targetTransportNodeId = targetTransportNodeId;
+            this.adapterLane = adapterLane;
         }
     }
 }

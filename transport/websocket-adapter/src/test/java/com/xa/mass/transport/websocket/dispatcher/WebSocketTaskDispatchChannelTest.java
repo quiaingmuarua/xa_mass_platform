@@ -32,9 +32,8 @@ class WebSocketTaskDispatchChannelTest {
     @Test
     void publishesDispatchItemsDirectlyToEndpointRegistry() {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
-        when(endpointRegistry.sendToAdapterRoute(
+        when(endpointRegistry.sendToSelectedWorker(
                 org.mockito.ArgumentMatchers.eq("websocket"),
-                org.mockito.ArgumentMatchers.eq("group-route-1"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(true);
@@ -58,9 +57,8 @@ class WebSocketTaskDispatchChannelTest {
         assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
 
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
-        verify(endpointRegistry).sendToAdapterRoute(
+        verify(endpointRegistry).sendToSelectedWorker(
                 org.mockito.ArgumentMatchers.eq("websocket"),
-                org.mockito.ArgumentMatchers.eq("group-route-1"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 captor.capture());
 
@@ -86,9 +84,8 @@ class WebSocketTaskDispatchChannelTest {
     @Test
     void returnsEndpointOfflineWhenEndpointRegistryCannotSend() {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
-        when(endpointRegistry.sendToAdapterRoute(
+        when(endpointRegistry.sendToSelectedWorker(
                 org.mockito.ArgumentMatchers.eq("websocket"),
-                org.mockito.ArgumentMatchers.eq("group-route-1"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(false);

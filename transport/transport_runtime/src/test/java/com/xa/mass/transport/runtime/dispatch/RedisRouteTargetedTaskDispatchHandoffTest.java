@@ -11,9 +11,11 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RedisRouteTargetedTaskDispatchHandoffTest {
 
@@ -86,12 +88,12 @@ class RedisRouteTargetedTaskDispatchHandoffTest {
         producer.submit(RouteTargetedDispatchFixtures.batch(
                 "group-route",
                 "node-2",
-                RouteTargetedDispatchFixtures.delivery("msg-2", "worker-2")
+                RouteTargetedDispatchFixtures.delivery("group-route", "node-2", "msg-2", "worker-2")
         ));
         producer.submit(RouteTargetedDispatchFixtures.batch(
                 "group-route",
                 "node-1",
-                RouteTargetedDispatchFixtures.delivery("msg-1", "worker-1")
+                RouteTargetedDispatchFixtures.delivery("group-route", "node-1", "msg-1", "worker-1")
         ));
 
         RouteTargetedTaskDispatchBatch nodeOne = nodeOneConsumer.poll(500L);
@@ -101,6 +103,30 @@ class RedisRouteTargetedTaskDispatchHandoffTest {
         assertEquals(List.of("msg-1"), RouteTargetedDispatchFixtures.messages(nodeOne));
         assertNotNull(nodeTwo);
         assertEquals(List.of("msg-2"), RouteTargetedDispatchFixtures.messages(nodeTwo));
+    }
+
+    @Test
+    void sharedRouteBatchesUseAdapterLaneQueueKeys() throws Exception {
+        producer.submit(RouteTargetedDispatchFixtures.batch(
+                "group-route",
+                "node-1",
+                RouteTargetedDispatchFixtures.delivery("group-route", "node-1", "msg-1", "worker-1")
+        ));
+        producer.submit(RouteTargetedDispatchFixtures.batch(
+                "group-route",
+                "node-1",
+                RouteTargetedDispatchFixtures.delivery("group-route", "node-1", "msg-2", "worker-2")
+        ));
+
+        List<String> keys = producerConnection.sync().keys(namespacePrefix + ":*");
+
+        assertTrue(keys.stream().anyMatch(key -> key.contains(":lane:")));
+        assertTrue(keys.stream().anyMatch(key -> key.endsWith(":ready-lanes")));
+        assertFalse(keys.stream().anyMatch(key -> key.contains(":route:")));
+        assertFalse(keys.stream().anyMatch(key -> key.endsWith(":ready-routes")));
+        assertEquals(List.of("msg-1"), RouteTargetedDispatchFixtures.messages(nodeOneConsumer.poll(500L)));
+        assertEquals(List.of("msg-2"), RouteTargetedDispatchFixtures.messages(nodeOneConsumer.poll(500L)));
+        assertNull(nodeTwoConsumer.poll(0L));
     }
 
     @Test

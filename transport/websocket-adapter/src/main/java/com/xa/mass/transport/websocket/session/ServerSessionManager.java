@@ -140,11 +140,24 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     @Override
-    public boolean sendToAdapterRoute(String adapterId, String routeKey, String workerId, String message) {
+    public boolean sendToSelectedWorker(String adapterId, String selectedWorkerId, String message) {
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return sendToBoundRoute(routeKey, normalizeNullable(workerId), message);
+        String normalizedSelectedWorkerId = normalizeNullable(selectedWorkerId);
+        if (normalizedSelectedWorkerId == null) {
+            return false;
+        }
+        for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entriesForWorker(normalizedSelectedWorkerId)) {
+            WebSocketRouteEndpoint endpoint = entry.endpoint();
+            if (endpoint == null || !endpoint.isActive()) {
+                continue;
+            }
+            endpoint.channel().writeAndFlush(new TextWebSocketFrame(message));
+            return true;
+        }
+        logger.warn("Failed to send to selectedWorkerId={}. Channel not found or inactive.", normalizedSelectedWorkerId);
+        return false;
     }
 
     @Override

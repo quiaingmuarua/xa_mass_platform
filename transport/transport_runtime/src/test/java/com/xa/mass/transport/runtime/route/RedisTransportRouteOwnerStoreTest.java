@@ -108,6 +108,25 @@ class RedisTransportRouteOwnerStoreTest {
     }
 
     @Test
+    void selectedWorkerLookupUsesAdapterWorkerIndexUnderSharedRoute() {
+        store.claimRouteOwner("worker-1", "websocket", "route-shared", "conn-1", "connected");
+        store.claimRouteOwner("worker-2", "websocket", "route-shared", "conn-2", "connected");
+
+        assertNotNull(observerCommands.get(adapterWorkerKey("websocket", "worker-2")));
+        assertEquals("conn-2", store.activeOwnerForSelectedWorker("websocket", "worker-2")
+                .orElseThrow()
+                .connectionId());
+        assertEquals("runtime-a", store.activeOwnerForSelectedWorker("websocket", "worker-2")
+                .orElseThrow()
+                .transportNodeId());
+
+        store.releaseRouteOwner("worker-2", "websocket", "route-shared", "conn-2", "disconnect");
+
+        assertNull(observerCommands.get(adapterWorkerKey("websocket", "worker-2")));
+        assertTrue(store.activeOwnerForSelectedWorker("websocket", "worker-2").isEmpty());
+    }
+
+    @Test
     void expiredConsumerEvidencePrunesRouteIndex() throws Exception {
         try (RedisTransportRouteOwnerStore shortLeaseStore =
                      new RedisTransportRouteOwnerStore(redisClient, namespacePrefix, 250L, "runtime-a", false)) {
@@ -152,5 +171,14 @@ class RedisTransportRouteOwnerStoreTest {
 
     private String workerRouteKey(String workerId) {
         return namespacePrefix + ":worker-route:" + workerId;
+    }
+
+    private String adapterWorkerKey(String adapterId, String workerId) {
+        return namespacePrefix
+                + ":adapter:" + java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(adapterId.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                + ":worker:" + java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(workerId.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                + ":owner";
     }
 }

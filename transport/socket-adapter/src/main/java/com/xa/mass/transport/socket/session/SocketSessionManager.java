@@ -125,11 +125,29 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
     }
 
     @Override
-    public boolean sendToAdapterRoute(String adapterId, String routeKey, String workerId, String message) {
+    public boolean sendToSelectedWorker(String adapterId, String selectedWorkerId, String message) {
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return sendToBoundRoute(routeKey, normalizeNullable(workerId), message);
+        String normalizedSelectedWorkerId = normalizeNullable(selectedWorkerId);
+        if (normalizedSelectedWorkerId == null) {
+            return false;
+        }
+        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForWorker(normalizedSelectedWorkerId)) {
+            SocketWorkerEndpoint endpoint = entry.endpoint();
+            if (endpoint == null || !endpoint.isActive()) {
+                continue;
+            }
+            try {
+                endpoint.send(message);
+                return true;
+            } catch (IOException ex) {
+                logger.warn("Failed to send socket message to selectedWorkerId={}, endpointId={}",
+                        normalizedSelectedWorkerId, endpoint.endpointId(), ex);
+                removeSession(endpoint.endpointId());
+            }
+        }
+        return false;
     }
 
     @Override

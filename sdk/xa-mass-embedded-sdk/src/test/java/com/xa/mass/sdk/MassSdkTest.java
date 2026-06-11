@@ -3835,6 +3835,13 @@ class MassSdkTest {
         }
 
         @Override
+        public java.util.Optional<com.xa.mass.transport.route.WorkerDispatchRouteOwner> activeOwnerForSelectedWorker(
+                String adapterId,
+                String selectedWorkerId) {
+            return delegate.activeOwnerForSelectedWorker(adapterId, selectedWorkerId);
+        }
+
+        @Override
         public List<com.xa.mass.transport.route.TransportRouteOwnerRecord> listActiveRouteOwners() {
             return delegate.listActiveRouteOwners();
         }

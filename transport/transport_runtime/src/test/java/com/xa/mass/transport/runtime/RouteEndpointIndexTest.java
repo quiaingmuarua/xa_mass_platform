@@ -50,4 +50,19 @@ class RouteEndpointIndexTest {
         assertTrue(removedSecond.removedCurrentRoute());
         assertTrue(index.entriesForRoute("route-1").isEmpty());
     }
+
+    @Test
+    void workerIndexSelectsOnlyMatchingWorkerUnderSharedRoute() {
+        RouteEndpointIndex<String, String> index = new RouteEndpointIndex<>();
+        index.bind("shared-route", "worker-1", "handle-a", "endpoint-a", endpoint -> true);
+        index.bind("shared-route", "worker-2", "handle-b", "endpoint-b", endpoint -> true);
+
+        assertEquals("endpoint-b", index.entryForWorker("worker-2").endpoint());
+        assertEquals(1, index.entriesForWorker("worker-2").size());
+
+        index.removeByHandle("handle-b");
+
+        assertTrue(index.entriesForWorker("worker-2").isEmpty());
+        assertEquals("endpoint-a", index.entryForWorker("worker-1").endpoint());
+    }
 }

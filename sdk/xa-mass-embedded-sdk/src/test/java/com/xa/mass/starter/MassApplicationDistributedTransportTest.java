@@ -21,6 +21,7 @@ import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.dispatch.AdapterDispatchLane;
 import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchBatch;
 import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchBinding;
 import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchHandoff;
@@ -112,13 +113,13 @@ class MassApplicationDistributedTransportTest {
                 context(),
                 routeKey(),
                 "node-2",
-                List.of(delivery("msg-node-2", "worker-2"))
+                List.of(delivery("msg-node-2", "worker-2", "node-2"))
         ));
         handoff.submit(new RouteTargetedTaskDispatchBatch(
                 context(),
                 routeKey(),
                 "node-1",
-                List.of(delivery("msg-node-1", "worker-1"))
+                List.of(delivery("msg-node-1", "worker-1", "node-1"))
         ));
 
         RecordingAdapter adapter = new RecordingAdapter("websocket", 1);
@@ -214,7 +215,16 @@ class MassApplicationDistributedTransportTest {
     }
 
     private static RouteTargetedTaskDispatchBinding delivery(String messageId, String workerId) {
-        return new RouteTargetedTaskDispatchBinding(routeKey(), "websocket", binding(messageId, workerId));
+        return delivery(messageId, workerId, "node-1");
+    }
+
+    private static RouteTargetedTaskDispatchBinding delivery(String messageId, String workerId, String transportNodeId) {
+        return new RouteTargetedTaskDispatchBinding(
+                routeKey(),
+                AdapterDispatchLane.forTransportNode("websocket", transportNodeId),
+                workerId,
+                binding(messageId, workerId)
+        );
     }
 
     private static String routeKey() {
@@ -435,6 +445,19 @@ class MassApplicationDistributedTransportTest {
                 owners.addAll(store.currentOwners(routeKey));
             }
             return List.copyOf(owners);
+        }
+
+        @Override
+        public java.util.Optional<WorkerDispatchRouteOwner> activeOwnerForSelectedWorker(String adapterId,
+                                                                                        String selectedWorkerId) {
+            for (InMemoryTransportRouteOwnerStore store : stores) {
+                java.util.Optional<WorkerDispatchRouteOwner> owner =
+                        store.activeOwnerForSelectedWorker(adapterId, selectedWorkerId);
+                if (owner.isPresent()) {
+                    return owner;
+                }
+            }
+            return java.util.Optional.empty();
         }
 
         @Override

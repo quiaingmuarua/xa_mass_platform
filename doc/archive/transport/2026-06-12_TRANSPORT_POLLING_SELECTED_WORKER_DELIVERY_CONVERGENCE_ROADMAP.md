@@ -1,9 +1,11 @@
 # Transport Polling Selected-Worker Delivery Convergence Roadmap
 
-Status: implemented and verified in current worktree.
+Status: completed and archived. Current polling selected-worker truth is in
+`transport/TRANSPORT_BOUNDARY_BASELINE.md`, `transport/AGENTS.md`, and
+`doc/PROOF_REGISTRY.md`.
 
-Parent:
-`roadmap/TRANSPORT_ROUTE_DOMAIN_SELECTED_WORKER_DELIVERY_CONVERGENCE_ROADMAP.md`.
+Parent archive:
+`doc/archive/transport/2026-06-12_TRANSPORT_ROUTE_DOMAIN_SELECTED_WORKER_DELIVERY_CONVERGENCE_ROADMAP.md`.
 
 Last reviewed against current worktree: 2026-06-11.
 

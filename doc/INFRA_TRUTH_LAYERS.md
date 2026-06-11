@@ -98,7 +98,7 @@ design and must not be implied by result ingress or review materialization.
 | `platform_infra/mass-storage-memory` | in-memory task shell, worker declaration adapter, and rule definition storage | current embedded/test implementation |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
 | `TaskResultRuntime` memory/Redis implementations | stable-final result rows plus stage/barrier repair state | canonical runtime result-read truth; memory is volatile local/dev, Redis is cross-process runtime truth |
-| Redis transport dispatch handoff | post-claim assignment queue between engine and transport JVMs; node-targeted inboxes are keyed by `transportNodeId` | runtime-state handoff, not ready queue ownership and not task lifecycle truth |
+| Redis transport dispatch handoff | post-claim assignment queue between engine and transport JVMs; physical queues are keyed by resolved adapter dispatch lane with `transportNodeId` ready-lane wakeup indexes | runtime-state handoff, not ready queue ownership and not task lifecycle truth |
 | Redis transport route-owner view | shared transport-owned route/connection lease evidence | queryable runtime evidence for reachability and selected-worker delivery feasibility; not a queue, not control-plane worker declaration, and not a post-assignment routing engine |
 | Redis transport result / dispatch-failure inboxes | transport-to-engine runtime ingress | bounded cross-JVM channels drained into engine-owned result ingest and compensation ports, not server endpoints |
 | server review materialization | task opt-in server-local review store populated from the review report queue; default mode is `OFF` | operator/read-model materialization, not engine runtime truth |

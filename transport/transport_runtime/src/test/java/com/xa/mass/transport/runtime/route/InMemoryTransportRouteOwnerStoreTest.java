@@ -57,6 +57,28 @@ class InMemoryTransportRouteOwnerStoreTest {
     }
 
     @Test
+    void selectedWorkerLookupUsesAdapterWorkerIndexUnderSharedRoute() {
+        InMemoryTransportRouteOwnerStore store = new InMemoryTransportRouteOwnerStore(30_000L, "runtime-a");
+
+        store.claimRouteOwner("worker-1", "websocket", "shared-route", "conn-1", "connected");
+        store.claimRouteOwner("worker-2", "websocket", "shared-route", "conn-2", "connected");
+
+        assertEquals("conn-2", store.activeOwnerForSelectedWorker("websocket", "worker-2")
+                .orElseThrow()
+                .connectionId());
+        assertEquals("runtime-a", store.activeOwnerForSelectedWorker("websocket", "worker-2")
+                .orElseThrow()
+                .transportNodeId());
+
+        store.releaseRouteOwner("worker-2", "websocket", "shared-route", "conn-2", "disconnect");
+
+        assertTrue(store.activeOwnerForSelectedWorker("websocket", "worker-2").isEmpty());
+        assertEquals("conn-1", store.activeOwnerForSelectedWorker("websocket", "worker-1")
+                .orElseThrow()
+                .connectionId());
+    }
+
+    @Test
     void workerProjectionFindOwnersReturnsOnlyLatestOnlineRoute() {
         InMemoryTransportRouteOwnerStore store = new InMemoryTransportRouteOwnerStore(30_000L, "runtime-a");
 

@@ -1,15 +1,22 @@
 # Transport Message And Route-Key Handoff Convergence Roadmap
 
-Status: superseded for remaining dispatch-semantics work.
+Status: superseded and archived audit record.
 
-Successor:
-`roadmap/TRANSPORT_ROUTE_DOMAIN_SELECTED_WORKER_DELIVERY_CONVERGENCE_ROADMAP.md`.
+Successor archive:
+`doc/archive/transport/2026-06-12_TRANSPORT_ROUTE_DOMAIN_SELECTED_WORKER_DELIVERY_CONVERGENCE_ROADMAP.md`.
 
 This record remains as audit history for the shared/node-targeted handoff
 removal and route-targeted Redis implementation. New work on the routeKey plus
 selected worker delivery boundary should use the successor roadmap.
 
 Last verified against current code/worktree: 2026-06-11.
+
+Successor update, 2026-06-12:
+
+- The successor selected-worker delivery roadmap has moved Redis dispatch
+  physical keys from route-domain queues to adapter-lane queues. The route-key
+  dispatch key manifest retained below is historical audit evidence for this
+  superseded roadmap, not current implementation truth.
 
 Implementation outcome:
 
@@ -23,9 +30,10 @@ Implementation outcome:
 - Transport consumers drain already resolved `routeKey + adapterId` delivery
   targets and binding-level selected worker constraints; they do not call
   worker-resource runtime for second-stage selection.
-- Redis route-targeted handoff uses node-local physical drain lanes under the
-  route-targeted namespace after the selected route consumer is resolved. The
-  node id is locality partitioning, not routeKey minting or scheduling truth.
+- At this roadmap's closure point, Redis route-targeted handoff used
+  node-local physical drain lanes under the route-targeted namespace after the
+  selected route consumer was resolved. The successor roadmap later moved
+  current Redis dispatch physical keys to adapter-lane queues.
 - Transport route-owner state is routeKey/consumer based; worker id is optional
   metadata for inspection/projection.
 - Adapter session connect/disconnect/heartbeat updates route-owner lease

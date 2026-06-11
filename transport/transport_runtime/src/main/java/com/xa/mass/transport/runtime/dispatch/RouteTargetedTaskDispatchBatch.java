@@ -6,11 +6,12 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Route-domain dispatch handoff payload for one selected consumer locality.
+ * Dispatch handoff payload for one selected consumer locality.
  *
- * <p>The target transport node is physical drain locality resolved from
- * route-owner evidence after engine assignment. It is not route-key semantics
- * and not a worker-selection decision.</p>
+ * <p>The route key is opaque adapter metadata. The adapter dispatch lane is
+ * resolved from route-owner evidence after engine assignment and owns physical
+ * handoff locality; it is not route-key semantics and not a worker-selection
+ * decision.</p>
  */
 public record RouteTargetedTaskDispatchBatch(TaskDispatchContext task,
                                              String routeKey,
@@ -25,6 +26,24 @@ public record RouteTargetedTaskDispatchBatch(TaskDispatchContext task,
         if (deliveryBindings.isEmpty()) {
             throw new IllegalArgumentException("deliveryBindings must not be empty");
         }
+        AdapterDispatchLane adapterLane = null;
+        for (RouteTargetedTaskDispatchBinding binding : deliveryBindings) {
+            if (!routeKey.equals(binding.routeKey())) {
+                throw new IllegalArgumentException("delivery binding routeKey must match batch routeKey");
+            }
+            if (!targetTransportNodeId.equals(binding.lanePartition())) {
+                throw new IllegalArgumentException("delivery binding lanePartition must match targetTransportNodeId");
+            }
+            if (adapterLane == null) {
+                adapterLane = binding.adapterLane();
+            } else if (!adapterLane.equals(binding.adapterLane())) {
+                throw new IllegalArgumentException("delivery bindings must share one adapter dispatch lane");
+            }
+        }
+    }
+
+    public AdapterDispatchLane adapterLane() {
+        return deliveryBindings.getFirst().adapterLane();
     }
 
     private static String requireText(String value, String fieldName) {

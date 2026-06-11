@@ -109,6 +109,21 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
+    void selectedWorkerSendUsesWorkerIndexUnderSharedRouteKey() {
+        Channel firstChannel = mockActiveChannel("worker-1-channel");
+        Channel secondChannel = mockActiveChannel("worker-2-channel");
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("group-route", "worker-1", firstChannel, ctx);
+        manager.addSession("group-route", "worker-2", secondChannel, ctx);
+
+        assertTrue(manager.sendToSelectedWorker(manager.getAdapterId(), "worker-2", "{\"messageId\":\"msg-2\"}"));
+
+        verify(firstChannel, never()).writeAndFlush(any());
+        verify(secondChannel).writeAndFlush(any());
+    }
+
+    @Test
     void replacingWorkerChannelKeepsConnectionCountStable() {
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");

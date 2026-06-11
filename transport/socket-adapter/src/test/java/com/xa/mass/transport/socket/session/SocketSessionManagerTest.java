@@ -4,6 +4,7 @@ import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import org.junit.jupiter.api.Test;
 
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.net.Socket;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -12,7 +13,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
 
 class SocketSessionManagerTest {
 
@@ -48,6 +52,21 @@ class SocketSessionManagerTest {
         assertFalse(manager.isAdapterRouteOnline("socket", "route-1"));
         assertEquals("socket-edge", manager.getAdapterId());
         assertEquals("socket-edge", manager.listWorkerEndpoints().get(0).getAdapterId());
+    }
+
+    @Test
+    void selectedWorkerSendUsesWorkerIndexUnderSharedRouteKey() throws IOException {
+        SocketSessionManager manager = new SocketSessionManager("socket");
+        BufferedWriter firstWriter = mock(BufferedWriter.class);
+        BufferedWriter secondWriter = mock(BufferedWriter.class);
+
+        manager.addSession("group-route", "worker-1", "endpoint-1", activeSocket(), firstWriter);
+        manager.addSession("group-route", "worker-2", "endpoint-2", activeSocket(), secondWriter);
+
+        assertTrue(manager.sendToSelectedWorker("socket", "worker-2", "{\"messageId\":\"msg-2\"}"));
+
+        verify(firstWriter, never()).write(anyString());
+        verify(secondWriter).write("{\"messageId\":\"msg-2\"}");
     }
 
     @Test

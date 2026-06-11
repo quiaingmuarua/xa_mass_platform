@@ -1,19 +1,20 @@
 # Transport Adapter-Lane Selected-Worker Delivery Convergence Roadmap
 
-Status: active roadmap; route-targeted handoff is an intermediate slice,
-adapter-lane selected-worker delivery is the target.
+Status: completed and archived. Current transport truth is in
+`transport/TRANSPORT_BOUNDARY_BASELINE.md`, `transport/AGENTS.md`, and
+`doc/PROOF_REGISTRY.md`.
 
 Supersedes the remaining dispatch-semantics work in
-`roadmap/TRANSPORT_ROUTE_KEY_DISPATCH_HANDOFF_CONVERGENCE_ROADMAP.md`. The old
-roadmap remains an audit record for removing shared/node-targeted handoff
-paths. This roadmap owns the current correction: transport delivery should be
-driven by adapter dispatch locality plus the engine-selected worker, not by
-routeKey semantics.
+`doc/archive/transport/2026-06-12_TRANSPORT_ROUTE_KEY_DISPATCH_HANDOFF_CONVERGENCE_ROADMAP.md`.
+The old roadmap remains an audit record for removing shared/node-targeted
+handoff paths. This roadmap owns the current correction: transport delivery
+should be driven by adapter dispatch locality plus the engine-selected worker,
+not by routeKey semantics.
 
 The file name keeps the earlier route-domain wording for continuity. The target
 inside this document is adapter-lane selected-worker delivery.
 
-Last reviewed against current worktree: 2026-06-11.
+Last reviewed against current worktree: 2026-06-12.
 
 ## Summary
 
@@ -77,34 +78,43 @@ The performance target is part of the ownership target:
 - SDK/starter default routeKey minting is worker-group-level through
   `CanonicalWorkerGroupRouteKeyCodec`, but transport runtime and adapters must
   treat the routeKey value as opaque and low-significance.
-- `RouteTargetedTaskDispatchSubmitter` currently resolves routeKey, reads active
-  route owners by `routeKey + adapterId`, filters them by
-  `TaskDispatchBinding.workerId()`, and submits to a selected
-  `transportNodeId` drain lane. This is a useful intermediate shape, but it
-  still makes routeKey the producer lookup center.
-- The current route-owner filter reads a route owner list and then filters by
-  workerId. That is not acceptable for large groups or shared routeKeys.
-- `RouteTargetedTaskDispatchBinding` stores `routeKey`, `adapterId`, and the
-  original `TaskDispatchBinding`; selected worker is still reached through the
-  original binding, and `adapterNodeId` / target dispatch lane are not yet
-  named transport delivery facts on the route-targeted binding.
+- `RouteTargetedTaskDispatchSubmitter` now validates explicit `adapterId` and
+  `selectedWorkerId`, resolves the opaque routeKey only as metadata/domain
+  context, and finds the active delivery owner through
+  `WorkerDispatchRouteOwnerView.activeOwnerForSelectedWorker(adapterId,
+  selectedWorkerId)`. It no longer scans all active route owners under a shared
+  routeKey to find the selected worker.
+- `RouteTargetedTaskDispatchBinding` now carries `routeKey`,
+  `AdapterDispatchLane`, explicit `selectedWorkerId`, and the original
+  `TaskDispatchBinding`. The current executable lane formula is
+  `AdapterDispatchLane(adapterId, transportNodeId)` where `adapterId` comes
+  from `TaskDispatchBinding.adapterId()` and `transportNodeId` comes from the
+  selected route-owner evidence.
 - `TransportDispatchEnvelope` now carries `deliveryQueueKey` and
   `selectedWorkerId` as first-class transport fields. WebSocket and socket task
   dispatch use the envelope selected-worker constraint for endpoint filtering;
   the packet payload worker id remains worker-facing wire metadata.
-- `WorkerEndpointRegistry` has a route-only send method plus a worker-filtered
-  overload. The overload can silently degrade selected-worker task dispatch to
-  route-only send through the default implementation.
-- WebSocket and socket session managers keep route-local endpoint indexes and
-  then filter entries by workerId. That becomes O(route sessions) when one
-  adapter node uses a shared routeKey.
+- `WorkerEndpointRegistry` now has an explicit `sendToSelectedWorker(...)`
+  task-dispatch method with no default route-only fallback. Route-only send
+  remains only for raw/manual side channels.
+- WebSocket and socket session managers maintain selected-worker endpoint
+  indexes through `RouteEndpointIndex.entriesForWorker(...)`. Task dispatch
+  no longer iterates every endpoint under a shared routeKey for the final hop.
 - Polling assigned-task delivery now pulls by selectedWorkerId. The runtime
   resolves an internal shared deliveryQueueKey, and the store drains by
   `deliveryQueueKey + selectedWorkerId` rather than routeKey.
-- `RouteTargetedTaskDispatchBatchCodec` currently wraps an encoded
-  `TaskDispatchBatch` JSON string inside another route-targeted JSON record.
-  That nested JSON is a convergence target because distributed handoff should
-  serialize the process-boundary payload once.
+- `RouteTargetedTaskDispatchBatchCodec` now serializes the process-boundary
+  route-targeted payload once. `taskBatchJson` is removed from the mainline
+  codec shape and guarded by `RouteTargetedTaskDispatchBatchCodecTest`.
+
+Current physical handoff state:
+
+- Redis dispatch handoff physical keys are adapter-lane queues with
+  `transportNodeId` ready-lane indexes. `routeKey` remains batch metadata and
+  adapter correlation only; it is no longer the Redis dispatch queue partition.
+- The current executable lane formula remains `adapterId + transportNodeId`.
+  Adding `adapterNodeId` to endpoint evidence is a separate future refinement,
+  not a blocker for selected-worker correctness or routeKey downgrading.
 
 ## Owner Review
 
@@ -136,8 +146,11 @@ Transport does not own:
 ## Boundary And Performance Decisions
 
 1. `selectedWorkerId` is the correctness key for the final worker hop.
-2. `adapterNodeId` / `transportNodeId` is the physical dispatch locality. It may
-   own queues, wakeup indexes, and dispatch threads.
+2. Adapter-lane identity must be typed and deterministic. The first executable
+   slice must define exactly which fields form the lane, where each field is
+   sourced from, and whether a missing field is a retryable delivery-infeasible
+   condition or an engine compensation event. Do not use
+   `adapterNodeId-or-transportNodeId` as an implementation rule.
 3. `routeKey` is not a correctness key. It can be shared, coarse, or policy
    minted outside transport.
 4. Transport may carry routeKey for protocol correlation, backpressure grouping,
@@ -189,7 +202,7 @@ Target producer chain:
 
 ```text
 RouteTargetedTaskDispatchSubmitter or successor
-  -> resolve adapter dispatch lane from binding adapterNodeId / endpoint evidence
+  -> resolve typed adapter dispatch lane from binding + endpoint evidence
   -> findActiveConsumer(adapterLane, selectedWorkerId)
   -> enqueue to adapter-node / transport-node local drain lane
 ```
@@ -221,16 +234,26 @@ an engine-selected worker. They must not be task-dispatch fallbacks.
 Primary delivery-feasibility index:
 
 ```text
-adapter-lane:<adapterId>:<adapterNodeId-or-transportNodeId>:worker:<selectedWorkerId>
+adapter-lane:<adapterId>:<lanePartition>:worker:<selectedWorkerId>
   -> connectionId / consumerId
 ```
+
+`lanePartition` is not an "or" placeholder. The current executable formula is
+`AdapterDispatchLane(adapterId, transportNodeId)`, where `adapterId` comes from
+`TaskDispatchBinding.adapterId()` and `transportNodeId` is sourced from active
+route-owner endpoint evidence. `adapterNodeId` remains binding-side relation
+evidence until a separate slice adds it to endpoint evidence writes and reads.
+
+If the selected formula cannot be computed from the engine binding and active
+endpoint evidence, dispatch must fail as delivery-infeasible and invoke
+engine-owned compensation. It must not fallback to routeKey or worker reselection.
 
 Endpoint evidence record:
 
 ```text
 consumer:<connectionId>
   adapterId
-  adapterNodeId
+  adapterNodeId  optional, not part of the current executable lane formula
   transportNodeId
   selectedWorkerId / workerId
   optional routeKey
@@ -287,8 +310,10 @@ precondition.
 Do not start by encoding workerId into routeKey. That hides the delivery
 constraint inside the route value and weakens routeKey opacity.
 
-Do not start by fixing only WebSocket/socket. Pulling by routeKey only has the
-same correctness issue under shared or group-level routeKey.
+Do not restart polling as part of this parent roadmap. Polling selected-worker
+delivery is now a completed prerequisite: task pull drains by
+`deliveryQueueKey + selectedWorkerId`, and the next work must preserve that
+contract while converging push and distributed handoff.
 
 Do not start by adding route-level scans and then promising to optimize later.
 The owner boundary and performance boundary are the same boundary here.
@@ -347,80 +372,76 @@ Verification:
 rg -n "TaskDispatchBinding|adapterNodeId|PAYLOAD_WORKER_ID|sendToAdapterRoute|pollTaskMessagesResult|TransportDeliveryStore|RouteEndpointIndex|isWorkerReachable|WorkerSystemEventChannel" transport sdk xa-mass-base xa-mass-engine -g "*.java" -g "*.md"
 ```
 
-## Phase 1: Make Selected Worker And Adapter Lane Explicit
+## Phase 1: Complete Explicit Handoff Facts And Codec
+
+Status: landed in the current implementation slice; keep this phase as the
+regression checklist for handoff facts and codec shape.
 
 Goal: stop recovering delivery facts from packet payload or routeKey shape.
+
+Already landed baseline:
+
+- `TransportDispatchEnvelope` carries `deliveryQueueKey` and
+  `selectedWorkerId`.
+- Polling task delivery polls by selectedWorkerId under an internal
+  deliveryQueueKey.
+- WebSocket/socket task dispatch consumes envelope selected-worker metadata
+  instead of scraping `TransportPacket.PAYLOAD_WORKER_ID` for the final hop.
 
 Scope:
 
 1. Add `selectedWorkerId()` and adapter-lane fields to the route-targeted
    binding or introduce a successor delivery binding.
-2. Add `selectedWorkerId()` and adapter-lane fields to
-   `TransportDispatchEnvelope` or an equivalent dispatch-only value consumed by
-   adapters.
-3. Keep worker-facing `TaskDispatchItem.workerId` JSON unchanged.
-4. Update the distributed handoff codec so the explicit selected-worker and
+2. Define the first executable adapter-lane formula used by distributed
+   handoff as a typed value, for example
+   `AdapterLane(adapterId, lanePartition, selectedWorkerId)` or equivalent.
+   The formula must list field sources:
+   - `adapterId` from `TaskDispatchBinding.adapterId()`,
+   - `selectedWorkerId` from `TaskDispatchBinding.workerId()`,
+   - `lanePartition` from active endpoint evidence, unless this slice adds and
+     proves `adapterNodeId` evidence.
+3. Define missing-field behavior explicitly. Missing adapterId,
+   selectedWorkerId, or lanePartition must produce delivery-infeasible
+   compensation/retry evidence; it must not use routeKey as a fallback lane.
+4. Keep worker-facing `TaskDispatchItem.workerId` JSON unchanged.
+5. Update the distributed handoff codec so the explicit selected-worker and
    adapter-lane facts are preserved and validated.
-5. Remove nested `taskBatchJson` double serialization from the distributed
+6. Remove nested `taskBatchJson` double serialization from the distributed
    payload. Serialize the process-boundary record once.
-6. Keep `TaskDispatchBinding.workerId()` as the engine-owned source until a
+7. Keep `TaskDispatchBinding.workerId()` as the engine-owned source until a
    separate engine binding cleanup renames it.
 
 Acceptance:
 
-1. WebSocket/socket task dispatch no longer obtains final-hop target by reading
-   `TransportPacket.PAYLOAD_WORKER_ID` directly.
-2. Pull task dispatch has an explicit selected-worker argument or envelope field
-   available before polling.
-3. Adapter-lane locality is visible at the handoff contract and is not inferred
+1. Route-targeted handoff payloads carry selectedWorkerId and adapter-lane facts
+   as first-class process-boundary fields.
+2. Adapter-lane locality is visible at the handoff contract and is not inferred
    from routeKey.
-4. Worker-facing payload still contains `workerId` for existing protocol/API
+3. Producer and consumer compute the same typed lane from documented field
+   sources; target indexes and implementation slices no longer use a
+   field-choice placeholder as the lane formula.
+4. Missing adapterId, selectedWorkerId, or lanePartition is handled as
+   delivery-infeasible evidence and does not fallback to routeKey.
+5. Worker-facing payload still contains `workerId` for existing protocol/API
    consumers.
-5. Distributed codec serializes the process-boundary payload once.
+6. Distributed codec serializes the process-boundary payload once.
 
 Verification:
 
 ```powershell
 .\mvnw.cmd -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/websocket-adapter,transport/socket-adapter -am -DskipTests compile
-.\mvnw.cmd -q -pl transport/transport_runtime,transport/polling-adapter,transport/websocket-adapter,transport/socket-adapter -am -Dtest=RouteTargetedTaskDispatchHandoffPumpTest,RouteTargetedTaskDispatchSubmitterTest,PollingWorkerAdapterTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest test
+.\mvnw.cmd -q -pl transport/transport_runtime,transport/polling-adapter,transport/websocket-adapter,transport/socket-adapter -am -Dtest=RouteTargetedTaskDispatchHandoffPumpTest,RouteTargetedTaskDispatchSubmitterTest,RouteTargetedTaskDispatchBatchCodecTest,PollingWorkerAdapterTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest test
+rg -n "adapterNodeId-or-transportNodeId|taskBatchJson" transport/transport_runtime/src/main/java transport/transport_runtime/src/test/java -g "*.java"
 ```
 
-## Phase 2: Adapter-Lane Dispatch Queues And Threads
+## Phase 2: Indexed Consumer Feasibility Lookup
 
-Goal: move physical dispatch ownership from routeKey-centered queues to
-adapter-node / transport-node local drain lanes.
-
-Scope:
-
-1. Define adapter dispatch lane identity from `adapterId`,
-   `adapterNodeId`, and/or resolved `transportNodeId`.
-2. Make producer handoff enqueue to the selected adapter lane after assignment.
-3. Keep routeKey as metadata or secondary coarse lane only.
-4. Let adapter nodes run bounded dispatch threads over their local lanes.
-5. Preserve backpressure per adapter lane and selected-worker sub-lane where
-   needed.
-
-Acceptance:
-
-1. Handoff queue ownership no longer requires routeKey uniqueness.
-2. One adapter node can use one shared routeKey while dispatching multiple
-   selected workers correctly.
-3. Dispatch thread count is bounded by adapter-node/runtime config, not by
-   routeKey cardinality.
-4. Missing/offline adapter lane produces engine-owned compensation, not
-   transport worker reselection.
-
-Verification:
-
-```powershell
-.\mvnw.cmd -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk -am -Dtest=RouteTargetedTaskDispatchSubmitterTest,MassApplicationDistributedTransportTest test
-rg -n "route:<.*>:node|routeKey.*thread|new Thread|Executors\\.new.*route" transport sdk -g "*.java" -g "*.md"
-```
-
-## Phase 3: Indexed Endpoint Feasibility Lookup
+Status: landed in the current implementation slice for producer route-owner
+lookup and WebSocket/socket endpoint indexes. Remaining work belongs to Phase 4
+physical queue ownership, not route-level scan-and-filter.
 
 Goal: make producer and adapter final-hop lookup direct by adapter lane plus
-selected worker.
+selected worker before moving queue ownership.
 
 Scope:
 
@@ -432,6 +453,9 @@ Scope:
 5. Ensure producer and adapters do not fallback to any other worker if the
    selected worker has no active consumer.
 6. Keep worker-route or routeKey projections as SDK/operator projection only.
+7. Keep routeKey lookup available only for bounded maintenance, diagnostics,
+   raw side-channels, or transitional proof; it must not be the task-dispatch
+   hot-path lookup.
 
 Acceptance:
 
@@ -443,6 +467,8 @@ Acceptance:
    engine-owned compensation, not transport fallback.
 4. No transport Redis key stores worker capacity, reservation, active lease,
    dispatch gate, event-binding ceiling, or `group:{groupId}:slots`.
+5. Tests prove two workers sharing one routeKey are addressed by direct
+   selected-worker evidence, not by route-local scan-and-filter.
 
 Verification:
 
@@ -451,7 +477,10 @@ Verification:
 rg -n "activeOwners\\([^\\n]*null\\)|entriesForRoute\\([^\\n]*routeKey\\).*worker|group:\\{groupId\\}:slots|worker:meta|worker:occupancy|owner-shards|worker-routes|route-presence" transport -g "*.java" -g "*.md"
 ```
 
-## Phase 4: Selected-Worker Push Delivery
+## Phase 3: Selected-Worker Push Delivery
+
+Status: landed in the current implementation slice; keep this phase as the
+guard set for push adapters and endpoint registry contracts.
 
 Goal: make final-hop push adapter delivery say what it actually does.
 
@@ -482,43 +511,90 @@ Acceptance:
 3. Raw/debug route-only send tests remain separate from task dispatch tests.
 4. A guard fails if task dispatch adapters read `PAYLOAD_WORKER_ID` for
    endpoint addressing after explicit selectedWorkerId exists.
+5. A guard fails if `WorkerEndpointRegistry` or a successor selected-worker
+   endpoint interface provides a default implementation that drops
+   selectedWorkerId and delegates to route-only send.
 
 Verification:
 
 ```powershell
-rg -n "sendToAdapterRoute\\([^,]+,[^,]+,[^,]+,[^,]+\\)|PAYLOAD_WORKER_ID" transport/websocket-adapter/src/main/java transport/socket-adapter/src/main/java -g "*.java"
+rg -n "default boolean sendToAdapterRoute\\([^\\n]*workerId|return sendToAdapterRoute\\([^\\n]*routeKey,[^\\n]*message\\)" transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointRegistry.java
+rg -n "PAYLOAD_WORKER_ID|getPayload\\(|payload\\(\\)" transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher -g "*.java"
+rg -n "sendToAdapterRoute\\(" transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher -g "*.java"
 .\mvnw.cmd -q -pl transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter -am -Dtest=CompositeWorkerEndpointRegistryTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,ServerSessionManagerShutdownTest,SocketSessionManagerTest test
 ```
 
-## Phase 5: Polling Selected-Worker Delivery Acceptance
+## Phase 4: Adapter-Lane Dispatch Queues And Threads
 
-Goal: complete the polling-worker pull path as a standalone correctness and
-throughput acceptance surface.
+Status: landed in the current implementation slice for Redis/process-boundary
+physical keys. Future adapter-node evidence can refine the lane formula without
+making routeKey a correctness key again.
 
-Owner roadmap:
-`roadmap/TRANSPORT_POLLING_SELECTED_WORKER_DELIVERY_CONVERGENCE_ROADMAP.md`.
+Goal: move physical dispatch ownership from routeKey-centered queues to
+adapter-node / transport-node local drain lanes after direct selected-worker
+feasibility lookup exists.
 
-Why separate:
+Scope:
 
-- polling worker has no long-lived push session registry equivalent to
-  WebSocket/socket;
-- current polling delivery is routeKey queue plus worker-initiated poll, so
-  routeKey-only pull can consume another worker's assigned item under shared or
-  group-level routeKey;
-- fixing polling is queue ownership convergence, not only endpoint-index
-  convergence.
-
-This parent roadmap only depends on the polling roadmap's completion criteria.
-It must not duplicate polling implementation slices.
+1. Define adapter dispatch lane identity from `adapterId`,
+   `adapterNodeId`, and/or resolved `transportNodeId`.
+2. Make producer handoff enqueue to the selected adapter lane after assignment.
+3. Keep routeKey as metadata or secondary coarse lane only.
+4. Let adapter nodes run bounded dispatch threads over their local lanes.
+5. Preserve backpressure per adapter lane and selected-worker sub-lane where
+   needed.
 
 Acceptance:
 
-1. The standalone polling roadmap is complete.
-2. Mainline task pull is not routeKey-only for assigned task items.
-3. Shared routeKey plus shared deliveryQueueKey polling is proven safe for at
-   least two selected workers in memory and Redis-backed delivery stores.
+1. Handoff queue ownership no longer requires routeKey uniqueness.
+2. One adapter node can use one shared routeKey while dispatching multiple
+   selected workers correctly.
+3. Dispatch thread count is bounded by adapter-node/runtime config, not by
+   routeKey cardinality.
+4. Missing/offline adapter lane produces engine-owned compensation, not
+   transport worker reselection.
+
+Verification:
+
+```powershell
+.\mvnw.cmd -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk -am -Dtest=RouteTargetedTaskDispatchSubmitterTest,MassApplicationDistributedTransportTest test
+rg -n "route:<.*>:node|routeKey.*thread|new Thread|Executors\\.new.*route" transport sdk -g "*.java" -g "*.md"
+```
+
+## Phase 5: Polling Selected-Worker Delivery Prerequisite
+
+Goal: keep the completed polling-worker pull convergence as a prerequisite and
+guardrail for the remaining push/handoff work.
+
+Owner roadmap:
+`doc/archive/transport/2026-06-12_TRANSPORT_POLLING_SELECTED_WORKER_DELIVERY_CONVERGENCE_ROADMAP.md`.
+
+Current state:
+
+- polling worker has no long-lived push session registry equivalent to
+  WebSocket/socket;
+- assigned polling delivery now uses worker-initiated poll by
+  `selectedWorkerId`;
+- the runtime resolves a shared internal `deliveryQueueKey`, and the delivery
+  store drains by `deliveryQueueKey + selectedWorkerId`;
+- shared routeKey and shared deliveryQueueKey are valid for polling task
+  delivery because correctness comes from selectedWorkerId.
+
+This parent roadmap must not duplicate polling implementation slices. It should
+only keep regression guards while push and distributed handoff converge.
+
+Acceptance:
+
+1. The standalone polling roadmap remains complete.
+2. Mainline task pull remains non-routeKey-only for assigned task items.
+3. Shared routeKey plus shared deliveryQueueKey polling remains proven safe for
+   at least two selected workers in memory and Redis-backed delivery stores.
 
 ## Phase 6: Lifecycle Vocabulary Split
+
+Status: validated by current guards for adapter/session mainline. No additional
+code move was needed in this slice because adapter session paths do not publish
+worker lifecycle events.
 
 Goal: stop transport endpoint evidence from reading as worker lifecycle truth.
 
@@ -553,6 +629,9 @@ rg -n "worker online|worker offline|publishWorkerOnline|publishWorkerOffline|isW
 
 ## Phase 7: Docs, Guards, And Proof Registry
 
+Status: landed in the current implementation slice; keep this phase as the
+regression checklist for owner docs, proof registry rows, and source guards.
+
 Goal: make the boundary and performance constraints hard to regress.
 
 Scope:
@@ -573,13 +652,17 @@ Scope:
 3. Add architecture/source guards:
    - task dispatch adapters must not read `PAYLOAD_WORKER_ID` directly for
      endpoint addressing once explicit selectedWorkerId exists,
-   - task dispatch selected-worker send must not fallback to route-only send,
+   - task dispatch selected-worker send must not fallback to route-only send;
+     specifically, endpoint registry interfaces must not provide a default
+     selected-worker method that delegates to a route-only method,
    - task pull must not poll routeKey-only for assigned task items,
    - producer endpoint lookup must not scan all consumers for a route in the
      dispatch hot path,
    - routeKey codecs stay outside transport runtime/adapters,
    - distributed codecs must not nest encoded JSON payloads merely to re-decode
-     them in the next transport stage.
+     them in the next transport stage; `RouteTargetedTaskDispatchBatchCodecTest`
+     or an equivalent guard must assert the serialized process-boundary record
+     does not contain `taskBatchJson`.
 4. Update `doc/PROOF_REGISTRY.md` with representative selected-worker delivery
    proof for push and pull.
 5. Mark the old route-key handoff roadmap as historical/superseded once this
@@ -600,7 +683,8 @@ Acceptance:
 Verification:
 
 ```powershell
-rg -n "routeKey-only|routeKey.*correctness|node-targeted inbox|transportNodeId.*target|PAYLOAD_WORKER_ID|getLatestOwnerByWorker|isWorkerReachable|findRouteOwners|taskBatchJson" transport sdk doc roadmap -g "*.java" -g "*.md"
+rg -n "routeKey-only|routeKey.*correctness|node-targeted inbox|transportNodeId.*target|PAYLOAD_WORKER_ID|getLatestOwnerByWorker|isWorkerReachable|findRouteOwners|taskBatchJson" transport sdk doc -g "*.java" -g "*.md"
+rg -n "default boolean sendToAdapterRoute\\([^\\n]*workerId|return sendToAdapterRoute\\([^\\n]*routeKey,[^\\n]*message\\)" transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointRegistry.java
 .\mvnw.cmd -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/websocket-adapter,transport/socket-adapter,sdk/xa-mass-embedded-sdk -am test
 ```
 

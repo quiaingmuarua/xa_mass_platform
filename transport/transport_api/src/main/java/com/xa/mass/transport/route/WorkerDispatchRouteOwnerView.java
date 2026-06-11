@@ -7,13 +7,17 @@ import java.util.List;
 /**
  * Read-only route-owner view consumed by dispatch routing.
  *
- * <p>The input is an opaque transport {@code routeKey}. This view deliberately
- * has no worker-id reverse lookup API; worker projection scans belong to
- * inspection surfaces, not dispatch routing.</p>
+ * <p>Dispatch calls this view only after engine selection has produced a
+ * concrete worker binding. The selected worker is a delivery constraint, not a
+ * scheduling or lifecycle fact. Route-key reads remain available for bounded
+ * diagnostics and maintenance, while task-dispatch producer lookup should use
+ * {@link #activeOwnerForSelectedWorker(String, String)}.</p>
  */
 public interface WorkerDispatchRouteOwnerView {
 
     List<WorkerDispatchRouteOwner> currentOwners(String routeKey);
+
+    Optional<WorkerDispatchRouteOwner> activeOwnerForSelectedWorker(String adapterId, String selectedWorkerId);
 
     default Optional<WorkerDispatchRouteOwner> currentOwner(String routeKey) {
         long now = System.currentTimeMillis();
@@ -36,23 +40,5 @@ public interface WorkerDispatchRouteOwnerView {
         return currentOwners(routeKey).stream()
                 .filter(owner -> normalizedAdapterId.equals(owner.adapterId()))
                 .anyMatch(owner -> owner.isActive(now));
-    }
-
-    default List<WorkerDispatchRouteOwner> activeOwners(String routeKey,
-                                                       String adapterId,
-                                                       String transportNodeId) {
-        String normalizedAdapterId = normalizeNullable(adapterId);
-        String normalizedTransportNodeId = normalizeNullable(transportNodeId);
-        long now = System.currentTimeMillis();
-        return currentOwners(routeKey).stream()
-                .filter(owner -> owner.isActive(now))
-                .filter(owner -> normalizedAdapterId == null || normalizedAdapterId.equals(owner.adapterId()))
-                .filter(owner -> normalizedTransportNodeId == null
-                        || normalizedTransportNodeId.equals(owner.transportNodeId()))
-                .toList();
-    }
-
-    private static String normalizeNullable(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
     }
 }

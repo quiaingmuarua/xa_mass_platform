@@ -8,17 +8,15 @@ package com.xa.mass.transport;
  * able to provide the same semantics without leaking protocol-specific types
  * into the scheduler/runtime composition layer.
  *
- * <p>The transport-neutral mainline is adapter-scoped route addressing. Callers
- * must provide the concrete {@code adapterId + routeKey} pair rather than
- * depending on route-only lookup convenience.
+ * <p>Route-only send is reserved for raw/manual side channels. Task dispatch
+ * must use selected-worker addressing so an assigned item cannot silently
+ * fallback to an arbitrary route endpoint.
  */
 public interface WorkerEndpointRegistry {
 
     boolean sendToAdapterRoute(String adapterId, String routeKey, String message);
 
-    default boolean sendToAdapterRoute(String adapterId, String routeKey, String workerId, String message) {
-        return sendToAdapterRoute(adapterId, routeKey, message);
-    }
+    boolean sendToSelectedWorker(String adapterId, String selectedWorkerId, String message);
 
     boolean isAdapterRouteOnline(String adapterId, String routeKey);
 
