@@ -2,6 +2,7 @@ package com.xa.mass.server.e2e.support;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
+import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 
 import java.net.URI;
@@ -19,8 +20,11 @@ import java.util.concurrent.TimeUnit;
 public class ManualAckWebSocketWorkerClient extends SampleWorkerWebSocketClient {
     private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
-    public ManualAckWebSocketWorkerClient(URI serverUri, String workerId) {
-        super(serverUri, workerId);
+    public ManualAckWebSocketWorkerClient(URI serverUri, String workerGroupId, String workerId) {
+        super(AbstractSampleE2eTest.withWorkerRouteKey(
+                serverUri,
+                CanonicalWorkerRouteKeyCodec.encode(workerGroupId, workerId)
+        ), workerId);
     }
 
     @Override

@@ -105,6 +105,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
 
         try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startSocketSample(
                 SOCKET_WORKER_ID,
+                "node-socket-crawler",
                 "127.0.0.1",
                 waitForPositiveIntSystemProperty(
                         SocketTransportServer.BOUND_PORT_PROPERTY,
@@ -175,9 +176,11 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
 
         try (ExternalNodeWorkerProcess websocketWorker = ExternalNodeWorkerProcess.startWebSocketSample(
                 WEBSOCKET_WORKER_ID,
+                "node-websocket-demo",
                 URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws"));
              ExternalNodeWorkerProcess socketWorker = ExternalNodeWorkerProcess.startSocketSample(
                      SOCKET_WORKER_ID,
+                     "node-socket-crawler",
                      "127.0.0.1",
                      waitForPositiveIntSystemProperty(
                              SocketTransportServer.BOUND_PORT_PROPERTY,

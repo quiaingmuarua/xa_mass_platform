@@ -41,7 +41,11 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
     }
 
     public SampleWorkerWebSocketClient(URI serverUri, String workerId, String taskResultStatus) {
-        super(withWorkerId(serverUri, workerId));
+        this(serverUri, workerId, null, taskResultStatus);
+    }
+
+    public SampleWorkerWebSocketClient(URI serverUri, String workerId, String routeKey, String taskResultStatus) {
+        super(withWorkerIdentity(serverUri, workerId, routeKey));
         this.workerId = workerId;
         this.taskResultStatus = normalizeConfiguredTaskResultStatus(taskResultStatus);
         this.reconnectScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -365,7 +369,7 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
         return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
     }
 
-    private static URI withWorkerId(URI serverUri, String workerId) {
+    private static URI withWorkerIdentity(URI serverUri, String workerId, String routeKey) {
         if (serverUri == null) {
             throw new IllegalArgumentException("serverUri must not be null");
         }
@@ -374,6 +378,9 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
         }
         String existingQuery = serverUri.getRawQuery();
         String workerQuery = "workerId=" + workerId.trim();
+        if (routeKey != null && !routeKey.isBlank()) {
+            workerQuery += "&routeKey=" + routeKey.trim();
+        }
         String mergedQuery = (existingQuery == null || existingQuery.isBlank())
                 ? workerQuery
                 : existingQuery + "&" + workerQuery;
@@ -386,7 +393,7 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
                     serverUri.getRawFragment()
             );
         } catch (Exception ex) {
-            throw new IllegalArgumentException("Failed to append workerId to serverUri", ex);
+            throw new IllegalArgumentException("Failed to append worker identity to serverUri", ex);
         }
     }
 }

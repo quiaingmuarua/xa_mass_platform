@@ -58,11 +58,11 @@ public class TaskApiMixedResultsTraceObservedIntegrationTest extends AbstractTra
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ManualAckWebSocketWorkerClient firstClient = connectClientWithRetries(
-                () -> new ManualAckWebSocketWorkerClient(wsUri, "mixed-trace-worker-0"),
+                () -> new ManualAckWebSocketWorkerClient(wsUri, "us", "mixed-trace-worker-0"),
                 "first mixed-result trace worker failed to connect"
         );
         ManualAckWebSocketWorkerClient secondClient = connectClientWithRetries(
-                () -> new ManualAckWebSocketWorkerClient(wsUri, "mixed-trace-worker-1"),
+                () -> new ManualAckWebSocketWorkerClient(wsUri, "us", "mixed-trace-worker-1"),
                 "second mixed-result trace worker failed to connect"
         );
         try {

@@ -2,11 +2,12 @@ import net from "node:net";
 import readline from "node:readline";
 
 const workerId = process.env.WORKER_ID;
+const workerGroupId = stringValue(process.env.MASS_WORKER_GROUP_ID ?? process.env.WORKER_GROUP_ID);
 const socketHost = process.env.SOCKET_HOST ?? "127.0.0.1";
 const socketPort = Number(process.env.SOCKET_PORT);
 
-if (!workerId || !socketHost || !Number.isFinite(socketPort) || socketPort <= 0) {
-  console.error("WORKER_ID, SOCKET_HOST and positive SOCKET_PORT are required");
+if (!workerId || !workerGroupId || !socketHost || !Number.isFinite(socketPort) || socketPort <= 0) {
+  console.error("WORKER_ID, MASS_WORKER_GROUP_ID, SOCKET_HOST and positive SOCKET_PORT are required");
   process.exit(2);
 }
 
@@ -106,6 +107,26 @@ async function handleFrame(rawFrame) {
   sendFrame(buildTaskResult(frame, result));
 }
 
+function stringValue(value) {
+  if (value == null) {
+    return null;
+  }
+  const text = String(value).trim();
+  return text.length > 0 ? text : null;
+}
+
+function base64Url(value) {
+  return Buffer.from(String(value).trim(), "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function canonicalRouteKey(groupId, subjectWorkerId) {
+  return `wkr1.${base64Url(groupId)}.${base64Url(subjectWorkerId)}`;
+}
+
 function shutdown(exitCode) {
   if (socket && !socket.destroyed) {
     socket.end(() => process.exit(exitCode));
@@ -117,7 +138,8 @@ function shutdown(exitCode) {
 
 socket = net.createConnection({ host: socketHost, port: socketPort }, () => {
   log(`connected to tcp://${socketHost}:${socketPort}`);
-  sendFrame({ type: "hello", workerId });
+  const routeKey = canonicalRouteKey(workerGroupId, workerId);
+  sendFrame({ type: "hello", workerId, routeKey });
 });
 
 const lineReader = readline.createInterface({

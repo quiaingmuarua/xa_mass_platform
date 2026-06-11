@@ -28,6 +28,7 @@ import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 
 import java.net.URI;
@@ -50,6 +51,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     private final String endpointPath;
     private final ExecutionEventSink traceSink;
     private final PollingRedisRuntimeConfig pollingRedisConfig;
+    private final Map<String, String> workerGroupIdByWorkerId = new LinkedHashMap<>();
 
     private ChaosRuntimeHarness(MassSdkApplication app,
                                 TaskWorkRuntime taskWorkRuntime,
@@ -304,6 +306,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 .adapterId("websocket")
                 .attributes(Map.of("routingTags", routingCode, "country", routingCode))
                 .build());
+        workerGroupIdByWorkerId.put(workerId, workerGroupId);
     }
 
     public void registerPollingWorker(String workerId,
@@ -319,6 +322,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 .adapterId("polling")
                 .attributes(Map.of("routingTags", routingCode, "country", routingCode))
                 .build());
+        workerGroupIdByWorkerId.put(workerId, workerGroupId);
     }
 
     private void ensureWorkerGroupBinding(String workerGroupId,
@@ -476,7 +480,15 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
 
     public URI serverUri(String workerId) {
         ChaosSupport.require(transportPort > 0, "websocket server port must be allocated");
-        return URI.create("ws://127.0.0.1:" + transportPort + endpointPath + "?workerId=" + workerId);
+        String workerGroupId = workerGroupIdByWorkerId.get(workerId);
+        ChaosSupport.require(workerGroupId != null && !workerGroupId.isBlank(),
+                "workerGroupId must be registered before creating websocket URI for " + workerId);
+        String routeKey = CanonicalWorkerRouteKeyCodec.encode(workerGroupId, workerId);
+        return ChaosSupport.appendWorkerIdentity(
+                URI.create("ws://127.0.0.1:" + transportPort + endpointPath),
+                workerId,
+                routeKey
+        );
     }
 
     @Override

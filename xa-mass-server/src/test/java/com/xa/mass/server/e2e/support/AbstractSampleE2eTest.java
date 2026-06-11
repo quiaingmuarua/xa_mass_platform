@@ -8,6 +8,7 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
+import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.AdapterNodeRegistration;
@@ -16,6 +17,7 @@ import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -27,6 +29,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.net.URI;
 import java.util.UUID;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -445,6 +448,52 @@ public abstract class AbstractSampleE2eTest {
                 return false;
             }
         }, 3, 250L), failureMessage);
+    }
+
+    protected SampleWorkerWebSocketClient sampleWebSocketClient(URI serverUri,
+                                                                String workerGroupId,
+                                                                String workerId) {
+        return sampleWebSocketClient(serverUri, workerGroupId, workerId, "SUCCESS");
+    }
+
+    protected SampleWorkerWebSocketClient sampleWebSocketClient(URI serverUri,
+                                                                String workerGroupId,
+                                                                String workerId,
+                                                                String taskResultStatus) {
+        return new SampleWorkerWebSocketClient(
+                withWorkerRouteKey(serverUri, canonicalWorkerRouteKey(workerGroupId, workerId)),
+                workerId,
+                taskResultStatus
+        );
+    }
+
+    protected static String canonicalWorkerRouteKey(String workerGroupId, String workerId) {
+        return CanonicalWorkerRouteKeyCodec.encode(workerGroupId, workerId);
+    }
+
+    public static URI withWorkerRouteKey(URI serverUri, String routeKey) {
+        if (serverUri == null) {
+            throw new IllegalArgumentException("serverUri must not be null");
+        }
+        if (routeKey == null || routeKey.isBlank()) {
+            throw new IllegalArgumentException("routeKey must not be blank");
+        }
+        String existingQuery = serverUri.getRawQuery();
+        String routeQuery = "routeKey=" + routeKey.trim();
+        String mergedQuery = (existingQuery == null || existingQuery.isBlank())
+                ? routeQuery
+                : existingQuery + "&" + routeQuery;
+        try {
+            return new URI(
+                    serverUri.getScheme(),
+                    serverUri.getRawAuthority(),
+                    serverUri.getRawPath(),
+                    mergedQuery,
+                    serverUri.getRawFragment()
+            );
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Failed to append routeKey to serverUri", ex);
+        }
     }
 
     protected boolean updateStoredTask(Task task) {

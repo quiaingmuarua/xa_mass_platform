@@ -59,7 +59,7 @@ public class TaskApiCallbackReplayTraceObservedIntegrationTest extends AbstractT
         registerSdkWorkerWithContext(workerId, "us");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ManualAckWebSocketWorkerClient client = new ManualAckWebSocketWorkerClient(uri, workerId);
+        ManualAckWebSocketWorkerClient client = new ManualAckWebSocketWorkerClient(uri, "us", workerId);
         try {
             assertClientConnects(client, "callback replay worker failed to connect");
 
@@ -122,7 +122,7 @@ public class TaskApiCallbackReplayTraceObservedIntegrationTest extends AbstractT
 
     private void replayConflictingTaskResult(String taskId, String messageId, String status, String detail) throws Exception {
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ReplayWebSocketClient client = new ReplayWebSocketClient(uri, "replay-worker");
+        ReplayWebSocketClient client = new ReplayWebSocketClient(uri, "us", "replay-worker");
         try {
             assertClientConnects(client, "replay WebSocket client failed to connect");
             client.sendMessage(WsFrameTestSupport.buildTaskResult(
@@ -140,8 +140,11 @@ public class TaskApiCallbackReplayTraceObservedIntegrationTest extends AbstractT
     }
 
     private static final class ReplayWebSocketClient extends SampleWorkerWebSocketClient {
-        private ReplayWebSocketClient(URI serverUri, String workerId) {
-            super(serverUri, workerId);
+        private ReplayWebSocketClient(URI serverUri, String workerGroupId, String workerId) {
+            super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(
+                    serverUri,
+                    canonicalWorkerRouteKey(workerGroupId, workerId)
+            ), workerId);
         }
 
         @Override

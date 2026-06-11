@@ -40,25 +40,36 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         this.outputPump.start();
     }
 
-    public static ExternalNodeWorkerProcess startWebSocketSample(String workerId, URI wsUri) throws Exception {
+    public static ExternalNodeWorkerProcess startWebSocketSample(String workerId,
+                                                                 String workerGroupId,
+                                                                 URI wsUri) throws Exception {
         Objects.requireNonNull(workerId, "workerId");
+        requireNonBlank(workerGroupId, "workerGroupId");
         Objects.requireNonNull(wsUri, "wsUri");
 
-        return startRepoScript("integrations/samples/node/worker-websocket/worker.mjs", Map.of(
+        Map<String, String> environment = new LinkedHashMap<>(Map.of(
                 "WORKER_ID", workerId,
                 "WS_URL", wsUri.toString()
         ));
+        environment.put("MASS_WORKER_GROUP_ID", workerGroupId.trim());
+        return startRepoScript("integrations/samples/node/worker-websocket/worker.mjs", environment);
     }
 
-    public static ExternalNodeWorkerProcess startSocketSample(String workerId, String host, int port) throws Exception {
+    public static ExternalNodeWorkerProcess startSocketSample(String workerId,
+                                                              String workerGroupId,
+                                                              String host,
+                                                              int port) throws Exception {
         Objects.requireNonNull(workerId, "workerId");
+        requireNonBlank(workerGroupId, "workerGroupId");
         Objects.requireNonNull(host, "host");
 
-        return startRepoScript("integrations/samples/node/worker-socket/worker.mjs", Map.of(
+        Map<String, String> environment = new LinkedHashMap<>(Map.of(
                 "WORKER_ID", workerId,
                 "SOCKET_HOST", host,
                 "SOCKET_PORT", String.valueOf(port)
         ));
+        environment.put("MASS_WORKER_GROUP_ID", workerGroupId.trim());
+        return startRepoScript("integrations/samples/node/worker-socket/worker.mjs", environment);
     }
 
     public static ExternalNodeWorkerProcess startPollingSample(String baseUrl,
@@ -226,6 +237,12 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
             throw new IllegalArgumentException("baseUrl must not be blank");
         }
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
+    private static void requireNonBlank(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
     }
 
     @FunctionalInterface

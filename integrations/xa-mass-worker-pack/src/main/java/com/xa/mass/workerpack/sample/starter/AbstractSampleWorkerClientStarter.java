@@ -134,7 +134,7 @@ public abstract class AbstractSampleWorkerClientStarter {
             String workerId = worker.getWorkerId();
             Future<?> future = clientExecutor.submit(() -> {
                 try {
-                    connectWorkerWithRetry(workerId, baseUri);
+                    connectWorkerWithRetry(worker, baseUri);
                 } catch (Exception e) {
                     logger().error("{} worker {} failed to connect", adapterDisplayName(), workerId, e);
                 } finally {
@@ -154,12 +154,13 @@ public abstract class AbstractSampleWorkerClientStarter {
         logger().info("{} connection summary: success={}, failed={}", adapterDisplayName(), successCount, failCount);
     }
 
-    private void connectWorkerWithRetry(String workerId, String baseUri) {
+    private void connectWorkerWithRetry(WorkerSnapshot worker, String baseUri) {
+        String workerId = worker.getWorkerId();
         for (int attempt = 1; attempt <= retryAttempts; attempt++) {
             SampleWorkerClient client = null;
             try {
                 URI uri = new URI(baseUri);
-                client = createClient(uri, workerId, taskResultStatus);
+                client = createClient(uri, worker, taskResultStatus);
                 clientSessionManager.addClient(client);
 
                 if (client.connectBlocking(connectionTimeout, TimeUnit.SECONDS)) {
@@ -254,5 +255,5 @@ public abstract class AbstractSampleWorkerClientStarter {
 
     protected abstract String resolveBaseUri();
 
-    protected abstract SampleWorkerClient createClient(URI baseUri, String workerId, String taskResultStatus);
+    protected abstract SampleWorkerClient createClient(URI baseUri, WorkerSnapshot worker, String taskResultStatus);
 }

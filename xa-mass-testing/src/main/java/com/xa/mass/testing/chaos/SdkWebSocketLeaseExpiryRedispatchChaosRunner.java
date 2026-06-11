@@ -383,7 +383,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
 
         private final class WorkerSocketClient extends WebSocketClient {
             private WorkerSocketClient(URI serverUri) {
-                super(ChaosSupport.appendWorkerId(serverUri, workerId));
+                super(serverUri);
             }
 
             @Override

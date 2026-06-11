@@ -91,9 +91,12 @@ public final class ChaosSupport {
         }
     }
 
-    public static URI appendWorkerId(URI serverUri, String workerId) {
+    public static URI appendWorkerIdentity(URI serverUri, String workerId, String routeKey) {
         String existingQuery = serverUri.getRawQuery();
         String workerQuery = "workerId=" + workerId.trim();
+        if (routeKey != null && !routeKey.isBlank()) {
+            workerQuery += "&routeKey=" + routeKey.trim();
+        }
         String mergedQuery = (existingQuery == null || existingQuery.isBlank())
                 ? workerQuery
                 : existingQuery + "&" + workerQuery;
@@ -106,7 +109,7 @@ public final class ChaosSupport {
                     serverUri.getRawFragment()
             );
         } catch (Exception ex) {
-            throw new IllegalArgumentException("Failed to append workerId to serverUri", ex);
+            throw new IllegalArgumentException("Failed to append worker identity to serverUri", ex);
         }
     }
 

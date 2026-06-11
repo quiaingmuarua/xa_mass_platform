@@ -167,9 +167,14 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
                     spec.workerKey(),
                     spec.workerGroupId()
             );
-            case NODE_WEBSOCKET -> ExternalNodeWorkerProcess.startWebSocketSample(spec.workerId(), wsUri);
+            case NODE_WEBSOCKET -> ExternalNodeWorkerProcess.startWebSocketSample(
+                    spec.workerId(),
+                    spec.workerGroupId(),
+                    wsUri
+            );
             case NODE_SOCKET -> ExternalNodeWorkerProcess.startSocketSample(
                     spec.workerId(),
+                    spec.workerGroupId(),
                     "127.0.0.1",
                     waitForPositiveIntSystemProperty(
                             SocketTransportServer.BOUND_PORT_PROPERTY,

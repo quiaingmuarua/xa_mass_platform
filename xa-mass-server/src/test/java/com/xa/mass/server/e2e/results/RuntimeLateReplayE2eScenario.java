@@ -32,7 +32,7 @@ abstract class RuntimeLateReplayE2eScenario extends ReviewReadModelSampleE2eTest
 
         URI wsUri = URI.create("ws://127.0.0.1:" + webSocketPort() + "/ws");
         DisconnectingWebSocketClient chaosClient = connectClientWithRetries(
-                () -> new DisconnectingWebSocketClient(wsUri, CHAOS_WORKER_ID),
+                () -> new DisconnectingWebSocketClient(wsUri, "us", CHAOS_WORKER_ID),
                 "chaos worker failed to connect"
         );
         try {
@@ -48,7 +48,7 @@ abstract class RuntimeLateReplayE2eScenario extends ReviewReadModelSampleE2eTest
             waitUntil(() -> !app.isWorkerOnline(CHAOS_WORKER_ID), "chaos worker disconnect must converge transport presence offline");
 
             SampleWorkerWebSocketClient steadyClient = connectClientWithRetries(
-                    () -> new SampleWorkerWebSocketClient(wsUri, STEADY_WORKER_ID),
+                    () -> sampleWebSocketClient(wsUri, "us", STEADY_WORKER_ID),
                     "steady worker failed to connect"
             );
             try {
@@ -74,7 +74,7 @@ abstract class RuntimeLateReplayE2eScenario extends ReviewReadModelSampleE2eTest
                 assertEquals("SUCCEEDED", attemptsBeforeReplay.get(1).get("status"));
 
                 ReplayWebSocketClient replayClient = connectClientWithRetries(
-                        () -> new ReplayWebSocketClient(wsUri, CHAOS_WORKER_ID),
+                        () -> new ReplayWebSocketClient(wsUri, "us", CHAOS_WORKER_ID),
                         "replay worker failed to reconnect"
                 );
                 try {
@@ -116,8 +116,11 @@ abstract class RuntimeLateReplayE2eScenario extends ReviewReadModelSampleE2eTest
     private static final class DisconnectingWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
-        private DisconnectingWebSocketClient(URI serverUri, String workerId) {
-            super(serverUri, workerId);
+        private DisconnectingWebSocketClient(URI serverUri, String workerGroupId, String workerId) {
+            super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(
+                    serverUri,
+                    canonicalWorkerRouteKey(workerGroupId, workerId)
+            ), workerId);
         }
 
         @Override
@@ -140,8 +143,11 @@ abstract class RuntimeLateReplayE2eScenario extends ReviewReadModelSampleE2eTest
     }
 
     private static final class ReplayWebSocketClient extends SampleWorkerWebSocketClient {
-        private ReplayWebSocketClient(URI serverUri, String workerId) {
-            super(serverUri, workerId);
+        private ReplayWebSocketClient(URI serverUri, String workerGroupId, String workerId) {
+            super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(
+                    serverUri,
+                    canonicalWorkerRouteKey(workerGroupId, workerId)
+            ), workerId);
         }
 
         private void awaitSilence(long timeout, TimeUnit unit) throws InterruptedException {

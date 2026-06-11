@@ -1,8 +1,9 @@
 const workerId = process.env.WORKER_ID;
 const wsUrl = process.env.WS_URL;
+const workerGroupId = stringValue(process.env.MASS_WORKER_GROUP_ID ?? process.env.WORKER_GROUP_ID);
 
-if (!workerId || !wsUrl) {
-  console.error("WORKER_ID and WS_URL are required");
+if (!workerId || !wsUrl || !workerGroupId) {
+  console.error("WORKER_ID, WS_URL and MASS_WORKER_GROUP_ID are required");
   process.exit(2);
 }
 
@@ -261,7 +262,27 @@ function compactObject(value) {
   return value;
 }
 
-socket = new WebSocket(`${wsUrl}${wsUrl.includes("?") ? "&" : "?"}workerId=${encodeURIComponent(workerId)}`);
+function base64Url(value) {
+  return Buffer.from(String(value).trim(), "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function canonicalRouteKey(groupId, subjectWorkerId) {
+  return `wkr1.${base64Url(groupId)}.${base64Url(subjectWorkerId)}`;
+}
+
+function appendWorkerIdentity(url, subjectWorkerId, groupId) {
+  const separator = url.includes("?") ? "&" : "?";
+  const routeKey = canonicalRouteKey(groupId, subjectWorkerId);
+  const params = new URLSearchParams({ workerId: subjectWorkerId });
+  params.set("routeKey", routeKey);
+  return `${url}${separator}${params.toString()}`;
+}
+
+socket = new WebSocket(appendWorkerIdentity(wsUrl, workerId, workerGroupId));
 
 socket.addEventListener("open", () => {
   log(`connected to ${socket.url}`);

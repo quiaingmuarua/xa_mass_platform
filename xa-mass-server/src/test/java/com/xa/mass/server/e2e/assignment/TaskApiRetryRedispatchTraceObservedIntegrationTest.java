@@ -60,7 +60,7 @@ class TaskApiRetryRedispatchTraceObservedIntegrationTest extends AbstractTraceOb
                 "worker registration alone must not create transport presence");
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ManualAckWebSocketWorkerClient client = new ManualAckWebSocketWorkerClient(wsUri, workerId);
+        ManualAckWebSocketWorkerClient client = new ManualAckWebSocketWorkerClient(wsUri, "us", workerId);
         try {
             Map<String, Object> createBody = new LinkedHashMap<>();
             createBody.put("project", "demoApp");

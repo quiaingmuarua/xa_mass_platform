@@ -54,7 +54,8 @@ class TaskApiTerminateReuseIntegrationTest extends ReviewReadModelSampleE2eTest 
         String workerId = "terminate-reuse-worker-0";
         registerWorker(workerId);
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ManualHoldWebSocketClient client = new ManualHoldWebSocketClient(wsUri, workerId);
+        ManualHoldWebSocketClient client =
+                new ManualHoldWebSocketClient(wsUri, workerId, canonicalWorkerRouteKey("us", workerId));
         try {
             assertClientConnects(client, "terminate reuse worker client failed to connect");
 
@@ -97,8 +98,8 @@ class TaskApiTerminateReuseIntegrationTest extends ReviewReadModelSampleE2eTest 
     private static final class ManualHoldWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
-        private ManualHoldWebSocketClient(URI serverUri, String workerId) {
-            super(serverUri, workerId);
+        private ManualHoldWebSocketClient(URI serverUri, String workerId, String routeKey) {
+            super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(serverUri, routeKey), workerId);
         }
 
         @Override

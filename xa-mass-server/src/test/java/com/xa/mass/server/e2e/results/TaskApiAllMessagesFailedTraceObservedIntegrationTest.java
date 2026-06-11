@@ -58,11 +58,11 @@ public class TaskApiAllMessagesFailedTraceObservedIntegrationTest extends Abstra
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ManualAckWebSocketWorkerClient firstClient = connectClientWithRetries(
-                () -> new ManualAckWebSocketWorkerClient(wsUri, "all-failed-trace-worker-0"),
+                () -> new ManualAckWebSocketWorkerClient(wsUri, "us", "all-failed-trace-worker-0"),
                 "first all-failed trace worker failed to connect"
         );
         ManualAckWebSocketWorkerClient secondClient = connectClientWithRetries(
-                () -> new ManualAckWebSocketWorkerClient(wsUri, "all-failed-trace-worker-1"),
+                () -> new ManualAckWebSocketWorkerClient(wsUri, "us", "all-failed-trace-worker-1"),
                 "second all-failed trace worker failed to connect"
         );
         try {

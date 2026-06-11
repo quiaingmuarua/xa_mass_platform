@@ -114,7 +114,11 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
         assertTrue(readyWhileOffline.activeLeases().isEmpty());
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startWebSocketSample(WORKER_ID, wsUri)) {
+        try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startWebSocketSample(
+                WORKER_ID,
+                "node-websocket-crawler",
+                wsUri
+        )) {
             waitForWorkerPresenceOnline(
                     WORKER_ID,
                     20,
@@ -206,7 +210,11 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
         assertApiOk(approveTask(taskId));
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startWebSocketSample(STOCK_WORKER_ID, wsUri)) {
+        try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startWebSocketSample(
+                STOCK_WORKER_ID,
+                "node-websocket-stock",
+                wsUri
+        )) {
             waitForWorkerPresenceOnline(
                     STOCK_WORKER_ID,
                     20,

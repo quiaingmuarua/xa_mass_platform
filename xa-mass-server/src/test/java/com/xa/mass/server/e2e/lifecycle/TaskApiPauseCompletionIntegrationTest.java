@@ -48,11 +48,11 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
     void pausedRunningTaskClosesToTerminalWhenRealCallbacksArrive() throws Exception {
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ManualAckWebSocketClient firstClient = connectClientWithRetries(
-                () -> new ManualAckWebSocketClient(wsUri, "it-worker-0"),
+                () -> new ManualAckWebSocketClient(wsUri, "it-worker-0", canonicalWorkerRouteKey("us", "it-worker-0")),
                 "First sample worker failed to connect"
         );
         ManualAckWebSocketClient secondClient = connectClientWithRetries(
-                () -> new ManualAckWebSocketClient(wsUri, "it-worker-1"),
+                () -> new ManualAckWebSocketClient(wsUri, "it-worker-1", canonicalWorkerRouteKey("us", "it-worker-1")),
                 "Second sample worker failed to connect"
         );
         try {
@@ -105,8 +105,8 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
     private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
-        private ManualAckWebSocketClient(URI serverUri, String workerId) {
-            super(serverUri, workerId);
+        private ManualAckWebSocketClient(URI serverUri, String workerId, String routeKey) {
+            super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(serverUri, routeKey), workerId);
         }
 
         @Override

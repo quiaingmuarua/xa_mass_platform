@@ -73,8 +73,8 @@ class TaskApiMinimumWorkerGateTraceObservedIntegrationTest extends AbstractTrace
         assertEquals(0, readySnapshot.activeLeases().size());
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(uri, workerId);
-        SampleWorkerWebSocketClient secondClient = new SampleWorkerWebSocketClient(uri, secondWorkerId);
+        SampleWorkerWebSocketClient client = sampleWebSocketClient(uri, "us", workerId);
+        SampleWorkerWebSocketClient secondClient = sampleWebSocketClient(uri, "us", secondWorkerId);
         try {
             assertClientConnects(client, "minimum worker gate sample client failed to connect");
             waitUntil(() -> app.isWorkerOnline(workerId),

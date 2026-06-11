@@ -63,7 +63,8 @@ class TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest extends Abstrac
         registerSdkStatelessWorker(workerId, "demoApp", 2);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ManualAckWebSocketClient client = new ManualAckWebSocketClient(wsUri, workerId);
+        ManualAckWebSocketClient client =
+                new ManualAckWebSocketClient(wsUri, workerId, canonicalWorkerRouteKey("us", workerId));
         try {
             assertClientConnects(client, "background sharing sample client failed to connect");
             assertTrue(awaitCondition(() -> app.isWorkerOnline(workerId), 20, 100L),
@@ -132,8 +133,8 @@ class TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest extends Abstrac
     private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
-        private ManualAckWebSocketClient(URI serverUri, String workerId) {
-            super(serverUri, workerId);
+        private ManualAckWebSocketClient(URI serverUri, String workerId, String routeKey) {
+            super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(serverUri, routeKey), workerId);
         }
 
         @Override

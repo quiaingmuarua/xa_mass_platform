@@ -59,7 +59,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractSampleE2eTest {
         registerSdkWorkerWithContext(workerId, "us");
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(wsUri, workerId);
+        SampleWorkerWebSocketClient client = sampleWebSocketClient(wsUri, "us", workerId);
         try {
             assertClientConnects(client, "Sample client failed to connect");
 

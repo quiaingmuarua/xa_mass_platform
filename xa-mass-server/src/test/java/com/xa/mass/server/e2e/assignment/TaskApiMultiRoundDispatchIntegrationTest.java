@@ -57,7 +57,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends ReviewReadModelSampleE2eT
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         SampleWorkerWebSocketClient client = connectClientWithRetries(
-                () -> new SampleWorkerWebSocketClient(wsUri, workerId),
+                () -> sampleWebSocketClient(wsUri, "us", workerId),
                 "Sample client failed to connect"
         );
         try {
@@ -95,7 +95,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends ReviewReadModelSampleE2eT
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ManualAckWebSocketClient client = connectClientWithRetries(
-                () -> new ManualAckWebSocketClient(wsUri, workerId),
+                () -> new ManualAckWebSocketClient(wsUri, "us", workerId),
                 "Manual sample client failed to connect"
         );
         try {
@@ -180,8 +180,11 @@ class TaskApiMultiRoundDispatchIntegrationTest extends ReviewReadModelSampleE2eT
     private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
-        private ManualAckWebSocketClient(URI serverUri, String workerId) {
-            super(serverUri, workerId);
+        private ManualAckWebSocketClient(URI serverUri, String workerGroupId, String workerId) {
+            super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(
+                    serverUri,
+                    canonicalWorkerRouteKey(workerGroupId, workerId)
+            ), workerId);
         }
 
         @Override

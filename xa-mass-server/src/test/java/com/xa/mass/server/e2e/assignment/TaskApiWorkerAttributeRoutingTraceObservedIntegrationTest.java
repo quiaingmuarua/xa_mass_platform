@@ -84,8 +84,10 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
         );
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ManualAckWebSocketWorkerClient matchedClient = new ManualAckWebSocketWorkerClient(uri, "attribute-routing-worker-us");
-        ManualAckWebSocketWorkerClient otherClient = new ManualAckWebSocketWorkerClient(uri, "attribute-routing-worker-gb");
+        ManualAckWebSocketWorkerClient matchedClient =
+                new ManualAckWebSocketWorkerClient(uri, "pool-east", "attribute-routing-worker-us");
+        ManualAckWebSocketWorkerClient otherClient =
+                new ManualAckWebSocketWorkerClient(uri, "pool-west", "attribute-routing-worker-gb");
         try {
             assertClientConnects(matchedClient, "matched worker client failed to connect");
             assertClientConnects(otherClient, "other worker client failed to connect");
@@ -161,8 +163,10 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
         );
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ManualAckWebSocketWorkerClient otherClient = new ManualAckWebSocketWorkerClient(uri, "route-bucket-trace-worker-eu");
-        ManualAckWebSocketWorkerClient matchedClient = new ManualAckWebSocketWorkerClient(uri, "route-bucket-trace-worker-us");
+        ManualAckWebSocketWorkerClient otherClient =
+                new ManualAckWebSocketWorkerClient(uri, "route-bucket-trace-group", "route-bucket-trace-worker-eu");
+        ManualAckWebSocketWorkerClient matchedClient =
+                new ManualAckWebSocketWorkerClient(uri, "route-bucket-trace-group", "route-bucket-trace-worker-us");
         try {
             assertClientConnects(otherClient, "other route bucket worker client failed to connect");
             assertClientConnects(matchedClient, "matched route bucket worker client failed to connect");
@@ -232,9 +236,9 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ManualAckWebSocketWorkerClient matchedClient =
-                new ManualAckWebSocketWorkerClient(uri, "phone-device-worker-fp-a");
+                new ManualAckWebSocketWorkerClient(uri, "phone-device-probe", "phone-device-worker-fp-a");
         ManualAckWebSocketWorkerClient otherClient =
-                new ManualAckWebSocketWorkerClient(uri, "phone-device-worker-fp-b");
+                new ManualAckWebSocketWorkerClient(uri, "phone-device-probe", "phone-device-worker-fp-b");
         try {
             assertClientConnects(matchedClient, "matched phone device worker client failed to connect");
             assertClientConnects(otherClient, "other phone device worker client failed to connect");

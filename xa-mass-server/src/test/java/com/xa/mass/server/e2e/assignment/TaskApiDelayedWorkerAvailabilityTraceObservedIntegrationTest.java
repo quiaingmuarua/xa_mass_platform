@@ -68,7 +68,7 @@ class TaskApiDelayedWorkerAvailabilityTraceObservedIntegrationTest extends Abstr
                 "worker registration must not create delayed worker transport presence");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(uri, lateWorkerId);
+        SampleWorkerWebSocketClient client = sampleWebSocketClient(uri, "us", lateWorkerId);
         try {
             assertClientConnects(client, "late worker trace client failed to connect");
             waitUntil(() -> app.isWorkerOnline(lateWorkerId),

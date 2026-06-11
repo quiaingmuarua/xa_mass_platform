@@ -28,6 +28,11 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-transport-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
         </dependency>

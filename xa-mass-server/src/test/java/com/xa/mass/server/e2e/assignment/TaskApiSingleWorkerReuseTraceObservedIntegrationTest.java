@@ -57,7 +57,7 @@ class TaskApiSingleWorkerReuseTraceObservedIntegrationTest extends AbstractTrace
         );
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(wsUri, workerId);
+        SampleWorkerWebSocketClient client = sampleWebSocketClient(wsUri, WORKER_GROUP_ID, workerId);
         try {
             assertClientConnects(client, "single worker reuse trace client failed to connect");
 

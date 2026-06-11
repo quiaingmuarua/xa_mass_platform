@@ -87,7 +87,7 @@ class TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest extends Abstra
                 "worker registration must not create transport presence");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(uri, lateWorkerId);
+        SampleWorkerWebSocketClient client = sampleWebSocketClient(uri, "us", lateWorkerId);
         try {
             assertClientConnects(client, "late worker redis client failed to connect");
             waitUntil(() -> app.isWorkerOnline(lateWorkerId),
@@ -109,7 +109,7 @@ class TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest extends Abstra
         registerSdkWorkerWithContext(workerId, "us");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(uri, workerId);
+        SampleWorkerWebSocketClient client = sampleWebSocketClient(uri, "us", workerId);
         try {
             assertClientConnects(client, "redis refill worker client failed to connect");
             waitUntil(() -> app.isWorkerOnline(workerId),

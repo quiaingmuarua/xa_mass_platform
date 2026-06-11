@@ -30,6 +30,7 @@ import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -101,6 +102,7 @@ public final class SdkTransportLoadRunner {
     private static final Gson FRAME_GSON = new GsonBuilder().create();
     private static final String ENDPOINT_PATH = "/testing";
     private static final String TASK_EVENT_CODE = "demo.dispatch";
+    private static final String WORKER_GROUP_ID = "sdk-load";
 
     private SdkTransportLoadRunner() {
     }
@@ -300,7 +302,7 @@ public final class SdkTransportLoadRunner {
                         .build());
             }
             app.declareWorkerGroup(WorkerGroupDeclaration.builder()
-                    .groupId("sdk-load")
+                    .groupId(WORKER_GROUP_ID)
                     .eventBindings(List.of(WorkerEventBinding.builder()
                             .eventCode(TASK_EVENT_CODE)
                             .projectCodes(List.of("demoApp"))
@@ -314,13 +316,13 @@ public final class SdkTransportLoadRunner {
             String transportHint = transportMode.transportHint();
             String adapterNodeId = transportMode.adapterId() + "-load-node";
             WorkerRegistrationSpineSupport.registerAdapterNode(app, adapterNodeId, transportHint);
-            WorkerRegistrationSpineSupport.bindNodeGroup(app, adapterNodeId, "sdk-load");
+            WorkerRegistrationSpineSupport.bindNodeGroup(app, adapterNodeId, WORKER_GROUP_ID);
             for (int i = 0; i < workerCount; i++) {
                 String workerId = "sdk-load-worker-" + i;
                 app.registerWorker(WorkerRegistration.builder()
                         .workerId(workerId)
                         .adapterNodeId(adapterNodeId)
-                        .workerGroupId("sdk-load")
+                        .workerGroupId(WORKER_GROUP_ID)
                         .transportHint(transportHint)
                         .adapterId(transportMode.adapterId())
                         .attributes(Map.of("routingTags", "us", "country", "us"))
@@ -753,7 +755,7 @@ public final class SdkTransportLoadRunner {
 
         private final class WorkerSocketClient extends WebSocketClient {
             private WorkerSocketClient(URI serverUri) {
-                super(appendWorkerId(serverUri, workerId));
+                super(serverUri);
             }
 
             @Override
@@ -825,7 +827,8 @@ public final class SdkTransportLoadRunner {
             socket = new Socket("127.0.0.1", port);
             outputStream = socket.getOutputStream();
             running.set(true);
-            require(sendLine(buildSocketHello(workerId)), "socket worker failed to send hello: " + workerId);
+            require(sendLine(buildSocketHello(workerId, canonicalRouteKey(workerId))),
+                    "socket worker failed to send hello: " + workerId);
         }
 
         @Override
@@ -877,7 +880,7 @@ public final class SdkTransportLoadRunner {
 
         @Override
         public void refreshReadySignal() {
-            sendLine(buildSocketHello(workerId));
+            sendLine(buildSocketHello(workerId, canonicalRouteKey(workerId)));
         }
 
         @Override
@@ -1062,10 +1065,11 @@ public final class SdkTransportLoadRunner {
         return FRAME_GSON.toJson(frame);
     }
 
-    private static String buildSocketHello(String workerId) {
+    private static String buildSocketHello(String workerId, String routeKey) {
         JsonObject frame = new JsonObject();
         frame.addProperty("type", "hello");
         frame.addProperty("workerId", workerId);
+        frame.addProperty("routeKey", routeKey);
         return FRAME_GSON.toJson(frame);
     }
 
@@ -1087,9 +1091,12 @@ public final class SdkTransportLoadRunner {
         }
     }
 
-    private static URI appendWorkerId(URI serverUri, String workerId) {
+    private static URI appendWorkerIdentity(URI serverUri, String workerId, String routeKey) {
         String existingQuery = serverUri.getRawQuery();
         String workerQuery = "workerId=" + workerId.trim();
+        if (routeKey != null && !routeKey.isBlank()) {
+            workerQuery += "&routeKey=" + routeKey.trim();
+        }
         String mergedQuery = (existingQuery == null || existingQuery.isBlank())
                 ? workerQuery
                 : existingQuery + "&" + workerQuery;
@@ -1102,8 +1109,12 @@ public final class SdkTransportLoadRunner {
                     serverUri.getRawFragment()
             );
         } catch (Exception ex) {
-            throw new IllegalArgumentException("Failed to append workerId to serverUri", ex);
+            throw new IllegalArgumentException("Failed to append worker identity to serverUri", ex);
         }
+    }
+
+    private static String canonicalRouteKey(String workerId) {
+        return CanonicalWorkerRouteKeyCodec.encode(WORKER_GROUP_ID, workerId);
     }
 
     private static RuntimeDiagnosticsOperations runtimeDiagnostics(MassSdkApplication app) {
@@ -1116,7 +1127,11 @@ public final class SdkTransportLoadRunner {
                                    String endpointPath) {
         private URI serverUri(String workerId) {
             require(transportPort > 0, "websocket server port must be allocated");
-            return URI.create("ws://127.0.0.1:" + transportPort + endpointPath + "?workerId=" + workerId);
+            return appendWorkerIdentity(
+                    URI.create("ws://127.0.0.1:" + transportPort + endpointPath),
+                    workerId,
+                    canonicalRouteKey(workerId)
+            );
         }
 
         private int socketPort() {
