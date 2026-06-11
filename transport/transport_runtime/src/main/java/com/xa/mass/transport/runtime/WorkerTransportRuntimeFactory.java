@@ -19,6 +19,7 @@ public interface WorkerTransportRuntimeFactory {
                                     WorkerSystemEventChannel systemEventChannel,
                                     WorkerPresenceStore workerPresenceStore,
                                     TransportDeliveryService deliveryService,
+                                    TransportRouteKeyResolver routeKeyResolver,
                                     List<TransportBinding> adapterBindings);
 
     default List<TransportAdapterDescriptor> registrationDescriptors() {

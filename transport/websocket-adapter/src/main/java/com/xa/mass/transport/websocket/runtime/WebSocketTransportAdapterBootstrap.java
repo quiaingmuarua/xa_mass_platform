@@ -4,7 +4,6 @@ import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
-import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.TransportServer;
@@ -53,7 +52,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                             config.getAdapterId(),
                             new WebSocketTaskDispatchChannel(dispatcherContext, context.getDeliveryService())
                     )
-            ).routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject()).build());
+            ).routeKeyResolver(context.getRouteKeyResolver()).build());
             context.registerRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(config.getAdapterId(), endpointRegistry));
         }
 

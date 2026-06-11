@@ -1,6 +1,5 @@
 package com.xa.mass.transport.runtime.worker;
 
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.transport.presence.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
@@ -16,21 +15,29 @@ public final class WorkerDispatchRouteSelector {
 
     private final WorkerDispatchRouteOwnerView routeOwnerView;
     private final TransportNodeRegistry nodeRegistry;
+    private final WorkerRouteKeyResolver routeKeyResolver;
 
     public WorkerDispatchRouteSelector(WorkerDispatchRouteOwnerView routeOwnerView,
-                                       TransportNodeRegistry nodeRegistry) {
+                                       TransportNodeRegistry nodeRegistry,
+                                       WorkerRouteKeyResolver routeKeyResolver) {
         this.routeOwnerView = Objects.requireNonNull(routeOwnerView, "routeOwnerView");
         this.nodeRegistry = nodeRegistry;
+        this.routeKeyResolver = Objects.requireNonNull(routeKeyResolver, "routeKeyResolver");
     }
 
     public Optional<WorkerDispatchRouteOwner> selectRoute(WorkerResourceRecord worker) {
-        if (worker == null || worker.workerId() == null || worker.workerId().isBlank()
-                || worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
+        if (worker == null) {
+            return Optional.empty();
+        }
+        Optional<String> routeKey = Optional.ofNullable(routeKeyResolver.resolveRouteKey(worker))
+                .orElse(Optional.empty())
+                .map(String::trim)
+                .filter(value -> !value.isBlank());
+        if (routeKey.isEmpty()) {
             return Optional.empty();
         }
         long now = System.currentTimeMillis();
-        String routeKey = CanonicalWorkerRouteKeyCodec.encode(worker.workerGroupId(), worker.workerId());
-        return routeOwnerView.currentOwner(routeKey)
+        return routeOwnerView.currentOwner(routeKey.get())
                 .filter(owner -> owner.isOnline(now))
                 .filter(owner -> isNodeDispatchable(owner.transportNodeId()));
     }

@@ -108,6 +108,23 @@ class SocketSessionManagerTest {
         verify(systemEventChannel).publishWorkerOffline("worker-1", "socket adapter shutdown", null);
     }
 
+    @Test
+    void setWorkerPresenceStoreReprojectsActiveSocketSessions() {
+        InMemoryWorkerPresenceStore firstStore = new InMemoryWorkerPresenceStore(30_000L, "socket-node-1");
+        InMemoryWorkerPresenceStore secondStore = new InMemoryWorkerPresenceStore(30_000L, "socket-node-2");
+        SocketSessionManager manager = new SocketSessionManager("socket", mock(WorkerSystemEventChannel.class));
+        manager.setWorkerPresenceStore(firstStore);
+
+        manager.addSession("route-1", "worker-1", "endpoint-1", activeSocket(), mock(BufferedWriter.class));
+        manager.setWorkerPresenceStore(secondStore);
+
+        assertEquals(WorkerPresenceState.ONLINE, secondStore.getPresence("worker-1").getPresenceState());
+        assertEquals("route-1", secondStore.getPresence("worker-1").getRouteKey());
+        assertEquals("endpoint-1", secondStore.getPresence("worker-1").getConnectionId());
+        assertEquals("socket-node-2", secondStore.findOwners("worker-1").getFirst().transportNodeId());
+        assertTrue(secondStore.isRouteOnline("socket", "route-1"));
+    }
+
     private Socket activeSocket() {
         Socket socket = mock(Socket.class);
         when(socket.isConnected()).thenReturn(true);

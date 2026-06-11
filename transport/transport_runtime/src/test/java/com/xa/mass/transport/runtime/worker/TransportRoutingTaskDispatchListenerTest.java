@@ -14,9 +14,7 @@ import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -538,7 +536,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
     private static TransportBinding canonicalRouteBinding(WorkerAdapter adapter) {
         return TransportBinding.builder(adapter)
-                .routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject())
+                .routeKeyResolver((dispatchBinding, routeContext) -> routeKey(routeContext.workerId()))
                 .build();
     }
 
@@ -567,7 +565,7 @@ class TransportRoutingTaskDispatchListenerTest {
     }
 
     private static String routeKey(String workerId) {
-        return CanonicalWorkerRouteKeyCodec.encode(TEST_WORKER_GROUP_ID, workerId);
+        return "route:" + workerId;
     }
 
     private static TaskDispatchContext taskContext(Task task) {

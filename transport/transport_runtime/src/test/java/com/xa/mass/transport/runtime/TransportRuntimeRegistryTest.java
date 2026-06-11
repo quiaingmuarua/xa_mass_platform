@@ -37,7 +37,7 @@ class TransportRuntimeRegistryTest {
 
     private static TransportBinding canonicalRouteBinding(com.xa.mass.transport.worker.WorkerAdapter adapter) {
         return TransportBinding.builder(adapter)
-                .routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject())
+                .routeKeyResolver((dispatchBinding, routeContext) -> "route:" + routeContext.workerId())
                 .build();
     }
 

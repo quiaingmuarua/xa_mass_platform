@@ -24,7 +24,6 @@ import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
-import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import com.xa.mass.transport.worker.WorkerAdapter;
@@ -326,7 +325,7 @@ class MassApplicationDistributedTransportTest {
         @Override
         public void contribute(TransportAdapterBootstrapContext context) {
             context.registerTransportBinding(TransportBinding.builder(adapter)
-                    .routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject())
+                    .routeKeyResolver(context.getRouteKeyResolver())
                     .build());
         }
     }

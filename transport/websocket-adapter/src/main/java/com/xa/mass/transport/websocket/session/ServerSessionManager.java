@@ -16,6 +16,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -28,6 +30,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
     private final String adapterId;
     private final RouteEndpointIndex<Channel, WebSocketRouteEndpoint> routeIndex = new RouteEndpointIndex<>();
+    private final Set<Channel> retiredChannels = ConcurrentHashMap.newKeySet();
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
     private final ScheduledExecutorService presenceRefreshExecutor;
     private volatile WorkerSystemEventChannel systemEventChannel = new RuntimeEventBusWorkerSystemEventChannel();
@@ -47,6 +50,11 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     public synchronized void addSession(String routeKey, String workerId, Channel channel, ChannelHandlerContext ctx) {
+        if (retiredChannels.contains(channel)) {
+            logger.debug("Ignoring retired WebSocket channel for routeKey={} channelId={}",
+                    routeKey, channel.id().asShortText());
+            return;
+        }
         boolean wasRouteOnline = hasActiveChannel(routeKey);
         RouteEndpointIndex.BindResult<Channel, WebSocketRouteEndpoint> result = routeIndex.bind(
                 routeKey,
@@ -62,6 +70,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> previous = result.previousEntry();
         if (previous != null && previous.handle() != channel) {
             logger.warn("Existing channel for routeKey={} found, but new channel is different. Replacing session.", routeKey);
+            retireReplacedSession(previous);
         }
         if (previous == null || previous.handle() != channel) {
             activeConnectionCount.incrementAndGet();
@@ -105,6 +114,10 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
                 cancelPresenceRefreshLoop();
             }
         } else {
+            if (retiredChannels.remove(channel)) {
+                logger.debug("Ignoring disconnect for retired WebSocket channel: {}", channel.id().asShortText());
+                return;
+            }
             logger.warn("Attempted to remove session for a channel not in index: {}", channel.id().asShortText());
         }
     }
@@ -200,11 +213,13 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     public void setWorkerPresenceStore(WorkerPresenceStore workerPresenceStore) {
-        this.workerPresenceStore = workerPresenceStore != null
+        WorkerPresenceStore nextStore = workerPresenceStore != null
                 ? workerPresenceStore
                 : new InMemoryWorkerPresenceStore();
         synchronized (this) {
+            this.workerPresenceStore = nextStore;
             if (activeConnectionCount.get() > 0) {
+                projectActiveSessionsOnline("websocket presence store replaced");
                 reschedulePresenceRefreshLoop();
             }
         }
@@ -273,6 +288,33 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
                         "websocket session keepalive"
                 );
             }
+        }
+    }
+
+    private void projectActiveSessionsOnline(String reason) {
+        for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
+            WebSocketRouteEndpoint endpoint = entry.endpoint();
+            if (endpoint == null || !endpoint.isActive()) {
+                continue;
+            }
+            workerPresenceStore.markOnline(
+                    entry.workerId(),
+                    adapterId,
+                    entry.routeKey(),
+                    entry.handle().id().asShortText(),
+                    reason
+            );
+        }
+    }
+
+    private void retireReplacedSession(RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> previous) {
+        if (previous == null || previous.handle() == null) {
+            return;
+        }
+        retiredChannels.add(previous.handle());
+        WebSocketRouteEndpoint endpoint = previous.endpoint();
+        if (endpoint != null && endpoint.isActive()) {
+            endpoint.channel().close();
         }
     }
 

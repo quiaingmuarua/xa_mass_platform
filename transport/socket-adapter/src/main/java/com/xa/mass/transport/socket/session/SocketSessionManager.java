@@ -181,9 +181,13 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
     }
 
     public void setWorkerPresenceStore(WorkerPresenceStore workerPresenceStore) {
-        this.workerPresenceStore = workerPresenceStore != null
+        WorkerPresenceStore nextStore = workerPresenceStore != null
                 ? workerPresenceStore
                 : new InMemoryWorkerPresenceStore();
+        synchronized (this) {
+            this.workerPresenceStore = nextStore;
+            projectActiveSessionsOnline("socket presence store replaced");
+        }
     }
 
     public void recordHeartbeat(String routeKey, String workerId, String endpointId, String reason, String traceId) {
@@ -195,6 +199,22 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
 
     private boolean matchesAdapter(String adapterId) {
         return adapterId == null || this.adapterId.equalsIgnoreCase(adapterId.trim());
+    }
+
+    private void projectActiveSessionsOnline(String reason) {
+        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entries()) {
+            SocketWorkerEndpoint endpoint = entry.endpoint();
+            if (endpoint == null || !endpoint.isActive()) {
+                continue;
+            }
+            workerPresenceStore.markOnline(
+                    entry.workerId(),
+                    adapterId,
+                    entry.routeKey(),
+                    entry.handle(),
+                    reason
+            );
+        }
     }
 
     private void closeQuietly(SocketWorkerEndpoint endpoint) {

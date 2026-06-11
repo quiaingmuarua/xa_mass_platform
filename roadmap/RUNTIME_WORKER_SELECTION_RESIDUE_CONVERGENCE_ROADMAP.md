@@ -43,7 +43,7 @@ owners and adds guards/proofs so the current boundary cannot drift back.
 
 Transport owns:
 
-- route-owner presence keyed by canonical route key,
+- route-owner presence keyed by opaque route key,
 - transport node connection evidence,
 - delivery queue ownership keyed by route key,
 - adapter connection diagnostics.
@@ -72,14 +72,14 @@ route-owner lookup.
 
 Current code already has important pieces of the target shape:
 
-- `CanonicalWorkerRouteKeyCodec` encodes route keys from
-  `workerGroupId + workerId`.
+- `CanonicalWorkerRouteKeyCodec` encodes the current SDK/starter default worker
+  route key from `workerGroupId + workerId`.
 - `WorkerPresenceStore.currentOwner(routeKey)` is the bounded transport owner
   lookup surface.
 - `WorkerDispatchRouteSelector` resolves dispatch route from the selected
-  worker's canonical route key after engine selection.
+  worker through an injected route-key resolver after engine selection.
 - Embedded SDK assembly builds `WorkerReachabilityView` by resolving the
-  worker resource, encoding the canonical route key, and checking
+  worker resource, applying the default route-key resolver, and checking
   `currentOwner(routeKey)`.
 - `WorkerPresenceStore#getPresence`, `isWorkerOnline`, `findOwners`, and
   `listActivePresences` still exist as compatibility/operator surfaces.
@@ -214,8 +214,8 @@ Scope:
 - Keep those APIs allowed only in explicitly classified operator/inspection,
   test, or compatibility-support surfaces.
 - Guard route-owner lookup direction:
-  - scheduling reachability assembly uses canonical route key,
-  - dispatch route selection uses selected worker -> canonical route key,
+  - scheduling reachability assembly uses resolved opaque route key,
+  - dispatch route selection uses selected worker -> injected route-key resolver,
   - neither path scans all active presences.
 
 Acceptance:
@@ -248,13 +248,15 @@ diverge.
 Scope:
 
 - Add or tighten focused tests for:
-  - canonical route key is derived from `workerGroupId + workerId`,
+  - SDK/starter default route key is derived from `workerGroupId + workerId`,
+  - scheduling reachability and dispatch route selection use the resolved
+    opaque `routeKey`,
   - online route owner makes reachability `ONLINE`,
   - missing route owner makes reachability non-schedulable,
   - offline transport node makes reachability non-schedulable,
   - stale/offline evidence from an old connection cannot revoke a newer owner,
   - worker-id compatibility projection cannot make a worker schedulable when
-    canonical route owner is absent.
+    resolved route owner is absent.
 - Prefer existing transport runtime and embedded SDK tests over broad E2E.
 
 Acceptance:

@@ -103,7 +103,7 @@ import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.runtime.TransportRouteKeyResolvers;
+import com.xa.mass.transport.runtime.TransportRouteKeyResolver;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
@@ -432,6 +432,7 @@ class MassSdkTest {
                                                      systemEventChannel,
                                                      workerPresenceStore,
                                                      deliveryService,
+                                                     routeKeyResolver,
                                                      adapterBindings) -> mock(TransportRuntimeRegistry.class);
         config.setWorkerTransportRuntimeFactory(customFactory);
 
@@ -523,7 +524,8 @@ class MassSdkTest {
                     new RuntimeEventBusWorkerSystemEventChannel(),
                     new InMemoryWorkerPresenceStore(),
                     deliveryService(),
-                    runtimeTaskExecutor
+                    runtimeTaskExecutor,
+                    routeKeyResolver()
             );
             adapterBootstrap(runtimeComposition, "socket").contribute(bootstrapContext);
         } finally {
@@ -552,7 +554,8 @@ class MassSdkTest {
                     new RuntimeEventBusWorkerSystemEventChannel(),
                     new InMemoryWorkerPresenceStore(),
                     deliveryService(),
-                    runtimeTaskExecutor
+                    runtimeTaskExecutor,
+                    routeKeyResolver()
             );
             adapterBootstrap(runtimeComposition, "websocket").contribute(bootstrapContext);
         } finally {
@@ -583,7 +586,8 @@ class MassSdkTest {
                     new RuntimeEventBusWorkerSystemEventChannel(),
                     new InMemoryWorkerPresenceStore(),
                     deliveryService(),
-                    runtimeTaskExecutor
+                    runtimeTaskExecutor,
+                    routeKeyResolver()
             );
             adapterBootstrap(runtimeComposition, "ws-public").contribute(bootstrapContext);
         } finally {
@@ -616,7 +620,8 @@ class MassSdkTest {
                     new RuntimeEventBusWorkerSystemEventChannel(),
                     new InMemoryWorkerPresenceStore(),
                     deliveryService(),
-                    runtimeTaskExecutor
+                    runtimeTaskExecutor,
+                    routeKeyResolver()
             );
             adapterBootstrap(runtimeComposition, "socket-edge").contribute(bootstrapContext);
         } finally {
@@ -649,7 +654,8 @@ class MassSdkTest {
                                     runtimeComposition.resolveSystemEventChannel(),
                                     new InMemoryWorkerPresenceStore(),
                                     deliveryService(),
-                                    runtimeTaskExecutor
+                                    runtimeTaskExecutor,
+                                    routeKeyResolver()
                             )
                     )
             );
@@ -679,7 +685,8 @@ class MassSdkTest {
                                     new RuntimeEventBusWorkerSystemEventChannel(),
                                     new InMemoryWorkerPresenceStore(),
                                     deliveryService(),
-                                    runtimeTaskExecutor
+                                    runtimeTaskExecutor,
+                                    routeKeyResolver()
                             )
                     )
             );
@@ -710,7 +717,8 @@ class MassSdkTest {
                                     new RuntimeEventBusWorkerSystemEventChannel(),
                                     new InMemoryWorkerPresenceStore(),
                                     deliveryService(),
-                                    runtimeTaskExecutor
+                                    runtimeTaskExecutor,
+                                    routeKeyResolver()
                             )
                     )
             );
@@ -774,6 +782,7 @@ class MassSdkTest {
                                                 systemEventChannel,
                                                 workerPresenceStore,
                                                 deliveryService,
+                                                routeKeyResolver,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
@@ -798,6 +807,7 @@ class MassSdkTest {
                                                 systemEventChannel,
                                                 workerPresenceStore,
                                                 deliveryService,
+                                                routeKeyResolver,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
         config.setPrimaryTransportAdapterBootstrap(new DescriptorOnlyBootstrap(
                 new TransportAdapterDescriptor("custom-rt", WorkerTransportHints.REALTIME)
@@ -826,6 +836,7 @@ class MassSdkTest {
                                                    WorkerSystemEventChannel systemEventChannel,
                                                    com.xa.mass.transport.presence.WorkerPresenceStore workerPresenceStore,
                                                    TransportDeliveryService deliveryService,
+                                                   TransportRouteKeyResolver routeKeyResolver,
                                                    List<TransportBinding> adapterBindings) {
                 return mock(TransportRuntimeRegistry.class);
             }
@@ -2718,6 +2729,7 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
+                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 workerResourceRuntime,
                 taskResultIngestChannel,
@@ -2759,6 +2771,7 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
+                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 workerResourceRuntime,
                 taskResultIngestChannel,
@@ -2803,6 +2816,7 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
+                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 workerResourceRuntime,
                 taskResultIngestChannel,
@@ -2846,6 +2860,7 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
+                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 workerResourceRuntime,
                 taskResultIngestChannel,
@@ -2945,6 +2960,7 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
+                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 workerResourceRuntime,
                 taskResultIngestChannel,
@@ -2989,6 +3005,7 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
+                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 workerResourceRuntime,
                 taskResultIngestChannel,
@@ -3036,6 +3053,7 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
+                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 workerResourceRuntime,
                 taskResultIngestChannel,
@@ -3458,15 +3476,20 @@ class MassSdkTest {
 
     private static TransportBinding canonicalRouteBinding(WorkerAdapter adapter) {
         return TransportBinding.builder(adapter)
-                .routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject())
+                .routeKeyResolver(routeKeyResolver())
                 .build();
     }
 
     private static TransportBinding canonicalRouteBinding(WorkerAdapter adapter, TaskPullChannel taskPullChannel) {
         return TransportBinding.builder(adapter)
-                .routeKeyResolver(TransportRouteKeyResolvers.canonicalWorkerSubject())
+                .routeKeyResolver(routeKeyResolver())
                 .taskPullChannel(taskPullChannel)
                 .build();
+    }
+
+    private static TransportRouteKeyResolver routeKeyResolver() {
+        return (dispatchBinding, routeContext) ->
+                CanonicalWorkerRouteKeyCodec.encode(routeContext.workerGroupId(), routeContext.workerId());
     }
 
     private static <T> T waitFor(Duration timeout, ThrowingSupplier<T> supplier) throws Exception {

@@ -22,6 +22,7 @@ public final class TransportAdapterBootstrapContext {
     private final WorkerPresenceStore workerPresenceStore;
     private final TransportDeliveryService deliveryService;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
+    private final TransportRouteKeyResolver routeKeyResolver;
     private TransportBinding transportBinding;
     private ManagedTransportAdapter managedTransportAdapter;
     private TransportServer transportServer;
@@ -32,13 +33,15 @@ public final class TransportAdapterBootstrapContext {
                                             WorkerSystemEventChannel systemEventChannel,
                                             WorkerPresenceStore workerPresenceStore,
                                             TransportDeliveryService deliveryService,
-                                            RuntimeTaskExecutor runtimeTaskExecutor) {
+                                            RuntimeTaskExecutor runtimeTaskExecutor,
+                                            TransportRouteKeyResolver routeKeyResolver) {
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
         this.workerPresenceStore = Objects.requireNonNull(workerPresenceStore, "workerPresenceStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
+        this.routeKeyResolver = Objects.requireNonNull(routeKeyResolver, "routeKeyResolver");
     }
 
     public WorkerEndpointRegistry getEndpointRegistry() {
@@ -63,6 +66,10 @@ public final class TransportAdapterBootstrapContext {
 
     public RuntimeTaskExecutor getRuntimeTaskExecutor() {
         return runtimeTaskExecutor;
+    }
+
+    public TransportRouteKeyResolver getRouteKeyResolver() {
+        return routeKeyResolver;
     }
 
     public void registerTransportBinding(TransportBinding transportBinding) {

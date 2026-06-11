@@ -2,7 +2,6 @@ package com.xa.mass.transport.runtime.worker;
 
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.junit.jupiter.api.Test;
@@ -27,7 +26,8 @@ class WorkerDispatchRouteSelectorTest {
 
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                 presence,
-                nodes
+                nodes,
+                WorkerDispatchRouteSelectorTest::routeKey
         );
 
         assertEquals("socket", selector.selectRoute(worker).orElseThrow().adapterId());
@@ -44,7 +44,8 @@ class WorkerDispatchRouteSelectorTest {
 
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                 presence,
-                nodes
+                nodes,
+                WorkerDispatchRouteSelectorTest::routeKey
         );
 
         assertTrue(selector.selectRoute(worker).isEmpty());
@@ -61,7 +62,8 @@ class WorkerDispatchRouteSelectorTest {
 
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                 presence,
-                nodes
+                nodes,
+                WorkerDispatchRouteSelectorTest::routeKey
         );
 
         assertTrue(selector.selectRoute(worker).isEmpty());
@@ -107,6 +109,13 @@ class WorkerDispatchRouteSelectorTest {
     }
 
     private static String routeKey(String workerGroupId, String workerId) {
-        return CanonicalWorkerRouteKeyCodec.encode(workerGroupId, workerId);
+        return "route:" + workerId;
+    }
+
+    private static java.util.Optional<String> routeKey(WorkerResourceRecord worker) {
+        if (worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(routeKey(worker.workerGroupId(), worker.workerId()));
     }
 }

@@ -211,7 +211,7 @@ The split runtime uses three transport/runtime channels:
   `NodeTargetedTaskDispatchHandoff` queues keyed by `transportNodeId` so each
   transport JVM consumes only its own inbox.
 - delivery inbox: transport routes dispatch envelopes into
-  `TransportDeliveryStore` by canonical `routeKey`; `adapterId` remains
+  `TransportDeliveryStore` by opaque `routeKey`; `adapterId` remains
   delivery request metadata and diagnostics
 - result/compensation inboxes: transport writes `TransportResultEnvelope`
   values and retryable dispatch-failure events to Redis-backed inboxes; the
@@ -262,12 +262,12 @@ worker lookup, result finality, retry, release, or task state mutation.
 
 Presence owner semantics are also part of the transport contract:
 
-- canonical `routeKey` identifies the shared route-owner record
+- `routeKey` identifies the shared route-owner record
 - `workerId` is execution identity and projection evidence attached to that
   route owner
 - `connectionId` identifies the current live owner for that route
 - `markOnline(...)` may install or replace the owner value for the same
-  canonical `routeKey` with a new `adapterId + transportNodeId + connectionId`
+  `routeKey` with a new `adapterId + transportNodeId + connectionId`
 - `refreshHeartbeat(...)` and `markOffline(...)` must only mutate shared
   presence when the incoming `connectionId` still matches the stored owner
 - stale heartbeat or disconnect events from an older connection must never
@@ -352,20 +352,21 @@ and rejection semantics.
 Transport delivery addressing is the pair:
 
 - `adapterId`: concrete adapter identity such as `polling`, `websocket`, `socket`
-- `routeKey`: canonical worker delivery subject minted from `workerGroupId + workerId`
+- `routeKey`: opaque transport delivery address
 
 Current runtime rules:
 
 - `adapterId` is canonicalized by trim + lowercase
 - `routeKey` is canonicalized by trim only; case is preserved
-- route-key assembly for worker delivery is owned by
-  `CanonicalWorkerRouteKeyCodec`; listeners and adapters must not hard-code raw
-  worker id as the delivery address
+- route-key assembly is outside transport runtime. SDK/starter currently uses
+  `CanonicalWorkerRouteKeyCodec` as the default worker route-key rule from
+  `workerGroupId + workerId`, but transport runtime/adapters must not import or
+  hard-code that rule.
 - transport bindings must declare their route-key resolver explicitly at
   assembly time; runtime must not hide `workerId -> routeKey` policy behind
   builder defaults or shared fallback helpers
-- mainline polling/websocket/socket bindings use the canonical worker subject
-  resolver
+- mainline polling/websocket/socket bindings use the resolver injected by
+  runtime assembly
 - adapter ingress must receive an explicit routeKey; public managed SDK
   sessions generate that key from worker group + worker id. Handshake / hello
   fallback to raw worker id is not a target path.
@@ -374,34 +375,34 @@ Current runtime rules:
   speak in terms of `routeKey`, not imply that worker identity is the only
   valid address key
 - blank `routeKey` is invalid for both queued delivery and direct-send delivery
-- queue ownership and poll/drain isolation key off canonical `routeKey`;
+- queue ownership and poll/drain isolation key off opaque `routeKey`;
   `adapterId` remains delivery request metadata, not queue identity
-- for worker delivery, `routeKey` is the canonical worker delivery subject;
-  transport runtime must not reinterpret it as task, attempt, lease, or
-  business routing truth
+- for worker delivery, `routeKey` is the transport delivery address; transport
+  runtime must not reinterpret it as task, attempt, lease, worker-group, worker,
+  or business routing truth
 - route-only endpoint helpers may exist only inside one concrete adapter
   implementation; the shared runtime/registry contract must use adapter-scoped
   route operations rather than inferring ownership from endpoint snapshots
 - worker-addressed debug/raw side-channels are not route truth; if they remain,
-  they must first resolve the current route owner for the canonical `routeKey`
+  they must first resolve the current route owner for the selected `routeKey`
   before adapter send, and the send contract itself should stay adapter-scoped
   rather than reviving route-only shared operations
-- future Redis/JDBC queue replacements must preserve the same canonical addressing
+- future Redis/JDBC queue replacements must preserve the same opaque addressing
   rules and must not require hot-path scans to recover queue ownership
 
 WRB convergence note:
 
-- `CanonicalWorkerRouteKeyCodec` names the target platform worker route-key
-  contract: route identity is minted from `workerGroupId + workerId`. This
-  contract is implemented on the current production adapter/bootstrap and
-  managed SDK paths.
+- `CanonicalWorkerRouteKeyCodec` names the current SDK/starter default worker
+  route-key mint rule: route identity is minted from `workerGroupId + workerId`.
+  This is not a transport runtime rule; adapters and shared runtime code receive
+  explicit route keys or injected resolvers.
 - Redis-backed presence uses routeKey-sharded owner hashes plus deadline zsets;
   `currentOwner(routeKey)` is a bounded read.
 - Delivery queues are routeKey-owned. Adapter change for the same routeKey does
   not strand already queued envelopes in an old adapter-specific queue.
 - `adapterId`, `transportNodeId`, and `connectionId` remain delivery-owner
   evidence. They must stay in owner values or queue metadata, not become the
-  platform worker route-key identity.
+  route-key minting rule.
 
 ## Forbidden Drift
 

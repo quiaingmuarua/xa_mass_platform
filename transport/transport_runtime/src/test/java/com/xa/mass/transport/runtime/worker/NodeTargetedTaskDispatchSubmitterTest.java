@@ -10,7 +10,6 @@ import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.junit.jupiter.api.Test;
@@ -37,7 +36,8 @@ class NodeTargetedTaskDispatchSubmitterTest {
         nodes.register("node-2", List.of("websocket"), 1L);
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                 routeView,
-                nodes
+                nodes,
+                NodeTargetedTaskDispatchSubmitterTest::routeKey
         );
         CapturingNodeTargetedHandoff handoff = new CapturingNodeTargetedHandoff();
         List<TaskDispatchBinding> compensated = new ArrayList<>();
@@ -74,7 +74,8 @@ class NodeTargetedTaskDispatchSubmitterTest {
         nodes.markOffline("node-1");
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                 presence,
-                nodes
+                nodes,
+                NodeTargetedTaskDispatchSubmitterTest::routeKey
         );
         CapturingNodeTargetedHandoff handoff = new CapturingNodeTargetedHandoff();
         List<TaskDispatchBinding> compensated = new ArrayList<>();
@@ -186,7 +187,13 @@ class NodeTargetedTaskDispatchSubmitterTest {
     }
 
     private static String routeKey(String workerId) {
-        return CanonicalWorkerRouteKeyCodec.encode("group-1", workerId);
+        return "route:" + workerId;
+    }
+
+    private static Optional<String> routeKey(WorkerResourceRecord worker) {
+        return worker == null || worker.workerId() == null || worker.workerId().isBlank()
+                ? Optional.empty()
+                : Optional.of(routeKey(worker.workerId()));
     }
 
     private static final class CapturingNodeTargetedHandoff implements NodeTargetedTaskDispatchHandoff {

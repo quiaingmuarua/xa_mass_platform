@@ -6,6 +6,7 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.NodeTargetedTaskDispatchHandoff;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoff;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
@@ -31,7 +32,9 @@ import com.xa.mass.transport.runtime.TracingWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportDispatchRouteContext;
 import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
+import com.xa.mass.transport.runtime.TransportRouteKeyResolver;
 import com.xa.mass.transport.runtime.BufferedTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.RuntimeTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
@@ -65,6 +68,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -319,6 +323,7 @@ public class MassApplication {
             }
 
             if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
+                TransportRouteKeyResolver routeKeyResolver = this::resolveTransportRouteKey;
                 for (TransportAdapterBootstrap transportAdapterBootstrap
                         : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
                     TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
@@ -327,7 +332,8 @@ public class MassApplication {
                             systemEventChannel,
                             workerPresenceStore,
                             deliveryService,
-                            transportRuntimeTaskExecutor
+                            transportRuntimeTaskExecutor,
+                            routeKeyResolver
                     );
                     transportAdapterBootstrap.contribute(bootstrapContext);
                     registerTransportBootstrapContext(bootstrapContext, adapterBindings);
@@ -341,6 +347,7 @@ public class MassApplication {
                         systemEventChannel,
                         workerPresenceStore,
                         deliveryService,
+                        this::resolveTransportRouteKey,
                         adapterBindings
                 );
                 configureRealtimeWorkerCommandDelivery();
@@ -356,11 +363,11 @@ public class MassApplication {
                     WorkerResourceRecord worker = engineConfig.getWorkerResourceRuntime()
                             .worker(workerId.trim())
                             .orElse(null);
-                    if (worker == null || worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
+                    Optional<String> routeKey = resolveWorkerRouteKey(worker);
+                    if (routeKey.isEmpty()) {
                         return com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.OFFLINE;
                     }
-                    String routeKey = CanonicalWorkerRouteKeyCodec.encode(worker.workerGroupId(), worker.workerId());
-                    return workerPresenceStore.currentOwner(routeKey)
+                    return workerPresenceStore.currentOwner(routeKey.get())
                             .map(owner -> {
                                 long now = System.currentTimeMillis();
                                 if (owner.isOnline(now)
@@ -438,7 +445,8 @@ public class MassApplication {
                 && handoff instanceof NodeTargetedTaskDispatchHandoff nodeTargetedHandoff) {
             WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                     workerPresenceStore,
-                    transportNodeRegistry
+                    transportNodeRegistry,
+                    this::resolveWorkerRouteKey
             );
             return new NodeTargetedTaskDispatchSubmitter(
                     nodeTargetedHandoff,
@@ -448,6 +456,22 @@ public class MassApplication {
             );
         }
         return (task, dispatchBindings) -> handoff.submit(new TaskDispatchBatch(task, dispatchBindings));
+    }
+
+    private String resolveTransportRouteKey(TaskDispatchBinding dispatchBinding,
+                                            TransportDispatchRouteContext routeContext) {
+        if (routeContext == null) {
+            throw new IllegalArgumentException("routeContext must not be null");
+        }
+        return CanonicalWorkerRouteKeyCodec.encode(routeContext.workerGroupId(), routeContext.workerId());
+    }
+
+    private Optional<String> resolveWorkerRouteKey(WorkerResourceRecord worker) {
+        if (worker == null || worker.workerId() == null || worker.workerId().isBlank()
+                || worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(CanonicalWorkerRouteKeyCodec.encode(worker.workerGroupId(), worker.workerId()));
     }
 
     private void startTransportNodeHeartbeat(List<TransportBinding> adapterBindings) {

@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-06-10
+Last updated: 2026-06-11
 
 Status: current transport owner handoff.
 
@@ -14,13 +14,13 @@ entry for `transport/`.
 - `transport_runtime` owns shared runtime assembly and delivery semantics.
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
 - `adapterId` is concrete runtime truth. `transportHint` is only a coarse family.
-- `routeKey` is the transport delivery address. For worker delivery, the
-  canonical route key is minted by `CanonicalWorkerRouteKeyCodec` from
-  `workerGroupId + workerId`; callers must treat the encoded value as opaque.
-- `CanonicalWorkerRouteKeyCodec` is the current worker route identity contract.
-  Production adapter bootstraps, Redis route-owner storage, public SDK managed
-  sessions, server worker presence APIs, and delivery queues now use the
-  canonical route-key subject.
+- `routeKey` is the transport delivery address. Transport runtime and adapters
+  treat it as opaque and must not know whether it was minted from worker,
+  worker-group, or another owner-level rule.
+- `CanonicalWorkerRouteKeyCodec` is the current SDK/starter default worker
+  route-key mint rule from `workerGroupId + workerId`; transport runtime and
+  adapters receive explicit route keys or injected resolvers instead of
+  importing that rule.
 - route-only endpoint helpers may exist inside one concrete adapter, but shared
   runtime delivery must first resolve the current route owner for `routeKey`
   and then dispatch through the owner value's `adapterId + routeKey`.
@@ -106,9 +106,9 @@ Use this order for transport changes:
 Prefer these after transport changes:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,TransportRouteKeyResolversTest,TransportRoutingTaskDispatchListenerTest,WorkerDispatchRouteSelectorTest,NodeTargetedTaskDispatchSubmitterTest
-./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerRouteKeyCodecTest,WebSocketInputProcessorTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest
-./mvnw -q -pl sdk/xa-mass-embedded-sdk test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest
+./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,TransportRoutingTaskDispatchListenerTest,WorkerDispatchRouteSelectorTest,NodeTargetedTaskDispatchSubmitterTest
+./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerRouteKeyCodecTest,WebSocketInputProcessorTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest,SocketSessionManagerTest,ServerSessionManagerShutdownTest
+./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Acceptance focus:
