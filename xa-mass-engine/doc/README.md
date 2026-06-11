@@ -45,7 +45,9 @@ below and must not stay in this list.
 - [PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md](roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md)
 - [TASK_RUNTIME_PROFILE_DESIGN.md](roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
 - [WORKER_MATCH_UPGRADE_ROADMAP.md](roadmap/WORKER_MATCH_UPGRADE_ROADMAP.md)
-- [WORKER_SLOT_REGISTRY_ROADMAP.md](roadmap/WORKER_SLOT_REGISTRY_ROADMAP.md)
+- [WORKER_RUNTIME_ADMISSION_AND_REDIS_SHAPE_CONVERGENCE_ROADMAP.md](../../roadmap/WORKER_RUNTIME_ADMISSION_AND_REDIS_SHAPE_CONVERGENCE_ROADMAP.md)
+  supersedes the historical Worker Slot Registry roadmap for future worker
+  admission, `WorkerSlot`, and Redis key-shape work.
 
 Historical archive entries are deliberately omitted from this README. Current
 engine work should start from baselines and active roadmaps above.

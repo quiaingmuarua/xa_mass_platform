@@ -9,7 +9,16 @@ Related documents:
 - `platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistryKeyspace.java`
 - `xa-mass-worker-runtime/CONTRACTS.md`
 - `transport/TRANSPORT_BOUNDARY_BASELINE.md`
+- `doc/PROOF_REGISTRY.md`
+- `xa-mass-engine/doc/roadmap/WORKER_SLOT_REGISTRY_ROADMAP.md`
 - `roadmap/REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md`
+
+Supersedes:
+
+- `xa-mass-engine/doc/roadmap/WORKER_SLOT_REGISTRY_ROADMAP.md` remaining
+  phases. WSR remains historical context for how the project converged from
+  storage/lock-owned worker truth into `WorkerRegistry`; it is not the active
+  target roadmap for future worker admission or Redis key-shape work.
 
 ## Purpose
 
@@ -30,11 +39,13 @@ model. It currently mixes worker metadata, candidate attributes, heartbeat
 evidence, dispatch gates, reservation counts, active lease counts, exclusive
 lease state, and removing tombstone into one encoded `WorkerSlot`.
 
-This roadmap therefore sets a default direction: delete the heavy platform-side
+This roadmap therefore sets a preferred target: delete the heavy platform-side
 `WorkerSlot` admission aggregate and demote the platform to candidate selection,
 metadata/hard-gate filtering, route reachability, and dispatch offer handling.
 Workers should perform final accept/reject admission unless a later proof shows
-that a specific platform-side admission policy is required.
+that a specific platform-side admission policy is required. That target is not
+permission to delete occupancy fields until WKRK-2.5 proves the worker-offer
+protocol through a real external worker path.
 
 Only after that demotion path is defined should the Redis key shape be
 optimized. Otherwise we risk spending effort sharding and tuning a heavyweight
@@ -246,7 +257,8 @@ Current heavy slot fields:
 
 Default target model:
 
-Model B: worker-side accept/reject owns final admission.
+Model B: worker-side accept/reject owns final admission after WKRK-2.5 proves
+the worker-offer protocol through a real external worker path.
 
 ```text
 candidate worker
@@ -259,7 +271,8 @@ candidate worker
 
 This model accepts short-lived stale candidates and possible extra dispatch
 round trips, but it removes heavyweight platform-side worker occupancy truth and
-matches the eventual-consistency direction.
+matches the eventual-consistency direction only after the offer protocol and
+TaskWorkRuntime lease semantics are proven.
 
 Exception model:
 
@@ -330,68 +343,81 @@ around the implementation detail.
 ## Hard Rules
 
 1. Do not replace all worker runtime state with one global worker hash.
-2. Do not introduce writable `worker:meta:{workerId}`,
+2. Any product or runtime semantic decision must receive explicit owner review
+   before implementation. This includes admission ownership, task-offer lease
+   semantics, public/SDK worker protocol changes, policy exceptions,
+   worker-side accept/reject vocabulary, retry/backoff semantics, and any
+   decision that changes caller-visible scheduling behavior. Do not smuggle
+   these decisions into a Redis key-shape slice.
+3. Kernel and upper runtime callers must depend on
+   `platform_infra/mass-runtime-api` contracts, not Redis physical structure.
+   `mass-runtime-redis` may change key names, shards, indexes, Lua/transaction
+   strategy, or cleanup shape without requiring engine or `xa-mass-worker-runtime`
+   caller changes, unless the SPI itself is intentionally revised through owner
+   review.
+4. Do not introduce writable `worker:meta:{workerId}`,
    `worker:occupancy:{workerId}`, or `worker:available:{shard}` beside a still
    active `group:{groupId}:slots` admission aggregate. A lightweight worker meta
-   shape may replace the slot aggregate only after WKRK-0 selects worker-side
-   accept/reject or another explicit demotion model.
-3. Do not keep a per-worker Redis key family unless it has a named hot-path or
+   shape may replace the slot aggregate only after WKRK-0 records the target
+   owner and WKRK-2.5 proves the replacement admission protocol, or after
+   WKRK-0 accepts another explicit demotion model.
+5. Do not keep a per-worker Redis key family unless it has a named hot-path or
    cleanup reason that cannot be satisfied by a bounded worker-metadata shape
    or a group-scoped index.
-4. Do not use key count alone as proof. A low key count with unbounded
+6. Do not use key count alone as proof. A low key count with unbounded
    `SMEMBERS`, `HGETALL`, `HKEYS`, or group-wide `WATCH` contention is not
    scalable.
-5. Do not add compatibility dual writes for old and new Redis shapes. This
+7. Do not add compatibility dual writes for old and new Redis shapes. This
    repo is pre-release; use clean runtime recreation for key-shape replacement
    unless a later decision explicitly requires live migration.
-6. Once a new key family becomes mainline, remove the superseded internal key
+8. Once a new key family becomes mainline, remove the superseded internal key
    family, keyspace method, tests, docs, and roadmap wording in the same track.
    Do not leave aliases, fallback readers, or "temporary" compatibility paths
    inside the repo.
-7. Redis physical shape must not leak above `platform_infra/mass-runtime-redis`.
+9. Redis physical shape must not leak above `platform_infra/mass-runtime-redis`.
    Upper layers talk to `platform_infra/mass-runtime-api`; memory and Redis
    implementations prove parity through the shared contract.
-8. Candidate buckets may be stale. Correctness must come from Stage-2
+10. Candidate buckets may be stale. Correctness must come from Stage-2
    metadata/hard-gate validation plus worker-side accept/reject. Platform-side
    reserve/admission is allowed only for an accepted WKRK-0 exception.
-9. A projection is not truth. Any projection that can accept admission, reserve,
+11. A projection is not truth. Any projection that can accept admission, reserve,
    release, or capacity decisions without re-reading current worker metadata or
    going through worker-side accept/reject becomes a duplicate truth bug.
-10. Transport presence must remain separate from worker runtime. Transport
+12. Transport presence must remain separate from worker runtime. Transport
    route ownership answers "where can this matched worker be delivered";
    WorkerRegistry answers "what worker metadata and hard gates are known before
    dispatch offer".
-11. Redis field TTL is an optional cleanup optimization, not a boundary
+13. Redis field TTL is an optional cleanup optimization, not a boundary
    decision.
-12. Every slice must leave runtime behavior compiling and must not require a
+14. Every slice must leave runtime behavior compiling and must not require a
     later slice to restore scheduling correctness.
-13. Redis key-shape convergence must be reviewed together with Redis
+15. Redis key-shape convergence must be reviewed together with Redis
     connection, transaction, and locking boundaries. A lower key count with one
     JVM-wide monitor or one shared connection transaction bottleneck is not a
     production-ready shape.
-14. Bounded cleanup means Redis-side bounded reads, not reading a full key and
+16. Bounded cleanup means Redis-side bounded reads, not reading a full key and
     enforcing `limit` only inside Java.
-15. If Redis Cluster is in scope for a key-shape change, hash-tag placement must
+17. If Redis Cluster is in scope for a key-shape change, hash-tag placement must
     be decided before multi-key Lua or transaction boundaries land. If Redis
     Cluster is out of scope for this roadmap, state that explicitly.
-16. Do not preserve transport `worker-route:{workerId}` as a sharded hash or
+18. Do not preserve transport `worker-route:{workerId}` as a sharded hash or
     replacement projection. The mainline already has `workerGroupId + workerId`
     and must compute canonical route key directly.
-17. `WorkerPresenceStore#getPresence(workerId)`, `isWorkerOnline(workerId)`,
+19. `WorkerPresenceStore#getPresence(workerId)`, `isWorkerOnline(workerId)`,
     `findOwners(workerId)`, and `listActivePresences()` must not be production
     scheduling or dispatch-route inputs. Retarget callers to route-key-first
     lookup or demote the APIs to bounded operator/support surfaces before
     deleting their Redis projections.
-18. Worker-registry heartbeat and transport presence are not interchangeable.
+20. Worker-registry heartbeat and transport presence are not interchangeable.
     If both gates remain, their names and tests must prove distinct semantics:
     registry stale/admission evidence versus transport reachability.
-19. Do not optimize `WorkerSlot` sharding, WATCH contention, or occupancy
+21. Do not optimize `WorkerSlot` sharding, WATCH contention, or occupancy
     indexes before deciding whether platform-side worker admission remains.
-20. If worker-side accept/reject becomes final admission, platform
+22. If worker-side accept/reject becomes final admission, platform
     `reservedCount`, `activeLeaseCount`, `activeLeaseCountByTask`, and
     `exclusiveLeaseHeld` must be demoted or deleted rather than reimplemented in
     a new key family.
-21. Do not expose Redis physical key shapes above the infra runtime boundary.
+23. Do not expose Redis physical key shapes above the infra runtime boundary.
     Upper layers should consume semantic operations, not key families.
 
 ## Do Not Start With
@@ -409,11 +435,107 @@ Do not start by sharding `group:{groupId}:slots` before reviewing whether the
 slot aggregate should survive as a heavy admission object. Sharding a model that
 will be deleted is wasted complexity.
 
+Do not start by deleting occupancy fields before there is a proven worker-offer
+protocol across at least one real external worker path. Worker-side final
+admission is a protocol and lifecycle change, not a Redis key rename.
+
 Start by proving caller needs, key cardinality, and hot-path cost. Then replace
 one key family at a time with a single-writer shape. Deleting first would create
 hidden full scans or force compatibility bridges back into the implementation.
 After a replacement is accepted, delete the old residue rather than preserving
 both tracks.
+
+## First Executable Slice
+
+The first implementation slice is documentation/inventory only. It must produce
+or update `WORKER_RUNTIME_ADMISSION_AND_REDIS_SHAPE_INVENTORY.md` before any
+runtime or Redis key-shape code changes.
+
+Minimum contents:
+
+- WSR supersession note and remaining active facts that WKRK inherits.
+- Product/runtime semantic decisions that require owner review before code.
+- `WorkerSlot` field decision table.
+- `WorkerRegistry` SPI delta table.
+- engine/runtime caller replacement table.
+- external worker protocol surface table.
+- Redis key family classification and bounded-read / contention budget.
+- SPI isolation check proving engine and `xa-mass-worker-runtime` consume
+  `platform_infra/mass-runtime-api` semantic operations rather than Redis
+  keyspace, codec, or storage-adapter classes.
+- `doc/PROOF_REGISTRY.md` note saying the current worker-state invariant remains
+  platform-side until WKRK-2.5 proves worker-offer outcomes.
+
+WKRK-SPI is the first blocking gate. After WKRK-SPI is green, WKRK-0, WKRK-1,
+and WKRK-1.5 may be completed as the first decision/inventory bundle. No
+production behavior may change in that bundle.
+
+## WKRK-SPI: Runtime SPI Isolation Gate
+
+Goal:
+
+Make Redis physical shape an infra runtime implementation detail before any
+admission semantic rewrite or Redis key-shape change.
+
+Why this is first:
+
+If engine or `xa-mass-worker-runtime` can see Redis keys, Redis keyspace
+classes, codecs, or adapter implementation types, every later key reshape
+becomes a kernel change. That turns physical storage into accidental runtime
+truth and makes the roadmap expensive to execute. The first gate therefore
+freezes the dependency direction:
+
+```text
+engine / xa-mass-worker-runtime
+  -> platform_infra/mass-runtime-api semantic SPI
+    -> mass-runtime-memory
+    -> mass-runtime-redis physical implementation
+```
+
+Scope:
+
+- Inventory engine and `xa-mass-worker-runtime` production imports and string
+  references for Redis runtime implementation details.
+- Confirm upper runtime callers consume semantic SPI methods from
+  `platform_infra/mass-runtime-api`, not Redis-shaped helper methods.
+- Classify any lower-level `WorkerRegistry` method exposed through
+  `mass-runtime-api` as:
+  - semantic runtime SPI,
+  - implementation-only surface that should not be used by upper layers,
+  - contract-test-only surface,
+  - remove/retarget candidate.
+- If an upper runtime caller needs a new access pattern, propose it as a
+  storage-independent SPI method before touching `mass-runtime-redis`.
+- Do not add a new pass-through facade. The target is a narrow semantic SPI,
+  not an extra wrapper around the current Redis implementation.
+
+Acceptance:
+
+- Engine and `xa-mass-worker-runtime` production source has no imports or
+  references to:
+  - `com.xa.mass.runtime.redis`,
+  - `RedisWorkerRegistry`,
+  - `RedisWorkerRegistryKeyspace`,
+  - Redis key suffixes such as `worker:group`, `group:{groupId}:slots`,
+    `bucket-membership`, or `worker-active-count`.
+- Engine and `xa-mass-worker-runtime` production callers use
+  `platform_infra/mass-runtime-api` semantic operations for candidate,
+  metadata, admission, dispatch-gate, and cleanup needs.
+- Any required new upper-layer access pattern is recorded as a
+  `mass-runtime-api` SPI change before Redis implementation begins.
+- The shared memory and Redis implementations remain substitutable through the
+  same API contract; no kernel code branches on Redis vs memory runtime.
+- This gate is green before WKRK-0 owner decisions are implemented, before
+  WKRK-1 key-shape decisions become code, and before WKRK-2.5 offer protocol
+  work starts.
+
+Suggested checks:
+
+```powershell
+rg -n "com\\.xa\\.mass\\.runtime\\.redis|RedisWorkerRegistry|RedisWorkerRegistryKeyspace|worker:group|group:\\{groupId\\}:slots|bucket-membership|worker-active-count" xa-mass-engine/src/main/java xa-mass-worker-runtime/src/main/java --glob '!**/target/**'
+rg -n "\\.slotByWorkerId\\(|\\.markSlotRemoving\\(|\\.workerIdsByGroupId\\(|\\.workerIdsByAdapterNodeGroup\\(" xa-mass-engine/src/main/java xa-mass-worker-runtime/src/main/java --glob '!**/target/**'
+.\mvnw.cmd -pl xa-mass-engine "-Dtest=EngineSchedulingCoreArchitectureGuardTest#upperRuntimeCallersUseWorkerRegistrySemanticOperations" test
+```
 
 ## Target Key Budget
 
@@ -441,9 +563,11 @@ stronger reason than convenience.
 
 Goal:
 
-Decide whether final worker admission stays platform-side or moves to
-worker-side accept/reject, and record the engine, worker-runtime, transport,
-and Redis SPI deltas before any physical key deletion.
+Decide the preferred final worker admission owner and record the engine,
+worker-runtime, transport, SDK/API, and Redis SPI deltas before any physical key
+deletion. A decision that prefers worker-side accept/reject is not enough to
+delete platform occupancy; WKRK-2.5 must still prove the protocol can carry the
+runtime lifecycle.
 
 Scope:
 
@@ -479,6 +603,16 @@ Scope:
   - `TaskWorkerAssignListener` active worker count / assignment planning path,
   - `TaskResourceReleaseListener` and result / expiry / terminal release paths,
   - `WorkerAdmissionRuntime` public contract.
+- Produce an external worker protocol surface table for at least:
+  - `xa-mass-server` `ExternalWorkerApiController` worker API endpoints,
+  - Java SDK `WorkerClient`, `PollingWorkerSession`, and
+    `WebSocketWorkerSession`,
+  - embedded SDK `PullWorkerSession`,
+  - `integrations/xa-mass-worker-pack` sample clients,
+  - Node polling / websocket / socket sample workers.
+  The table must say whether each path reports offer accept/reject in the first
+  implementation, is explicitly out of scope for that slice, or remains on a
+  platform-side admission exception.
 - Inventory every production call path that mutates or reads:
   - `reservedCount`,
   - `activeLeaseCount`,
@@ -506,6 +640,9 @@ Scope:
     and work becomes active only after `ACCEPTED`.
 - The preferred target is pending-offer lease. Transitional active claim is
   allowed only as a bounded first slice with explicit release/requeue proof.
+- If no bounded protocol path can be proven for at least one real external
+  worker surface, WKRK-0 must keep platform-side admission as an explicit
+  temporary exception rather than declaring worker-side admission complete.
 - Define how rejected offers return task work to ready/delayed state and how
   retry/backoff avoids hot-loop dispatch to busy workers.
 - Define which existing Stage-2 gates remain platform hard gates:
@@ -525,11 +662,17 @@ Scope:
 
 Acceptance:
 
-- The roadmap records worker-side accept/reject as the default final-admission
-  target before slot sharding or occupancy key-shape work begins.
+- The roadmap records worker-side accept/reject as the preferred
+  final-admission target, but marks deletion of platform occupancy as gated on
+  WKRK-2.5 protocol proof.
+- WSR remaining phases are explicitly superseded by this roadmap; any WSR fact
+  retained by WKRK is copied into the first inventory or named as historical
+  context only.
 - The WKRK-0 artifact contains the `WorkerSlot` field decision table,
   `WorkerRegistry` SPI delta table, and engine/runtime caller replacement
   table described above.
+- The artifact contains the external worker protocol surface table and names
+  which public/SDK/integration path provides the first proof path.
 - The artifact states whether dispatch offer uses transitional active claim or
   pending-offer lease, and names the `TaskWorkRuntime` method or new seam that
   owns each transition.
@@ -538,10 +681,13 @@ Acceptance:
 - Any platform-side admission exception names the policy that requires it and
   why worker-side reject/backoff is insufficient.
 - `WorkerSlot` occupancy fields become delete/demotion candidates and
-  subsequent WKRK slices retarget to lightweight worker meta unless an exception
-  is accepted.
+  subsequent WKRK slices retarget to lightweight worker meta only after WKRK-2.5
+  proves the offer protocol, unless an exception is accepted.
 - `WorkerAdmissionRuntime` contract docs are updated or explicitly marked as
   still valid.
+- `doc/PROOF_REGISTRY.md` is updated or annotated to state that the current
+  `sched.worker-state-dimensions` invariant remains platform-side until
+  WKRK-2.5 proves worker-offer outcomes.
 - No implementation change is made in this slice.
 
 Suggested checks:
@@ -604,11 +750,19 @@ Acceptance:
 - A sibling inventory,
   `WORKER_RUNTIME_ADMISSION_AND_REDIS_SHAPE_INVENTORY.md`, exists or this
   roadmap has been updated with an equivalent table.
+- The inventory contains the first-slice bundle named in this roadmap:
+  WSR supersession, `WorkerSlot` field decisions, `WorkerRegistry` SPI deltas,
+  caller replacement table, external worker protocol surface table, and Redis
+  bounded-read / contention budget.
 - Every key family has a classification:
   `canonical`, `bounded-index`, `cleanup-index`, `diagnostic-index`,
   `duplicate-candidate`, or `remove-candidate`.
 - Every `WorkerRegistry` API method used by upper layers is mapped to either a
   storage-independent contract or a retarget/removal decision.
+- No engine or `xa-mass-worker-runtime` production caller imports or depends on
+  `com.xa.mass.runtime.redis`, `RedisWorkerRegistryKeyspace`, Redis codecs, or
+  Redis key names. Any required new access pattern is proposed as a
+  `mass-runtime-api` SPI change before Redis implementation work starts.
 - The inventory explicitly names whether a key family is allowed to be
   `O(worker keys)`.
 - Every full-key read on a mainline or cleanup path is classified as retained,
@@ -628,6 +782,7 @@ Suggested checks:
 ```powershell
 rg -n "RedisWorkerRegistryKeyspace|workerBucketMembershipSet|taskActiveWorkersSet|groupSlotsHash|groupHeartbeatDeadlinesZset|groupCandidateBucket|nodeCandidateBucket" platform_infra/mass-runtime-redis/src/main/java
 rg -n "interface WorkerRegistry|workerMeta|workerAdmissionSnapshot|markWorkersRemovingByGroup|disableDispatchForAdapterNodeGroup|slotByWorkerId|workerIdsByGroupId|activeWorkerIdsByTask|activeWorkerCountForTask|exclusiveLeaseWorkerIds|acquireCandidates" platform_infra/mass-runtime-api platform_infra/mass-runtime-memory platform_infra/mass-runtime-redis
+rg -n "com\\.xa\\.mass\\.runtime\\.redis|RedisWorkerRegistry|RedisWorkerRegistryKeyspace|groupSlotsHash|workerBucketMembershipSet|worker:group|group:\\{groupId\\}" xa-mass-engine/src/main/java xa-mass-worker-runtime/src/main/java --glob '!**/target/**'
 rg -n "slotByWorkerId|markSlotRemoving|workerIdsByGroupId|workerIdsByAdapterNodeGroup" xa-mass-worker-runtime/src/main xa-mass-engine/src/main --glob '!**/target/**'
 rg -n "synchronized|watch\\(|smembers\\(|hkeys\\(|zrangebyscore\\(" platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistry.java
 rg -n "worker-route|workersKey\\(|getPresence\\(|isWorkerOnline\\(|findOwners\\(|listActivePresences\\(|currentOwner\\(" transport sdk xa-mass-engine xa-mass-worker-runtime --glob '!**/target/**'
@@ -703,6 +858,13 @@ Scope:
 - Audit remaining `slotByWorkerId(workerId)` callers inside
   `platform_infra/mass-runtime-api`, `mass-runtime-memory`, and
   `mass-runtime-redis`.
+- For every semantic worker-id API that currently delegates through
+  `slotByWorkerId(workerId)`, record the concrete memory and Redis
+  implementation source after `worker:group` is removed or sharded. This covers
+  at least `workerMeta(workerId)`, `workerAdmissionSnapshot(workerId)`,
+  worker-id `tryReserve(...)`, `confirmReservation(...)`,
+  `releaseReservation(...)`, `recordWorkClaimed(...)`, `recordWorkFinal(...)`,
+  dispatch-disable methods, and exclusive-lease methods.
 - Classify each remaining caller as:
   - implementation lookup,
   - contract test,
@@ -722,6 +884,10 @@ Scope:
 Acceptance:
 
 - `worker:group` has either a retained reason or a replacement plan.
+- If the replacement plan removes or shards `worker:group`, every retained
+  semantic worker-id API has an implementation-level memory and Redis source
+  that does not depend on the removed projection. Otherwise `worker:group`
+  remains and is documented as an active lookup projection.
 - No path accepts scheduling or capacity decisions from `worker:group` alone.
 - Engine and worker-runtime production callers remain on semantic
   `WorkerRegistry` methods; the architecture guard stays green.
@@ -739,8 +905,12 @@ Suggested checks:
 
 ```powershell
 rg -n "\\.slotByWorkerId\\(|workerGroupHash\\(|worker:group" platform_infra xa-mass-worker-runtime xa-mass-engine --glob '!**/target/**'
-.\mvnw.cmd -pl xa-mass-engine -am -Dtest=EngineSchedulingCoreArchitectureGuardTest test
+.\mvnw.cmd -pl xa-mass-engine "-Dtest=EngineSchedulingCoreArchitectureGuardTest#upperRuntimeCallersUseWorkerRegistrySemanticOperations" test
 ```
+
+The full `EngineSchedulingCoreArchitectureGuardTest` class is a repo-health
+prerequisite, not WKRK-2 slice proof. Unrelated scheduling-policy guard failures
+must not be treated as WKRK-2 failures.
 
 ## WKRK-2.5: Worker-Side Offer Accept/Reject Runtime
 
@@ -756,13 +926,18 @@ documentation-only decision. Before `reservedCount`, `activeLeaseCount`,
 runtime, the dispatch path must have an explicit offer outcome and recovery
 model.
 
+WKRK-0 may choose worker-side accept/reject as the preferred target, but this
+phase is the executable feasibility gate. If this phase cannot prove the
+protocol through at least one real external worker path, platform-side admission
+must remain as an explicit temporary exception and later Redis key-shape slices
+must not delete occupancy fields.
+
 Scope:
 
-- Define a worker offer outcome contract owned by worker runtime / engine
-  recovery, not Redis key shape. The recommended name is
-  `WorkerDispatchOfferOutcome`. It is not transport `DispatchOutcome`, which
-  only records envelope delivery, and it is not `TaskResult`, which records
-  work finality. Offer outcomes include:
+- Define a worker offer outcome value contract at the worker-offer protocol
+  boundary. The recommended name is `WorkerDispatchOfferOutcome`. It is not
+  transport `DispatchOutcome`, which only records envelope delivery, and it is
+  not `TaskResult`, which records work finality. Offer outcomes include:
   - `ACCEPTED`,
   - `BUSY`,
   - `CAPACITY_FULL`,
@@ -770,22 +945,43 @@ Scope:
   - `ATTRIBUTE_MISMATCH`,
   - `DRAINING`,
   - timeout/no-ack.
+- Keep the owner split explicit:
+  - `TaskWorkRuntime` owns pending-offer evidence, active lease evidence,
+    requeue visibility, retry/expiry counters, and stale result validity.
+  - engine binder/recovery owns offer orchestration, release/requeue calls,
+    backoff decision, and redispatch scheduling.
+  - transport, server, SDK, and worker sessions carry protocol evidence and
+    route delivery; they do not own task-work lifecycle truth.
+  - `WorkerRegistry` owns worker metadata, candidate indexes, hard gates, and
+    worker-side admission evidence only. It must not gain task-work lease,
+    pending-offer, active-execution, or stale-result truth.
+  - trace observes offer transitions after the runtime owners emit evidence; it
+    does not own admission or lease truth.
 - Define the offer outcome ingestion channel:
   - polling workers may return it when polling/accepting assigned work,
   - realtime workers may send an explicit accept/reject frame,
   - command/event ack paths must not be reused unless they are renamed as the
     worker-offer outcome owner.
+- Include public and integration worker surfaces in the scope, not only engine
+  internals:
+  - `xa-mass-server` external worker endpoints,
+  - Java SDK `WorkerClient`, `PollingWorkerSession`, and
+    `WebSocketWorkerSession`,
+  - embedded SDK `PullWorkerSession`,
+  - `integrations/xa-mass-worker-pack`,
+  - Node polling / websocket / socket samples.
+  At least one path must be implemented and proven in this phase; any deferred
+  path must be named with the reason it does not block deleting platform
+  occupancy.
 - Define the `TaskWorkRuntime` lease model selected in WKRK-0:
   - if transitional active claim is used, rejected/no-ack offers must call a
     foreground release/requeue path that clears active lease evidence and makes
     the work visible again;
   - if pending-offer lease is used, offer timeout/reject releases pending
     evidence and returns work to ready/delayed without ever counting it active.
-- Decide where `ACCEPTED` becomes active execution evidence:
-  - `TaskWorkRuntime` lease/claim evidence,
-  - transport dispatch binding,
-  - trace event,
-  - or a small worker-runtime semantic projection if a proven policy needs it.
+- `ACCEPTED` becomes active execution evidence in `TaskWorkRuntime`. A retained
+  worker-runtime projection may read or derive worker-side admission evidence
+  only for a proven policy; it must not become task-work lease truth.
 - Define rejection handling:
   - release or avoid platform reservation if the transitional path still uses it,
   - return work to ready/delayed state,
@@ -800,6 +996,8 @@ Scope:
   - result for an accepted offer follows the existing result convergence path.
 - Define black-box proof with an external worker that deliberately returns
   `BUSY` / `CAPACITY_FULL` before later accepting.
+- Update server, SDK, integration, and transport docs/tests in the same slice
+  if the worker wire contract or worker session API changes.
 - Keep policy separate:
   - retry delay/backoff is policy,
   - offer outcome recording and work return are mechanism.
@@ -809,11 +1007,17 @@ Acceptance:
 - A task can be dispatched to a candidate worker, receive worker-side `BUSY` or
   `CAPACITY_FULL`, return work to competition, and later complete on another or
   the same worker without duplicate final result.
+- The proof includes at least one real external worker path through server/SDK
+  or worker-pack/Node sample code; engine-only, transport-runtime-only, and
+  constructor/unit tests are support regressions, not the main proof.
 - The implementation or decision record states whether `claimReady(...)` creates
   active lease evidence before worker accept, or whether a new pending-offer
   state is used.
-- `ACCEPTED` is recorded before active execution is counted by any retained
-  worker-runtime occupancy projection.
+- `TaskWorkRuntime` is the only owner that turns `ACCEPTED` into active work
+  evidence. Any retained worker-runtime projection is read-only or
+  policy-specific evidence and cannot own task-work lease state.
+- No new `WorkerRegistry` or worker-runtime projection owns pending-offer,
+  active-execution, requeue visibility, or stale-result validity.
 - No rejected offer leaves a stuck active lease or invisible in-flight item.
 - Timeout/no-ack follows the same recovery path as explicit rejection.
 - A stale result from a rejected or timed-out offer is not accepted as visible
@@ -823,14 +1027,20 @@ Acceptance:
   - offer sent,
   - worker accepted/rejected/timed out,
   - work requeued or finalized.
+- Server/API/SDK docs are updated when the worker wire contract changes, or the
+  first proof path is explicitly recorded as internal-only and platform
+  occupancy deletion remains blocked for external workers.
+- `doc/PROOF_REGISTRY.md` is updated when this phase lands so
+  `sched.worker-state-dimensions` names worker-offer outcome proof instead of
+  only the current platform-side admission proof.
 - Only after this phase is proven may WKRK-3 delete platform-side occupancy
   fields.
 
 Suggested verification:
 
 ```powershell
-rg -n "ACCEPTED|CAPACITY_FULL|DEVICE_NOT_READY|ATTRIBUTE_MISMATCH|DRAINING|offer" xa-mass-engine xa-mass-worker-runtime transport sdk --glob '!**/target/**'
-.\mvnw.cmd -pl xa-mass-engine,xa-mass-worker-runtime,transport/transport_runtime -am test
+rg -n "ACCEPTED|CAPACITY_FULL|DEVICE_NOT_READY|ATTRIBUTE_MISMATCH|DRAINING|offer" xa-mass-engine xa-mass-worker-runtime transport sdk xa-mass-server integrations --glob '!**/target/**'
+.\mvnw.cmd -pl xa-mass-engine,xa-mass-worker-runtime,transport/transport_runtime,sdk/xa-mass-java-sdk,sdk/xa-mass-embedded-sdk,xa-mass-server,integrations/xa-mass-worker-pack -am test
 ```
 
 ## WKRK-3: Per-Task Occupancy Projection Convergence
@@ -949,9 +1159,10 @@ group:{groupId}:slots:{slotShard}
 
 Option A is the safer first target because it keeps candidate-index cleanup
 separate from worker meta/slot payload while reducing key count from
-`O(workers)` to `O(group * membershipShard)`. If WKRK-0 selects worker-side
-accept/reject, do not fold membership into `WorkerSlot`; retarget cleanup around
-lightweight worker meta instead.
+`O(workers)` to `O(group * membershipShard)`. If WKRK-0 records worker-side
+accept/reject as the target and WKRK-2.5 proves the offer protocol, do not fold
+membership into `WorkerSlot`; retarget cleanup around lightweight worker meta
+instead.
 
 Scope:
 
@@ -1033,6 +1244,10 @@ Scope:
     acquisition shape,
   - or Redis returns a bounded raw sample and upper-layer ranking handles
     ordering after Stage-2 validation.
+- Update the shared `WorkerRegistry` contract before Redis switches away from
+  full-bucket reads. Production Redis acquisition may be bounded and unordered;
+  deterministic ordering belongs only in a named test seam or in a real
+  ranking stage after candidate validation.
 - Keep Stage-2 metadata/hard-gate validation and worker-side accept/reject as
   correctness gates. Redis-side bounded acquisition is only candidate sourcing.
 - Preserve node-scoped candidate buckets.
@@ -1064,11 +1279,16 @@ Acceptance:
   - deterministic test seam when needed.
   They do not need identical candidate ordering when Redis samples before
   upper-layer ranking.
+- Contract tests no longer require Redis to materialize the full bucket or
+  preserve full-bucket deterministic ordering. If deterministic behavior is
+  needed for tests, it is injected explicitly and does not define production
+  Redis sampling.
 
 Suggested checks:
 
 ```powershell
 rg -n "smembers\\(bucketKey\\)|groupCandidateBucket\\(|nodeCandidateBucket\\(" platform_infra/mass-runtime-redis/src/main/java
+.\mvnw.cmd -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am -Dtest=WorkerRegistryContractTest test
 ```
 
 ## WKRK-6: Worker Meta And Heartbeat Sharding Decision
@@ -1165,6 +1385,14 @@ Scope:
   `listActivePresences()` are still needed as public/operator surfaces. If they
   remain, they must not require per-worker Redis keys and must not be used in
   scheduling.
+- The transport child slice must classify each retained worker-id presence API
+  as one of:
+  - removed,
+  - route-key-derived bounded lookup,
+  - bounded operator/support projection,
+  - test-only helper retargeted away from Redis physical keys.
+  It must not silently keep `worker-route:{workerId}` or `workers` as a renamed
+  mainline projection.
 - For each diagnostic or cleanup index, record:
   - production caller,
   - max cardinality,
@@ -1183,6 +1411,9 @@ Acceptance:
 - `groups`, `buckets`, and `node-buckets` have bounded cleanup reasons.
 - A transport-owned child slice is linked or created for
   `worker-route:{workerId}` / `workers` deletion or demotion.
+- That child slice names the public/operator APIs that remain, the replacement
+  read model for each retained API, and the proof that no retained API is a
+  scheduling or dispatch-route dependency.
 - Worker runtime and engine scheduling do not depend on worker-id transport
   projections for scheduling, admission, or dispatch route selection.
 - Transport-owned cleanup proves scheduling and dispatch route selection use
@@ -1198,7 +1429,7 @@ Suggested checks:
 
 ```powershell
 rg -n "exclusiveLeasesSet|exclusiveLeaseWorkerIds|isExclusiveLeaseHeld|groupCandidateBucketsSet|groupNodeCandidateBucketsSet|workerGroupsSet" platform_infra xa-mass-worker-runtime xa-mass-engine --glob '!**/target/**'
-rg -n "worker-route|workersKey\\(|getPresence\\(|isWorkerOnline\\(|findOwners\\(|listActivePresences\\(" transport sdk xa-mass-engine xa-mass-worker-runtime --glob '!**/target/**'
+rg -n "worker-route|workersKey\\(|getPresence\\(|isWorkerOnline\\(|findOwners\\(|listActivePresences\\(" transport sdk xa-mass-engine xa-mass-worker-runtime xa-mass-server integrations --glob '!**/target/**'
 ```
 
 ## WKRK-8: Runtime Key Proof Handoff
@@ -1213,6 +1444,9 @@ Scope:
   final key families and their classification.
 - Update `roadmap/REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md` if its deferred
   assumptions are now stale.
+- Update `doc/PROOF_REGISTRY.md` so the proof registry describes the current
+  implemented invariant: platform-side admission before WKRK-2.5, or
+  worker-offer outcome proof after WKRK-2.5 lands.
 - Update `platform_infra/mass-runtime-api` contract docs or tests when an API
   method is retargeted or removed.
 - Add source-level residue scans for removed key families.
@@ -1230,6 +1464,9 @@ Acceptance:
   readers, or test-only helper vocabulary.
 - Memory and Redis implementations still satisfy the same `WorkerRegistry`
   contract tests.
+- `doc/PROOF_REGISTRY.md` no longer describes the pre-WKRK-2.5 platform-side
+  admission proof as the only current proof if worker-offer outcomes have
+  landed.
 - RRKP remains deferred until both key shape and scenario proof needs are
   stable.
 - The roadmap can be archived only after current facts are moved to the owning
@@ -1240,7 +1477,7 @@ Suggested verification:
 ```powershell
 git diff --check
 rg -n "workerBucketMembershipSet|taskActiveWorkersSet|active-workers|worker:occupancy|available:\\{shard\\}" platform_infra xa-mass-worker-runtime xa-mass-engine roadmap doc --glob '!**/target/**'
-rg -n "worker-route|workersKey\\(|WorkerPresenceStore#getPresence|isWorkerOnline\\(|findOwners\\(|listActivePresences\\(" transport sdk xa-mass-engine xa-mass-worker-runtime roadmap doc --glob '!**/target/**'
+rg -n "worker-route|workersKey\\(|WorkerPresenceStore#getPresence|isWorkerOnline\\(|findOwners\\(|listActivePresences\\(" transport sdk xa-mass-engine xa-mass-worker-runtime xa-mass-server integrations roadmap doc --glob '!**/target/**'
 .\mvnw.cmd -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am test
 ```
 
@@ -1248,51 +1485,60 @@ rg -n "worker-route|workersKey\\(|WorkerPresenceStore#getPresence|isWorkerOnline
 
 This roadmap is complete only when all of the following are true:
 
-1. Every `xa:mass:runtime:v1:worker*` key family has a documented owner,
+1. WKRK-SPI passed before any Redis physical key-shape change or worker-offer
+   semantic rewrite: engine and `xa-mass-worker-runtime` production code depend
+   only on `platform_infra/mass-runtime-api` semantic SPI, not Redis keyspace,
+   codecs, or implementation classes.
+2. Every `xa:mass:runtime:v1:worker*` key family has a documented owner,
    lifecycle, cardinality formula, and proof reason.
-2. Admission ownership is explicit: worker-side accept/reject owns final
-   admission by default, and any platform-side reserve/confirm/release exception
-   is justified by a named policy.
-3. No per-worker Redis key family remains unless it has a named, reviewed,
+3. Admission ownership is explicit: worker-side accept/reject owns final
+   admission only after WKRK-2.5 proves the offer protocol through at least one
+   real external worker path, and any platform-side reserve/confirm/release
+   exception is justified by a named policy.
+4. No per-worker Redis key family remains unless it has a named, reviewed,
    non-replaceable runtime reason.
-4. WorkerRegistry task-worker occupancy is either removed entirely after
+5. WorkerRegistry task-worker occupancy is either removed entirely after
    worker-side accept/reject proof, or exactly one retained projection is
    justified by a named policy. If retained, `task:{taskId}:active-workers` is
    removed unless a measured query proves `worker-active-count` cannot satisfy
    it.
-5. Candidate acquisition is bounded and does not materialize entire large
-   bucket sets.
-6. Node-group worker lookup is either bounded or classified as diagnostic and
+6. Candidate acquisition is bounded and does not materialize entire large
+   bucket sets. Contract tests no longer require Redis full-bucket
+   deterministic ordering unless a named test seam provides it.
+7. Node-group worker lookup is either bounded or classified as diagnostic and
    removed from hot-path mutation logic.
-7. Worker meta mutation contention is either sharded,
+8. Worker meta mutation contention is either sharded,
    Lua/per-operation-connection bounded, or explicitly accepted with a
    documented threshold for reopening the decision. Slot mutation contention is
    optimized only for an accepted platform-admission exception.
-8. Worker-id-only lookup via `worker:group` is either removed or documented as a
-   lookup projection with guardrails.
-9. Diagnostic indexes cannot drive reserve/admission without reading current
+9. Worker-id-only lookup via `worker:group` is either removed with
+   implementation-level replacements for retained semantic worker-id APIs, or
+   documented as an active lookup projection with guardrails.
+10. Diagnostic indexes cannot drive reserve/admission without reading current
    worker metadata and reaching worker-side accept/reject, or without an
    accepted platform-admission exception.
-10. Transport presence `owner:{shard}` is the only route reachability truth used
+11. Transport presence `owner:{shard}` is the only route reachability truth used
     by scheduling reachability and dispatch route selection.
-11. A transport-owned child slice removes `worker-route:{workerId}` and
-    `workers` from mainline Redis keyspace or demotes them to bounded
-    operator-only surfaces with no scheduling usage.
-12. `WorkerSlot.meta.diagnosticStatus` is documented and guarded as
+12. A transport-owned child slice removes `worker-route:{workerId}` and
+    `workers` from mainline Redis keyspace or demotes them to named bounded
+    operator-only surfaces with no scheduling usage and no dispatch-route
+    dependency.
+13. `WorkerSlot.meta.diagnosticStatus` is documented and guarded as
     diagnostic-only.
-13. Offer outcome is represented by a named worker-offer seam, not by
+14. Offer outcome is represented by a named worker-offer seam, not by
     transport `DispatchOutcome` or task result rows.
-14. `TaskWorkRuntime` offer/active lease semantics are explicit and proven for
-    accept, reject, timeout, stale result, pause, resume, and terminal paths.
-15. Redis runtime baseline and active roadmaps agree with current code.
-16. Clean-runtime recreation is sufficient for the new shape; no old/new Redis
+15. `TaskWorkRuntime` offer/active lease semantics are explicit and proven for
+    accept, reject, timeout, stale result, pause, resume, and terminal paths
+    through engine plus at least one public/SDK/integration worker path.
+16. Redis runtime baseline and active roadmaps agree with current code.
+17. Clean-runtime recreation is sufficient for the new shape; no old/new Redis
     compatibility bridge remains.
-17. `platform_infra/mass-runtime-api` remains the upper-layer contract, and
+18. `platform_infra/mass-runtime-api` remains the upper-layer contract, and
     Redis-specific physical shape is not visible to `xa-mass-worker-runtime` or
     engine scheduling.
-18. Superseded key families, methods, tests, docs, and roadmap wording are
+19. Superseded key families, methods, tests, docs, and roadmap wording are
     removed rather than retained as legacy explanations.
-19. Redis Cluster hash-tag scope is explicitly decided before any multi-key Lua
+20. Redis Cluster hash-tag scope is explicitly decided before any multi-key Lua
     or key rename that would constrain future deployment shape.
 
 ## Open Decisions
@@ -1309,6 +1555,9 @@ This roadmap is complete only when all of the following are true:
   platform occupancy?
 - Which owner surface should define `WorkerDispatchOfferOutcome`, and which
   protocol path should polling/realtime workers use to report accept/reject?
+- Which external worker path is the first WKRK-2.5 proof path: external polling
+  API, Java SDK polling session, Java SDK realtime session, worker-pack sample,
+  or Node sample?
 - If WorkerRegistry task-worker occupancy is removed, does
   `TaskWorkerAssignListener` use TaskWorkRuntime accepted-active view,
   offer-accepted projection, or a policy that no longer needs active worker

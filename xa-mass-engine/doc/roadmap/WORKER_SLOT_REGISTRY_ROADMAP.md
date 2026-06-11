@@ -2,15 +2,18 @@
 
 Last updated: 2026-05-24
 
-Status: in progress. WSR-0 through WSR-6 have established the JVM
-`WorkerRegistry` foundation, moved production occupancy mutations to it,
-retired storage-owned worker lock truth, removed `WorkerLoadView` production
-wiring, renamed the `WorkerManager` exclusive-lease facade away from
+Status: superseded historical roadmap. WSR-0 through WSR-7 established the JVM
+and Redis `WorkerRegistry` foundation, moved production occupancy mutations to
+it, retired storage-owned worker lock truth, removed `WorkerLoadView`
+production wiring, renamed the `WorkerManager` exclusive-lease facade away from
 lock-owned terminology, and moved the shared `WorkerRegistry` contract/value
-types to `platform_infra/mass-runtime-api`. WSR-7 now has a first-slice
-Redis-backed `WorkerRegistry` foundation under `mass-runtime-redis`; WSR-8
-runtime switching and distributed proof remain open. Verify current code before
-implementing each remaining phase.
+types to `platform_infra/mass-runtime-api`.
+
+Do not implement the remaining WSR phases from this file. Future worker
+admission, `WorkerSlot`, and Redis key-shape work is owned by
+`roadmap/WORKER_RUNTIME_ADMISSION_AND_REDIS_SHAPE_CONVERGENCE_ROADMAP.md`.
+This file remains only as historical context for how the project reached the
+current `WorkerRegistry` baseline.
 
 ## Summary
 
