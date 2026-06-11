@@ -21,7 +21,7 @@ class DispatchOutcomeTest {
 
         assertEquals("websocket", outcome.getAdapterId());
         assertEquals("delivery-1", outcome.getDeliveryId());
-        assertEquals("worker-1", outcome.getRouteKey());
+        assertEquals("group-route-1", outcome.getRouteKey());
         assertEquals("attempt-1", outcome.getAttemptId());
         assertEquals(DispatchOutcomeStatus.SENT, outcome.getStatus());
         assertFalse(outcome.isRetryable());
@@ -63,21 +63,23 @@ class DispatchOutcomeTest {
                 "agent",
                 0,
                 "attempt-1",
+                "group-route-1",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
         );
         return new TransportDispatchEnvelope(
                 "delivery-1",
+                "polling",
+                item.getWorkerId(),
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
                         "delivery-1",
                         "attempt-1",
                         PacketType.TASK_DISPATCH,
                         "polling",
-                        "worker-1",
+                        "group-route-1",
                         item.getTaskId(),
                         item.getMessageId(),
                         item.attemptId(),

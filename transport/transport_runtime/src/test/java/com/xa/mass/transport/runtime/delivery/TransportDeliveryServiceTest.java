@@ -137,7 +137,7 @@ class TransportDeliveryServiceTest {
     void pollUsesCanonicalAdapterAndRouteKeys() {
         TransportDeliveryService service = service();
         TaskDispatchItem item = item("msg-1", " worker-1 ");
-        service.enqueue(List.of(envelope("delivery-msg-1", " Polling ", " worker-1 ", item)));
+        service.enqueue(List.of(envelope("delivery-msg-1", " Polling ", " group-route-1 ", item)));
 
         assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
                 .map(TransportDeliveryService::toDispatchView)
@@ -146,12 +146,13 @@ class TransportDeliveryServiceTest {
     }
 
     @Test
-    void queuedEnvelopeRemainsReachableAfterAdapterTakeoverForSameRouteKey() {
+    void selectedWorkerPollDoesNotDrainAnotherWorkerSharingRouteKey() {
         TransportDeliveryService service = service();
-        TaskDispatchItem item = item("msg-1", "worker-1");
-        service.enqueue(List.of(envelope("delivery-msg-1", "websocket", "worker-1", item)));
+        TaskDispatchItem item = item("msg-1", "worker-2");
+        service.enqueue(List.of(envelope("delivery-msg-1", "polling", "group-route-1", item)));
 
-        assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
+        assertTrue(service.pollEnvelopes("polling", "worker-1", 10, 0).isEmpty());
+        assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-2", 10, 0).stream()
                 .map(TransportDeliveryService::toDispatchView)
                 .map(TaskDispatchItem::getMessageId)
                 .toList());
@@ -270,7 +271,7 @@ class TransportDeliveryServiceTest {
     }
 
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
-        return envelope("delivery-" + item.getMessageId(), "polling", item.getWorkerId(), item);
+        return envelope("delivery-" + item.getMessageId(), "polling", "group-route-1", item);
     }
 
     private TransportDispatchEnvelope invalidEnvelope(TaskDispatchItem item) {
@@ -283,6 +284,8 @@ class TransportDeliveryServiceTest {
                                               TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 deliveryId,
+                adapterId,
+                item.getWorkerId(),
                 new TransportPacketFactory(() -> deliveryId)
                         .fromDispatchView(adapterId, routeKey, item.attemptId(), item),
                 1L

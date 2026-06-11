@@ -196,6 +196,125 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     }
 
     @Test
+    void pollingWorkersSharingRouteAndQueueCannotCrossConsumeSelectedWorkerItems() throws Exception {
+        String selectedWorkerId = "shared-polling-worker-us";
+        String otherWorkerId = "shared-polling-worker-eu";
+        String selectedWorkerCredential = "shared-polling-worker-us-key";
+        String otherWorkerCredential = "shared-polling-worker-eu-key";
+        String workerGroupId = "shared-polling-route";
+        String adapterNodeId = "shared-polling-node";
+        String taskApiKey = "crawler-task-api-key";
+        app.replaceDefaultRules(List.of(
+                rule("shared-polling-online-project", "supportsProject == true"),
+                rule("shared-polling-routing", "workerSchedulingMatchesRoutingCode == true")
+        ));
+        registerExternalWorkerCredential(
+                "shared-polling-worker-us-principal",
+                selectedWorkerCredential,
+                selectedWorkerId,
+                "crawlerApp",
+                "crawler.fetch-page"
+        );
+        registerExternalWorkerCredential(
+                "shared-polling-worker-eu-principal",
+                otherWorkerCredential,
+                otherWorkerId,
+                "crawlerApp",
+                "crawler.fetch-page"
+        );
+        HttpHeaders selectedWorkerHeaders = credentialHeaders(selectedWorkerCredential);
+        HttpHeaders otherWorkerHeaders = credentialHeaders(otherWorkerCredential);
+        HttpHeaders taskApiKeyHeaders = credentialHeaders(taskApiKey);
+        declareCrawlerWorkerGroup(workerGroupId, selectedWorkerHeaders);
+        bindAdapterNode(adapterNodeId, workerGroupId, selectedWorkerHeaders);
+
+        assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
+                "workerId", selectedWorkerId,
+                "adapterNodeId", adapterNodeId,
+                "workerGroupId", workerGroupId,
+                "attributes", Map.of(
+                        "routingTags", "shared,us",
+                        "country", "us",
+                        "region", "us"
+                )
+        ), selectedWorkerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
+                "workerId", otherWorkerId,
+                "adapterNodeId", adapterNodeId,
+                "workerGroupId", workerGroupId,
+                "attributes", Map.of(
+                        "routingTags", "shared,eu",
+                        "country", "eu",
+                        "region", "eu"
+                )
+        ), otherWorkerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + selectedWorkerId + ":online", HttpMethod.POST,
+                presenceBody("session-" + selectedWorkerId, "shared-route-selected-online"), selectedWorkerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + otherWorkerId + ":online", HttpMethod.POST,
+                presenceBody("session-" + otherWorkerId, "shared-route-other-online"), otherWorkerHeaders));
+        waitUntil(
+                () -> app.isWorkerReachable(selectedWorkerId) && app.isWorkerReachable(otherWorkerId),
+                "both shared-route polling workers should reach transport presence");
+
+        Map<String, Object> createBody = new LinkedHashMap<>();
+        createBody.put("project", "crawlerApp");
+        createBody.put("userId", "crawler-agent");
+        createBody.put("sharedConfig", Map.of("routingCode", "us"));
+        createBody.put("executionSpec", Map.of("batchSize", 1));
+        Map<String, Object> createResponse = createTaskShell(createBody, taskApiKeyHeaders);
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
+                "eventCode", "crawler.fetch-page",
+                "items", List.of(Map.of("url", "https://example.test/shared-route"))
+        ), taskApiKeyHeaders));
+        assertApiOk(sealTask(taskId));
+        assertApiOk(approveTask(taskId));
+
+        RuntimeTaskSnapshot running = waitForRuntimeTaskSnapshot(
+                taskId,
+                snapshot -> "RUNNING".equals(snapshot.task().get("status"))
+                        && !snapshot.activeLeases().isEmpty()
+                        && selectedWorkerId.equals(snapshot.activeLeases().getFirst().workerId()),
+                "RUNNING with selected worker " + selectedWorkerId,
+                20,
+                250L);
+        assertEquals(selectedWorkerId, running.activeLeases().getFirst().workerId());
+
+        Map<String, Object> otherPollResponse = exchange("/worker-api/v1/workers/" + otherWorkerId + ":poll",
+                HttpMethod.POST,
+                Map.of(
+                        "maxMessages", 10,
+                        "timeoutMs", 500
+                ),
+                otherWorkerHeaders);
+        assertApiOk(otherPollResponse);
+        assertTrue(pollItems(otherPollResponse).isEmpty(),
+                "worker sharing routeKey and deliveryQueueKey must not consume another selectedWorkerId item");
+
+        Map<String, Object> selectedPollResponse = null;
+        List<Map<String, Object>> selectedItems = List.of();
+        for (int attempt = 0; attempt < 8 && selectedItems.isEmpty(); attempt++) {
+            selectedPollResponse = exchange("/worker-api/v1/workers/" + selectedWorkerId + ":poll", HttpMethod.POST, Map.of(
+                    "maxMessages", 10,
+                    "timeoutMs", 500
+            ), selectedWorkerHeaders);
+            assertApiOk(selectedPollResponse);
+            selectedItems = pollItems(selectedPollResponse);
+        }
+        assertFalse(selectedItems.isEmpty(), "selected polling worker should receive its own assigned item");
+
+        Map<String, Object> item = selectedItems.getFirst();
+        assertEquals(taskId, item.get("taskId"));
+        assertEquals(selectedWorkerId, item.get("workerId"));
+        submitSuccessfulWorkerResult(selectedWorkerId, selectedWorkerHeaders, item, "shared-route-selected-worker-success");
+
+        RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
+        assertEquals("TERMINAL", terminal.task().get("status"));
+        assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
+    }
+
+    @Test
     void externalWorkerPollingApiCanAcknowledgeOperatorIssuedCommand() throws Exception {
         String workerId = "node-worker-api-002";
         String sessionToken = "session-node-worker-api-002";

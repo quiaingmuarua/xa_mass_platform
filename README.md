@@ -88,6 +88,10 @@ Current kernel truth is intentionally narrow:
 Current mainline execution path:
 
 - `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> worker selection and assignment -> transport dispatch -> result convergence -> task state`
+- By the time a work item enters transport, Scheduling Plane has already
+  selected a concrete worker. Transport preserves that `selectedWorkerId` as a
+  delivery constraint; `routeKey` is opaque connection/domain metadata and
+  `deliveryQueueKey` is a queue partition, not worker-selection truth.
 
 Scheduling Plane Boundary:
 

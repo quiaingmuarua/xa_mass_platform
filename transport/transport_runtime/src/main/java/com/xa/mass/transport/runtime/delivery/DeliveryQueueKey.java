@@ -4,25 +4,29 @@ import java.util.Objects;
 
 final class DeliveryQueueKey implements Comparable<DeliveryQueueKey> {
 
-    private final String adapterId;
-    private final String routeKey;
+    private final String deliveryQueueKey;
+    private final String selectedWorkerId;
 
-    DeliveryQueueKey(String adapterId, String routeKey) {
-        this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
-        this.routeKey = Objects.requireNonNull(routeKey, "routeKey");
+    DeliveryQueueKey(String deliveryQueueKey, String selectedWorkerId) {
+        this.deliveryQueueKey = Objects.requireNonNull(deliveryQueueKey, "deliveryQueueKey");
+        this.selectedWorkerId = Objects.requireNonNull(selectedWorkerId, "selectedWorkerId");
     }
 
-    String adapterId() {
-        return adapterId;
+    String deliveryQueueKey() {
+        return deliveryQueueKey;
     }
 
-    String routeKey() {
-        return routeKey;
+    String selectedWorkerId() {
+        return selectedWorkerId;
     }
 
     @Override
     public int compareTo(DeliveryQueueKey other) {
-        return routeKey.compareTo(other.routeKey);
+        int queueComparison = deliveryQueueKey.compareTo(other.deliveryQueueKey);
+        if (queueComparison != 0) {
+            return queueComparison;
+        }
+        return selectedWorkerId.compareTo(other.selectedWorkerId);
     }
 
     @Override
@@ -33,11 +37,12 @@ final class DeliveryQueueKey implements Comparable<DeliveryQueueKey> {
         if (!(object instanceof DeliveryQueueKey other)) {
             return false;
         }
-        return routeKey.equals(other.routeKey);
+        return deliveryQueueKey.equals(other.deliveryQueueKey)
+                && selectedWorkerId.equals(other.selectedWorkerId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(routeKey);
+        return Objects.hash(deliveryQueueKey, selectedWorkerId);
     }
 }

@@ -16,13 +16,15 @@ class TransportDispatchEnvelopeTest {
     void constructorUsesNormalizedPacketAddressAndAttemptIdentity() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
+                "websocket",
+                " worker-1 ",
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
                         "delivery-1",
                         " trace-1 ",
                         PacketType.TASK_DISPATCH,
                         " WebSocket ",
-                        " worker-1 ",
+                        " group-route-1 ",
                         "task-1",
                         "msg-1",
                         " attempt-1 ",
@@ -34,7 +36,9 @@ class TransportDispatchEnvelopeTest {
         );
 
         assertEquals("websocket", envelope.getAdapterId());
-        assertEquals("worker-1", envelope.getRouteKey());
+        assertEquals("websocket", envelope.getDeliveryQueueKey());
+        assertEquals("worker-1", envelope.getSelectedWorkerId());
+        assertEquals("group-route-1", envelope.getRouteKey());
         assertEquals("attempt-1", envelope.getAttemptId());
         assertEquals("trace-1", envelope.getTraceId());
         assertEquals("delivery-1", envelope.getPacket().packetId());
@@ -45,6 +49,8 @@ class TransportDispatchEnvelopeTest {
     void constructorCarriesNullForBlankPacketAddressAndIdentityFields() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
+                " ",
+                " ",
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
                         "delivery-1",
@@ -63,6 +69,8 @@ class TransportDispatchEnvelopeTest {
         );
 
         assertNull(envelope.getAdapterId());
+        assertNull(envelope.getDeliveryQueueKey());
+        assertNull(envelope.getSelectedWorkerId());
         assertNull(envelope.getRouteKey());
         assertNull(envelope.getAttemptId());
         assertNull(envelope.getTraceId());
@@ -73,13 +81,15 @@ class TransportDispatchEnvelopeTest {
         TaskDispatchItem item = dispatchItem();
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
+                "websocket",
+                item.getWorkerId(),
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
                         "packet-1",
                         "trace-1",
                         PacketType.TASK_DISPATCH,
                         "websocket",
-                        "worker-1",
+                        "group-route-1",
                         item.getTaskId(),
                         item.getMessageId(),
                         item.attemptId(),
@@ -108,8 +118,8 @@ class TransportDispatchEnvelopeTest {
                 "agent",
                 1,
                 "attempt-1",
+                "group-route-1",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of("debug", true)

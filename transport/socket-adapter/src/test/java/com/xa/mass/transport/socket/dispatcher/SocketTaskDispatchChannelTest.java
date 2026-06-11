@@ -29,7 +29,7 @@ class SocketTaskDispatchChannelTest {
         SocketSessionManager sessionManager = mock(SocketSessionManager.class);
         when(sessionManager.sendToAdapterRoute(
                 org.mockito.ArgumentMatchers.eq("socket"),
-                org.mockito.ArgumentMatchers.eq("worker-1"),
+                org.mockito.ArgumentMatchers.eq("group-route-1"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(true);
@@ -41,7 +41,7 @@ class SocketTaskDispatchChannelTest {
         assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
         verify(sessionManager).sendToAdapterRoute(
                 org.mockito.ArgumentMatchers.eq("socket"),
-                org.mockito.ArgumentMatchers.eq("worker-1"),
+                org.mockito.ArgumentMatchers.eq("group-route-1"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any());
     }
@@ -51,7 +51,7 @@ class SocketTaskDispatchChannelTest {
         SocketSessionManager sessionManager = mock(SocketSessionManager.class);
         when(sessionManager.sendToAdapterRoute(
                 org.mockito.ArgumentMatchers.eq("socket"),
-                org.mockito.ArgumentMatchers.eq("worker-1"),
+                org.mockito.ArgumentMatchers.eq("group-route-1"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(false);
@@ -93,13 +93,15 @@ class SocketTaskDispatchChannelTest {
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 "delivery-" + item.getMessageId(),
+                "socket",
+                item.getWorkerId(),
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
                         "delivery-" + item.getMessageId(),
                         item.attemptId(),
                         PacketType.TASK_DISPATCH,
                         "socket",
-                        item.getWorkerId(),
+                        "group-route-1",
                         item.getTaskId(),
                         item.getMessageId(),
                         item.attemptId(),

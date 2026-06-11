@@ -31,6 +31,24 @@ Assignment allocation is engine-internal policy ownership:
 - `SimpleTaskDispatchBinder` owns runtime claim and dispatch binding only; it is
   not the assignment allocation policy owner.
 
+Task item dispatch output:
+
+- `TaskWorkRuntime` owns ready membership, claim, active lease, retry timing,
+  and runtime counters before dispatch.
+- Scheduling Plane / engine worker selection owns the concrete worker decision.
+  Once selected, `TaskDispatchBinding.workerId()` is the assigned execution
+  identity for the item.
+- Engine/starter assembly may resolve transport metadata needed to hand the
+  already assigned item to transport, but transport does not get to select a
+  replacement worker. If delivery to the selected worker is infeasible, retry or
+  compensation remains engine-owned.
+- `routeKey` is not an engine worker-selection result. It is opaque
+  connection/domain metadata used by transport and assembly. Do not mint worker
+  identity into routeKey to compensate for a missing selected-worker delivery
+  constraint.
+- `deliveryQueueKey` is transport queue partitioning. Engine code must not use
+  it as scheduling, admission, or lifecycle truth.
+
 ## Fixed Scheduling Mainlines
 
 These are the current engine scheduling mainlines. Treat them as owner

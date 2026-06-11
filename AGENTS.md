@@ -61,6 +61,22 @@ Current mainline execution path:
 
 - `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> worker selection and assignment -> transport dispatch -> result convergence -> task state`
 
+Task item dispatch boundary:
+
+- by the time an item reaches transport, Scheduling Plane has already selected
+  a concrete worker and engine has bound that decision into
+  `TaskDispatchBinding.workerId`
+- transport carries that value as `selectedWorkerId`, a delivery constraint, not
+  scheduling truth or worker lifecycle truth
+- `routeKey` is opaque connection/domain metadata and may be worker-group,
+  adapter-lane, shared, or another assembly-owned rule; transport must not
+  decode it or rely on it for worker correctness
+- `deliveryQueueKey` is only queue/storage/batching partitioning; a queue keyed
+  only by routeKey or deliveryQueueKey is invalid for assigned polling task
+  delivery
+- delivery infeasible for the selected worker is engine-owned retry or
+  compensation input, not permission for transport to select another worker
+
 ## 0.1 Abstraction Test
 
 This repo is not anti-abstraction. It is anti-fake abstraction.

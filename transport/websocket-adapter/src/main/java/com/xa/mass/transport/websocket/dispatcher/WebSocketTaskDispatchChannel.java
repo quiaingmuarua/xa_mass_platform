@@ -3,7 +3,6 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,7 +48,7 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
                     boolean sent = context.getEndpointRegistry().sendToAdapterRoute(
                             adapterId(),
                             envelope.getRouteKey(),
-                            envelope.getPacket().payloadString(TransportPacket.PAYLOAD_WORKER_ID),
+                            envelope.getSelectedWorkerId(),
                             rawJson
                     );
                     if (!sent) {

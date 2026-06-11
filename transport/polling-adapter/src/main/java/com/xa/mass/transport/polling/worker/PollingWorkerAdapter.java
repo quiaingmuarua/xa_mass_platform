@@ -61,11 +61,16 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     }
 
     @Override
-    public TaskPullResult pollTaskMessagesResult(String routeKey, int maxMessages, long timeoutMillis) {
-        if (routeKey == null || routeKey.isBlank() || maxMessages <= 0) {
+    public TaskPullResult pollTaskMessagesResult(String selectedWorkerId, int maxMessages, long timeoutMillis) {
+        if (selectedWorkerId == null || selectedWorkerId.isBlank() || maxMessages <= 0) {
             return TaskPullResult.invalidRequest();
         }
-        TransportDeliveryPollResult result = deliveryService.pollEnvelopeResult(PROTOCOL, routeKey, maxMessages, timeoutMillis);
+        TransportDeliveryPollResult result = deliveryService.pollEnvelopeResult(
+                PROTOCOL,
+                selectedWorkerId,
+                maxMessages,
+                timeoutMillis
+        );
         return TaskPullResult.of(mapStatus(result.getStatus()), TransportDeliveryService.toDispatchViews(result.getEnvelopes()));
     }
 

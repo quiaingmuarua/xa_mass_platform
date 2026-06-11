@@ -58,6 +58,17 @@ class TransportRedisKeyspaceGuardTest {
         assertTrue(offenders.isEmpty(), () -> "deprecated transport presence key families remain in " + offenders);
     }
 
+    @Test
+    void transportBoundaryBaselineDoesNotDocumentRouteKeyOnlyDeliveryQueue() throws IOException {
+        Path baseline = repoRoot().resolve("transport/TRANSPORT_BOUNDARY_BASELINE.md");
+        String content = Files.readString(baseline, StandardCharsets.UTF_8);
+
+        assertTrue(!content.contains("q:<routeKey>"),
+                "transport boundary baseline must not document routeKey-only delivery queues");
+        assertTrue(content.contains("worker-index:<selectedWorkerId>"),
+                "transport boundary baseline must document selected-worker delivery queue selector");
+    }
+
     private static Stream<Path> scanTextFiles(Path path) throws IOException {
         if (Files.isRegularFile(path)) {
             return Stream.of(path);

@@ -44,9 +44,13 @@ Transport should stay centered on these concepts only:
 - `TaskDispatchChannel`: adapter dispatch SPI returning `DispatchOutcome`
 - `DispatchOutcome`: adapter-neutral delivery result, never task-lifecycle truth
 - `TransportDispatchEnvelope`: runtime-owned dispatch envelope, not a `TaskMsg`
-  replacement
+  replacement. It carries the runtime `deliveryQueueKey` and the
+  engine-selected `selectedWorkerId` as first-class transport fields; adapters
+  must not recover the selected worker by decoding routeKey or packet payload.
 - `TransportDeliveryStore`: runtime-owned queueing/drain/poll seam for transport
-  delivery
+  delivery. Assigned polling delivery is addressed by shared
+  `deliveryQueueKey + selectedWorkerId`, with routeKey kept as envelope
+  metadata/correlation.
 - `TaskResultIngestChannel`: result-ingest seam back into engine lifecycle
 - `TransportResultEnvelope`: transport metadata around `TaskResultReport`, not a second worker protocol
 - `RouteTargetedTaskDispatchHandoff`: post-claim delivery queue between engine
@@ -227,8 +231,10 @@ The split runtime uses three transport/runtime channels:
   node-local drain lanes and per-`transportNodeId` ready indexes so each
   transport JVM is awakened only for route work it can currently serve.
 - delivery inbox: transport routes dispatch envelopes into
-  `TransportDeliveryStore` by opaque `routeKey`; `adapterId` remains
-  delivery request metadata and diagnostics
+  `TransportDeliveryStore` by runtime `deliveryQueueKey` plus the
+  engine-selected `selectedWorkerId`. `routeKey` remains opaque envelope
+  metadata and connection/correlation address; it must not be the only queue
+  isolation key for assigned polling task delivery.
 - result/compensation inboxes: transport writes `TransportResultEnvelope`
   values and retryable dispatch-failure events to Redis-backed inboxes; the
   engine process drains those inboxes into its local result ingest and
@@ -301,7 +307,7 @@ default component namespaces are:
 | Component | Default namespace | Retained key families |
 | --- | --- | --- |
 | route-owner | `xa:mass:transport:route-owner:v1` | `route:<encodedRouteKey>:consumers`, `routes`, `deadline`, `worker-route:<workerId>` |
-| delivery | `xa:mass:transport:delivery:v1` | `q:<routeKey>`, `meta:<routeKey>`, `queues`, `stats` |
+| delivery | `xa:mass:transport:delivery:v1` | `q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `meta:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `queues`, `stats` |
 | nodes | `xa:mass:transport:nodes:v1` | transport-node owner/heartbeat records and deadlines |
 | dispatch-route | `xa:mass:transport:dispatch-route:v1` | `route:<encodedRouteKey>:node:<encodedTransportNodeId>:q`, `routes`, `node:<transportNodeId>:ready-routes` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
@@ -401,10 +407,15 @@ and rejection semantics.
 
 ## Delivery Addressing
 
-Transport delivery addressing is the pair:
+Transport delivery addressing keeps four facts separate:
 
 - `adapterId`: concrete adapter identity such as `polling`, `websocket`, `socket`
-- `routeKey`: opaque transport delivery address
+- `routeKey`: opaque connection address, coarse delivery-domain metadata, or
+  protocol correlation value
+- `deliveryQueueKey`: runtime queue/storage partition used for batching,
+  sharding, and backpressure
+- `selectedWorkerId`: engine-selected execution identity used only as a
+  delivery constraint
 
 Current runtime rules:
 
@@ -427,9 +438,12 @@ Current runtime rules:
   their direct-send contract is route-based: send and online checks should
   speak in terms of `routeKey`, not imply that worker identity is the only
   valid address key
-- blank `routeKey` is invalid for both queued delivery and direct-send delivery
-- queue ownership and poll/drain isolation key off opaque `routeKey`;
-  `adapterId` remains delivery request metadata, not queue identity
+- blank `routeKey` is invalid for direct-send delivery and route-owner evidence.
+  Queued polling delivery must not rely on routeKey as the only isolation key.
+- assigned polling queues are addressed by
+  `deliveryQueueKey + selectedWorkerId`. `deliveryQueueKey` may be shared by
+  many workers; selected-worker isolation must be a direct sub-lane/index or an
+  equivalent keyed selector, never poll-and-discard from a shared route queue.
 - for worker delivery, `routeKey` is the transport delivery address; transport
   runtime must not reinterpret it as task, attempt, lease, worker-group, worker,
   or business routing truth
@@ -454,8 +468,10 @@ WRB convergence note:
   that domain.
 - Redis-backed route-owner state uses route-key consumer hashes plus deadline
   indexes; `currentOwners(routeKey)` is a bounded read.
-- Delivery queues are routeKey-owned. Adapter change for the same routeKey does
-  not strand already queued envelopes in an old adapter-specific queue.
+- Assigned polling delivery queues are selected-worker scoped under a shared
+  delivery queue key. Adapter or route changes must not make routeKey the worker
+  correctness key; a queue keyed only by routeKey or deliveryQueueKey is invalid
+  for assigned polling task delivery.
 - `adapterId`, `transportNodeId`, and `connectionId` remain delivery-owner
   evidence. They must stay in owner values or queue metadata, not become the
   route-key minting rule.
@@ -503,15 +519,17 @@ parallel mainline, and do not treat any handoff queue as a second runtime ready
 queue.
 
 Runtime delivery stores must enforce explicit admission control. The current
-in-memory store has both per-worker queue caps and a configurable total
-queued-item cap; Redis or JDBC replacements should preserve equivalent
-backpressure. `TransportDeliveryStoreStats` is queue/store-path only; direct-send
-diagnostics are assembled above the store boundary by
+in-memory store has per selected-worker sub-lane caps under a shared
+`deliveryQueueKey` and a configurable total queued-item cap; Redis or JDBC
+replacements should preserve equivalent backpressure.
+`TransportDeliveryStoreStats` is queue/store-path only; direct-send diagnostics
+are assembled above the store boundary by
 `TransportDeliveryServiceStats`. Poll semantics must stay explicit enough to
 distinguish delivered, empty, invalid-request, unavailable, and shutdown
 results without forcing callers to treat every non-delivery outcome as an empty
 queue. `TaskPullChannel.pollTaskMessagesResult(...)` is the transport mainline
-for that statusful view; list-only pull helpers are convenience wrappers above
+for that statusful view and receives the polling worker's registered worker id
+as `selectedWorkerId`; list-only pull helpers are convenience wrappers above
 it. `DELIVERED` status must always carry one or more dispatch items/envelopes;
 empty payload sets are `EMPTY`, not a second encoding of delivery. Thread interruption is not a store result contract; store
 implementations should throw interruption and let callers handle it above the
@@ -532,11 +550,12 @@ For Redis-ready queue diagnostics, treat the stats contract in two tiers:
   those values
 
 `queueByAdapter` keeps its legacy field name for existing diagnostics, but it
-is not queue ownership truth. RouteKey-owned Redis queues may aggregate that
-field under a route-owner bucket instead of preserving adapter-specific queue
-identity. Best-effort diagnostics must remain meaningful, but future
-distributed queue implementations are not required to preserve the exact local
-JVM waiter or snapshot timing model of the current in-memory store.
+is not queue ownership truth. Current assigned polling delivery aggregates
+that field under the runtime delivery queue key, such as `polling`, while the
+actual drain selector remains `selectedWorkerId`. Best-effort diagnostics must
+remain meaningful, but future distributed queue implementations are not
+required to preserve the exact local JVM waiter or snapshot timing model of the
+current in-memory store.
 
 Queue mechanics such as keyed FIFO storage, blocking poll coordination,
 per-key/global admission, and queue snapshot counters may live under
@@ -546,8 +565,8 @@ Embedded runtime composition may choose between the default in-memory delivery
 store and a Redis-backed transport delivery store, but that selection belongs
 to SDK/starter assembly rather than transport-facing adapter contracts.
 That assembly layer also owns queue-cap tuning such as total queued items and
-per-route queued-item caps; transport contracts should consume those resolved
-limits rather than hard-code runtime policy.
+per-selected-worker sub-lane queued-item caps; transport contracts should
+consume those resolved limits rather than hard-code runtime policy.
 
 ## Direct vs Queued Delivery
 

@@ -65,6 +65,47 @@ class TransportConvergenceArchitectureGuardTest {
         );
     }
 
+    @Test
+    void pollingMainlineDoesNotUseRouteKeyOnlyTaskPull() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker")
+                ),
+                "pollTaskMessagesResult(routeKey",
+                "pollTaskMessages(routeKey",
+                "pollEnvelopeResult(PROTOCOL, routeKey",
+                "pollEnvelopeResult(adapterId, routeKey",
+                "deliveryStore.poll(adapterId, routeKey",
+                "deliveryStore.drain(adapterId, routeKey"
+        );
+    }
+
+    @Test
+    void workerFacingPollingApisDoNotExposeDeliveryQueueKey() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("xa-mass-server/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker")
+                ),
+                "deliveryQueueKey",
+                "DeliveryQueueKey"
+        );
+    }
+
+    @Test
+    void directDispatchChannelsUseEnvelopeSelectedWorkerConstraint() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher")
+                ),
+                "payloadString(TransportPacket.PAYLOAD_WORKER_ID)"
+        );
+    }
+
     private static void assertNoProductionSourceContains(List<Path> roots, String... forbiddenTokens) throws IOException {
         for (Path root : roots) {
             if (!Files.exists(root)) {

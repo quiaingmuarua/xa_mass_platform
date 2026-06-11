@@ -97,6 +97,16 @@ Current owner vocabulary:
 - `eventCode` is handler/capability identity. It validates against the selected
   WorkerGroup event binding and tells the worker which local handler to run; it
   is not a worker selector and must not trigger all-worker capability scans
+- Task item dispatch reaches transport only after runtime claim/lease and
+  concrete worker selection. Engine binds the selected worker into
+  `TaskDispatchBinding.workerId`; transport carries that value as
+  `selectedWorkerId`, a delivery constraint, not a scheduling or lifecycle
+  decision.
+- Transport delivery identifiers are intentionally split:
+  `selectedWorkerId` is assigned-worker correctness, `deliveryQueueKey` is a
+  queue/storage partition, `routeKey` is opaque connection/domain metadata, and
+  `connectionId` or session token is the transport lease handle. Do not collapse
+  these into worker identity or routeKey minting rules.
 - `TaskWorkRuntime` is the hot-path owner for ready work, lease, retry, expiry,
   and backpressure truth
 - result apply and visible final-result ownership are runtime-first concerns;

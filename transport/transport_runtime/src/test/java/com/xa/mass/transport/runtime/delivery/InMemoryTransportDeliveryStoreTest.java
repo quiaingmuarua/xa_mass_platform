@@ -24,18 +24,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InMemoryTransportDeliveryStoreTest {
 
     @Test
-    void routeKeyQueueAllowsAdapterTakeoverDrain() {
+    void selectedWorkerSelectorSeparatesWorkersSharingRouteAndDeliveryQueue() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
-        TaskDispatchItem pollingItem = item("msg-1", "worker-1");
-        TaskDispatchItem websocketItem = item("msg-2", "worker-1");
+        TaskDispatchItem firstWorkerItem = item("msg-1", "worker-1");
+        TaskDispatchItem secondWorkerItem = item("msg-2", "worker-2");
 
-        DispatchOutcome pollingOutcome = store.enqueue(envelope("polling", pollingItem));
-        DispatchOutcome websocketOutcome = store.enqueue(envelope("websocket", websocketItem));
+        DispatchOutcome firstOutcome = store.enqueue(envelope("polling", firstWorkerItem));
+        DispatchOutcome secondOutcome = store.enqueue(envelope("polling", secondWorkerItem));
 
-        assertEquals(DispatchOutcomeStatus.QUEUED, pollingOutcome.getStatus());
-        assertEquals(DispatchOutcomeStatus.QUEUED, websocketOutcome.getStatus());
-        assertEquals(List.of("msg-1", "msg-2"), messageIds(store.drain("polling", "worker-1", 10)));
-        assertTrue(store.drain("websocket", "worker-1", 10).isEmpty());
+        assertEquals(DispatchOutcomeStatus.QUEUED, firstOutcome.getStatus());
+        assertEquals(DispatchOutcomeStatus.QUEUED, secondOutcome.getStatus());
+        assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 10)));
+        assertTrue(store.drain("polling", "worker-1", 10).isEmpty());
+        assertEquals(List.of("msg-2"), messageIds(store.drain("polling", "worker-2", 10)));
     }
 
     @Test
@@ -45,9 +46,9 @@ class InMemoryTransportDeliveryStoreTest {
         DispatchOutcome outcome = store.enqueue(envelope(" Polling ", item("msg-1", " worker-1 ")));
 
         assertEquals("polling", outcome.getAdapterId());
-        assertEquals("worker-1", outcome.getRouteKey());
-        assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 10)));
-        assertTrue(store.drain(" Polling ", " worker-1 ", 10).isEmpty());
+        assertEquals("group-route-1", outcome.getRouteKey());
+        assertEquals(List.of("msg-1"), messageIds(store.drain(" Polling ", " worker-1 ", 10)));
+        assertTrue(store.drain("polling", "worker-1", 10).isEmpty());
     }
 
     @Test
@@ -381,8 +382,10 @@ class InMemoryTransportDeliveryStoreTest {
         String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
         return new TransportDispatchEnvelope(
                 deliveryId,
+                adapterId,
+                item.getWorkerId(),
                 new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchView(adapterId, item.getWorkerId(), item.attemptId(), item),
+                        .fromDispatchView(adapterId, "group-route-1", item.attemptId(), item),
                 createdAtEpochMillis
         );
     }
@@ -391,6 +394,8 @@ class InMemoryTransportDeliveryStoreTest {
         String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
         return new TransportDispatchEnvelope(
                 deliveryId,
+                adapterId,
+                item.getWorkerId(),
                 new TransportPacketFactory(() -> deliveryId)
                         .fromDispatchView(adapterId, " ", item.attemptId(), item),
                 1L

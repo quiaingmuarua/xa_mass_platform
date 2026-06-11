@@ -50,17 +50,17 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     @Override
-    public List<TransportDispatchEnvelope> drain(String adapterId, String routeKey, int maxItems) {
-        return delegate.drain(adapterId, routeKey, maxItems);
+    public List<TransportDispatchEnvelope> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems) {
+        return delegate.drain(deliveryQueueKey, selectedWorkerId, maxItems);
     }
 
     @Override
-    public TransportDeliveryPollResult poll(String adapterId,
-                                            String routeKey,
+    public TransportDeliveryPollResult poll(String deliveryQueueKey,
+                                            String selectedWorkerId,
                                             int maxItems,
                                             long timeout,
                                             TimeUnit unit) throws InterruptedException {
-        return delegate.poll(adapterId, routeKey, maxItems, timeout, unit);
+        return delegate.poll(deliveryQueueKey, selectedWorkerId, maxItems, timeout, unit);
     }
 
     @Override

@@ -12,17 +12,17 @@ import java.util.List;
  */
 public interface TaskPullChannel {
 
-    default List<TaskDispatchItem> pollTaskMessages(String routeKey, int maxMessages) {
-        return pollTaskMessages(routeKey, maxMessages, 0L);
+    default List<TaskDispatchItem> pollTaskMessages(String selectedWorkerId, int maxMessages) {
+        return pollTaskMessages(selectedWorkerId, maxMessages, 0L);
     }
 
-    default List<TaskDispatchItem> pollTaskMessages(String routeKey, int maxMessages, long timeoutMillis) {
-        return pollTaskMessagesResult(routeKey, maxMessages, timeoutMillis).getDispatchViews();
+    default List<TaskDispatchItem> pollTaskMessages(String selectedWorkerId, int maxMessages, long timeoutMillis) {
+        return pollTaskMessagesResult(selectedWorkerId, maxMessages, timeoutMillis).getDispatchViews();
     }
 
-    default TaskPullResult pollTaskMessagesResult(String routeKey, int maxMessages) {
-        return pollTaskMessagesResult(routeKey, maxMessages, 0L);
+    default TaskPullResult pollTaskMessagesResult(String selectedWorkerId, int maxMessages) {
+        return pollTaskMessagesResult(selectedWorkerId, maxMessages, 0L);
     }
 
-    TaskPullResult pollTaskMessagesResult(String routeKey, int maxMessages, long timeoutMillis);
+    TaskPullResult pollTaskMessagesResult(String selectedWorkerId, int maxMessages, long timeoutMillis);
 }

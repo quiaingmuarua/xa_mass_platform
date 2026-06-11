@@ -16,6 +16,7 @@ final class RedisTransportDispatchEnvelopeCodec {
 
     private static final Base64.Encoder KEY_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder KEY_DECODER = Base64.getUrlDecoder();
+    private static final String WORKER_INDEX_SEPARATOR = ":worker-index:";
 
     private final Gson gson;
 
@@ -29,14 +30,20 @@ final class RedisTransportDispatchEnvelopeCodec {
 
     String encodeKeyPart(DeliveryQueueKey key) {
         Objects.requireNonNull(key, "key");
-        return encodeKeyToken(key.routeKey());
+        return encodeKeyToken(key.deliveryQueueKey())
+                + WORKER_INDEX_SEPARATOR
+                + encodeKeyToken(key.selectedWorkerId());
     }
 
     DeliveryQueueKey decodeKeyPart(String encodedKeyPart) {
         if (encodedKeyPart == null || encodedKeyPart.isBlank()) {
             throw new IllegalArgumentException("encodedKeyPart must not be blank");
         }
-        return new DeliveryQueueKey("route-owner", decodeKeyToken(encodedKeyPart));
+        String[] parts = encodedKeyPart.split(WORKER_INDEX_SEPARATOR, 2);
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("encodedKeyPart must include selected worker index");
+        }
+        return new DeliveryQueueKey(decodeKeyToken(parts[0]), decodeKeyToken(parts[1]));
     }
 
     byte[] encodeEntry(KeyedQueueEntry<TransportDispatchEnvelope> entry) {
@@ -44,6 +51,8 @@ final class RedisTransportDispatchEnvelopeCodec {
         TransportDispatchEnvelope envelope = Objects.requireNonNull(entry.value(), "entry.value");
         RedisTransportDispatchEnvelopeRecord record = new RedisTransportDispatchEnvelopeRecord(
                 envelope.getDeliveryId(),
+                envelope.getDeliveryQueueKey(),
+                envelope.getSelectedWorkerId(),
                 envelope.getCreatedAtEpochMillis(),
                 envelope.getPacket()
         );
@@ -58,7 +67,11 @@ final class RedisTransportDispatchEnvelopeCodec {
                 new String(bytes, StandardCharsets.UTF_8),
                 DecodedRedisTransportDispatchEnvelopeRecord.class
         );
-        if (record == null || record.deliveryId == null || record.packet == null) {
+        if (record == null
+                || record.deliveryId == null
+                || record.deliveryQueueKey == null
+                || record.selectedWorkerId == null
+                || record.packet == null) {
             throw new IllegalArgumentException("encoded dispatch envelope record is incomplete");
         }
         TransportPacket packet = TransportPacket.fromDecodedJson(
@@ -77,6 +90,8 @@ final class RedisTransportDispatchEnvelopeCodec {
         );
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 record.deliveryId,
+                record.deliveryQueueKey,
+                record.selectedWorkerId,
                 packet,
                 record.createdAtEpochMillis
         );
@@ -99,6 +114,8 @@ final class RedisTransportDispatchEnvelopeCodec {
 
     private static final class DecodedRedisTransportDispatchEnvelopeRecord {
         private String deliveryId;
+        private String deliveryQueueKey;
+        private String selectedWorkerId;
         private long createdAtEpochMillis;
         private DecodedTransportPacketRecord packet;
     }

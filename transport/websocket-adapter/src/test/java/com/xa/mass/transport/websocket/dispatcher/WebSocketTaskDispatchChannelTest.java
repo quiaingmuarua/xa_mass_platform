@@ -34,7 +34,7 @@ class WebSocketTaskDispatchChannelTest {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         when(endpointRegistry.sendToAdapterRoute(
                 org.mockito.ArgumentMatchers.eq("websocket"),
-                org.mockito.ArgumentMatchers.eq("worker-1"),
+                org.mockito.ArgumentMatchers.eq("group-route-1"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(true);
@@ -60,7 +60,7 @@ class WebSocketTaskDispatchChannelTest {
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
         verify(endpointRegistry).sendToAdapterRoute(
                 org.mockito.ArgumentMatchers.eq("websocket"),
-                org.mockito.ArgumentMatchers.eq("worker-1"),
+                org.mockito.ArgumentMatchers.eq("group-route-1"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 captor.capture());
 
@@ -88,7 +88,7 @@ class WebSocketTaskDispatchChannelTest {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         when(endpointRegistry.sendToAdapterRoute(
                 org.mockito.ArgumentMatchers.eq("websocket"),
-                org.mockito.ArgumentMatchers.eq("worker-1"),
+                org.mockito.ArgumentMatchers.eq("group-route-1"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(false);
@@ -178,13 +178,15 @@ class WebSocketTaskDispatchChannelTest {
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 "delivery-" + item.getMessageId(),
+                "websocket",
+                item.getWorkerId(),
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
                         "delivery-" + item.getMessageId(),
                         item.attemptId(),
                         PacketType.TASK_DISPATCH,
                         "websocket",
-                        item.getWorkerId(),
+                        "group-route-1",
                         item.getTaskId(),
                         item.getMessageId(),
                         item.attemptId(),

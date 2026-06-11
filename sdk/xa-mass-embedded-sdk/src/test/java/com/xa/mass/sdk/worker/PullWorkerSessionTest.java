@@ -24,10 +24,10 @@ import static org.mockito.Mockito.when;
 class PullWorkerSessionTest {
 
     @Test
-    void pollResultDelegatesToTaskPullChannelWithCanonicalRouteKey() {
+    void pollResultDelegatesToTaskPullChannelWithRegisteredWorkerId() {
         TaskPullChannel taskPullChannel = mock(TaskPullChannel.class);
         TaskPullResult expected = TaskPullResult.delivered(List.of(item("msg-1")));
-        when(taskPullChannel.pollTaskMessagesResult(routeKey(), 5, 250L)).thenReturn(expected);
+        when(taskPullChannel.pollTaskMessagesResult("worker-1", 5, 250L)).thenReturn(expected);
 
         PullWorkerSession session = session(taskPullChannel, mock(TaskResultIngestChannel.class),
                 new InMemoryTransportRouteOwnerStore());
@@ -42,7 +42,7 @@ class PullWorkerSessionTest {
     @Test
     void pollKeepsLegacyListViewOnTopOfExplicitPullResult() {
         TaskPullChannel taskPullChannel = mock(TaskPullChannel.class);
-        when(taskPullChannel.pollTaskMessagesResult(routeKey(), 3, 100L))
+        when(taskPullChannel.pollTaskMessagesResult("worker-1", 3, 100L))
                 .thenReturn(TaskPullResult.delivered(List.of(item("msg-1"), item("msg-2"))));
 
         PullWorkerSession session = session(taskPullChannel, mock(TaskResultIngestChannel.class),

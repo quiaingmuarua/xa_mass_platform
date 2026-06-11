@@ -77,14 +77,15 @@ class RedisTransportDeliveryStoreTest {
     }
 
     @Test
-    void enqueueDrainAndPollUseCanonicalRouteKeyAcrossAdapters() throws Exception {
+    void enqueueDrainAndPollUseSelectedWorkerSelectorUnderSharedDeliveryQueue() throws Exception {
         DispatchOutcome first = store.enqueue(envelope(" Polling ", item("msg-1", " worker-1 ")));
-        store.enqueue(envelope("websocket", item("msg-2", "worker-1")));
+        store.enqueue(envelope("polling", item("msg-2", "worker-2")));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
         assertEquals("polling", first.getAdapterId());
-        assertEquals("worker-1", first.getRouteKey());
-        assertEquals(List.of("msg-1", "msg-2"), messageIds(store.drain("polling", "worker-1", 10)));
+        assertEquals("group-route-1", first.getRouteKey());
+        assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 10)));
+        assertTrue(store.drain("polling", "worker-1", 10).isEmpty());
 
         CompletableFuture<List<TransportDispatchEnvelope>> polled = CompletableFuture.supplyAsync(() -> {
             try {
@@ -95,8 +96,7 @@ class RedisTransportDeliveryStoreTest {
             }
         });
 
-        store.enqueue(envelope("websocket", item("msg-3", "worker-2")));
-        assertEquals(List.of("msg-3"), messageIds(polled.get(2, TimeUnit.SECONDS)));
+        assertEquals(List.of("msg-2"), messageIds(polled.get(2, TimeUnit.SECONDS)));
     }
 
     @Test
@@ -120,16 +120,16 @@ class RedisTransportDeliveryStoreTest {
     }
 
     @Test
-    void statsExposeRouteOwnerBreakdownAndShutdownClearing() {
+    void statsExposeDeliveryQueueBreakdownAndShutdownClearing() {
         store.enqueue(envelope("polling", item("msg-1", "worker-1")));
-        store.enqueue(envelope("websocket", item("msg-2", "worker-2")));
+        store.enqueue(envelope("polling", item("msg-2", "worker-2")));
 
         TransportDeliveryStoreStats queued = store.stats();
         assertEquals(2, queued.getQueuedItems());
         assertEquals(2, queued.getQueueCount());
         assertEquals(1, queued.getQueueByAdapter().size());
-        assertEquals(2, queued.getQueueByAdapter().get("route-owner").getQueuedItems());
-        assertEquals(2, queued.getQueueByAdapter().get("route-owner").getQueueCount());
+        assertEquals(2, queued.getQueueByAdapter().get("polling").getQueuedItems());
+        assertEquals(2, queued.getQueueByAdapter().get("polling").getQueueCount());
 
         store.shutdown();
 
@@ -161,8 +161,10 @@ class RedisTransportDeliveryStoreTest {
         String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
         return new TransportDispatchEnvelope(
                 deliveryId,
+                adapterId,
+                item.getWorkerId(),
                 new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchView(adapterId, item.getWorkerId(), item.attemptId(), item),
+                        .fromDispatchView(adapterId, "group-route-1", item.attemptId(), item),
                 1L
         );
     }
@@ -171,6 +173,8 @@ class RedisTransportDeliveryStoreTest {
         String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
         return new TransportDispatchEnvelope(
                 deliveryId,
+                adapterId,
+                item.getWorkerId(),
                 new TransportPacketFactory(() -> deliveryId)
                         .fromDispatchView(adapterId, " ", item.attemptId(), item),
                 1L

@@ -49,18 +49,24 @@ public final class TransportDeliveryService {
         return Collections.unmodifiableList(outcomes);
     }
 
-    public List<TransportDispatchEnvelope> drainEnvelopes(String adapterId, String routeKey, int maxItems) {
-        return deliveryStore.drain(adapterId, routeKey, maxItems);
+    public List<TransportDispatchEnvelope> drainEnvelopes(String adapterId, String selectedWorkerId, int maxItems) {
+        return deliveryStore.drain(resolveDeliveryQueueKey(adapterId), selectedWorkerId, maxItems);
     }
 
-    public List<TransportDispatchEnvelope> pollEnvelopes(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
-        return pollEnvelopeResult(adapterId, routeKey, maxItems, timeoutMillis).getEnvelopes();
+    public List<TransportDispatchEnvelope> pollEnvelopes(String adapterId, String selectedWorkerId, int maxItems, long timeoutMillis) {
+        return pollEnvelopeResult(adapterId, selectedWorkerId, maxItems, timeoutMillis).getEnvelopes();
     }
 
-    public TransportDeliveryPollResult pollEnvelopeResult(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
+    public TransportDeliveryPollResult pollEnvelopeResult(String adapterId, String selectedWorkerId, int maxItems, long timeoutMillis) {
         TransportDeliveryPollResult result;
         try {
-            result = deliveryStore.poll(adapterId, routeKey, maxItems, Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
+            result = deliveryStore.poll(
+                    resolveDeliveryQueueKey(adapterId),
+                    selectedWorkerId,
+                    maxItems,
+                    Math.max(0L, timeoutMillis),
+                    TimeUnit.MILLISECONDS
+            );
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return TransportDeliveryPollResult.unavailable();
@@ -68,8 +74,8 @@ public final class TransportDeliveryService {
         return result;
     }
 
-    public List<TaskDispatchItem> pollDispatchViews(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
-        return toDispatchViews(pollEnvelopeResult(adapterId, routeKey, maxItems, timeoutMillis).getEnvelopes());
+    public List<TaskDispatchItem> pollDispatchViews(String adapterId, String selectedWorkerId, int maxItems, long timeoutMillis) {
+        return toDispatchViews(pollEnvelopeResult(adapterId, selectedWorkerId, maxItems, timeoutMillis).getEnvelopes());
     }
 
     public static TaskDispatchItem toDispatchView(TransportDispatchEnvelope envelope) {
@@ -159,6 +165,10 @@ public final class TransportDeliveryService {
     private String normalizeAdapterId(String adapterId) {
         String normalizedAdapterId = TransportDeliveryAddressing.normalizeAdapterId(adapterId);
         return normalizedAdapterId == null ? "unknown" : normalizedAdapterId;
+    }
+
+    private static String resolveDeliveryQueueKey(String adapterId) {
+        return TransportDeliveryAddressing.normalizeAdapterId(adapterId);
     }
 
     private static final class DirectDeliveryCounters {

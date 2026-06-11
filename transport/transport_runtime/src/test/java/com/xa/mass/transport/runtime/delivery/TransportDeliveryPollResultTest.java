@@ -55,8 +55,10 @@ class TransportDeliveryPollResultTest {
         String deliveryId = "delivery-" + item.getMessageId();
         return new TransportDispatchEnvelope(
                 deliveryId,
+                "polling",
+                item.getWorkerId(),
                 new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchView("polling", item.getWorkerId(), item.attemptId(), item),
+                        .fromDispatchView("polling", "group-route-1", item.attemptId(), item),
                 1L
         );
     }

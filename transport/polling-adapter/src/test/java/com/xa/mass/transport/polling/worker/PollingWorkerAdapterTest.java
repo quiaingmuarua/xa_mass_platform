@@ -51,6 +51,17 @@ class PollingWorkerAdapterTest {
     }
 
     @Test
+    void sharedRouteAndDeliveryQueueDoNotCrossConsumeSelectedWorkerItems() {
+        PollingWorkerAdapter adapter = adapter();
+        adapter.dispatchEnvelopes(List.of(envelope(item("msg-2", "worker-2"))));
+
+        assertEquals(TaskPullStatus.EMPTY, adapter.pollTaskMessagesResult("worker-1", 10, 0).getStatus());
+        assertEquals(List.of("msg-2"), adapter.pollTaskMessages("worker-2", 10, 0).stream()
+                .map(TaskDispatchItem::getMessageId)
+                .toList());
+    }
+
+    @Test
     void dispatchReportsBackpressureWhenWorkerInboxIsFull() {
         PollingWorkerAdapter adapter = adapter();
         List<TransportDispatchEnvelope> items = new ArrayList<>();
@@ -132,16 +143,18 @@ class PollingWorkerAdapterTest {
     }
 
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
-        return envelope("delivery-" + item.getMessageId(), item.getWorkerId(), item);
+        return envelope("delivery-" + item.getMessageId(), "group-route-1", item);
     }
 
     private TransportDispatchEnvelope invalidEnvelope(TaskDispatchItem item) {
-        return envelope("delivery-" + item.getMessageId(), " ", item);
+        return envelope("delivery-" + item.getMessageId(), "group-route-1", item);
     }
 
     private TransportDispatchEnvelope envelope(String deliveryId, String routeKey, TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 deliveryId,
+                PollingWorkerAdapter.PROTOCOL,
+                item.getWorkerId(),
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
                         deliveryId,

@@ -149,8 +149,9 @@ public final class TransportDeliveryStoreStats {
      * Queue-path only legacy breakdown.
      *
      * <p>This field keeps the old name for diagnostic API stability. It is not
-     * queue ownership truth; routeKey-owned stores may aggregate under a
-     * route-owner bucket instead of preserving adapter-specific queue identity.
+     * queue ownership truth; selected-worker delivery stores may aggregate
+     * under the shared delivery queue key instead of preserving
+     * adapter-specific queue identity.
      */
     public Map<String, TransportDeliveryQueueStats> getQueueByAdapter() {
         return queueByAdapter;

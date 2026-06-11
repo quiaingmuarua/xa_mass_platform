@@ -55,7 +55,7 @@ class RuntimeDispatchOutcomesTest {
     }
 
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
-        return envelope("delivery-" + item.getMessageId(), "websocket", item.getWorkerId(), item.attemptId(), item);
+        return envelope("delivery-" + item.getMessageId(), "websocket", "group-route-1", item.attemptId(), item);
     }
 
     private TransportDispatchEnvelope envelope(String deliveryId,
@@ -65,6 +65,8 @@ class RuntimeDispatchOutcomesTest {
                                               TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 deliveryId,
+                adapterId,
+                item.getWorkerId(),
                 new TransportPacketFactory(() -> deliveryId)
                         .fromDispatchView(adapterId, routeKey, traceId, item),
                 1L

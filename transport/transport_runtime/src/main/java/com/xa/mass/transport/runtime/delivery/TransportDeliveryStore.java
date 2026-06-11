@@ -9,12 +9,11 @@ import java.util.concurrent.TimeUnit;
 /**
  * Runtime-owned storage boundary for transport delivery handoff.
  *
- * <p>This contract is transport-specific but intentionally Redis-friendly:
- * queue ownership is the canonical {@code routeKey}. {@code adapterId} remains
- * request metadata for protocol-level callers and diagnostics, but it must not
- * strand already queued work when a routeKey changes adapter owner. FIFO is per
- * routeKey, and callers must not depend on JVM-local queue scans or waiter
- * identity.
+ * <p>This contract is transport-specific but intentionally Redis-friendly.
+ * Queue ownership is the transport runtime {@code deliveryQueueKey}; assigned
+ * polling delivery is selected by {@code selectedWorkerId} under that shared
+ * queue owner. {@code routeKey} stays envelope metadata and must not be used as
+ * the only queue isolation key for assigned task delivery.
  *
  * <p>{@link #poll(String, String, int, long, TimeUnit)} returns transport
  * delivery status, but store implementations should throw
@@ -33,10 +32,10 @@ public interface TransportDeliveryStore {
 
     DispatchOutcome enqueue(TransportDispatchEnvelope envelope);
 
-    List<TransportDispatchEnvelope> drain(String adapterId, String routeKey, int maxItems);
+    List<TransportDispatchEnvelope> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems);
 
-    TransportDeliveryPollResult poll(String adapterId,
-                                     String routeKey,
+    TransportDeliveryPollResult poll(String deliveryQueueKey,
+                                     String selectedWorkerId,
                                      int maxItems,
                                      long timeout,
                                      TimeUnit unit) throws InterruptedException;

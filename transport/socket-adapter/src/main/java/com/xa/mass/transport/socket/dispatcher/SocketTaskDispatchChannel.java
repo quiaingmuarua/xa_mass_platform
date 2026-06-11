@@ -3,7 +3,6 @@ package com.xa.mass.transport.socket.dispatcher;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
@@ -48,7 +47,7 @@ public final class SocketTaskDispatchChannel implements TaskDispatchChannel {
                     boolean sent = sessionManager.sendToAdapterRoute(
                             adapterId,
                             envelope.getRouteKey(),
-                            envelope.getPacket().payloadString(TransportPacket.PAYLOAD_WORKER_ID),
+                            envelope.getSelectedWorkerId(),
                             rawJson
                     );
                     if (!sent) {

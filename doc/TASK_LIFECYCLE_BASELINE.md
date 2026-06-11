@@ -1,6 +1,6 @@
 # Task Lifecycle Baseline
 
-Last updated: 2026-06-03
+Last updated: 2026-06-11
 
 Status: current global task lifecycle baseline.
 
@@ -86,6 +86,41 @@ task shell create
   -> visible result commit
   -> task progress / terminal convergence
 ```
+
+Task item dispatch boundary:
+
+```text
+task item
+  -> TaskWorkRuntime claim / lease
+  -> Scheduling Plane selects concrete worker
+  -> engine binds TaskDispatchBinding(workerId, workerGroupId, adapterId, ...)
+  -> transport handoff carries delivery metadata
+  -> adapter delivers only to selectedWorkerId
+```
+
+At transport entry, the concrete worker decision is already made.
+`TaskDispatchBinding.workerId` is the selected execution identity. Transport
+may use that value only as a delivery constraint, named `selectedWorkerId` in
+transport delivery models. It must not reinterpret the value as scheduling
+authority, worker lifecycle truth, route-key minting input, capacity truth, or
+fallback-worker permission.
+
+Dispatch delivery identifiers have separate meanings:
+
+- `selectedWorkerId`: correctness identity for the assigned worker that may
+  consume the item.
+- `deliveryQueueKey`: transport storage/batching/shard partition; it may be
+  shared by many workers and must not encode worker selection.
+- `routeKey`: opaque connection address, coarse delivery-domain metadata, or
+  protocol correlation value; transport must not decode it or rely on its
+  cardinality for correctness.
+- `connectionId` / session token: transport lease evidence for one concrete
+  connection or polling session; it is not a worker scheduling identity.
+
+Polling, WebSocket, and socket delivery all preserve the same rule: transport
+delivers an already selected item to an available connection/session for that
+`selectedWorkerId`; if no such connection exists, delivery is infeasible and
+retry/compensation remains engine-owned.
 
 ## 2. Global Rules
 

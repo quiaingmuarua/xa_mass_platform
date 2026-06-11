@@ -61,6 +61,21 @@ com.xa.mass.worker.runtime            implementation owners and assembly
 WorkerGroup owns capability truth. Worker-level supported project/event fields
 are compatibility read hints only.
 
+Worker runtime does not own transport delivery identity:
+
+- `routeKey` is transport connection/domain metadata and remains opaque to
+  transport; worker-runtime may expose worker group/node facts used by assembly
+  to mint or resolve route keys, but it does not make routeKey a worker
+  identity.
+- `selectedWorkerId` is produced by engine runtime worker selection and carried
+  into transport as the already selected execution identity.
+- `deliveryQueueKey` is transport queue partitioning and must not be read as
+  worker runtime reachability, admission, or capacity truth.
+- transport route-owner leases are connection evidence. Worker runtime may
+  consume reachability evidence for scheduling views, but route-owner lease
+  refresh/release must not become worker capability, state-report, command, or
+  lifecycle truth.
+
 ## Worker Runtime State Dimensions
 
 Worker runtime state is split into independent dimensions:

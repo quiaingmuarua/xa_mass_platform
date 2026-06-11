@@ -27,14 +27,16 @@ more implemented than another.
   operator auth when enabled.
 - `durable-local` is the current inspectable fail-closed local shape, not a
   formal production profile: control-plane storage must be JDBC-enabled,
-  runtime state must use Redis, and transport delivery/presence must use Redis.
+  runtime state must use Redis, and transport delivery/route-owner evidence
+  must use Redis.
   Misconfiguration must fail startup instead of silently reverting to process
   memory.
 - SQLite-first persistence is a control-plane storage direction only; it must
   not be read as moving runtime queues, leases, heartbeat, result convergence,
   or trace/audit streams into SQLite
 - Redis remains the current cross-process runtime-truth direction for queues,
-  leases, counters, worker presence, dispatch handoff, and result ingress
+  leases, counters, worker runtime evidence, transport route-owner evidence,
+  dispatch handoff, and result ingress
 - trace-owned DB materialization may be added later through a trace-owned queue
   or sink, but it is a deferred analysis/read-model path, not control-plane
   storage and not runtime truth
@@ -51,7 +53,7 @@ more implemented than another.
 | worker declaration | control-plane storage | stable worker identity plus explicit group/node membership | runtime cache/projection for lookup speed | transient transport events or active scheduling truth |
 | worker group capability | control-plane storage | `WorkerGroup.eventBindings` is the declared capability truth used to build candidate-source views | immutable runtime snapshot/index for lookup speed | worker declaration rows, transport events, or active scheduling state |
 | project/event catalog metadata | control-plane storage | stable project identities, global event capability definitions, and project-event authorization bindings must survive restart | SDK in-memory bootstrap registry for embedded/test/local use | runtime worker topology, worker presence, or trace rows |
-| worker runtime route-owner view | runtime state | volatile online/reachability truth owned by transport adapters and nodes | Redis/in-memory presence records with lease expiry | control-plane worker declaration or dispatch queues |
+| transport route-owner evidence | runtime state | volatile route/connection lease evidence for already known workers and routes | Redis/in-memory route-owner records with lease expiry | control-plane worker declaration, worker lifecycle truth, post-assignment worker selection, or dispatch queues |
 | rule definitions | control-plane storage | stable policy input | in-process evaluator cache | engine-only hidden defaults inside storage modules |
 | principal / submitter credential truth | control-plane storage | stable auth binding truth | in-process auth cache | infra module exporting SDK surface |
 | environment seed metadata for project/rule/catalog/credential initialization | control-plane storage | explicit new-environment setup record | one-shot importer state guarded by config | dev-only HTTP bootstrap APIs or runtime/trace state |
@@ -97,7 +99,7 @@ design and must not be implied by result ingress or review materialization.
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
 | `TaskResultRuntime` memory/Redis implementations | stable-final result rows plus stage/barrier repair state | canonical runtime result-read truth; memory is volatile local/dev, Redis is cross-process runtime truth |
 | Redis transport dispatch handoff | post-claim assignment queue between engine and transport JVMs; node-targeted inboxes are keyed by `transportNodeId` | runtime-state handoff, not ready queue ownership and not task lifecycle truth |
-| Redis worker presence / route-owner view | shared transport-owned reachability state | queryable runtime view for matching and dispatch routing, not a queue and not control-plane worker declaration |
+| Redis transport route-owner view | shared transport-owned route/connection lease evidence | queryable runtime evidence for reachability and selected-worker delivery feasibility; not a queue, not control-plane worker declaration, and not a post-assignment routing engine |
 | Redis transport result / dispatch-failure inboxes | transport-to-engine runtime ingress | bounded cross-JVM channels drained into engine-owned result ingest and compensation ports, not server endpoints |
 | server review materialization | task opt-in server-local review store populated from the review report queue; default mode is `OFF` | operator/read-model materialization, not engine runtime truth |
 | engine assembly | wires kernel SPI task-shell ports and worker-runtime `WorkerDeclarationStore` explicitly | prevents shell/declaration truth from silently redefining review/export or runtime ownership |

@@ -14,9 +14,21 @@ entry for `transport/`.
 - `transport_runtime` owns shared runtime assembly and delivery semantics.
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
 - `adapterId` is concrete runtime truth. `transportHint` is only a coarse family.
-- `routeKey` is the transport delivery address. Transport runtime and adapters
-  treat it as opaque and must not know whether it was minted from worker,
-  worker-group, or another owner-level rule.
+- `routeKey` is opaque connection/domain metadata. Transport runtime and
+  adapters must not know whether it was minted from worker group, adapter lane,
+  or another owner-level rule, and must not depend on routeKey cardinality for
+  wrong-worker prevention.
+- `selectedWorkerId` is the engine-selected execution target carried into
+  transport as a delivery constraint. Transport may filter sessions or selected
+  worker sub-lanes with it, but must not use it to schedule, rank, admit,
+  mutate lifecycle, or mint route keys.
+- `deliveryQueueKey` is only a queue/storage/batching partition. It may be
+  shared by many workers; it must not express worker selection.
+- Polling task delivery is selected-worker delivery: the poll request carries
+  the registered worker id as `selectedWorkerId`, while the runtime resolves a
+  shared `deliveryQueueKey` such as adapter id internally. Two polling workers
+  may share one routeKey and one deliveryQueueKey; they must still drain only
+  their own selected-worker sub-lane.
 - `CanonicalWorkerGroupRouteKeyCodec` is the current SDK/starter default
   worker-consumption route mint rule from `workerGroupId`; transport runtime
   and adapters receive explicit route keys or injected resolvers instead of
@@ -89,6 +101,9 @@ Document layering inside `transport/`:
   lifecycle state directly.
 - Do not add transport hot-path scans or model-coupled observability fields
   when logs, traces, counters, or indexed lookups can answer the question.
+- Do not turn route-owner/presence evidence into a post-assignment routing
+  engine. Missing selected-worker delivery evidence is infeasible delivery,
+  not permission for transport to choose another worker.
 
 ## Reading Map
 

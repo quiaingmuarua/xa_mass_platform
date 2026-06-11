@@ -119,7 +119,7 @@ public class PullWorkerSession {
     }
 
     public TaskPullResult pollResult(int maxMessages, long timeoutMillis) {
-        return taskPullChannel.pollTaskMessagesResult(routeKey, maxMessages, timeoutMillis);
+        return taskPullChannel.pollTaskMessagesResult(workerId, maxMessages, timeoutMillis);
     }
 
     public boolean submitResult(TaskDispatchItem dispatchItem, boolean success, String detail) {

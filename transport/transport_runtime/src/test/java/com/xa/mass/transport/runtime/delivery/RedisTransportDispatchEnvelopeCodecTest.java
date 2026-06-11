@@ -16,19 +16,21 @@ class RedisTransportDispatchEnvelopeCodecTest {
 
     @Test
     void keyPartRoundTripsWithSpecialCharacters() {
-        DeliveryQueueKey key = new DeliveryQueueKey("websocket-public", "worker/route:cn?demo=1");
+        DeliveryQueueKey key = new DeliveryQueueKey("polling", "worker/route:cn?demo=1");
 
         String encoded = codec.encodeKeyPart(key);
         DeliveryQueueKey decoded = codec.decodeKeyPart(encoded);
 
-        assertEquals("route-owner", decoded.adapterId());
-        assertEquals("worker/route:cn?demo=1", decoded.routeKey());
+        assertEquals("polling", decoded.deliveryQueueKey());
+        assertEquals("worker/route:cn?demo=1", decoded.selectedWorkerId());
     }
 
     @Test
     void dispatchEnvelopeEntryRoundTripsThroughJsonBytes() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
+                "websocket",
+                "worker-1",
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
                         "packet-1",
@@ -59,6 +61,8 @@ class RedisTransportDispatchEnvelopeCodecTest {
         KeyedQueueEntry<TransportDispatchEnvelope> decoded = codec.decodeEntry(encoded);
 
         assertEquals("delivery-1", decoded.value().getDeliveryId());
+        assertEquals("websocket", decoded.value().getDeliveryQueueKey());
+        assertEquals("worker-1", decoded.value().getSelectedWorkerId());
         assertEquals(1_234L, decoded.createdAtEpochMillis());
         assertEquals("packet-1", decoded.value().getPacket().packetId());
         assertEquals("trace-1", decoded.value().getPacket().traceId());
