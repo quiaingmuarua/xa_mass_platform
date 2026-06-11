@@ -10,6 +10,7 @@ import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.presence.RedisWorkerPresenceStore;
@@ -133,7 +134,7 @@ public class XaMassServerApplication {
     @Value("${mass.transport.delivery.max-items-per-route:10000}")
     private int transportDeliveryMaxItemsPerRoute;
 
-    @Value("${mass.transport.delivery.redis.namespace:xa:mass:transport:delivery:v1}")
+    @Value("${mass.transport.delivery.redis.namespace:" + RedisTransportNamespaces.DELIVERY + "}")
     private String transportDeliveryRedisNamespace;
 
     @Value("${mass.transport.presence.store:memory}")
@@ -142,7 +143,7 @@ public class XaMassServerApplication {
     @Value("${mass.transport.presence.lease-millis:30000}")
     private long transportPresenceLeaseMillis;
 
-    @Value("${mass.transport.presence.redis.namespace:xa:mass:transport:presence:v1}")
+    @Value("${mass.transport.presence.redis.namespace:" + RedisTransportNamespaces.PRESENCE + "}")
     private String transportPresenceRedisNamespace;
 
     @Value("${mass.storage.mode:memory}")

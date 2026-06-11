@@ -60,7 +60,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         logger.info("Connected: routeKey={} workerId={} endpointId={} totalRoutes={}",
                 routeKey, workerId, endpointId, routeIndex.routeCount());
         if (result.currentEntry().endpoint().isActive()) {
-            workerPresenceStore.markOnline(workerId, adapterId, routeKey, endpointId, "socket connected");
+            workerPresenceStore.claimRouteOwner(workerId, adapterId, routeKey, endpointId, "socket connected");
         }
         if (!wasOnline && result.currentEntry().endpoint().isActive() && systemEventChannel != null) {
             systemEventChannel.publishWorkerOnline(workerId, "socket connected", null);
@@ -80,7 +80,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         logger.info("Disconnected: routeKey={} workerId={} endpointId={}",
                 binding.routeKey(), binding.workerId(), endpointId);
         if (result.removedCurrentRoute() && systemEventChannel != null) {
-            workerPresenceStore.markOffline(binding.workerId(), adapterId, binding.routeKey(), endpointId, "socket disconnected");
+            workerPresenceStore.releaseRouteOwner(binding.workerId(), adapterId, binding.routeKey(), endpointId, "socket disconnected");
             systemEventChannel.publishWorkerOffline(binding.workerId(), "socket disconnected", null);
         }
     }
@@ -138,7 +138,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
                 .toList();
         for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : entries) {
             if (entry.endpoint().isActive()) {
-                workerPresenceStore.markOffline(
+                workerPresenceStore.releaseRouteOwner(
                         entry.workerId(),
                         adapterId,
                         entry.routeKey(),
@@ -207,7 +207,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
             if (endpoint == null || !endpoint.isActive()) {
                 continue;
             }
-            workerPresenceStore.markOnline(
+            workerPresenceStore.claimRouteOwner(
                     entry.workerId(),
                     adapterId,
                     entry.routeKey(),

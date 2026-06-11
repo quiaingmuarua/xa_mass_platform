@@ -504,19 +504,26 @@ Redis keyspace.
 
 Scope:
 
-1. Add first-batch specs for transport presence key families:
-   - `route-presence`,
-   - `worker`,
-   - `route`,
-   - `worker-routes`,
-   - `routes`,
-   - `workers`.
+1. Add first-batch specs for the converged transport presence key families:
+   - `owner:<shard>` as `routeKey -> owner` truth,
+   - `deadline:<shard>` as the lease/prune index,
+   - `worker-route:<workerId>` as the derived compatibility/operator
+     projection used by `findOwners(workerId)`.
 2. Add owner-manifest or generated-fixture drift guards for transport presence
    specs. The default source is the transport owner module. A tool-local spec
    must include an automated source drift guard that checks the owner keyspace
    source or generated fixture and fails CI on drift.
-3. Mark any uncertain family as `unknown-current` or `needs-owner-review`, not
-   as proven.
+3. Mark old presence families as forbidden/residue rather than uncertain
+   current truth:
+   - `route-presence:*`,
+   - `worker:{workerId}`,
+   - `route:{routeKey}`,
+   - `worker-routes:*`,
+   - `routes`,
+   - `workers`,
+   - `owner-shards`.
+4. Mark any newly observed family as `unknown-current` or
+   `needs-owner-review`, not as proven.
 
 Acceptance:
 
@@ -525,13 +532,19 @@ Acceptance:
    consumer roadmap that needs the family.
 2. Every transport presence spec names its owner-module manifest, generated
    fixture, or automated owner-source drift guard.
-3. The transport presence specs encode current known gaps:
-   - `workers` is write-only unless a reader is proven,
-   - `worker-routes` must either feed `findOwners(workerId)` or become residue,
-   - `worker:{workerId}` is projection/cache, not canonical route-owner truth.
+3. The transport presence specs encode the current owner boundary:
+   - `owner:<shard>` is canonical route-owner truth,
+   - `deadline:<shard>` is the prune index,
+   - `worker-route:<workerId>` is derived and may only return a 0/1 owner
+     projection,
+   - old families such as `workers`, `owner-shards`, `worker-routes:*`, and
+     `route-presence:*` are forbidden/residue.
 4. No task work/result runtime placeholder is added to RRKP-3A.
 5. RRKP-3A may encode the transport presence shape that WRB converged, but it
    must not be implemented early merely to freeze current residue.
+6. Transport specs must reject worker runtime/admission truth under transport,
+   including worker capacity, reservation, active lease, dispatch gate,
+   event-binding ceiling, and `group:{groupId}:slots`.
 
 ## RRKP-3B: Worker Registry Boundary Specs
 
@@ -683,9 +696,9 @@ Acceptance:
    `classify`, and `assert` as structural key-existence support proof.
 2. Temporary Python/Node probes used during WRB can be retired after their
    evidence is covered by this module.
-3. The report must not preserve pre-convergence residue such as write-only
-   `workers` or unused `worker-routes` as proven families unless WRB resolves
-   them with a named production query.
+3. The report must not preserve pre-convergence residue such as `workers`,
+   `owner-shards`, `route-presence:*`, or `worker-routes:*` as proven
+   families.
 4. RRKP-5A does not require `diff` or `scenario`; those belong to RRKP-5B after
    RRKP-4 exists.
 

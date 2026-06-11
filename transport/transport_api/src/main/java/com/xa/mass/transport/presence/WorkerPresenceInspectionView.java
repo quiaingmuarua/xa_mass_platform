@@ -3,7 +3,7 @@ package com.xa.mass.transport.presence;
 import java.util.List;
 
 /**
- * Worker-id projection view for operator and compatibility inspection.
+ * Worker-id projection view for SDK and operator inspection.
  *
  * <p>This view may scan active presence projections and must stay out of the
  * dispatch hot path. Worker delivery should use {@link WorkerDispatchRouteOwnerView}
@@ -24,10 +24,11 @@ public interface WorkerPresenceInspectionView {
         if (workerId == null || workerId.isBlank()) {
             return List.of();
         }
-        String normalizedWorkerId = workerId.trim();
-        return listActivePresences().stream()
-                .filter(presence -> normalizedWorkerId.equals(presence.getWorkerId()))
-                .map(WorkerDispatchRouteOwner::fromPresence)
-                .toList();
+        WorkerPresence presence = getPresence(workerId.trim());
+        if (presence == null) {
+            return List.of();
+        }
+        WorkerDispatchRouteOwner owner = WorkerDispatchRouteOwner.fromPresence(presence);
+        return owner.isActive(System.currentTimeMillis()) ? List.of(owner) : List.of();
     }
 }

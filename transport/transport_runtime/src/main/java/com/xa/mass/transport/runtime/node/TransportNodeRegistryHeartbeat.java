@@ -57,7 +57,7 @@ public final class TransportNodeRegistryHeartbeat implements AutoCloseable {
             current.shutdownNow();
         }
         try {
-            registry.markOffline(transportNodeId);
+            registry.releaseRouteOwner(transportNodeId);
         } catch (RuntimeException e) {
             logger.warn("Failed to mark transport node offline: transportNodeId={}, reason={}",
                     transportNodeId, e.getMessage());

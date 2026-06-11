@@ -13,8 +13,20 @@ public interface WorkerDispatchRouteOwnerView {
 
     Optional<WorkerDispatchRouteOwner> currentOwner(String routeKey);
 
-    default boolean hasOnlineOwner(String routeKey) {
+    default boolean hasActiveOwner(String routeKey) {
         long now = System.currentTimeMillis();
-        return currentOwner(routeKey).stream().anyMatch(owner -> owner.isOnline(now));
+        return currentOwner(routeKey).stream().anyMatch(owner -> owner.isActive(now));
+    }
+
+    default boolean hasActiveRouteOwner(String adapterId, String routeKey) {
+        if (adapterId == null || adapterId.isBlank()) {
+            return false;
+        }
+        String normalizedAdapterId = adapterId.trim();
+        long now = System.currentTimeMillis();
+        return currentOwner(routeKey)
+                .filter(owner -> normalizedAdapterId.equals(owner.adapterId()))
+                .filter(owner -> owner.isActive(now))
+                .isPresent();
     }
 }

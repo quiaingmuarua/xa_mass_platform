@@ -28,12 +28,13 @@ entry for `transport/`.
 - raw/debug worker side-channels are also adapter-scoped. They may resolve one
   concrete active route for a worker, but once resolved they must dispatch via
   the serving adapter identity instead of reviving route-only shared semantics.
-- worker reachability truth now lives in a transport-owned presence plane.
-  Adapters write `WorkerPresenceStore`; engine consumes a reachability view and
-  must not re-own transport online truth through worker heartbeat folding.
-  Presence ownership is connection-aware: reconnect may replace the current
-  owner, while heartbeat/offline only apply when the caller still holds the
-  stored `connectionId` / public `sessionToken`.
+- worker route-owner heartbeat evidence now lives in a transport-owned presence
+  plane. Adapters write `WorkerPresenceStore`; engine consumes
+  `WorkerDispatchRouteOwnerView` and must not re-own transport route evidence
+  through worker heartbeat folding. Presence ownership is connection-aware:
+  reconnect may replace the current owner, heartbeat only extends the matching
+  owner lease, and release only removes the owner when the caller still holds
+  the stored `connectionId` / public `sessionToken`.
 - `WorkerSystemEventChannel` is current worker presence ingress only. It is not
   the lifecycle owner for future worker command, worker state-report, or
   capability self-report flows.

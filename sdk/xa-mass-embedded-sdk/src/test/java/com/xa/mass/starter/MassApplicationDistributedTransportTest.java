@@ -15,8 +15,9 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
+import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
 import com.xa.mass.transport.presence.WorkerPresence;
-import com.xa.mass.transport.presence.WorkerPresenceState;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
@@ -58,8 +59,8 @@ class MassApplicationDistributedTransportTest {
 
         InMemoryWorkerPresenceStore nodeOnePresence = new InMemoryWorkerPresenceStore(30_000L, "node-1");
         InMemoryWorkerPresenceStore nodeTwoPresence = new InMemoryWorkerPresenceStore(30_000L, "node-2");
-        nodeOnePresence.markOnline("worker-1", "websocket", routeKey("worker-1"), "conn-1", "connected");
-        nodeTwoPresence.markOnline("worker-2", "websocket", routeKey("worker-2"), "conn-2", "connected");
+        nodeOnePresence.claimRouteOwner("worker-1", "websocket", routeKey("worker-1"), "conn-1", "connected");
+        nodeTwoPresence.claimRouteOwner("worker-2", "websocket", routeKey("worker-2"), "conn-2", "connected");
         CombinedPresenceStore presenceStore = new CombinedPresenceStore(List.of(nodeOnePresence, nodeTwoPresence));
 
         InMemoryTransportNodeRegistry nodeRegistry = new InMemoryTransportNodeRegistry();
@@ -92,7 +93,7 @@ class MassApplicationDistributedTransportTest {
             assertEquals(WorkerReachabilityState.ONLINE,
                     engine.getWorkerReachabilityView().getWorkerReachability("worker-1"));
 
-            nodeRegistry.markOffline("node-1");
+            nodeRegistry.releaseRouteOwner("node-1");
             assertEquals(WorkerReachabilityState.OFFLINE,
                     engine.getWorkerReachabilityView().getWorkerReachability("worker-1"));
         } finally {
@@ -379,7 +380,9 @@ class MassApplicationDistributedTransportTest {
         }
     }
 
-    private static final class CombinedPresenceStore implements WorkerPresenceStore {
+    private static final class CombinedPresenceStore implements WorkerPresenceStore,
+            WorkerDispatchRouteOwnerView,
+            WorkerPresenceInspectionView {
         private final List<InMemoryWorkerPresenceStore> stores;
 
         private CombinedPresenceStore(List<InMemoryWorkerPresenceStore> stores) {
@@ -387,8 +390,8 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public WorkerPresence markOnline(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
-            return stores.getFirst().markOnline(workerId, adapterId, routeKey, connectionId, reason);
+        public WorkerPresence claimRouteOwner(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
+            return stores.getFirst().claimRouteOwner(workerId, adapterId, routeKey, connectionId, reason);
         }
 
         @Override
@@ -397,8 +400,8 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public WorkerPresence markOffline(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
-            return stores.getFirst().markOffline(workerId, adapterId, routeKey, connectionId, reason);
+        public WorkerPresence releaseRouteOwner(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
+            return stores.getFirst().releaseRouteOwner(workerId, adapterId, routeKey, connectionId, reason);
         }
 
         @Override
@@ -410,8 +413,16 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public boolean isRouteOnline(String adapterId, String routeKey) {
-            return stores.stream().anyMatch(store -> store.isRouteOnline(adapterId, routeKey));
+        public boolean hasActiveRouteOwner(String adapterId, String routeKey) {
+            return stores.stream().anyMatch(store -> store.hasActiveRouteOwner(adapterId, routeKey));
+        }
+
+        @Override
+        public java.util.Optional<com.xa.mass.transport.presence.WorkerDispatchRouteOwner> currentOwner(String routeKey) {
+            return stores.stream()
+                    .map(store -> store.currentOwner(routeKey))
+                    .flatMap(java.util.Optional::stream)
+                    .findFirst();
         }
 
         @Override

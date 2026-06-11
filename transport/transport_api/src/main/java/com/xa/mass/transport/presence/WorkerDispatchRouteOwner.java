@@ -9,7 +9,6 @@ public record WorkerDispatchRouteOwner(String workerId,
                                        String adapterId,
                                        String routeKey,
                                        String transportNodeId,
-                                       WorkerPresenceState state,
                                        long leaseExpireAtEpochMillis,
                                        long updatedAtEpochMillis) {
 
@@ -18,11 +17,10 @@ public record WorkerDispatchRouteOwner(String workerId,
         adapterId = requireText(adapterId, "adapterId");
         routeKey = requireText(routeKey, "routeKey");
         transportNodeId = requireText(transportNodeId, "transportNodeId");
-        Objects.requireNonNull(state, "state");
     }
 
-    public boolean isOnline(long nowEpochMillis) {
-        return state == WorkerPresenceState.ONLINE && leaseExpireAtEpochMillis > nowEpochMillis;
+    public boolean isActive(long nowEpochMillis) {
+        return leaseExpireAtEpochMillis > nowEpochMillis;
     }
 
     public static WorkerDispatchRouteOwner fromPresence(WorkerPresence presence) {
@@ -32,7 +30,6 @@ public record WorkerDispatchRouteOwner(String workerId,
                 presence.getAdapterId(),
                 presence.getRouteKey(),
                 presence.getTransportNodeId(),
-                presence.getPresenceState(),
                 presence.getLeaseExpireAtEpochMillis(),
                 presence.getUpdatedAtEpochMillis()
         );

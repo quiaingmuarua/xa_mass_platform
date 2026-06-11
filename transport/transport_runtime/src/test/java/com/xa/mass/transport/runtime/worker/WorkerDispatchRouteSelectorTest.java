@@ -20,8 +20,8 @@ class WorkerDispatchRouteSelectorTest {
         InMemoryTransportNodeRegistry nodes = new InMemoryTransportNodeRegistry();
         nodes.register("node-1", List.of("websocket", "socket"), 2L);
         String routeKey = routeKey("group-1", "worker-1");
-        presence.markOnline("worker-1", "websocket", routeKey, "conn-ws", "connected");
-        presence.markOnline("worker-1", "socket", routeKey, "conn-socket", "reconnected");
+        presence.claimRouteOwner("worker-1", "websocket", routeKey, "conn-ws", "connected");
+        presence.claimRouteOwner("worker-1", "socket", routeKey, "conn-socket", "reconnected");
         WorkerResourceRecord worker = worker("worker-1", "websocket", WorkerTransportHints.REALTIME);
 
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
@@ -39,7 +39,7 @@ class WorkerDispatchRouteSelectorTest {
         InMemoryWorkerPresenceStore presence = new InMemoryWorkerPresenceStore(30_000L, "node-1");
         InMemoryTransportNodeRegistry nodes = new InMemoryTransportNodeRegistry();
         nodes.register("node-1", List.of("polling"), 1L);
-        presence.markOnline("worker-1", "polling", routeKey("group-1", "worker-1"), "conn-poll", "connected");
+        presence.claimRouteOwner("worker-1", "polling", routeKey("group-1", "worker-1"), "conn-poll", "connected");
         WorkerResourceRecord worker = workerWithoutGroup("worker-1", "polling", WorkerTransportHints.POLLING);
 
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
@@ -56,8 +56,8 @@ class WorkerDispatchRouteSelectorTest {
         InMemoryWorkerPresenceStore presence = new InMemoryWorkerPresenceStore(30_000L, "node-1");
         InMemoryTransportNodeRegistry nodes = new InMemoryTransportNodeRegistry();
         nodes.register("node-1", List.of("websocket"), 1L);
-        presence.markOnline("worker-1", "websocket", routeKey("group-1", "worker-1"), "conn-ws", "connected");
-        nodes.markOffline("node-1");
+        presence.claimRouteOwner("worker-1", "websocket", routeKey("group-1", "worker-1"), "conn-ws", "connected");
+        nodes.releaseRouteOwner("node-1");
         WorkerResourceRecord worker = worker("worker-1", "websocket", WorkerTransportHints.REALTIME);
 
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(

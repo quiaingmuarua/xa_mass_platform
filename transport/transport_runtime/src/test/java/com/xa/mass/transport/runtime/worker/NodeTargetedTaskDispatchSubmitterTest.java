@@ -28,8 +28,8 @@ class NodeTargetedTaskDispatchSubmitterTest {
     void splitsBatchBySelectedTransportNodeAndCompensatesMissingOwner() {
         InMemoryWorkerPresenceStore presenceNodeOne = new InMemoryWorkerPresenceStore(30_000L, "node-1");
         InMemoryWorkerPresenceStore presenceNodeTwo = new InMemoryWorkerPresenceStore(30_000L, "node-2");
-        presenceNodeOne.markOnline("worker-1", "websocket", routeKey("worker-1"), "conn-1", "connected");
-        presenceNodeTwo.markOnline("worker-2", "websocket", routeKey("worker-2"), "conn-2", "connected");
+        presenceNodeOne.claimRouteOwner("worker-1", "websocket", routeKey("worker-1"), "conn-1", "connected");
+        presenceNodeTwo.claimRouteOwner("worker-2", "websocket", routeKey("worker-2"), "conn-2", "connected");
         CombinedRouteView routeView = new CombinedRouteView(List.of(presenceNodeOne, presenceNodeTwo));
         InMemoryTransportNodeRegistry nodes = new InMemoryTransportNodeRegistry();
         nodes.register("node-1", List.of("websocket"), 1L);
@@ -68,10 +68,10 @@ class NodeTargetedTaskDispatchSubmitterTest {
     @Test
     void compensatesWhenRouteOwnerNodeIsOffline() {
         InMemoryWorkerPresenceStore presence = new InMemoryWorkerPresenceStore(30_000L, "node-1");
-        presence.markOnline("worker-1", "websocket", routeKey("worker-1"), "conn-1", "connected");
+        presence.claimRouteOwner("worker-1", "websocket", routeKey("worker-1"), "conn-1", "connected");
         InMemoryTransportNodeRegistry nodes = new InMemoryTransportNodeRegistry();
         nodes.register("node-1", List.of("websocket"), 1L);
-        nodes.markOffline("node-1");
+        nodes.releaseRouteOwner("node-1");
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                 presence,
                 nodes,

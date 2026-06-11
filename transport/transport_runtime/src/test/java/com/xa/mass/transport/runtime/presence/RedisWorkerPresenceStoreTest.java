@@ -1,7 +1,6 @@
 package com.xa.mass.transport.runtime.presence;
 
 import com.xa.mass.transport.presence.WorkerPresence;
-import com.xa.mass.transport.presence.WorkerPresenceState;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -66,46 +65,50 @@ class RedisWorkerPresenceStoreTest {
 
     @Test
     void onlineHeartbeatOfflineRoundTripUsesSharedRedisState() {
-        store.markOnline(" worker-1 ", " websocket ", " route-1 ", " conn-1 ", "connected");
+        store.claimRouteOwner(" worker-1 ", " websocket ", " route-1 ", " conn-1 ", "connected");
 
         WorkerPresence online = store.getPresence("worker-1");
         assertNotNull(online);
-        assertEquals(WorkerPresenceState.ONLINE, online.getPresenceState());
+        assertTrue(online.isLeaseActive(System.currentTimeMillis()));
         assertEquals("websocket", online.getAdapterId());
         assertEquals("route-1", online.getRouteKey());
-        assertTrue(store.isRouteOnline("websocket", "route-1"));
+        assertTrue(store.hasActiveRouteOwner("websocket", "route-1"));
         assertEquals("worker-1", store.currentOwner("route-1").orElseThrow().workerId());
         assertEquals("route-1", observerCommands.get(workerRouteKey("worker-1")));
         assertNotNull(observerCommands.hget(ownerHash("route-1"), "route-1"));
+        assertNotNull(observerCommands.zscore(deadlineKey("route-1"), "route-1"));
         assertEquals(0L, observerCommands.exists(namespacePrefix + ":owner-shards"));
         assertEquals(0L, observerCommands.exists(namespacePrefix + ":workers"));
         assertTrue(observerCommands.keys(namespacePrefix + ":route:*").isEmpty());
         assertTrue(observerCommands.keys(namespacePrefix + ":route-presence:*").isEmpty());
+        assertTrue(observerCommands.keys(namespacePrefix + ":worker-routes:*").isEmpty());
 
         store.refreshHeartbeat("worker-1", "websocket", "route-1", "conn-1", "heartbeat");
-        assertEquals(WorkerPresenceState.ONLINE, store.getPresence("worker-1").getPresenceState());
+        assertTrue(store.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
 
-        store.markOffline("worker-1", "websocket", "route-1", "conn-1", "disconnect");
+        store.releaseRouteOwner("worker-1", "websocket", "route-1", "conn-1", "disconnect");
 
-        WorkerPresence offline = store.getPresence("worker-1");
-        assertNotNull(offline);
-        assertEquals(WorkerPresenceState.OFFLINE, offline.getPresenceState());
-        assertFalse(store.isRouteOnline("websocket", "route-1"));
+        assertNull(store.getPresence("worker-1"));
+        assertTrue(store.currentOwner("route-1").isEmpty());
+        assertNull(observerCommands.hget(ownerHash("route-1"), "route-1"));
+        assertNull(observerCommands.zscore(deadlineKey("route-1"), "route-1"));
+        assertNull(observerCommands.get(workerRouteKey("worker-1")));
+        assertFalse(store.hasActiveRouteOwner("websocket", "route-1"));
     }
 
     @Test
-    void expiredOnlinePresenceMaterializesAsStaleAndClearsRouteIndex() throws Exception {
+    void expiredOwnerEvidencePrunesRouteIndex() throws Exception {
         try (RedisWorkerPresenceStore shortLeaseStore =
                      new RedisWorkerPresenceStore(redisClient, namespacePrefix, 250L, "runtime-a", false)) {
-            shortLeaseStore.markOnline("worker-2", "socket", "route-2", "conn-2", "connected");
+            shortLeaseStore.claimRouteOwner("worker-2", "socket", "route-2", "conn-2", "connected");
 
-            assertTrue(shortLeaseStore.isRouteOnline("socket", "route-2"));
+            assertTrue(shortLeaseStore.hasActiveRouteOwner("socket", "route-2"));
             Thread.sleep(300L);
 
             WorkerPresence stale = shortLeaseStore.getPresence("worker-2");
             assertNotNull(stale);
-            assertEquals(WorkerPresenceState.STALE, stale.getPresenceState());
-            assertFalse(shortLeaseStore.isRouteOnline("socket", "route-2"));
+            assertFalse(stale.isLeaseActive(System.currentTimeMillis()));
+            assertFalse(shortLeaseStore.hasActiveRouteOwner("socket", "route-2"));
             assertEquals(1, shortLeaseStore.pruneExpired());
             assertTrue(shortLeaseStore.listActivePresences().isEmpty());
             assertNull(shortLeaseStore.getPresence("worker-2"));
@@ -116,28 +119,30 @@ class RedisWorkerPresenceStoreTest {
 
     @Test
     void routeKeyTakeoverReplacesCurrentOwnerAcrossAdapters() {
-        store.markOnline("worker-3", "websocket", "route-old", "conn-1", "connected");
-        store.markOnline("worker-3", "socket", "route-old", "conn-2", "reconnected");
+        store.claimRouteOwner("worker-3", "websocket", "route-old", "conn-1", "connected");
+        store.claimRouteOwner("worker-3", "socket", "route-old", "conn-2", "reconnected");
 
-        assertFalse(store.isRouteOnline("websocket", "route-old"));
-        assertTrue(store.isRouteOnline("socket", "route-old"));
+        assertFalse(store.hasActiveRouteOwner("websocket", "route-old"));
+        assertTrue(store.hasActiveRouteOwner("socket", "route-old"));
         assertEquals(1, store.findOwners("worker-3").size());
         assertEquals("socket", store.getPresence("worker-3").getAdapterId());
         assertEquals("socket", store.currentOwner("route-old").orElseThrow().adapterId());
         assertEquals("route-old", observerCommands.get(workerRouteKey("worker-3")));
 
-        store.markOffline("worker-3", "websocket", "route-old", "conn-1", "stale-disconnect");
-        assertTrue(store.isRouteOnline("socket", "route-old"));
+        store.releaseRouteOwner("worker-3", "websocket", "route-old", "conn-1", "stale-disconnect");
+        assertTrue(store.hasActiveRouteOwner("socket", "route-old"));
 
-        store.markOffline("worker-3", "socket", "route-old", "conn-2", "disconnect");
-        assertFalse(store.isRouteOnline("socket", "route-old"));
+        store.releaseRouteOwner("worker-3", "socket", "route-old", "conn-2", "disconnect");
+        assertFalse(store.hasActiveRouteOwner("socket", "route-old"));
         assertTrue(store.findOwners("worker-3").isEmpty());
+        assertNull(observerCommands.hget(ownerHash("route-old"), "route-old"));
+        assertNull(observerCommands.get(workerRouteKey("worker-3")));
     }
 
     @Test
     void routeKeyTakeoverByAnotherWorkerDoesNotKeepOldWorkerProjectionOnline() {
-        store.markOnline("worker-old", "websocket", "route-shared", "conn-old", "connected");
-        store.markOnline("worker-new", "socket", "route-shared", "conn-new", "takeover");
+        store.claimRouteOwner("worker-old", "websocket", "route-shared", "conn-old", "connected");
+        store.claimRouteOwner("worker-new", "socket", "route-shared", "conn-new", "takeover");
 
         assertNull(store.getPresence("worker-old"));
         assertFalse(store.isWorkerOnline("worker-old"));
@@ -147,26 +152,37 @@ class RedisWorkerPresenceStoreTest {
     }
 
     @Test
+    void workerRouteProjectionFindOwnersReturnsOnlyLatestOnlineRoute() {
+        store.claimRouteOwner("worker-1", "websocket", "route-old", "conn-old", "connected");
+        store.claimRouteOwner("worker-1", "socket", "route-new", "conn-new", "connected");
+
+        assertEquals(1, store.findOwners("worker-1").size());
+        assertEquals("route-new", store.findOwners("worker-1").getFirst().routeKey());
+        assertEquals("route-new", observerCommands.get(workerRouteKey("worker-1")));
+        assertEquals("route-old", store.currentOwner("route-old").orElseThrow().routeKey());
+    }
+
+    @Test
     void reconnectOnSameRouteRejectsStaleHeartbeatAndDisconnect() {
-        store.markOnline("worker-3", "websocket", "route-1", "conn-old", "connected");
-        store.markOnline("worker-3", "websocket", "route-1", "conn-new", "reconnected");
+        store.claimRouteOwner("worker-3", "websocket", "route-1", "conn-old", "connected");
+        store.claimRouteOwner("worker-3", "websocket", "route-1", "conn-new", "reconnected");
 
         WorkerPresence ignoredHeartbeat = store.refreshHeartbeat("worker-3", "websocket", "route-1", "conn-old", "stale-heartbeat");
         assertNotNull(ignoredHeartbeat);
-        assertEquals(WorkerPresenceState.ONLINE, ignoredHeartbeat.getPresenceState());
+        assertTrue(ignoredHeartbeat.isLeaseActive(System.currentTimeMillis()));
         assertEquals("conn-new", ignoredHeartbeat.getConnectionId());
         assertEquals("route-1", ignoredHeartbeat.getRouteKey());
-        assertTrue(store.isRouteOnline("websocket", "route-1"));
+        assertTrue(store.hasActiveRouteOwner("websocket", "route-1"));
 
-        WorkerPresence ignoredOffline = store.markOffline("worker-3", "websocket", "route-1", "conn-old", "stale-disconnect");
-        assertNotNull(ignoredOffline);
-        assertEquals(WorkerPresenceState.ONLINE, ignoredOffline.getPresenceState());
-        assertTrue(store.isRouteOnline("websocket", "route-1"));
+        WorkerPresence ignoredRelease = store.releaseRouteOwner("worker-3", "websocket", "route-1", "conn-old", "stale-disconnect");
+        assertNotNull(ignoredRelease);
+        assertTrue(ignoredRelease.isLeaseActive(System.currentTimeMillis()));
+        assertTrue(store.hasActiveRouteOwner("websocket", "route-1"));
 
-        WorkerPresence finalOffline = store.markOffline("worker-3", "websocket", "route-1", "conn-new", "disconnect");
-        assertNotNull(finalOffline);
-        assertEquals(WorkerPresenceState.OFFLINE, finalOffline.getPresenceState());
-        assertFalse(store.isRouteOnline("websocket", "route-1"));
+        WorkerPresence finalRelease = store.releaseRouteOwner("worker-3", "websocket", "route-1", "conn-new", "disconnect");
+        assertNotNull(finalRelease);
+        assertEquals("conn-new", finalRelease.getConnectionId());
+        assertFalse(store.hasActiveRouteOwner("websocket", "route-1"));
     }
 
     @Test
@@ -174,28 +190,26 @@ class RedisWorkerPresenceStoreTest {
         try (StatefulRedisConnection<String, String> secondaryConnection = redisClient.connect();
              RedisWorkerPresenceStore secondary =
                      new RedisWorkerPresenceStore(secondaryConnection, namespacePrefix, 1_000L, "runtime-b")) {
-            store.markOnline("worker-4", "websocket", "route-4", "conn-4", "connected");
+            store.claimRouteOwner("worker-4", "websocket", "route-4", "conn-4", "connected");
 
             WorkerPresence mirrored = secondary.getPresence("worker-4");
             assertNotNull(mirrored);
-            assertEquals(WorkerPresenceState.ONLINE, mirrored.getPresenceState());
+            assertTrue(mirrored.isLeaseActive(System.currentTimeMillis()));
             assertEquals("websocket", mirrored.getAdapterId());
             assertEquals("route-4", mirrored.getRouteKey());
-            assertTrue(secondary.isRouteOnline("websocket", "route-4"));
+            assertTrue(secondary.hasActiveRouteOwner("websocket", "route-4"));
 
-            secondary.markOffline("worker-4", "websocket", "route-4", "conn-4b", "disconnect");
+            secondary.releaseRouteOwner("worker-4", "websocket", "route-4", "conn-4b", "disconnect");
 
             WorkerPresence stillOnline = store.getPresence("worker-4");
             assertNotNull(stillOnline);
-            assertEquals(WorkerPresenceState.ONLINE, stillOnline.getPresenceState());
-            assertTrue(store.isRouteOnline("websocket", "route-4"));
+            assertTrue(stillOnline.isLeaseActive(System.currentTimeMillis()));
+            assertTrue(store.hasActiveRouteOwner("websocket", "route-4"));
 
-            secondary.markOffline("worker-4", "websocket", "route-4", "conn-4", "disconnect");
+            secondary.releaseRouteOwner("worker-4", "websocket", "route-4", "conn-4", "disconnect");
 
-            WorkerPresence offline = store.getPresence("worker-4");
-            assertNotNull(offline);
-            assertEquals(WorkerPresenceState.OFFLINE, offline.getPresenceState());
-            assertFalse(store.isRouteOnline("websocket", "route-4"));
+            assertNull(store.getPresence("worker-4"));
+            assertFalse(store.hasActiveRouteOwner("websocket", "route-4"));
         }
     }
 
@@ -204,8 +218,8 @@ class RedisWorkerPresenceStoreTest {
         try (StatefulRedisConnection<String, String> secondaryConnection = redisClient.connect();
              RedisWorkerPresenceStore secondary =
                      new RedisWorkerPresenceStore(secondaryConnection, namespacePrefix, 1_000L, "runtime-b")) {
-            store.markOnline("worker-6", "websocket", "route-1", "conn-old", "connected");
-            secondary.markOnline("worker-6", "websocket", "route-1", "conn-new", "reconnected");
+            store.claimRouteOwner("worker-6", "websocket", "route-1", "conn-old", "connected");
+            secondary.claimRouteOwner("worker-6", "websocket", "route-1", "conn-new", "reconnected");
 
             WorkerPresence staleHeartbeat = store.refreshHeartbeat(
                     "worker-6",
@@ -215,34 +229,34 @@ class RedisWorkerPresenceStoreTest {
                     "late-heartbeat"
             );
             assertNotNull(staleHeartbeat);
-            assertEquals(WorkerPresenceState.ONLINE, staleHeartbeat.getPresenceState());
+            assertTrue(staleHeartbeat.isLeaseActive(System.currentTimeMillis()));
             assertEquals("conn-new", staleHeartbeat.getConnectionId());
             assertEquals("websocket", staleHeartbeat.getAdapterId());
             assertEquals("route-1", staleHeartbeat.getRouteKey());
-            assertTrue(store.isRouteOnline("websocket", "route-1"));
+            assertTrue(store.hasActiveRouteOwner("websocket", "route-1"));
 
-            WorkerPresence staleOffline = store.markOffline(
+            WorkerPresence staleRelease = store.releaseRouteOwner(
                     "worker-6",
                     "websocket",
                     "route-1",
                     "conn-old",
                     "late-disconnect"
             );
-            assertNotNull(staleOffline);
-            assertEquals(WorkerPresenceState.ONLINE, staleOffline.getPresenceState());
-            assertEquals("conn-new", staleOffline.getConnectionId());
-            assertTrue(secondary.isRouteOnline("websocket", "route-1"));
+            assertNotNull(staleRelease);
+            assertTrue(staleRelease.isLeaseActive(System.currentTimeMillis()));
+            assertEquals("conn-new", staleRelease.getConnectionId());
+            assertTrue(secondary.hasActiveRouteOwner("websocket", "route-1"));
 
-            WorkerPresence finalOffline = secondary.markOffline(
+            WorkerPresence finalRelease = secondary.releaseRouteOwner(
                     "worker-6",
                     "websocket",
                     "route-1",
                     "conn-new",
                     "disconnect"
             );
-            assertNotNull(finalOffline);
-            assertEquals(WorkerPresenceState.OFFLINE, finalOffline.getPresenceState());
-            assertFalse(store.isRouteOnline("websocket", "route-1"));
+            assertNotNull(finalRelease);
+            assertEquals("conn-new", finalRelease.getConnectionId());
+            assertFalse(store.hasActiveRouteOwner("websocket", "route-1"));
         }
     }
 
@@ -253,21 +267,25 @@ class RedisWorkerPresenceStoreTest {
              StatefulRedisConnection<String, String> readerConnection = redisClient.connect();
              RedisWorkerPresenceStore reader =
                      new RedisWorkerPresenceStore(readerConnection, namespacePrefix, 25L, "runtime-b")) {
-            shortLeaseWriter.markOnline("worker-5", "socket", "route-5", "conn-5", "connected");
+            shortLeaseWriter.claimRouteOwner("worker-5", "socket", "route-5", "conn-5", "connected");
 
             Thread.sleep(40L);
 
             WorkerPresence stale = reader.getPresence("worker-5");
             assertNotNull(stale);
-            assertEquals(WorkerPresenceState.STALE, stale.getPresenceState());
-            assertFalse(reader.isRouteOnline("socket", "route-5"));
-            assertFalse(shortLeaseWriter.isRouteOnline("socket", "route-5"));
+            assertFalse(stale.isLeaseActive(System.currentTimeMillis()));
+            assertFalse(reader.hasActiveRouteOwner("socket", "route-5"));
+            assertFalse(shortLeaseWriter.hasActiveRouteOwner("socket", "route-5"));
             assertTrue(shortLeaseWriter.listActivePresences().isEmpty());
         }
     }
 
     private String ownerHash(String routeKey) {
         return namespacePrefix + ":owner:" + Math.floorMod(routeKey.hashCode(), 64);
+    }
+
+    private String deadlineKey(String routeKey) {
+        return namespacePrefix + ":deadline:" + Math.floorMod(routeKey.hashCode(), 64);
     }
 
     private String workerRouteKey(String workerId) {

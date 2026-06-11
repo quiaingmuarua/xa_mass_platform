@@ -65,7 +65,7 @@ class TransportNodeRegistryTest {
         assertTrue(registry.isNodeOnline("node-1"));
         assertEquals(List.of("websocket", "socket"), registry.getNode("node-1").adapterIds());
 
-        registry.markOffline("node-1");
+        registry.releaseRouteOwner("node-1");
         assertFalse(registry.isNodeOnline("node-1"));
 
         registry.register("node-2", List.of("polling"), 1L);

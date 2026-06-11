@@ -59,7 +59,6 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
-import com.xa.mass.transport.presence.WorkerPresenceState;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -280,8 +279,8 @@ public class MassApplication {
                     engineConfig.getExecutionEventSink()
             );
             workerPresenceStore = transportRuntimeComposition.resolveWorkerPresenceStore();
-            workerRouteOwnerView = workerPresenceStore;
-            workerPresenceInspectionView = workerPresenceStore;
+            workerRouteOwnerView = requireWorkerRouteOwnerView(workerPresenceStore);
+            workerPresenceInspectionView = requireWorkerPresenceInspectionView(workerPresenceStore);
             transportNodeRegistry = transportRuntimeComposition.resolveTransportNodeRegistry();
             TransportDeliveryStore deliveryStore = transportRuntimeComposition.resolveTransportDeliveryStore();
             TransportDeliveryService deliveryService = new TransportDeliveryService(deliveryStore);
@@ -377,11 +376,11 @@ public class MassApplication {
                     return routeOwnerView.currentOwner(routeKey.get())
                             .map(owner -> {
                                 long now = System.currentTimeMillis();
-                                if (owner.isOnline(now)
+                                if (owner.isActive(now)
                                         && (transportNodeRegistry == null || transportNodeRegistry.isNodeOnline(owner.transportNodeId()))) {
                                     return com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.ONLINE;
                                 }
-                                return owner.state() == WorkerPresenceState.STALE
+                                return owner.leaseExpireAtEpochMillis() <= now
                                         ? com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.STALE
                                         : com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.OFFLINE;
                             })
@@ -590,6 +589,20 @@ public class MassApplication {
         if (presenceStore instanceof AutoCloseable closeable) {
             closeable.close();
         }
+    }
+
+    private static WorkerDispatchRouteOwnerView requireWorkerRouteOwnerView(WorkerPresenceStore presenceStore) {
+        if (presenceStore instanceof WorkerDispatchRouteOwnerView routeOwnerView) {
+            return routeOwnerView;
+        }
+        throw new IllegalStateException("WorkerPresenceStore must also implement WorkerDispatchRouteOwnerView");
+    }
+
+    private static WorkerPresenceInspectionView requireWorkerPresenceInspectionView(WorkerPresenceStore presenceStore) {
+        if (presenceStore instanceof WorkerPresenceInspectionView inspectionView) {
+            return inspectionView;
+        }
+        throw new IllegalStateException("WorkerPresenceStore must also implement WorkerPresenceInspectionView");
     }
 
     private void stopTaskDispatchHandoff() {

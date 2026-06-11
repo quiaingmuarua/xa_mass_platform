@@ -1,7 +1,6 @@
 package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.presence.WorkerPresenceState;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import io.netty.channel.Channel;
@@ -15,6 +14,7 @@ import java.time.Duration;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
@@ -104,15 +104,15 @@ class ServerSessionManagerShutdownTest {
 
         manager.addSession("route-1", "worker-1", channel, ctx);
 
-        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
         assertEquals("route-1", presenceStore.getPresence("worker-1").getRouteKey());
         assertEquals("ws-node-1", presenceStore.findOwners("worker-1").getFirst().transportNodeId());
-        assertTrue(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+        assertTrue(presenceStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
 
         manager.removeSession(channel);
 
-        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
-        assertFalse(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+        assertNull(presenceStore.getPresence("worker-1"));
+        assertFalse(presenceStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
     @Test
@@ -171,14 +171,14 @@ class ServerSessionManagerShutdownTest {
 
         manager.removeSession(firstChannel);
 
-        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
         assertEquals("worker-1-new", presenceStore.getPresence("worker-1").getConnectionId());
-        assertTrue(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+        assertTrue(presenceStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
 
         manager.removeSession(secondChannel);
 
-        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
-        assertFalse(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+        assertNull(presenceStore.getPresence("worker-1"));
+        assertFalse(presenceStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
     @Test
@@ -211,8 +211,8 @@ class ServerSessionManagerShutdownTest {
 
         manager.shutdown();
 
-        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
-        assertFalse(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+        assertNull(presenceStore.getPresence("worker-1"));
+        assertFalse(presenceStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
     @Test
@@ -226,7 +226,7 @@ class ServerSessionManagerShutdownTest {
 
         assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
             Thread.sleep(2_200L);
-            assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+            assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
         });
     }
 
@@ -241,11 +241,11 @@ class ServerSessionManagerShutdownTest {
         manager.addSession("route-1", "worker-1", channel, ctx);
         manager.setWorkerPresenceStore(secondStore);
 
-        assertEquals(WorkerPresenceState.ONLINE, secondStore.getPresence("worker-1").getPresenceState());
+        assertTrue(secondStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
         assertEquals("route-1", secondStore.getPresence("worker-1").getRouteKey());
         assertEquals("worker-1", secondStore.getPresence("worker-1").getConnectionId());
         assertEquals("ws-node-2", secondStore.findOwners("worker-1").getFirst().transportNodeId());
-        assertTrue(secondStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+        assertTrue(secondStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
     private Channel mockActiveChannel(String idText) {

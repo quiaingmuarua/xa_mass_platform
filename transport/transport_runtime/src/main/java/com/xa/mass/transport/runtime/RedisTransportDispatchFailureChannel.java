@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class RedisTransportDispatchFailureChannel implements TransportDispatchFailureHandler, AutoCloseable {
 
-    public static final String DEFAULT_NAMESPACE_PREFIX = "xa:mass:transport:dispatch-failure";
+    public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.DISPATCH_FAILURE;
     public static final int DEFAULT_MAX_QUEUED_FAILURES = 100_000;
     private static final long POLL_SLEEP_MILLIS = 100L;
     private static final String OFFER_SCRIPT = """

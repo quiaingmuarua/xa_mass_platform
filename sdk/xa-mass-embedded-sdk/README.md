@@ -158,10 +158,22 @@ reachability truth, and do not expose engine owner records directly.
 Distributed transport v1 splits one engine producer JVM from one or more
 transport consumer JVMs without adding server-owned transport endpoints. Use
 Redis-backed runtime channels for dispatch handoff, result ingest, and
-dispatch-failure compensation. `redisDistributedChannels(...)` wires the
-node-targeted dispatch inbox, result inbox, dispatch-failure inbox, Redis
-presence, Redis delivery store, and transport-node registry under the supplied
-namespace:
+dispatch-failure compensation. The one-argument
+`redisDistributedChannels(redisUri)` helper wires the node-targeted dispatch
+inbox, result inbox, dispatch-failure inbox, Redis presence, Redis delivery
+store, and transport-node registry under transport-owned component namespaces:
+
+| Component | Default namespace |
+| --- | --- |
+| dispatch-node | `xa:mass:transport:dispatch-node:v1` |
+| result-inbox | `xa:mass:transport:result-inbox:v1` |
+| dispatch-failure | `xa:mass:transport:dispatch-failure:v1` |
+| presence | `xa:mass:transport:presence:v2` |
+| delivery | `xa:mass:transport:delivery:v1` |
+| nodes | `xa:mass:transport:nodes:v1` |
+
+The two-argument overload is for a caller-owned deployment root and appends the
+component names beneath that root. It is not the default namespace shape.
 
 ```java
 import com.xa.mass.starter.config.TransportRuntimeRole;
@@ -171,7 +183,7 @@ String redisUri = "redis://localhost:6379";
 MassSdkApplication engineProducer = MassSdk.builder()
         .transport(transport -> transport
                 .transportRuntimeRole(TransportRuntimeRole.ENGINE_PRODUCER)
-                .redisDistributedChannels(redisUri, "xa:mass:prod:transport")
+                .redisDistributedChannels(redisUri)
                 .webSocketAdapter(webSocket -> webSocket
                         .enabled(false)
                         .serverEnabled(false)))
@@ -188,7 +200,7 @@ MassSdkApplication transportConsumer = MassSdk.builder()
         .transport(transport -> transport
                 .transportRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER)
                 .transportNodeId("edge-node-a")
-                .redisDistributedChannels(redisUri, "xa:mass:prod:transport")
+                .redisDistributedChannels(redisUri)
                 .webSocketAdapter(webSocket -> webSocket
                         .adapterId("ws-public")
                         .server(19090, "/ws")

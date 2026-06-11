@@ -428,7 +428,7 @@ Observability:
 | `mass.transport.delivery.redis.namespace` | `xa:mass:transport:delivery:v1` | Redis namespace prefix when `mass.transport.delivery.store=redis` |
 | `mass.transport.presence.store` | `memory` | embedded transport worker-presence backend; `memory` or `redis` |
 | `mass.transport.presence.lease-millis` | `30000` | worker transport presence lease before stale/offline pruning may treat the route as unavailable |
-| `mass.transport.presence.redis.namespace` | `xa:mass:transport:presence:v1` | Redis namespace prefix when `mass.transport.presence.store=redis` |
+| `mass.transport.presence.redis.namespace` | `xa:mass:transport:presence:v2` | Redis namespace prefix when `mass.transport.presence.store=redis` |
 | `mass.control-plane.seed.enabled` | `false` | explicitly apply or validate catalog/rule/credential seed files during startup |
 | `mass.control-plane.seed.mode` | `apply` | `apply` writes parsed seed metadata; `validate` parses/counts without writing |
 | `mass.control-plane.seed.catalog-location` | empty | resource location for event/project/submitter seed JSON |

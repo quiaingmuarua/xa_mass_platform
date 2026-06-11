@@ -1,43 +1,35 @@
 package com.xa.mass.transport.presence;
 
-import java.util.Objects;
-
 /**
- * Durable worker presence projection owned by transport.
+ * Durable worker route-owner heartbeat evidence owned by transport.
  */
 public final class WorkerPresence {
 
     private final String workerId;
     private final String adapterId;
     private final String routeKey;
-    private final WorkerPresenceState presenceState;
     private final long lastHeartbeatEpochMillis;
     private final long leaseExpireAtEpochMillis;
     private final String transportInstanceId;
     private final String connectionId;
     private final long updatedAtEpochMillis;
-    private final String disconnectReason;
 
     public WorkerPresence(String workerId,
                           String adapterId,
                           String routeKey,
-                          WorkerPresenceState presenceState,
                           long lastHeartbeatEpochMillis,
                           long leaseExpireAtEpochMillis,
                           String transportInstanceId,
                           String connectionId,
-                          long updatedAtEpochMillis,
-                          String disconnectReason) {
+                          long updatedAtEpochMillis) {
         this.workerId = requireText(workerId, "workerId");
         this.adapterId = requireNullableText(adapterId);
         this.routeKey = requireNullableText(routeKey);
-        this.presenceState = Objects.requireNonNull(presenceState, "presenceState");
         this.lastHeartbeatEpochMillis = lastHeartbeatEpochMillis;
         this.leaseExpireAtEpochMillis = leaseExpireAtEpochMillis;
         this.transportInstanceId = requireNullableText(transportInstanceId);
         this.connectionId = requireNullableText(connectionId);
         this.updatedAtEpochMillis = updatedAtEpochMillis;
-        this.disconnectReason = requireNullableText(disconnectReason);
     }
 
     public String getWorkerId() {
@@ -50,10 +42,6 @@ public final class WorkerPresence {
 
     public String getRouteKey() {
         return routeKey;
-    }
-
-    public WorkerPresenceState getPresenceState() {
-        return presenceState;
     }
 
     public long getLastHeartbeatEpochMillis() {
@@ -80,34 +68,8 @@ public final class WorkerPresence {
         return updatedAtEpochMillis;
     }
 
-    public String getDisconnectReason() {
-        return disconnectReason;
-    }
-
     public boolean isLeaseActive(long nowEpochMillis) {
-        return presenceState == WorkerPresenceState.ONLINE && leaseExpireAtEpochMillis > nowEpochMillis;
-    }
-
-    public WorkerPresence effectiveAt(long nowEpochMillis) {
-        if (presenceState == WorkerPresenceState.ONLINE && leaseExpireAtEpochMillis <= nowEpochMillis) {
-            return withPresenceState(WorkerPresenceState.STALE, disconnectReason);
-        }
-        return this;
-    }
-
-    public WorkerPresence withPresenceState(WorkerPresenceState nextState, String nextDisconnectReason) {
-        return new WorkerPresence(
-                workerId,
-                adapterId,
-                routeKey,
-                nextState,
-                lastHeartbeatEpochMillis,
-                leaseExpireAtEpochMillis,
-                transportInstanceId,
-                connectionId,
-                updatedAtEpochMillis,
-                nextDisconnectReason
-        );
+        return leaseExpireAtEpochMillis > nowEpochMillis;
     }
 
     private static String requireText(String value, String fieldName) {

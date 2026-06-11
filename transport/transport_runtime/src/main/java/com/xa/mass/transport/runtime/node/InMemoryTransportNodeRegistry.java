@@ -38,7 +38,7 @@ public final class InMemoryTransportNodeRegistry implements TransportNodeRegistr
     }
 
     @Override
-    public TransportNodePresence markOffline(String transportNodeId) {
+    public TransportNodePresence releaseRouteOwner(String transportNodeId) {
         String nodeId = requireText(transportNodeId, "transportNodeId");
         long now = System.currentTimeMillis();
         return nodeById.compute(nodeId, (ignored, previous) -> {

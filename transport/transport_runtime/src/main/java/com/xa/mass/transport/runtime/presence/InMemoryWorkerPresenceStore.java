@@ -1,8 +1,9 @@
 package com.xa.mass.transport.runtime.presence;
 
 import com.xa.mass.transport.presence.WorkerDispatchRouteOwner;
+import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.presence.WorkerPresence;
-import com.xa.mass.transport.presence.WorkerPresenceState;
+import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
 
 import java.util.ArrayList;
@@ -14,9 +15,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * In-memory presence projection with lease-based online truth.
+ * In-memory route-owner heartbeat projection.
  */
-public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
+public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
+        WorkerDispatchRouteOwnerView,
+        WorkerPresenceInspectionView {
 
     public static final long DEFAULT_LEASE_MILLIS = 30_000L;
 
@@ -42,11 +45,11 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
     }
 
     @Override
-    public WorkerPresence markOnline(String workerId,
-                                     String adapterId,
-                                     String routeKey,
-                                     String connectionId,
-                                     String reason) {
+    public WorkerPresence claimRouteOwner(String workerId,
+                                          String adapterId,
+                                          String routeKey,
+                                          String connectionId,
+                                          String reason) {
         long now = System.currentTimeMillis();
         String normalizedWorkerId = normalizeRequired(workerId, "workerId");
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
@@ -57,13 +60,11 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
                 normalizedWorkerId,
                 normalizedAdapterId,
                 normalizedRouteKey,
-                WorkerPresenceState.ONLINE,
                 now,
                 now + leaseMillis,
                 transportInstanceId,
                 nextConnectionId,
-                now,
-                null
+                now
         );
         return upsert(next);
     }
@@ -83,7 +84,7 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         }
         long now = System.currentTimeMillis();
         return presenceByRouteKey.compute(normalizedRouteKey, (routeKeyValue, stored) -> {
-            WorkerPresence current = materialize(stored, now);
+            WorkerPresence current = stored;
             if (current == null
                     || !normalizedWorkerId.equals(current.getWorkerId())
                     || !normalizedAdapterId.equals(current.getAdapterId())
@@ -94,13 +95,11 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
                     current.getWorkerId(),
                     current.getAdapterId(),
                     current.getRouteKey(),
-                    WorkerPresenceState.ONLINE,
                     now,
                     now + leaseMillis,
                     transportInstanceId,
                     current.getConnectionId(),
-                    now,
-                    current.getDisconnectReason()
+                    now
             );
             latestRouteKeyByWorkerId.put(current.getWorkerId(), routeKeyValue);
             return next;
@@ -108,17 +107,16 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
     }
 
     @Override
-    public WorkerPresence markOffline(String workerId,
-                                      String adapterId,
-                                      String routeKey,
-                                      String connectionId,
-                                      String reason) {
-        long now = System.currentTimeMillis();
+    public WorkerPresence releaseRouteOwner(String workerId,
+                                            String adapterId,
+                                            String routeKey,
+                                            String connectionId,
+                                            String reason) {
         String normalizedWorkerId = normalizeRequired(workerId, "workerId");
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
-        WorkerPresence previous = materialize(presenceByRouteKey.get(normalizedRouteKey), now);
+        WorkerPresence previous = presenceByRouteKey.get(normalizedRouteKey);
         if (previous == null
                 || normalizedConnectionId == null
                 || !normalizedWorkerId.equals(previous.getWorkerId())
@@ -126,21 +124,9 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
                 || !normalizedConnectionId.equals(previous.getConnectionId())) {
             return getPresence(normalizedWorkerId);
         }
-        WorkerPresence next = new WorkerPresence(
-                normalizedWorkerId,
-                normalizedAdapterId,
-                normalizedRouteKey,
-                WorkerPresenceState.OFFLINE,
-                previous != null ? previous.getLastHeartbeatEpochMillis() : 0L,
-                now,
-                transportInstanceId,
-                normalizedConnectionId,
-                now,
-                normalizeNullable(reason)
-        );
-        presenceByRouteKey.put(normalizedRouteKey, next);
-        latestRouteKeyByWorkerId.put(normalizedWorkerId, normalizedRouteKey);
-        return next;
+        presenceByRouteKey.remove(normalizedRouteKey, previous);
+        latestRouteKeyByWorkerId.remove(normalizedWorkerId, normalizedRouteKey);
+        return previous;
     }
 
     @Override
@@ -151,15 +137,13 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         }
         long now = System.currentTimeMillis();
         String routeKey = latestRouteKeyByWorkerId.get(normalizedWorkerId);
-        WorkerPresence latest = routeKey != null ? materialize(presenceByRouteKey.get(routeKey), now) : null;
-        if (latest != null && latest.getPresenceState() == WorkerPresenceState.ONLINE) {
+        WorkerPresence latest = routeKey != null ? presenceByRouteKey.get(routeKey) : null;
+        if (latest != null && latest.isLeaseActive(now)) {
             return latest;
         }
         WorkerPresence newestOnline = presenceByRouteKey.values().stream()
                 .filter(presence -> normalizedWorkerId.equals(presence.getWorkerId()))
-                .map(presence -> materialize(presence, now))
-                .filter(Objects::nonNull)
-                .filter(presence -> presence.getPresenceState() == WorkerPresenceState.ONLINE)
+                .filter(presence -> presence.isLeaseActive(now))
                 .max(java.util.Comparator.comparingLong(WorkerPresence::getUpdatedAtEpochMillis))
                 .orElse(null);
         if (newestOnline != null) {
@@ -168,24 +152,23 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         }
         return presenceByRouteKey.values().stream()
                 .filter(presence -> normalizedWorkerId.equals(presence.getWorkerId()))
-                .map(presence -> materialize(presence, now))
-                .filter(Objects::nonNull)
                 .max(java.util.Comparator.comparingLong(WorkerPresence::getUpdatedAtEpochMillis))
                 .orElse(latest);
     }
 
     @Override
-    public boolean isRouteOnline(String adapterId, String routeKey) {
+    public boolean hasActiveRouteOwner(String adapterId, String routeKey) {
         String normalizedAdapterId = normalizeNullable(adapterId);
         String normalizedRouteKey = normalizeNullable(routeKey);
         if (normalizedAdapterId == null || normalizedRouteKey == null) {
             return false;
         }
-        WorkerPresence presence = materialize(presenceByRouteKey.get(normalizedRouteKey), System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        WorkerPresence presence = presenceByRouteKey.get(normalizedRouteKey);
         return presence != null
                 && normalizedAdapterId.equals(presence.getAdapterId())
                 && normalizedRouteKey.equals(presence.getRouteKey())
-                && presence.getPresenceState() == WorkerPresenceState.ONLINE;
+                && presence.isLeaseActive(now);
     }
 
     @Override
@@ -194,7 +177,7 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         if (normalizedRouteKey == null) {
             return Optional.empty();
         }
-        WorkerPresence presence = materialize(presenceByRouteKey.get(normalizedRouteKey), System.currentTimeMillis());
+        WorkerPresence presence = presenceByRouteKey.get(normalizedRouteKey);
         if (presence == null) {
             return Optional.empty();
         }
@@ -206,9 +189,8 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         long now = System.currentTimeMillis();
         List<WorkerPresence> active = new ArrayList<>();
         for (WorkerPresence stored : presenceByRouteKey.values()) {
-            WorkerPresence materialized = materialize(stored, now);
-            if (materialized != null && materialized.getPresenceState() == WorkerPresenceState.ONLINE) {
-                active.add(materialized);
+            if (stored.isLeaseActive(now)) {
+                active.add(stored);
             }
         }
         return List.copyOf(active);
@@ -219,10 +201,9 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         int pruned = 0;
         long now = System.currentTimeMillis();
         for (WorkerPresence stored : List.copyOf(presenceByRouteKey.values())) {
-            WorkerPresence materialized = materialize(stored, now);
-            if (materialized != null && materialized.getPresenceState() == WorkerPresenceState.STALE) {
-                presenceByRouteKey.remove(materialized.getRouteKey(), materialized);
-                latestRouteKeyByWorkerId.remove(materialized.getWorkerId(), materialized.getRouteKey());
+            if (!stored.isLeaseActive(now)) {
+                presenceByRouteKey.remove(stored.getRouteKey(), stored);
+                latestRouteKeyByWorkerId.remove(stored.getWorkerId(), stored.getRouteKey());
                 pruned++;
             }
         }
@@ -243,17 +224,6 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore {
         presenceByRouteKey.put(next.getRouteKey(), next);
         latestRouteKeyByWorkerId.put(next.getWorkerId(), next.getRouteKey());
         return next;
-    }
-
-    private WorkerPresence materialize(WorkerPresence stored, long now) {
-        if (stored == null) {
-            return null;
-        }
-        WorkerPresence effective = stored.effectiveAt(now);
-        if (effective != stored) {
-            presenceByRouteKey.put(stored.getRouteKey(), effective);
-        }
-        return effective;
     }
 
     private static String normalizeRequired(String value, String fieldName) {

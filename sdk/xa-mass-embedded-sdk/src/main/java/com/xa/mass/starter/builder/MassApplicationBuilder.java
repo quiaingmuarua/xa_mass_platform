@@ -23,6 +23,7 @@ import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
+import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
@@ -307,7 +308,12 @@ public class MassApplicationBuilder {
         }
 
         public TransportBuilder redisDistributedChannels(String redisUri) {
-            return redisDistributedChannels(redisUri, "xa:mass:transport:distributed:v1");
+            return redisNodeTargetedDispatchHandoff(redisUri, RedisTransportNamespaces.DISPATCH_NODE)
+                    .redisResultInbox(redisUri, RedisTransportNamespaces.RESULT_INBOX)
+                    .redisDispatchFailureInbox(redisUri, RedisTransportNamespaces.DISPATCH_FAILURE)
+                    .redisPresenceStore(redisUri, RedisTransportNamespaces.PRESENCE)
+                    .redisDeliveryStore(redisUri, RedisTransportNamespaces.DELIVERY)
+                    .redisTransportNodeRegistry(redisUri, RedisTransportNamespaces.NODES);
         }
 
         public TransportBuilder redisDistributedChannels(String redisUri, String namespacePrefix) {

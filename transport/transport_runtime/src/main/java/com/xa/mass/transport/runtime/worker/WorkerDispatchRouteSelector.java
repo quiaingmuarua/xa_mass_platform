@@ -38,7 +38,7 @@ public final class WorkerDispatchRouteSelector {
         }
         long now = System.currentTimeMillis();
         return routeOwnerView.currentOwner(routeKey.get())
-                .filter(owner -> owner.isOnline(now))
+                .filter(owner -> owner.isActive(now))
                 .filter(owner -> isNodeDispatchable(owner.transportNodeId()));
     }
 

@@ -8,7 +8,6 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportResultEnvelope;
-import com.xa.mass.transport.presence.WorkerPresenceState;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -108,18 +108,18 @@ class PullWorkerSessionTest {
                 mock(WorkerSystemEventChannel.class), presenceStore);
 
         session.connect("connected");
-        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
-        assertTrue(presenceStore.isRouteOnline("polling", routeKey()));
+        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertTrue(presenceStore.hasActiveRouteOwner("polling", routeKey()));
         assertEquals("conn-1", presenceStore.getPresence("worker-1").getConnectionId());
 
-        presenceStore.markOffline("worker-1", "polling", routeKey(), "stale-conn", "stale-disconnect");
-        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        presenceStore.releaseRouteOwner("worker-1", "polling", routeKey(), "stale-conn", "stale-disconnect");
+        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
 
         session.heartbeat("heartbeat");
-        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
 
         session.disconnect("disconnect");
-        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertNull(presenceStore.getPresence("worker-1"));
     }
 
     private static PullWorkerSession session(TaskPullChannel taskPullChannel,

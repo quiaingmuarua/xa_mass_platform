@@ -11,7 +11,7 @@ public interface TransportNodeRegistry {
 
     TransportNodePresence heartbeat(String transportNodeId, List<String> adapterIds, long connectionCount);
 
-    TransportNodePresence markOffline(String transportNodeId);
+    TransportNodePresence releaseRouteOwner(String transportNodeId);
 
     TransportNodePresence getNode(String transportNodeId);
 

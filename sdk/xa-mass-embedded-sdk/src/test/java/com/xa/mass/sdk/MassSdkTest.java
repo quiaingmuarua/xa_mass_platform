@@ -96,6 +96,7 @@ import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
+import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
@@ -111,8 +112,9 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
+import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.presence.WorkerPresence;
-import com.xa.mass.transport.presence.WorkerPresenceState;
+import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import com.xa.mass.transport.worker.WorkerAdapter;
@@ -488,6 +490,31 @@ class MassSdkTest {
 
         assertEquals(TransportRuntimeRole.TRANSPORT_CONSUMER, runtimeComposition.getRuntimeRole());
         assertNull(requireDelegate(app).getEngine());
+    }
+
+    @Test
+    void sdkDistributedRedisHelperExpandsToTransportComponentNamespaces() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .transportRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER)
+                        .transportNodeId("node-a")
+                        .redisDistributedChannels("redis://localhost:6379")
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(true))
+                .build();
+
+        TransportRuntimeComposition runtimeComposition = readField(
+                requireDelegate(app),
+                "transportRuntimeComposition",
+                TransportRuntimeComposition.class
+        );
+
+        assertCapturedNamespace(runtimeComposition, "taskDispatchHandoffFactory", RedisTransportNamespaces.DISPATCH_NODE);
+        assertCapturedNamespace(runtimeComposition, "taskResultInboxFactory", RedisTransportNamespaces.RESULT_INBOX);
+        assertCapturedNamespace(runtimeComposition, "dispatchFailureInboxFactory", RedisTransportNamespaces.DISPATCH_FAILURE);
+        assertCapturedNamespace(runtimeComposition, "presenceStoreFactory", RedisTransportNamespaces.PRESENCE);
+        assertCapturedNamespace(runtimeComposition, "deliveryStoreFactory", RedisTransportNamespaces.DELIVERY);
+        assertCapturedNamespace(runtimeComposition, "transportNodeRegistryFactory", RedisTransportNamespaces.NODES);
     }
 
     @Test
@@ -1087,14 +1114,14 @@ class MassSdkTest {
     void sdkWorkerOnlineReadsTransportPresenceBeforeWorkerModelStatus() {
         MassApplication delegate = mock(MassApplication.class);
         InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
-        presenceStore.markOnline("worker-1", "polling", "worker-1", "worker-1", "connected");
+        presenceStore.claimRouteOwner("worker-1", "polling", "worker-1", "worker-1", "connected");
         when(delegate.getWorkerPresenceInspectionView()).thenReturn(presenceStore);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         assertTrue(app.isWorkerOnline("worker-1"));
 
-        presenceStore.markOffline("worker-1", "polling", "worker-1", "worker-1", "disconnect");
+        presenceStore.releaseRouteOwner("worker-1", "polling", "worker-1", "worker-1", "disconnect");
 
         assertFalse(app.isWorkerOnline("worker-1"));
     }
@@ -1102,54 +1129,27 @@ class MassSdkTest {
     @Test
     void sdkWorkerOnlineTreatsStalePresenceAsOffline() {
         MassApplication delegate = mock(MassApplication.class);
-        WorkerPresenceStore presenceStore = new WorkerPresenceStore() {
-            @Override
-            public WorkerPresence markOnline(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public WorkerPresence refreshHeartbeat(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public WorkerPresence markOffline(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
-                throw new UnsupportedOperationException();
-            }
-
+        WorkerPresenceInspectionView presenceView = new WorkerPresenceInspectionView() {
             @Override
             public WorkerPresence getPresence(String workerId) {
                 return new WorkerPresence(
                         workerId,
                         "polling",
                         workerId,
-                        WorkerPresenceState.STALE,
                         1L,
                         1L,
                         "runtime-a",
                         workerId,
-                        1L,
-                        null
+                        1L
                 );
-            }
-
-            @Override
-            public boolean isRouteOnline(String adapterId, String routeKey) {
-                return false;
             }
 
             @Override
             public List<WorkerPresence> listActivePresences() {
                 return List.of();
             }
-
-            @Override
-            public int pruneExpired() {
-                return 0;
-            }
         };
-        when(delegate.getWorkerPresenceInspectionView()).thenReturn(presenceStore);
+        when(delegate.getWorkerPresenceInspectionView()).thenReturn(presenceView);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -1164,18 +1164,18 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        presenceStore.markOnline("worker-2", "websocket", "route-old", "conn-old", "connected");
+        presenceStore.claimRouteOwner("worker-2", "websocket", "route-old", "conn-old", "connected");
         assertTrue(app.isWorkerOnline("worker-2"));
 
-        presenceStore.markOnline("worker-2", "socket", "route-new", "conn-new", "reconnected");
-        presenceStore.markOffline("worker-2", "websocket", "route-old", "conn-old", "late-disconnect");
+        presenceStore.claimRouteOwner("worker-2", "socket", "route-new", "conn-new", "reconnected");
+        presenceStore.releaseRouteOwner("worker-2", "websocket", "route-old", "conn-old", "late-disconnect");
 
         assertTrue(app.isWorkerOnline("worker-2"));
         assertEquals("conn-new", presenceStore.getPresence("worker-2").getConnectionId());
         assertEquals("socket", presenceStore.getPresence("worker-2").getAdapterId());
         assertEquals("route-new", presenceStore.getPresence("worker-2").getRouteKey());
 
-        presenceStore.markOffline("worker-2", "socket", "route-new", "conn-new", "disconnect");
+        presenceStore.releaseRouteOwner("worker-2", "socket", "route-new", "conn-new", "disconnect");
 
         assertFalse(app.isWorkerOnline("worker-2"));
     }
@@ -3470,6 +3470,30 @@ class MassSdkTest {
         }
     }
 
+    private static void assertCapturedNamespace(Object target, String fieldName, String expectedNamespace) {
+        Object factory = readField(target, fieldName, Object.class);
+        assertNotNull(factory, "Missing factory " + fieldName);
+        assertTrue(capturedStringFields(factory).contains(expectedNamespace),
+                () -> fieldName + " must capture namespace " + expectedNamespace
+                        + " but captured " + capturedStringFields(factory));
+    }
+
+    private static List<String> capturedStringFields(Object target) {
+        try {
+            List<String> values = new ArrayList<>();
+            for (java.lang.reflect.Field field : target.getClass().getDeclaredFields()) {
+                field.setAccessible(true);
+                Object value = field.get(target);
+                if (value instanceof String string) {
+                    values.add(string);
+                }
+            }
+            return values;
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private static void assertMissingMethod(Class<?> type, String methodName, Class<?>... parameterTypes) {
         Assertions.assertThrows(NoSuchMethodException.class, () -> type.getDeclaredMethod(methodName, parameterTypes));
     }
@@ -3768,18 +3792,21 @@ class MassSdkTest {
     }
 
     private static final class StubWorkerPresenceStore
-            implements com.xa.mass.transport.presence.WorkerPresenceStore, AutoCloseable {
+            implements WorkerPresenceStore,
+            WorkerDispatchRouteOwnerView,
+            WorkerPresenceInspectionView,
+            AutoCloseable {
 
         private final AtomicBoolean closed = new AtomicBoolean(false);
         private final InMemoryWorkerPresenceStore delegate = new InMemoryWorkerPresenceStore();
 
         @Override
-        public com.xa.mass.transport.presence.WorkerPresence markOnline(String workerId,
+        public com.xa.mass.transport.presence.WorkerPresence claimRouteOwner(String workerId,
                                                                         String adapterId,
                                                                         String routeKey,
                                                                         String connectionId,
                                                                         String reason) {
-            return delegate.markOnline(workerId, adapterId, routeKey, connectionId, reason);
+            return delegate.claimRouteOwner(workerId, adapterId, routeKey, connectionId, reason);
         }
 
         @Override
@@ -3792,12 +3819,12 @@ class MassSdkTest {
         }
 
         @Override
-        public com.xa.mass.transport.presence.WorkerPresence markOffline(String workerId,
+        public com.xa.mass.transport.presence.WorkerPresence releaseRouteOwner(String workerId,
                                                                          String adapterId,
                                                                          String routeKey,
                                                                          String connectionId,
                                                                          String reason) {
-            return delegate.markOffline(workerId, adapterId, routeKey, connectionId, reason);
+            return delegate.releaseRouteOwner(workerId, adapterId, routeKey, connectionId, reason);
         }
 
         @Override
@@ -3806,8 +3833,13 @@ class MassSdkTest {
         }
 
         @Override
-        public boolean isRouteOnline(String adapterId, String routeKey) {
-            return delegate.isRouteOnline(adapterId, routeKey);
+        public boolean hasActiveRouteOwner(String adapterId, String routeKey) {
+            return delegate.hasActiveRouteOwner(adapterId, routeKey);
+        }
+
+        @Override
+        public java.util.Optional<com.xa.mass.transport.presence.WorkerDispatchRouteOwner> currentOwner(String routeKey) {
+            return delegate.currentOwner(routeKey);
         }
 
         @Override

@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class RedisTaskResultIngestChannel implements TaskResultIngestChannel, AutoCloseable {
 
-    public static final String DEFAULT_NAMESPACE_PREFIX = "xa:mass:transport:result-inbox";
+    public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.RESULT_INBOX;
     public static final int DEFAULT_MAX_QUEUED_RESULTS = 100_000;
     private static final long POLL_SLEEP_MILLIS = 100L;
     private static final String OFFER_SCRIPT = """

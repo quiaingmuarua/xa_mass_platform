@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -115,6 +116,7 @@ class RedisTransportDeliveryStoreTest {
         assertEquals(DispatchOutcomeStatus.QUEUED, fourth.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, fifth.getStatus());
         assertEquals(DispatchOutcomeStatus.BACKPRESSURE_REJECTED, sixth.getStatus());
+        assertTrue(observerCommands.keys(namespacePrefix + ":*").stream().allMatch(this::isDeliveryKeyFamily));
     }
 
     @Test
@@ -180,6 +182,12 @@ class RedisTransportDeliveryStoreTest {
                 .map(TransportDispatchEnvelope::getPacket)
                 .map(TransportPacket::messageId)
                 .toList();
+    }
+
+    private boolean isDeliveryKeyFamily(String key) {
+        return key.startsWith(namespacePrefix + ":q:")
+                || key.startsWith(namespacePrefix + ":meta:")
+                || Set.of(namespacePrefix + ":queues", namespacePrefix + ":stats").contains(key);
     }
 }
 

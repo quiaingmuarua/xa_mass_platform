@@ -74,12 +74,12 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     }
 
     public void announceWorkerOnline(String workerId, String routeKey, String connectionId, String reason) {
-        workerPresenceStore.markOnline(workerId, PROTOCOL, routeKey, connectionId, reason);
+        workerPresenceStore.claimRouteOwner(workerId, PROTOCOL, routeKey, connectionId, reason);
         systemEventChannel.publishWorkerOnline(workerId, reason, connectionId);
     }
 
     public void announceWorkerOffline(String workerId, String routeKey, String connectionId, String reason) {
-        workerPresenceStore.markOffline(workerId, PROTOCOL, routeKey, connectionId, reason);
+        workerPresenceStore.releaseRouteOwner(workerId, PROTOCOL, routeKey, connectionId, reason);
         systemEventChannel.publishWorkerOffline(workerId, reason, connectionId);
     }
 

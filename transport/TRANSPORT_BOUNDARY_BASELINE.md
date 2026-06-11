@@ -19,13 +19,15 @@ over richer but expensive observability state.
 Transport owns delivery mechanics for workers:
 
 - worker endpoint connectivity and endpoint metadata
-- worker presence truth as a shared readable runtime view with a current
-  route-owner record addressed by opaque `routeKey` and carrying
-  `adapterId`, `transportNodeId`, and connection evidence in the owner value
+- worker route-owner heartbeat evidence as a shared readable runtime view with
+  a current owner record addressed by opaque `routeKey` and carrying
+  `adapterId`, `transportNodeId`, lease, and connection evidence in the owner
+  value
 - adapter registration and adapter selection by `adapterId`
 - task dispatch delivery, queueing, draining, and dispatch outcomes
 - task result ingress wrapping with transport metadata
-- worker system-event ingress and egress for current worker presence signals
+- worker system-event ingress and egress for current connect/disconnect/
+  heartbeat signals
 
 Engine remains the owner of task lifecycle:
 
@@ -53,16 +55,17 @@ Transport should stay centered on these concepts only:
 - `TaskPullResult`: explicit pull-path status plus delivered dispatch items;
   empty queue, invalid request, temporary unavailability, and shutdown must not
   be flattened into one fake "no work" result on the transport mainline
-- `WorkerPresenceStore`: shared transport-owned reachability projection with
-  lease-based `ONLINE/STALE/OFFLINE` semantics
+- `WorkerPresenceStore`: transport adapter write surface for route-owner claim,
+  heartbeat refresh, and owner release; it does not expose dispatch routing or
+  worker-id inspection reads
 - `WorkerDispatchRouteOwnerView`: narrow read-only route-owner view used by
   engine-side dispatch routing after worker matching has already selected a
   worker
-- `WorkerPresenceInspectionView`: worker-id projection view for compatibility
-  and operator inspection; it is not a dispatch routing dependency
+- `WorkerPresenceInspectionView`: worker-id projection view for SDK/operator
+  inspection; it is not a dispatch routing dependency
 - `WorkerSystemEventChannel`: transport-neutral ingress seam for worker
-  online/offline/heartbeat presence signals. It is not a worker command,
-  worker state-report, or capability-report lifecycle owner.
+  connect/disconnect/heartbeat signals. It is not a worker command, worker
+  state-report, or capability-report lifecycle owner.
 - `AdapterNodeRecord`: worker registration endpoint and logical adapter
   deployment identity. It is not `transportNodeId`, not worker capability
   truth, and not a worker load or lease owner.
@@ -127,26 +130,27 @@ Concrete adapters own protocol I/O only:
 
 - server/session/endpoint lifecycle for their protocol
 - frame or request/response codec
-- endpoint connect/disconnect/heartbeat ingress and writes into transport
-  presence
+- endpoint connect/disconnect/heartbeat ingress and route-owner evidence writes
+  into transport presence
 - calls into runtime delivery and result-ingest contracts
 - accept/read/write loops submitted through the runtime executor context when they block
 
-Engine may read transport reachability for matching and dispatch eligibility,
-but transport owns the online truth itself. Heartbeat expiry is a transport
-lease rule, not an engine selector heuristic. `STALE` is transport-owned
-diagnostic state and must be treated as not dispatchable on the engine side.
+Engine may read transport route-owner reachability for matching and dispatch
+eligibility, but transport owns only route-owner heartbeat evidence, not worker
+online/offline lifecycle. Heartbeat expiry is a transport lease rule, not an
+engine selector heuristic. Expired owner evidence is not dispatchable; readers
+may derive unreachable/stale views without transport persisting a status enum.
 Shared-store implementations such as Redis must preserve the same route-owner
 semantics as the in-memory default. One opaque `routeKey` has one current
 delivery owner. `getPresence(workerId)`, `isWorkerOnline(workerId)`, and
-`findOwners(workerId)` are compatibility/operator projections derived from
+`findOwners(workerId)` are SDK/operator inspection projections derived from
 route-owner truth; dispatch routing must resolve the current owner by opaque
 `routeKey`. Engine must not write presence, read adapter sessions, or treat
 presence as a schedule owner.
-Runtime assembly may keep the full `WorkerPresenceStore` for adapter writes and
-shutdown ownership, but engine reachability and node-targeted dispatch should
-bind only `WorkerDispatchRouteOwnerView`; SDK/operator reads should bind
-`WorkerPresenceInspectionView`.
+Runtime assembly may keep the `WorkerPresenceStore` write surface for adapter
+writes and shutdown ownership, but engine reachability and node-targeted
+dispatch should bind only `WorkerDispatchRouteOwnerView`; SDK/operator reads
+should bind `WorkerPresenceInspectionView`.
 
 ## Worker Registration Relation Baseline
 
@@ -246,9 +250,9 @@ state, leaseExpireAt, updatedAt
 
 Engine matching still selects a worker from control-plane registration,
 capability, rule, lock, and reachability inputs. Only after assignment has
-produced concrete bindings does dispatch routing choose one ONLINE route owner
-and write the batch to that owner's node inbox. Missing/stale/offline route
-owners or offline transport nodes go through engine-owned compensation/retry;
+produced concrete bindings does dispatch routing choose one active route owner
+and write the batch to that owner's node inbox. Missing or expired route owners,
+or offline transport nodes, go through engine-owned compensation/retry;
 transport does not re-schedule or mutate task lifecycle.
 
 SDK/starter assembly exposes three runtime roles:
@@ -272,12 +276,49 @@ Presence owner semantics are also part of the transport contract:
 - `workerId` is execution identity and projection evidence attached to that
   route owner
 - `connectionId` identifies the current live owner for that route
-- `markOnline(...)` may install or replace the owner value for the same
+- `claimRouteOwner(...)` may install or replace the owner value for the same
   `routeKey` with a new `adapterId + transportNodeId + connectionId`
-- `refreshHeartbeat(...)` and `markOffline(...)` must only mutate shared
-  presence when the incoming `connectionId` still matches the stored owner
+- `refreshHeartbeat(...)` must only extend the stored owner lease when the
+  incoming `connectionId` still matches the stored owner
+- `releaseRouteOwner(...)` must only remove shared owner evidence when the
+  incoming `connectionId` still matches the stored owner; it does not write an
+  offline worker state
 - stale heartbeat or disconnect events from an older connection must never
   revoke a newer active connection after reconnect or route takeover
+
+## Redis Key Manifest
+
+Transport Redis keys are runtime-state keys only. They are not worker runtime,
+admission, scheduling, capacity, reservation, or task lifecycle truth. The
+default component namespaces are:
+
+| Component | Default namespace | Retained key families |
+| --- | --- | --- |
+| presence | `xa:mass:transport:presence:v2` | `owner:<shard>`, `deadline:<shard>`, `worker-route:<workerId>` |
+| delivery | `xa:mass:transport:delivery:v1` | `q:<routeKey>`, `meta:<routeKey>`, `queues`, `stats` |
+| nodes | `xa:mass:transport:nodes:v1` | transport-node owner/heartbeat records and deadlines |
+| dispatch-node | `xa:mass:transport:dispatch-node:v1` | node-targeted dispatch inboxes keyed by `transportNodeId` |
+| result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
+| dispatch-failure | `xa:mass:transport:dispatch-failure:v1` | engine-drained retryable dispatch-failure entries |
+| dispatch-handoff | `xa:mass:transport:dispatch-handoff:v1` | simple/legacy handoff only; not the distributed mainline truth |
+
+Presence route-owner truth is `owner:<shard>`: one opaque `routeKey` maps to one
+current active owner. `deadline:<shard>` is the lease/prune index.
+`worker-route:<workerId>` is a transport-derived SDK/operator projection from
+worker id to the latest known route key, so `findOwners(workerId)` returns at
+most one active route owner. It must not be treated as worker metadata truth.
+
+Forbidden transport key families:
+
+- presence-side `workers`, `owner-shards`, `worker-routes:*`, and
+  `route-presence:*`
+- transport-owned worker capacity, reservation, active lease, dispatch gate,
+  event-binding ceiling, `group:{groupId}:slots`, `worker:meta:*`, or
+  `worker:occupancy:*` keys
+
+Worker runtime aggregates such as `group:{groupId}:slots` remain worker runtime
+truth. Transport may read route owner and node owner state; it must not preserve
+or derive scheduling/admission truth in its Redis keyspace.
 
 ## Model Boundaries
 

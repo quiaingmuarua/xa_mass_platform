@@ -80,7 +80,7 @@ mass:
       store: memory
       lease-millis: 30000
       redis:
-        namespace: xa:mass:transport:presence:v1
+        namespace: xa:mass:transport:presence:v2
   websocket:
     port: 18088
   queue:

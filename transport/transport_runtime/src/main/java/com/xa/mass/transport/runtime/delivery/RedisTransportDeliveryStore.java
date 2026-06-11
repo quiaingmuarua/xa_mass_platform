@@ -8,6 +8,7 @@ import com.xa.mass.runtime.redis.queue.RedisKeyedQueueOptions;
 import com.xa.mass.runtime.redis.queue.RedisKeyedQueueScripts;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 
@@ -24,7 +25,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
 
     public static final int DEFAULT_MAX_QUEUED_ITEMS = InMemoryTransportDeliveryStore.DEFAULT_MAX_QUEUED_ITEMS;
     public static final int DEFAULT_MAX_ITEMS_PER_ROUTE = InMemoryTransportDeliveryStore.DEFAULT_MAX_ITEMS_PER_ROUTE;
-    public static final String DEFAULT_NAMESPACE_PREFIX = "xa:mass:transport:delivery";
+    public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.DELIVERY;
 
     private final QueueBackedTransportDeliveryStore delegate;
 

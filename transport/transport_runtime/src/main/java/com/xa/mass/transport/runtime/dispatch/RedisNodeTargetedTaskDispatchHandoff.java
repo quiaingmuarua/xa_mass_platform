@@ -2,6 +2,7 @@ package com.xa.mass.transport.runtime.dispatch;
 
 import com.xa.mass.base.runtime.dispatch.NodeTargetedTaskDispatchHandoff;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
+import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -16,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class RedisNodeTargetedTaskDispatchHandoff implements NodeTargetedTaskDispatchHandoff, AutoCloseable {
 
-    public static final String DEFAULT_NAMESPACE_PREFIX = "xa:mass:transport:dispatch-node";
+    public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.DISPATCH_NODE;
     public static final int DEFAULT_MAX_QUEUED_BATCHES_PER_NODE = 100_000;
     private static final long POLL_SLEEP_MILLIS = 100L;
     private static final String OFFER_SCRIPT = """

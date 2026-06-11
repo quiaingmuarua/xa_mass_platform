@@ -2,6 +2,7 @@ package com.xa.mass.transport.runtime.node;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -18,7 +19,7 @@ import java.util.Objects;
  */
 public final class RedisTransportNodeRegistry implements TransportNodeRegistry, AutoCloseable {
 
-    public static final String DEFAULT_NAMESPACE_PREFIX = "xa:mass:transport:nodes";
+    public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.NODES;
     public static final long DEFAULT_LEASE_MILLIS = 30_000L;
 
     private static final Type STRING_LIST_TYPE = new TypeToken<List<String>>() {
@@ -81,7 +82,7 @@ public final class RedisTransportNodeRegistry implements TransportNodeRegistry, 
     }
 
     @Override
-    public TransportNodePresence markOffline(String transportNodeId) {
+    public TransportNodePresence releaseRouteOwner(String transportNodeId) {
         String nodeId = requireText(transportNodeId, "transportNodeId");
         long now = System.currentTimeMillis();
         TransportNodePresence previous = readStoredNode(nodeId);

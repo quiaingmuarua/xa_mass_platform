@@ -6,7 +6,6 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.presence.WorkerPresenceState;
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
@@ -19,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PollingWorkerAdapterTest {
@@ -86,16 +86,16 @@ class PollingWorkerAdapterTest {
 
         adapter.announceWorkerOnline("worker-1", "route-1", "conn-1", "poll connected");
 
-        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
         assertEquals("poll-node-1", presenceStore.findOwners("worker-1").getFirst().transportNodeId());
-        assertTrue(presenceStore.isRouteOnline(PollingWorkerAdapter.PROTOCOL, "route-1"));
+        assertTrue(presenceStore.hasActiveRouteOwner(PollingWorkerAdapter.PROTOCOL, "route-1"));
 
         adapter.publishWorkerHeartbeat("worker-1", "route-1", "conn-1", "poll heartbeat");
-        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
 
         adapter.announceWorkerOffline("worker-1", "route-1", "conn-1", "poll disconnect");
 
-        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertNull(presenceStore.getPresence("worker-1"));
         assertTrue(presenceStore.listActivePresences().isEmpty());
     }
 

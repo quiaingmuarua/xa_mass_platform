@@ -89,7 +89,7 @@ public class PullWorkerSession {
 
     public void connect(String reason) {
         String normalizedReason = normalizeReason(reason, "pull-session-connect");
-        workerPresenceStore.markOnline(workerId, adapterId, routeKey, connectionId, normalizedReason);
+        workerPresenceStore.claimRouteOwner(workerId, adapterId, routeKey, connectionId, normalizedReason);
         systemEventChannel.publishWorkerOnline(workerId, normalizedReason, connectionId);
     }
 
@@ -99,7 +99,7 @@ public class PullWorkerSession {
 
     public void disconnect(String reason) {
         String normalizedReason = normalizeReason(reason, "pull-session-disconnect");
-        workerPresenceStore.markOffline(workerId, adapterId, routeKey, connectionId, normalizedReason);
+        workerPresenceStore.releaseRouteOwner(workerId, adapterId, routeKey, connectionId, normalizedReason);
         systemEventChannel.publishWorkerOffline(workerId, normalizedReason, connectionId);
     }
 
@@ -205,4 +205,3 @@ public class PullWorkerSession {
         return value.trim();
     }
 }
-

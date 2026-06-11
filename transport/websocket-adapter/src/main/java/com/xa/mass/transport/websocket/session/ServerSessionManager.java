@@ -82,7 +82,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         logger.info("Connected: routeKey={} workerId={} channelId={} totalRoutes={}",
                 routeKey, workerId, channel.id().asShortText(), activeConnectionCount.get());
         if (hasActiveChannel(routeKey)) {
-            workerPresenceStore.markOnline(workerId, adapterId, routeKey, channel.id().asShortText(), "websocket connected");
+            workerPresenceStore.claimRouteOwner(workerId, adapterId, routeKey, channel.id().asShortText(), "websocket connected");
         }
         ensurePresenceRefreshLoop();
         if (!wasRouteOnline && hasActiveChannel(routeKey)) {
@@ -101,7 +101,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
             logger.info("Disconnected: routeKey={} workerId={} channelId={}",
                     binding.routeKey(), binding.workerId(), channel.id().asShortText());
             if (result.removedCurrentRoute() && !hasActiveChannel(binding.routeKey())) {
-                workerPresenceStore.markOffline(
+                workerPresenceStore.releaseRouteOwner(
                         binding.workerId(),
                         adapterId,
                         binding.routeKey(),
@@ -183,7 +183,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         cancelPresenceRefreshLoop();
         for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
             if (entry.endpoint().isActive()) {
-                workerPresenceStore.markOffline(
+                workerPresenceStore.releaseRouteOwner(
                         entry.workerId(),
                         adapterId,
                         entry.routeKey(),
@@ -297,7 +297,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
             if (endpoint == null || !endpoint.isActive()) {
                 continue;
             }
-            workerPresenceStore.markOnline(
+            workerPresenceStore.claimRouteOwner(
                     entry.workerId(),
                     adapterId,
                     entry.routeKey(),
