@@ -120,10 +120,6 @@ public final class TransportRuntimeRegistry {
         );
     }
 
-    public WorkerPresenceStore getWorkerPresenceStore() {
-        return workerPresenceStore;
-    }
-
     private WorkerResourceRecord requireWorker(String workerId) {
         String normalizedWorkerId = requireWorkerId(workerId);
         WorkerResourceRecord worker = workerResourceRuntime.worker(normalizedWorkerId).orElse(null);

@@ -21,9 +21,8 @@ import java.util.Set;
 /**
  * Redis-backed transport presence owner store.
  *
- * <p>The canonical runtime owner is the routeKey-sharded owner hash. WorkerId
- * keys are derived compatibility projections and are updated in the same write
- * as the routeKey owner.</p>
+ * <p>The runtime owner is the routeKey-sharded owner hash. WorkerId keys are
+ * derived compatibility projections for inspection APIs only.</p>
  */
 public final class RedisWorkerPresenceStore implements WorkerPresenceStore, AutoCloseable {
 
@@ -119,7 +118,6 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
-        WorkerPresence previous = readOwnerPresence(normalizedRouteKey);
         WorkerPresence next = new WorkerPresence(
                 normalizedWorkerId,
                 normalizedAdapterId,
@@ -133,9 +131,6 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
                 null
         );
         persistOwner(next);
-        if (previous != null && !normalizedWorkerId.equals(previous.getWorkerId())) {
-            clearWorkerRouteProjection(previous.getWorkerId(), normalizedRouteKey);
-        }
         return next;
     }
 
@@ -208,7 +203,6 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
                 normalizeNullable(reason)
         );
         persistOwner(next);
-        commands.zrem(deadlineKey(normalizedRouteKey), normalizedRouteKey);
         return next;
     }
 
@@ -225,7 +219,11 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         WorkerPresence presence = readOwnerPresence(routeKey);
         if (presence == null) {
             commands.del(workerRouteKey(normalizedWorkerId));
-            commands.srem(workersKey(), normalizedWorkerId);
+            return null;
+        }
+        if (!normalizedWorkerId.equals(presence.getWorkerId())) {
+            clearWorkerRouteProjection(normalizedWorkerId, routeKey);
+            return null;
         }
         return presence;
     }
@@ -321,22 +319,12 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         }
         String encoded = commands.hget(ownerKey(normalizedRouteKey), normalizedRouteKey);
         WorkerPresence stored = decodePresence(encoded);
-        return stored != null ? materialize(stored) : null;
-    }
-
-    private WorkerPresence materialize(WorkerPresence stored) {
-        WorkerPresence effective = stored.effectiveAt(System.currentTimeMillis());
-        if (effective != stored) {
-            persistOwner(effective);
-        }
-        return effective;
+        return stored != null ? stored.effectiveAt(System.currentTimeMillis()) : null;
     }
 
     private void persistOwner(WorkerPresence presence) {
         commands.hset(ownerKey(presence.getRouteKey()), presence.getRouteKey(), encodePresence(presence));
-        commands.sadd(ownerShardsKey(), Integer.toString(shard(presence.getRouteKey())));
         commands.set(workerRouteKey(presence.getWorkerId()), presence.getRouteKey());
-        commands.sadd(workersKey(), presence.getWorkerId());
         if (presence.getPresenceState() == WorkerPresenceState.ONLINE
                 || presence.getPresenceState() == WorkerPresenceState.STALE) {
             commands.zadd(deadlineKey(presence.getRouteKey()), presence.getLeaseExpireAtEpochMillis(), presence.getRouteKey());
@@ -360,7 +348,6 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
         String key = workerRouteKey(normalizedWorkerId);
         if (normalizedRouteKey.equals(commands.get(key))) {
             commands.del(key);
-            commands.srem(workersKey(), normalizedWorkerId);
         }
     }
 
@@ -390,14 +377,6 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
 
     private String workerRouteKey(String workerId) {
         return namespacePrefix + ":worker-route:" + workerId;
-    }
-
-    private String workersKey() {
-        return namespacePrefix + ":workers";
-    }
-
-    private String ownerShardsKey() {
-        return namespacePrefix + ":owner-shards";
     }
 
     private static int shard(String routeKey) {

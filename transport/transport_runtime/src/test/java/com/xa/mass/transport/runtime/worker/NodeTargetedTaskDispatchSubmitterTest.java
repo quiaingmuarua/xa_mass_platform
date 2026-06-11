@@ -177,13 +177,6 @@ class NodeTargetedTaskDispatchSubmitterTest {
                     .map(Optional::get)
                     .findFirst();
         }
-
-        @Override
-        public List<com.xa.mass.transport.presence.WorkerDispatchRouteOwner> findOwners(String workerId) {
-            return stores.stream()
-                    .flatMap(store -> store.findOwners(workerId).stream())
-                    .toList();
-        }
     }
 
     private static String routeKey(String workerId) {

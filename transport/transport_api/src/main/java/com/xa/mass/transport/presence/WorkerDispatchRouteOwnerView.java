@@ -1,16 +1,17 @@
 package com.xa.mass.transport.presence;
 
-import java.util.List;
 import java.util.Optional;
 
 /**
- * Read-only worker runtime route view consumed by dispatch routing.
+ * Read-only route-owner view consumed by dispatch routing.
+ *
+ * <p>The input is an opaque transport {@code routeKey}. This view deliberately
+ * has no worker-id reverse lookup API; worker projection scans belong to
+ * inspection surfaces, not dispatch routing.</p>
  */
 public interface WorkerDispatchRouteOwnerView {
 
     Optional<WorkerDispatchRouteOwner> currentOwner(String routeKey);
-
-    List<WorkerDispatchRouteOwner> findOwners(String workerId);
 
     default boolean hasOnlineOwner(String routeKey) {
         long now = System.currentTimeMillis();

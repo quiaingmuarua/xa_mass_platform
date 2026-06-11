@@ -59,6 +59,7 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
 import com.xa.mass.transport.presence.WorkerPresence;
 
 import java.io.IOException;
@@ -655,9 +656,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<String> listOnlineWorkerIds() {
-        if (delegate.getWorkerPresenceStore() != null) {
+        WorkerPresenceInspectionView presenceView = delegate.getWorkerPresenceInspectionView();
+        if (presenceView != null) {
             long now = System.currentTimeMillis();
-            return delegate.getWorkerPresenceStore().listActivePresences().stream()
+            return presenceView.listActivePresences().stream()
                     .filter(Objects::nonNull)
                     .filter(presence -> presence.isLeaseActive(now))
                     .map(WorkerPresence::getWorkerId)
@@ -757,8 +759,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public boolean isWorkerOnline(String workerId) {
         String normalizedWorkerId = requireWorkerId(workerId);
-        if (delegate.getWorkerPresenceStore() != null) {
-            return delegate.getWorkerPresenceStore().isWorkerOnline(normalizedWorkerId);
+        WorkerPresenceInspectionView presenceView = delegate.getWorkerPresenceInspectionView();
+        if (presenceView != null) {
+            return presenceView.isWorkerOnline(normalizedWorkerId);
         }
         WorkerResourceRecord worker = loadWorker(normalizedWorkerId);
         return worker != null && workerStatusAvailable(worker.statusName());

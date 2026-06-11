@@ -15,7 +15,6 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.presence.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.presence.WorkerPresence;
 import com.xa.mass.transport.presence.WorkerPresenceState;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
@@ -422,15 +421,6 @@ class MassApplicationDistributedTransportTest {
                 presences.addAll(store.listActivePresences());
             }
             return List.copyOf(presences);
-        }
-
-        @Override
-        public List<WorkerDispatchRouteOwner> findOwners(String workerId) {
-            List<WorkerDispatchRouteOwner> owners = new ArrayList<>();
-            for (InMemoryWorkerPresenceStore store : stores) {
-                owners.addAll(store.findOwners(workerId));
-            }
-            return List.copyOf(owners);
         }
 
         @Override

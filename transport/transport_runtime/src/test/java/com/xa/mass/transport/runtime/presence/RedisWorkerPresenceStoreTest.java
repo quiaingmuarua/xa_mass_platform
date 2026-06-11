@@ -77,6 +77,8 @@ class RedisWorkerPresenceStoreTest {
         assertEquals("worker-1", store.currentOwner("route-1").orElseThrow().workerId());
         assertEquals("route-1", observerCommands.get(workerRouteKey("worker-1")));
         assertNotNull(observerCommands.hget(ownerHash("route-1"), "route-1"));
+        assertEquals(0L, observerCommands.exists(namespacePrefix + ":owner-shards"));
+        assertEquals(0L, observerCommands.exists(namespacePrefix + ":workers"));
         assertTrue(observerCommands.keys(namespacePrefix + ":route:*").isEmpty());
         assertTrue(observerCommands.keys(namespacePrefix + ":route-presence:*").isEmpty());
 
@@ -130,6 +132,18 @@ class RedisWorkerPresenceStoreTest {
         store.markOffline("worker-3", "socket", "route-old", "conn-2", "disconnect");
         assertFalse(store.isRouteOnline("socket", "route-old"));
         assertTrue(store.findOwners("worker-3").isEmpty());
+    }
+
+    @Test
+    void routeKeyTakeoverByAnotherWorkerDoesNotKeepOldWorkerProjectionOnline() {
+        store.markOnline("worker-old", "websocket", "route-shared", "conn-old", "connected");
+        store.markOnline("worker-new", "socket", "route-shared", "conn-new", "takeover");
+
+        assertNull(store.getPresence("worker-old"));
+        assertFalse(store.isWorkerOnline("worker-old"));
+        assertEquals("worker-new", store.getPresence("worker-new").getWorkerId());
+        assertEquals("worker-new", store.currentOwner("route-shared").orElseThrow().workerId());
+        assertNull(observerCommands.get(workerRouteKey("worker-old")));
     }
 
     @Test

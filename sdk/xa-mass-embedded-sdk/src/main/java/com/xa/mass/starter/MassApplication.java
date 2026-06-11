@@ -56,6 +56,8 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
+import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.presence.WorkerPresenceState;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
@@ -97,6 +99,8 @@ public class MassApplication {
     private WorkerEndpointRegistry endpointRegistry;
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private WorkerPresenceStore workerPresenceStore;
+    private WorkerDispatchRouteOwnerView workerRouteOwnerView;
+    private WorkerPresenceInspectionView workerPresenceInspectionView;
     private TransportDeliveryService transportDeliveryService;
     private TaskDispatchHandoff taskDispatchHandoff;
     private TaskDispatchHandoffPump taskDispatchHandoffPump;
@@ -276,6 +280,8 @@ public class MassApplication {
                     engineConfig.getExecutionEventSink()
             );
             workerPresenceStore = transportRuntimeComposition.resolveWorkerPresenceStore();
+            workerRouteOwnerView = workerPresenceStore;
+            workerPresenceInspectionView = workerPresenceStore;
             transportNodeRegistry = transportRuntimeComposition.resolveTransportNodeRegistry();
             TransportDeliveryStore deliveryStore = transportRuntimeComposition.resolveTransportDeliveryStore();
             TransportDeliveryService deliveryService = new TransportDeliveryService(deliveryStore);
@@ -357,7 +363,8 @@ public class MassApplication {
             }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 engineConfig.setWorkerReachabilityView(workerId -> {
-                    if (workerPresenceStore == null || workerId == null || workerId.isBlank()) {
+                    WorkerDispatchRouteOwnerView routeOwnerView = workerRouteOwnerView;
+                    if (routeOwnerView == null || workerId == null || workerId.isBlank()) {
                         return com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.OFFLINE;
                     }
                     WorkerResourceRecord worker = engineConfig.getWorkerResourceRuntime()
@@ -367,7 +374,7 @@ public class MassApplication {
                     if (routeKey.isEmpty()) {
                         return com.xa.mass.worker.runtime.evidence.WorkerReachabilityState.OFFLINE;
                     }
-                    return workerPresenceStore.currentOwner(routeKey.get())
+                    return routeOwnerView.currentOwner(routeKey.get())
                             .map(owner -> {
                                 long now = System.currentTimeMillis();
                                 if (owner.isOnline(now)
@@ -444,7 +451,7 @@ public class MassApplication {
         if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER
                 && handoff instanceof NodeTargetedTaskDispatchHandoff nodeTargetedHandoff) {
             WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
-                    workerPresenceStore,
+                    workerRouteOwnerView,
                     transportNodeRegistry,
                     this::resolveWorkerRouteKey
             );
@@ -578,6 +585,8 @@ public class MassApplication {
     private void stopWorkerPresenceStore() throws Exception {
         WorkerPresenceStore presenceStore = workerPresenceStore;
         workerPresenceStore = null;
+        workerRouteOwnerView = null;
+        workerPresenceInspectionView = null;
         if (presenceStore instanceof AutoCloseable closeable) {
             closeable.close();
         }
@@ -752,8 +761,8 @@ public class MassApplication {
         return value.trim();
     }
 
-    public WorkerPresenceStore getWorkerPresenceStore() {
-        return workerPresenceStore;
+    public WorkerPresenceInspectionView getWorkerPresenceInspectionView() {
+        return workerPresenceInspectionView;
     }
 
     public boolean sendRawTransportMessage(String workerId, String rawJson, String traceId) {

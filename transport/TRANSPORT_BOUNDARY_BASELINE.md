@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-06-10
+Last updated: 2026-06-11
 
 Status: current transport boundary baseline.
 
@@ -19,8 +19,8 @@ over richer but expensive observability state.
 Transport owns delivery mechanics for workers:
 
 - worker endpoint connectivity and endpoint metadata
-- worker presence truth as a shared readable runtime view keyed by worker with
-  a current route-owner record addressed by canonical `routeKey` and carrying
+- worker presence truth as a shared readable runtime view with a current
+  route-owner record addressed by opaque `routeKey` and carrying
   `adapterId`, `transportNodeId`, and connection evidence in the owner value
 - adapter registration and adapter selection by `adapterId`
 - task dispatch delivery, queueing, draining, and dispatch outcomes
@@ -58,6 +58,8 @@ Transport should stay centered on these concepts only:
 - `WorkerDispatchRouteOwnerView`: narrow read-only route-owner view used by
   engine-side dispatch routing after worker matching has already selected a
   worker
+- `WorkerPresenceInspectionView`: worker-id projection view for compatibility
+  and operator inspection; it is not a dispatch routing dependency
 - `WorkerSystemEventChannel`: transport-neutral ingress seam for worker
   online/offline/heartbeat presence signals. It is not a worker command,
   worker state-report, or capability-report lifecycle owner.
@@ -135,12 +137,16 @@ but transport owns the online truth itself. Heartbeat expiry is a transport
 lease rule, not an engine selector heuristic. `STALE` is transport-owned
 diagnostic state and must be treated as not dispatchable on the engine side.
 Shared-store implementations such as Redis must preserve the same route-owner
-semantics as the in-memory default. One canonical `routeKey` has one current
+semantics as the in-memory default. One opaque `routeKey` has one current
 delivery owner. `getPresence(workerId)`, `isWorkerOnline(workerId)`, and
 `findOwners(workerId)` are compatibility/operator projections derived from
-route-owner truth; dispatch routing must resolve the current owner by canonical
+route-owner truth; dispatch routing must resolve the current owner by opaque
 `routeKey`. Engine must not write presence, read adapter sessions, or treat
 presence as a schedule owner.
+Runtime assembly may keep the full `WorkerPresenceStore` for adapter writes and
+shutdown ownership, but engine reachability and node-targeted dispatch should
+bind only `WorkerDispatchRouteOwnerView`; SDK/operator reads should bind
+`WorkerPresenceInspectionView`.
 
 ## Worker Registration Relation Baseline
 

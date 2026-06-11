@@ -1088,7 +1088,7 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
         presenceStore.markOnline("worker-1", "polling", "worker-1", "worker-1", "connected");
-        when(delegate.getWorkerPresenceStore()).thenReturn(presenceStore);
+        when(delegate.getWorkerPresenceInspectionView()).thenReturn(presenceStore);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -1149,7 +1149,7 @@ class MassSdkTest {
                 return 0;
             }
         };
-        when(delegate.getWorkerPresenceStore()).thenReturn(presenceStore);
+        when(delegate.getWorkerPresenceInspectionView()).thenReturn(presenceStore);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -1160,7 +1160,7 @@ class MassSdkTest {
     void sdkWorkerOnlineFollowsNewestPresenceOwnerAfterReconnect() {
         MassApplication delegate = mock(MassApplication.class);
         InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
-        when(delegate.getWorkerPresenceStore()).thenReturn(presenceStore);
+        when(delegate.getWorkerPresenceInspectionView()).thenReturn(presenceStore);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
