@@ -29,8 +29,11 @@ Not completed by this roadmap:
 - this is not a complete distributed scheduling benchmark suite
 - deeper multi-JVM worker disconnect/reconnect, wakeup-lag, and Redis
   duplicate-dispatch soak remain specialist proof topics
-- worker-registry Redis contention and worker-slot shape changes belong to
-  `WORKER_SLOT_REGISTRY_ROADMAP.md`, not this archive
+- worker-registry Redis contention and worker-runtime key-shape changes belong
+  to `doc/archive/core/2026-06-11_WORKER_RUNTIME_ADMISSION_AND_REDIS_SHAPE_CONVERGENCE_ROADMAP.md`
+  and successor
+  `roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md`, not this
+  archive
 - future stream/pubsub wakeup hints, memory sharding, and repair cleanup are
   explicitly later topics unless a new roadmap promotes them
 - archived phase text below may include original targets and review questions;

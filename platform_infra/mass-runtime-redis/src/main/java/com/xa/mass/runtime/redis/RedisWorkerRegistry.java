@@ -14,8 +14,12 @@ import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.DefaultWorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerSlot;
+import io.lettuce.core.Limit;
+import io.lettuce.core.MapScanCursor;
 import io.lettuce.core.Range;
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.ScanArgs;
+import io.lettuce.core.ScanCursor;
 import io.lettuce.core.TransactionResult;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -204,11 +208,10 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         if (normalizedGroupId == null || limit <= 0) {
             return CleanupSummary.empty();
         }
-        List<String> workerIds = commands.hkeys(keyspace.groupSlotsHash(normalizedGroupId));
         int scanned = 0;
         int removed = 0;
         int skipped = 0;
-        for (String workerId : workerIds) {
+        for (String workerId : scanHashFields(keyspace.groupSlotsHash(normalizedGroupId), limit)) {
             if (scanned >= limit) {
                 break;
             }
@@ -575,12 +578,16 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         if (normalizedTaskId == null) {
             return Set.of();
         }
-        return Set.copyOf(commands.smembers(keyspace.taskActiveWorkersSet(normalizedTaskId)));
+        return Set.copyOf(commands.hkeys(keyspace.taskWorkerActiveCountsHash(normalizedTaskId)));
     }
 
     @Override
     public synchronized int activeWorkerCountForTask(String taskId) {
-        return activeWorkerIdsByTask(taskId).size();
+        String normalizedTaskId = normalizeNullable(taskId);
+        if (normalizedTaskId == null) {
+            return 0;
+        }
+        return commands.hlen(keyspace.taskWorkerActiveCountsHash(normalizedTaskId)).intValue();
     }
 
     @Override
@@ -610,14 +617,16 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         List<String> groupIds = new ArrayList<>(commands.smembers(keyspace.workerGroupsSet()));
         groupIds.sort(String::compareTo);
         for (String groupId : groupIds) {
+            int remaining = limit - scanned;
+            if (remaining <= 0) {
+                return new CleanupSummary(scanned, removed, skipped);
+            }
             List<String> workerIds = commands.zrangebyscore(
                     keyspace.groupHeartbeatDeadlinesZset(groupId),
-                    Range.create(Double.NEGATIVE_INFINITY, (double) nowMillis)
+                    Range.create(Double.NEGATIVE_INFINITY, (double) nowMillis),
+                    Limit.create(0, remaining)
             );
             for (String workerId : workerIds) {
-                if (scanned >= limit) {
-                    return new CleanupSummary(scanned, removed, skipped);
-                }
                 scanned++;
                 boolean changed = markSlotRemoving(groupId, workerId, "heartbeat expired");
                 removeFromBuckets(groupId, workerId);
@@ -642,13 +651,15 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         int removed = 0;
         for (String candidateBucketKey : commands.smembers(keyspace.groupCandidateBucketsSet(normalizedGroupId))) {
             String bucketKey = keyspace.groupCandidateBucket(normalizedGroupId, candidateBucketKey);
-            for (String workerId : List.copyOf(commands.smembers(bucketKey))) {
-                if (scanned >= limit) {
-                    return new CleanupSummary(scanned, removed, 0);
-                }
+            int remaining = limit - scanned;
+            if (remaining <= 0) {
+                return new CleanupSummary(scanned, removed, 0);
+            }
+            for (String workerId : commands.srandmember(bucketKey, remaining)) {
                 scanned++;
                 if (slot(normalizedGroupId, workerId).isEmpty()) {
                     commands.srem(bucketKey, workerId);
+                    commands.hdel(keyspace.groupBucketMembershipHash(normalizedGroupId), workerId);
                     removed++;
                 }
             }
@@ -762,7 +773,11 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             }
         }
         if (!bucketKeys.isEmpty()) {
-            commands.sadd(keyspace.workerBucketMembershipSet(meta.groupId(), meta.workerId()), bucketKeys.toArray(String[]::new));
+            commands.hset(
+                    keyspace.groupBucketMembershipHash(meta.groupId()),
+                    meta.workerId(),
+                    encodeBucketMembership(bucketKeys)
+            );
         }
     }
 
@@ -770,12 +785,54 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         if (groupId == null || workerId == null) {
             return;
         }
-        String membershipKey = keyspace.workerBucketMembershipSet(groupId, workerId);
-        Set<String> bucketKeys = commands.smembers(membershipKey);
+        String membershipKey = keyspace.groupBucketMembershipHash(groupId);
+        Set<String> bucketKeys = decodeBucketMembership(commands.hget(membershipKey, workerId));
         for (String bucketKey : bucketKeys) {
             commands.srem(bucketKey, workerId);
         }
-        commands.del(membershipKey);
+        commands.hdel(membershipKey, workerId);
+    }
+
+    private String encodeBucketMembership(Set<String> bucketKeys) {
+        return GSON.toJson(bucketKeys.toArray(String[]::new));
+    }
+
+    private Set<String> decodeBucketMembership(String json) {
+        if (json == null || json.isBlank()) {
+            return Set.of();
+        }
+        String[] bucketKeys = GSON.fromJson(json, String[].class);
+        if (bucketKeys == null || bucketKeys.length == 0) {
+            return Set.of();
+        }
+        LinkedHashSet<String> decoded = new LinkedHashSet<>();
+        for (String bucketKey : bucketKeys) {
+            String normalized = normalizeNullable(bucketKey);
+            if (normalized != null) {
+                decoded.add(normalized);
+            }
+        }
+        return Set.copyOf(decoded);
+    }
+
+    private List<String> scanHashFields(String key, int limit) {
+        if (key == null || limit <= 0) {
+            return List.of();
+        }
+        LinkedHashSet<String> fields = new LinkedHashSet<>();
+        ScanCursor cursor = ScanCursor.INITIAL;
+        ScanArgs args = ScanArgs.Builder.limit(limit);
+        while (fields.size() < limit) {
+            MapScanCursor<String, String> page = cursor == ScanCursor.INITIAL
+                    ? commands.hscan(key, args)
+                    : commands.hscan(key, cursor, args);
+            fields.addAll(page.getMap().keySet());
+            cursor = page;
+            if (cursor.isFinished()) {
+                break;
+            }
+        }
+        return fields.stream().limit(limit).toList();
     }
 
     private Set<String> candidateBucketKeys(WorkerMeta meta) {
@@ -795,7 +852,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         if (taskId == null || workerId == null) {
             return;
         }
-        tx.sadd(keyspace.taskActiveWorkersSet(taskId), workerId);
         tx.hincrby(keyspace.taskWorkerActiveCountsHash(taskId), workerId, permits);
     }
 
@@ -809,7 +865,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         }
         if (nextTaskCount <= 0) {
             tx.hdel(keyspace.taskWorkerActiveCountsHash(taskId), workerId);
-            tx.srem(keyspace.taskActiveWorkersSet(taskId), workerId);
         } else {
             tx.hincrby(keyspace.taskWorkerActiveCountsHash(taskId), workerId, -permits);
         }

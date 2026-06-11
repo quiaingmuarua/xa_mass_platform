@@ -94,8 +94,11 @@ snapshot and how live `/doc.html` / `/v3/api-docs` are protected.
 
 Scope:
 
-- Create or update
-  `roadmap/SERVER_FRONTEND_STATIC_API_DOCS_INVENTORY.md`.
+- Review the archived first inventory at
+  `doc/archive/xa-mass-server/2026-06-11_SERVER_FRONTEND_STATIC_API_DOCS_INVENTORY.md`.
+  If this roadmap becomes active implementation work again, create a fresh
+  current-code inventory from verified source rather than moving the archived
+  inventory back unchanged.
 - Inventory current docs surfaces:
   `/doc.html`, `/v3/api-docs`, `frontend System -> API Reference`,
   `VITE_API_DOCS_URL`, Vercel preview behavior, and existing Markdown API

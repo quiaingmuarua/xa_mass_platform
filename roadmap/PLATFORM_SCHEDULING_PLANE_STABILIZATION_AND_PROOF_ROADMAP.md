@@ -4,7 +4,7 @@ Status: active stabilization / proof roadmap.
 
 Predecessors:
 
-- `roadmap/PLATFORM_SCHEDULING_PLANE_ROADMAP.md`
+- `doc/archive/xa-mass-engine/2026-06-11_PLATFORM_SCHEDULING_PLANE_ROADMAP.md`
 - `roadmap/PLATFORM_SCHEDULING_PLANE_DECISION.md`
 - `doc/archive/xa-mass-engine/2026-06-03_PLATFORM_SCHEDULING_PLANE_INVENTORY.md`
 

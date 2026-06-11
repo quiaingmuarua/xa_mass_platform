@@ -4,7 +4,8 @@ Status: archived PSP-0 inventory / classification.
 
 Archived: 2026-06-03 after PSP mainline implementation and active-link cleanup.
 
-Source roadmap: `roadmap/PLATFORM_SCHEDULING_PLANE_ROADMAP.md`.
+Source roadmap:
+`doc/archive/xa-mass-engine/2026-06-11_PLATFORM_SCHEDULING_PLANE_ROADMAP.md`.
 
 This inventory classifies the current Scheduling Plane inputs before any new
 policy owner or contract is introduced. It records current production behavior

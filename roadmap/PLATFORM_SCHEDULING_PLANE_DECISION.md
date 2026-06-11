@@ -2,7 +2,8 @@
 
 Status: PSP-1 owner / binding / persistence decision.
 
-Source roadmap: `roadmap/PLATFORM_SCHEDULING_PLANE_ROADMAP.md`.
+Source roadmap:
+`doc/archive/xa-mass-engine/2026-06-11_PLATFORM_SCHEDULING_PLANE_ROADMAP.md`.
 
 Inventory: `doc/archive/xa-mass-engine/2026-06-03_PLATFORM_SCHEDULING_PLANE_INVENTORY.md`.
 

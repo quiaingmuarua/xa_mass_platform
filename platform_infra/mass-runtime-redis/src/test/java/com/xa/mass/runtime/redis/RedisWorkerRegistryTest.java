@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -215,6 +216,27 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
     }
 
     @Test
+    void taskWorkerActiveCountHashOwnsActiveWorkerProjectionWithoutActiveWorkerSet() {
+        WorkerRegistry workerRegistry = createRegistry();
+        workerRegistry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));
+
+        assertTrue(workerRegistry.tryReserve("group-a", "worker-1", "task-1", 1, 1000).accepted());
+        assertTrue(workerRegistry.confirmReservation("group-a", "worker-1", "task-1", 1));
+
+        assertEquals(Set.of("worker-1"), workerRegistry.activeWorkerIdsByTask("task-1"));
+        assertEquals(1, workerRegistry.activeWorkerCountForTask("task-1"));
+        assertEquals("1", commands.hget(keyspace.taskWorkerActiveCountsHash("task-1"), "worker-1"));
+        assertEquals(0L, commands.exists(oldTaskActiveWorkersKey("task-1")));
+
+        workerRegistry.recordWorkFinal("group-a", "worker-1", "task-1", 1);
+
+        assertTrue(workerRegistry.activeWorkerIdsByTask("task-1").isEmpty());
+        assertEquals(0, workerRegistry.activeWorkerCountForTask("task-1"));
+        assertEquals(0, workerRegistry.activeLeaseCountByTaskWorker("task-1", "worker-1"));
+        assertFalse(commands.hexists(keyspace.taskWorkerActiveCountsHash("task-1"), "worker-1"));
+    }
+
+    @Test
     void acceptsSharedWorkerCandidateBucketPolicySeam() {
         createRegistry();
         registry.close();
@@ -258,6 +280,36 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 registry.acquireCandidates("group-a", "attr:region=us", 10));
         assertEquals(List.of("worker-1"),
                 registry.acquireCandidates("group-a", "attr:region=eu", 10));
+    }
+
+    @Test
+    void bucketMembershipUsesGroupLocalHashInsteadOfPerWorkerKeys() {
+        createRegistry();
+        registry.close();
+        registry = new RedisWorkerRegistry(
+                redisClient,
+                keyspace,
+                (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList(),
+                regionRoutePolicy(),
+                false
+        );
+
+        registry.upsertSlot(metaWithRegion("worker-1", "group-a", "us"), 1, Set.of(eventKey()));
+        registry.upsertSlot(metaWithRegion("worker-2", "group-a", "eu"), 1, Set.of(eventKey()));
+
+        String membershipHash = keyspace.groupBucketMembershipHash("group-a");
+        assertEquals(2L, commands.hlen(membershipHash));
+        assertTrue(commands.hexists(membershipHash, "worker-1"));
+        assertTrue(commands.hexists(membershipHash, "worker-2"));
+        assertEquals(0L, commands.exists(oldWorkerBucketMembershipKey("group-a", "worker-1")));
+
+        registry.markSlotRemoving("group-a", "worker-1", "test cleanup");
+
+        assertFalse(commands.hexists(membershipHash, "worker-1"));
+        assertEquals(List.of("worker-2"),
+                registry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY, 10));
+        assertEquals(List.of(),
+                registry.acquireCandidates("group-a", "attr:region=us", 10));
     }
 
 
@@ -430,5 +482,13 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
             }
             return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY, "attr:region=" + region.trim());
         };
+    }
+
+    private String oldWorkerBucketMembershipKey(String groupId, String workerId) {
+        return keyspace.namespace() + ":group:" + groupId + ":worker:" + workerId + ":bucket-membership";
+    }
+
+    private String oldTaskActiveWorkersKey(String taskId) {
+        return keyspace.namespace() + ":task:" + taskId + ":active-workers";
     }
 }

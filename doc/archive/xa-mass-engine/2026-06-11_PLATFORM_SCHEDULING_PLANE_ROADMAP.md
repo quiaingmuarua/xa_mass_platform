@@ -1,6 +1,7 @@
 # Platform Scheduling Plane Roadmap
 
-Status: proposed direction roadmap.
+Status: archived superseded direction source; do not use as the active
+implementation roadmap.
 
 This roadmap defines how XA Mass should converge toward a clear
 platform-level Scheduling Plane without treating any target owner as already

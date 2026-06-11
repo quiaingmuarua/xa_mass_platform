@@ -23,7 +23,7 @@ roadmap.
 
 Related records:
 
-- `roadmap/PLATFORM_SCHEDULING_PLANE_ROADMAP.md`
+- `doc/archive/xa-mass-engine/2026-06-11_PLATFORM_SCHEDULING_PLANE_ROADMAP.md`
 - `roadmap/PLATFORM_SCHEDULING_PLANE_DECISION.md`
 - `roadmap/PLATFORM_SCHEDULING_PLANE_STABILIZATION_AND_PROOF_ROADMAP.md`
 - `xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md`

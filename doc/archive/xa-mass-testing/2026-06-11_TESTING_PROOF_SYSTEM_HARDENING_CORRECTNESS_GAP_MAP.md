@@ -1,6 +1,7 @@
 # Testing Proof System Hardening Correctness Gap Map
 
-Status: current TPS-3 gap map for `TESTING_PROOF_SYSTEM_HARDENING_ROADMAP.md`.
+Status: archived TPS-3 gap map for
+`doc/archive/xa-mass-testing/2026-06-11_TESTING_PROOF_SYSTEM_HARDENING_ROADMAP.md`.
 
 Last updated: 2026-06-09
 

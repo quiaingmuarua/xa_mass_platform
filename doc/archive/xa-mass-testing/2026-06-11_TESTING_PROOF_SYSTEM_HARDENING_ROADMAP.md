@@ -1,6 +1,7 @@
 # Testing Proof System Hardening Roadmap
 
-Status: mainline implementation complete; external CI observation pending.
+Status: archived mainline implementation record; external CI observation remains
+recorded as follow-up evidence.
 
 Predecessors:
 
@@ -17,8 +18,8 @@ Current owner references:
 
 Implementation records:
 
-- `roadmap/TESTING_PROOF_SYSTEM_HARDENING_INVENTORY.md`
-- `roadmap/TESTING_PROOF_SYSTEM_HARDENING_CORRECTNESS_GAP_MAP.md`
+- `doc/archive/xa-mass-testing/2026-06-11_TESTING_PROOF_SYSTEM_HARDENING_INVENTORY.md`
+- `doc/archive/xa-mass-testing/2026-06-11_TESTING_PROOF_SYSTEM_HARDENING_CORRECTNESS_GAP_MAP.md`
 
 Current slice state:
 

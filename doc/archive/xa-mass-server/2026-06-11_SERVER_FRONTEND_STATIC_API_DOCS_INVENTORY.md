@@ -1,8 +1,11 @@
 # Server Frontend Static API Docs Inventory
 
-Status: initial current-code inventory for
-`SERVER_FRONTEND_STATIC_API_DOCS_ROADMAP.md`. Implementation slices must update
-this file from verified code, not from assumptions.
+Status: archived initial current-code inventory for
+`roadmap/SERVER_FRONTEND_STATIC_API_DOCS_ROADMAP.md`.
+
+If that roadmap becomes active implementation work again, create a fresh
+current-code inventory from verified source rather than moving this archived
+snapshot back unchanged.
 
 ## Surfaces
 

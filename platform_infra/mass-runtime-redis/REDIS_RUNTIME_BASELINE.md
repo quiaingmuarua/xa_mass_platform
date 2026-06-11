@@ -16,8 +16,9 @@ Current implementation note:
   flows around the same keyspace truth
 - Redis-backed `WorkerRegistry` has a first-slice implementation using
   group-partitioned slot hashes, group/node candidate buckets, heartbeat deadline
-  indexes, and `WATCH` / `MULTI` / `EXEC` over the group-local slot hash. It is
-  contract-tested but is not yet the default engine/server runtime switch.
+  indexes, a group-local bucket membership hash, and `WATCH` / `MULTI` /
+  `EXEC` over the group-local slot hash. It is contract-tested but is not yet
+  the default engine/server runtime switch.
 
 Use with:
 
@@ -263,7 +264,9 @@ Global worker indexes:
   - `HASH`
   - field: `workerId`
   - value: `groupId`
-  - supports `slotByWorkerId(workerId)` without relying on worker id prefix
+  - supports worker-id semantic APIs such as `slotByWorkerId(workerId)`,
+    `workerMeta(workerId)`, worker-id admission defaults, and dispatch-gate
+    defaults without relying on worker id prefix
 - `...:groups`
   - `SET`
   - member: `groupId`
@@ -271,7 +274,8 @@ Global worker indexes:
 - `...:exclusive-leases`
   - `SET`
   - member: `workerId`
-  - diagnostic/index mirror for exclusive worker lease ownership
+  - support index for `exclusiveLeaseWorkerIds()`; avoids scanning all group
+    slot hashes for current diagnostic/support API output
 
 Per-group heartbeat, slot, and candidate indexes:
 
@@ -279,7 +283,8 @@ Per-group heartbeat, slot, and candidate indexes:
   - `ZSET`
   - member: `workerId`
   - score: `lastHeartbeatMillis + heartbeatFreshnessMillis`
-  - supports bounded stale worker discovery inside a worker group
+  - supports bounded stale worker discovery inside a worker group; expiry cleanup
+    reads at most the remaining cleanup limit from each group zset
 
 - `...:group:{groupId}:slots`
   - `HASH`
@@ -289,6 +294,8 @@ Per-group heartbeat, slot, and candidate indexes:
   - owns current worker metadata projection, dispatch-gate inputs, reservation
     counters, active lease counters, exclusive lease flag, and removing flag as
     one encoded aggregate
+  - removed-slot cleanup uses bounded `HSCAN` field reads before deciding which
+    removable fields to reclaim
   - upper runtime callers should not depend on this physical aggregate; they
     should use `WorkerRegistry` semantic methods such as `workerMeta(workerId)`,
     worker-id admission operations, and dispatch-gate operations
@@ -296,6 +303,10 @@ Per-group heartbeat, slot, and candidate indexes:
   - `SET`
   - member: `workerId`
   - group-level candidate bucket
+  - current `acquireCandidates(...)` reads the full bucket before
+    `WorkerCandidateSamplingPolicy` because the policy contract currently sees
+    complete candidate sets; bounded acquisition is deferred to
+    `roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md`
 - `...:group:{groupId}:buckets`
   - `SET`
   - member: `candidateBucketKey`
@@ -304,22 +315,34 @@ Per-group heartbeat, slot, and candidate indexes:
   - `SET`
   - member: `workerId`
   - node-scoped placement candidate bucket
+  - also backs current complete-set node/group maintenance lookup; paged
+    maintenance is deferred to
+    `roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md`
 - `...:group:{groupId}:node-buckets`
   - `SET`
   - member: encoded `adapterNodeId + candidateBucketKey`
   - bounded cleanup discovery for node buckets
+- `...:group:{groupId}:bucket-membership`
+  - `HASH`
+  - field: `workerId`
+  - value: encoded list of group/node bucket keys currently containing the worker
+  - reverse cleanup projection for `RedisWorkerRegistry` bucket updates and slot
+    removal
+  - group-local replacement for the retired per-worker
+    `...:group:{groupId}:worker:{workerId}:bucket-membership` key family
+  - this is not scheduling truth; stale bucket members remain correctness-neutral
+    because reserve re-validates the current slot
 
 Per-task worker occupancy indexes:
 
-- `...:task:{taskId}:active-workers`
-  - `SET`
-  - member: `workerId`
-  - supports `activeWorkerIdsByTask(taskId)` and
-    `activeWorkerCountForTask(taskId)`
 - `...:task:{taskId}:worker-active-count`
   - `HASH`
   - field: `workerId`
   - value: active lease count for that task-worker pair
+  - supports `activeWorkerIdsByTask(taskId)`,
+    `activeWorkerCountForTask(taskId)`, and
+    `activeLeaseCountByTaskWorker(taskId, workerId)` without a parallel
+    `active-workers` set
 
 First-slice constraints:
 
@@ -331,7 +354,11 @@ First-slice constraints:
   finer-grained Lua mutation is the next optimization if same-group contention
   becomes material.
 - Candidate buckets may be briefly stale; stale candidates are rejected by
-  Stage-2 reservation and removed through bounded cleanup.
+  Stage-2 reservation and removed through bounded cleanup. Stale bucket cleanup
+  samples at most the remaining cleanup limit from each group bucket.
+- Heartbeat expiry cleanup is bounded at the per-group zset read. Group
+  discovery still uses `...:groups`; sharding this index is deferred until group
+  cardinality becomes a demonstrated deployment issue.
 - This implementation does not introduce a single global worker hash and does
   not make Redis worker registry the server default.
 - This implementation intentionally does not add writable

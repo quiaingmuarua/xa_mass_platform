@@ -1,6 +1,7 @@
 # Testing Proof System Hardening Inventory
 
-Status: current evidence inventory for `TESTING_PROOF_SYSTEM_HARDENING_ROADMAP.md`.
+Status: archived evidence inventory for
+`doc/archive/xa-mass-testing/2026-06-11_TESTING_PROOF_SYSTEM_HARDENING_ROADMAP.md`.
 
 Last updated: 2026-06-09
 
