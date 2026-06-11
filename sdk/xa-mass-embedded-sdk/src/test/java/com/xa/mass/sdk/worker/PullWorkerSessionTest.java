@@ -8,7 +8,7 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportResultEnvelope;
-import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -31,7 +31,7 @@ class PullWorkerSessionTest {
         when(taskPullChannel.pollTaskMessagesResult(routeKey(), 5, 250L)).thenReturn(expected);
 
         PullWorkerSession session = session(taskPullChannel, mock(TaskResultIngestChannel.class),
-                mock(WorkerSystemEventChannel.class), new InMemoryWorkerPresenceStore());
+                mock(WorkerSystemEventChannel.class), new InMemoryTransportRouteOwnerStore());
 
         TaskPullResult result = session.pollResult(5, 250L);
 
@@ -47,7 +47,7 @@ class PullWorkerSessionTest {
                 .thenReturn(TaskPullResult.delivered(List.of(item("msg-1"), item("msg-2"))));
 
         PullWorkerSession session = session(taskPullChannel, mock(TaskResultIngestChannel.class),
-                mock(WorkerSystemEventChannel.class), new InMemoryWorkerPresenceStore());
+                mock(WorkerSystemEventChannel.class), new InMemoryTransportRouteOwnerStore());
 
         List<TaskDispatchItem> items = session.poll(3, 100L);
 
@@ -60,7 +60,7 @@ class PullWorkerSessionTest {
         when(resultIngestChannel.ingest(any(TransportResultEnvelope.class))).thenReturn(true);
 
         PullWorkerSession session = session(mock(TaskPullChannel.class), resultIngestChannel,
-                mock(WorkerSystemEventChannel.class), new InMemoryWorkerPresenceStore());
+                mock(WorkerSystemEventChannel.class), new InMemoryTransportRouteOwnerStore());
 
         TaskDispatchItem dispatchItem = new TaskDispatchItem(
                 "task-1",
@@ -92,7 +92,7 @@ class PullWorkerSessionTest {
         when(resultIngestChannel.ingest(any(TransportResultEnvelope.class))).thenReturn(true);
 
         PullWorkerSession session = session(mock(TaskPullChannel.class), resultIngestChannel,
-                mock(WorkerSystemEventChannel.class), new InMemoryWorkerPresenceStore());
+                mock(WorkerSystemEventChannel.class), new InMemoryTransportRouteOwnerStore());
 
         session.submitResult("task-1", "msg-1", true, "ok", null, Map.of());
 
@@ -103,29 +103,29 @@ class PullWorkerSessionTest {
 
     @Test
     void connectHeartbeatDisconnectWritePresenceWithCanonicalRouteAndSessionToken() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        InMemoryTransportRouteOwnerStore presenceStore = new InMemoryTransportRouteOwnerStore();
         PullWorkerSession session = session(mock(TaskPullChannel.class), mock(TaskResultIngestChannel.class),
                 mock(WorkerSystemEventChannel.class), presenceStore);
 
         session.connect("connected");
-        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertTrue(presenceStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
         assertTrue(presenceStore.hasActiveRouteOwner("polling", routeKey()));
-        assertEquals("conn-1", presenceStore.getPresence("worker-1").getConnectionId());
+        assertEquals("conn-1", presenceStore.getLatestOwnerByWorker("worker-1").getConnectionId());
 
         presenceStore.releaseRouteOwner("worker-1", "polling", routeKey(), "stale-conn", "stale-disconnect");
-        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertTrue(presenceStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
 
         session.heartbeat("heartbeat");
-        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertTrue(presenceStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
 
         session.disconnect("disconnect");
-        assertNull(presenceStore.getPresence("worker-1"));
+        assertNull(presenceStore.getLatestOwnerByWorker("worker-1"));
     }
 
     private static PullWorkerSession session(TaskPullChannel taskPullChannel,
                                              TaskResultIngestChannel resultIngestChannel,
                                              WorkerSystemEventChannel systemEventChannel,
-                                             InMemoryWorkerPresenceStore presenceStore) {
+                                             InMemoryTransportRouteOwnerStore presenceStore) {
         return new PullWorkerSession(
                 "worker-1",
                 "group-1",

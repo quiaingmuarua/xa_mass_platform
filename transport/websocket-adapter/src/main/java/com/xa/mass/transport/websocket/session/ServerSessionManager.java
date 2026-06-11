@@ -3,11 +3,9 @@ package com.xa.mass.transport.websocket.session;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
-import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
-import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -32,18 +30,17 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     private final RouteEndpointIndex<Channel, WebSocketRouteEndpoint> routeIndex = new RouteEndpointIndex<>();
     private final Set<Channel> retiredChannels = ConcurrentHashMap.newKeySet();
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
-    private final ScheduledExecutorService presenceRefreshExecutor;
-    private volatile WorkerSystemEventChannel systemEventChannel = new RuntimeEventBusWorkerSystemEventChannel();
-    private volatile WorkerPresenceStore workerPresenceStore = new InMemoryWorkerPresenceStore();
-    private volatile ScheduledFuture<?> presenceRefreshFuture;
+    private final ScheduledExecutorService routeOwnerRefreshExecutor;
+    private volatile TransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+    private volatile ScheduledFuture<?> routeOwnerRefreshFuture;
 
     public ServerSessionManager(String adapterId) {
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must not be blank");
         }
         this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
-        this.presenceRefreshExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread thread = new Thread(r, "ws-presence-refresh-" + this.adapterId);
+        this.routeOwnerRefreshExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r, "ws-route-owner-refresh-" + this.adapterId);
             thread.setDaemon(true);
             return thread;
         });
@@ -55,7 +52,6 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
                     routeKey, channel.id().asShortText());
             return;
         }
-        boolean wasRouteOnline = hasActiveChannel(routeKey);
         RouteEndpointIndex.BindResult<Channel, WebSocketRouteEndpoint> result = routeIndex.bind(
                 routeKey,
                 workerId,
@@ -82,12 +78,9 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         logger.info("Connected: routeKey={} workerId={} channelId={} totalRoutes={}",
                 routeKey, workerId, channel.id().asShortText(), activeConnectionCount.get());
         if (hasActiveChannel(routeKey)) {
-            workerPresenceStore.claimRouteOwner(workerId, adapterId, routeKey, channel.id().asShortText(), "websocket connected");
+            routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, channel.id().asShortText(), "websocket connected");
         }
-        ensurePresenceRefreshLoop();
-        if (!wasRouteOnline && hasActiveChannel(routeKey)) {
-            systemEventChannel.publishWorkerOnline(workerId, "websocket connected", null);
-        }
+        ensureRouteOwnerRefreshLoop();
     }
 
     public synchronized void removeSession(Channel channel) {
@@ -101,17 +94,16 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
             logger.info("Disconnected: routeKey={} workerId={} channelId={}",
                     binding.routeKey(), binding.workerId(), channel.id().asShortText());
             if (result.removedCurrentRoute() && !hasActiveChannel(binding.routeKey())) {
-                workerPresenceStore.releaseRouteOwner(
+                routeOwnerStore.releaseRouteOwner(
                         binding.workerId(),
                         adapterId,
                         binding.routeKey(),
                         channel.id().asShortText(),
                         "websocket disconnected"
                 );
-                systemEventChannel.publishWorkerOffline(binding.workerId(), "websocket disconnected", null);
             }
             if (activeConnectionCount.get() == 0) {
-                cancelPresenceRefreshLoop();
+                cancelRouteOwnerRefreshLoop();
             }
         } else {
             if (retiredChannels.remove(channel)) {
@@ -180,17 +172,16 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     @Override
     public synchronized void shutdown() {
         logger.info("Shutting down session manager, closing {} route connections...", routeIndex.routeCount());
-        cancelPresenceRefreshLoop();
+        cancelRouteOwnerRefreshLoop();
         for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
             if (entry.endpoint().isActive()) {
-                workerPresenceStore.releaseRouteOwner(
+                routeOwnerStore.releaseRouteOwner(
                         entry.workerId(),
                         adapterId,
                         entry.routeKey(),
                         entry.handle().id().asShortText(),
                         "websocket adapter shutdown"
                 );
-                systemEventChannel.publishWorkerOffline(entry.workerId(), "websocket adapter shutdown", null);
             }
             if (entry.endpoint().isActive()) {
                 entry.endpoint().channel().close();
@@ -198,29 +189,19 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         }
         routeIndex.clear();
         activeConnectionCount.set(0);
-        presenceRefreshExecutor.shutdownNow();
+        routeOwnerRefreshExecutor.shutdownNow();
         logger.info("Session manager shutdown complete.");
     }
 
-    public WorkerSystemEventChannel getSystemEventChannel() {
-        return systemEventChannel;
-    }
-
-    public void setSystemEventChannel(WorkerSystemEventChannel systemEventChannel) {
-        this.systemEventChannel = systemEventChannel != null
-                ? systemEventChannel
-                : new RuntimeEventBusWorkerSystemEventChannel();
-    }
-
-    public void setWorkerPresenceStore(WorkerPresenceStore workerPresenceStore) {
-        WorkerPresenceStore nextStore = workerPresenceStore != null
-                ? workerPresenceStore
-                : new InMemoryWorkerPresenceStore();
+    public void setRouteOwnerStore(TransportRouteOwnerStore routeOwnerStore) {
+        TransportRouteOwnerStore nextStore = routeOwnerStore != null
+                ? routeOwnerStore
+                : new InMemoryTransportRouteOwnerStore();
         synchronized (this) {
-            this.workerPresenceStore = nextStore;
+            this.routeOwnerStore = nextStore;
             if (activeConnectionCount.get() > 0) {
-                projectActiveSessionsOnline("websocket presence store replaced");
-                reschedulePresenceRefreshLoop();
+                projectActiveSessionsToRouteOwner("websocket route-owner store replaced");
+                rescheduleRouteOwnerRefreshLoop();
             }
         }
     }
@@ -238,49 +219,49 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         return adapterId == null || this.adapterId.equalsIgnoreCase(adapterId.trim());
     }
 
-    private synchronized void ensurePresenceRefreshLoop() {
+    private synchronized void ensureRouteOwnerRefreshLoop() {
         if (activeConnectionCount.get() <= 0) {
-            cancelPresenceRefreshLoop();
+            cancelRouteOwnerRefreshLoop();
             return;
         }
-        if (presenceRefreshFuture != null && !presenceRefreshFuture.isCancelled()) {
+        if (routeOwnerRefreshFuture != null && !routeOwnerRefreshFuture.isCancelled()) {
             return;
         }
-        long refreshIntervalMillis = resolvePresenceRefreshIntervalMillis();
-        presenceRefreshFuture = presenceRefreshExecutor.scheduleAtFixedRate(
-                this::refreshActiveSessionPresence,
+        long refreshIntervalMillis = resolveRouteOwnerRefreshIntervalMillis();
+        routeOwnerRefreshFuture = routeOwnerRefreshExecutor.scheduleAtFixedRate(
+                this::refreshActiveRouteOwners,
                 refreshIntervalMillis,
                 refreshIntervalMillis,
                 TimeUnit.MILLISECONDS
         );
     }
 
-    private synchronized void reschedulePresenceRefreshLoop() {
-        cancelPresenceRefreshLoop();
-        ensurePresenceRefreshLoop();
+    private synchronized void rescheduleRouteOwnerRefreshLoop() {
+        cancelRouteOwnerRefreshLoop();
+        ensureRouteOwnerRefreshLoop();
     }
 
-    private synchronized void cancelPresenceRefreshLoop() {
-        if (presenceRefreshFuture != null) {
-            presenceRefreshFuture.cancel(false);
-            presenceRefreshFuture = null;
+    private synchronized void cancelRouteOwnerRefreshLoop() {
+        if (routeOwnerRefreshFuture != null) {
+            routeOwnerRefreshFuture.cancel(false);
+            routeOwnerRefreshFuture = null;
         }
     }
 
-    private long resolvePresenceRefreshIntervalMillis() {
-        long leaseMillis = workerPresenceStore.getLeaseMillis();
+    private long resolveRouteOwnerRefreshIntervalMillis() {
+        long leaseMillis = routeOwnerStore.getLeaseMillis();
         long refreshIntervalMillis = leaseMillis / 3L;
         return Math.max(1_000L, refreshIntervalMillis);
     }
 
-    private void refreshActiveSessionPresence() {
+    private void refreshActiveRouteOwners() {
         synchronized (this) {
             for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
                 WebSocketRouteEndpoint endpoint = entry.endpoint();
                 if (endpoint == null || !endpoint.isActive()) {
                     continue;
                 }
-                workerPresenceStore.refreshHeartbeat(
+                routeOwnerStore.refreshHeartbeat(
                         entry.workerId(),
                         adapterId,
                         entry.routeKey(),
@@ -291,13 +272,13 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         }
     }
 
-    private void projectActiveSessionsOnline(String reason) {
+    private void projectActiveSessionsToRouteOwner(String reason) {
         for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
             WebSocketRouteEndpoint endpoint = entry.endpoint();
             if (endpoint == null || !endpoint.isActive()) {
                 continue;
             }
-            workerPresenceStore.claimRouteOwner(
+            routeOwnerStore.claimRouteOwner(
                     entry.workerId(),
                     adapterId,
                     entry.routeKey(),

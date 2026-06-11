@@ -123,18 +123,18 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));
 
-        assertFalse(app.isWorkerOnline(workerId), "registration must not create external worker transport presence");
+        assertFalse(app.isWorkerReachable(workerId), "registration must not create external worker transport presence");
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST,
                 presenceBody(sessionToken, "external-worker-api-online"), workerHeaders));
-        waitUntil(() -> app.isWorkerOnline(workerId), "external worker online should surface transport presence");
+        waitUntil(() -> app.isWorkerReachable(workerId), "external worker online should surface transport presence");
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":heartbeat", HttpMethod.POST,
                 presenceBody(sessionToken, "external-worker-api-heartbeat"), workerHeaders));
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST,
                 presenceBody("stale-" + sessionToken, "stale-offline-must-not-win"), workerHeaders));
-        assertTrue(app.isWorkerOnline(workerId), "stale session token must not revoke current transport presence");
+        assertTrue(app.isWorkerReachable(workerId), "stale session token must not revoke current transport presence");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "crawlerApp");
@@ -192,7 +192,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST,
                 presenceBody(sessionToken, "external-worker-api-offline"), workerHeaders));
-        waitUntil(() -> !app.isWorkerOnline(workerId), "external worker offline should converge transport presence");
+        waitUntil(() -> !app.isWorkerReachable(workerId), "external worker offline should converge transport presence");
     }
 
     @Test
@@ -227,7 +227,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertApiOk(registerResponse);
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST,
                 presenceBody(sessionToken, "command-ack-online"), workerHeaders));
-        waitUntil(() -> app.isWorkerOnline(workerId), "command-ack worker should reach transport-online state");
+        waitUntil(() -> app.isWorkerReachable(workerId), "command-ack worker should reach transport-online state");
 
         Map<String, Object> commandResponse = exchange("/api/v1/runtime/workers/" + workerId + "/commands", HttpMethod.POST, Map.of(
                 "commandId", "cmd-node-worker-ack-001",
@@ -384,7 +384,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         ), workerHeaders));
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST,
                 presenceBody(sessionToken, "draining-online"), workerHeaders));
-        waitUntil(() -> app.isWorkerOnline(workerId), "draining worker should reach transport-online state");
+        waitUntil(() -> app.isWorkerReachable(workerId), "draining worker should reach transport-online state");
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":report-state", HttpMethod.POST, Map.of(
                 "state", "DRAINING",

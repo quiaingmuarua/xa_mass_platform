@@ -78,7 +78,7 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
                 clients.add(client);
                 assertClientConnects(client, "fairness worker client failed to connect: " + workerId);
             }
-            assertTrue(awaitCondition(() -> clients.stream().allMatch(client -> app.isWorkerOnline(client.getWorkerId())),
+            assertTrue(awaitCondition(() -> clients.stream().allMatch(client -> app.isWorkerReachable(client.getWorkerId())),
                             20,
                             100L),
                     "all fairness workers must become transport-online before assignment");

@@ -78,7 +78,7 @@ class CatalogControllerTest {
                 List.of("demoApp"), List.of());
         workerQueries = mock(WorkerQueryOperations.class);
         when(workerQueries.getAllWorkers()).thenReturn(List.of(crawlerWorker, offlineChatWorker, scopeOnlyWorker));
-        when(workerQueries.listOnlineWorkerIds()).thenReturn(List.of("crawler-worker-1"));
+        when(workerQueries.listReachableWorkerIds()).thenReturn(List.of("crawler-worker-1"));
         runtimeDiagnostics = mock(RuntimeDiagnosticsOperations.class);
         when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of("chat-worker-1"));
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of(
@@ -165,7 +165,7 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.targetScope=='WORKER')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.projectCodes[0]=='crawlerApp' && @.projectCodes[1]=='demoApp')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.workerIds[0]=='crawler-worker-1')]").exists())
-                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.onlineWorkerIds[0]=='crawler-worker-1')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.reachableWorkerIds[0]=='crawler-worker-1')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.invocationModel=='DIRECT_RUNTIME')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.priorityClass=='CONTROL')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.responseMode=='ACK')]").exists())
@@ -220,7 +220,7 @@ class CatalogControllerTest {
         mockMvc.perform(get("/api/v1/catalog/worker-group-capabilities"))
                 .andExpect(status().isOk());
 
-        verify(workerQueries, times(1)).listOnlineWorkerIds();
+        verify(workerQueries, times(1)).listReachableWorkerIds();
         verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
     }
 
@@ -229,7 +229,7 @@ class CatalogControllerTest {
         LargeWorkerFixture fixture = largeWorkerFixture(125, 5);
         reset(workerQueries, workerTopology, runtimeDiagnostics);
         when(workerQueries.getAllWorkers()).thenReturn(fixture.workers());
-        when(workerQueries.listOnlineWorkerIds()).thenReturn(fixture.onlineWorkerIds());
+        when(workerQueries.listReachableWorkerIds()).thenReturn(fixture.reachableWorkerIds());
         when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(fixture.lockedWorkerIds());
         when(runtimeDiagnostics.listSessions()).thenReturn(fixture.sessions());
         when(workerTopology.listWorkerGroups()).thenReturn(fixture.groups());
@@ -243,7 +243,7 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.workerId=='worker-0005' && @.connections[0].endpointId=='endpoint-worker-0005')]").exists());
 
         verify(workerQueries, times(1)).getAllWorkers();
-        verify(workerQueries, times(1)).listOnlineWorkerIds();
+        verify(workerQueries, times(1)).listReachableWorkerIds();
         verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
         verify(runtimeDiagnostics, times(1)).listSessions();
         verify(workerTopology, times(1)).listWorkerGroups();
@@ -254,7 +254,7 @@ class CatalogControllerTest {
         LargeWorkerFixture fixture = largeWorkerFixture(125, 5);
         reset(workerQueries, workerTopology, runtimeDiagnostics);
         when(workerQueries.getAllWorkers()).thenReturn(fixture.workers());
-        when(workerQueries.listOnlineWorkerIds()).thenReturn(fixture.onlineWorkerIds());
+        when(workerQueries.listReachableWorkerIds()).thenReturn(fixture.reachableWorkerIds());
         when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(fixture.lockedWorkerIds());
         when(workerTopology.listWorkerGroups()).thenReturn(fixture.groups());
         when(workerTopology.listAdapterNodes()).thenReturn(fixture.adapterNodes());
@@ -269,7 +269,7 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.groupId=='group-02' && @.lockedCount > 0)]").exists());
 
         verify(workerQueries, times(1)).getAllWorkers();
-        verify(workerQueries, times(1)).listOnlineWorkerIds();
+        verify(workerQueries, times(1)).listReachableWorkerIds();
         verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
         verify(workerTopology, times(1)).listWorkerGroups();
         verify(workerTopology, times(1)).listAdapterNodes();
@@ -382,13 +382,13 @@ class CatalogControllerTest {
                 List.copyOf(groups),
                 List.copyOf(adapterNodes),
                 List.copyOf(bindings),
-                onlineWorkerIds(workers, 2),
+                reachableWorkerIds(workers, 2),
                 List.of("worker-0003", "worker-0042", "worker-0099"),
                 sessionFacts(workers, 5)
         );
     }
 
-    private List<String> onlineWorkerIds(List<WorkerSnapshot> workers, int everyNthWorker) {
+    private List<String> reachableWorkerIds(List<WorkerSnapshot> workers, int everyNthWorker) {
         return workers.stream()
                 .filter(worker -> numericSuffix(worker.getWorkerId()) % everyNthWorker == 0)
                 .map(WorkerSnapshot::getWorkerId)
@@ -419,7 +419,7 @@ class CatalogControllerTest {
             List<WorkerGroupSnapshot> groups,
             List<AdapterNodeSnapshot> adapterNodes,
             List<NodeGroupBindingSnapshot> nodeGroupBindings,
-            List<String> onlineWorkerIds,
+            List<String> reachableWorkerIds,
             List<String> lockedWorkerIds,
             List<Map<String, Object>> sessions) {
     }

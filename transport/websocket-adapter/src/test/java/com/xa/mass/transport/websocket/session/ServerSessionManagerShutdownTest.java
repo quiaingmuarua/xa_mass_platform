@@ -1,7 +1,6 @@
 package com.xa.mass.transport.websocket.session;
 
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -69,50 +68,23 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
-    void workerOnlineOfflineSignalsTrackWorkerLevelReachability() {
-        WorkerSystemEventChannel systemEventChannel = mock(WorkerSystemEventChannel.class);
-        manager.setSystemEventChannel(systemEventChannel);
-        Channel firstChannel = mockActiveChannel("worker-1-old");
-        Channel secondChannel = mockActiveChannel("worker-1-new");
-        ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
-        ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
-
-        manager.addSession("worker-1", "worker-1", firstChannel, firstCtx);
-        manager.addSession("worker-1", "worker-1", secondChannel, secondCtx);
-
-        verify(systemEventChannel, times(1)).publishWorkerOnline("worker-1", "websocket connected", null);
-        assertTrue(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
-        assertEquals(secondChannel, manager.getChannel("worker-1"));
-
-        manager.removeSession(firstChannel);
-
-        verify(systemEventChannel, never()).publishWorkerOffline("worker-1", "websocket disconnected", null);
-        assertTrue(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
-
-        manager.removeSession(secondChannel);
-
-        verify(systemEventChannel, times(1)).publishWorkerOffline("worker-1", "websocket disconnected", null);
-        assertFalse(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
-    }
-
-    @Test
-    void sessionsProjectPresenceIntoTransportOwnedStore() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore(30_000L, "ws-node-1");
-        manager.setWorkerPresenceStore(presenceStore);
+    void sessionsProjectRouteOwnerIntoTransportOwnedStore() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "ws-node-1");
+        manager.setRouteOwnerStore(routeOwnerStore);
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
         manager.addSession("route-1", "worker-1", channel, ctx);
 
-        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
-        assertEquals("route-1", presenceStore.getPresence("worker-1").getRouteKey());
-        assertEquals("ws-node-1", presenceStore.findOwners("worker-1").getFirst().transportNodeId());
-        assertTrue(presenceStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertEquals("route-1", routeOwnerStore.getLatestOwnerByWorker("worker-1").getRouteKey());
+        assertEquals("ws-node-1", routeOwnerStore.findRouteOwners("worker-1").getFirst().transportNodeId());
+        assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
 
         manager.removeSession(channel);
 
-        assertNull(presenceStore.getPresence("worker-1"));
-        assertFalse(presenceStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
+        assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
     @Test
@@ -140,8 +112,8 @@ class ServerSessionManagerShutdownTest {
 
     @Test
     void retiredWebSocketChannelCannotReclaimRouteOwner() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
-        manager.setWorkerPresenceStore(presenceStore);
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        manager.setRouteOwnerStore(routeOwnerStore);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
@@ -153,14 +125,14 @@ class ServerSessionManagerShutdownTest {
         manager.addSession("route-1", "worker-1", firstChannel, firstCtx);
 
         assertEquals(secondChannel, manager.getChannel("route-1"));
-        assertEquals("worker-1-new", presenceStore.getPresence("worker-1").getConnectionId());
+        assertEquals("worker-1-new", routeOwnerStore.getLatestOwnerByWorker("worker-1").getConnectionId());
         verify(firstChannel).close();
     }
 
     @Test
-    void removingStaleChannelDoesNotOfflineReplacementPresence() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
-        manager.setWorkerPresenceStore(presenceStore);
+    void removingStaleChannelDoesNotReleaseReplacementRouteOwner() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        manager.setRouteOwnerStore(routeOwnerStore);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
@@ -171,14 +143,14 @@ class ServerSessionManagerShutdownTest {
 
         manager.removeSession(firstChannel);
 
-        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
-        assertEquals("worker-1-new", presenceStore.getPresence("worker-1").getConnectionId());
-        assertTrue(presenceStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertEquals("worker-1-new", routeOwnerStore.getLatestOwnerByWorker("worker-1").getConnectionId());
+        assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
 
         manager.removeSession(secondChannel);
 
-        assertNull(presenceStore.getPresence("worker-1"));
-        assertFalse(presenceStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
+        assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
     @Test
@@ -201,9 +173,9 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
-    void shutdownMarksPresenceOfflineBeforeClearingRoutes() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
-        manager.setWorkerPresenceStore(presenceStore);
+    void shutdownReleasesRouteOwnerBeforeClearingRoutes() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        manager.setRouteOwnerStore(routeOwnerStore);
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
@@ -211,14 +183,14 @@ class ServerSessionManagerShutdownTest {
 
         manager.shutdown();
 
-        assertNull(presenceStore.getPresence("worker-1"));
-        assertFalse(presenceStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
+        assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
     @Test
-    void activeWebSocketSessionRefreshesPresenceLease() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore(1_200L);
-        manager.setWorkerPresenceStore(presenceStore);
+    void activeWebSocketSessionRefreshesRouteOwnerLease() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(1_200L);
+        manager.setRouteOwnerStore(routeOwnerStore);
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
@@ -226,25 +198,25 @@ class ServerSessionManagerShutdownTest {
 
         assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
             Thread.sleep(2_200L);
-            assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
+            assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
         });
     }
 
     @Test
-    void setWorkerPresenceStoreReprojectsActiveWebSocketSessions() {
-        InMemoryWorkerPresenceStore firstStore = new InMemoryWorkerPresenceStore(30_000L, "ws-node-1");
-        InMemoryWorkerPresenceStore secondStore = new InMemoryWorkerPresenceStore(30_000L, "ws-node-2");
-        manager.setWorkerPresenceStore(firstStore);
+    void setRouteOwnerStoreReprojectsActiveWebSocketSessions() {
+        InMemoryTransportRouteOwnerStore firstStore = new InMemoryTransportRouteOwnerStore(30_000L, "ws-node-1");
+        InMemoryTransportRouteOwnerStore secondStore = new InMemoryTransportRouteOwnerStore(30_000L, "ws-node-2");
+        manager.setRouteOwnerStore(firstStore);
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
         manager.addSession("route-1", "worker-1", channel, ctx);
-        manager.setWorkerPresenceStore(secondStore);
+        manager.setRouteOwnerStore(secondStore);
 
-        assertTrue(secondStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
-        assertEquals("route-1", secondStore.getPresence("worker-1").getRouteKey());
-        assertEquals("worker-1", secondStore.getPresence("worker-1").getConnectionId());
-        assertEquals("ws-node-2", secondStore.findOwners("worker-1").getFirst().transportNodeId());
+        assertTrue(secondStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertEquals("route-1", secondStore.getLatestOwnerByWorker("worker-1").getRouteKey());
+        assertEquals("worker-1", secondStore.getLatestOwnerByWorker("worker-1").getConnectionId());
+        assertEquals("ws-node-2", secondStore.findRouteOwners("worker-1").getFirst().transportNodeId());
         assertTrue(secondStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 

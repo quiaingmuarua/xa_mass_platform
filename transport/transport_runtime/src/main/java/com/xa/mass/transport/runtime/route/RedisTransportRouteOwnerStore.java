@@ -1,10 +1,10 @@
-package com.xa.mass.transport.runtime.presence;
+package com.xa.mass.transport.runtime.route;
 
-import com.xa.mass.transport.presence.WorkerDispatchRouteOwner;
-import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
-import com.xa.mass.transport.presence.WorkerPresence;
-import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
+import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
+import com.xa.mass.transport.route.TransportRouteOwnerRecord;
+import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import io.lettuce.core.Range;
 import io.lettuce.core.RedisClient;
@@ -26,12 +26,12 @@ import java.util.Set;
  * <p>The runtime owner is the routeKey-sharded owner hash. WorkerId keys are
  * derived projections for SDK/operator inspection APIs only.</p>
  */
-public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
+public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerStore,
         WorkerDispatchRouteOwnerView,
-        WorkerPresenceInspectionView,
+        TransportRouteOwnerInspectionView,
         AutoCloseable {
 
-    public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.PRESENCE;
+    public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.ROUTE_OWNER;
     private static final int SHARD_COUNT = 64;
     private static final String VERSION = "v2";
     private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
@@ -45,11 +45,11 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
     private final String transportInstanceId;
     private final boolean ownsClient;
 
-    public RedisWorkerPresenceStore(String redisUri, long leaseMillis) {
+    public RedisTransportRouteOwnerStore(String redisUri, long leaseMillis) {
         this(redisUri, DEFAULT_NAMESPACE_PREFIX, leaseMillis);
     }
 
-    public RedisWorkerPresenceStore(String redisUri, String namespacePrefix, long leaseMillis) {
+    public RedisTransportRouteOwnerStore(String redisUri, String namespacePrefix, long leaseMillis) {
         this(
                 RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 namespacePrefix,
@@ -59,7 +59,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
         );
     }
 
-    public RedisWorkerPresenceStore(String redisUri,
+    public RedisTransportRouteOwnerStore(String redisUri,
                                     String namespacePrefix,
                                     long leaseMillis,
                                     String transportInstanceId) {
@@ -72,7 +72,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
         );
     }
 
-    RedisWorkerPresenceStore(RedisClient redisClient,
+    RedisTransportRouteOwnerStore(RedisClient redisClient,
                              String namespacePrefix,
                              long leaseMillis,
                              String transportInstanceId,
@@ -87,14 +87,14 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
         );
     }
 
-    RedisWorkerPresenceStore(StatefulRedisConnection<String, String> connection,
+    RedisTransportRouteOwnerStore(StatefulRedisConnection<String, String> connection,
                              String namespacePrefix,
                              long leaseMillis,
                              String transportInstanceId) {
         this(null, connection, namespacePrefix, leaseMillis, transportInstanceId, false);
     }
 
-    private RedisWorkerPresenceStore(RedisClient redisClient,
+    private RedisTransportRouteOwnerStore(RedisClient redisClient,
                                      StatefulRedisConnection<String, String> connection,
                                      String namespacePrefix,
                                      long leaseMillis,
@@ -113,7 +113,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
     }
 
     @Override
-    public WorkerPresence claimRouteOwner(String workerId,
+    public TransportRouteOwnerRecord claimRouteOwner(String workerId,
                                           String adapterId,
                                           String routeKey,
                                           String connectionId,
@@ -123,7 +123,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
-        WorkerPresence next = new WorkerPresence(
+        TransportRouteOwnerRecord next = new TransportRouteOwnerRecord(
                 normalizedWorkerId,
                 normalizedAdapterId,
                 normalizedRouteKey,
@@ -138,7 +138,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
     }
 
     @Override
-    public WorkerPresence refreshHeartbeat(String workerId,
+    public TransportRouteOwnerRecord refreshHeartbeat(String workerId,
                                            String adapterId,
                                            String routeKey,
                                            String connectionId,
@@ -148,17 +148,17 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
         String normalizedRouteKey = normalizeNullable(routeKey);
         String normalizedConnectionId = normalizeNullable(connectionId);
         if (normalizedWorkerId == null || normalizedRouteKey == null || normalizedConnectionId == null) {
-            return getPresence(workerId);
+            return getLatestOwnerByWorker(workerId);
         }
-        WorkerPresence previous = readOwnerPresence(normalizedRouteKey);
+        TransportRouteOwnerRecord previous = readOwnerRecord(normalizedRouteKey);
         if (previous == null
                 || !normalizedWorkerId.equals(previous.getWorkerId())
                 || !normalizedAdapterId.equals(previous.getAdapterId())
                 || !normalizedConnectionId.equals(previous.getConnectionId())) {
-            return getPresence(normalizedWorkerId);
+            return getLatestOwnerByWorker(normalizedWorkerId);
         }
         long now = System.currentTimeMillis();
-        WorkerPresence next = new WorkerPresence(
+        TransportRouteOwnerRecord next = new TransportRouteOwnerRecord(
                     previous.getWorkerId(),
                     previous.getAdapterId(),
                     previous.getRouteKey(),
@@ -173,7 +173,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
     }
 
     @Override
-    public WorkerPresence releaseRouteOwner(String workerId,
+    public TransportRouteOwnerRecord releaseRouteOwner(String workerId,
                                             String adapterId,
                                             String routeKey,
                                             String connectionId,
@@ -182,20 +182,20 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
-        WorkerPresence previous = readOwnerPresence(normalizedRouteKey);
+        TransportRouteOwnerRecord previous = readOwnerRecord(normalizedRouteKey);
         if (previous == null
                 || normalizedConnectionId == null
                 || !normalizedWorkerId.equals(previous.getWorkerId())
                 || !normalizedAdapterId.equals(previous.getAdapterId())
                 || !normalizedConnectionId.equals(previous.getConnectionId())) {
-            return getPresence(normalizedWorkerId);
+            return getLatestOwnerByWorker(normalizedWorkerId);
         }
         removeOwner(previous);
         return previous;
     }
 
     @Override
-    public WorkerPresence getPresence(String workerId) {
+    public TransportRouteOwnerRecord getLatestOwnerByWorker(String workerId) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null) {
             return null;
@@ -204,16 +204,16 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
         if (routeKey == null || routeKey.isBlank()) {
             return null;
         }
-        WorkerPresence presence = readOwnerPresence(routeKey);
-        if (presence == null) {
+        TransportRouteOwnerRecord owner = readOwnerRecord(routeKey);
+        if (owner == null) {
             commands.del(workerRouteKey(normalizedWorkerId));
             return null;
         }
-        if (!normalizedWorkerId.equals(presence.getWorkerId())) {
+        if (!normalizedWorkerId.equals(owner.getWorkerId())) {
             clearWorkerRouteProjection(normalizedWorkerId, routeKey);
             return null;
         }
-        return presence;
+        return owner;
     }
 
     @Override
@@ -231,23 +231,23 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
 
     @Override
     public Optional<WorkerDispatchRouteOwner> currentOwner(String routeKey) {
-        WorkerPresence presence = readOwnerPresence(normalizeNullable(routeKey));
-        if (presence == null) {
+        TransportRouteOwnerRecord owner = readOwnerRecord(normalizeNullable(routeKey));
+        if (owner == null) {
             return Optional.empty();
         }
-        return Optional.of(WorkerDispatchRouteOwner.fromPresence(presence));
+        return Optional.of(WorkerDispatchRouteOwner.fromRecord(owner));
     }
 
     @Override
-    public List<WorkerPresence> listActivePresences() {
-        List<WorkerPresence> presences = new ArrayList<>();
+    public List<TransportRouteOwnerRecord> listActiveRouteOwners() {
+        List<TransportRouteOwnerRecord> owners = new ArrayList<>();
         for (String routeKey : ownerRouteKeys()) {
-            WorkerPresence presence = readOwnerPresence(routeKey);
-            if (presence != null && presence.isLeaseActive(System.currentTimeMillis())) {
-                presences.add(presence);
+            TransportRouteOwnerRecord owner = readOwnerRecord(routeKey);
+            if (owner != null && owner.isLeaseActive(System.currentTimeMillis())) {
+                owners.add(owner);
             }
         }
-        return List.copyOf(presences);
+        return List.copyOf(owners);
     }
 
     @Override
@@ -261,11 +261,11 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
                     Range.create(Double.NEGATIVE_INFINITY, (double) now)
             );
             for (String routeKey : due) {
-                WorkerPresence presence = readOwnerPresence(routeKey);
-                if (presence != null && !presence.isLeaseActive(now)) {
-                    removeOwner(presence);
+                TransportRouteOwnerRecord owner = readOwnerRecord(routeKey);
+                if (owner != null && !owner.isLeaseActive(now)) {
+                    removeOwner(owner);
                     stale++;
-                } else if (presence == null) {
+                } else if (owner == null) {
                     commands.zrem(deadlineKey, routeKey);
                 }
             }
@@ -300,25 +300,25 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
         }
     }
 
-    private WorkerPresence readOwnerPresence(String routeKey) {
+    private TransportRouteOwnerRecord readOwnerRecord(String routeKey) {
         String normalizedRouteKey = normalizeNullable(routeKey);
         if (normalizedRouteKey == null) {
             return null;
         }
         String encoded = commands.hget(ownerKey(normalizedRouteKey), normalizedRouteKey);
-        return decodePresence(encoded);
+        return decodeOwnerRecord(encoded);
     }
 
-    private void persistOwner(WorkerPresence presence) {
-        commands.hset(ownerKey(presence.getRouteKey()), presence.getRouteKey(), encodePresence(presence));
-        commands.set(workerRouteKey(presence.getWorkerId()), presence.getRouteKey());
-        commands.zadd(deadlineKey(presence.getRouteKey()), presence.getLeaseExpireAtEpochMillis(), presence.getRouteKey());
+    private void persistOwner(TransportRouteOwnerRecord owner) {
+        commands.hset(ownerKey(owner.getRouteKey()), owner.getRouteKey(), encodeOwnerRecord(owner));
+        commands.set(workerRouteKey(owner.getWorkerId()), owner.getRouteKey());
+        commands.zadd(deadlineKey(owner.getRouteKey()), owner.getLeaseExpireAtEpochMillis(), owner.getRouteKey());
     }
 
-    private void removeOwner(WorkerPresence presence) {
-        commands.hdel(ownerKey(presence.getRouteKey()), presence.getRouteKey());
-        commands.zrem(deadlineKey(presence.getRouteKey()), presence.getRouteKey());
-        clearWorkerRouteProjection(presence.getWorkerId(), presence.getRouteKey());
+    private void removeOwner(TransportRouteOwnerRecord owner) {
+        commands.hdel(ownerKey(owner.getRouteKey()), owner.getRouteKey());
+        commands.zrem(deadlineKey(owner.getRouteKey()), owner.getRouteKey());
+        clearWorkerRouteProjection(owner.getWorkerId(), owner.getRouteKey());
     }
 
     private void clearWorkerRouteProjection(String workerId, String routeKey) {
@@ -365,21 +365,21 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
         return Math.floorMod(normalizeRequired(routeKey, "routeKey").hashCode(), SHARD_COUNT);
     }
 
-    private static String encodePresence(WorkerPresence presence) {
+    private static String encodeOwnerRecord(TransportRouteOwnerRecord owner) {
         return String.join("|",
                 VERSION,
-                encodeToken(presence.getWorkerId()),
-                encodeToken(presence.getAdapterId()),
-                encodeToken(presence.getRouteKey()),
-                Long.toString(presence.getLastHeartbeatEpochMillis()),
-                Long.toString(presence.getLeaseExpireAtEpochMillis()),
-                encodeToken(presence.getTransportNodeId()),
-                encodeNullableToken(presence.getConnectionId()),
-                Long.toString(presence.getUpdatedAtEpochMillis())
+                encodeToken(owner.getWorkerId()),
+                encodeToken(owner.getAdapterId()),
+                encodeToken(owner.getRouteKey()),
+                Long.toString(owner.getLastHeartbeatEpochMillis()),
+                Long.toString(owner.getLeaseExpireAtEpochMillis()),
+                encodeToken(owner.getTransportNodeId()),
+                encodeNullableToken(owner.getConnectionId()),
+                Long.toString(owner.getUpdatedAtEpochMillis())
         );
     }
 
-    private static WorkerPresence decodePresence(String encoded) {
+    private static TransportRouteOwnerRecord decodeOwnerRecord(String encoded) {
         if (encoded == null || encoded.isBlank()) {
             return null;
         }
@@ -387,7 +387,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore,
         if (parts.length != 9 || !VERSION.equals(parts[0])) {
             return null;
         }
-        return new WorkerPresence(
+        return new TransportRouteOwnerRecord(
                 decodeToken(parts[1], "workerId"),
                 decodeToken(parts[2], "adapterId"),
                 decodeToken(parts[3], "routeKey"),

@@ -5,7 +5,7 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.Objects;
@@ -19,7 +19,7 @@ public final class TransportAdapterBootstrapContext {
     private final WorkerEndpointRegistry endpointRegistry;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
-    private final WorkerPresenceStore workerPresenceStore;
+    private final TransportRouteOwnerStore routeOwnerStore;
     private final TransportDeliveryService deliveryService;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
     private final TransportRouteKeyResolver routeKeyResolver;
@@ -31,14 +31,14 @@ public final class TransportAdapterBootstrapContext {
     public TransportAdapterBootstrapContext(WorkerEndpointRegistry endpointRegistry,
                                             TaskResultIngestChannel taskResultIngestChannel,
                                             WorkerSystemEventChannel systemEventChannel,
-                                            WorkerPresenceStore workerPresenceStore,
+                                            TransportRouteOwnerStore routeOwnerStore,
                                             TransportDeliveryService deliveryService,
                                             RuntimeTaskExecutor runtimeTaskExecutor,
                                             TransportRouteKeyResolver routeKeyResolver) {
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
-        this.workerPresenceStore = Objects.requireNonNull(workerPresenceStore, "workerPresenceStore");
+        this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
         this.routeKeyResolver = Objects.requireNonNull(routeKeyResolver, "routeKeyResolver");
@@ -56,8 +56,8 @@ public final class TransportAdapterBootstrapContext {
         return systemEventChannel;
     }
 
-    public WorkerPresenceStore getWorkerPresenceStore() {
-        return workerPresenceStore;
+    public TransportRouteOwnerStore getRouteOwnerStore() {
+        return routeOwnerStore;
     }
 
     public TransportDeliveryService getDeliveryService() {

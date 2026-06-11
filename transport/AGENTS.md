@@ -28,10 +28,10 @@ entry for `transport/`.
 - raw/debug worker side-channels are also adapter-scoped. They may resolve one
   concrete active route for a worker, but once resolved they must dispatch via
   the serving adapter identity instead of reviving route-only shared semantics.
-- worker route-owner heartbeat evidence now lives in a transport-owned presence
-  plane. Adapters write `WorkerPresenceStore`; engine consumes
+- worker route-owner heartbeat evidence now lives in a transport-owned
+  route-owner plane. Adapters write `TransportRouteOwnerStore`; engine consumes
   `WorkerDispatchRouteOwnerView` and must not re-own transport route evidence
-  through worker heartbeat folding. Presence ownership is connection-aware:
+  through worker heartbeat folding. Route-owner writes are connection-aware:
   reconnect may replace the current owner, heartbeat only extends the matching
   owner lease, and release only removes the owner when the caller still holds
   the stored `connectionId` / public `sessionToken`.
@@ -107,7 +107,7 @@ Use this order for transport changes:
 Prefer these after transport changes:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,TransportRoutingTaskDispatchListenerTest,WorkerDispatchRouteSelectorTest,NodeTargetedTaskDispatchSubmitterTest
+./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,TransportRoutingTaskDispatchListenerTest,TransportRouteOwnerViewTest,NodeTargetedTaskDispatchSubmitterTest
 ./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerRouteKeyCodecTest,WebSocketInputProcessorTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest,SocketSessionManagerTest,ServerSessionManagerShutdownTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
@@ -116,5 +116,5 @@ Acceptance focus:
 
 - dispatch hits the correct adapter by `adapterId`
 - polling `poll` and result submission work
-- realtime direct-send and presence/online perception work
+- realtime direct-send and route-owner reachability perception work
 - result ingest remains transport-only and does not mutate engine lifecycle directly

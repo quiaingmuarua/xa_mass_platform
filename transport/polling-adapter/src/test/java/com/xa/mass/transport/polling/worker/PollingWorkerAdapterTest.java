@@ -1,6 +1,5 @@
 package com.xa.mass.transport.polling.worker;
 
-import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import com.xa.mass.transport.channel.TaskPullStatus;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
@@ -10,7 +9,7 @@ import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -80,33 +79,32 @@ class PollingWorkerAdapterTest {
     }
 
     @Test
-    void workerPresenceAnnouncementsUpdateTransportOwnedPresence() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore(30_000L, "poll-node-1");
-        PollingWorkerAdapter adapter = adapter(presenceStore);
+    void routeOwnerAnnouncementsUpdateTransportOwnedRouteOwnerLease() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "poll-node-1");
+        PollingWorkerAdapter adapter = adapter(routeOwnerStore);
 
         adapter.announceWorkerOnline("worker-1", "route-1", "conn-1", "poll connected");
 
-        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
-        assertEquals("poll-node-1", presenceStore.findOwners("worker-1").getFirst().transportNodeId());
-        assertTrue(presenceStore.hasActiveRouteOwner(PollingWorkerAdapter.PROTOCOL, "route-1"));
+        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertEquals("poll-node-1", routeOwnerStore.findRouteOwners("worker-1").getFirst().transportNodeId());
+        assertTrue(routeOwnerStore.hasActiveRouteOwner(PollingWorkerAdapter.PROTOCOL, "route-1"));
 
-        adapter.publishWorkerHeartbeat("worker-1", "route-1", "conn-1", "poll heartbeat");
-        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
+        adapter.refreshRouteOwnerHeartbeat("worker-1", "route-1", "conn-1", "poll heartbeat");
+        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
 
         adapter.announceWorkerOffline("worker-1", "route-1", "conn-1", "poll disconnect");
 
-        assertNull(presenceStore.getPresence("worker-1"));
-        assertTrue(presenceStore.listActivePresences().isEmpty());
+        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
+        assertTrue(routeOwnerStore.listActiveRouteOwners().isEmpty());
     }
 
     private PollingWorkerAdapter adapter() {
-        return adapter(new InMemoryWorkerPresenceStore());
+        return adapter(new InMemoryTransportRouteOwnerStore());
     }
 
-    private PollingWorkerAdapter adapter(InMemoryWorkerPresenceStore presenceStore) {
+    private PollingWorkerAdapter adapter(InMemoryTransportRouteOwnerStore routeOwnerStore) {
         return new PollingWorkerAdapter(
-                NoopWorkerSystemEventChannel.INSTANCE,
-                presenceStore,
+                routeOwnerStore,
                 new TransportDeliveryService(
                         new InMemoryTransportDeliveryStore(
                                 InMemoryTransportDeliveryStore.DEFAULT_MAX_QUEUED_ITEMS,

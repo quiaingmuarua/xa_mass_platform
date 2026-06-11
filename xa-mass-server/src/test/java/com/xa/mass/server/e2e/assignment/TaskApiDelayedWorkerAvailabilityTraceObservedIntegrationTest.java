@@ -64,14 +64,14 @@ class TaskApiDelayedWorkerAvailabilityTraceObservedIntegrationTest extends Abstr
 
         String lateWorkerId = "late-worker-trace-0";
         registerSdkWorkerWithContext(lateWorkerId, "us");
-        assertFalse(app.isWorkerOnline(lateWorkerId),
+        assertFalse(app.isWorkerReachable(lateWorkerId),
                 "worker registration must not create delayed worker transport presence");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         SampleWorkerWebSocketClient client = sampleWebSocketClient(uri, "us", lateWorkerId);
         try {
             assertClientConnects(client, "late worker trace client failed to connect");
-            waitUntil(() -> app.isWorkerOnline(lateWorkerId),
+            waitUntil(() -> app.isWorkerReachable(lateWorkerId),
                     "late worker connect must surface transport presence online");
 
             RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 500L);
@@ -86,7 +86,7 @@ class TaskApiDelayedWorkerAvailabilityTraceObservedIntegrationTest extends Abstr
         } finally {
             client.disconnect();
         }
-        waitUntil(() -> !app.isWorkerOnline(lateWorkerId),
+        waitUntil(() -> !app.isWorkerReachable(lateWorkerId),
                 "late worker disconnect must converge transport presence offline");
     }
 

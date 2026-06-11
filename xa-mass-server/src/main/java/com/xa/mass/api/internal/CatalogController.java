@@ -86,7 +86,7 @@ public class CatalogController {
     @GetMapping("/event-capabilities")
     public ResponseEntity<ApiResponse<List<EventCapabilityView>>> listEventCapabilities() {
         List<WorkerSnapshot> workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
-        Set<String> onlineWorkerIdSet = resolveOnlineWorkerIds(workers);
+        Set<String> onlineWorkerIdSet = resolveReachableWorkerIds(workers);
         Map<String, WorkerGroupSnapshot> groupsById = workerGroupsById();
         List<EventCapabilityView> items = catalog.listEvents().stream()
                 .sorted(Comparator.comparing(EventDefinition::getCode, String::compareToIgnoreCase))
@@ -95,7 +95,7 @@ public class CatalogController {
                     List<String> groupIds = groupsForEvent(groupsById, event.getCode()).stream()
                             .map(WorkerGroupSnapshot::groupId)
                             .toList();
-                    List<String> onlineWorkerIds = workers.stream()
+                    List<String> reachableWorkerIds = workers.stream()
                             .filter(worker -> groupIds.contains(worker.getWorkerGroupId()))
                             .filter(worker -> onlineWorkerIdSet.contains(worker.getWorkerId()))
                             .map(worker -> worker.getWorkerId())
@@ -123,10 +123,10 @@ public class CatalogController {
                             directRuntime ? "DIRECT_RUNTIME" : "TASK_BACKED",
                             normalizeProjectCodes(event.getProjectCodes()),
                             workerIds,
-                            onlineWorkerIds,
+                            reachableWorkerIds,
                             directRuntime,
-                            !onlineWorkerIds.isEmpty(),
-                            directRuntime || !onlineWorkerIds.isEmpty()
+                            !reachableWorkerIds.isEmpty(),
+                            directRuntime || !reachableWorkerIds.isEmpty()
                     );
                 })
                 .toList();
@@ -142,7 +142,7 @@ public class CatalogController {
                 WorkerCapabilityViewSupport.groupConnectionsByWorker(runtimeDiagnostics);
         Map<String, WorkerGroupSnapshot> groupsById = workerGroupsById();
         List<WorkerSnapshot> workers = workerQueries.getAllWorkers();
-        Set<String> onlineWorkerIds = resolveOnlineWorkerIds(workers);
+        Set<String> reachableWorkerIds = resolveReachableWorkerIds(workers);
         Set<String> lockedWorkerIds = resolveLockedWorkerIds(workers);
         List<Map<String, Object>> items = workers.stream()
                 .sorted(Comparator.comparing(worker -> worker.getWorkerId(), Comparator.nullsLast(String::compareTo)))
@@ -162,7 +162,7 @@ public class CatalogController {
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
-                    item.put("online", onlineWorkerIds.contains(worker.getWorkerId()));
+                    item.put("online", reachableWorkerIds.contains(worker.getWorkerId()));
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
                     item.put("locked", lockedWorkerIds.contains(worker.getWorkerId()));
@@ -179,7 +179,7 @@ public class CatalogController {
             return ResponseEntity.ok(ApiResponse.success(List.of()));
         }
         List<WorkerSnapshot> workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
-        Set<String> onlineWorkerIds = resolveOnlineWorkerIds(workers);
+        Set<String> reachableWorkerIds = resolveReachableWorkerIds(workers);
         Set<String> lockedWorkerIds = resolveLockedWorkerIds(workers);
         List<AdapterNodeSnapshot> adapterNodes = workerTopology.listAdapterNodes();
         List<NodeGroupBindingSnapshot> nodeGroupBindings = workerTopology.listNodeGroupBindings();
@@ -199,7 +199,7 @@ public class CatalogController {
                         workers,
                         adapterNodesById,
                         nodeGroupBindings,
-                        onlineWorkerIds,
+                        reachableWorkerIds,
                         lockedWorkerIds))
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(items));
@@ -228,7 +228,7 @@ public class CatalogController {
                 .toList();
     }
 
-    private Set<String> resolveOnlineWorkerIds(List<WorkerSnapshot> workers) {
+    private Set<String> resolveReachableWorkerIds(List<WorkerSnapshot> workers) {
         if (workerQueries == null || workers == null || workers.isEmpty()) {
             return Set.of();
         }
@@ -242,11 +242,11 @@ public class CatalogController {
         if (visibleWorkerIds.isEmpty()) {
             return Set.of();
         }
-        List<String> onlineWorkerIds = workerQueries.listOnlineWorkerIds();
-        if (onlineWorkerIds == null || onlineWorkerIds.isEmpty()) {
+        List<String> reachableWorkerIds = workerQueries.listReachableWorkerIds();
+        if (reachableWorkerIds == null || reachableWorkerIds.isEmpty()) {
             return Set.of();
         }
-        return onlineWorkerIds.stream()
+        return reachableWorkerIds.stream()
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(visibleWorkerIds::contains)
@@ -313,7 +313,7 @@ public class CatalogController {
                                                       List<WorkerSnapshot> workers,
                                                       Map<String, AdapterNodeSnapshot> adapterNodesById,
                                                       List<NodeGroupBindingSnapshot> nodeGroupBindings,
-                                                      Set<String> onlineWorkerIds,
+                                                      Set<String> reachableWorkerIds,
                                                       Set<String> lockedWorkerIds) {
         List<WorkerSnapshot> groupWorkers = workers.stream()
                 .filter(worker -> group.groupId().equals(worker.getWorkerGroupId()))
@@ -339,7 +339,7 @@ public class CatalogController {
                         LinkedHashMap::new,
                         java.util.stream.Collectors.counting()));
         Map<String, Long> transportOnlineCounts = groupWorkers.stream()
-                .filter(worker -> onlineWorkerIds.contains(worker.getWorkerId()))
+                .filter(worker -> reachableWorkerIds.contains(worker.getWorkerId()))
                 .collect(java.util.stream.Collectors.groupingBy(
                         worker -> normalizeTransport(worker.getOnlineStrategy()),
                         LinkedHashMap::new,
@@ -360,7 +360,7 @@ public class CatalogController {
 
         long lockedCount = groupWorkers.stream().filter(worker -> lockedWorkerIds.contains(worker.getWorkerId())).count();
         long dispatchEligibleCount = groupWorkers.stream()
-                .filter(worker -> onlineWorkerIds.contains(worker.getWorkerId()))
+                .filter(worker -> reachableWorkerIds.contains(worker.getWorkerId()))
                 .filter(worker -> !lockedWorkerIds.contains(worker.getWorkerId()))
                 .filter(worker -> hasAvailableBinding(worker, bindings, adapterNodesById))
                 .count();

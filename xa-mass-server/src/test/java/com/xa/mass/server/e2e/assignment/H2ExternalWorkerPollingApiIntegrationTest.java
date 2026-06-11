@@ -112,7 +112,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST,
                 presenceBody(sessionToken, "jdbc-storage-online"), workerHeaders));
-        waitUntil(() -> app.isWorkerOnline(workerId), "worker transport presence should be online before task approval");
+        waitUntil(() -> app.isWorkerReachable(workerId), "worker transport presence should be online before task approval");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "crawlerApp");
@@ -180,7 +180,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST,
                 presenceBody(sessionToken, "jdbc-storage-offline"), workerHeaders));
-        waitUntil(() -> !app.isWorkerOnline(workerId), "worker transport presence should be offline after explicit disconnect");
+        waitUntil(() -> !app.isWorkerReachable(workerId), "worker transport presence should be offline after explicit disconnect");
 
         assertJdbcProjection(taskId);
     }

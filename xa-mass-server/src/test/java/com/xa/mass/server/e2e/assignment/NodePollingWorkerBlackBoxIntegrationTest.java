@@ -138,8 +138,8 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eT
         assertTrue(eventCapabilities.stream().anyMatch(item ->
                 "crawler.fetch-page".equals(item.get("eventCode"))
                         && "TASK_BACKED".equals(item.get("invocationModel"))
-                        && item.get("onlineWorkerIds") instanceof List<?>
-                        && ((List<?>) item.get("onlineWorkerIds")).contains(workerId)
+                        && item.get("reachableWorkerIds") instanceof List<?>
+                        && ((List<?>) item.get("reachableWorkerIds")).contains(workerId)
         ));
     }
 

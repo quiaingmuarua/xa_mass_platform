@@ -1,31 +1,22 @@
 package com.xa.mass.transport.runtime.worker;
 
-
-import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
-import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.worker.runtime.WorkerManager;
-import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
-import com.xa.mass.transport.worker.WorkerAdapter;
-import com.xa.mass.transport.runtime.TransportBinding;
-import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
-import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
+import com.xa.mass.transport.runtime.TransportDispatchTarget;
+import com.xa.mass.transport.runtime.TransportDispatchTargetResolver;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchEnvelopeFactory;
+import com.xa.mass.transport.worker.WorkerAdapter;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -39,163 +30,48 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransportRoutingTaskDispatchListenerTest {
+
     private static final String TEST_WORKER_GROUP_ID = "test-workers";
 
     @Test
-    void routesDispatchByWorkerOnlineStrategy() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-
-        Worker webSocketWorker = new Worker();
-        webSocketWorker.setWorkerId("ws-worker");
-        webSocketWorker.setAdapterId("websocket");
-        webSocketWorker.setOnlineStrategy(WorkerTransportHints.REALTIME);
-        addWorker(workerManager, webSocketWorker);
-
-        Worker pollingWorker = new Worker();
-        pollingWorker.setWorkerId("poll-worker");
-        pollingWorker.setOnlineStrategy(WorkerTransportHints.POLLING);
-        addWorker(workerManager, pollingWorker);
-
+    void routesDispatchByResolvedOpaqueTransportTarget() {
         RecordingAdapter webSocketAdapter = new RecordingAdapter("websocket", WorkerTransportHints.REALTIME);
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
-        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                workerManager,
-                runtimeRegistry(workerManager, webSocketAdapter, pollingAdapter)
-        );
+        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(resolver(
+                target("ws-worker", webSocketAdapter, "websocket", "opaque:ws-route"),
+                target("poll-worker", pollingAdapter, WorkerTransportHints.POLLING, "opaque:poll-route")
+        ));
 
-        Task task = new Task();
-        task.setTid("task-1");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(
-                binding("task-1", "msg-ws", "attempt-ws", "ws-worker", "batch-ws"),
-                binding("task-1", "msg-poll", "attempt-poll", "poll-worker", "batch-poll")
+        listener.onTaskDispatchBatch(context(), List.of(
+                binding("msg-ws", "attempt-ws", "ws-worker", "batch-ws"),
+                binding("msg-poll", "attempt-poll", "poll-worker", "batch-poll")
         ));
 
         assertEquals(List.of("msg-ws"), webSocketAdapter.dispatchedMessageIds);
         assertEquals(List.of("msg-poll"), pollingAdapter.dispatchedMessageIds);
-        assertEquals(List.of(routeKey("ws-worker")), webSocketAdapter.dispatchedRouteKeys());
-        assertEquals(List.of(routeKey("poll-worker")), pollingAdapter.dispatchedRouteKeys());
+        assertEquals(List.of("opaque:ws-route"), webSocketAdapter.dispatchedRouteKeys());
+        assertEquals(List.of("opaque:poll-route"), pollingAdapter.dispatchedRouteKeys());
         assertEquals(List.of(DispatchOutcomeStatus.SENT), webSocketAdapter.outcomeStatuses());
         assertEquals(List.of(DispatchOutcomeStatus.SENT), pollingAdapter.outcomeStatuses());
     }
 
     @Test
-    void routesDispatchByCanonicalTransportHintInsteadOfAdapterProtocolLabel() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-
-        Worker worker = new Worker();
-        worker.setWorkerId("ws-worker");
-        worker.setAdapterId("websocket-v2");
-        worker.setOnlineStrategy(WorkerTransportHints.REALTIME);
-        addWorker(workerManager, worker);
-
-        RecordingAdapter realtimeAdapter = new RecordingAdapter("websocket-v2", WorkerTransportHints.REALTIME);
-        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                workerManager,
-                runtimeRegistry(workerManager, realtimeAdapter)
-        );
-
-        Task task = new Task();
-        task.setTid("task-1");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(
-                binding("task-1", "msg-rt", "attempt-rt", "ws-worker", "batch-rt")
-        ));
-
-        assertEquals(List.of("msg-rt"), realtimeAdapter.dispatchedMessageIds);
-    }
-
-    @Test
-    void rejectsDispatchWhenWorkerTransportIsMissing() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-
-        Worker worker = new Worker();
-        worker.setWorkerId("missing-transport-worker");
-        addWorker(workerManager, worker);
-
-        RecordingAdapter webSocketAdapter = new RecordingAdapter("websocket", WorkerTransportHints.REALTIME);
-        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                workerManager,
-                runtimeRegistry(workerManager, webSocketAdapter)
-        );
-
-        Task task = new Task();
-        task.setTid("task-1");
+    void rejectsDispatchWhenResolvedTransportTargetIsMissing() {
+        TransportRoutingTaskDispatchListener listener =
+                new TransportRoutingTaskDispatchListener((task, binding) -> null);
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                () -> listener.onTaskDispatchBatch(taskContext(task), List.of(
-                        binding("task-1", "msg-1", "attempt-1", "missing-transport-worker", "batch-1")
+                () -> listener.onTaskDispatchBatch(context(), List.of(
+                        binding("msg-1", "attempt-1", "worker-1", "batch-1")
                 ))
         );
-        assertEquals("Cannot resolve transport binding for worker missing-transport-worker: transportHint must not be blank",
+        assertEquals("Cannot dispatch task item because transport target is missing: workerId=worker-1",
                 error.getMessage());
-    }
-
-    @Test
-    void rejectsDispatchWhenWorkerTransportIsUnsupported() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-
-        Worker worker = new Worker();
-        worker.setWorkerId("unsupported-transport-worker");
-        worker.setOnlineStrategy("grpc");
-        addWorker(workerManager, worker);
-
-        RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
-        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                workerManager,
-                runtimeRegistry(workerManager, pollingAdapter)
-        );
-
-        Task task = new Task();
-        task.setTid("task-1");
-
-        IllegalStateException error = assertThrows(
-                IllegalStateException.class,
-                () -> listener.onTaskDispatchBatch(taskContext(task), List.of(
-                        binding("task-1", "msg-1", "attempt-1", "unsupported-transport-worker", "batch-1")
-                ))
-        );
-        assertEquals("Cannot resolve transport binding for worker unsupported-transport-worker: Unsupported worker transportHint 'grpc'; available transportHints=[polling]",
-                error.getMessage());
-    }
-
-    @Test
-    void nonSuccessDispatchOutcomesDoNotMutateTaskMessageStatus() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-
-        Worker worker = new Worker();
-        worker.setWorkerId("poll-worker");
-        worker.setOnlineStrategy(WorkerTransportHints.POLLING);
-        addWorker(workerManager, worker);
-
-        RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
-        pollingAdapter.overrideStatus = DispatchOutcomeStatus.BACKPRESSURE_REJECTED;
-        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                workerManager,
-                runtimeRegistry(workerManager, pollingAdapter)
-        );
-
-        Task task = new Task();
-        task.setTid("task-1");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(
-                binding("task-1", "msg-backpressure", "attempt-backpressure", "poll-worker", "batch-1")
-        ));
-
-        assertEquals(List.of("msg-backpressure"), pollingAdapter.dispatchedMessageIds);
-        assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE_REJECTED), pollingAdapter.outcomeStatuses());
     }
 
     @Test
     void retryableDispatchOutcomesTriggerCompensationForMatchedBindings() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-
-        Worker worker = new Worker();
-        worker.setWorkerId("poll-worker");
-        worker.setOnlineStrategy(WorkerTransportHints.POLLING);
-        addWorker(workerManager, worker);
-
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         pollingAdapter.overrideStatus = DispatchOutcomeStatus.ENDPOINT_OFFLINE;
         List<List<TaskDispatchBinding>> compensated = new CopyOnWriteArrayList<>();
@@ -204,16 +80,12 @@ class TransportRoutingTaskDispatchListenerTest {
             return true;
         };
         TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                workerManager,
-                runtimeRegistry(workerManager, pollingAdapter),
+                resolver(target("poll-worker", pollingAdapter, WorkerTransportHints.POLLING, "opaque:poll-route")),
                 failureHandler
         );
 
-        Task task = new Task();
-        task.setTid("task-1");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(
-                binding("task-1", "msg-offline", "attempt-offline", "poll-worker", "batch-1")
+        listener.onTaskDispatchBatch(context(), List.of(
+                binding("msg-offline", "attempt-offline", "poll-worker", "batch-1")
         ));
 
         assertEquals(1, compensated.size());
@@ -223,27 +95,16 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void runtimeOwnsEnvelopeIdentityAndCreatedTime() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-
-        Worker worker = new Worker();
-        worker.setWorkerId("poll-worker");
-        worker.setOnlineStrategy(WorkerTransportHints.POLLING);
-        addWorker(workerManager, worker);
-
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         AtomicLong now = new AtomicLong(123456789L);
         TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                workerManager,
-                runtimeRegistry(workerManager, pollingAdapter),
+                resolver(target("poll-worker", pollingAdapter, WorkerTransportHints.POLLING, "opaque:poll-route")),
                 null,
                 new TransportDispatchEnvelopeFactory(() -> "delivery-1", now::get)
         );
 
-        Task task = new Task();
-        task.setTid("task-1");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(
-                binding("task-1", "msg-1", "attempt-1", "poll-worker", "batch-1")
+        listener.onTaskDispatchBatch(context(), List.of(
+                binding("msg-1", "attempt-1", "poll-worker", "batch-1")
         ));
 
         assertEquals("delivery-1", pollingAdapter.outcomes.get(0).getDeliveryId());
@@ -251,73 +112,7 @@ class TransportRoutingTaskDispatchListenerTest {
     }
 
     @Test
-    void routeKeyComesFromTransportBindingResolverInsteadOfBeingHardcodedToWorkerId() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-
-        Worker worker = new Worker();
-        worker.setWorkerId("poll-worker");
-        worker.setOnlineStrategy(WorkerTransportHints.POLLING);
-        addWorker(workerManager, worker);
-
-        RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
-        TransportBinding binding = TransportBinding.builder(pollingAdapter)
-                .routeKeyResolver((dispatchBinding, routeContext) -> "endpoint:" + routeContext.batchId())
-                .build();
-        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                workerManager,
-                new TransportRuntimeRegistry(
-                        workerManager,
-                        report -> true,
-                        new NoopWorkerSystemEventChannel(),
-                        new InMemoryWorkerPresenceStore(),
-                        List.of(binding)
-                )
-        );
-
-        Task task = new Task();
-        task.setTid("task-1");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(
-                binding("task-1", "msg-1", "attempt-1", "poll-worker", "batch-9")
-        ));
-
-        assertEquals("endpoint:batch-9", pollingAdapter.lastEnvelopes.get(0).getRouteKey());
-    }
-
-    @Test
-    void batchReusesResolvedDispatchTargetForRepeatedWorkerBindings() {
-        CountingWorkerResourceRuntime workerResourceRuntime =
-                new CountingWorkerResourceRuntime(worker("poll-worker", null, WorkerTransportHints.POLLING));
-        RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
-        TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                workerResourceRuntime,
-                new TransportRuntimeRegistry(
-                        workerResourceRuntime,
-                        report -> true,
-                        new NoopWorkerSystemEventChannel(),
-                        new InMemoryWorkerPresenceStore(),
-                        List.of(canonicalRouteBinding(pollingAdapter))
-                )
-        );
-
-        Task task = new Task();
-        task.setTid("task-1");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(
-                binding("task-1", "msg-1", "attempt-1", "poll-worker", "batch-1"),
-                binding("task-1", "msg-2", "attempt-2", "poll-worker", "batch-2")
-        ));
-
-        assertEquals(1, workerResourceRuntime.lookupCount(), "worker lookup should be reused within one dispatch batch");
-        assertEquals(List.of("msg-1", "msg-2"), pollingAdapter.dispatchedMessageIds);
-    }
-
-    @Test
     void dispatchesAdapterGroupsConcurrentlyWhenRuntimeExecutorIsAvailable() throws Exception {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-        addWorker(workerManager, worker("ws-worker", "websocket", WorkerTransportHints.REALTIME));
-        addWorker(workerManager, worker("poll-worker", null, WorkerTransportHints.POLLING));
-
         AtomicInteger activeDispatches = new AtomicInteger();
         AtomicInteger maxConcurrentDispatches = new AtomicInteger();
         CountDownLatch started = new CountDownLatch(2);
@@ -338,18 +133,17 @@ class TransportRoutingTaskDispatchListenerTest {
 
         try (VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("dispatch-fanout-test-", 8)) {
             TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                    workerManager,
-                    runtimeRegistry(workerManager, realtimeAdapter, pollingAdapter),
+                    resolver(
+                            target("ws-worker", realtimeAdapter, "websocket", "opaque:ws-route"),
+                            target("poll-worker", pollingAdapter, WorkerTransportHints.POLLING, "opaque:poll-route")
+                    ),
                     null,
                     executor
             );
 
-            Task task = new Task();
-            task.setTid("task-1");
-
-            listener.onTaskDispatchBatch(taskContext(task), List.of(
-                    binding("task-1", "msg-ws", "attempt-ws", "ws-worker", "batch-ws"),
-                    binding("task-1", "msg-poll", "attempt-poll", "poll-worker", "batch-poll")
+            listener.onTaskDispatchBatch(context(), List.of(
+                    binding("msg-ws", "attempt-ws", "ws-worker", "batch-ws"),
+                    binding("msg-poll", "attempt-poll", "poll-worker", "batch-poll")
             ));
         }
 
@@ -358,10 +152,6 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void adapterDispatchFailureBecomesRetryableOutcomeWithoutBlockingOtherGroups() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-        addWorker(workerManager, worker("ws-worker", "websocket", WorkerTransportHints.REALTIME));
-        addWorker(workerManager, worker("poll-worker", null, WorkerTransportHints.POLLING));
-
         ThrowingAdapter realtimeAdapter = new ThrowingAdapter("websocket", WorkerTransportHints.REALTIME);
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         List<List<TaskDispatchBinding>> compensated = new CopyOnWriteArrayList<>();
@@ -370,23 +160,47 @@ class TransportRoutingTaskDispatchListenerTest {
             return true;
         };
         TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                workerManager,
-                runtimeRegistry(workerManager, realtimeAdapter, pollingAdapter),
+                resolver(
+                        target("ws-worker", realtimeAdapter, "websocket", "opaque:ws-route"),
+                        target("poll-worker", pollingAdapter, WorkerTransportHints.POLLING, "opaque:poll-route")
+                ),
                 failureHandler
         );
 
-        Task task = new Task();
-        task.setTid("task-1");
-
-        listener.onTaskDispatchBatch(taskContext(task), List.of(
-                binding("task-1", "msg-ws", "attempt-ws", "ws-worker", "batch-ws"),
-                binding("task-1", "msg-poll", "attempt-poll", "poll-worker", "batch-poll")
+        listener.onTaskDispatchBatch(context(), List.of(
+                binding("msg-ws", "attempt-ws", "ws-worker", "batch-ws"),
+                binding("msg-poll", "attempt-poll", "poll-worker", "batch-poll")
         ));
 
         assertEquals(List.of("msg-poll"), pollingAdapter.dispatchedMessageIds);
         assertEquals(1, compensated.size());
         assertEquals(List.of("msg-ws"),
                 compensated.getFirst().stream().map(TaskDispatchBinding::messageId).toList());
+    }
+
+    private static NamedTransportDispatchTarget target(String workerId,
+                                                       WorkerAdapter adapter,
+                                                       String adapterId,
+                                                       String routeKey) {
+        return new NamedTransportDispatchTarget(workerId, adapter, adapterId, routeKey);
+    }
+
+    private static TransportDispatchTargetResolver resolver(NamedTransportDispatchTarget... targets) {
+        Map<String, TransportDispatchTarget> byWorkerId = new LinkedHashMap<>();
+        for (NamedTransportDispatchTarget target : targets) {
+            byWorkerId.put(target.workerId(), target.target());
+        }
+        return (task, binding) -> binding == null ? null : byWorkerId.get(binding.workerId());
+    }
+
+    private record NamedTransportDispatchTarget(String workerId,
+                                                WorkerAdapter adapter,
+                                                String adapterId,
+                                                String routeKey) {
+
+        TransportDispatchTarget target() {
+            return new TransportDispatchTarget(adapter, adapterId, routeKey);
+        }
     }
 
     private static class RecordingAdapter implements WorkerAdapter {
@@ -494,62 +308,15 @@ class TransportRoutingTaskDispatchListenerTest {
         }
     }
 
-    private static TransportRuntimeRegistry runtimeRegistry(WorkerManager workerManager, RecordingAdapter... adapters) {
-        return new TransportRuntimeRegistry(
-                workerManager,
-                report -> true,
-                new NoopWorkerSystemEventChannel(),
-                new InMemoryWorkerPresenceStore(),
-                Arrays.stream(adapters)
-                        .map(TransportRoutingTaskDispatchListenerTest::canonicalRouteBinding)
-                        .toList()
-        );
-    }
-
-    private static Worker worker(String workerId, String adapterId, String transportHint) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setWorkerGroupId(TEST_WORKER_GROUP_ID);
-        worker.setAdapterId(adapterId);
-        worker.setOnlineStrategy(transportHint);
-        return worker;
-    }
-
-    private static void addWorker(WorkerManager workerManager, Worker worker) {
-        workerManager.addWorker(new WorkerResourceRecord(
-                worker.getWorkerId(),
-                worker.getStatus() == null ? null : worker.getStatus().name(),
-                worker.getAgentVersion(),
-                worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
-                worker.getWorkerGroupId() == null ? TEST_WORKER_GROUP_ID : worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
-                worker.getOnlineStrategy(),
-                worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime()
-        ));
-    }
-
-    private static TransportBinding canonicalRouteBinding(WorkerAdapter adapter) {
-        return TransportBinding.builder(adapter)
-                .routeKeyResolver((dispatchBinding, routeContext) -> routeKey(routeContext.workerId()))
-                .build();
-    }
-
-    private static TaskDispatchBinding binding(String taskId,
-                                               String messageId,
+    private static TaskDispatchBinding binding(String messageId,
                                                String attemptId,
                                                String workerId,
                                                String batchId) {
         return TaskDispatchBinding.workerLevelWithEvidence(
-                taskId,
+                "task-1",
                 messageId,
                 null,
-                java.util.Map.of("target", workerId),
+                Map.of("target", workerId),
                 null,
                 0,
                 attemptId,
@@ -564,47 +331,14 @@ class TransportRoutingTaskDispatchListenerTest {
         );
     }
 
-    private static String routeKey(String workerId) {
-        return "route:" + workerId;
-    }
-
-    private static TaskDispatchContext taskContext(Task task) {
+    private static TaskDispatchContext context() {
         return new TaskDispatchContext(
-                task.getTid(),
-                task.getTaskName(),
-                task.getProject(),
-                task.getUser() != null ? task.getUser().getUserId() : null,
+                "task-1",
+                "task-name",
+                "demoApp",
+                "agent",
                 "crawler.fetch-page",
                 Map.of("_sdk", Map.of("eventCode", "crawler.fetch-page"))
         );
-    }
-
-    private static final class NoopWorkerSystemEventChannel implements com.xa.mass.transport.channel.WorkerSystemEventChannel {
-        @Override
-        public void publishWorkerOnline(String workerId, String reason, String traceId) {
-        }
-
-        @Override
-        public void publishWorkerOffline(String workerId, String reason, String traceId) {
-        }
-    }
-
-    private static final class CountingWorkerResourceRuntime extends WorkerManager {
-        private int lookupCount;
-
-        private CountingWorkerResourceRuntime(Worker worker) {
-            super(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-            TransportRoutingTaskDispatchListenerTest.addWorker(this, worker);
-        }
-
-        @Override
-        public java.util.Optional<WorkerResourceRecord> worker(String workerId) {
-            lookupCount++;
-            return super.worker(workerId);
-        }
-
-        private int lookupCount() {
-            return lookupCount;
-        }
     }
 }

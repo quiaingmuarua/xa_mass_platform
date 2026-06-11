@@ -1,6 +1,6 @@
-package com.xa.mass.transport.runtime.presence;
+package com.xa.mass.transport.runtime.route;
 
-import com.xa.mass.transport.presence.WorkerPresence;
+import com.xa.mass.transport.route.TransportRouteOwnerRecord;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -9,91 +9,91 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class InMemoryWorkerPresenceStoreTest {
+class InMemoryTransportRouteOwnerStoreTest {
 
     @Test
     void expiredOwnerEvidenceDropsRouteOnlineView() throws Exception {
-        InMemoryWorkerPresenceStore store = new InMemoryWorkerPresenceStore(25L, "runtime-a");
+        InMemoryTransportRouteOwnerStore store = new InMemoryTransportRouteOwnerStore(25L, "runtime-a");
 
         store.claimRouteOwner("worker-1", "websocket", "route-1", "conn-1", "connected");
 
-        assertTrue(store.isWorkerOnline("worker-1"));
+        assertTrue(store.isWorkerReachable("worker-1"));
         assertTrue(store.hasActiveRouteOwner("websocket", "route-1"));
-        assertEquals(1, store.listActivePresences().size());
+        assertEquals(1, store.listActiveRouteOwners().size());
 
         Thread.sleep(40L);
 
-        WorkerPresence presence = store.getPresence("worker-1");
-        assertNotNull(presence);
-        assertFalse(presence.isLeaseActive(System.currentTimeMillis()));
-        assertFalse(store.isWorkerOnline("worker-1"));
+        TransportRouteOwnerRecord owner = store.getLatestOwnerByWorker("worker-1");
+        assertNotNull(owner);
+        assertFalse(owner.isLeaseActive(System.currentTimeMillis()));
+        assertFalse(store.isWorkerReachable("worker-1"));
         assertFalse(store.hasActiveRouteOwner("websocket", "route-1"));
-        assertTrue(store.listActivePresences().isEmpty());
+        assertTrue(store.listActiveRouteOwners().isEmpty());
         assertEquals(1, store.pruneExpired());
         assertEquals(0, store.pruneExpired());
-        assertEquals(0, store.listActivePresences().size());
-        assertNull(store.getPresence("worker-1"));
+        assertEquals(0, store.listActiveRouteOwners().size());
+        assertNull(store.getLatestOwnerByWorker("worker-1"));
     }
 
     @Test
     void routeKeyTakeoverReplacesCurrentOwnerAcrossAdapters() {
-        InMemoryWorkerPresenceStore store = new InMemoryWorkerPresenceStore(30_000L, "runtime-a");
+        InMemoryTransportRouteOwnerStore store = new InMemoryTransportRouteOwnerStore(30_000L, "runtime-a");
 
         store.claimRouteOwner("worker-1", "websocket", "route-1", "conn-1", "connected");
         store.claimRouteOwner("worker-1", "socket", "route-1", "conn-9", "reconnected");
 
         assertFalse(store.hasActiveRouteOwner("websocket", "route-1"));
         assertTrue(store.hasActiveRouteOwner("socket", "route-1"));
-        assertEquals(1, store.findOwners("worker-1").size());
+        assertEquals(1, store.findRouteOwners("worker-1").size());
         assertEquals("socket", store.currentOwner("route-1").orElseThrow().adapterId());
 
-        WorkerPresence onlinePresence = store.getPresence("worker-1");
-        assertNotNull(onlinePresence);
-        assertEquals("socket", onlinePresence.getAdapterId());
-        assertEquals("route-1", onlinePresence.getRouteKey());
-        assertTrue(onlinePresence.isLeaseActive(System.currentTimeMillis()));
+        TransportRouteOwnerRecord activeOwner = store.getLatestOwnerByWorker("worker-1");
+        assertNotNull(activeOwner);
+        assertEquals("socket", activeOwner.getAdapterId());
+        assertEquals("route-1", activeOwner.getRouteKey());
+        assertTrue(activeOwner.isLeaseActive(System.currentTimeMillis()));
 
         store.releaseRouteOwner("worker-1", "websocket", "route-1", "conn-1", "stale-disconnect");
         assertTrue(store.hasActiveRouteOwner("socket", "route-1"));
 
         store.releaseRouteOwner("worker-1", "socket", "route-1", "conn-9", "disconnect");
 
-        assertNull(store.getPresence("worker-1"));
+        assertNull(store.getLatestOwnerByWorker("worker-1"));
         assertFalse(store.hasActiveRouteOwner("socket", "route-1"));
-        assertTrue(store.findOwners("worker-1").isEmpty());
+        assertTrue(store.findRouteOwners("worker-1").isEmpty());
     }
 
     @Test
     void workerProjectionFindOwnersReturnsOnlyLatestOnlineRoute() {
-        InMemoryWorkerPresenceStore store = new InMemoryWorkerPresenceStore(30_000L, "runtime-a");
+        InMemoryTransportRouteOwnerStore store = new InMemoryTransportRouteOwnerStore(30_000L, "runtime-a");
 
         store.claimRouteOwner("worker-1", "websocket", "route-old", "conn-old", "connected");
         store.claimRouteOwner("worker-1", "socket", "route-new", "conn-new", "connected");
 
-        assertEquals(1, store.findOwners("worker-1").size());
-        assertEquals("route-new", store.findOwners("worker-1").getFirst().routeKey());
+        assertEquals(1, store.findRouteOwners("worker-1").size());
+        assertEquals("route-new", store.findRouteOwners("worker-1").getFirst().routeKey());
         assertEquals("route-old", store.currentOwner("route-old").orElseThrow().routeKey());
     }
 
     @Test
     void reconnectOnSameRouteRejectsStaleHeartbeatAndDisconnect() {
-        InMemoryWorkerPresenceStore store = new InMemoryWorkerPresenceStore(30_000L, "runtime-a");
+        InMemoryTransportRouteOwnerStore store = new InMemoryTransportRouteOwnerStore(30_000L, "runtime-a");
 
         store.claimRouteOwner("worker-1", "websocket", "route-1", "conn-old", "connected");
         store.claimRouteOwner("worker-1", "websocket", "route-1", "conn-new", "reconnected");
 
-        WorkerPresence ignoredHeartbeat = store.refreshHeartbeat("worker-1", "websocket", "route-1", "conn-old", "stale-heartbeat");
+        TransportRouteOwnerRecord ignoredHeartbeat = store.refreshHeartbeat("worker-1", "websocket", "route-1", "conn-old", "stale-heartbeat");
         assertNotNull(ignoredHeartbeat);
         assertEquals("conn-new", ignoredHeartbeat.getConnectionId());
         assertEquals("route-1", ignoredHeartbeat.getRouteKey());
         assertTrue(store.hasActiveRouteOwner("websocket", "route-1"));
 
-        WorkerPresence ignoredOffline = store.releaseRouteOwner("worker-1", "websocket", "route-1", "conn-old", "stale-disconnect");
+        TransportRouteOwnerRecord ignoredOffline = store.releaseRouteOwner("worker-1", "websocket", "route-1", "conn-old", "stale-disconnect");
         assertNotNull(ignoredOffline);
         assertEquals("conn-new", ignoredOffline.getConnectionId());
         assertTrue(store.hasActiveRouteOwner("websocket", "route-1"));
 
-        WorkerPresence finalOffline = store.releaseRouteOwner("worker-1", "websocket", "route-1", "conn-new", "disconnect");
+        TransportRouteOwnerRecord finalOffline = store.releaseRouteOwner("worker-1", "websocket", "route-1", "conn-new", "disconnect");
         assertNotNull(finalOffline);
         assertEquals("conn-new", finalOffline.getConnectionId());
         assertFalse(store.hasActiveRouteOwner("websocket", "route-1"));

@@ -3,7 +3,7 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 
 import java.util.Objects;
 
@@ -19,7 +19,7 @@ public final class ResolvedPullWorkerTransport {
     private final TaskPullChannel taskPullChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
-    private final WorkerPresenceStore workerPresenceStore;
+    private final TransportRouteOwnerStore routeOwnerStore;
 
     public ResolvedPullWorkerTransport(String workerId,
                                        String workerGroupId,
@@ -28,7 +28,7 @@ public final class ResolvedPullWorkerTransport {
                                        TaskPullChannel taskPullChannel,
                                        TaskResultIngestChannel taskResultIngestChannel,
                                        WorkerSystemEventChannel systemEventChannel,
-                                       WorkerPresenceStore workerPresenceStore) {
+                                       TransportRouteOwnerStore routeOwnerStore) {
         this.workerId = Objects.requireNonNull(workerId, "workerId");
         this.workerGroupId = Objects.requireNonNull(workerGroupId, "workerGroupId");
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
@@ -36,7 +36,7 @@ public final class ResolvedPullWorkerTransport {
         this.taskPullChannel = Objects.requireNonNull(taskPullChannel, "taskPullChannel");
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
-        this.workerPresenceStore = Objects.requireNonNull(workerPresenceStore, "workerPresenceStore");
+        this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
     }
 
     public String getWorkerId() {
@@ -67,7 +67,7 @@ public final class ResolvedPullWorkerTransport {
         return systemEventChannel;
     }
 
-    public WorkerPresenceStore getWorkerPresenceStore() {
-        return workerPresenceStore;
+    public TransportRouteOwnerStore getRouteOwnerStore() {
+        return routeOwnerStore;
     }
 }

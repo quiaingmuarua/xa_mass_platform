@@ -1,9 +1,8 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.List;
@@ -14,10 +13,9 @@ import java.util.List;
  */
 public interface WorkerTransportRuntimeFactory {
 
-    TransportRuntimeRegistry create(WorkerResourceQueryRuntime workerResourceRuntime,
-                                    TaskResultIngestChannel taskResultIngestChannel,
+    TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
                                     WorkerSystemEventChannel systemEventChannel,
-                                    WorkerPresenceStore workerPresenceStore,
+                                    TransportRouteOwnerStore routeOwnerStore,
                                     TransportDeliveryService deliveryService,
                                     TransportRouteKeyResolver routeKeyResolver,
                                     List<TransportBinding> adapterBindings);

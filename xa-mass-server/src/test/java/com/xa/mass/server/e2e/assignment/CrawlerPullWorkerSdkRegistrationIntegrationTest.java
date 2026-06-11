@@ -97,12 +97,12 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
                 ))
                 .build());
 
-        assertFalse(app.isWorkerOnline(workerId), "SDK registration must not create transport presence");
+        assertFalse(app.isWorkerReachable(workerId), "SDK registration must not create transport presence");
 
         PullWorkerSession session = app.pullWorker(workerId);
         session.connect();
         try {
-            waitUntil(() -> app.isWorkerOnline(workerId), "pull session connect must surface transport presence online");
+            waitUntil(() -> app.isWorkerReachable(workerId), "pull session connect must surface transport presence online");
             TaskExecutionOptions executionSpec = new TaskExecutionOptions();
             executionSpec.setBatchSize(1);
 
@@ -156,7 +156,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
             session.disconnect();
         }
 
-        waitUntil(() -> !app.isWorkerOnline(workerId), "pull session disconnect must converge transport presence offline");
+        waitUntil(() -> !app.isWorkerReachable(workerId), "pull session disconnect must converge transport presence offline");
     }
 
     private TaskShellSnapshot createShellWithOptionalItems(MassTaskShellCreateRequest request,

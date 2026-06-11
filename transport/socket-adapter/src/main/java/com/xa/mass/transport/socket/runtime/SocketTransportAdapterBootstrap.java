@@ -56,7 +56,6 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                     sessionManager,
                     frameCodec,
                     context.getTaskResultIngestChannel(),
-                    context.getSystemEventChannel(),
                     context.getRuntimeTaskExecutor()
             ));
         }
@@ -68,17 +67,15 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                 throw new IllegalStateException("Socket transport requires endpoint registry adapterId '"
                         + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
             }
-            sessionManager.setSystemEventChannel(context.getSystemEventChannel());
-            sessionManager.setWorkerPresenceStore(context.getWorkerPresenceStore());
+            sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
             return sessionManager;
         }
         if (context.getEndpointRegistry() instanceof CompositeWorkerEndpointRegistry composite) {
             SocketSessionManager sessionManager = composite.getOrRegister(
                     config.getAdapterId(),
-                    () -> new SocketSessionManager(config.getAdapterId(), context.getSystemEventChannel())
+                    () -> new SocketSessionManager(config.getAdapterId())
             );
-            sessionManager.setSystemEventChannel(context.getSystemEventChannel());
-            sessionManager.setWorkerPresenceStore(context.getWorkerPresenceStore());
+            sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
             return sessionManager;
         }
         throw new IllegalStateException("Socket transport requires a socket-managed endpoint registry");

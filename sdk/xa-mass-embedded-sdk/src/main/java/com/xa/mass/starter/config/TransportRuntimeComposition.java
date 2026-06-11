@@ -21,9 +21,9 @@ import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TransportOutboundMessage;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
-import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import com.xa.mass.transport.socket.runtime.SocketTransportAdapterBootstrap;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketTransportAdapterBootstrap;
@@ -54,7 +54,7 @@ public class TransportRuntimeComposition {
     private final WorkerEndpointRegistry workerEndpointRegistry;
     private final Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
     private final Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
-    private final Supplier<WorkerPresenceStore> presenceStoreFactory;
+    private final Supplier<TransportRouteOwnerStore> routeOwnerStoreFactory;
     private final WebSocketAdapterConfig bundledWebSocketAdapterConfig;
     private final SocketAdapterConfig bundledSocketAdapterConfig;
     private final List<WebSocketAdapterConfig> supplementalWebSocketAdapterConfigs;
@@ -72,13 +72,13 @@ public class TransportRuntimeComposition {
     private final int transportRuntimeMaxPendingTasks;
     private final int eventRuntimeMaxPendingTasks;
     private final long eventHandlerTimeoutMillis;
-    private final long workerPresenceLeaseMillis;
+    private final long routeOwnerLeaseMillis;
     private final TransportRuntimeRole runtimeRole;
     private final String transportNodeId;
 
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
     private transient TransportRegistrationResolver registrationResolver;
-    private transient WorkerPresenceStore runtimeOwnedPresenceStore;
+    private transient TransportRouteOwnerStore runtimeOwnedRouteOwnerStore;
     private transient TransportNodeRegistry runtimeOwnedTransportNodeRegistry;
 
     public TransportRuntimeComposition(TransportConfig source) {
@@ -89,7 +89,7 @@ public class TransportRuntimeComposition {
         this.workerEndpointRegistry = source.getWorkerEndpointRegistry();
         this.endpointRegistryFactory = source.endpointRegistryFactory();
         this.systemEventChannelResolver = source.systemEventChannelResolver();
-        this.presenceStoreFactory = source.presenceStoreFactory();
+        this.routeOwnerStoreFactory = source.routeOwnerStoreFactory();
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getBundledWebSocketAdapterConfig());
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.getBundledSocketAdapterConfig());
         this.supplementalWebSocketAdapterConfigs = source.getSupplementalWebSocketAdapterConfigs().stream()
@@ -111,7 +111,7 @@ public class TransportRuntimeComposition {
         this.transportRuntimeMaxPendingTasks = source.getTransportRuntimeMaxPendingTasks();
         this.eventRuntimeMaxPendingTasks = source.getEventRuntimeMaxPendingTasks();
         this.eventHandlerTimeoutMillis = source.getEventHandlerTimeoutMillis();
-        this.workerPresenceLeaseMillis = source.getWorkerPresenceLeaseMillis();
+        this.routeOwnerLeaseMillis = source.getRouteOwnerLeaseMillis();
         this.runtimeRole = source.getRuntimeRole();
         this.transportNodeId = source.getTransportNodeId();
     }
@@ -237,13 +237,13 @@ public class TransportRuntimeComposition {
         return runtimeOwnedTransportNodeRegistry;
     }
 
-    public WorkerPresenceStore resolveWorkerPresenceStore() {
-        if (runtimeOwnedPresenceStore == null) {
-            runtimeOwnedPresenceStore = presenceStoreFactory != null
-                    ? presenceStoreFactory.get()
-                    : new InMemoryWorkerPresenceStore(workerPresenceLeaseMillis, transportNodeId);
+    public TransportRouteOwnerStore resolveTransportRouteOwnerStore() {
+        if (runtimeOwnedRouteOwnerStore == null) {
+            runtimeOwnedRouteOwnerStore = routeOwnerStoreFactory != null
+                    ? routeOwnerStoreFactory.get()
+                    : new InMemoryTransportRouteOwnerStore(routeOwnerLeaseMillis, transportNodeId);
         }
-        return runtimeOwnedPresenceStore;
+        return runtimeOwnedRouteOwnerStore;
     }
 
     public String getTransportNodeId() {

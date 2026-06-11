@@ -4,7 +4,6 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -45,7 +44,6 @@ public final class SocketTransportServer implements TransportServer {
     private final SocketSessionManager sessionManager;
     private final SocketTransportFrameCodec frameCodec;
     private final TaskResultIngestChannel taskResultIngestChannel;
-    private final WorkerSystemEventChannel systemEventChannel;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Set<Future<?>> clientTasks = ConcurrentHashMap.newKeySet();
@@ -60,7 +58,6 @@ public final class SocketTransportServer implements TransportServer {
                                  SocketSessionManager sessionManager,
                                  SocketTransportFrameCodec frameCodec,
                                  TaskResultIngestChannel taskResultIngestChannel,
-                                 WorkerSystemEventChannel systemEventChannel,
                                  RuntimeTaskExecutor runtimeTaskExecutor) {
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
         this.bindHost = bindHost;
@@ -69,7 +66,6 @@ public final class SocketTransportServer implements TransportServer {
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
         this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
         this.taskResultIngestChannel = taskResultIngestChannel;
-        this.systemEventChannel = systemEventChannel;
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
     }
 

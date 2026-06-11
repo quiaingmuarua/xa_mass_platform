@@ -81,7 +81,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
         assertApiOk(registerResponse);
         assertEquals("socket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
-        assertFalse(app.isWorkerOnline(SOCKET_WORKER_ID), "control-plane registration must not create socket transport presence");
+        assertFalse(app.isWorkerReachable(SOCKET_WORKER_ID), "control-plane registration must not create socket transport presence");
 
         Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", "crawlerApp",

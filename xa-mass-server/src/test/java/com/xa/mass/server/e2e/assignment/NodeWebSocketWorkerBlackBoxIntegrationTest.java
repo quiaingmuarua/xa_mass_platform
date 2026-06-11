@@ -90,7 +90,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
         assertNotNull(registeredWorker);
         assertEquals("websocket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
-        assertFalse(app.isWorkerOnline(WORKER_ID), "control-plane registration must not create realtime transport presence");
+        assertFalse(app.isWorkerReachable(WORKER_ID), "control-plane registration must not create realtime transport presence");
 
         Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", "crawlerApp",
@@ -181,7 +181,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
         assertNotNull(registeredWorker);
         assertEquals("websocket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
-        assertFalse(app.isWorkerOnline(STOCK_WORKER_ID), "control-plane registration must not create realtime transport presence");
+        assertFalse(app.isWorkerReachable(STOCK_WORKER_ID), "control-plane registration must not create realtime transport presence");
 
         String sourceUrl = "http://127.0.0.1:" + port + "/api/v1/catalog/events/stock.quote.fetch";
         String initialRequestId = "stockreq-init-0001";

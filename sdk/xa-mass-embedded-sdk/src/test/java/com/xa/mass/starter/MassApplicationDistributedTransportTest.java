@@ -15,17 +15,17 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
-import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
-import com.xa.mass.transport.presence.WorkerPresence;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
+import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
+import com.xa.mass.transport.route.TransportRouteOwnerRecord;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
-import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import org.junit.jupiter.api.Test;
 
@@ -57,11 +57,11 @@ class MassApplicationDistributedTransportTest {
         engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-1"));
         engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-2"));
 
-        InMemoryWorkerPresenceStore nodeOnePresence = new InMemoryWorkerPresenceStore(30_000L, "node-1");
-        InMemoryWorkerPresenceStore nodeTwoPresence = new InMemoryWorkerPresenceStore(30_000L, "node-2");
-        nodeOnePresence.claimRouteOwner("worker-1", "websocket", routeKey("worker-1"), "conn-1", "connected");
-        nodeTwoPresence.claimRouteOwner("worker-2", "websocket", routeKey("worker-2"), "conn-2", "connected");
-        CombinedPresenceStore presenceStore = new CombinedPresenceStore(List.of(nodeOnePresence, nodeTwoPresence));
+        InMemoryTransportRouteOwnerStore nodeOneRouteOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-1");
+        InMemoryTransportRouteOwnerStore nodeTwoRouteOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-2");
+        nodeOneRouteOwnerStore.claimRouteOwner("worker-1", "websocket", routeKey("worker-1"), "conn-1", "connected");
+        nodeTwoRouteOwnerStore.claimRouteOwner("worker-2", "websocket", routeKey("worker-2"), "conn-2", "connected");
+        CombinedRouteOwnerStore routeOwnerStore = new CombinedRouteOwnerStore(List.of(nodeOneRouteOwnerStore, nodeTwoRouteOwnerStore));
 
         InMemoryTransportNodeRegistry nodeRegistry = new InMemoryTransportNodeRegistry();
         nodeRegistry.register("node-1", List.of("websocket"), 1L);
@@ -69,7 +69,7 @@ class MassApplicationDistributedTransportTest {
 
         CapturingNodeTargetedHandoff handoff = new CapturingNodeTargetedHandoff();
         TransportConfig transport = disabledEngineProducerTransport();
-        transport.setPresenceStoreFactory(() -> presenceStore);
+        transport.setRouteOwnerStoreFactory(() -> routeOwnerStore);
         transport.setTransportNodeRegistryFactory(() -> nodeRegistry);
         transport.setTaskDispatchHandoffFactory(() -> handoff);
         transport.setTaskResultInboxFactory(() -> mock(RedisTaskResultIngestChannel.class));
@@ -380,34 +380,34 @@ class MassApplicationDistributedTransportTest {
         }
     }
 
-    private static final class CombinedPresenceStore implements WorkerPresenceStore,
+    private static final class CombinedRouteOwnerStore implements TransportRouteOwnerStore,
             WorkerDispatchRouteOwnerView,
-            WorkerPresenceInspectionView {
-        private final List<InMemoryWorkerPresenceStore> stores;
+            TransportRouteOwnerInspectionView {
+        private final List<InMemoryTransportRouteOwnerStore> stores;
 
-        private CombinedPresenceStore(List<InMemoryWorkerPresenceStore> stores) {
+        private CombinedRouteOwnerStore(List<InMemoryTransportRouteOwnerStore> stores) {
             this.stores = stores;
         }
 
         @Override
-        public WorkerPresence claimRouteOwner(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
+        public TransportRouteOwnerRecord claimRouteOwner(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
             return stores.getFirst().claimRouteOwner(workerId, adapterId, routeKey, connectionId, reason);
         }
 
         @Override
-        public WorkerPresence refreshHeartbeat(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
+        public TransportRouteOwnerRecord refreshHeartbeat(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
             return stores.getFirst().refreshHeartbeat(workerId, adapterId, routeKey, connectionId, reason);
         }
 
         @Override
-        public WorkerPresence releaseRouteOwner(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
+        public TransportRouteOwnerRecord releaseRouteOwner(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
             return stores.getFirst().releaseRouteOwner(workerId, adapterId, routeKey, connectionId, reason);
         }
 
         @Override
-        public WorkerPresence getPresence(String workerId) {
-            return listActivePresences().stream()
-                    .filter(presence -> workerId.equals(presence.getWorkerId()))
+        public TransportRouteOwnerRecord getLatestOwnerByWorker(String workerId) {
+            return listActiveRouteOwners().stream()
+                    .filter(owner -> workerId.equals(owner.getWorkerId()))
                     .findFirst()
                     .orElse(null);
         }
@@ -418,7 +418,7 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public java.util.Optional<com.xa.mass.transport.presence.WorkerDispatchRouteOwner> currentOwner(String routeKey) {
+        public java.util.Optional<com.xa.mass.transport.route.WorkerDispatchRouteOwner> currentOwner(String routeKey) {
             return stores.stream()
                     .map(store -> store.currentOwner(routeKey))
                     .flatMap(java.util.Optional::stream)
@@ -426,22 +426,22 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public List<WorkerPresence> listActivePresences() {
-            List<WorkerPresence> presences = new ArrayList<>();
-            for (InMemoryWorkerPresenceStore store : stores) {
-                presences.addAll(store.listActivePresences());
+        public List<TransportRouteOwnerRecord> listActiveRouteOwners() {
+            List<TransportRouteOwnerRecord> owners = new ArrayList<>();
+            for (InMemoryTransportRouteOwnerStore store : stores) {
+                owners.addAll(store.listActiveRouteOwners());
             }
-            return List.copyOf(presences);
+            return List.copyOf(owners);
         }
 
         @Override
         public int pruneExpired() {
-            return stores.stream().mapToInt(InMemoryWorkerPresenceStore::pruneExpired).sum();
+            return stores.stream().mapToInt(InMemoryTransportRouteOwnerStore::pruneExpired).sum();
         }
 
         @Override
         public long getLeaseMillis() {
-            return stores.stream().mapToLong(InMemoryWorkerPresenceStore::getLeaseMillis).min().orElse(30_000L);
+            return stores.stream().mapToLong(InMemoryTransportRouteOwnerStore::getLeaseMillis).min().orElse(30_000L);
         }
     }
 }

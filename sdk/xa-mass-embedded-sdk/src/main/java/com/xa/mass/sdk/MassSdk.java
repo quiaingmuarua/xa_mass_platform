@@ -18,7 +18,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.TransportServerFactory;
 
 import java.util.Objects;
@@ -138,8 +138,8 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions presenceStoreFactory(Supplier<WorkerPresenceStore> presenceStoreFactory) {
-            delegate.presenceStoreFactory(presenceStoreFactory);
+        public TransportOptions routeOwnerStoreFactory(Supplier<TransportRouteOwnerStore> routeOwnerStoreFactory) {
+            delegate.routeOwnerStoreFactory(routeOwnerStoreFactory);
             return this;
         }
 
@@ -153,13 +153,13 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions redisPresenceStore(String redisUri) {
-            delegate.redisPresenceStore(redisUri);
+        public TransportOptions redisRouteOwnerStore(String redisUri) {
+            delegate.redisRouteOwnerStore(redisUri);
             return this;
         }
 
-        public TransportOptions redisPresenceStore(String redisUri, String namespacePrefix) {
-            delegate.redisPresenceStore(redisUri, namespacePrefix);
+        public TransportOptions redisRouteOwnerStore(String redisUri, String namespacePrefix) {
+            delegate.redisRouteOwnerStore(redisUri, namespacePrefix);
             return this;
         }
 
@@ -233,8 +233,8 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions workerPresenceLeaseMillis(long workerPresenceLeaseMillis) {
-            delegate.workerPresenceLeaseMillis(workerPresenceLeaseMillis);
+        public TransportOptions routeOwnerLeaseMillis(long routeOwnerLeaseMillis) {
+            delegate.routeOwnerLeaseMillis(routeOwnerLeaseMillis);
             return this;
         }
 

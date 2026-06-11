@@ -41,7 +41,6 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.worker.runtime.resource.EventBinding;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.engine.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
@@ -112,11 +111,11 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
-import com.xa.mass.transport.presence.WorkerPresence;
-import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
-import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
+import com.xa.mass.transport.route.TransportRouteOwnerRecord;
+import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
@@ -429,10 +428,9 @@ class MassSdkTest {
         config.setWorkerEndpointRegistry(overriddenRegistry);
         WorkerSystemEventChannel customSystemEventChannel = mock(WorkerSystemEventChannel.class);
         config.setCustomSystemEventChannel(customSystemEventChannel);
-        WorkerTransportRuntimeFactory customFactory = (workerResourceRuntime,
-                                                     taskResultIngestChannel,
+        WorkerTransportRuntimeFactory customFactory = (taskResultIngestChannel,
                                                      systemEventChannel,
-                                                     workerPresenceStore,
+                                                     routeOwnerStore,
                                                      deliveryService,
                                                      routeKeyResolver,
                                                      adapterBindings) -> mock(TransportRuntimeRegistry.class);
@@ -512,7 +510,7 @@ class MassSdkTest {
         assertCapturedNamespace(runtimeComposition, "taskDispatchHandoffFactory", RedisTransportNamespaces.DISPATCH_NODE);
         assertCapturedNamespace(runtimeComposition, "taskResultInboxFactory", RedisTransportNamespaces.RESULT_INBOX);
         assertCapturedNamespace(runtimeComposition, "dispatchFailureInboxFactory", RedisTransportNamespaces.DISPATCH_FAILURE);
-        assertCapturedNamespace(runtimeComposition, "presenceStoreFactory", RedisTransportNamespaces.PRESENCE);
+        assertCapturedNamespace(runtimeComposition, "routeOwnerStoreFactory", RedisTransportNamespaces.ROUTE_OWNER);
         assertCapturedNamespace(runtimeComposition, "deliveryStoreFactory", RedisTransportNamespaces.DELIVERY);
         assertCapturedNamespace(runtimeComposition, "transportNodeRegistryFactory", RedisTransportNamespaces.NODES);
     }
@@ -549,7 +547,7 @@ class MassSdkTest {
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
                     new RuntimeEventBusWorkerSystemEventChannel(),
-                    new InMemoryWorkerPresenceStore(),
+                    new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
                     runtimeTaskExecutor,
                     routeKeyResolver()
@@ -579,7 +577,7 @@ class MassSdkTest {
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
                     new RuntimeEventBusWorkerSystemEventChannel(),
-                    new InMemoryWorkerPresenceStore(),
+                    new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
                     runtimeTaskExecutor,
                     routeKeyResolver()
@@ -611,7 +609,7 @@ class MassSdkTest {
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
                     new RuntimeEventBusWorkerSystemEventChannel(),
-                    new InMemoryWorkerPresenceStore(),
+                    new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
                     runtimeTaskExecutor,
                     routeKeyResolver()
@@ -645,7 +643,7 @@ class MassSdkTest {
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
                     new RuntimeEventBusWorkerSystemEventChannel(),
-                    new InMemoryWorkerPresenceStore(),
+                    new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
                     runtimeTaskExecutor,
                     routeKeyResolver()
@@ -679,7 +677,7 @@ class MassSdkTest {
                                     endpointRegistry,
                                     null,
                                     runtimeComposition.resolveSystemEventChannel(),
-                                    new InMemoryWorkerPresenceStore(),
+                                    new InMemoryTransportRouteOwnerStore(),
                                     deliveryService(),
                                     runtimeTaskExecutor,
                                     routeKeyResolver()
@@ -710,7 +708,7 @@ class MassSdkTest {
                                     new ServerSessionManager("websocket"),
                                     mock(TaskResultIngestChannel.class),
                                     new RuntimeEventBusWorkerSystemEventChannel(),
-                                    new InMemoryWorkerPresenceStore(),
+                                    new InMemoryTransportRouteOwnerStore(),
                                     deliveryService(),
                                     runtimeTaskExecutor,
                                     routeKeyResolver()
@@ -739,10 +737,10 @@ class MassSdkTest {
                     IllegalStateException.class,
                     () -> adapterBootstrap(runtimeComposition, "socket-edge").contribute(
                             new TransportAdapterBootstrapContext(
-                                    new com.xa.mass.transport.socket.session.SocketSessionManager("socket", null),
+                                    new com.xa.mass.transport.socket.session.SocketSessionManager("socket"),
                                     mock(TaskResultIngestChannel.class),
                                     new RuntimeEventBusWorkerSystemEventChannel(),
-                                    new InMemoryWorkerPresenceStore(),
+                                    new InMemoryTransportRouteOwnerStore(),
                                     deliveryService(),
                                     runtimeTaskExecutor,
                                     routeKeyResolver()
@@ -804,10 +802,9 @@ class MassSdkTest {
         TransportConfig config = new TransportConfig();
         config.getBundledWebSocketAdapterConfig().setEnabled(false);
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
-        config.setWorkerTransportRuntimeFactory((workerResourceRuntime,
-                                                taskResultIngestChannel,
+        config.setWorkerTransportRuntimeFactory((taskResultIngestChannel,
                                                 systemEventChannel,
-                                                workerPresenceStore,
+                                                routeOwnerStore,
                                                 deliveryService,
                                                 routeKeyResolver,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
@@ -829,10 +826,9 @@ class MassSdkTest {
     @Test
     void transportRuntimeCompositionUsesBootstrapDescriptorEvenWithCustomRuntimeFactory() {
         TransportConfig config = new TransportConfig();
-        config.setWorkerTransportRuntimeFactory((workerResourceRuntime,
-                                                taskResultIngestChannel,
+        config.setWorkerTransportRuntimeFactory((taskResultIngestChannel,
                                                 systemEventChannel,
-                                                workerPresenceStore,
+                                                routeOwnerStore,
                                                 deliveryService,
                                                 routeKeyResolver,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
@@ -858,10 +854,9 @@ class MassSdkTest {
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         config.setWorkerTransportRuntimeFactory(new WorkerTransportRuntimeFactory() {
             @Override
-            public TransportRuntimeRegistry create(WorkerResourceQueryRuntime workerResourceRuntime,
-                                                   TaskResultIngestChannel taskResultIngestChannel,
+            public TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
                                                    WorkerSystemEventChannel systemEventChannel,
-                                                   com.xa.mass.transport.presence.WorkerPresenceStore workerPresenceStore,
+                                                   com.xa.mass.transport.route.TransportRouteOwnerStore routeOwnerStore,
                                                    TransportDeliveryService deliveryService,
                                                    TransportRouteKeyResolver routeKeyResolver,
                                                    List<TransportBinding> adapterBindings) {
@@ -986,11 +981,11 @@ class MassSdkTest {
     }
 
     @Test
-    void massApplicationStopsCustomPresenceStore() {
-        StubWorkerPresenceStore store = new StubWorkerPresenceStore();
+    void massApplicationStopsCustomRouteOwnerStore() {
+        StubTransportRouteOwnerStore store = new StubTransportRouteOwnerStore();
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
-                        .presenceStoreFactory(() -> store)
+                        .routeOwnerStoreFactory(() -> store)
                         .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine.enabled(false))
                 .build();
@@ -1002,11 +997,11 @@ class MassSdkTest {
     }
 
     @Test
-    void sdkBuilderAcceptsRedisPresenceStoreNamespaceOverride() {
+    void sdkBuilderAcceptsRedisRouteOwnerStoreNamespaceOverride() {
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
-                        .workerPresenceLeaseMillis(5_000L)
-                        .redisPresenceStore("redis://127.0.0.1:6379/0", "xa:mass:test:transport:presence")
+                        .routeOwnerLeaseMillis(5_000L)
+                        .redisRouteOwnerStore("redis://127.0.0.1:6379/0", "xa:mass:test:transport:route-owner")
                         .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine.enabled(false))
                 .build();
@@ -1111,28 +1106,28 @@ class MassSdkTest {
     }
 
     @Test
-    void sdkWorkerOnlineReadsTransportPresenceBeforeWorkerModelStatus() {
+    void sdkWorkerReachableReadsTransportRouteOwnerBeforeWorkerModelStatus() {
         MassApplication delegate = mock(MassApplication.class);
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
-        presenceStore.claimRouteOwner("worker-1", "polling", "worker-1", "worker-1", "connected");
-        when(delegate.getWorkerPresenceInspectionView()).thenReturn(presenceStore);
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        routeOwnerStore.claimRouteOwner("worker-1", "polling", "worker-1", "worker-1", "connected");
+        when(delegate.getRouteOwnerInspectionView()).thenReturn(routeOwnerStore);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        assertTrue(app.isWorkerOnline("worker-1"));
+        assertTrue(app.isWorkerReachable("worker-1"));
 
-        presenceStore.releaseRouteOwner("worker-1", "polling", "worker-1", "worker-1", "disconnect");
+        routeOwnerStore.releaseRouteOwner("worker-1", "polling", "worker-1", "worker-1", "disconnect");
 
-        assertFalse(app.isWorkerOnline("worker-1"));
+        assertFalse(app.isWorkerReachable("worker-1"));
     }
 
     @Test
-    void sdkWorkerOnlineTreatsStalePresenceAsOffline() {
+    void sdkWorkerReachableTreatsStaleRouteOwnerAsOffline() {
         MassApplication delegate = mock(MassApplication.class);
-        WorkerPresenceInspectionView presenceView = new WorkerPresenceInspectionView() {
+        TransportRouteOwnerInspectionView routeOwnerView = new TransportRouteOwnerInspectionView() {
             @Override
-            public WorkerPresence getPresence(String workerId) {
-                return new WorkerPresence(
+            public TransportRouteOwnerRecord getLatestOwnerByWorker(String workerId) {
+                return new TransportRouteOwnerRecord(
                         workerId,
                         "polling",
                         workerId,
@@ -1145,39 +1140,39 @@ class MassSdkTest {
             }
 
             @Override
-            public List<WorkerPresence> listActivePresences() {
+            public List<TransportRouteOwnerRecord> listActiveRouteOwners() {
                 return List.of();
             }
         };
-        when(delegate.getWorkerPresenceInspectionView()).thenReturn(presenceView);
+        when(delegate.getRouteOwnerInspectionView()).thenReturn(routeOwnerView);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        assertFalse(app.isWorkerOnline("worker-stale"));
+        assertFalse(app.isWorkerReachable("worker-stale"));
     }
 
     @Test
-    void sdkWorkerOnlineFollowsNewestPresenceOwnerAfterReconnect() {
+    void sdkWorkerReachableFollowsNewestRouteOwnerAfterReconnect() {
         MassApplication delegate = mock(MassApplication.class);
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
-        when(delegate.getWorkerPresenceInspectionView()).thenReturn(presenceStore);
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        when(delegate.getRouteOwnerInspectionView()).thenReturn(routeOwnerStore);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        presenceStore.claimRouteOwner("worker-2", "websocket", "route-old", "conn-old", "connected");
-        assertTrue(app.isWorkerOnline("worker-2"));
+        routeOwnerStore.claimRouteOwner("worker-2", "websocket", "route-old", "conn-old", "connected");
+        assertTrue(app.isWorkerReachable("worker-2"));
 
-        presenceStore.claimRouteOwner("worker-2", "socket", "route-new", "conn-new", "reconnected");
-        presenceStore.releaseRouteOwner("worker-2", "websocket", "route-old", "conn-old", "late-disconnect");
+        routeOwnerStore.claimRouteOwner("worker-2", "socket", "route-new", "conn-new", "reconnected");
+        routeOwnerStore.releaseRouteOwner("worker-2", "websocket", "route-old", "conn-old", "late-disconnect");
 
-        assertTrue(app.isWorkerOnline("worker-2"));
-        assertEquals("conn-new", presenceStore.getPresence("worker-2").getConnectionId());
-        assertEquals("socket", presenceStore.getPresence("worker-2").getAdapterId());
-        assertEquals("route-new", presenceStore.getPresence("worker-2").getRouteKey());
+        assertTrue(app.isWorkerReachable("worker-2"));
+        assertEquals("conn-new", routeOwnerStore.getLatestOwnerByWorker("worker-2").getConnectionId());
+        assertEquals("socket", routeOwnerStore.getLatestOwnerByWorker("worker-2").getAdapterId());
+        assertEquals("route-new", routeOwnerStore.getLatestOwnerByWorker("worker-2").getRouteKey());
 
-        presenceStore.releaseRouteOwner("worker-2", "socket", "route-new", "conn-new", "disconnect");
+        routeOwnerStore.releaseRouteOwner("worker-2", "socket", "route-new", "conn-new", "disconnect");
 
-        assertFalse(app.isWorkerOnline("worker-2"));
+        assertFalse(app.isWorkerReachable("worker-2"));
     }
 
     @Test
@@ -2724,17 +2719,15 @@ class MassSdkTest {
     void registerWorkerRejectsMissingAdapterIdWhenRealtimeFamilyHasOnlyOneRuntimeAdapter() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
-                                                         taskResultIngestChannel,
+        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          systemEventChannel,
-                                                         workerPresenceStore,
+                                                         routeOwnerStore,
                                                          deliveryService,
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
-                workerPresenceStore,
+                routeOwnerStore,
                 List.of(canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
@@ -2766,17 +2759,15 @@ class MassSdkTest {
     void registerWorkerRejectsMissingAdapterIdWhenMultipleRealtimeAdaptersAreConfigured() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
-                                                         taskResultIngestChannel,
+        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          systemEventChannel,
-                                                         workerPresenceStore,
+                                                         routeOwnerStore,
                                                          deliveryService,
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
-                workerPresenceStore,
+                routeOwnerStore,
                 List.of(
                         canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
                         canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
@@ -2811,17 +2802,15 @@ class MassSdkTest {
     void registerWorkerUsesExplicitRealtimeAdapterIdWhenMultipleRealtimeAdaptersAreConfigured() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
-                                                         taskResultIngestChannel,
+        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          systemEventChannel,
-                                                         workerPresenceStore,
+                                                         routeOwnerStore,
                                                          deliveryService,
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
-                workerPresenceStore,
+                routeOwnerStore,
                 List.of(
                         canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
                         canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
@@ -2855,17 +2844,15 @@ class MassSdkTest {
     void getWorkerTransportHintFallsBackToRegistryBindingInsteadOfNormalizingAdapterId() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
-                                                         taskResultIngestChannel,
+        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          systemEventChannel,
-                                                         workerPresenceStore,
+                                                         routeOwnerStore,
                                                          deliveryService,
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
-                workerPresenceStore,
+                routeOwnerStore,
                 List.of(
                         canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
                         canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
@@ -2927,6 +2914,7 @@ class MassSdkTest {
             app.start();
             Worker worker = new Worker();
             worker.setWorkerId("worker-without-transport");
+            worker.setWorkerGroupId("transport-identity-workers");
             requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().addWorker(new WorkerDeclarationRecord(
                     worker.getWorkerId(),
                     worker.getWorkerGroupId(),
@@ -2940,12 +2928,11 @@ class MassSdkTest {
                     worker.getUpdateTime()
             ));
 
-            IllegalStateException error = assertThrows(
-                    IllegalStateException.class,
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
                     () -> app.pullWorker("worker-without-transport")
             );
-            Assertions.assertEquals("Cannot resolve transport binding for worker worker-without-transport: transportHint must not be blank",
-                    error.getMessage());
+            Assertions.assertEquals("transportHint must not be blank", error.getMessage());
         } finally {
             app.stop();
         }
@@ -2955,17 +2942,15 @@ class MassSdkTest {
     void pullWorkerRejectsRealtimeWorkerWhenTransportIsNotPullCapable() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
-                                                         taskResultIngestChannel,
+        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          systemEventChannel,
-                                                         workerPresenceStore,
+                                                         routeOwnerStore,
                                                          deliveryService,
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
-                workerPresenceStore,
+                routeOwnerStore,
                 List.of(canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
@@ -2984,6 +2969,24 @@ class MassSdkTest {
                     .adapterId("websocket")
                     .transportHint("realtime")
                     .build());
+            WorkerDeclarationRecord worker = requireDelegate(app).getEngine().getConfig()
+                    .getWorkerDeclarationStore()
+                    .getWorker("realtime-worker-1")
+                    .orElseThrow();
+            assertTrue(requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().updateWorker(
+                    new WorkerDeclarationRecord(
+                            worker.workerId(),
+                            "realtime-workers",
+                            worker.adapterNodeId(),
+                            worker.adapterId(),
+                            worker.onlineStrategy(),
+                            worker.agentVersion(),
+                            worker.maxConcurrentWork(),
+                            worker.attributes(),
+                            worker.createTime(),
+                            worker.updateTime()
+                    )
+            ));
 
             IllegalStateException error = assertThrows(
                     IllegalStateException.class,
@@ -3000,17 +3003,15 @@ class MassSdkTest {
     void pullWorkerRejectsUnsupportedTransportEvenWhenAnotherPullCapableBindingExists() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
-                                                         taskResultIngestChannel,
+        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          systemEventChannel,
-                                                         workerPresenceStore,
+                                                         routeOwnerStore,
                                                          deliveryService,
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
-                workerPresenceStore,
+                routeOwnerStore,
                 List.of(canonicalRouteBinding(
                         new StubPullCapableAdapter("queue-consumer", "queue-consumer"),
                         new StubPullCapableAdapter("queue-consumer", "queue-consumer")))
@@ -3048,17 +3049,15 @@ class MassSdkTest {
                 "polling-http-v2",
                 WorkerTransportHints.POLLING
         );
-        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
-                                                         taskResultIngestChannel,
+        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          systemEventChannel,
-                                                         workerPresenceStore,
+                                                         routeOwnerStore,
                                                          deliveryService,
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
-                workerPresenceStore,
+                routeOwnerStore,
                 List.of(canonicalRouteBinding(pollingAdapter, pollingAdapter))
         );
 
@@ -3369,7 +3368,7 @@ class MassSdkTest {
                 app::getAllWorkers,
                 () -> runtimeDiagnostics(app).isWorkerLocked("worker-1"),
                 () -> runtimeDiagnostics(app).listLockedWorkerIds(),
-                () -> app.isWorkerOnline("worker-1"),
+                () -> app.isWorkerReachable("worker-1"),
                 () -> app.declareWorkerGroup(WorkerGroupDeclaration.builder().groupId("group-1").build()),
                 () -> app.registerWorker(WorkerRegistration.builder().workerId("worker-1").build()),
                 () -> app.pullWorker("worker-1"),
@@ -3791,17 +3790,17 @@ class MassSdkTest {
         }
     }
 
-    private static final class StubWorkerPresenceStore
-            implements WorkerPresenceStore,
+    private static final class StubTransportRouteOwnerStore
+            implements TransportRouteOwnerStore,
             WorkerDispatchRouteOwnerView,
-            WorkerPresenceInspectionView,
+            TransportRouteOwnerInspectionView,
             AutoCloseable {
 
         private final AtomicBoolean closed = new AtomicBoolean(false);
-        private final InMemoryWorkerPresenceStore delegate = new InMemoryWorkerPresenceStore();
+        private final InMemoryTransportRouteOwnerStore delegate = new InMemoryTransportRouteOwnerStore();
 
         @Override
-        public com.xa.mass.transport.presence.WorkerPresence claimRouteOwner(String workerId,
+        public com.xa.mass.transport.route.TransportRouteOwnerRecord claimRouteOwner(String workerId,
                                                                         String adapterId,
                                                                         String routeKey,
                                                                         String connectionId,
@@ -3810,7 +3809,7 @@ class MassSdkTest {
         }
 
         @Override
-        public com.xa.mass.transport.presence.WorkerPresence refreshHeartbeat(String workerId,
+        public com.xa.mass.transport.route.TransportRouteOwnerRecord refreshHeartbeat(String workerId,
                                                                               String adapterId,
                                                                               String routeKey,
                                                                               String connectionId,
@@ -3819,7 +3818,7 @@ class MassSdkTest {
         }
 
         @Override
-        public com.xa.mass.transport.presence.WorkerPresence releaseRouteOwner(String workerId,
+        public com.xa.mass.transport.route.TransportRouteOwnerRecord releaseRouteOwner(String workerId,
                                                                          String adapterId,
                                                                          String routeKey,
                                                                          String connectionId,
@@ -3828,8 +3827,8 @@ class MassSdkTest {
         }
 
         @Override
-        public com.xa.mass.transport.presence.WorkerPresence getPresence(String workerId) {
-            return delegate.getPresence(workerId);
+        public com.xa.mass.transport.route.TransportRouteOwnerRecord getLatestOwnerByWorker(String workerId) {
+            return delegate.getLatestOwnerByWorker(workerId);
         }
 
         @Override
@@ -3838,13 +3837,13 @@ class MassSdkTest {
         }
 
         @Override
-        public java.util.Optional<com.xa.mass.transport.presence.WorkerDispatchRouteOwner> currentOwner(String routeKey) {
+        public java.util.Optional<com.xa.mass.transport.route.WorkerDispatchRouteOwner> currentOwner(String routeKey) {
             return delegate.currentOwner(routeKey);
         }
 
         @Override
-        public List<com.xa.mass.transport.presence.WorkerPresence> listActivePresences() {
-            return delegate.listActivePresences();
+        public List<com.xa.mass.transport.route.TransportRouteOwnerRecord> listActiveRouteOwners() {
+            return delegate.listActiveRouteOwners();
         }
 
         @Override

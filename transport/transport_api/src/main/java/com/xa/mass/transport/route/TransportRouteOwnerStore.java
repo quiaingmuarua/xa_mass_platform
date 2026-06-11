@@ -1,4 +1,4 @@
-package com.xa.mass.transport.presence;
+package com.xa.mass.transport.route;
 
 /**
  * Shared transport-owned route-owner heartbeat write surface.
@@ -13,23 +13,23 @@ package com.xa.mass.transport.presence;
  * <p>This write surface deliberately does not expose route-owner reads or
  * worker-id inspection. Dispatch routing should depend on
  * {@link WorkerDispatchRouteOwnerView}; SDK/operator inspection should depend
- * on {@link WorkerPresenceInspectionView}.</p>
+ * on {@link TransportRouteOwnerInspectionView}.</p>
  */
-public interface WorkerPresenceStore {
+public interface TransportRouteOwnerStore {
 
-    WorkerPresence claimRouteOwner(String workerId,
+    TransportRouteOwnerRecord claimRouteOwner(String workerId,
                                    String adapterId,
                                    String routeKey,
                                    String connectionId,
                                    String reason);
 
-    WorkerPresence refreshHeartbeat(String workerId,
+    TransportRouteOwnerRecord refreshHeartbeat(String workerId,
                                     String adapterId,
                                     String routeKey,
                                     String connectionId,
                                     String reason);
 
-    WorkerPresence releaseRouteOwner(String workerId,
+    TransportRouteOwnerRecord releaseRouteOwner(String workerId,
                                      String adapterId,
                                      String routeKey,
                                      String connectionId,

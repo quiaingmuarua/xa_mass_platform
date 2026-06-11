@@ -32,6 +32,8 @@ import com.xa.mass.transport.runtime.TracingWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.TransportDispatchTarget;
+import com.xa.mass.transport.runtime.TransportDispatchTargetResolver;
 import com.xa.mass.transport.runtime.TransportDispatchRouteContext;
 import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import com.xa.mass.transport.runtime.TransportRouteKeyResolver;
@@ -48,7 +50,6 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
 import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.runtime.node.TransportNodeRegistryHeartbeat;
 import com.xa.mass.transport.runtime.worker.NodeTargetedTaskDispatchSubmitter;
-import com.xa.mass.transport.runtime.worker.WorkerDispatchRouteSelector;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
@@ -56,9 +57,10 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
-import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
+import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
+import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -97,9 +99,9 @@ public class MassApplication {
     private MessageTransporter<String, TransportOutboundMessage> messageTransporter;
     private WorkerEndpointRegistry endpointRegistry;
     private TransportRuntimeRegistry transportRuntimeRegistry;
-    private WorkerPresenceStore workerPresenceStore;
+    private TransportRouteOwnerStore routeOwnerStore;
     private WorkerDispatchRouteOwnerView workerRouteOwnerView;
-    private WorkerPresenceInspectionView workerPresenceInspectionView;
+    private TransportRouteOwnerInspectionView routeOwnerInspectionView;
     private TransportDeliveryService transportDeliveryService;
     private TaskDispatchHandoff taskDispatchHandoff;
     private TaskDispatchHandoffPump taskDispatchHandoffPump;
@@ -181,7 +183,7 @@ public class MassApplication {
                 stopTransportNodeHeartbeat();
                 closeTransportNodeRegistry();
                 stopTransportDeliveryService();
-                stopWorkerPresenceStore();
+                stopRouteOwnerStore();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
             }
@@ -230,10 +232,10 @@ public class MassApplication {
             logger.warn("Failed to stop transport delivery service after startup failure", cleanupError);
         }
         try {
-            stopWorkerPresenceStore();
+            stopRouteOwnerStore();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
-            logger.warn("Failed to stop worker presence store after startup failure", cleanupError);
+            logger.warn("Failed to stop transport route-owner store after startup failure", cleanupError);
         }
         try {
             stopTransportNodeHeartbeat();
@@ -278,9 +280,9 @@ public class MassApplication {
                     transportRuntimeComposition.resolveSystemEventChannel(),
                     engineConfig.getExecutionEventSink()
             );
-            workerPresenceStore = transportRuntimeComposition.resolveWorkerPresenceStore();
-            workerRouteOwnerView = requireWorkerRouteOwnerView(workerPresenceStore);
-            workerPresenceInspectionView = requireWorkerPresenceInspectionView(workerPresenceStore);
+            routeOwnerStore = transportRuntimeComposition.resolveTransportRouteOwnerStore();
+            workerRouteOwnerView = requireWorkerRouteOwnerView(routeOwnerStore);
+            routeOwnerInspectionView = requireRouteOwnerInspectionView(routeOwnerStore);
             transportNodeRegistry = transportRuntimeComposition.resolveTransportNodeRegistry();
             TransportDeliveryStore deliveryStore = transportRuntimeComposition.resolveTransportDeliveryStore();
             TransportDeliveryService deliveryService = new TransportDeliveryService(deliveryStore);
@@ -335,7 +337,7 @@ public class MassApplication {
                             endpointRegistry,
                             taskResultIngestChannel,
                             systemEventChannel,
-                            workerPresenceStore,
+                            routeOwnerStore,
                             deliveryService,
                             transportRuntimeTaskExecutor,
                             routeKeyResolver
@@ -347,10 +349,9 @@ public class MassApplication {
 
             if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
                 transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
-                        engineConfig.getWorkerResourceRuntime(),
                         taskResultIngestChannel,
                         systemEventChannel,
-                        workerPresenceStore,
+                        routeOwnerStore,
                         deliveryService,
                         this::resolveTransportRouteKey,
                         adapterBindings
@@ -389,6 +390,7 @@ public class MassApplication {
                 taskDispatchHandoff = transportRuntimeComposition.resolveTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 if (runtimeRole == TransportRuntimeRole.EMBEDDED) {
                     TaskDispatchBatchListener batchListener = transportRuntimeRegistry.createDispatchBatchListener(
+                            createDispatchTargetResolver(),
                             createTransportDispatchFailureHandler(),
                             transportRuntimeTaskExecutor
                     );
@@ -404,6 +406,7 @@ public class MassApplication {
                 taskDispatchHandoff = transportRuntimeComposition.resolveTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 dispatchFailureInbox = transportRuntimeComposition.resolveDispatchFailureInbox();
                 TaskDispatchBatchListener batchListener = transportRuntimeRegistry.createDispatchBatchListener(
+                        createDispatchTargetResolver(),
                         dispatchFailureInbox,
                         transportRuntimeTaskExecutor
                 );
@@ -449,19 +452,68 @@ public class MassApplication {
                                                               TransportRuntimeRole runtimeRole) {
         if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER
                 && handoff instanceof NodeTargetedTaskDispatchHandoff nodeTargetedHandoff) {
-            WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
-                    workerRouteOwnerView,
-                    transportNodeRegistry,
-                    this::resolveWorkerRouteKey
-            );
             return new NodeTargetedTaskDispatchSubmitter(
                     nodeTargetedHandoff,
-                    engineConfig.getWorkerResourceRuntime(),
-                    selector,
+                    this::resolveTransportNodeForBinding,
                     createTransportDispatchFailureHandler()
             );
         }
         return (task, dispatchBindings) -> handoff.submit(new TaskDispatchBatch(task, dispatchBindings));
+    }
+
+    private TransportDispatchTargetResolver createDispatchTargetResolver() {
+        return (task, binding) -> {
+            WorkerResourceRecord worker = requireWorkerResource(binding != null ? binding.workerId() : null);
+            TransportBinding transportBinding = resolveTransportBinding(worker);
+            TransportDispatchRouteContext routeContext = TransportDispatchRouteContext.from(task, binding);
+            return TransportDispatchTarget.of(
+                    transportBinding,
+                    transportBinding.resolveRouteKey(binding, routeContext)
+            );
+        };
+    }
+
+    private Optional<String> resolveTransportNodeForBinding(TaskDispatchBinding binding) {
+        return resolveDispatchRouteOwner(binding).map(WorkerDispatchRouteOwner::transportNodeId);
+    }
+
+    private Optional<WorkerDispatchRouteOwner> resolveDispatchRouteOwner(TaskDispatchBinding binding) {
+        if (binding == null || binding.workerId() == null || binding.workerId().isBlank()) {
+            return Optional.empty();
+        }
+        WorkerResourceRecord worker = engineConfig.getWorkerResourceRuntime()
+                .worker(binding.workerId().trim())
+                .orElse(null);
+        Optional<String> routeKey = resolveWorkerRouteKey(worker);
+        if (routeKey.isEmpty() || workerRouteOwnerView == null) {
+            return Optional.empty();
+        }
+        long now = System.currentTimeMillis();
+        return workerRouteOwnerView.currentOwner(routeKey.get())
+                .filter(owner -> owner.isActive(now))
+                .filter(owner -> transportNodeRegistry == null || transportNodeRegistry.isNodeOnline(owner.transportNodeId()));
+    }
+
+    private WorkerResourceRecord requireWorkerResource(String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            throw new IllegalArgumentException("workerId must not be blank");
+        }
+        WorkerResourceRecord worker = engineConfig.getWorkerResourceRuntime()
+                .worker(workerId.trim())
+                .orElse(null);
+        if (worker == null) {
+            throw new IllegalArgumentException("Worker not found: " + workerId.trim());
+        }
+        return worker;
+    }
+
+    private TransportBinding resolveTransportBinding(WorkerResourceRecord worker) {
+        try {
+            return transportRuntimeRegistry.resolveBinding(worker.adapterId(), worker.onlineStrategy());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("Cannot resolve transport binding for worker " + worker.workerId()
+                    + ": " + e.getMessage(), e);
+        }
     }
 
     private String resolveTransportRouteKey(TaskDispatchBinding dispatchBinding,
@@ -469,7 +521,14 @@ public class MassApplication {
         if (routeContext == null) {
             throw new IllegalArgumentException("routeContext must not be null");
         }
-        return CanonicalWorkerRouteKeyCodec.encode(routeContext.workerGroupId(), routeContext.workerId());
+        String workerGroupId = routeContext.workerGroupId();
+        if ((workerGroupId == null || workerGroupId.isBlank()) && routeContext.workerId() != null) {
+            WorkerResourceRecord worker = engineConfig.getWorkerResourceRuntime()
+                    .worker(routeContext.workerId().trim())
+                    .orElse(null);
+            workerGroupId = worker != null ? worker.workerGroupId() : null;
+        }
+        return CanonicalWorkerRouteKeyCodec.encode(workerGroupId, routeContext.workerId());
     }
 
     private Optional<String> resolveWorkerRouteKey(WorkerResourceRecord worker) {
@@ -581,28 +640,28 @@ public class MassApplication {
         }
     }
 
-    private void stopWorkerPresenceStore() throws Exception {
-        WorkerPresenceStore presenceStore = workerPresenceStore;
-        workerPresenceStore = null;
+    private void stopRouteOwnerStore() throws Exception {
+        TransportRouteOwnerStore store = routeOwnerStore;
+        routeOwnerStore = null;
         workerRouteOwnerView = null;
-        workerPresenceInspectionView = null;
-        if (presenceStore instanceof AutoCloseable closeable) {
+        routeOwnerInspectionView = null;
+        if (store instanceof AutoCloseable closeable) {
             closeable.close();
         }
     }
 
-    private static WorkerDispatchRouteOwnerView requireWorkerRouteOwnerView(WorkerPresenceStore presenceStore) {
-        if (presenceStore instanceof WorkerDispatchRouteOwnerView routeOwnerView) {
+    private static WorkerDispatchRouteOwnerView requireWorkerRouteOwnerView(TransportRouteOwnerStore store) {
+        if (store instanceof WorkerDispatchRouteOwnerView routeOwnerView) {
             return routeOwnerView;
         }
-        throw new IllegalStateException("WorkerPresenceStore must also implement WorkerDispatchRouteOwnerView");
+        throw new IllegalStateException("TransportRouteOwnerStore must also implement WorkerDispatchRouteOwnerView");
     }
 
-    private static WorkerPresenceInspectionView requireWorkerPresenceInspectionView(WorkerPresenceStore presenceStore) {
-        if (presenceStore instanceof WorkerPresenceInspectionView inspectionView) {
+    private static TransportRouteOwnerInspectionView requireRouteOwnerInspectionView(TransportRouteOwnerStore store) {
+        if (store instanceof TransportRouteOwnerInspectionView inspectionView) {
             return inspectionView;
         }
-        throw new IllegalStateException("WorkerPresenceStore must also implement WorkerPresenceInspectionView");
+        throw new IllegalStateException("TransportRouteOwnerStore must also implement TransportRouteOwnerInspectionView");
     }
 
     private void stopTaskDispatchHandoff() {
@@ -753,7 +812,13 @@ public class MassApplication {
         if (transportRuntimeRegistry == null) {
             throw new IllegalStateException("Pull worker transport is unavailable for this runtime");
         }
-        ResolvedPullWorkerTransport resolved = transportRuntimeRegistry.resolvePullWorkerTransport(workerId);
+        WorkerResourceRecord worker = requireWorkerResource(workerId);
+        ResolvedPullWorkerTransport resolved = transportRuntimeRegistry.resolvePullWorkerTransport(
+                worker.workerId(),
+                worker.workerGroupId(),
+                worker.adapterId(),
+                worker.onlineStrategy()
+        );
         return new PullWorkerSession(
                 resolved.getWorkerId(),
                 resolved.getWorkerGroupId(),
@@ -762,7 +827,7 @@ public class MassApplication {
                 resolved.getTaskPullChannel(),
                 resolved.getTaskResultIngestChannel(),
                 resolved.getSystemEventChannel(),
-                resolved.getWorkerPresenceStore(),
+                resolved.getRouteOwnerStore(),
                 resolved.getTransportHint()
         );
     }
@@ -774,8 +839,8 @@ public class MassApplication {
         return value.trim();
     }
 
-    public WorkerPresenceInspectionView getWorkerPresenceInspectionView() {
-        return workerPresenceInspectionView;
+    public TransportRouteOwnerInspectionView getRouteOwnerInspectionView() {
+        return routeOwnerInspectionView;
     }
 
     public boolean sendRawTransportMessage(String workerId, String rawJson, String traceId) {
@@ -789,7 +854,7 @@ public class MassApplication {
             return false;
         }
         String normalizedWorkerId = workerId.trim();
-        String workerAdapterId = transportRuntimeRegistry.resolveWorkerAdapterId(normalizedWorkerId);
+        String workerAdapterId = resolveWorkerAdapterId(normalizedWorkerId);
         RawWorkerMessageChannel rawWorkerMessageChannel = rawWorkerMessageChannelsByAdapterId.get(
                 workerAdapterId == null ? null : workerAdapterId.trim().toLowerCase(java.util.Locale.ROOT)
         );
@@ -852,11 +917,19 @@ public class MassApplication {
         if (transportRuntimeRegistry == null || workerId == null || workerId.isBlank()) {
             return null;
         }
-        String workerAdapterId = transportRuntimeRegistry.resolveWorkerAdapterId(workerId.trim());
+        String workerAdapterId = resolveWorkerAdapterId(workerId.trim());
         if (workerAdapterId == null || workerAdapterId.isBlank()) {
             return null;
         }
         return rawWorkerMessageChannelsByAdapterId.get(workerAdapterId.trim().toLowerCase(java.util.Locale.ROOT));
+    }
+
+    public String resolveWorkerAdapterId(String workerId) {
+        return resolveTransportBinding(requireWorkerResource(workerId)).getAdapterId();
+    }
+
+    public String resolveWorkerTransportHint(String workerId) {
+        return resolveTransportBinding(requireWorkerResource(workerId)).getTransportHint();
     }
 
     private String encodeWorkerCommandFrame(WorkerCommandRecord command) {

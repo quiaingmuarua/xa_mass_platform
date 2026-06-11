@@ -71,7 +71,7 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
         registerWorkerCredential(spec);
         if (spec.requiresPreRegistration()) {
             registerRealtimeWorker(spec);
-            assertFalse(app.isWorkerOnline(spec.workerId()),
+            assertFalse(app.isWorkerReachable(spec.workerId()),
                     "control-plane registration must not create transport presence");
         }
 

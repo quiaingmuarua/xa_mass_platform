@@ -1,4 +1,4 @@
-package com.xa.mass.transport.presence;
+package com.xa.mass.transport.route;
 
 import java.util.Objects;
 
@@ -23,15 +23,15 @@ public record WorkerDispatchRouteOwner(String workerId,
         return leaseExpireAtEpochMillis > nowEpochMillis;
     }
 
-    public static WorkerDispatchRouteOwner fromPresence(WorkerPresence presence) {
-        Objects.requireNonNull(presence, "presence");
+    public static WorkerDispatchRouteOwner fromRecord(TransportRouteOwnerRecord record) {
+        Objects.requireNonNull(record, "record");
         return new WorkerDispatchRouteOwner(
-                presence.getWorkerId(),
-                presence.getAdapterId(),
-                presence.getRouteKey(),
-                presence.getTransportNodeId(),
-                presence.getLeaseExpireAtEpochMillis(),
-                presence.getUpdatedAtEpochMillis()
+                record.getWorkerId(),
+                record.getAdapterId(),
+                record.getRouteKey(),
+                record.getTransportNodeId(),
+                record.getLeaseExpireAtEpochMillis(),
+                record.getUpdatedAtEpochMillis()
         );
     }
 

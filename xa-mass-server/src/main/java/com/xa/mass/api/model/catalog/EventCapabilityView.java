@@ -56,7 +56,7 @@ public record EventCapabilityView(
         @Schema(description = "Workers that declare this event capability")
         List<String> workerIds,
         @Schema(description = "Currently online workers that declare this event capability")
-        List<String> onlineWorkerIds,
+        List<String> reachableWorkerIds,
         @Schema(description = "Whether this event has a direct SDK runtime handler", example = "false")
         boolean hasDirectRuntimeHandler,
         @Schema(description = "Whether at least one online worker declares this event", example = "true")

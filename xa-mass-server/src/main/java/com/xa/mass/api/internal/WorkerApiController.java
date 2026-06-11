@@ -87,13 +87,13 @@ public class WorkerApiController {
                 .sorted(Comparator.comparing(WorkerSnapshot::getWorkerId, Comparator.nullsLast(String::compareTo)))
                 .limit(resolvedLimit)
                 .toList();
-        Set<String> onlineWorkerIds = resolveOnlineWorkerIds(visibleWorkers);
+        Set<String> reachableWorkerIds = resolveReachableWorkerIds(visibleWorkers);
         Set<String> lockedWorkerIds = resolveLockedWorkerIds();
         List<Map<String, Object>> items = visibleWorkers.stream()
                 .map(worker -> {
                     List<Map<String, Object>> connections =
                             connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
-                    boolean transportOnline = onlineWorkerIds.contains(worker.getWorkerId());
+                    boolean transportOnline = reachableWorkerIds.contains(worker.getWorkerId());
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("workerId", worker.getWorkerId());
                     item.put("status", worker.getStatus());
@@ -204,7 +204,7 @@ public class WorkerApiController {
         return workerControl;
     }
 
-    private Set<String> resolveOnlineWorkerIds(List<WorkerSnapshot> workers) {
+    private Set<String> resolveReachableWorkerIds(List<WorkerSnapshot> workers) {
         if (workers == null || workers.isEmpty()) {
             return Set.of();
         }
@@ -218,11 +218,11 @@ public class WorkerApiController {
         if (visibleWorkerIds.isEmpty()) {
             return Set.of();
         }
-        List<String> onlineWorkerIds = workerQueries.listOnlineWorkerIds();
-        if (onlineWorkerIds == null || onlineWorkerIds.isEmpty()) {
+        List<String> reachableWorkerIds = workerQueries.listReachableWorkerIds();
+        if (reachableWorkerIds == null || reachableWorkerIds.isEmpty()) {
             return Set.of();
         }
-        return onlineWorkerIds.stream()
+        return reachableWorkerIds.stream()
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(visibleWorkerIds::contains)

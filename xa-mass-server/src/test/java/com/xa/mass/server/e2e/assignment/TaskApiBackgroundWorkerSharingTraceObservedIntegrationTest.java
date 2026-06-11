@@ -67,7 +67,7 @@ class TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest extends Abstrac
                 new ManualAckWebSocketClient(wsUri, workerId, canonicalWorkerRouteKey("us", workerId));
         try {
             assertClientConnects(client, "background sharing sample client failed to connect");
-            assertTrue(awaitCondition(() -> app.isWorkerOnline(workerId), 20, 100L),
+            assertTrue(awaitCondition(() -> app.isWorkerReachable(workerId), 20, 100L),
                     "worker must become transport-online before approval");
 
             String firstTaskId = createBackgroundTask("background-sharing-first", "first background task", "target-a");

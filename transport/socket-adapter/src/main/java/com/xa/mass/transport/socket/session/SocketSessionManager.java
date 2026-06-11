@@ -3,10 +3,9 @@ package com.xa.mass.transport.socket.session;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
-import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,15 +24,13 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
 
     private final String adapterId;
     private final RouteEndpointIndex<String, SocketWorkerEndpoint> routeIndex = new RouteEndpointIndex<>();
-    private volatile WorkerSystemEventChannel systemEventChannel;
-    private volatile WorkerPresenceStore workerPresenceStore = new InMemoryWorkerPresenceStore();
+    private volatile TransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
 
-    public SocketSessionManager(String adapterId, WorkerSystemEventChannel systemEventChannel) {
+    public SocketSessionManager(String adapterId) {
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must not be blank");
         }
         this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
-        this.systemEventChannel = systemEventChannel;
     }
 
     public synchronized void addSession(String routeKey,
@@ -41,7 +38,6 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
                                         String endpointId,
                                         Socket socket,
                                         BufferedWriter writer) {
-        boolean wasOnline = hasActiveRoute(routeKey);
         RouteEndpointIndex.BindResult<String, SocketWorkerEndpoint> result = routeIndex.bind(
                 routeKey,
                 workerId,
@@ -60,10 +56,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         logger.info("Connected: routeKey={} workerId={} endpointId={} totalRoutes={}",
                 routeKey, workerId, endpointId, routeIndex.routeCount());
         if (result.currentEntry().endpoint().isActive()) {
-            workerPresenceStore.claimRouteOwner(workerId, adapterId, routeKey, endpointId, "socket connected");
-        }
-        if (!wasOnline && result.currentEntry().endpoint().isActive() && systemEventChannel != null) {
-            systemEventChannel.publishWorkerOnline(workerId, "socket connected", null);
+            routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, endpointId, "socket connected");
         }
     }
 
@@ -79,9 +72,8 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
 
         logger.info("Disconnected: routeKey={} workerId={} endpointId={}",
                 binding.routeKey(), binding.workerId(), endpointId);
-        if (result.removedCurrentRoute() && systemEventChannel != null) {
-            workerPresenceStore.releaseRouteOwner(binding.workerId(), adapterId, binding.routeKey(), endpointId, "socket disconnected");
-            systemEventChannel.publishWorkerOffline(binding.workerId(), "socket disconnected", null);
+        if (result.removedCurrentRoute()) {
+            routeOwnerStore.releaseRouteOwner(binding.workerId(), adapterId, binding.routeKey(), endpointId, "socket disconnected");
         }
     }
 
@@ -138,16 +130,13 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
                 .toList();
         for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : entries) {
             if (entry.endpoint().isActive()) {
-                workerPresenceStore.releaseRouteOwner(
+                routeOwnerStore.releaseRouteOwner(
                         entry.workerId(),
                         adapterId,
                         entry.routeKey(),
                         entry.handle(),
                         "socket adapter shutdown"
                 );
-                if (systemEventChannel != null) {
-                    systemEventChannel.publishWorkerOffline(entry.workerId(), "socket adapter shutdown", null);
-                }
             }
         }
         routeIndex.clear();
@@ -176,38 +165,31 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         return adapterId;
     }
 
-    public void setSystemEventChannel(WorkerSystemEventChannel systemEventChannel) {
-        this.systemEventChannel = systemEventChannel;
-    }
-
-    public void setWorkerPresenceStore(WorkerPresenceStore workerPresenceStore) {
-        WorkerPresenceStore nextStore = workerPresenceStore != null
-                ? workerPresenceStore
-                : new InMemoryWorkerPresenceStore();
+    public void setRouteOwnerStore(TransportRouteOwnerStore routeOwnerStore) {
+        TransportRouteOwnerStore nextStore = routeOwnerStore != null
+                ? routeOwnerStore
+                : new InMemoryTransportRouteOwnerStore();
         synchronized (this) {
-            this.workerPresenceStore = nextStore;
-            projectActiveSessionsOnline("socket presence store replaced");
+            this.routeOwnerStore = nextStore;
+            projectActiveSessionsToRouteOwner("socket route-owner store replaced");
         }
     }
 
     public void recordHeartbeat(String routeKey, String workerId, String endpointId, String reason, String traceId) {
-        workerPresenceStore.refreshHeartbeat(workerId, adapterId, routeKey, endpointId, reason);
-        if (systemEventChannel != null) {
-            systemEventChannel.publishWorkerHeartbeat(workerId, reason, traceId);
-        }
+        routeOwnerStore.refreshHeartbeat(workerId, adapterId, routeKey, endpointId, reason);
     }
 
     private boolean matchesAdapter(String adapterId) {
         return adapterId == null || this.adapterId.equalsIgnoreCase(adapterId.trim());
     }
 
-    private void projectActiveSessionsOnline(String reason) {
+    private void projectActiveSessionsToRouteOwner(String reason) {
         for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entries()) {
             SocketWorkerEndpoint endpoint = entry.endpoint();
             if (endpoint == null || !endpoint.isActive()) {
                 continue;
             }
-            workerPresenceStore.claimRouteOwner(
+            routeOwnerStore.claimRouteOwner(
                     entry.workerId(),
                     adapterId,
                     entry.routeKey(),

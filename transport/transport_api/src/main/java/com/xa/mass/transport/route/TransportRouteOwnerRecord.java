@@ -1,9 +1,9 @@
-package com.xa.mass.transport.presence;
+package com.xa.mass.transport.route;
 
 /**
  * Durable worker route-owner heartbeat evidence owned by transport.
  */
-public final class WorkerPresence {
+public final class TransportRouteOwnerRecord {
 
     private final String workerId;
     private final String adapterId;
@@ -14,7 +14,7 @@ public final class WorkerPresence {
     private final String connectionId;
     private final long updatedAtEpochMillis;
 
-    public WorkerPresence(String workerId,
+    public TransportRouteOwnerRecord(String workerId,
                           String adapterId,
                           String routeKey,
                           long lastHeartbeatEpochMillis,

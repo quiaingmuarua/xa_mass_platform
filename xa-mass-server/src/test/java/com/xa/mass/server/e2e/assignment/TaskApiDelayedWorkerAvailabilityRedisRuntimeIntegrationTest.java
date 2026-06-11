@@ -83,14 +83,14 @@ class TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest extends Abstra
 
         String lateWorkerId = "late-worker-redis-0";
         registerSdkWorkerWithContext(lateWorkerId, "us");
-        assertFalse(app.isWorkerOnline(lateWorkerId),
+        assertFalse(app.isWorkerReachable(lateWorkerId),
                 "worker registration must not create transport presence");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         SampleWorkerWebSocketClient client = sampleWebSocketClient(uri, "us", lateWorkerId);
         try {
             assertClientConnects(client, "late worker redis client failed to connect");
-            waitUntil(() -> app.isWorkerOnline(lateWorkerId),
+            waitUntil(() -> app.isWorkerReachable(lateWorkerId),
                     "late worker connect must surface transport presence online");
 
             RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 500L);
@@ -99,7 +99,7 @@ class TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest extends Abstra
         } finally {
             client.disconnect();
         }
-        waitUntil(() -> !app.isWorkerOnline(lateWorkerId),
+        waitUntil(() -> !app.isWorkerReachable(lateWorkerId),
                 "late worker disconnect must converge transport presence offline");
     }
 
@@ -112,7 +112,7 @@ class TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest extends Abstra
         SampleWorkerWebSocketClient client = sampleWebSocketClient(uri, "us", workerId);
         try {
             assertClientConnects(client, "redis refill worker client failed to connect");
-            waitUntil(() -> app.isWorkerOnline(workerId),
+            waitUntil(() -> app.isWorkerReachable(workerId),
                     "redis refill worker connect must surface transport presence online");
 
             String taskId = createTaskId(
@@ -133,7 +133,7 @@ class TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest extends Abstra
         } finally {
             client.disconnect();
         }
-        waitUntil(() -> !app.isWorkerOnline(workerId),
+        waitUntil(() -> !app.isWorkerReachable(workerId),
                 "redis refill worker disconnect must converge transport presence offline");
     }
 

@@ -3,7 +3,6 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.google.gson.JsonObject;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
@@ -255,8 +254,7 @@ class WebSocketInputProcessorTest {
                 "websocket",
                 endpointRegistry,
                 codec,
-                taskResultIngestChannel,
-                NoopWorkerSystemEventChannel.INSTANCE
+                taskResultIngestChannel
         );
     }
 

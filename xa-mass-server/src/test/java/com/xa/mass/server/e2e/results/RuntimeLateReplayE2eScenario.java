@@ -36,7 +36,7 @@ abstract class RuntimeLateReplayE2eScenario extends ReviewReadModelSampleE2eTest
                 "chaos worker failed to connect"
         );
         try {
-            waitUntil(() -> app.isWorkerOnline(CHAOS_WORKER_ID), "chaos worker must become online");
+            waitUntil(() -> app.isWorkerReachable(CHAOS_WORKER_ID), "chaos worker must become online");
 
             String taskId = createTaskId("runtime-late-replay", "runtime replay integration", List.of("target-a"), 1, 1);
             Map<String, Object> approveResponse = approveTask(taskId);
@@ -45,14 +45,14 @@ abstract class RuntimeLateReplayE2eScenario extends ReviewReadModelSampleE2eTest
             JsonObject firstDispatch = chaosClient.awaitTask(3, TimeUnit.SECONDS);
             assertNotNull(firstDispatch, "chaos worker should receive the first dispatch");
             chaosClient.disconnect();
-            waitUntil(() -> !app.isWorkerOnline(CHAOS_WORKER_ID), "chaos worker disconnect must converge transport presence offline");
+            waitUntil(() -> !app.isWorkerReachable(CHAOS_WORKER_ID), "chaos worker disconnect must converge transport presence offline");
 
             SampleWorkerWebSocketClient steadyClient = connectClientWithRetries(
                     () -> sampleWebSocketClient(wsUri, "us", STEADY_WORKER_ID),
                     "steady worker failed to connect"
             );
             try {
-                waitUntil(() -> app.isWorkerOnline(STEADY_WORKER_ID), "steady worker must become online");
+                waitUntil(() -> app.isWorkerReachable(STEADY_WORKER_ID), "steady worker must become online");
 
                 TaskSnapshot terminal = waitForTaskSnapshot(
                         taskId,

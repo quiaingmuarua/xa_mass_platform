@@ -595,7 +595,7 @@ public abstract class AbstractSampleE2eTest {
                 if (livenessCheck != null) {
                     livenessCheck.run();
                 }
-                return requireSdkApp().isWorkerOnline(workerId);
+                return requireSdkApp().isWorkerReachable(workerId);
             }, maxAttempts, sleepMillis);
             assertTrue(online, "Worker " + workerId + " did not become transport-online");
         } catch (AssertionError error) {
@@ -612,7 +612,7 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected void waitForWorkerOffline(String workerId, String failureMessage) throws InterruptedException {
-        assertTrue(awaitCondition(() -> !requireSdkApp().isWorkerOnline(workerId), 20, 100L), failureMessage);
+        assertTrue(awaitCondition(() -> !requireSdkApp().isWorkerReachable(workerId), 20, 100L), failureMessage);
     }
 
     protected int waitForPositiveIntSystemProperty(String propertyName,
@@ -665,7 +665,7 @@ public abstract class AbstractSampleE2eTest {
     private int fetchOnlineWorkerCount() {
         return (int) requireSdkApp().getAllWorkers().stream()
                 .map(WorkerSnapshot::getWorkerId)
-                .filter(workerId -> workerId != null && requireSdkApp().isWorkerOnline(workerId))
+                .filter(workerId -> workerId != null && requireSdkApp().isWorkerReachable(workerId))
                 .count();
     }
 

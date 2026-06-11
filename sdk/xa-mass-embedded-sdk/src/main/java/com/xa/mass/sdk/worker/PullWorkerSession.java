@@ -8,7 +8,7 @@ import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 
 import java.util.List;
 import java.util.Map;
@@ -32,7 +32,7 @@ public class PullWorkerSession {
     private final TaskPullChannel taskPullChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
-    private final WorkerPresenceStore workerPresenceStore;
+    private final TransportRouteOwnerStore routeOwnerStore;
     private final String transportHint;
 
     public PullWorkerSession(String workerId,
@@ -42,7 +42,7 @@ public class PullWorkerSession {
                              TaskPullChannel taskPullChannel,
                              TaskResultIngestChannel taskResultIngestChannel,
                              WorkerSystemEventChannel systemEventChannel,
-                             WorkerPresenceStore workerPresenceStore,
+                             TransportRouteOwnerStore routeOwnerStore,
                              String transportHint) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
@@ -55,7 +55,7 @@ public class PullWorkerSession {
         this.taskPullChannel = Objects.requireNonNull(taskPullChannel, "taskPullChannel");
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
-        this.workerPresenceStore = Objects.requireNonNull(workerPresenceStore, "workerPresenceStore");
+        this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
         this.transportHint = transportHint;
     }
 
@@ -89,7 +89,7 @@ public class PullWorkerSession {
 
     public void connect(String reason) {
         String normalizedReason = normalizeReason(reason, "pull-session-connect");
-        workerPresenceStore.claimRouteOwner(workerId, adapterId, routeKey, connectionId, normalizedReason);
+        routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, connectionId, normalizedReason);
         systemEventChannel.publishWorkerOnline(workerId, normalizedReason, connectionId);
     }
 
@@ -99,7 +99,7 @@ public class PullWorkerSession {
 
     public void disconnect(String reason) {
         String normalizedReason = normalizeReason(reason, "pull-session-disconnect");
-        workerPresenceStore.releaseRouteOwner(workerId, adapterId, routeKey, connectionId, normalizedReason);
+        routeOwnerStore.releaseRouteOwner(workerId, adapterId, routeKey, connectionId, normalizedReason);
         systemEventChannel.publishWorkerOffline(workerId, normalizedReason, connectionId);
     }
 
@@ -109,7 +109,7 @@ public class PullWorkerSession {
 
     public void heartbeat(String reason) {
         String normalizedReason = normalizeReason(reason, "pull-session-heartbeat");
-        workerPresenceStore.refreshHeartbeat(workerId, adapterId, routeKey, connectionId, normalizedReason);
+        routeOwnerStore.refreshHeartbeat(workerId, adapterId, routeKey, connectionId, normalizedReason);
         systemEventChannel.publishWorkerHeartbeat(workerId, normalizedReason, connectionId);
     }
 

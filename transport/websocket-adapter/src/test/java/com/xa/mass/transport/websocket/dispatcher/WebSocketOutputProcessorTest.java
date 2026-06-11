@@ -2,7 +2,6 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,8 +23,7 @@ class WebSocketOutputProcessorTest {
                 "websocket",
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
-                null,
-                NoopWorkerSystemEventChannel.INSTANCE
+                null
         );
         outputProcessor = new WebSocketOutputProcessor(context);
     }

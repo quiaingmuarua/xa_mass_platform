@@ -55,13 +55,13 @@ Transport should stay centered on these concepts only:
 - `TaskPullResult`: explicit pull-path status plus delivered dispatch items;
   empty queue, invalid request, temporary unavailability, and shutdown must not
   be flattened into one fake "no work" result on the transport mainline
-- `WorkerPresenceStore`: transport adapter write surface for route-owner claim,
+- `TransportRouteOwnerStore`: transport adapter write surface for route-owner claim,
   heartbeat refresh, and owner release; it does not expose dispatch routing or
   worker-id inspection reads
 - `WorkerDispatchRouteOwnerView`: narrow read-only route-owner view used by
   engine-side dispatch routing after worker matching has already selected a
   worker
-- `WorkerPresenceInspectionView`: worker-id projection view for SDK/operator
+- `TransportRouteOwnerInspectionView`: worker-id projection view for SDK/operator
   inspection; it is not a dispatch routing dependency
 - `WorkerSystemEventChannel`: transport-neutral ingress seam for worker
   connect/disconnect/heartbeat signals. It is not a worker command, worker
@@ -142,15 +142,15 @@ engine selector heuristic. Expired owner evidence is not dispatchable; readers
 may derive unreachable/stale views without transport persisting a status enum.
 Shared-store implementations such as Redis must preserve the same route-owner
 semantics as the in-memory default. One opaque `routeKey` has one current
-delivery owner. `getPresence(workerId)`, `isWorkerOnline(workerId)`, and
-`findOwners(workerId)` are SDK/operator inspection projections derived from
+delivery owner. `getLatestOwnerByWorker(workerId)`, `isWorkerReachable(workerId)`, and
+`findRouteOwners(workerId)` are SDK/operator inspection projections derived from
 route-owner truth; dispatch routing must resolve the current owner by opaque
 `routeKey`. Engine must not write presence, read adapter sessions, or treat
 presence as a schedule owner.
-Runtime assembly may keep the `WorkerPresenceStore` write surface for adapter
+Runtime assembly may keep the `TransportRouteOwnerStore` write surface for adapter
 writes and shutdown ownership, but engine reachability and node-targeted
 dispatch should bind only `WorkerDispatchRouteOwnerView`; SDK/operator reads
-should bind `WorkerPresenceInspectionView`.
+should bind `TransportRouteOwnerInspectionView`.
 
 ## Worker Registration Relation Baseline
 
@@ -305,7 +305,7 @@ default component namespaces are:
 Presence route-owner truth is `owner:<shard>`: one opaque `routeKey` maps to one
 current active owner. `deadline:<shard>` is the lease/prune index.
 `worker-route:<workerId>` is a transport-derived SDK/operator projection from
-worker id to the latest known route key, so `findOwners(workerId)` returns at
+worker id to the latest known route key, so `findRouteOwners(workerId)` returns at
 most one active route owner. It must not be treated as worker metadata truth.
 
 Forbidden transport key families:

@@ -59,7 +59,7 @@ class ServerDurableLocalProfileContextTest extends AbstractSampleE2eTest {
         registry.add("spring.redis.database", () -> 0);
         registry.add("mass.runtime.redis.namespace", () -> NAMESPACE + ":runtime");
         registry.add("mass.transport.delivery.redis.namespace", () -> NAMESPACE + ":delivery");
-        registry.add("mass.transport.presence.redis.namespace", () -> NAMESPACE + ":presence");
+        registry.add("mass.transport.route-owner.redis.namespace", () -> NAMESPACE + ":route-owner");
     }
 
     @AfterAll

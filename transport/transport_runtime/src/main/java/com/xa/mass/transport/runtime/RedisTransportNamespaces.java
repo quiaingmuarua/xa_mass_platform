@@ -6,7 +6,7 @@ package com.xa.mass.transport.runtime;
 public final class RedisTransportNamespaces {
 
     public static final String DELIVERY = "xa:mass:transport:delivery:v1";
-    public static final String PRESENCE = "xa:mass:transport:presence:v2";
+    public static final String ROUTE_OWNER = "xa:mass:transport:route-owner:v1";
     public static final String NODES = "xa:mass:transport:nodes:v1";
     public static final String DISPATCH_NODE = "xa:mass:transport:dispatch-node:v1";
     public static final String DISPATCH_HANDOFF = "xa:mass:transport:dispatch-handoff:v1";

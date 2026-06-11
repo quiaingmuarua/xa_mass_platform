@@ -1,10 +1,10 @@
-package com.xa.mass.transport.runtime.presence;
+package com.xa.mass.transport.runtime.route;
 
-import com.xa.mass.transport.presence.WorkerDispatchRouteOwner;
-import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
-import com.xa.mass.transport.presence.WorkerPresence;
-import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
+import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
+import com.xa.mass.transport.route.TransportRouteOwnerRecord;
+import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,26 +17,26 @@ import java.util.concurrent.ConcurrentMap;
 /**
  * In-memory route-owner heartbeat projection.
  */
-public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
+public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwnerStore,
         WorkerDispatchRouteOwnerView,
-        WorkerPresenceInspectionView {
+        TransportRouteOwnerInspectionView {
 
     public static final long DEFAULT_LEASE_MILLIS = 30_000L;
 
     private final long leaseMillis;
     private final String transportInstanceId;
-    private final ConcurrentMap<String, WorkerPresence> presenceByRouteKey = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, TransportRouteOwnerRecord> ownerByRouteKey = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> latestRouteKeyByWorkerId = new ConcurrentHashMap<>();
 
-    public InMemoryWorkerPresenceStore() {
+    public InMemoryTransportRouteOwnerStore() {
         this(DEFAULT_LEASE_MILLIS);
     }
 
-    public InMemoryWorkerPresenceStore(long leaseMillis) {
+    public InMemoryTransportRouteOwnerStore(long leaseMillis) {
         this(leaseMillis, UUID.randomUUID().toString());
     }
 
-    public InMemoryWorkerPresenceStore(long leaseMillis, String transportInstanceId) {
+    public InMemoryTransportRouteOwnerStore(long leaseMillis, String transportInstanceId) {
         if (leaseMillis <= 0L) {
             throw new IllegalArgumentException("leaseMillis must be greater than 0");
         }
@@ -45,7 +45,7 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
     }
 
     @Override
-    public WorkerPresence claimRouteOwner(String workerId,
+    public TransportRouteOwnerRecord claimRouteOwner(String workerId,
                                           String adapterId,
                                           String routeKey,
                                           String connectionId,
@@ -56,7 +56,7 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
         String nextConnectionId = normalizedConnectionId != null ? normalizedConnectionId : UUID.randomUUID().toString();
-        WorkerPresence next = new WorkerPresence(
+        TransportRouteOwnerRecord next = new TransportRouteOwnerRecord(
                 normalizedWorkerId,
                 normalizedAdapterId,
                 normalizedRouteKey,
@@ -70,7 +70,7 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
     }
 
     @Override
-    public WorkerPresence refreshHeartbeat(String workerId,
+    public TransportRouteOwnerRecord refreshHeartbeat(String workerId,
                                            String adapterId,
                                            String routeKey,
                                            String connectionId,
@@ -80,18 +80,18 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
         String normalizedRouteKey = normalizeNullable(routeKey);
         String normalizedConnectionId = normalizeNullable(connectionId);
         if (normalizedWorkerId == null || normalizedRouteKey == null || normalizedConnectionId == null) {
-            return getPresence(workerId);
+            return getLatestOwnerByWorker(workerId);
         }
         long now = System.currentTimeMillis();
-        return presenceByRouteKey.compute(normalizedRouteKey, (routeKeyValue, stored) -> {
-            WorkerPresence current = stored;
+        return ownerByRouteKey.compute(normalizedRouteKey, (routeKeyValue, stored) -> {
+            TransportRouteOwnerRecord current = stored;
             if (current == null
                     || !normalizedWorkerId.equals(current.getWorkerId())
                     || !normalizedAdapterId.equals(current.getAdapterId())
                     || !normalizedConnectionId.equals(current.getConnectionId())) {
                 return current != null ? current : stored;
             }
-            WorkerPresence next = new WorkerPresence(
+            TransportRouteOwnerRecord next = new TransportRouteOwnerRecord(
                     current.getWorkerId(),
                     current.getAdapterId(),
                     current.getRouteKey(),
@@ -107,7 +107,7 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
     }
 
     @Override
-    public WorkerPresence releaseRouteOwner(String workerId,
+    public TransportRouteOwnerRecord releaseRouteOwner(String workerId,
                                             String adapterId,
                                             String routeKey,
                                             String connectionId,
@@ -116,43 +116,43 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
-        WorkerPresence previous = presenceByRouteKey.get(normalizedRouteKey);
+        TransportRouteOwnerRecord previous = ownerByRouteKey.get(normalizedRouteKey);
         if (previous == null
                 || normalizedConnectionId == null
                 || !normalizedWorkerId.equals(previous.getWorkerId())
                 || !normalizedAdapterId.equals(previous.getAdapterId())
                 || !normalizedConnectionId.equals(previous.getConnectionId())) {
-            return getPresence(normalizedWorkerId);
+            return getLatestOwnerByWorker(normalizedWorkerId);
         }
-        presenceByRouteKey.remove(normalizedRouteKey, previous);
+        ownerByRouteKey.remove(normalizedRouteKey, previous);
         latestRouteKeyByWorkerId.remove(normalizedWorkerId, normalizedRouteKey);
         return previous;
     }
 
     @Override
-    public WorkerPresence getPresence(String workerId) {
+    public TransportRouteOwnerRecord getLatestOwnerByWorker(String workerId) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null) {
             return null;
         }
         long now = System.currentTimeMillis();
         String routeKey = latestRouteKeyByWorkerId.get(normalizedWorkerId);
-        WorkerPresence latest = routeKey != null ? presenceByRouteKey.get(routeKey) : null;
+        TransportRouteOwnerRecord latest = routeKey != null ? ownerByRouteKey.get(routeKey) : null;
         if (latest != null && latest.isLeaseActive(now)) {
             return latest;
         }
-        WorkerPresence newestOnline = presenceByRouteKey.values().stream()
-                .filter(presence -> normalizedWorkerId.equals(presence.getWorkerId()))
-                .filter(presence -> presence.isLeaseActive(now))
-                .max(java.util.Comparator.comparingLong(WorkerPresence::getUpdatedAtEpochMillis))
+        TransportRouteOwnerRecord newestOnline = ownerByRouteKey.values().stream()
+                .filter(owner -> normalizedWorkerId.equals(owner.getWorkerId()))
+                .filter(owner -> owner.isLeaseActive(now))
+                .max(java.util.Comparator.comparingLong(TransportRouteOwnerRecord::getUpdatedAtEpochMillis))
                 .orElse(null);
         if (newestOnline != null) {
             latestRouteKeyByWorkerId.put(normalizedWorkerId, newestOnline.getRouteKey());
             return newestOnline;
         }
-        return presenceByRouteKey.values().stream()
-                .filter(presence -> normalizedWorkerId.equals(presence.getWorkerId()))
-                .max(java.util.Comparator.comparingLong(WorkerPresence::getUpdatedAtEpochMillis))
+        return ownerByRouteKey.values().stream()
+                .filter(owner -> normalizedWorkerId.equals(owner.getWorkerId()))
+                .max(java.util.Comparator.comparingLong(TransportRouteOwnerRecord::getUpdatedAtEpochMillis))
                 .orElse(latest);
     }
 
@@ -164,11 +164,11 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
             return false;
         }
         long now = System.currentTimeMillis();
-        WorkerPresence presence = presenceByRouteKey.get(normalizedRouteKey);
-        return presence != null
-                && normalizedAdapterId.equals(presence.getAdapterId())
-                && normalizedRouteKey.equals(presence.getRouteKey())
-                && presence.isLeaseActive(now);
+        TransportRouteOwnerRecord owner = ownerByRouteKey.get(normalizedRouteKey);
+        return owner != null
+                && normalizedAdapterId.equals(owner.getAdapterId())
+                && normalizedRouteKey.equals(owner.getRouteKey())
+                && owner.isLeaseActive(now);
     }
 
     @Override
@@ -177,18 +177,18 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
         if (normalizedRouteKey == null) {
             return Optional.empty();
         }
-        WorkerPresence presence = presenceByRouteKey.get(normalizedRouteKey);
-        if (presence == null) {
+        TransportRouteOwnerRecord owner = ownerByRouteKey.get(normalizedRouteKey);
+        if (owner == null) {
             return Optional.empty();
         }
-        return Optional.of(WorkerDispatchRouteOwner.fromPresence(presence));
+        return Optional.of(WorkerDispatchRouteOwner.fromRecord(owner));
     }
 
     @Override
-    public List<WorkerPresence> listActivePresences() {
+    public List<TransportRouteOwnerRecord> listActiveRouteOwners() {
         long now = System.currentTimeMillis();
-        List<WorkerPresence> active = new ArrayList<>();
-        for (WorkerPresence stored : presenceByRouteKey.values()) {
+        List<TransportRouteOwnerRecord> active = new ArrayList<>();
+        for (TransportRouteOwnerRecord stored : ownerByRouteKey.values()) {
             if (stored.isLeaseActive(now)) {
                 active.add(stored);
             }
@@ -200,9 +200,9 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
     public int pruneExpired() {
         int pruned = 0;
         long now = System.currentTimeMillis();
-        for (WorkerPresence stored : List.copyOf(presenceByRouteKey.values())) {
+        for (TransportRouteOwnerRecord stored : List.copyOf(ownerByRouteKey.values())) {
             if (!stored.isLeaseActive(now)) {
-                presenceByRouteKey.remove(stored.getRouteKey(), stored);
+                ownerByRouteKey.remove(stored.getRouteKey(), stored);
                 latestRouteKeyByWorkerId.remove(stored.getWorkerId(), stored.getRouteKey());
                 pruned++;
             }
@@ -219,9 +219,9 @@ public final class InMemoryWorkerPresenceStore implements WorkerPresenceStore,
         return transportInstanceId;
     }
 
-    private WorkerPresence upsert(WorkerPresence next) {
+    private TransportRouteOwnerRecord upsert(TransportRouteOwnerRecord next) {
         Objects.requireNonNull(next, "next");
-        presenceByRouteKey.put(next.getRouteKey(), next);
+        ownerByRouteKey.put(next.getRouteKey(), next);
         latestRouteKeyByWorkerId.put(next.getWorkerId(), next.getRouteKey());
         return next;
     }

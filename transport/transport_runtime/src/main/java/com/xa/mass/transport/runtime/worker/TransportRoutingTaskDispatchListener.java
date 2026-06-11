@@ -4,14 +4,11 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
-import com.xa.mass.transport.runtime.TransportDispatchRouteContext;
-import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
+import com.xa.mass.transport.runtime.TransportDispatchTarget;
+import com.xa.mass.transport.runtime.TransportDispatchTargetResolver;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchEnvelopeFactory;
@@ -32,44 +29,37 @@ public class TransportRoutingTaskDispatchListener implements TaskDispatchBatchLi
 
     private static final Logger logger = LoggerFactory.getLogger(TransportRoutingTaskDispatchListener.class);
 
-    private final WorkerResourceQueryRuntime workerResourceRuntime;
-    private final TransportRuntimeRegistry transportRuntimeRegistry;
+    private final TransportDispatchTargetResolver targetResolver;
     private final TransportDispatchFailureHandler failureHandler;
     private final TransportDispatchEnvelopeFactory envelopeFactory;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
 
-    public TransportRoutingTaskDispatchListener(WorkerResourceQueryRuntime workerResourceRuntime,
-                                                TransportRuntimeRegistry transportRuntimeRegistry) {
-        this(workerResourceRuntime, transportRuntimeRegistry, null, new TransportDispatchEnvelopeFactory(), null);
+    public TransportRoutingTaskDispatchListener(TransportDispatchTargetResolver targetResolver) {
+        this(targetResolver, null, new TransportDispatchEnvelopeFactory(), null);
     }
 
-    public TransportRoutingTaskDispatchListener(WorkerResourceQueryRuntime workerResourceRuntime,
-                                                TransportRuntimeRegistry transportRuntimeRegistry,
+    public TransportRoutingTaskDispatchListener(TransportDispatchTargetResolver targetResolver,
                                                 TransportDispatchFailureHandler failureHandler) {
-        this(workerResourceRuntime, transportRuntimeRegistry, failureHandler, new TransportDispatchEnvelopeFactory(), null);
+        this(targetResolver, failureHandler, new TransportDispatchEnvelopeFactory(), null);
     }
 
-    TransportRoutingTaskDispatchListener(WorkerResourceQueryRuntime workerResourceRuntime,
-                                         TransportRuntimeRegistry transportRuntimeRegistry,
+    TransportRoutingTaskDispatchListener(TransportDispatchTargetResolver targetResolver,
                                          TransportDispatchFailureHandler failureHandler,
                                          TransportDispatchEnvelopeFactory envelopeFactory) {
-        this(workerResourceRuntime, transportRuntimeRegistry, failureHandler, envelopeFactory, null);
+        this(targetResolver, failureHandler, envelopeFactory, null);
     }
 
-    public TransportRoutingTaskDispatchListener(WorkerResourceQueryRuntime workerResourceRuntime,
-                                                TransportRuntimeRegistry transportRuntimeRegistry,
+    public TransportRoutingTaskDispatchListener(TransportDispatchTargetResolver targetResolver,
                                                 TransportDispatchFailureHandler failureHandler,
                                                 RuntimeTaskExecutor runtimeTaskExecutor) {
-        this(workerResourceRuntime, transportRuntimeRegistry, failureHandler, new TransportDispatchEnvelopeFactory(), runtimeTaskExecutor);
+        this(targetResolver, failureHandler, new TransportDispatchEnvelopeFactory(), runtimeTaskExecutor);
     }
 
-    TransportRoutingTaskDispatchListener(WorkerResourceQueryRuntime workerResourceRuntime,
-                                         TransportRuntimeRegistry transportRuntimeRegistry,
+    TransportRoutingTaskDispatchListener(TransportDispatchTargetResolver targetResolver,
                                          TransportDispatchFailureHandler failureHandler,
                                          TransportDispatchEnvelopeFactory envelopeFactory,
                                          RuntimeTaskExecutor runtimeTaskExecutor) {
-        this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
-        this.transportRuntimeRegistry = Objects.requireNonNull(transportRuntimeRegistry, "transportRuntimeRegistry");
+        this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
         this.failureHandler = failureHandler;
         this.envelopeFactory = Objects.requireNonNull(envelopeFactory, "envelopeFactory");
         this.runtimeTaskExecutor = runtimeTaskExecutor;
@@ -83,12 +73,9 @@ public class TransportRoutingTaskDispatchListener implements TaskDispatchBatchLi
 
         Map<WorkerAdapter, List<TransportDispatchEnvelope>> groupedByAdapter = new LinkedHashMap<>();
         Map<String, TaskDispatchBinding> bindingByAttemptId = new LinkedHashMap<>();
-        Map<String, ResolvedDispatchTarget> dispatchTargetByWorkerId = new HashMap<>();
         for (TaskDispatchBinding binding : dispatchBindings) {
-            ResolvedDispatchTarget target = resolveDispatchTarget(binding, dispatchTargetByWorkerId);
-            TransportBinding transportBinding = target.binding();
+            TransportDispatchTarget target = resolveDispatchTarget(task, binding);
             WorkerAdapter adapter = target.adapter();
-            TransportDispatchRouteContext routeContext = TransportDispatchRouteContext.from(task, binding);
             TaskDispatchItem payload = TaskDispatchItem.from(task, binding);
             String attemptId = payload.attemptId();
             if (attemptId != null && !attemptId.isBlank()) {
@@ -96,8 +83,8 @@ public class TransportRoutingTaskDispatchListener implements TaskDispatchBatchLi
             }
             groupedByAdapter.computeIfAbsent(adapter, ignored -> new ArrayList<>())
                     .add(envelopeFactory.create(
-                            adapter.adapterId(),
-                            transportBinding.resolveRouteKey(binding, routeContext),
+                            target.adapterId(),
+                            target.routeKey(),
                             null,
                             payload
                     ));
@@ -257,22 +244,17 @@ public class TransportRoutingTaskDispatchListener implements TaskDispatchBatchLi
         }
     }
 
-    private ResolvedDispatchTarget resolveDispatchTarget(TaskDispatchBinding binding,
-                                                         Map<String, ResolvedDispatchTarget> dispatchTargetByWorkerId) {
+    private TransportDispatchTarget resolveDispatchTarget(TaskDispatchContext task, TaskDispatchBinding binding) {
         String workerId = binding != null ? binding.workerId() : null;
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalStateException("Cannot dispatch task item because worker is missing: " + workerId);
         }
-        return dispatchTargetByWorkerId.computeIfAbsent(workerId, this::resolveDispatchTarget);
-    }
-
-    private ResolvedDispatchTarget resolveDispatchTarget(String workerId) {
-        WorkerResourceRecord worker = workerResourceRuntime.worker(workerId).orElse(null);
-        if (worker == null) {
-            throw new IllegalStateException("Cannot dispatch task item because worker is missing: " + workerId);
+        TransportDispatchTarget target = targetResolver.resolve(task, binding);
+        if (target == null) {
+            throw new IllegalStateException("Cannot dispatch task item because transport target is missing: workerId="
+                    + workerId);
         }
-        TransportBinding binding = transportRuntimeRegistry.resolveDispatchBinding(worker);
-        return new ResolvedDispatchTarget(binding, binding.getWorkerAdapter());
+        return target;
     }
 
     private static String adapterId(WorkerAdapter adapter) {
@@ -285,6 +267,4 @@ public class TransportRoutingTaskDispatchListener implements TaskDispatchBatchLi
     private record DispatchGroupResult(WorkerAdapter adapter, List<DispatchOutcome> outcomes) {
     }
 
-    private record ResolvedDispatchTarget(TransportBinding binding, WorkerAdapter adapter) {
-    }
 }

@@ -1,7 +1,6 @@
 package com.xa.mass.transport.socket.session;
 
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import org.junit.jupiter.api.Test;
 
 import java.io.BufferedWriter;
@@ -13,40 +12,35 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SocketSessionManagerTest {
 
     @Test
-    void connectHeartbeatDisconnectProjectPresenceIntoTransportStore() {
-        WorkerSystemEventChannel systemEventChannel = mock(WorkerSystemEventChannel.class);
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore(30_000L, "socket-node-1");
-        SocketSessionManager manager = new SocketSessionManager("socket", systemEventChannel);
-        manager.setWorkerPresenceStore(presenceStore);
+    void connectHeartbeatDisconnectProjectRouteOwnerIntoTransportStore() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "socket-node-1");
+        SocketSessionManager manager = new SocketSessionManager("socket");
+        manager.setRouteOwnerStore(routeOwnerStore);
 
         manager.addSession("route-1", "worker-1", "endpoint-1", activeSocket(), mock(BufferedWriter.class));
 
-        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
-        assertEquals("socket-node-1", presenceStore.findOwners("worker-1").getFirst().transportNodeId());
-        assertTrue(presenceStore.hasActiveRouteOwner("socket", "route-1"));
-        verify(systemEventChannel).publishWorkerOnline("worker-1", "socket connected", null);
+        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertEquals("socket-node-1", routeOwnerStore.findRouteOwners("worker-1").getFirst().transportNodeId());
+        assertTrue(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
 
         manager.recordHeartbeat("route-1", "worker-1", "endpoint-1", "socket heartbeat", "trace-1");
 
-        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
-        verify(systemEventChannel).publishWorkerHeartbeat("worker-1", "socket heartbeat", "trace-1");
+        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
 
         manager.removeSession("endpoint-1");
 
-        assertNull(presenceStore.getPresence("worker-1"));
-        assertFalse(presenceStore.hasActiveRouteOwner("socket", "route-1"));
-        verify(systemEventChannel).publishWorkerOffline("worker-1", "socket disconnected", null);
+        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
+        assertFalse(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
     }
 
     @Test
     void adapterScopedRouteLookupUsesConfiguredAdapterId() {
-        SocketSessionManager manager = new SocketSessionManager("socket-edge", null);
+        SocketSessionManager manager = new SocketSessionManager("socket-edge");
 
         manager.addSession("route-1", "worker-1", "endpoint-1", activeSocket(), mock(BufferedWriter.class));
 
@@ -57,71 +51,69 @@ class SocketSessionManagerTest {
     }
 
     @Test
-    void staleEndpointHeartbeatAndDisconnectDoNotOverrideReplacementPresence() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
-        SocketSessionManager manager = new SocketSessionManager("socket", mock(WorkerSystemEventChannel.class));
-        manager.setWorkerPresenceStore(presenceStore);
+    void staleEndpointHeartbeatAndDisconnectDoNotOverrideReplacementRouteOwner() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        SocketSessionManager manager = new SocketSessionManager("socket");
+        manager.setRouteOwnerStore(routeOwnerStore);
 
         manager.addSession("route-1", "worker-1", "endpoint-old", activeSocket(), mock(BufferedWriter.class));
         manager.addSession("route-1", "worker-1", "endpoint-new", activeSocket(), mock(BufferedWriter.class));
 
         manager.recordHeartbeat("route-1", "worker-1", "endpoint-old", "stale-heartbeat", "trace-old");
 
-        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
-        assertEquals("endpoint-new", presenceStore.getPresence("worker-1").getConnectionId());
+        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertEquals("endpoint-new", routeOwnerStore.getLatestOwnerByWorker("worker-1").getConnectionId());
 
         manager.removeSession("endpoint-old");
 
-        assertTrue(presenceStore.hasActiveRouteOwner("socket", "route-1"));
-        assertTrue(presenceStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertTrue(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
+        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
 
         manager.removeSession("endpoint-new");
 
-        assertNull(presenceStore.getPresence("worker-1"));
-        assertFalse(presenceStore.hasActiveRouteOwner("socket", "route-1"));
+        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
+        assertFalse(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
     }
 
     @Test
-    void blankConnectionIdOnMarkOnlineGeneratesOwnedConnectionId() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+    void blankConnectionIdOnRouteOwnerClaimGeneratesOwnedConnectionId() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
 
-        var presence = presenceStore.claimRouteOwner("worker-1", "socket", "route-1", " ", "connected");
+        var owner = routeOwnerStore.claimRouteOwner("worker-1", "socket", "route-1", " ", "connected");
 
-        assertNotNull(presence);
-        assertNotNull(presence.getConnectionId());
-        assertFalse(presence.getConnectionId().isBlank());
+        assertNotNull(owner);
+        assertNotNull(owner.getConnectionId());
+        assertFalse(owner.getConnectionId().isBlank());
     }
 
     @Test
-    void shutdownMarksPresenceOfflineBeforeClearingRoutes() {
-        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
-        WorkerSystemEventChannel systemEventChannel = mock(WorkerSystemEventChannel.class);
-        SocketSessionManager manager = new SocketSessionManager("socket", systemEventChannel);
-        manager.setWorkerPresenceStore(presenceStore);
+    void shutdownReleasesRouteOwnerBeforeClearingRoutes() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        SocketSessionManager manager = new SocketSessionManager("socket");
+        manager.setRouteOwnerStore(routeOwnerStore);
 
         manager.addSession("route-1", "worker-1", "endpoint-1", activeSocket(), mock(BufferedWriter.class));
 
         manager.shutdown();
 
-        assertNull(presenceStore.getPresence("worker-1"));
-        assertFalse(presenceStore.hasActiveRouteOwner("socket", "route-1"));
-        verify(systemEventChannel).publishWorkerOffline("worker-1", "socket adapter shutdown", null);
+        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
+        assertFalse(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
     }
 
     @Test
-    void setWorkerPresenceStoreReprojectsActiveSocketSessions() {
-        InMemoryWorkerPresenceStore firstStore = new InMemoryWorkerPresenceStore(30_000L, "socket-node-1");
-        InMemoryWorkerPresenceStore secondStore = new InMemoryWorkerPresenceStore(30_000L, "socket-node-2");
-        SocketSessionManager manager = new SocketSessionManager("socket", mock(WorkerSystemEventChannel.class));
-        manager.setWorkerPresenceStore(firstStore);
+    void setRouteOwnerStoreReprojectsActiveSocketSessions() {
+        InMemoryTransportRouteOwnerStore firstStore = new InMemoryTransportRouteOwnerStore(30_000L, "socket-node-1");
+        InMemoryTransportRouteOwnerStore secondStore = new InMemoryTransportRouteOwnerStore(30_000L, "socket-node-2");
+        SocketSessionManager manager = new SocketSessionManager("socket");
+        manager.setRouteOwnerStore(firstStore);
 
         manager.addSession("route-1", "worker-1", "endpoint-1", activeSocket(), mock(BufferedWriter.class));
-        manager.setWorkerPresenceStore(secondStore);
+        manager.setRouteOwnerStore(secondStore);
 
-        assertTrue(secondStore.getPresence("worker-1").isLeaseActive(System.currentTimeMillis()));
-        assertEquals("route-1", secondStore.getPresence("worker-1").getRouteKey());
-        assertEquals("endpoint-1", secondStore.getPresence("worker-1").getConnectionId());
-        assertEquals("socket-node-2", secondStore.findOwners("worker-1").getFirst().transportNodeId());
+        assertTrue(secondStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertEquals("route-1", secondStore.getLatestOwnerByWorker("worker-1").getRouteKey());
+        assertEquals("endpoint-1", secondStore.getLatestOwnerByWorker("worker-1").getConnectionId());
+        assertEquals("socket-node-2", secondStore.findRouteOwners("worker-1").getFirst().transportNodeId());
         assertTrue(secondStore.hasActiveRouteOwner("socket", "route-1"));
     }
 

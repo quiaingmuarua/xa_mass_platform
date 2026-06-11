@@ -97,7 +97,7 @@ class WorkerApiControllerTest {
         );
 
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
-        when(workerQueries.listOnlineWorkerIds()).thenReturn(List.of("worker-001"));
+        when(workerQueries.listReachableWorkerIds()).thenReturn(List.of("worker-001"));
         when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of("worker-001"));
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-001",
@@ -140,7 +140,7 @@ class WorkerApiControllerTest {
         WorkerSnapshot worker1 = workerSnapshot("worker-001");
         WorkerSnapshot worker2 = workerSnapshot("worker-002");
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker1, worker2));
-        when(workerQueries.listOnlineWorkerIds()).thenReturn(List.of("worker-001", "worker-002"));
+        when(workerQueries.listReachableWorkerIds()).thenReturn(List.of("worker-001", "worker-002"));
         when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of());
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of());
 
@@ -150,7 +150,7 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.limit").value(1))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].workerId").value("worker-001"));
-        verify(workerQueries, times(1)).listOnlineWorkerIds();
+        verify(workerQueries, times(1)).listReachableWorkerIds();
         verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
     }
 
@@ -158,7 +158,7 @@ class WorkerApiControllerTest {
     void listWorkersReadsRuntimeFactsFromBoundedSnapshotsWithLargeFixture() throws Exception {
         List<WorkerSnapshot> workers = largeWorkerFixture(120, 5);
         when(workerQueries.getAllWorkers()).thenReturn(workers);
-        when(workerQueries.listOnlineWorkerIds()).thenReturn(onlineWorkerIds(workers, 2));
+        when(workerQueries.listReachableWorkerIds()).thenReturn(reachableWorkerIds(workers, 2));
         when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of(
                 "worker-0003",
                 "worker-0042",
@@ -180,7 +180,7 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[19].connections[0].endpointId").value("endpoint-worker-0020"));
 
         verify(workerQueries, times(1)).getAllWorkers();
-        verify(workerQueries, times(1)).listOnlineWorkerIds();
+        verify(workerQueries, times(1)).listReachableWorkerIds();
         verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
         verify(runtimeDiagnostics, times(1)).listSessions();
     }
@@ -346,7 +346,7 @@ class WorkerApiControllerTest {
         return workers;
     }
 
-    private List<String> onlineWorkerIds(List<WorkerSnapshot> workers, int everyNthWorker) {
+    private List<String> reachableWorkerIds(List<WorkerSnapshot> workers, int everyNthWorker) {
         return workers.stream()
                 .filter(worker -> numericSuffix(worker.getWorkerId()) % everyNthWorker == 0)
                 .map(WorkerSnapshot::getWorkerId)

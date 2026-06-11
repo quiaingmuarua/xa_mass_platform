@@ -6,7 +6,6 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -40,8 +39,7 @@ class WebSocketTaskDispatchChannelTest {
                 "websocket",
                 endpointRegistry,
                 codec,
-                null,
-                NoopWorkerSystemEventChannel.INSTANCE
+                null
         );
 
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(context, deliveryService());
@@ -86,8 +84,7 @@ class WebSocketTaskDispatchChannelTest {
                 "websocket",
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
-                null,
-                NoopWorkerSystemEventChannel.INSTANCE
+                null
         ), deliveryService());
 
         List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope(TaskDispatchItem.from(
@@ -106,8 +103,7 @@ class WebSocketTaskDispatchChannelTest {
                 "websocket",
                 null,
                 new WebSocketTransportFrameCodec(),
-                null,
-                NoopWorkerSystemEventChannel.INSTANCE
+                null
         ), deliveryService());
 
         List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope(TaskDispatchItem.from(

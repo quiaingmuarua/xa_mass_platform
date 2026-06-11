@@ -3,7 +3,6 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
 import java.util.Objects;
 
@@ -15,18 +14,15 @@ public final class WebSocketDispatcherContext {
     private final WorkerEndpointRegistry endpointRegistry;
     private final WebSocketTransportFrameCodec frameCodec;
     private final TaskResultIngestChannel taskResultIngestChannel;
-    private final WorkerSystemEventChannel systemEventChannel;
 
     public WebSocketDispatcherContext(String adapterId,
                                       WorkerEndpointRegistry endpointRegistry,
                                       WebSocketTransportFrameCodec frameCodec,
-                                      TaskResultIngestChannel taskResultIngestChannel,
-                                      WorkerSystemEventChannel systemEventChannel) {
+                                      TaskResultIngestChannel taskResultIngestChannel) {
         this.adapterId = requireAdapterId(adapterId);
         this.endpointRegistry = endpointRegistry;
         this.frameCodec = frameCodec;
         this.taskResultIngestChannel = taskResultIngestChannel;
-        this.systemEventChannel = systemEventChannel;
     }
 
     public String getAdapterId() {
@@ -43,10 +39,6 @@ public final class WebSocketDispatcherContext {
 
     public TaskResultIngestChannel getTaskResultIngestChannel() {
         return taskResultIngestChannel;
-    }
-
-    public WorkerSystemEventChannel getSystemEventChannel() {
-        return systemEventChannel;
     }
 
     private static String requireAdapterId(String adapterId) {

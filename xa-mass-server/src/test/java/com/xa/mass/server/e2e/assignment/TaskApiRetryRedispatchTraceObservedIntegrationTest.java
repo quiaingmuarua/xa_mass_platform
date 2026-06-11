@@ -56,7 +56,7 @@ class TaskApiRetryRedispatchTraceObservedIntegrationTest extends AbstractTraceOb
     void interactiveRetryRedispatchIsObservedThroughCanonicalTraceBeforeLateWorkerSuccess() throws Exception {
         String workerId = "retry-redispatch-worker";
         registerSdkWorkerWithContext(workerId, "us");
-        assertTrue(!app.isWorkerOnline(workerId),
+        assertTrue(!app.isWorkerReachable(workerId),
                 "worker registration alone must not create transport presence");
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
@@ -92,7 +92,7 @@ class TaskApiRetryRedispatchTraceObservedIntegrationTest extends AbstractTraceOb
             assertEquals(0, readySnapshot.stats().inflightCount());
 
             assertClientConnects(client, "retry redispatch worker failed to connect");
-            assertTrue(awaitCondition(() -> app.isWorkerOnline(workerId), 20, 100L),
+            assertTrue(awaitCondition(() -> app.isWorkerReachable(workerId), 20, 100L),
                     "worker must become transport-online before retry redispatch can succeed");
 
             JsonObject dispatch = client.awaitTask(3, TimeUnit.SECONDS);

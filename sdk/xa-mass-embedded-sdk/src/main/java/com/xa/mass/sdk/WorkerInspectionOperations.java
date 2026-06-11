@@ -17,9 +17,9 @@ public interface WorkerInspectionOperations {
      * Returns worker ids that currently have transport reachability.
      *
      * <p>List/read models should prefer this snapshot over calling
-     * {@link #isWorkerOnline(String)} once per row.</p>
+     * {@link #isWorkerReachable(String)} once per row.</p>
      */
-    List<String> listOnlineWorkerIds();
+    List<String> listReachableWorkerIds();
 
     /**
      * Returns whether the worker currently has transport reachability.
@@ -27,5 +27,5 @@ public interface WorkerInspectionOperations {
      * <p>When transport presence is available this query reflects transport
      * truth; otherwise it falls back to the engine-owned worker model.</p>
      */
-    boolean isWorkerOnline(String workerId);
+    boolean isWorkerReachable(String workerId);
 }

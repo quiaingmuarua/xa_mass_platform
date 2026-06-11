@@ -143,7 +143,7 @@ class DevSampleWorkerLauncherIntegrationTest extends ReviewReadModelSampleE2eTes
                     .filter(worker -> workerId.equals(worker.getWorkerId()))
                     .findFirst()
                     .orElse(null);
-            if (latestWorker != null && app.isWorkerOnline(workerId)) {
+            if (latestWorker != null && app.isWorkerReachable(workerId)) {
                 return;
             }
             Thread.sleep(250L);

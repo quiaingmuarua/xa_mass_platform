@@ -86,6 +86,8 @@ Deferred decisions:
 | GET | /api/v1/runtime/workers/commands/{commandId} | WorkerApiController | console-diagnostics | WORKER_VIEW | worker command diagnostics | keep for current operator workflow | server E2E | keep diagnostics |
 | GET | /api/v1/admin/rules | RuleApiController | console-diagnostics | RULE_VIEW | scheduling/rule diagnostics | keep; route owner is admin not runtime | server route, frontend drift target | retarget frontend |
 | GET | /api/v1/admin/rules/meta | RuleApiController | console-diagnostics | RULE_VIEW | scheduling/rule diagnostics | keep; route owner is admin not runtime | server route, frontend drift target | retarget frontend |
+| POST | /api/v1/control-plane/catalog:sync | ControlPlaneInitializationController | operator-command | CONFIG_EDIT | control-plane catalog | keep; bounded catalog seed/sync command | admin CLI, server bootstrap tooling | keep operator-only |
+| POST | /api/v1/control-plane/rules:sync | ControlPlaneInitializationController | operator-command | RULE_EDIT | rule storage | keep; bounded rule seed/sync command | admin CLI, server bootstrap tooling | keep operator-only |
 | GET | /api/v1/users | IdentityAccessController | console-diagnostics | USER_VIEW | IAM owner | keep; operator IAM read | frontend | keep |
 | POST | /api/v1/users | IdentityAccessController | operator-command | USER_EDIT | IAM owner | keep; operator IAM command | frontend | keep |
 | GET | /api/v1/users/{userId} | IdentityAccessController | console-diagnostics | USER_VIEW | IAM owner | keep; operator IAM read | frontend | keep |

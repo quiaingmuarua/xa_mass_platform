@@ -5,9 +5,6 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
-import com.xa.mass.transport.presence.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Function;
 
 /**
  * Engine-side submitter that routes post-claim dispatch bindings into the
@@ -27,17 +26,14 @@ public final class NodeTargetedTaskDispatchSubmitter implements TaskDispatchBatc
     private static final Logger logger = LoggerFactory.getLogger(NodeTargetedTaskDispatchSubmitter.class);
 
     private final NodeTargetedTaskDispatchHandoff handoff;
-    private final WorkerResourceQueryRuntime workerResourceRuntime;
-    private final WorkerDispatchRouteSelector routeSelector;
+    private final Function<TaskDispatchBinding, Optional<String>> transportNodeResolver;
     private final TransportDispatchFailureHandler failureHandler;
 
     public NodeTargetedTaskDispatchSubmitter(NodeTargetedTaskDispatchHandoff handoff,
-                                             WorkerResourceQueryRuntime workerResourceRuntime,
-                                             WorkerDispatchRouteSelector routeSelector,
+                                             Function<TaskDispatchBinding, Optional<String>> transportNodeResolver,
                                              TransportDispatchFailureHandler failureHandler) {
         this.handoff = Objects.requireNonNull(handoff, "handoff");
-        this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
-        this.routeSelector = Objects.requireNonNull(routeSelector, "routeSelector");
+        this.transportNodeResolver = Objects.requireNonNull(transportNodeResolver, "transportNodeResolver");
         this.failureHandler = failureHandler;
     }
 
@@ -53,19 +49,14 @@ public final class NodeTargetedTaskDispatchSubmitter implements TaskDispatchBatc
             if (binding == null) {
                 continue;
             }
-            WorkerResourceRecord worker = binding != null && binding.workerId() != null
-                    ? workerResourceRuntime.worker(binding.workerId()).orElse(null)
-                    : null;
-            if (worker == null) {
+            Optional<String> transportNodeId = transportNodeResolver.apply(binding)
+                    .map(String::trim)
+                    .filter(value -> !value.isBlank());
+            if (transportNodeId.isEmpty()) {
                 unresolved.add(binding);
                 continue;
             }
-            WorkerDispatchRouteOwner owner = routeSelector.selectRoute(worker).orElse(null);
-            if (owner == null) {
-                unresolved.add(binding);
-                continue;
-            }
-            bindingsByNode.computeIfAbsent(owner.transportNodeId(), ignored -> new ArrayList<>()).add(binding);
+            bindingsByNode.computeIfAbsent(transportNodeId.get(), ignored -> new ArrayList<>()).add(binding);
         }
 
         compensate(task, unresolved, "transport route owner is unavailable after assignment");

@@ -59,8 +59,8 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
-import com.xa.mass.transport.presence.WorkerPresenceInspectionView;
-import com.xa.mass.transport.presence.WorkerPresence;
+import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
+import com.xa.mass.transport.route.TransportRouteOwnerRecord;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -618,7 +618,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             throw new IllegalArgumentException("Worker not found: " + normalizedWorkerId);
         }
         if (delegate.getTransportRuntimeRegistry() != null) {
-            return delegate.getTransportRuntimeRegistry().resolveWorkerAdapterId(normalizedWorkerId);
+            return delegate.resolveWorkerAdapterId(normalizedWorkerId);
         }
         if (worker.adapterId() == null || worker.adapterId().isBlank()) {
             throw new IllegalStateException("Worker adapterId is not set: " + worker.workerId());
@@ -634,7 +634,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         }
         String transportHint = WorkerTransportHints.normalize(worker.onlineStrategy());
         if (transportHint == null && delegate.getTransportRuntimeRegistry() != null) {
-            transportHint = delegate.getTransportRuntimeRegistry().resolveWorkerTransportHint(worker.workerId());
+            transportHint = delegate.resolveWorkerTransportHint(worker.workerId());
         }
         if (transportHint == null) {
             throw new IllegalStateException("Worker transportHint/onlineStrategy is not set: " + worker.workerId());
@@ -655,14 +655,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<String> listOnlineWorkerIds() {
-        WorkerPresenceInspectionView presenceView = delegate.getWorkerPresenceInspectionView();
+    public List<String> listReachableWorkerIds() {
+        TransportRouteOwnerInspectionView presenceView = delegate.getRouteOwnerInspectionView();
         if (presenceView != null) {
             long now = System.currentTimeMillis();
-            return presenceView.listActivePresences().stream()
+            return presenceView.listActiveRouteOwners().stream()
                     .filter(Objects::nonNull)
                     .filter(presence -> presence.isLeaseActive(now))
-                    .map(WorkerPresence::getWorkerId)
+                    .map(TransportRouteOwnerRecord::getWorkerId)
                     .filter(Objects::nonNull)
                     .map(String::trim)
                     .filter(workerId -> !workerId.isEmpty())
@@ -757,11 +757,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public boolean isWorkerOnline(String workerId) {
+    public boolean isWorkerReachable(String workerId) {
         String normalizedWorkerId = requireWorkerId(workerId);
-        WorkerPresenceInspectionView presenceView = delegate.getWorkerPresenceInspectionView();
+        TransportRouteOwnerInspectionView presenceView = delegate.getRouteOwnerInspectionView();
         if (presenceView != null) {
-            return presenceView.isWorkerOnline(normalizedWorkerId);
+            return presenceView.isWorkerReachable(normalizedWorkerId);
         }
         WorkerResourceRecord worker = loadWorker(normalizedWorkerId);
         return worker != null && workerStatusAvailable(worker.statusName());

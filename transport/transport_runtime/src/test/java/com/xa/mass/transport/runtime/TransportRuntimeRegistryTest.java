@@ -1,10 +1,9 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -20,10 +19,9 @@ class TransportRuntimeRegistryTest {
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
                 () -> new TransportRuntimeRegistry(
-                        mock(WorkerResourceQueryRuntime.class),
                         mock(TaskResultIngestChannel.class),
                         mock(WorkerSystemEventChannel.class),
-                        new InMemoryWorkerPresenceStore(),
+                        new InMemoryTransportRouteOwnerStore(),
                         List.of(
                                 canonicalRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME)),
                                 canonicalRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))

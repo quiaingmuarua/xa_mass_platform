@@ -1,10 +1,9 @@
 package com.xa.mass.transport.polling.runtime;
 
-import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
-import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRouteKeyResolver;
@@ -26,23 +25,21 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
             new TransportAdapterDescriptor(PollingWorkerAdapter.PROTOCOL, PollingWorkerAdapter.PROTOCOL);
 
     @Override
-    public TransportRuntimeRegistry create(WorkerResourceQueryRuntime workerResourceRuntime,
-                                           TaskResultIngestChannel taskResultIngestChannel,
+    public TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
                                            WorkerSystemEventChannel systemEventChannel,
-                                           WorkerPresenceStore workerPresenceStore,
+                                           TransportRouteOwnerStore routeOwnerStore,
                                            TransportDeliveryService deliveryService,
                                            TransportRouteKeyResolver routeKeyResolver,
                                            List<TransportBinding> adapterBindings) {
         List<TransportBinding> bindings = new ArrayList<>(1 + (adapterBindings == null ? 0 : adapterBindings.size()));
-        bindings.add(pollingBinding(systemEventChannel, workerPresenceStore, deliveryService, routeKeyResolver));
+        bindings.add(pollingBinding(routeOwnerStore, deliveryService, routeKeyResolver));
         if (adapterBindings != null && !adapterBindings.isEmpty()) {
             bindings.addAll(adapterBindings);
         }
         return new TransportRuntimeRegistry(
-                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
-                workerPresenceStore,
+                routeOwnerStore,
                 bindings
         );
     }
@@ -52,11 +49,10 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
         return List.of(POLLING_DESCRIPTOR);
     }
 
-    private static TransportBinding pollingBinding(WorkerSystemEventChannel systemEventChannel,
-                                                   WorkerPresenceStore workerPresenceStore,
+    private static TransportBinding pollingBinding(TransportRouteOwnerStore routeOwnerStore,
                                                    TransportDeliveryService deliveryService,
                                                    TransportRouteKeyResolver routeKeyResolver) {
-        PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(systemEventChannel, workerPresenceStore, deliveryService);
+        PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(routeOwnerStore, deliveryService);
         return TransportBinding.builder(pollingAdapter)
                 .routeKeyResolver(Objects.requireNonNull(routeKeyResolver, "routeKeyResolver"))
                 .taskPullChannel(pollingAdapter)

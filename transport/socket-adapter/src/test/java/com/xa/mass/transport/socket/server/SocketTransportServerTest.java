@@ -33,9 +33,8 @@ class SocketTransportServerTest {
                 "127.0.0.1",
                 0,
                 10,
-                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, null),
+                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID),
                 new SocketTransportFrameCodec(),
-                null,
                 null,
                 executor
         );
@@ -64,7 +63,7 @@ class SocketTransportServerTest {
     void helloFrameRegistersSocketSession() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
-                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, null);
+                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID);
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
                 "127.0.0.1",
@@ -72,7 +71,6 @@ class SocketTransportServerTest {
                 10,
                 sessionManager,
                 new SocketTransportFrameCodec(),
-                null,
                 null,
                 executor
         );
@@ -102,7 +100,7 @@ class SocketTransportServerTest {
     void helloFrameRouteKeyOverridesWorkerIdAsSocketAddress() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
-                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, null);
+                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID);
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
                 "127.0.0.1",
@@ -110,7 +108,6 @@ class SocketTransportServerTest {
                 10,
                 sessionManager,
                 new SocketTransportFrameCodec(),
-                null,
                 null,
                 executor
         );
@@ -141,7 +138,7 @@ class SocketTransportServerTest {
     void canonicalTaskResultIngressUsesBoundRouteKeyAndMessageIdTraceFallback() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
-                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, null);
+                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID);
         AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
@@ -162,7 +159,6 @@ class SocketTransportServerTest {
                         return true;
                     }
                 },
-                null,
                 executor
         );
 
@@ -205,9 +201,8 @@ class SocketTransportServerTest {
                 "127.0.0.1",
                 0,
                 10,
-                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, null),
+                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID),
                 new SocketTransportFrameCodec(),
-                null,
                 null,
                 executor
         );

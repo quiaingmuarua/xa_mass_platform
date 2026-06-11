@@ -54,11 +54,11 @@ class TaskApiMinimumWorkerGateTraceObservedIntegrationTest extends AbstractTrace
     void minimumWorkerGateIsObservedThroughCanonicalTraceBeforeTaskCanStart() throws Exception {
         String workerId = "min-gate-trace-worker-0";
         registerSdkWorkerWithContext(workerId, "us");
-        assertFalse(app.isWorkerOnline(workerId),
+        assertFalse(app.isWorkerReachable(workerId),
                 "worker registration must not create transport presence");
         String secondWorkerId = "min-gate-trace-worker-1";
         registerSdkWorkerWithContext(secondWorkerId, "us");
-        assertFalse(app.isWorkerOnline(secondWorkerId),
+        assertFalse(app.isWorkerReachable(secondWorkerId),
                 "second worker registration must not create transport presence");
 
         String taskId = createTaskId("min-worker-gate-trace", "minimum worker gate trace observed", "target-a");
@@ -77,7 +77,7 @@ class TaskApiMinimumWorkerGateTraceObservedIntegrationTest extends AbstractTrace
         SampleWorkerWebSocketClient secondClient = sampleWebSocketClient(uri, "us", secondWorkerId);
         try {
             assertClientConnects(client, "minimum worker gate sample client failed to connect");
-            waitUntil(() -> app.isWorkerOnline(workerId),
+            waitUntil(() -> app.isWorkerReachable(workerId),
                     "worker connect must surface transport presence online");
 
             RuntimeTaskSnapshot gatedSnapshot = waitForRuntimeTaskSnapshot(taskId,
@@ -96,7 +96,7 @@ class TaskApiMinimumWorkerGateTraceObservedIntegrationTest extends AbstractTrace
                     "canonical trace must include DISPATCH_SKIPPED for minimum worker gate");
 
             assertClientConnects(secondClient, "second minimum worker gate sample client failed to connect");
-            waitUntil(() -> app.isWorkerOnline(secondWorkerId),
+            waitUntil(() -> app.isWorkerReachable(secondWorkerId),
                     "second worker connect must surface transport presence online");
 
             RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 500L);
@@ -107,9 +107,9 @@ class TaskApiMinimumWorkerGateTraceObservedIntegrationTest extends AbstractTrace
             secondClient.disconnect();
             client.disconnect();
         }
-        waitUntil(() -> !app.isWorkerOnline(workerId),
+        waitUntil(() -> !app.isWorkerReachable(workerId),
                 "worker disconnect must converge transport presence offline");
-        waitUntil(() -> !app.isWorkerOnline(secondWorkerId),
+        waitUntil(() -> !app.isWorkerReachable(secondWorkerId),
                 "second worker disconnect must converge transport presence offline");
     }
 
