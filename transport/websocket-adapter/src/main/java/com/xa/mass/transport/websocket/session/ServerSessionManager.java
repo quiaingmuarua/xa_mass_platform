@@ -52,6 +52,8 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
                     routeKey, channel.id().asShortText());
             return;
         }
+        RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> previousForWorker =
+                activeEntryForWorker(routeKey, workerId, channel);
         RouteEndpointIndex.BindResult<Channel, WebSocketRouteEndpoint> result = routeIndex.bind(
                 routeKey,
                 workerId,
@@ -63,22 +65,21 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
             logger.debug("Session for routeKey={} already exists and is active. Skipping add.", routeKey);
             return;
         }
-        RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> previous = result.previousEntry();
-        if (previous != null && previous.handle() != channel) {
-            logger.warn("Existing channel for routeKey={} found, but new channel is different. Replacing session.", routeKey);
-            retireReplacedSession(previous);
-        }
-        if (previous == null || previous.handle() != channel) {
+        if (result.previousEntry() == null || result.previousEntry().handle() != channel) {
             activeConnectionCount.incrementAndGet();
-            if (previous != null) {
-                activeConnectionCount.decrementAndGet();
-            }
+        }
+        if (previousForWorker != null) {
+            logger.warn("Existing channel for routeKey={} workerId={} found. Replacing session.",
+                    routeKey, workerId);
+            retireReplacedSession(previousForWorker);
         }
 
         logger.info("Connected: routeKey={} workerId={} channelId={} totalRoutes={}",
                 routeKey, workerId, channel.id().asShortText(), activeConnectionCount.get());
         if (hasActiveChannel(routeKey)) {
-            routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, channel.id().asShortText(), "websocket connected");
+            String channelId = channel.id().asShortText();
+            String reason = "websocket connected";
+            routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, channelId, reason);
         }
         ensureRouteOwnerRefreshLoop();
     }
@@ -93,7 +94,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
             logger.info("Disconnected: routeKey={} workerId={} channelId={}",
                     binding.routeKey(), binding.workerId(), channel.id().asShortText());
-            if (result.removedCurrentRoute() && !hasActiveChannel(binding.routeKey())) {
+            if (result.removedCurrentRoute()) {
                 routeOwnerStore.releaseRouteOwner(
                         binding.workerId(),
                         adapterId,
@@ -114,9 +115,15 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         }
     }
 
-    private boolean sendToBoundRoute(String routeKey, String message) {
-        WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
-        if (endpoint != null && endpoint.isActive()) {
+    private boolean sendToBoundRoute(String routeKey, String workerId, String message) {
+        for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
+            if (workerId != null && !workerId.equals(entry.workerId())) {
+                continue;
+            }
+            WebSocketRouteEndpoint endpoint = entry.endpoint();
+            if (endpoint == null || !endpoint.isActive()) {
+                continue;
+            }
             endpoint.channel().writeAndFlush(new TextWebSocketFrame(message));
             return true;
         }
@@ -129,7 +136,15 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return sendToBoundRoute(routeKey, message);
+        return sendToBoundRoute(routeKey, null, message);
+    }
+
+    @Override
+    public boolean sendToAdapterRoute(String adapterId, String routeKey, String workerId, String message) {
+        if (!matchesAdapter(adapterId)) {
+            return false;
+        }
+        return sendToBoundRoute(routeKey, normalizeNullable(workerId), message);
     }
 
     @Override
@@ -160,13 +175,23 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     public Channel getChannel(String routeKey) {
-        WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
-        return endpoint != null ? endpoint.channel() : null;
+        for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
+            WebSocketRouteEndpoint endpoint = entry.endpoint();
+            if (endpoint != null && endpoint.isActive()) {
+                return endpoint.channel();
+            }
+        }
+        return null;
     }
 
     public ChannelHandlerContext getChannelContext(String routeKey) {
-        WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
-        return endpoint != null ? endpoint.context() : null;
+        for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
+            WebSocketRouteEndpoint endpoint = entry.endpoint();
+            if (endpoint != null && endpoint.isActive()) {
+                return endpoint.context();
+            }
+        }
+        return null;
     }
 
     @Override
@@ -210,9 +235,33 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         return adapterId;
     }
 
+    private RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> activeEntryForWorker(String routeKey,
+                                                                                           String workerId,
+                                                                                           Channel excludedChannel) {
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedWorkerId == null) {
+            return null;
+        }
+        for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
+            if (entry.handle() == excludedChannel || !normalizedWorkerId.equals(entry.workerId())) {
+                continue;
+            }
+            WebSocketRouteEndpoint endpoint = entry.endpoint();
+            if (endpoint != null && endpoint.isActive()) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
     private boolean hasActiveChannel(String routeKey) {
-        WebSocketRouteEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
-        return endpoint != null && endpoint.isActive();
+        for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
+            WebSocketRouteEndpoint endpoint = entry.endpoint();
+            if (endpoint != null && endpoint.isActive()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean matchesAdapter(String adapterId) {
@@ -261,12 +310,14 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
                 if (endpoint == null || !endpoint.isActive()) {
                     continue;
                 }
+                String channelId = entry.handle().id().asShortText();
+                String reason = "websocket session keepalive";
                 routeOwnerStore.refreshHeartbeat(
                         entry.workerId(),
                         adapterId,
                         entry.routeKey(),
-                        entry.handle().id().asShortText(),
-                        "websocket session keepalive"
+                        channelId,
+                        reason
                 );
             }
         }
@@ -292,11 +343,24 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         if (previous == null || previous.handle() == null) {
             return;
         }
+        routeIndex.removeByHandle(previous.handle());
+        activeConnectionCount.updateAndGet(current -> Math.max(0, current - 1));
         retiredChannels.add(previous.handle());
+        routeOwnerStore.releaseRouteOwner(
+                previous.workerId(),
+                adapterId,
+                previous.routeKey(),
+                previous.handle().id().asShortText(),
+                "websocket session replaced"
+        );
         WebSocketRouteEndpoint endpoint = previous.endpoint();
         if (endpoint != null && endpoint.isActive()) {
             endpoint.channel().close();
         }
+    }
+
+    private static String normalizeNullable(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     @Override

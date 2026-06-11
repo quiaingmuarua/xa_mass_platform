@@ -4,13 +4,12 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteEndpointIndexTest {
 
     @Test
-    void replacingRouteWithNewHandleDropsOldReverseBinding() {
+    void sameRouteKeepsMultipleHandles() {
         RouteEndpointIndex<String, String> index = new RouteEndpointIndex<>();
 
         RouteEndpointIndex.BindResult<String, String> first = index.bind(
@@ -30,22 +29,25 @@ class RouteEndpointIndexTest {
 
         assertFalse(first.unchanged());
         assertFalse(second.unchanged());
-        assertEquals("handle-b", index.entryForRoute("route-1").handle());
-        assertNull(index.bindingForHandle("handle-a"));
+        assertEquals(2, index.entriesForRoute("route-1").size());
+        assertEquals("route-1", index.bindingForHandle("handle-a").routeKey());
         assertEquals("route-1", index.bindingForHandle("handle-b").routeKey());
     }
 
     @Test
-    void removeByHandleOnlyClearsCurrentRouteOwner() {
+    void removeByHandleOnlyClearsMatchingConsumer() {
         RouteEndpointIndex<String, String> index = new RouteEndpointIndex<>();
         index.bind("route-1", "worker-1", "handle-a", "endpoint-a", endpoint -> true);
         index.bind("route-1", "worker-1", "handle-b", "endpoint-b", endpoint -> true);
 
-        RouteEndpointIndex.RemoveResult<String, String> removedOld = index.removeByHandle("handle-a");
-        RouteEndpointIndex.RemoveResult<String, String> removedCurrent = index.removeByHandle("handle-b");
+        RouteEndpointIndex.RemoveResult<String, String> removedFirst = index.removeByHandle("handle-a");
 
-        assertNull(removedOld.binding());
-        assertTrue(removedCurrent.removedCurrentRoute());
-        assertNull(index.endpointForRoute("route-1"));
+        assertTrue(removedFirst.removedCurrentRoute());
+        assertEquals(1, index.entriesForRoute("route-1").size());
+
+        RouteEndpointIndex.RemoveResult<String, String> removedSecond = index.removeByHandle("handle-b");
+
+        assertTrue(removedSecond.removedCurrentRoute());
+        assertTrue(index.entriesForRoute("route-1").isEmpty());
     }
 }

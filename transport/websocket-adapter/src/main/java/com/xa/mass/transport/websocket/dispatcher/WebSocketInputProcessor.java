@@ -57,10 +57,6 @@ public final class WebSocketInputProcessor {
         }
         try {
             TaskResultReport report = context.getFrameCodec().decodeCanonicalTaskResult(frame);
-            String workerId = WebSocketStringValues.firstNonBlank(
-                    context.getFrameCodec().extractWorkerId(frame),
-                    inboundMessage.getWorkerId()
-            );
             String routeKey = WebSocketStringValues.firstNonBlank(
                     context.getFrameCodec().extractRouteKey(frame),
                     inboundMessage.getRouteKey()

@@ -9,14 +9,16 @@ public record WorkerDispatchRouteOwner(String workerId,
                                        String adapterId,
                                        String routeKey,
                                        String transportNodeId,
+                                       String connectionId,
                                        long leaseExpireAtEpochMillis,
                                        long updatedAtEpochMillis) {
 
     public WorkerDispatchRouteOwner {
-        workerId = requireText(workerId, "workerId");
+        workerId = normalizeNullable(workerId);
         adapterId = requireText(adapterId, "adapterId");
         routeKey = requireText(routeKey, "routeKey");
         transportNodeId = requireText(transportNodeId, "transportNodeId");
+        connectionId = normalizeNullable(connectionId);
     }
 
     public boolean isActive(long nowEpochMillis) {
@@ -30,6 +32,7 @@ public record WorkerDispatchRouteOwner(String workerId,
                 record.getAdapterId(),
                 record.getRouteKey(),
                 record.getTransportNodeId(),
+                record.getConnectionId(),
                 record.getLeaseExpireAtEpochMillis(),
                 record.getUpdatedAtEpochMillis()
         );
@@ -40,5 +43,9 @@ public record WorkerDispatchRouteOwner(String workerId,
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return value.trim();
+    }
+
+    private static String normalizeNullable(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

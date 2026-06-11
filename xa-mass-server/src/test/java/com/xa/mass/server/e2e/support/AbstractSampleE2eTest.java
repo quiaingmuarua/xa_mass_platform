@@ -17,7 +17,7 @@ import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
+import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -468,7 +468,7 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected static String canonicalWorkerRouteKey(String workerGroupId, String workerId) {
-        return CanonicalWorkerRouteKeyCodec.encode(workerGroupId, workerId);
+        return CanonicalWorkerGroupRouteKeyCodec.encode(workerGroupId);
     }
 
     public static URI withWorkerRouteKey(URI serverUri, String routeKey) {

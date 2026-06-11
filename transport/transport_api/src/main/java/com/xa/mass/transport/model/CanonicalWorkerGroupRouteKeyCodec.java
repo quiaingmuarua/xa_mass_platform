@@ -4,39 +4,32 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 /**
- * Canonical route-key codec for the platform worker subject.
+ * Canonical route-key codec for the worker-group consumption route.
  *
- * <p>The subject is {@code workerGroupId + workerId}. Adapter and connection
- * evidence stays outside this key.</p>
+ * <p>This codec is an SDK/starter assembly helper. Transport runtime and
+ * adapters must treat the resulting routeKey as opaque.</p>
  */
-public final class CanonicalWorkerRouteKeyCodec {
+public final class CanonicalWorkerGroupRouteKeyCodec {
 
-    private static final String PREFIX = "wkr1";
+    private static final String PREFIX = "wkg1";
     private static final String SEPARATOR = ".";
     private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder TOKEN_DECODER = Base64.getUrlDecoder();
 
-    private CanonicalWorkerRouteKeyCodec() {
+    private CanonicalWorkerGroupRouteKeyCodec() {
     }
 
-    public static String encode(String workerGroupId, String workerId) {
-        return PREFIX
-                + SEPARATOR
-                + encodeToken(requireText(workerGroupId, "workerGroupId"))
-                + SEPARATOR
-                + encodeToken(requireText(workerId, "workerId"));
+    public static String encode(String workerGroupId) {
+        return PREFIX + SEPARATOR + encodeToken(requireText(workerGroupId, "workerGroupId"));
     }
 
-    public static WorkerSubject decode(String routeKey) {
+    public static WorkerGroupSubject decode(String routeKey) {
         String normalized = requireText(routeKey, "routeKey");
         String[] parts = normalized.split("\\.", -1);
-        if (parts.length != 3 || !PREFIX.equals(parts[0])) {
-            throw new IllegalArgumentException("routeKey is not a canonical worker route key");
+        if (parts.length != 2 || !PREFIX.equals(parts[0])) {
+            throw new IllegalArgumentException("routeKey is not a canonical worker-group route key");
         }
-        return new WorkerSubject(
-                decodeToken(parts[1], "workerGroupId"),
-                decodeToken(parts[2], "workerId")
-        );
+        return new WorkerGroupSubject(decodeToken(parts[1], "workerGroupId"));
     }
 
     public static boolean isCanonical(String routeKey) {
@@ -73,11 +66,10 @@ public final class CanonicalWorkerRouteKeyCodec {
         return value.trim();
     }
 
-    public record WorkerSubject(String workerGroupId, String workerId) {
+    public record WorkerGroupSubject(String workerGroupId) {
 
-        public WorkerSubject {
+        public WorkerGroupSubject {
             workerGroupId = requireText(workerGroupId, "workerGroupId");
-            workerId = requireText(workerId, "workerId");
         }
     }
 }

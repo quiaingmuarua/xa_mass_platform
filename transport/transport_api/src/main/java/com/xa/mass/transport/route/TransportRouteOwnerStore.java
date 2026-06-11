@@ -3,12 +3,12 @@ package com.xa.mass.transport.route;
 /**
  * Shared transport-owned route-owner heartbeat write surface.
  *
- * <p>For worker delivery, one opaque {@code routeKey} identifies one current
- * delivery owner. Claim, heartbeat refresh, and release are owner-checked
- * evidence writes: heartbeat/release only mutate a route when the incoming
- * {@code connectionId} still matches that route owner. This prevents stale
+ * <p>For worker delivery, one opaque {@code routeKey} identifies a consumption
+ * route that may have multiple active consumers. Claim, heartbeat refresh, and
+ * release are consumer-checked evidence writes: heartbeat/release only mutate
+ * the consumer addressed by {@code connectionId}. This prevents stale
  * disconnect or heartbeat events from an older connection from revoking a newer
- * active route.</p>
+ * active consumer on the same route.</p>
  *
  * <p>This write surface deliberately does not expose route-owner reads or
  * worker-id inspection. Dispatch routing should depend on

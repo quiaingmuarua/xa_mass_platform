@@ -30,7 +30,7 @@ import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
+import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -1114,7 +1114,7 @@ public final class SdkTransportLoadRunner {
     }
 
     private static String canonicalRouteKey(String workerId) {
-        return CanonicalWorkerRouteKeyCodec.encode(WORKER_GROUP_ID, workerId);
+        return CanonicalWorkerGroupRouteKeyCodec.encode(WORKER_GROUP_ID);
     }
 
     private static RuntimeDiagnosticsOperations runtimeDiagnostics(MassSdkApplication app) {

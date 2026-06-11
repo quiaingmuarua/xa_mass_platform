@@ -11,9 +11,6 @@ public interface TaskResultIngestChannel {
     boolean ingest(TaskResultReport report);
 
     default boolean ingest(TransportResultEnvelope envelope) {
-        if (envelope == null) {
-            return false;
-        }
-        return ingest(envelope.getReport());
+        return false;
     }
 }

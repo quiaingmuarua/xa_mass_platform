@@ -16,7 +16,7 @@ import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
 import com.xa.mass.client.worker.handler.WorkerEventHandlers;
 import com.xa.mass.client.worker.handler.WorkerEventInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
+import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -91,7 +91,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         this.deploymentVersion = builder.deploymentVersion;
         this.attributes = Map.copyOf(builder.attributes);
         this.endpoint = Objects.requireNonNull(builder.endpoint, "endpoint is required");
-        this.routeKey = CanonicalWorkerRouteKeyCodec.encode(workerGroupId, workerId);
+        this.routeKey = CanonicalWorkerGroupRouteKeyCodec.encode(workerGroupId);
         this.connectTimeout = builder.connectTimeout;
         this.reconnectBackoff = builder.reconnectBackoff;
         this.maxReconnectBackoff = builder.maxReconnectBackoff;

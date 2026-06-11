@@ -68,7 +68,8 @@ Hard rules:
 
 - construct codec, channels, endpoint registry, and processors before start
 - pass one endpoint-registry instance into both server and dispatcher wiring
-- route inbound result shells into `TaskResultReport -> TaskResultIngestChannel`
+- route inbound result shells into `TransportResultEnvelope ->
+  TaskResultIngestChannel`
 - keep bootstrap defaults inside adapter-owned support code
 - do not add mutable late-binding seams like `setHandler(...)` or `registerRoute(...)`
 
@@ -76,7 +77,7 @@ Hard rules:
 
 WebSocket changes must preserve:
 
-- realtime connect/disconnect status perception
+- realtime route-owner lease perception
 - task dispatch through WebSocket adapter
 - result write-back and callback idempotency behavior
 - coexistence with polling and socket adapters without cross-routing

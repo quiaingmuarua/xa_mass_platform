@@ -3,6 +3,7 @@ package com.xa.mass.transport.socket.dispatcher;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
@@ -44,7 +45,12 @@ public final class SocketTaskDispatchChannel implements TaskDispatchChannel {
                 envelopes,
                 envelope -> {
                     String rawJson = frameCodec.encodeCanonicalTaskDispatch(envelope.getPacket());
-                    boolean sent = sessionManager.sendToAdapterRoute(adapterId, envelope.getRouteKey(), rawJson);
+                    boolean sent = sessionManager.sendToAdapterRoute(
+                            adapterId,
+                            envelope.getRouteKey(),
+                            envelope.getPacket().payloadString(TransportPacket.PAYLOAD_WORKER_ID),
+                            rawJson
+                    );
                     if (!sent) {
                         logger.warn("Socket outbound skipped because endpoint is unavailable: routeKey={}, traceId={}",
                                 envelope.getRouteKey(), envelope.getTraceId());

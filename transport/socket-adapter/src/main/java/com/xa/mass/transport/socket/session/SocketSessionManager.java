@@ -38,6 +38,8 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
                                         String endpointId,
                                         Socket socket,
                                         BufferedWriter writer) {
+        RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> previousForWorker =
+                activeEntryForWorker(routeKey, workerId, endpointId);
         RouteEndpointIndex.BindResult<String, SocketWorkerEndpoint> result = routeIndex.bind(
                 routeKey,
                 workerId,
@@ -52,11 +54,17 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         if (previous != null && !previous.handle().equals(endpointId)) {
             closeQuietly(previous.endpoint());
         }
+        if (previousForWorker != null) {
+            logger.warn("Existing socket endpoint for routeKey={} workerId={} found. Replacing session.",
+                    routeKey, workerId);
+            removeSession(previousForWorker.handle());
+        }
 
         logger.info("Connected: routeKey={} workerId={} endpointId={} totalRoutes={}",
                 routeKey, workerId, endpointId, routeIndex.routeCount());
         if (result.currentEntry().endpoint().isActive()) {
-            routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, endpointId, "socket connected");
+            String reason = "socket connected";
+            routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, endpointId, reason);
         }
     }
 
@@ -77,25 +85,35 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         }
     }
 
-    private boolean sendToBoundRoute(String routeKey, String message) {
-        SocketWorkerEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
-        if (endpoint == null || !endpoint.isActive()) {
-            return false;
+    private boolean sendToBoundRoute(String routeKey, String workerId, String message) {
+        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
+            if (workerId != null && !workerId.equals(entry.workerId())) {
+                continue;
+            }
+            SocketWorkerEndpoint endpoint = entry.endpoint();
+            if (endpoint == null || !endpoint.isActive()) {
+                continue;
+            }
+            try {
+                endpoint.send(message);
+                return true;
+            } catch (IOException ex) {
+                logger.warn("Failed to send socket message to routeKey={}, endpointId={}",
+                        routeKey, endpoint.endpointId(), ex);
+                removeSession(endpoint.endpointId());
+            }
         }
-        try {
-            endpoint.send(message);
-            return true;
-        } catch (IOException ex) {
-            logger.warn("Failed to send socket message to routeKey={}, endpointId={}",
-                    routeKey, endpoint.endpointId(), ex);
-            removeSession(endpoint.endpointId());
-            return false;
-        }
+        return false;
     }
 
     private boolean hasActiveRoute(String routeKey) {
-        SocketWorkerEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
-        return endpoint != null && endpoint.isActive();
+        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
+            SocketWorkerEndpoint endpoint = entry.endpoint();
+            if (endpoint != null && endpoint.isActive()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -103,7 +121,15 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return sendToBoundRoute(routeKey, message);
+        return sendToBoundRoute(routeKey, null, message);
+    }
+
+    @Override
+    public boolean sendToAdapterRoute(String adapterId, String routeKey, String workerId, String message) {
+        if (!matchesAdapter(adapterId)) {
+            return false;
+        }
+        return sendToBoundRoute(routeKey, normalizeNullable(workerId), message);
     }
 
     @Override
@@ -165,6 +191,25 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         return adapterId;
     }
 
+    private RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> activeEntryForWorker(String routeKey,
+                                                                                        String workerId,
+                                                                                        String excludedEndpointId) {
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedWorkerId == null) {
+            return null;
+        }
+        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
+            if (entry.handle().equals(excludedEndpointId) || !normalizedWorkerId.equals(entry.workerId())) {
+                continue;
+            }
+            SocketWorkerEndpoint endpoint = entry.endpoint();
+            if (endpoint != null && endpoint.isActive()) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
     public void setRouteOwnerStore(TransportRouteOwnerStore routeOwnerStore) {
         TransportRouteOwnerStore nextStore = routeOwnerStore != null
                 ? routeOwnerStore
@@ -181,6 +226,10 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
 
     private boolean matchesAdapter(String adapterId) {
         return adapterId == null || this.adapterId.equalsIgnoreCase(adapterId.trim());
+    }
+
+    private static String normalizeNullable(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private void projectActiveSessionsToRouteOwner(String reason) {

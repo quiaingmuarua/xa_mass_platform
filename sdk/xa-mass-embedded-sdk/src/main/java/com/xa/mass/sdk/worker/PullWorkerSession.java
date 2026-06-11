@@ -3,8 +3,7 @@ package com.xa.mass.sdk.worker;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
+import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
@@ -31,7 +30,6 @@ public class PullWorkerSession {
     private final String connectionId;
     private final TaskPullChannel taskPullChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
-    private final WorkerSystemEventChannel systemEventChannel;
     private final TransportRouteOwnerStore routeOwnerStore;
     private final String transportHint;
 
@@ -41,7 +39,6 @@ public class PullWorkerSession {
                              String connectionId,
                              TaskPullChannel taskPullChannel,
                              TaskResultIngestChannel taskResultIngestChannel,
-                             WorkerSystemEventChannel systemEventChannel,
                              TransportRouteOwnerStore routeOwnerStore,
                              String transportHint) {
         if (workerId == null || workerId.isBlank()) {
@@ -50,11 +47,10 @@ public class PullWorkerSession {
         this.workerId = workerId.trim();
         this.workerGroupId = requireText(workerGroupId, "workerGroupId");
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
-        this.routeKey = CanonicalWorkerRouteKeyCodec.encode(this.workerGroupId, this.workerId);
+        this.routeKey = CanonicalWorkerGroupRouteKeyCodec.encode(this.workerGroupId);
         this.connectionId = requireText(connectionId, "connectionId");
         this.taskPullChannel = Objects.requireNonNull(taskPullChannel, "taskPullChannel");
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
-        this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
         this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
         this.transportHint = transportHint;
     }
@@ -90,7 +86,6 @@ public class PullWorkerSession {
     public void connect(String reason) {
         String normalizedReason = normalizeReason(reason, "pull-session-connect");
         routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, connectionId, normalizedReason);
-        systemEventChannel.publishWorkerOnline(workerId, normalizedReason, connectionId);
     }
 
     public void disconnect() {
@@ -100,7 +95,6 @@ public class PullWorkerSession {
     public void disconnect(String reason) {
         String normalizedReason = normalizeReason(reason, "pull-session-disconnect");
         routeOwnerStore.releaseRouteOwner(workerId, adapterId, routeKey, connectionId, normalizedReason);
-        systemEventChannel.publishWorkerOffline(workerId, normalizedReason, connectionId);
     }
 
     public void heartbeat() {
@@ -110,7 +104,6 @@ public class PullWorkerSession {
     public void heartbeat(String reason) {
         String normalizedReason = normalizeReason(reason, "pull-session-heartbeat");
         routeOwnerStore.refreshHeartbeat(workerId, adapterId, routeKey, connectionId, normalizedReason);
-        systemEventChannel.publishWorkerHeartbeat(workerId, normalizedReason, connectionId);
     }
 
     public List<TaskDispatchItem> poll(int maxMessages) {

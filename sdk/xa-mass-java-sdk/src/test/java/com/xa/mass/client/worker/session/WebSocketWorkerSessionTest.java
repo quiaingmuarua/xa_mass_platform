@@ -6,7 +6,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.handler.WorkerResult;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
+import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -111,7 +111,7 @@ class WebSocketWorkerSessionTest {
                 .start()) {
             assertTrue(session.isRunning());
             assertEquals("workerId=ws-worker-001&routeKey="
-                            + CanonicalWorkerRouteKeyCodec.encode("realtime-probe", "ws-worker-001"),
+                            + CanonicalWorkerGroupRouteKeyCodec.encode("realtime-probe"),
                     connectedUri.get().getRawQuery());
 
             listenerRef.get().onText(webSocket, """

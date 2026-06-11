@@ -88,6 +88,27 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
+    void disconnectingOneGroupRouteConsumerKeepsPeerRouteOwner() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "ws-node-1");
+        manager.setRouteOwnerStore(routeOwnerStore);
+        Channel firstChannel = mockActiveChannel("worker-1");
+        Channel secondChannel = mockActiveChannel("worker-2");
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("group-route", "worker-1", firstChannel, ctx);
+        manager.addSession("group-route", "worker-2", secondChannel, ctx);
+
+        assertEquals(2, routeOwnerStore.currentOwners("group-route").size());
+
+        manager.removeSession(firstChannel);
+
+        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
+        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-2").isLeaseActive(System.currentTimeMillis()));
+        assertEquals(1, routeOwnerStore.currentOwners("group-route").size());
+        assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "group-route"));
+    }
+
+    @Test
     void replacingWorkerChannelKeepsConnectionCountStable() {
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");

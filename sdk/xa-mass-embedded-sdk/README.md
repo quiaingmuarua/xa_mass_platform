@@ -127,14 +127,17 @@ external worker client flows.
 `transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. Realtime workers must always register with explicit `adapterId + transportHint`; only polling keeps the implicit family default to `polling`. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Adapter-id aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not accepted as runtime identities; use canonical adapter ids such as `websocket`, `polling`, or `socket`. `transportHint` aliases such as `websocket`, `ws`, `push`, `pull`, or `queue` are also not accepted; use canonical coarse families such as `realtime` or `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
 
 When runtime reachability needs cross-instance truth, configure shared transport
-presence through `redisDistributedChannels(...)`, `redisRouteOwnerStore(...)`, or
-`routeOwnerStoreFactory(...)`. Adapters still own local
-session/connect/heartbeat ingress, but shared presence projection belongs to
-transport runtime rather than engine-local worker status. A canonical worker
-`routeKey` has one current delivery owner; dispatch routing reads the
-route-owner view and then writes the assigned batch to the selected
-`transportNodeId` inbox. Worker runtime capacity and multi-binding behavior
-remain owned by worker-runtime scheduling/admission, not by transport presence.
+route ownership through `redisDistributedChannels(...)`,
+`redisRouteOwnerStore(...)`, or `routeOwnerStoreFactory(...)`. Adapters still
+own local session/connect/heartbeat ingress, but shared route-owner evidence
+belongs to transport runtime rather than engine-local worker status. `routeKey`
+locates the transport delivery universe, such as a worker-group lane or a
+future adapter/group lane minted outside transport. Individual dispatch items
+may still carry the engine-selected `workerId` as an execution constraint;
+distributed handoff partitions the already assigned item to that worker's
+current route consumer node. Worker runtime capacity and multi-binding behavior
+remain owned by worker-runtime scheduling/admission, not by transport route
+ownership.
 
 Task result reads are exposed through `TaskResultQueryOperations`, separate
 from task aggregate query. `readTaskResults(...)` and archive streaming read
@@ -159,16 +162,17 @@ Distributed transport v1 splits one engine producer JVM from one or more
 transport consumer JVMs without adding server-owned transport endpoints. Use
 Redis-backed runtime channels for dispatch handoff, result ingest, and
 dispatch-failure compensation. The one-argument
-`redisDistributedChannels(redisUri)` helper wires the node-targeted dispatch
-inbox, result inbox, dispatch-failure inbox, Redis presence, Redis delivery
-store, and transport-node registry under transport-owned component namespaces:
+`redisDistributedChannels(redisUri)` helper wires the route-targeted dispatch
+inbox, result inbox, dispatch-failure inbox, Redis route-owner store, Redis
+delivery store, and transport-node registry under transport-owned component
+namespaces:
 
 | Component | Default namespace |
 | --- | --- |
-| dispatch-node | `xa:mass:transport:dispatch-node:v1` |
+| dispatch-route | `xa:mass:transport:dispatch-route:v1` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` |
 | dispatch-failure | `xa:mass:transport:dispatch-failure:v1` |
-| presence | `xa:mass:transport:presence:v2` |
+| route-owner | `xa:mass:transport:route-owner:v1` |
 | delivery | `xa:mass:transport:delivery:v1` |
 | nodes | `xa:mass:transport:nodes:v1` |
 
@@ -342,16 +346,18 @@ rather than independent config slots that outer modules should wire or cache.
 Embedded transport runtime assembly also consumes only
 `WorkerResourceRuntime` worker resource reads instead of reaching through the
 broader worker facade or storage lookup seams.
-Assignment no longer hands dispatch-ready batches straight into the transport
+Assignment no longer hands dispatch-ready batches straight into a transport
 routing listener. SDK runtime assembly now inserts an explicit
-`TaskDispatchHandoff` seam between engine and transport; the bundled default is
-still an in-memory queue plus pump, but the replacement boundary is now
-explicit for split runtime wiring through `redisDispatchHandoff(...)` or
-`redisDistributedChannels(...)`. Multi-process adapter wiring uses
-`NodeTargetedTaskDispatchHandoff`, so each transport JVM polls only its own
-`transportNodeId` inbox. The companion result and dispatch-failure Redis
-inboxes are runtime channels back to the engine process; they are not server
-APIs and they do not move task lifecycle ownership into transport.
+`RouteTargetedTaskDispatchHandoff` seam between engine and transport; the
+bundled default is an in-memory queue plus pump, while
+`redisDistributedChannels(...)` uses Redis route-targeted inboxes with
+node-local drain lanes. Engine/starter assembly resolves `routeKey + adapterId`
+and the binding-level selected worker constraint to a current route consumer
+before handoff; transport consumers drain already resolved delivery targets and
+do not reselect workers. The companion result and
+dispatch-failure Redis inboxes are runtime channels back to the engine process;
+they are not server APIs and they do not move task lifecycle ownership into
+transport.
 
 ## Compatibility Policy
 

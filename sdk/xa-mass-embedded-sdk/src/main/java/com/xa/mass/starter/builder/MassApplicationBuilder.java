@@ -28,8 +28,7 @@ import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
-import com.xa.mass.transport.runtime.dispatch.RedisNodeTargetedTaskDispatchHandoff;
-import com.xa.mass.transport.runtime.dispatch.RedisTaskDispatchHandoff;
+import com.xa.mass.transport.runtime.dispatch.RedisRouteTargetedTaskDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.node.RedisTransportNodeRegistry;
@@ -246,33 +245,21 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder redisDispatchHandoff(String redisUri) {
-            return redisDispatchHandoff(redisUri, RedisTaskDispatchHandoff.DEFAULT_NAMESPACE_PREFIX);
+        public TransportBuilder redisRouteTargetedDispatchHandoff(String redisUri) {
+            return redisRouteTargetedDispatchHandoff(
+                    redisUri,
+                    RedisRouteTargetedTaskDispatchHandoff.DEFAULT_NAMESPACE_PREFIX
+            );
         }
 
-        public TransportBuilder redisDispatchHandoff(String redisUri, String namespacePrefix) {
+        public TransportBuilder redisRouteTargetedDispatchHandoff(String redisUri, String namespacePrefix) {
             String normalizedRedisUri = requireRedisUri(redisUri);
             String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            config.setTaskDispatchHandoffFactory(() -> new RedisTaskDispatchHandoff(
-                    normalizedRedisUri,
-                    normalizedNamespacePrefix,
-                    RedisTaskDispatchHandoff.DEFAULT_MAX_QUEUED_BATCHES
-            ));
-            return this;
-        }
-
-        public TransportBuilder redisNodeTargetedDispatchHandoff(String redisUri) {
-            return redisNodeTargetedDispatchHandoff(redisUri, RedisNodeTargetedTaskDispatchHandoff.DEFAULT_NAMESPACE_PREFIX);
-        }
-
-        public TransportBuilder redisNodeTargetedDispatchHandoff(String redisUri, String namespacePrefix) {
-            String normalizedRedisUri = requireRedisUri(redisUri);
-            String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            config.setTaskDispatchHandoffFactory(() -> new RedisNodeTargetedTaskDispatchHandoff(
+            config.setRouteTargetedTaskDispatchHandoffFactory(() -> new RedisRouteTargetedTaskDispatchHandoff(
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
                     config.getTransportNodeId(),
-                    RedisNodeTargetedTaskDispatchHandoff.DEFAULT_MAX_QUEUED_BATCHES_PER_NODE
+                    RedisRouteTargetedTaskDispatchHandoff.DEFAULT_MAX_QUEUED_BATCHES_PER_ROUTE
             ));
             return this;
         }
@@ -308,7 +295,7 @@ public class MassApplicationBuilder {
         }
 
         public TransportBuilder redisDistributedChannels(String redisUri) {
-            return redisNodeTargetedDispatchHandoff(redisUri, RedisTransportNamespaces.DISPATCH_NODE)
+            return redisRouteTargetedDispatchHandoff(redisUri, RedisTransportNamespaces.DISPATCH_ROUTE)
                     .redisResultInbox(redisUri, RedisTransportNamespaces.RESULT_INBOX)
                     .redisDispatchFailureInbox(redisUri, RedisTransportNamespaces.DISPATCH_FAILURE)
                     .redisRouteOwnerStore(redisUri, RedisTransportNamespaces.ROUTE_OWNER)
@@ -318,7 +305,7 @@ public class MassApplicationBuilder {
 
         public TransportBuilder redisDistributedChannels(String redisUri, String namespacePrefix) {
             String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            return redisNodeTargetedDispatchHandoff(redisUri, normalizedNamespacePrefix + ":dispatch-node")
+            return redisRouteTargetedDispatchHandoff(redisUri, normalizedNamespacePrefix + ":dispatch-route")
                     .redisResultInbox(redisUri, normalizedNamespacePrefix + ":result-inbox")
                     .redisDispatchFailureInbox(redisUri, normalizedNamespacePrefix + ":dispatch-failure")
                     .redisRouteOwnerStore(redisUri, normalizedNamespacePrefix + ":route-owner")

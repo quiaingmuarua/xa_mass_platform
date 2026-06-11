@@ -69,7 +69,7 @@ keys for SDK/worker-api calls.
   AdapterNode, or NodeGroupBinding truth as a substitute for external
   registration.
 - `xa-mass-java-sdk` may depend on `transport/transport_api` for stable
-  transport-neutral contracts such as canonical worker route-key encoding. It
+  transport-neutral contracts such as canonical worker-group route-key encoding. It
   must not depend on `transport_runtime` or concrete adapter implementation
   modules.
 - Do not add or extend dev-only HTTP APIs such as sample bootstrap routes to

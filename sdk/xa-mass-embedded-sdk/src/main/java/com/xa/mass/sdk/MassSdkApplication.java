@@ -712,17 +712,26 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public void workerOnline(String workerId, String sessionToken, String reason) {
-        externalPullWorkerSession(workerId, sessionToken).connect(reason);
+        String normalizedWorkerId = requireWorkerId(workerId);
+        String normalizedSessionToken = requireNonBlank(sessionToken, "sessionToken");
+        externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken).connect(reason);
+        delegate.publishWorkerOnline(normalizedWorkerId, reason, normalizedSessionToken);
     }
 
     @Override
     public void workerHeartbeat(String workerId, String sessionToken, String reason) {
-        externalPullWorkerSession(workerId, sessionToken).heartbeat(reason);
+        String normalizedWorkerId = requireWorkerId(workerId);
+        String normalizedSessionToken = requireNonBlank(sessionToken, "sessionToken");
+        externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken).heartbeat(reason);
+        delegate.publishWorkerHeartbeat(normalizedWorkerId, reason, normalizedSessionToken);
     }
 
     @Override
     public void workerOffline(String workerId, String sessionToken, String reason) {
-        externalPullWorkerSession(workerId, sessionToken).disconnect(reason);
+        String normalizedWorkerId = requireWorkerId(workerId);
+        String normalizedSessionToken = requireNonBlank(sessionToken, "sessionToken");
+        externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken).disconnect(reason);
+        delegate.publishWorkerOffline(normalizedWorkerId, reason, normalizedSessionToken);
     }
 
     @Override

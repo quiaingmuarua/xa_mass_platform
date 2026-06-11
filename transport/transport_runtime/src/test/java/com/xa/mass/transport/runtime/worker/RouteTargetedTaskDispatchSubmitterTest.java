@@ -1,0 +1,143 @@
+package com.xa.mass.transport.runtime.worker;
+
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
+import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
+import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchBatch;
+import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchHandoff;
+import com.xa.mass.transport.runtime.dispatch.RouteTargetedDispatchFixtures;
+import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
+import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class RouteTargetedTaskDispatchSubmitterTest {
+
+    @Test
+    void submitsBindingsByResolvedRouteKeyAndActiveRouteConsumers() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-1");
+        routeOwnerStore.claimRouteOwner("worker-1", "websocket", "route-1", "conn-1", "connected");
+        InMemoryTransportNodeRegistry nodeRegistry = new InMemoryTransportNodeRegistry();
+        nodeRegistry.register("node-1", List.of("websocket"), 1L);
+        CapturingHandoff handoff = new CapturingHandoff();
+        List<TaskDispatchBinding> compensated = new ArrayList<>();
+        RouteTargetedTaskDispatchSubmitter submitter = new RouteTargetedTaskDispatchSubmitter(
+                handoff,
+                (binding, context) -> "route-1",
+                routeOwnerStore,
+                nodeRegistry,
+                (task, bindings, detail) -> {
+                    compensated.addAll(bindings);
+                    return true;
+                }
+        );
+
+        submitter.onTaskDispatchBatch(RouteTargetedDispatchFixtures.context(), List.of(
+                RouteTargetedDispatchFixtures.binding("msg-1", "worker-1")
+        ));
+
+        assertTrue(compensated.isEmpty());
+        assertEquals(1, handoff.submitted.size());
+        assertEquals("route-1", handoff.submitted.getFirst().routeKey());
+        assertEquals("node-1", handoff.submitted.getFirst().targetTransportNodeId());
+    }
+
+    @Test
+    void splitsGroupRouteBindingsBySelectedWorkerConsumerNode() {
+        long now = System.currentTimeMillis();
+        WorkerDispatchRouteOwnerView routeOwnerView = routeKey -> List.of(
+                new WorkerDispatchRouteOwner(
+                        "worker-1",
+                        "websocket",
+                        "group-route",
+                        "node-1",
+                        "conn-1",
+                        now + 30_000L,
+                        now
+                ),
+                new WorkerDispatchRouteOwner(
+                        "worker-2",
+                        "websocket",
+                        "group-route",
+                        "node-2",
+                        "conn-2",
+                        now + 30_000L,
+                        now + 1L
+                )
+        );
+        InMemoryTransportNodeRegistry nodeRegistry = new InMemoryTransportNodeRegistry();
+        nodeRegistry.register("node-1", List.of("websocket"), 1L);
+        nodeRegistry.register("node-2", List.of("websocket"), 1L);
+        CapturingHandoff handoff = new CapturingHandoff();
+        List<TaskDispatchBinding> compensated = new ArrayList<>();
+        RouteTargetedTaskDispatchSubmitter submitter = new RouteTargetedTaskDispatchSubmitter(
+                handoff,
+                (binding, context) -> "group-route",
+                routeOwnerView,
+                nodeRegistry,
+                (task, bindings, detail) -> {
+                    compensated.addAll(bindings);
+                    return true;
+                }
+        );
+
+        submitter.onTaskDispatchBatch(RouteTargetedDispatchFixtures.context(), List.of(
+                RouteTargetedDispatchFixtures.binding("msg-1", "worker-1"),
+                RouteTargetedDispatchFixtures.binding("msg-2", "worker-2")
+        ));
+
+        assertTrue(compensated.isEmpty());
+        assertEquals(2, handoff.submitted.size());
+        assertEquals("node-1", handoff.submitted.get(0).targetTransportNodeId());
+        assertEquals(List.of("msg-1"), RouteTargetedDispatchFixtures.messages(handoff.submitted.get(0)));
+        assertEquals("node-2", handoff.submitted.get(1).targetTransportNodeId());
+        assertEquals(List.of("msg-2"), RouteTargetedDispatchFixtures.messages(handoff.submitted.get(1)));
+    }
+
+    @Test
+    void compensatesWhenRouteConsumerIsMissing() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-1");
+        CapturingHandoff handoff = new CapturingHandoff();
+        List<TaskDispatchBinding> compensated = new ArrayList<>();
+        RouteTargetedTaskDispatchSubmitter submitter = new RouteTargetedTaskDispatchSubmitter(
+                handoff,
+                (binding, context) -> "route-1",
+                routeOwnerStore,
+                null,
+                (task, bindings, detail) -> {
+                    compensated.addAll(bindings);
+                    return true;
+                }
+        );
+
+        submitter.onTaskDispatchBatch(RouteTargetedDispatchFixtures.context(), List.of(
+                RouteTargetedDispatchFixtures.binding("msg-1", "worker-1")
+        ));
+
+        assertTrue(handoff.submitted.isEmpty());
+        assertEquals(List.of("msg-1"), compensated.stream().map(TaskDispatchBinding::messageId).toList());
+    }
+
+    private static final class CapturingHandoff implements RouteTargetedTaskDispatchHandoff {
+        private final List<RouteTargetedTaskDispatchBatch> submitted = new ArrayList<>();
+
+        @Override
+        public void submit(RouteTargetedTaskDispatchBatch batch) {
+            submitted.add(batch);
+        }
+
+        @Override
+        public RouteTargetedTaskDispatchBatch poll(long timeoutMillis) {
+            return null;
+        }
+
+        @Override
+        public void shutdown() {
+        }
+    }
+}

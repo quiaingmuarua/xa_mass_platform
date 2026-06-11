@@ -1,11 +1,7 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.base.runtime.RuntimeTaskExecutor;
-import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
-import com.xa.mass.transport.runtime.worker.TransportRoutingTaskDispatchListener;
 import com.xa.mass.transport.worker.WorkerAdapter;
 
 import java.util.LinkedHashMap;
@@ -28,18 +24,15 @@ import java.util.TreeSet;
 public final class TransportRuntimeRegistry {
 
     private final TaskResultIngestChannel taskResultIngestChannel;
-    private final WorkerSystemEventChannel systemEventChannel;
     private final TransportRouteOwnerStore routeOwnerStore;
     private final List<TransportBinding> bindings;
     private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
 
     public TransportRuntimeRegistry(TaskResultIngestChannel taskResultIngestChannel,
-                                    WorkerSystemEventChannel systemEventChannel,
                                     TransportRouteOwnerStore routeOwnerStore,
                                     List<TransportBinding> bindings) {
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
-        this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
         this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
         this.bindings = List.copyOf(bindings);
         if (this.bindings.isEmpty()) {
@@ -50,25 +43,6 @@ public final class TransportRuntimeRegistry {
         for (TransportBinding binding : this.bindings) {
             registerAdapterId(binding.getAdapterId(), binding);
         }
-    }
-
-    public TaskDispatchBatchListener createDispatchBatchListener(TransportDispatchTargetResolver targetResolver) {
-        return createDispatchBatchListener(targetResolver, null);
-    }
-
-    public TaskDispatchBatchListener createDispatchBatchListener(TransportDispatchTargetResolver targetResolver,
-                                                                TransportDispatchFailureHandler failureHandler) {
-        return createDispatchBatchListener(targetResolver, failureHandler, null);
-    }
-
-    public TaskDispatchBatchListener createDispatchBatchListener(TransportDispatchTargetResolver targetResolver,
-                                                                TransportDispatchFailureHandler failureHandler,
-                                                                RuntimeTaskExecutor runtimeTaskExecutor) {
-        return new TransportRoutingTaskDispatchListener(
-                targetResolver,
-                failureHandler,
-                runtimeTaskExecutor
-        );
     }
 
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
@@ -97,6 +71,15 @@ public final class TransportRuntimeRegistry {
         return resolveBinding(requestedAdapterId, transportHint).getWorkerAdapter();
     }
 
+    public WorkerAdapter resolveDispatchAdapterByAdapterId(String adapterId) {
+        TransportBinding binding = bindingByAdapterId.get(normalizeAdapterId(adapterId));
+        if (binding == null) {
+            throw new IllegalStateException("No runtime binding is registered for adapterId '" + adapterId
+                    + "'; available adapterIds=" + availableAdapterIds());
+        }
+        return binding.getWorkerAdapter();
+    }
+
     public ResolvedPullWorkerTransport resolvePullWorkerTransport(String workerId,
                                                                   String workerGroupId,
                                                                   String requestedAdapterId,
@@ -116,7 +99,6 @@ public final class TransportRuntimeRegistry {
                 binding.getTransportHint(),
                 binding.getTaskPullChannel(),
                 taskResultIngestChannel,
-                systemEventChannel,
                 routeOwnerStore
         );
     }

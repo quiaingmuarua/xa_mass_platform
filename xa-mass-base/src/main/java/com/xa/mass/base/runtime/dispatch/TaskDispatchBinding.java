@@ -27,6 +27,8 @@ public final class TaskDispatchBinding {
     private final String batchId;
     private final String workerGroupId;
     private final String adapterNodeId;
+    private final String adapterId;
+    private final String onlineStrategy;
     private final String eventBindingKey;
     private final String workerCandidateSource;
 
@@ -54,6 +56,8 @@ public final class TaskDispatchBinding {
         this.batchId = batchId;
         this.workerGroupId = null;
         this.adapterNodeId = null;
+        this.adapterId = null;
+        this.onlineStrategy = null;
         this.eventBindingKey = null;
         this.workerCandidateSource = null;
     }
@@ -71,6 +75,8 @@ public final class TaskDispatchBinding {
                                 String batchId,
                                 String workerGroupId,
                                 String adapterNodeId,
+                                String adapterId,
+                                String onlineStrategy,
                                 String eventBindingKey,
                                 String workerCandidateSource) {
         this.taskId = requireText(taskId, "taskId");
@@ -86,6 +92,8 @@ public final class TaskDispatchBinding {
         this.batchId = batchId;
         this.workerGroupId = optionalText(workerGroupId);
         this.adapterNodeId = optionalText(adapterNodeId);
+        this.adapterId = optionalText(adapterId);
+        this.onlineStrategy = optionalText(onlineStrategy);
         this.eventBindingKey = optionalText(eventBindingKey);
         this.workerCandidateSource = optionalText(workerCandidateSource);
     }
@@ -145,6 +153,46 @@ public final class TaskDispatchBinding {
                 batchId,
                 workerGroupId,
                 adapterNodeId,
+                null,
+                null,
+                eventBindingKey,
+                workerCandidateSource
+        );
+    }
+
+    public static TaskDispatchBinding workerLevelWithTransportEvidence(String taskId,
+                                                                       String messageId,
+                                                                       String eventCode,
+                                                                       Map<String, Object> payload,
+                                                                       String payloadRef,
+                                                                       int retryCount,
+                                                                       String attemptId,
+                                                                       int attemptNo,
+                                                                       String leaseToken,
+                                                                       String workerId,
+                                                                       String batchId,
+                                                                       String workerGroupId,
+                                                                       String adapterNodeId,
+                                                                       String adapterId,
+                                                                       String onlineStrategy,
+                                                                       String eventBindingKey,
+                                                                       String workerCandidateSource) {
+        return new TaskDispatchBinding(
+                taskId,
+                messageId,
+                eventCode,
+                payload,
+                payloadRef,
+                retryCount,
+                attemptId,
+                attemptNo,
+                leaseToken,
+                workerId,
+                batchId,
+                workerGroupId,
+                adapterNodeId,
+                adapterId,
+                onlineStrategy,
                 eventBindingKey,
                 workerCandidateSource
         );
@@ -200,6 +248,14 @@ public final class TaskDispatchBinding {
 
     public String adapterNodeId() {
         return adapterNodeId;
+    }
+
+    public String adapterId() {
+        return adapterId;
+    }
+
+    public String onlineStrategy() {
+        return onlineStrategy;
     }
 
     public String eventBindingKey() {

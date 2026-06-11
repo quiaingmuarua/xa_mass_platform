@@ -27,7 +27,11 @@ class SocketTaskDispatchChannelTest {
     @Test
     void dispatchReturnsSentWhenSessionManagerAcceptsMessage() {
         SocketSessionManager sessionManager = mock(SocketSessionManager.class);
-        when(sessionManager.sendToAdapterRoute(org.mockito.ArgumentMatchers.eq("socket"), org.mockito.ArgumentMatchers.eq("worker-1"), any()))
+        when(sessionManager.sendToAdapterRoute(
+                org.mockito.ArgumentMatchers.eq("socket"),
+                org.mockito.ArgumentMatchers.eq("worker-1"),
+                org.mockito.ArgumentMatchers.eq("worker-1"),
+                any()))
                 .thenReturn(true);
         SocketTaskDispatchChannel channel = channel(sessionManager);
 
@@ -35,13 +39,21 @@ class SocketTaskDispatchChannelTest {
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
-        verify(sessionManager).sendToAdapterRoute(org.mockito.ArgumentMatchers.eq("socket"), org.mockito.ArgumentMatchers.eq("worker-1"), any());
+        verify(sessionManager).sendToAdapterRoute(
+                org.mockito.ArgumentMatchers.eq("socket"),
+                org.mockito.ArgumentMatchers.eq("worker-1"),
+                org.mockito.ArgumentMatchers.eq("worker-1"),
+                any());
     }
 
     @Test
     void dispatchReturnsEndpointOfflineWhenSessionManagerRejectsMessage() {
         SocketSessionManager sessionManager = mock(SocketSessionManager.class);
-        when(sessionManager.sendToAdapterRoute(org.mockito.ArgumentMatchers.eq("socket"), org.mockito.ArgumentMatchers.eq("worker-1"), any()))
+        when(sessionManager.sendToAdapterRoute(
+                org.mockito.ArgumentMatchers.eq("socket"),
+                org.mockito.ArgumentMatchers.eq("worker-1"),
+                org.mockito.ArgumentMatchers.eq("worker-1"),
+                any()))
                 .thenReturn(false);
         SocketTaskDispatchChannel channel = channel(sessionManager);
 

@@ -1,6 +1,15 @@
 # Runtime Worker Selection Residue Convergence Roadmap
 
-Status: proposed convergence roadmap.
+Status: superseded for transport route-owner and dispatch-handoff details.
+
+Transport route-key and dispatch-handoff truth has moved to
+`roadmap/TRANSPORT_ROUTE_KEY_DISPATCH_HANDOFF_CONVERGENCE_ROADMAP.md` and
+`transport/TRANSPORT_BOUNDARY_BASELINE.md`: current SDK/starter routeKey minting
+is worker-group-level, transport treats routeKey as opaque, transport route
+evidence is not worker online/offline truth, and distributed dispatch handoff is
+route-targeted rather than node-targeted or worker-resource-resolving. The
+remaining worker-selection cleanup in this roadmap must be re-read through that
+current transport baseline before implementation.
 
 Predecessors:
 
@@ -64,30 +73,28 @@ Engine owns:
 - dispatch binding and failure compensation.
 
 Transport does not decide whether a worker is schedulable. Engine and
-worker-runtime do not own transport presence. The only allowed bridge is an
-assembly seam that derives `WorkerReachabilityView` from bounded transport
-route-owner lookup.
+worker-runtime do not own transport route-owner state. The previous idea of
+deriving `WorkerReachabilityView` from transport route-owner lookup is
+superseded; worker reachability/admission evidence belongs to worker-runtime or
+an explicitly owned worker-system-event projection, not to transport session
+lease evidence.
 
-## Current Implementation Baseline
+## Superseded Baseline
 
-Current code already has important pieces of the target shape:
+The following baseline was true before route-targeted transport convergence and
+must not be used as current implementation truth:
 
-- `CanonicalWorkerRouteKeyCodec` encodes the current SDK/starter default worker
-  route key from `workerGroupId + workerId`.
-- `WorkerPresenceStore.currentOwner(routeKey)` is the bounded transport owner
-  lookup surface.
-- `WorkerDispatchRouteSelector` resolves dispatch route from the selected
-  worker through an injected route-key resolver after engine selection.
-- Embedded SDK assembly builds `WorkerReachabilityView` by resolving the
-  worker resource, applying the default route-key resolver, and checking
-  `currentOwner(routeKey)`.
-- `WorkerPresenceStore#getPresence`, `isWorkerOnline`, `findOwners`, and
-  `listActivePresences` still exist as compatibility/operator surfaces.
+- routeKey was briefly documented as worker-level instead of the current
+  worker-group consumption route.
+- transport presence lookup was treated as a possible
+  `WorkerReachabilityView` assembly source.
+- route selection was modeled as a workerId-to-route resolver after selection.
+- worker-id presence inspection APIs were treated as compatibility/operator
+  surfaces.
 
-The remaining risk is not that the route-key pieces are absent. The risk is
-that future worker selection code can accidentally consume worker-id presence
-projections, scan-based presence views, or diagnostic context as scheduling
-truth.
+The remaining risk is that future worker selection code can accidentally
+consume route-owner projections, scan-based route views, or diagnostic context
+as scheduling truth.
 
 ## Non-Goals
 
@@ -105,15 +112,16 @@ truth.
 
 ## Hard Rules
 
-1. Scheduling reachability must be consumed through `WorkerReachabilityView`.
-2. The production assembly of `WorkerReachabilityView` may use transport
-   presence only through canonical `currentOwner(routeKey)` lookup.
-3. Runtime worker selection must not call
-   `WorkerPresenceStore#getPresence`, `isWorkerOnline`, `findOwners`, or
-   `listActivePresences`.
-4. Engine production code must not import transport presence store
+1. Scheduling reachability must be consumed through worker-runtime owned
+   evidence or an explicitly owned worker-system-event projection.
+2. Production `WorkerReachabilityView` assembly must not derive worker
+   schedulability from transport route-owner session leases.
+3. Runtime worker selection must not call transport route-owner inspection
+   projections such as `getLatestOwnerByWorker`, `isWorkerReachable`, or
+   `findRouteOwners`.
+4. Engine production code must not import transport route-owner store
    implementations.
-5. Worker-runtime production code must not import transport presence store
+5. Worker-runtime production code must not import transport route-owner store
    implementations.
 6. Transport may resolve route ownership after a worker is selected, but it
    must not choose the worker.
@@ -159,7 +167,8 @@ changing behavior.
 Scope:
 
 - Inventory every production caller of `WorkerReachabilityView`.
-- Inventory every production caller of `WorkerPresenceStore` lookup methods.
+- Inventory every production caller of transport route-owner lookup and
+  inspection methods.
 - Classify each caller as:
   - transport route-owner truth,
   - reachability assembly seam,
@@ -179,10 +188,11 @@ Scope:
 
 Acceptance:
 
-- The inventory states that `currentOwner(routeKey)` is the only production
-  transport presence lookup allowed to influence scheduling reachability.
-- Worker-id presence projections are explicitly classified as
-  operator/compatibility/support surfaces, not scheduling truth.
+- The inventory states that transport route-owner lookup is allowed for
+  dispatch handoff assembly only, after worker selection has already produced
+  bindings.
+- Worker-id route-owner projections are explicitly classified as
+  operator/support surfaces, not scheduling truth.
 - The rule-readable key set is asserted as an explicit contract.
 - Diagnostic-only live runtime and transport keys are asserted as absent from
   rule context.
@@ -194,40 +204,39 @@ Suggested proof:
 ./mvnw -q -pl xa-mass-engine -am \
   -Dtest=WorkerMatchContextTest,EngineSchedulingCoreArchitectureGuardTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
-rg -n "getPresence\\(|isWorkerOnline\\(|findOwners\\(|listActivePresences\\(|currentOwner\\(" \
+rg -n "getLatestOwnerByWorker\\(|isWorkerReachable\\(|findRouteOwners\\(|currentOwner\\(" \
   xa-mass-engine xa-mass-worker-runtime sdk transport --glob '!**/target/**'
 ```
 
-## RWS-C1 Transport Reachability Boundary Guards
+## RWS-C1 Transport Route-Owner Boundary Guards
 
-Goal: prevent transport presence projections from becoming scheduling truth.
+Goal: prevent transport route-owner projections from becoming scheduling truth.
 
 Scope:
 
 - Strengthen architecture guards so engine and worker-runtime production code
-  cannot import transport presence store implementations.
-- Guard runtime worker selection paths from calling worker-id projection APIs:
-  - `WorkerPresenceStore#getPresence`,
-  - `WorkerPresenceStore#isWorkerOnline`,
-  - `WorkerPresenceStore#findOwners`,
-  - `WorkerPresenceStore#listActivePresences`.
-- Keep those APIs allowed only in explicitly classified operator/inspection,
-  test, or compatibility-support surfaces.
+  cannot import transport route-owner store implementations.
+- Guard runtime worker selection paths from calling worker-id route-owner
+  projection APIs such as `getLatestOwnerByWorker`, `isWorkerReachable`, or
+  `findRouteOwners`.
+- Keep those APIs allowed only in explicitly classified operator/inspection or
+  test/support surfaces.
 - Guard route-owner lookup direction:
-  - scheduling reachability assembly uses resolved opaque route key,
-  - dispatch route selection uses selected worker -> injected route-key resolver,
-  - neither path scans all active presences.
+  - scheduling reachability does not read transport route-owner leases,
+  - dispatch handoff assembly uses already selected bindings plus injected
+    route-key resolver,
+  - neither path scans all active route owners.
 
 Acceptance:
 
-- A source guard fails if runtime worker selection consumes worker-id presence
-  projections or scan-based active presence lists.
+- A source guard fails if runtime worker selection consumes worker-id
+  route-owner projections or scan-based active route lists.
 - A source guard fails if engine or worker-runtime production code imports
-  transport presence store implementations.
-- Embedded SDK assembly remains allowed to adapt transport presence into
-  `WorkerReachabilityView` through `currentOwner(routeKey)`.
-- Transport dispatch route selection remains allowed to resolve route owner
-  after a worker is already selected.
+  transport route-owner store implementations.
+- Embedded SDK assembly must not adapt transport route-owner leases into
+  `WorkerReachabilityView`.
+- Transport dispatch handoff assembly remains allowed to resolve route owners
+  after worker bindings are already selected.
 
 Suggested proof:
 
@@ -235,43 +244,41 @@ Suggested proof:
 ./mvnw -q -pl xa-mass-engine -am \
   -Dtest=EngineSchedulingCoreArchitectureGuardTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
-rg -n "listActivePresences\\(|findOwners\\(|getPresence\\(|isWorkerOnline\\(" \
+rg -n "findRouteOwners\\(|getLatestOwnerByWorker\\(|isWorkerReachable\\(" \
   xa-mass-engine/src/main/java xa-mass-worker-runtime/src/main/java \
   --glob '!**/target/**'
 ```
 
-## RWS-C2 Route-Owner Reachability Behavior Proof
+## RWS-C2 Route-Owner Dispatch Behavior Proof
 
-Goal: prove that transport route-owner truth and scheduling reachability do not
-diverge.
+Goal: prove that transport route-owner truth is used for dispatch handoff only,
+not for worker scheduling reachability.
 
 Scope:
 
 - Add or tighten focused tests for:
-  - SDK/starter default route key is derived from `workerGroupId + workerId`,
-  - scheduling reachability and dispatch route selection use the resolved
-    opaque `routeKey`,
-  - online route owner makes reachability `ONLINE`,
-  - missing route owner makes reachability non-schedulable,
-  - offline transport node makes reachability non-schedulable,
+  - SDK/starter default route key is derived from `workerGroupId`,
+  - dispatch handoff uses the resolved opaque `routeKey`,
+  - missing route owner triggers engine-owned compensation after binding,
+  - offline transport node triggers engine-owned compensation after binding,
   - stale/offline evidence from an old connection cannot revoke a newer owner,
-  - worker-id compatibility projection cannot make a worker schedulable when
+  - worker-id inspection projection cannot make transport dispatch possible when
     resolved route owner is absent.
 - Prefer existing transport runtime and embedded SDK tests over broad E2E.
 
 Acceptance:
 
-- Reachability used by scheduling is bounded by canonical route-owner lookup.
-- Worker-id projection APIs are not needed to prove schedulability.
+- Transport route-owner lookup is not needed to prove schedulability.
+- Worker-id projection APIs are not needed for dispatch handoff.
 - Route-owner takeover semantics are covered by tests.
-- Memory and Redis presence stores both satisfy the route-owner contract where
+- Memory and Redis route-owner stores both satisfy the route-owner contract where
   relevant.
 
 Suggested proof:
 
 ```bash
 ./mvnw -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk -am \
-  -Dtest=WorkerDispatchRouteSelectorTest,RedisWorkerPresenceStoreTest,MassApplicationDistributedTransportTest \
+  -Dtest=RouteTargetedTaskDispatchSubmitterTest,RedisTransportRouteOwnerStoreTest,MassApplicationDistributedTransportTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
@@ -329,7 +336,7 @@ Scope:
   - worker reservation/resource is released or made retry-safe,
   - transport does not choose an alternate worker.
 - Prefer existing `RuleBasedTaskWorkerMatchingStrategyTest`,
-  `NodeTargetedTaskDispatchSubmitterTest`, and scheduling matrix tests over new
+  `RouteTargetedTaskDispatchSubmitterTest`, and scheduling matrix tests over new
   broad suites.
 - Do not split the production strategy unless a small extraction removes
   repeated failure compensation code without hiding owner boundaries.
@@ -347,7 +354,7 @@ Suggested proof:
 
 ```bash
 ./mvnw -q -pl xa-mass-engine,transport/transport_runtime -am \
-  -Dtest=RuleBasedTaskWorkerMatchingStrategyTest,TaskSchedulingContentionTest,TaskSchedulingGateAndTargetingTest,NodeTargetedTaskDispatchSubmitterTest \
+  -Dtest=RuleBasedTaskWorkerMatchingStrategyTest,TaskSchedulingContentionTest,TaskSchedulingGateAndTargetingTest,RouteTargetedTaskDispatchSubmitterTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
@@ -440,7 +447,7 @@ Minimum completion proof:
   -Dtest=WorkerMatchContextTest,RuleBasedTaskWorkerMatchingStrategyTest,DefaultSchedulingPlaneResolverTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,EngineSchedulingCoreArchitectureGuardTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ./mvnw -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk -am \
-  -Dtest=WorkerDispatchRouteSelectorTest,RedisWorkerPresenceStoreTest,MassApplicationDistributedTransportTest,NodeTargetedTaskDispatchSubmitterTest \
+  -Dtest=RouteTargetedTaskDispatchSubmitterTest,RedisTransportRouteOwnerStoreTest,MassApplicationDistributedTransportTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 git diff --check
 ```

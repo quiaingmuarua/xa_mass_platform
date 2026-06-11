@@ -1,10 +1,10 @@
 package com.xa.mass.transport.runtime.route;
 
+import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
+import com.xa.mass.transport.route.TransportRouteOwnerRecord;
+import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
-import com.xa.mass.transport.route.TransportRouteOwnerRecord;
-import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import io.lettuce.core.Range;
 import io.lettuce.core.RedisClient;
@@ -14,17 +14,18 @@ import io.lettuce.core.api.sync.RedisCommands;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.LinkedHashSet;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
 /**
- * Redis-backed transport route-owner heartbeat store.
+ * Redis-backed transport route-consumer heartbeat store.
  *
- * <p>The runtime owner is the routeKey-sharded owner hash. WorkerId keys are
- * derived projections for SDK/operator inspection APIs only.</p>
+ * <p>The runtime owner is a routeKey-partitioned consumer hash. WorkerId is
+ * optional metadata for SDK/operator projection and is not a dispatch lookup
+ * key.</p>
  */
 public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerStore,
         WorkerDispatchRouteOwnerView,
@@ -32,8 +33,8 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
         AutoCloseable {
 
     public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.ROUTE_OWNER;
-    private static final int SHARD_COUNT = 64;
-    private static final String VERSION = "v2";
+    private static final String VERSION = "v3";
+    private static final String MEMBER_SEPARATOR = "\u001f";
     private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder TOKEN_DECODER = Base64.getUrlDecoder();
 
@@ -60,9 +61,9 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
     }
 
     public RedisTransportRouteOwnerStore(String redisUri,
-                                    String namespacePrefix,
-                                    long leaseMillis,
-                                    String transportInstanceId) {
+                                         String namespacePrefix,
+                                         long leaseMillis,
+                                         String transportInstanceId) {
         this(
                 RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 namespacePrefix,
@@ -73,10 +74,10 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
     }
 
     RedisTransportRouteOwnerStore(RedisClient redisClient,
-                             String namespacePrefix,
-                             long leaseMillis,
-                             String transportInstanceId,
-                             boolean ownsClient) {
+                                  String namespacePrefix,
+                                  long leaseMillis,
+                                  String transportInstanceId,
+                                  boolean ownsClient) {
         this(
                 redisClient,
                 Objects.requireNonNull(redisClient, "redisClient").connect(),
@@ -88,18 +89,18 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
     }
 
     RedisTransportRouteOwnerStore(StatefulRedisConnection<String, String> connection,
-                             String namespacePrefix,
-                             long leaseMillis,
-                             String transportInstanceId) {
+                                  String namespacePrefix,
+                                  long leaseMillis,
+                                  String transportInstanceId) {
         this(null, connection, namespacePrefix, leaseMillis, transportInstanceId, false);
     }
 
     private RedisTransportRouteOwnerStore(RedisClient redisClient,
-                                     StatefulRedisConnection<String, String> connection,
-                                     String namespacePrefix,
-                                     long leaseMillis,
-                                     String transportInstanceId,
-                                     boolean ownsClient) {
+                                          StatefulRedisConnection<String, String> connection,
+                                          String namespacePrefix,
+                                          long leaseMillis,
+                                          String transportInstanceId,
+                                          boolean ownsClient) {
         if (leaseMillis <= 0L) {
             throw new IllegalArgumentException("leaseMillis must be greater than 0");
         }
@@ -114,12 +115,12 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
 
     @Override
     public TransportRouteOwnerRecord claimRouteOwner(String workerId,
-                                          String adapterId,
-                                          String routeKey,
-                                          String connectionId,
-                                          String reason) {
+                                                     String adapterId,
+                                                     String routeKey,
+                                                     String connectionId,
+                                                     String reason) {
         long now = System.currentTimeMillis();
-        String normalizedWorkerId = normalizeRequired(workerId, "workerId");
+        String normalizedWorkerId = normalizeNullable(workerId);
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
@@ -139,34 +140,33 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
 
     @Override
     public TransportRouteOwnerRecord refreshHeartbeat(String workerId,
-                                           String adapterId,
-                                           String routeKey,
-                                           String connectionId,
-                                           String reason) {
+                                                      String adapterId,
+                                                      String routeKey,
+                                                      String connectionId,
+                                                      String reason) {
         String normalizedWorkerId = normalizeNullable(workerId);
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
         String normalizedRouteKey = normalizeNullable(routeKey);
         String normalizedConnectionId = normalizeNullable(connectionId);
-        if (normalizedWorkerId == null || normalizedRouteKey == null || normalizedConnectionId == null) {
-            return getLatestOwnerByWorker(workerId);
-        }
-        TransportRouteOwnerRecord previous = readOwnerRecord(normalizedRouteKey);
-        if (previous == null
-                || !normalizedWorkerId.equals(previous.getWorkerId())
-                || !normalizedAdapterId.equals(previous.getAdapterId())
-                || !normalizedConnectionId.equals(previous.getConnectionId())) {
+        if (normalizedRouteKey == null || normalizedConnectionId == null) {
             return getLatestOwnerByWorker(normalizedWorkerId);
+        }
+        TransportRouteOwnerRecord previous = readOwnerRecord(normalizedRouteKey, normalizedConnectionId);
+        if (previous == null
+                || !normalizedAdapterId.equals(previous.getAdapterId())
+                || (normalizedWorkerId != null && !normalizedWorkerId.equals(previous.getWorkerId()))) {
+            return previous != null ? previous : getLatestOwnerByWorker(normalizedWorkerId);
         }
         long now = System.currentTimeMillis();
         TransportRouteOwnerRecord next = new TransportRouteOwnerRecord(
-                    previous.getWorkerId(),
-                    previous.getAdapterId(),
-                    previous.getRouteKey(),
-                    now,
-                    now + leaseMillis,
-                    transportInstanceId,
-                    previous.getConnectionId(),
-                    now
+                previous.getWorkerId(),
+                previous.getAdapterId(),
+                previous.getRouteKey(),
+                now,
+                now + leaseMillis,
+                transportInstanceId,
+                previous.getConnectionId(),
+                now
         );
         persistOwner(next);
         return next;
@@ -174,20 +174,21 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
 
     @Override
     public TransportRouteOwnerRecord releaseRouteOwner(String workerId,
-                                            String adapterId,
-                                            String routeKey,
-                                            String connectionId,
-                                            String reason) {
-        String normalizedWorkerId = normalizeRequired(workerId, "workerId");
+                                                       String adapterId,
+                                                       String routeKey,
+                                                       String connectionId,
+                                                       String reason) {
+        String normalizedWorkerId = normalizeNullable(workerId);
         String normalizedAdapterId = normalizeRequired(adapterId, "adapterId");
         String normalizedRouteKey = normalizeRequired(routeKey, "routeKey");
         String normalizedConnectionId = normalizeNullable(connectionId);
-        TransportRouteOwnerRecord previous = readOwnerRecord(normalizedRouteKey);
+        if (normalizedConnectionId == null) {
+            return getLatestOwnerByWorker(normalizedWorkerId);
+        }
+        TransportRouteOwnerRecord previous = readOwnerRecord(normalizedRouteKey, normalizedConnectionId);
         if (previous == null
-                || normalizedConnectionId == null
-                || !normalizedWorkerId.equals(previous.getWorkerId())
                 || !normalizedAdapterId.equals(previous.getAdapterId())
-                || !normalizedConnectionId.equals(previous.getConnectionId())) {
+                || (normalizedWorkerId != null && !normalizedWorkerId.equals(previous.getWorkerId()))) {
             return getLatestOwnerByWorker(normalizedWorkerId);
         }
         removeOwner(previous);
@@ -201,19 +202,28 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
             return null;
         }
         String routeKey = commands.get(workerRouteKey(normalizedWorkerId));
-        if (routeKey == null || routeKey.isBlank()) {
-            return null;
+        long now = System.currentTimeMillis();
+        TransportRouteOwnerRecord latest = newestForWorker(normalizedWorkerId, routeKey, now, true);
+        if (latest != null) {
+            commands.set(workerRouteKey(normalizedWorkerId), latest.getRouteKey());
+            return latest;
         }
-        TransportRouteOwnerRecord owner = readOwnerRecord(routeKey);
-        if (owner == null) {
-            commands.del(workerRouteKey(normalizedWorkerId));
-            return null;
+        latest = ownerRouteKeys().stream()
+                .flatMap(key -> readOwnerRecords(key).stream())
+                .filter(owner -> normalizedWorkerId.equals(owner.getWorkerId()))
+                .filter(owner -> owner.isLeaseActive(now))
+                .max(Comparator.comparingLong(TransportRouteOwnerRecord::getUpdatedAtEpochMillis))
+                .orElse(null);
+        if (latest != null) {
+            commands.set(workerRouteKey(normalizedWorkerId), latest.getRouteKey());
+            return latest;
         }
-        if (!normalizedWorkerId.equals(owner.getWorkerId())) {
-            clearWorkerRouteProjection(normalizedWorkerId, routeKey);
-            return null;
-        }
-        return owner;
+        clearWorkerRouteProjection(normalizedWorkerId, routeKey);
+        return ownerRouteKeys().stream()
+                .flatMap(key -> readOwnerRecords(key).stream())
+                .filter(owner -> normalizedWorkerId.equals(owner.getWorkerId()))
+                .max(Comparator.comparingLong(TransportRouteOwnerRecord::getUpdatedAtEpochMillis))
+                .orElse(null);
     }
 
     @Override
@@ -223,28 +233,27 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
             return false;
         }
         long now = System.currentTimeMillis();
-        return currentOwner(routeKey)
+        return currentOwners(routeKey).stream()
                 .filter(owner -> normalizedAdapterId.equals(owner.adapterId()))
-                .filter(owner -> owner.isActive(now))
-                .isPresent();
+                .anyMatch(owner -> owner.isActive(now));
     }
 
     @Override
-    public Optional<WorkerDispatchRouteOwner> currentOwner(String routeKey) {
-        TransportRouteOwnerRecord owner = readOwnerRecord(normalizeNullable(routeKey));
-        if (owner == null) {
-            return Optional.empty();
-        }
-        return Optional.of(WorkerDispatchRouteOwner.fromRecord(owner));
+    public List<WorkerDispatchRouteOwner> currentOwners(String routeKey) {
+        return readOwnerRecords(normalizeNullable(routeKey)).stream()
+                .map(WorkerDispatchRouteOwner::fromRecord)
+                .toList();
     }
 
     @Override
     public List<TransportRouteOwnerRecord> listActiveRouteOwners() {
+        long now = System.currentTimeMillis();
         List<TransportRouteOwnerRecord> owners = new ArrayList<>();
         for (String routeKey : ownerRouteKeys()) {
-            TransportRouteOwnerRecord owner = readOwnerRecord(routeKey);
-            if (owner != null && owner.isLeaseActive(System.currentTimeMillis())) {
-                owners.add(owner);
+            for (TransportRouteOwnerRecord owner : readOwnerRecords(routeKey)) {
+                if (owner.isLeaseActive(now)) {
+                    owners.add(owner);
+                }
             }
         }
         return List.copyOf(owners);
@@ -254,20 +263,22 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
     public int pruneExpired() {
         int stale = 0;
         long now = System.currentTimeMillis();
-        for (int shard = 0; shard < SHARD_COUNT; shard++) {
-            String deadlineKey = deadlineKey(shard);
-            List<String> due = commands.zrangebyscore(
-                    deadlineKey,
-                    Range.create(Double.NEGATIVE_INFINITY, (double) now)
-            );
-            for (String routeKey : due) {
-                TransportRouteOwnerRecord owner = readOwnerRecord(routeKey);
-                if (owner != null && !owner.isLeaseActive(now)) {
-                    removeOwner(owner);
-                    stale++;
-                } else if (owner == null) {
-                    commands.zrem(deadlineKey, routeKey);
-                }
+        List<String> due = commands.zrangebyscore(
+                deadlineKey(),
+                Range.create(Double.NEGATIVE_INFINITY, (double) now)
+        );
+        for (String member : due) {
+            RouteConsumerMember routeConsumer = decodeRouteConsumerMember(member);
+            if (routeConsumer == null) {
+                commands.zrem(deadlineKey(), member);
+                continue;
+            }
+            TransportRouteOwnerRecord owner = readOwnerRecord(routeConsumer.routeKey(), routeConsumer.connectionId());
+            if (owner != null && !owner.isLeaseActive(now)) {
+                removeOwner(owner);
+                stale++;
+            } else if (owner == null) {
+                commands.zrem(deadlineKey(), member);
             }
         }
         return stale;
@@ -300,25 +311,45 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
         }
     }
 
-    private TransportRouteOwnerRecord readOwnerRecord(String routeKey) {
+    private TransportRouteOwnerRecord readOwnerRecord(String routeKey, String connectionId) {
         String normalizedRouteKey = normalizeNullable(routeKey);
-        if (normalizedRouteKey == null) {
+        String normalizedConnectionId = normalizeNullable(connectionId);
+        if (normalizedRouteKey == null || normalizedConnectionId == null) {
             return null;
         }
-        String encoded = commands.hget(ownerKey(normalizedRouteKey), normalizedRouteKey);
-        return decodeOwnerRecord(encoded);
+        return decodeOwnerRecord(commands.hget(routeConsumersKey(normalizedRouteKey), normalizedConnectionId));
+    }
+
+    private List<TransportRouteOwnerRecord> readOwnerRecords(String routeKey) {
+        String normalizedRouteKey = normalizeNullable(routeKey);
+        if (normalizedRouteKey == null) {
+            return List.of();
+        }
+        return commands.hvals(routeConsumersKey(normalizedRouteKey)).stream()
+                .map(RedisTransportRouteOwnerStore::decodeOwnerRecord)
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     private void persistOwner(TransportRouteOwnerRecord owner) {
-        commands.hset(ownerKey(owner.getRouteKey()), owner.getRouteKey(), encodeOwnerRecord(owner));
-        commands.set(workerRouteKey(owner.getWorkerId()), owner.getRouteKey());
-        commands.zadd(deadlineKey(owner.getRouteKey()), owner.getLeaseExpireAtEpochMillis(), owner.getRouteKey());
+        commands.hset(routeConsumersKey(owner.getRouteKey()), owner.getConnectionId(), encodeOwnerRecord(owner));
+        commands.sadd(routesKey(), owner.getRouteKey());
+        if (owner.getWorkerId() != null) {
+            commands.set(workerRouteKey(owner.getWorkerId()), owner.getRouteKey());
+        }
+        commands.zadd(deadlineKey(), owner.getLeaseExpireAtEpochMillis(), routeConsumerMember(owner));
     }
 
     private void removeOwner(TransportRouteOwnerRecord owner) {
-        commands.hdel(ownerKey(owner.getRouteKey()), owner.getRouteKey());
-        commands.zrem(deadlineKey(owner.getRouteKey()), owner.getRouteKey());
-        clearWorkerRouteProjection(owner.getWorkerId(), owner.getRouteKey());
+        String routeKey = owner.getRouteKey();
+        String connectionId = owner.getConnectionId();
+        commands.hdel(routeConsumersKey(routeKey), connectionId);
+        commands.zrem(deadlineKey(), routeConsumerMember(routeKey, connectionId));
+        if (commands.hlen(routeConsumersKey(routeKey)) == 0L) {
+            commands.del(routeConsumersKey(routeKey));
+            commands.srem(routesKey(), routeKey);
+        }
+        clearWorkerRouteProjection(owner.getWorkerId(), routeKey);
     }
 
     private void clearWorkerRouteProjection(String workerId, String routeKey) {
@@ -329,52 +360,83 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
         }
         String key = workerRouteKey(normalizedWorkerId);
         if (normalizedRouteKey.equals(commands.get(key))) {
-            commands.del(key);
+            TransportRouteOwnerRecord latest = newestForWorker(
+                    normalizedWorkerId,
+                    normalizedRouteKey,
+                    System.currentTimeMillis(),
+                    true
+            );
+            if (latest == null) {
+                commands.del(key);
+            } else {
+                commands.set(key, latest.getRouteKey());
+            }
         }
+    }
+
+    private TransportRouteOwnerRecord newestForWorker(String workerId,
+                                                      String routeKey,
+                                                      long now,
+                                                      boolean activeOnly) {
+        if (routeKey == null) {
+            return null;
+        }
+        return readOwnerRecords(routeKey).stream()
+                .filter(owner -> workerId.equals(owner.getWorkerId()))
+                .filter(owner -> !activeOnly || owner.isLeaseActive(now))
+                .max(Comparator.comparingLong(TransportRouteOwnerRecord::getUpdatedAtEpochMillis))
+                .orElse(null);
     }
 
     private Set<String> ownerRouteKeys() {
-        Set<String> routeKeys = new LinkedHashSet<>();
-        for (int shard = 0; shard < SHARD_COUNT; shard++) {
-            routeKeys.addAll(commands.hkeys(ownerKey(shard)));
-        }
-        return routeKeys;
+        return commands.smembers(routesKey());
     }
 
-    private String ownerKey(String routeKey) {
-        return ownerKey(shard(routeKey));
+    private String routeConsumersKey(String routeKey) {
+        return namespacePrefix + ":route:" + encodeKeyToken(routeKey) + ":consumers";
     }
 
-    private String ownerKey(int shard) {
-        return namespacePrefix + ":owner:" + shard;
+    private String routesKey() {
+        return namespacePrefix + ":routes";
     }
 
-    private String deadlineKey(String routeKey) {
-        return deadlineKey(shard(routeKey));
-    }
-
-    private String deadlineKey(int shard) {
-        return namespacePrefix + ":deadline:" + shard;
+    private String deadlineKey() {
+        return namespacePrefix + ":deadline";
     }
 
     private String workerRouteKey(String workerId) {
         return namespacePrefix + ":worker-route:" + workerId;
     }
 
-    private static int shard(String routeKey) {
-        return Math.floorMod(normalizeRequired(routeKey, "routeKey").hashCode(), SHARD_COUNT);
+    private static String routeConsumerMember(TransportRouteOwnerRecord owner) {
+        return routeConsumerMember(owner.getRouteKey(), owner.getConnectionId());
+    }
+
+    private static String routeConsumerMember(String routeKey, String connectionId) {
+        return encodeKeyToken(routeKey) + MEMBER_SEPARATOR + encodeKeyToken(connectionId);
+    }
+
+    private static RouteConsumerMember decodeRouteConsumerMember(String member) {
+        if (member == null || member.isBlank()) {
+            return null;
+        }
+        String[] parts = member.split(MEMBER_SEPARATOR, -1);
+        if (parts.length != 2) {
+            return null;
+        }
+        return new RouteConsumerMember(decodeKeyToken(parts[0]), decodeKeyToken(parts[1]));
     }
 
     private static String encodeOwnerRecord(TransportRouteOwnerRecord owner) {
         return String.join("|",
                 VERSION,
-                encodeToken(owner.getWorkerId()),
+                encodeNullableToken(owner.getWorkerId()),
                 encodeToken(owner.getAdapterId()),
                 encodeToken(owner.getRouteKey()),
                 Long.toString(owner.getLastHeartbeatEpochMillis()),
                 Long.toString(owner.getLeaseExpireAtEpochMillis()),
                 encodeToken(owner.getTransportNodeId()),
-                encodeNullableToken(owner.getConnectionId()),
+                encodeToken(owner.getConnectionId()),
                 Long.toString(owner.getUpdatedAtEpochMillis())
         );
     }
@@ -388,15 +450,23 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
             return null;
         }
         return new TransportRouteOwnerRecord(
-                decodeToken(parts[1], "workerId"),
+                decodeNullableToken(parts[1]),
                 decodeToken(parts[2], "adapterId"),
                 decodeToken(parts[3], "routeKey"),
                 parseLong(parts[4]),
                 parseLong(parts[5]),
                 decodeToken(parts[6], "transportInstanceId"),
-                decodeNullableToken(parts[7]),
+                decodeToken(parts[7], "connectionId"),
                 parseLong(parts[8])
         );
+    }
+
+    private static String encodeKeyToken(String value) {
+        return TOKEN_ENCODER.encodeToString(normalizeRequired(value, "key").getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String decodeKeyToken(String value) {
+        return normalizeRequired(new String(TOKEN_DECODER.decode(value), StandardCharsets.UTF_8), "key");
     }
 
     private static String encodeToken(String value) {
@@ -439,5 +509,8 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
             return null;
         }
         return value.trim();
+    }
+
+    private record RouteConsumerMember(String routeKey, String connectionId) {
     }
 }

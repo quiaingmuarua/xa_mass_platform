@@ -100,6 +100,8 @@ public final class TaskDispatchBatchCodec {
                                              String batchId,
                                              String workerGroupId,
                                              String adapterNodeId,
+                                             String adapterId,
+                                             String onlineStrategy,
                                              String eventBindingKey,
                                              String workerCandidateSource) {
 
@@ -118,13 +120,15 @@ public final class TaskDispatchBatchCodec {
                     binding.batchId(),
                     binding.workerGroupId(),
                     binding.adapterNodeId(),
+                    binding.adapterId(),
+                    binding.onlineStrategy(),
                     binding.eventBindingKey(),
                     binding.workerCandidateSource()
             );
         }
 
         private TaskDispatchBinding toBinding() {
-            return TaskDispatchBinding.workerLevelWithEvidence(
+            return TaskDispatchBinding.workerLevelWithTransportEvidence(
                     taskId,
                     messageId,
                     eventCode,
@@ -138,6 +142,8 @@ public final class TaskDispatchBatchCodec {
                     batchId,
                     workerGroupId,
                     adapterNodeId,
+                    adapterId,
+                    onlineStrategy,
                     eventBindingKey,
                     workerCandidateSource
             );

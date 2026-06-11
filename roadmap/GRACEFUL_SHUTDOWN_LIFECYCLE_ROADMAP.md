@@ -49,11 +49,11 @@ classes and are not protected by a single lifecycle contract.
   `shutdownNow()` during stop. Some await termination; behavior is not uniform.
 - `TransportNodeRegistryHeartbeat.stop()` stops its scheduler and then marks
   the node offline.
-- `ServerSessionManager` owns a presence refresh executor and shuts it down
+- `ServerSessionManager` owns a route-owner refresh executor and shuts it down
   when the session manager stops.
 - Redis runtime components such as `RedisWorkerRegistry`,
   `RedisTaskWorkRuntime`, `RedisTaskResultRuntime`, and
-  `RedisNodeTargetedTaskDispatchHandoff` own close/shutdown state, often guarded
+  `RedisRouteTargetedTaskDispatchHandoff` own close/shutdown state, often guarded
   by `AtomicBoolean`.
 - Existing lifecycle order is therefore real, but it is implicit and split
   across SDK assembly, engine kernel, task manager, transport runtime, and
@@ -448,7 +448,7 @@ Scope:
   - `RedisWorkerRegistry`
   - `RedisTaskWorkRuntime`
   - `RedisTaskResultRuntime`
-  - `RedisNodeTargetedTaskDispatchHandoff`
+  - `RedisRouteTargetedTaskDispatchHandoff`
   - Redis transport inboxes and dispatch handoffs
 - Ensure close happens after dependent pumps/watchdogs are stopped or drained.
 - Verify shared client/connection ownership where components may close the same

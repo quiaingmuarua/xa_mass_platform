@@ -1,7 +1,7 @@
 package com.xa.mass.transport.route;
 
 /**
- * Durable worker route-owner heartbeat evidence owned by transport.
+ * Durable route-consumer heartbeat evidence owned by transport.
  */
 public final class TransportRouteOwnerRecord {
 
@@ -22,7 +22,7 @@ public final class TransportRouteOwnerRecord {
                           String transportInstanceId,
                           String connectionId,
                           long updatedAtEpochMillis) {
-        this.workerId = requireText(workerId, "workerId");
+        this.workerId = requireNullableText(workerId);
         this.adapterId = requireNullableText(adapterId);
         this.routeKey = requireNullableText(routeKey);
         this.lastHeartbeatEpochMillis = lastHeartbeatEpochMillis;
@@ -64,19 +64,16 @@ public final class TransportRouteOwnerRecord {
         return connectionId;
     }
 
+    public String getConsumerId() {
+        return connectionId;
+    }
+
     public long getUpdatedAtEpochMillis() {
         return updatedAtEpochMillis;
     }
 
     public boolean isLeaseActive(long nowEpochMillis) {
         return leaseExpireAtEpochMillis > nowEpochMillis;
-    }
-
-    private static String requireText(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + " must not be blank");
-        }
-        return value.trim();
     }
 
     private static String requireNullableText(String value) {

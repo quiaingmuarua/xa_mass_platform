@@ -1,7 +1,7 @@
 package com.xa.mass.workerpack.sample.starter;
 
 import com.xa.mass.sdk.model.WorkerSnapshot;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
+import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.workerpack.sample.config.SampleConfig;
@@ -86,7 +86,7 @@ public class WebSocketClientStarter extends AbstractSampleWorkerClientStarter {
     @Override
     protected SampleWorkerClient createClient(URI baseUri, WorkerSnapshot worker, String taskResultStatus) {
         String workerId = worker.getWorkerId();
-        String routeKey = CanonicalWorkerRouteKeyCodec.encode(worker.getWorkerGroupId(), workerId);
+        String routeKey = CanonicalWorkerGroupRouteKeyCodec.encode(worker.getWorkerGroupId());
         return new SampleWorkerWebSocketClient(baseUri, workerId, routeKey, taskResultStatus);
     }
 }

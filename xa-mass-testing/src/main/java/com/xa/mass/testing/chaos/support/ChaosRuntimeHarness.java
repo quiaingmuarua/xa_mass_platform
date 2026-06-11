@@ -28,7 +28,7 @@ import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
+import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 
 import java.net.URI;
@@ -409,11 +409,11 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     public void waitForWorkerOnline(String workerId, int timeoutSeconds, String failureMessage) throws Exception {
-        ChaosSupport.waitForCondition(() -> app.isWorkerOnline(workerId), timeoutSeconds, failureMessage);
+        ChaosSupport.waitForCondition(() -> app.isWorkerReachable(workerId), timeoutSeconds, failureMessage);
     }
 
     public void waitForWorkerOffline(String workerId, int timeoutSeconds, String failureMessage) throws Exception {
-        ChaosSupport.waitForCondition(() -> !app.isWorkerOnline(workerId), timeoutSeconds, failureMessage);
+        ChaosSupport.waitForCondition(() -> !app.isWorkerReachable(workerId), timeoutSeconds, failureMessage);
     }
 
     public void waitForActiveAttemptOnWorker(String taskId,
@@ -483,7 +483,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         String workerGroupId = workerGroupIdByWorkerId.get(workerId);
         ChaosSupport.require(workerGroupId != null && !workerGroupId.isBlank(),
                 "workerGroupId must be registered before creating websocket URI for " + workerId);
-        String routeKey = CanonicalWorkerRouteKeyCodec.encode(workerGroupId, workerId);
+        String routeKey = CanonicalWorkerGroupRouteKeyCodec.encode(workerGroupId);
         return ChaosSupport.appendWorkerIdentity(
                 URI.create("ws://127.0.0.1:" + transportPort + endpointPath),
                 workerId,

@@ -89,10 +89,7 @@ public final class RedisTaskResultIngestChannel implements TaskResultIngestChann
 
     @Override
     public boolean ingest(TaskResultReport report) {
-        if (report == null) {
-            return false;
-        }
-        return ingest(TransportResultEnvelope.addressed("unknown", report.getMessageId(), report));
+        return false;
     }
 
     @Override

@@ -1,6 +1,10 @@
 package com.xa.mass.transport.runtime;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
@@ -14,7 +18,7 @@ import java.util.function.Predicate;
  */
 public final class RouteEndpointIndex<H, E> {
 
-    private final ConcurrentHashMap<String, Entry<H, E>> entryByRouteKey = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, LinkedHashMap<H, Entry<H, E>>> entriesByRouteKey = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<H, Binding> bindingByHandle = new ConcurrentHashMap<>();
 
     public synchronized BindResult<H, E> bind(String routeKey,
@@ -28,19 +32,25 @@ public final class RouteEndpointIndex<H, E> {
         Objects.requireNonNull(endpoint, "endpoint");
         Objects.requireNonNull(isActive, "isActive");
 
-        Entry<H, E> existing = entryByRouteKey.get(routeKey);
+        Binding existingBinding = bindingByHandle.get(handle);
+        Entry<H, E> existing = existingBinding == null ? null : entryForHandle(handle, existingBinding.routeKey());
         if (existing != null
                 && Objects.equals(existing.handle(), handle)
+                && Objects.equals(existing.routeKey(), routeKey)
                 && isActive.test(existing.endpoint())) {
             return new BindResult<>(existing, null, true);
         }
 
-        if (existing != null && !Objects.equals(existing.handle(), handle)) {
-            bindingByHandle.remove(existing.handle());
+        if (existingBinding != null && !Objects.equals(existingBinding.routeKey(), routeKey)) {
+            removeEntry(existingBinding.routeKey(), handle);
         }
 
         Entry<H, E> updated = new Entry<>(routeKey, workerId, handle, endpoint);
-        entryByRouteKey.put(routeKey, updated);
+        entriesByRouteKey.compute(routeKey, (ignored, entries) -> {
+            LinkedHashMap<H, Entry<H, E>> next = entries == null ? new LinkedHashMap<>() : entries;
+            next.put(handle, updated);
+            return next;
+        });
         bindingByHandle.put(handle, new Binding(routeKey, workerId));
         return new BindResult<>(updated, existing, false);
     }
@@ -53,16 +63,12 @@ public final class RouteEndpointIndex<H, E> {
         if (binding == null) {
             return new RemoveResult<>(null, null, false);
         }
-        Entry<H, E> current = entryByRouteKey.get(binding.routeKey());
-        boolean removedCurrent = current != null && Objects.equals(current.handle(), handle);
-        if (removedCurrent) {
-            entryByRouteKey.remove(binding.routeKey());
-        }
-        return new RemoveResult<>(binding, current, removedCurrent);
+        Entry<H, E> removed = removeEntry(binding.routeKey(), handle);
+        return new RemoveResult<>(binding, removed, removed != null);
     }
 
     public E endpointForRoute(String routeKey) {
-        Entry<H, E> entry = entryByRouteKey.get(routeKey);
+        Entry<H, E> entry = entryForRoute(routeKey);
         return entry != null ? entry.endpoint() : null;
     }
 
@@ -71,20 +77,58 @@ public final class RouteEndpointIndex<H, E> {
     }
 
     public Entry<H, E> entryForRoute(String routeKey) {
-        return entryByRouteKey.get(routeKey);
+        List<Entry<H, E>> entries = entriesForRoute(routeKey);
+        return entries.isEmpty() ? null : entries.getFirst();
+    }
+
+    public List<Entry<H, E>> entriesForRoute(String routeKey) {
+        if (routeKey == null) {
+            return List.of();
+        }
+        LinkedHashMap<H, Entry<H, E>> entries = entriesByRouteKey.get(routeKey);
+        if (entries == null || entries.isEmpty()) {
+            return List.of();
+        }
+        return List.copyOf(entries.values());
     }
 
     public int routeCount() {
-        return entryByRouteKey.size();
+        return entriesByRouteKey.size();
     }
 
     public List<Entry<H, E>> entries() {
-        return List.copyOf(entryByRouteKey.values());
+        List<Entry<H, E>> entries = new ArrayList<>();
+        entriesByRouteKey.values().stream()
+                .map(LinkedHashMap::values)
+                .flatMap(Collection::stream)
+                .sorted(Comparator.comparing(Entry::routeKey))
+                .forEach(entries::add);
+        return List.copyOf(entries);
     }
 
     public synchronized void clear() {
-        entryByRouteKey.clear();
+        entriesByRouteKey.clear();
         bindingByHandle.clear();
+    }
+
+    private Entry<H, E> entryForHandle(H handle, String routeKey) {
+        LinkedHashMap<H, Entry<H, E>> entries = entriesByRouteKey.get(routeKey);
+        return entries != null ? entries.get(handle) : null;
+    }
+
+    private Entry<H, E> removeEntry(String routeKey, H handle) {
+        if (routeKey == null || handle == null) {
+            return null;
+        }
+        LinkedHashMap<H, Entry<H, E>> entries = entriesByRouteKey.get(routeKey);
+        if (entries == null) {
+            return null;
+        }
+        Entry<H, E> removed = entries.remove(handle);
+        if (entries.isEmpty()) {
+            entriesByRouteKey.remove(routeKey, entries);
+        }
+        return removed;
     }
 
     public record Binding(String routeKey, String workerId) {

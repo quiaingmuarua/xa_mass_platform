@@ -125,7 +125,7 @@ import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
+import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -401,7 +401,7 @@ class MassSdkTest {
                          new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
                  BufferedReader ignoredReader = new BufferedReader(
                          new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
-                String routeKey = CanonicalWorkerRouteKeyCodec.encode("sdk-socket-workers", "sdk-socket-worker");
+                String routeKey = CanonicalWorkerGroupRouteKeyCodec.encode("sdk-socket-workers");
                 writer.write("{\"type\":\"hello\",\"workerId\":\"sdk-socket-worker\",\"routeKey\":\"" + routeKey + "\"}");
                 writer.newLine();
                 writer.flush();
@@ -507,7 +507,7 @@ class MassSdkTest {
                 TransportRuntimeComposition.class
         );
 
-        assertCapturedNamespace(runtimeComposition, "taskDispatchHandoffFactory", RedisTransportNamespaces.DISPATCH_NODE);
+        assertCapturedNamespace(runtimeComposition, "routeTargetedTaskDispatchHandoffFactory", RedisTransportNamespaces.DISPATCH_ROUTE);
         assertCapturedNamespace(runtimeComposition, "taskResultInboxFactory", RedisTransportNamespaces.RESULT_INBOX);
         assertCapturedNamespace(runtimeComposition, "dispatchFailureInboxFactory", RedisTransportNamespaces.DISPATCH_FAILURE);
         assertCapturedNamespace(runtimeComposition, "routeOwnerStoreFactory", RedisTransportNamespaces.ROUTE_OWNER);
@@ -2726,7 +2726,6 @@ class MassSdkTest {
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                systemEventChannel,
                 routeOwnerStore,
                 List.of(canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
@@ -2766,7 +2765,6 @@ class MassSdkTest {
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                systemEventChannel,
                 routeOwnerStore,
                 List.of(
                         canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
@@ -2809,7 +2807,6 @@ class MassSdkTest {
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                systemEventChannel,
                 routeOwnerStore,
                 List.of(
                         canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
@@ -2851,7 +2848,6 @@ class MassSdkTest {
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                systemEventChannel,
                 routeOwnerStore,
                 List.of(
                         canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
@@ -2949,7 +2945,6 @@ class MassSdkTest {
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                systemEventChannel,
                 routeOwnerStore,
                 List.of(canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
@@ -3010,7 +3005,6 @@ class MassSdkTest {
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                systemEventChannel,
                 routeOwnerStore,
                 List.of(canonicalRouteBinding(
                         new StubPullCapableAdapter("queue-consumer", "queue-consumer"),
@@ -3056,7 +3050,6 @@ class MassSdkTest {
                                                          routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                systemEventChannel,
                 routeOwnerStore,
                 List.of(canonicalRouteBinding(pollingAdapter, pollingAdapter))
         );
@@ -3132,7 +3125,7 @@ class MassSdkTest {
                     .build());
 
             PullWorkerSession session = app.pullWorker("polling-worker-1");
-            session.connect();
+            app.workerOnline("polling-worker-1", session.connectionId(), "polling-worker-online");
 
             TaskDetailSnapshot task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("crawler-agent")
@@ -3512,7 +3505,7 @@ class MassSdkTest {
 
     private static TransportRouteKeyResolver routeKeyResolver() {
         return (dispatchBinding, routeContext) ->
-                CanonicalWorkerRouteKeyCodec.encode(routeContext.workerGroupId(), routeContext.workerId());
+                CanonicalWorkerGroupRouteKeyCodec.encode(routeContext.workerGroupId());
     }
 
     private static <T> T waitFor(Duration timeout, ThrowingSupplier<T> supplier) throws Exception {
@@ -3837,8 +3830,8 @@ class MassSdkTest {
         }
 
         @Override
-        public java.util.Optional<com.xa.mass.transport.route.WorkerDispatchRouteOwner> currentOwner(String routeKey) {
-            return delegate.currentOwner(routeKey);
+        public List<com.xa.mass.transport.route.WorkerDispatchRouteOwner> currentOwners(String routeKey) {
+            return delegate.currentOwners(routeKey);
         }
 
         @Override

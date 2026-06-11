@@ -4,8 +4,7 @@ import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskPullStatus;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.model.CanonicalWorkerRouteKeyCodec;
+import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
@@ -31,7 +30,7 @@ class PullWorkerSessionTest {
         when(taskPullChannel.pollTaskMessagesResult(routeKey(), 5, 250L)).thenReturn(expected);
 
         PullWorkerSession session = session(taskPullChannel, mock(TaskResultIngestChannel.class),
-                mock(WorkerSystemEventChannel.class), new InMemoryTransportRouteOwnerStore());
+                new InMemoryTransportRouteOwnerStore());
 
         TaskPullResult result = session.pollResult(5, 250L);
 
@@ -47,7 +46,7 @@ class PullWorkerSessionTest {
                 .thenReturn(TaskPullResult.delivered(List.of(item("msg-1"), item("msg-2"))));
 
         PullWorkerSession session = session(taskPullChannel, mock(TaskResultIngestChannel.class),
-                mock(WorkerSystemEventChannel.class), new InMemoryTransportRouteOwnerStore());
+                new InMemoryTransportRouteOwnerStore());
 
         List<TaskDispatchItem> items = session.poll(3, 100L);
 
@@ -60,7 +59,7 @@ class PullWorkerSessionTest {
         when(resultIngestChannel.ingest(any(TransportResultEnvelope.class))).thenReturn(true);
 
         PullWorkerSession session = session(mock(TaskPullChannel.class), resultIngestChannel,
-                mock(WorkerSystemEventChannel.class), new InMemoryTransportRouteOwnerStore());
+                new InMemoryTransportRouteOwnerStore());
 
         TaskDispatchItem dispatchItem = new TaskDispatchItem(
                 "task-1",
@@ -92,7 +91,7 @@ class PullWorkerSessionTest {
         when(resultIngestChannel.ingest(any(TransportResultEnvelope.class))).thenReturn(true);
 
         PullWorkerSession session = session(mock(TaskPullChannel.class), resultIngestChannel,
-                mock(WorkerSystemEventChannel.class), new InMemoryTransportRouteOwnerStore());
+                new InMemoryTransportRouteOwnerStore());
 
         session.submitResult("task-1", "msg-1", true, "ok", null, Map.of());
 
@@ -105,7 +104,7 @@ class PullWorkerSessionTest {
     void connectHeartbeatDisconnectWritePresenceWithCanonicalRouteAndSessionToken() {
         InMemoryTransportRouteOwnerStore presenceStore = new InMemoryTransportRouteOwnerStore();
         PullWorkerSession session = session(mock(TaskPullChannel.class), mock(TaskResultIngestChannel.class),
-                mock(WorkerSystemEventChannel.class), presenceStore);
+                presenceStore);
 
         session.connect("connected");
         assertTrue(presenceStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
@@ -124,7 +123,6 @@ class PullWorkerSessionTest {
 
     private static PullWorkerSession session(TaskPullChannel taskPullChannel,
                                              TaskResultIngestChannel resultIngestChannel,
-                                             WorkerSystemEventChannel systemEventChannel,
                                              InMemoryTransportRouteOwnerStore presenceStore) {
         return new PullWorkerSession(
                 "worker-1",
@@ -133,14 +131,13 @@ class PullWorkerSessionTest {
                 "conn-1",
                 taskPullChannel,
                 resultIngestChannel,
-                systemEventChannel,
                 presenceStore,
                 "polling"
         );
     }
 
     private static String routeKey() {
-        return CanonicalWorkerRouteKeyCodec.encode("group-1", "worker-1");
+        return CanonicalWorkerGroupRouteKeyCodec.encode("group-1");
     }
 
     private static TaskDispatchItem item(String messageId) {

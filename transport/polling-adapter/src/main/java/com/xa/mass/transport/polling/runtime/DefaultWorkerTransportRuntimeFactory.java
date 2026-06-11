@@ -38,7 +38,6 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
         }
         return new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                systemEventChannel,
                 routeOwnerStore,
                 bindings
         );

@@ -17,9 +17,9 @@ entry for `transport/`.
 - `routeKey` is the transport delivery address. Transport runtime and adapters
   treat it as opaque and must not know whether it was minted from worker,
   worker-group, or another owner-level rule.
-- `CanonicalWorkerRouteKeyCodec` is the current SDK/starter default worker
-  route-key mint rule from `workerGroupId + workerId`; transport runtime and
-  adapters receive explicit route keys or injected resolvers instead of
+- `CanonicalWorkerGroupRouteKeyCodec` is the current SDK/starter default
+  worker-consumption route mint rule from `workerGroupId`; transport runtime
+  and adapters receive explicit route keys or injected resolvers instead of
   importing that rule.
 - route-only endpoint helpers may exist inside one concrete adapter, but shared
   runtime delivery must first resolve the current route owner for `routeKey`
@@ -107,8 +107,8 @@ Use this order for transport changes:
 Prefer these after transport changes:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,TransportRoutingTaskDispatchListenerTest,TransportRouteOwnerViewTest,NodeTargetedTaskDispatchSubmitterTest
-./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerRouteKeyCodecTest,WebSocketInputProcessorTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest,SocketSessionManagerTest,ServerSessionManagerShutdownTest
+./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,RouteTargetedTaskDispatchSubmitterTest,RouteTargetedTaskDispatchHandoffPumpTest,InMemoryRouteTargetedTaskDispatchHandoffTest
+./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,WebSocketInputProcessorTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest,SocketSessionManagerTest,ServerSessionManagerShutdownTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 

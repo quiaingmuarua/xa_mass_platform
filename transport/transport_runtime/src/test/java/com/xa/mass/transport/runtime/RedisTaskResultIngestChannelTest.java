@@ -83,6 +83,19 @@ class RedisTaskResultIngestChannelTest {
         assertEquals("msg-1", decoded.getMessageId());
     }
 
+    @Test
+    void reportOnlyIngressIsRejectedForDistributedInbox() {
+        assertFalse(writer.ingest(new TaskResultReport(
+                "task-1",
+                "msg-1",
+                true,
+                "done",
+                null,
+                Map.of()
+        )));
+        assertEquals(0, writer.queuedResults());
+    }
+
     private static TransportResultEnvelope envelope(String taskId, String messageId) {
         return new TransportResultEnvelope(
                 "websocket",
