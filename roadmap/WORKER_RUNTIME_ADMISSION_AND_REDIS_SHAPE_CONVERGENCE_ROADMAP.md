@@ -1,4 +1,4 @@
-# Worker Runtime Redis Key Shape Convergence Roadmap
+# Worker Runtime Admission And Redis Shape Convergence Roadmap
 
 Status: proposed convergence roadmap.
 
@@ -7,9 +7,16 @@ Related documents:
 - `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerRegistry.java`
 - `platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md`
 - `platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistryKeyspace.java`
+- `xa-mass-worker-runtime/CONTRACTS.md`
+- `transport/TRANSPORT_BOUNDARY_BASELINE.md`
 - `roadmap/REDIS_RUNTIME_KEY_PROOF_OPERATOR_ROADMAP.md`
 
 ## Purpose
+
+This is not a Redis-only key cleanup roadmap. It is a worker-runtime admission
+ownership convergence roadmap with Redis physical key-shape follow-through.
+Redis key shape must be changed only after the worker admission owner,
+TaskWorkRuntime lease semantics, and transport offer boundary are explicit.
 
 The current worker-runtime Redis keyspace is controllable and currently has one
 heavy worker slot aggregate:
@@ -198,8 +205,8 @@ Key ownership:
 | Candidate source | WorkerRegistry | `...:bucket:*:workers`, `...:node:*:bucket:*:workers` | Derived bounded candidate index |
 | Worker-registry heartbeat/stale evidence | WorkerRegistry | `...:heartbeat:{shard}` | Registry-local stale/diagnostic evidence |
 | Network reachability / route owner | Transport presence | `xa:mass:transport:presence:v1:owner:{shard}` | Canonical delivery reachability truth |
-| Worker-id route projection | None in mainline | `...:worker-route:{workerId}` | Delete; do not use for scheduling |
-| Online worker list projection | None in mainline | `...:workers` | Delete or operator-only replacement outside hot path |
+| Worker-id route projection | Transport child slice | `...:worker-route:{workerId}` | Delete/demote outside this roadmap; do not use for scheduling |
+| Online worker list projection | Transport child slice | `...:workers` | Delete/demote or replace with operator-only path outside hot path |
 | Task active worker occupancy | Review target | `...:task:{taskId}:worker-active-count` | Keep only if a proven policy needs task-worker occupancy outside TaskWorkRuntime |
 
 Important distinction:
@@ -423,22 +430,26 @@ Target cardinality is expressed in Redis keys, not entries:
 | removing-slot cleanup | `O(group * removingShard)` if needed | Needed if cleanup cannot scan group slots hash |
 | task active worker counts | `0` target unless a policy proves WorkerRegistry occupancy is required; otherwise `O(activeTask)` one-hash projection | TaskWorkRuntime/offer-accept evidence should own lifecycle first |
 | transport route owner | `O(routeShard)` | Canonical transport reachability by routeKey |
-| transport worker-id route projection | `0` target mainline keys | Delete; do not replace with sharded hash |
+| transport worker-id route projection | `0` target mainline keys | Transport-owned delete/demote; do not replace with sharded hash |
 | diagnostics | explicitly bounded | Diagnostic indexes cannot become admission truth |
 
 The target allows more than one key per group or bucket when it prevents hot
 keys or full scans. It rejects one key per worker unless the key family has a
 stronger reason than convenience.
 
-## WKRK-0: WorkerSlot Deletion And Admission Ownership Review
+## WKRK-0: Worker Admission Ownership Decision
 
 Goal:
 
-Converge the default target away from strong platform-side
-reservation/admission truth and toward worker-side accept/reject.
+Decide whether final worker admission stays platform-side or moves to
+worker-side accept/reject, and record the engine, worker-runtime, transport,
+and Redis SPI deltas before any physical key deletion.
 
 Scope:
 
+- Treat this as an ownership decision, not a key-shape refactor. The output must
+  say who owns final admission, when a work lease becomes active, and which
+  runtime contract exposes that evidence.
 - Inventory every `WorkerSlot` field and classify it as:
   - declaration/meta,
   - candidate/filter input,
@@ -447,6 +458,27 @@ Scope:
   - task-runtime-derived projection,
   - transport reachability duplicate,
   - diagnostic-only.
+- Produce a `WorkerSlot` field decision table with:
+  - field name or field group,
+  - current writer,
+  - current reader,
+  - target owner,
+  - keep / delete / demote / defer decision,
+  - replacement path when deleted.
+- Produce a `WorkerRegistry` SPI delta table with:
+  - method name,
+  - current semantic role,
+  - keep as semantic API,
+  - demote to implementation-only,
+  - replace with a new semantic method,
+  - delete after caller migration,
+  - accepted platform-admission exception if any.
+- Produce an engine/runtime caller replacement table for at least:
+  - `SimpleTaskDispatchBinder` claim / confirm / dispatch path,
+  - `RuleBasedTaskWorkerMatchingStrategy` worker reserve path,
+  - `TaskWorkerAssignListener` active worker count / assignment planning path,
+  - `TaskResourceReleaseListener` and result / expiry / terminal release paths,
+  - `WorkerAdmissionRuntime` public contract.
 - Inventory every production call path that mutates or reads:
   - `reservedCount`,
   - `activeLeaseCount`,
@@ -454,7 +486,10 @@ Scope:
   - `exclusiveLeaseHeld`,
   - `lastHeartbeatMillis`,
   - `diagnosticStatus`.
-- Define the worker-side offer protocol needed to delete platform occupancy:
+- Define the worker-side offer protocol needed to delete platform occupancy.
+  This protocol must use a named seam such as `WorkerDispatchOfferOutcome`;
+  it must not reuse transport `DispatchOutcome` and must not be represented as
+  a task result. Offer outcome values include:
   - `ACCEPTED`,
   - `BUSY`,
   - `CAPACITY_FULL`,
@@ -462,6 +497,15 @@ Scope:
   - `ATTRIBUTE_MISMATCH`,
   - `DRAINING`,
   - timeout/no-ack.
+- Define the `TaskWorkRuntime` lease semantics for offers by choosing exactly
+  one model:
+  - transitional active claim: `claimReady(...)` creates an active lease before
+    worker acceptance, and every reject/no-ack must synchronously release and
+    requeue or delay the work;
+  - target pending-offer lease: dispatch offer creates pending-offer evidence,
+    and work becomes active only after `ACCEPTED`.
+- The preferred target is pending-offer lease. Transitional active claim is
+  allowed only as a bounded first slice with explicit release/requeue proof.
 - Define how rejected offers return task work to ready/delayed state and how
   retry/backoff avoids hot-loop dispatch to busy workers.
 - Define which existing Stage-2 gates remain platform hard gates:
@@ -475,16 +519,29 @@ Scope:
   - why worker-side reject is insufficient,
   - expected dispatch rejection cost,
   - required Redis/memory proof.
+- Update `xa-mass-worker-runtime/CONTRACTS.md` in the same phase if the
+  decision changes `WorkerAdmissionRuntime` semantics. If no contract text
+  changes, record why the existing contract remains valid.
 
 Acceptance:
 
 - The roadmap records worker-side accept/reject as the default final-admission
   target before slot sharding or occupancy key-shape work begins.
+- The WKRK-0 artifact contains the `WorkerSlot` field decision table,
+  `WorkerRegistry` SPI delta table, and engine/runtime caller replacement
+  table described above.
+- The artifact states whether dispatch offer uses transitional active claim or
+  pending-offer lease, and names the `TaskWorkRuntime` method or new seam that
+  owns each transition.
+- The offer outcome channel is named and explicitly separated from transport
+  `DispatchOutcome` and task result finality.
 - Any platform-side admission exception names the policy that requires it and
   why worker-side reject/backoff is insufficient.
 - `WorkerSlot` occupancy fields become delete/demotion candidates and
   subsequent WKRK slices retarget to lightweight worker meta unless an exception
   is accepted.
+- `WorkerAdmissionRuntime` contract docs are updated or explicitly marked as
+  still valid.
 - No implementation change is made in this slice.
 
 Suggested checks:
@@ -544,8 +601,9 @@ Scope:
 
 Acceptance:
 
-- A sibling inventory, `WORKER_RUNTIME_REDIS_KEY_SHAPE_INVENTORY.md`, exists
-  or this roadmap has been updated with an equivalent table.
+- A sibling inventory,
+  `WORKER_RUNTIME_ADMISSION_AND_REDIS_SHAPE_INVENTORY.md`, exists or this
+  roadmap has been updated with an equivalent table.
 - Every key family has a classification:
   `canonical`, `bounded-index`, `cleanup-index`, `diagnostic-index`,
   `duplicate-candidate`, or `remove-candidate`.
@@ -558,8 +616,9 @@ Acceptance:
 - Every JVM monitor / Redis connection / transaction bottleneck is named with
   either a removal plan or a retained reason.
 - Redis Cluster is explicitly in or out of scope for this roadmap.
-- Transport `worker-route:{workerId}` and `workers` are classified as delete
-  candidates unless a bounded operator-only replacement is explicitly approved.
+- Transport `worker-route:{workerId}` and `workers` are classified as
+  transport-owned delete/demotion candidates unless a bounded operator-only
+  replacement is explicitly approved.
 - The inventory includes a sample proving `diagnosticStatus` is not scheduling
   truth and cannot override transport reachability or WorkerRegistry gates.
 - No implementation change is made in this slice.
@@ -699,8 +758,11 @@ model.
 
 Scope:
 
-- Define a worker offer outcome contract owned by transport/worker runtime, not
-  Redis key shape:
+- Define a worker offer outcome contract owned by worker runtime / engine
+  recovery, not Redis key shape. The recommended name is
+  `WorkerDispatchOfferOutcome`. It is not transport `DispatchOutcome`, which
+  only records envelope delivery, and it is not `TaskResult`, which records
+  work finality. Offer outcomes include:
   - `ACCEPTED`,
   - `BUSY`,
   - `CAPACITY_FULL`,
@@ -708,6 +770,17 @@ Scope:
   - `ATTRIBUTE_MISMATCH`,
   - `DRAINING`,
   - timeout/no-ack.
+- Define the offer outcome ingestion channel:
+  - polling workers may return it when polling/accepting assigned work,
+  - realtime workers may send an explicit accept/reject frame,
+  - command/event ack paths must not be reused unless they are renamed as the
+    worker-offer outcome owner.
+- Define the `TaskWorkRuntime` lease model selected in WKRK-0:
+  - if transitional active claim is used, rejected/no-ack offers must call a
+    foreground release/requeue path that clears active lease evidence and makes
+    the work visible again;
+  - if pending-offer lease is used, offer timeout/reject releases pending
+    evidence and returns work to ready/delayed without ever counting it active.
 - Decide where `ACCEPTED` becomes active execution evidence:
   - `TaskWorkRuntime` lease/claim evidence,
   - transport dispatch binding,
@@ -721,6 +794,10 @@ Scope:
 - Define timeout handling for no-ack dispatch offer.
 - Define how worker-side reject interacts with retry, pause, resume, terminal,
   and result finality.
+- Define stale-result behavior:
+  - result for a rejected or timed-out offer must be ignored or classified as
+    stale evidence, not accepted as visible final output;
+  - result for an accepted offer follows the existing result convergence path.
 - Define black-box proof with an external worker that deliberately returns
   `BUSY` / `CAPACITY_FULL` before later accepting.
 - Keep policy separate:
@@ -732,10 +809,15 @@ Acceptance:
 - A task can be dispatched to a candidate worker, receive worker-side `BUSY` or
   `CAPACITY_FULL`, return work to competition, and later complete on another or
   the same worker without duplicate final result.
+- The implementation or decision record states whether `claimReady(...)` creates
+  active lease evidence before worker accept, or whether a new pending-offer
+  state is used.
 - `ACCEPTED` is recorded before active execution is counted by any retained
   worker-runtime occupancy projection.
 - No rejected offer leaves a stuck active lease or invisible in-flight item.
 - Timeout/no-ack follows the same recovery path as explicit rejection.
+- A stale result from a rejected or timed-out offer is not accepted as visible
+  final output.
 - Trace or proof output distinguishes:
   - candidate selected,
   - offer sent,
@@ -779,8 +861,17 @@ xa:mass:runtime:v1:worker:task:{taskId}:worker-active-count
 Scope:
 
 - Depend on WKRK-2.5.
+- Inventory current allocation callers before deleting any projection. At
+  minimum, `TaskWorkerAssignListener` currently uses
+  `WorkerAdmissionRuntime#getActiveWorkerCountForTask(taskId)` as assignment
+  planning evidence.
 - First decide whether any named policy still needs WorkerRegistry task-worker
   active counts outside TaskWorkRuntime and trace.
+- Define the replacement source before deleting WorkerRegistry task occupancy:
+  - `TaskWorkRuntime` accepted-active worker count,
+  - offer-accepted worker projection,
+  - or a policy decision that assignment planning no longer consumes active
+    worker count.
 - If no policy needs it, remove both:
   - `task:{taskId}:active-workers`,
   - `task:{taskId}:worker-active-count`.
@@ -808,6 +899,8 @@ Acceptance:
   active worker ids and counts.
 - If `worker-active-count` is deleted, contract tests and production callers are
   moved to the replacement semantic view.
+- `TaskWorkerAssignListener` no longer depends on WorkerRegistry task-worker
+  occupancy before the backing keys are deleted.
 - No second active-worker structure exists for the same task-worker fact.
 
 Suggested verification:
@@ -1044,20 +1137,25 @@ Suggested checks:
 rg -n "watch\\(slotsKey\\)|groupSlotsHash|groupHeartbeatDeadlinesZset|heartbeat:0" platform_infra/mass-runtime-redis/src/main/java
 ```
 
-## WKRK-7: Diagnostic Index Review
+## WKRK-7: Diagnostic Index Review And Transport Dependency
 
 Goal:
 
-Keep diagnostic indexes only when they justify their cost.
+Keep worker-runtime diagnostic indexes only when they justify their cost, and
+record the transport-owned projection cleanup that must happen beside this
+roadmap without making worker runtime own transport keys.
 
 Scope:
 
 - Review `exclusive-leases`.
 - Review `groups`.
 - Review bucket discovery sets: `buckets` and `node-buckets`.
-- Review transport presence projection keys:
+- Coordinate with a transport-owned child slice for presence projection keys:
   - `xa:mass:transport:presence:v1:worker-route:{workerId}`,
   - `xa:mass:transport:presence:v1:workers`.
+  This roadmap may record the dependency and verify that worker runtime /
+  engine do not depend on those projections, but transport owns their deletion
+  or demotion.
 - Review whether `hasExclusiveLease(workerId)` and
   `exclusiveLeaseWorkerIds()` belong in the core `WorkerRegistry` contract or
   should be demoted to diagnostic/support surfaces before the physical index is
@@ -1083,11 +1181,13 @@ Acceptance:
 - If `exclusiveLeaseWorkerIds()` remains in the core SPI, the backing index has
   a reviewed bounded reason; if it is diagnostic-only, the API contract says so.
 - `groups`, `buckets`, and `node-buckets` have bounded cleanup reasons.
-- `worker-route:{workerId}` is removed from the mainline transport Redis
-  keyspace; scheduling and dispatch route selection use canonical route key
-  derived from `workerGroupId + workerId`.
-- `workers` is removed or replaced by an explicitly bounded operator-only
-  listing path that does not participate in scheduling.
+- A transport-owned child slice is linked or created for
+  `worker-route:{workerId}` / `workers` deletion or demotion.
+- Worker runtime and engine scheduling do not depend on worker-id transport
+  projections for scheduling, admission, or dispatch route selection.
+- Transport-owned cleanup proves scheduling and dispatch route selection use
+  canonical route key derived from `workerGroupId + workerId`, or records a
+  bounded operator-only exception outside the hot path.
 - Tests and production callers that currently use worker-id presence projection
   are retargeted to `currentOwner(routeKey)` when they need route reachability.
 - No diagnostic index participates in reserve/admission without re-reading
@@ -1175,20 +1275,24 @@ This roadmap is complete only when all of the following are true:
    accepted platform-admission exception.
 10. Transport presence `owner:{shard}` is the only route reachability truth used
     by scheduling reachability and dispatch route selection.
-11. Transport `worker-route:{workerId}` and `workers` are removed from mainline
-    Redis keyspace or demoted to bounded operator-only surfaces with no
-    scheduling usage.
+11. A transport-owned child slice removes `worker-route:{workerId}` and
+    `workers` from mainline Redis keyspace or demotes them to bounded
+    operator-only surfaces with no scheduling usage.
 12. `WorkerSlot.meta.diagnosticStatus` is documented and guarded as
     diagnostic-only.
-13. Redis runtime baseline and active roadmaps agree with current code.
-14. Clean-runtime recreation is sufficient for the new shape; no old/new Redis
+13. Offer outcome is represented by a named worker-offer seam, not by
+    transport `DispatchOutcome` or task result rows.
+14. `TaskWorkRuntime` offer/active lease semantics are explicit and proven for
+    accept, reject, timeout, stale result, pause, resume, and terminal paths.
+15. Redis runtime baseline and active roadmaps agree with current code.
+16. Clean-runtime recreation is sufficient for the new shape; no old/new Redis
     compatibility bridge remains.
-15. `platform_infra/mass-runtime-api` remains the upper-layer contract, and
+17. `platform_infra/mass-runtime-api` remains the upper-layer contract, and
     Redis-specific physical shape is not visible to `xa-mass-worker-runtime` or
     engine scheduling.
-16. Superseded key families, methods, tests, docs, and roadmap wording are
+18. Superseded key families, methods, tests, docs, and roadmap wording are
     removed rather than retained as legacy explanations.
-17. Redis Cluster hash-tag scope is explicitly decided before any multi-key Lua
+19. Redis Cluster hash-tag scope is explicitly decided before any multi-key Lua
     or key rename that would constrain future deployment shape.
 
 ## Open Decisions
@@ -1200,6 +1304,15 @@ This roadmap is complete only when all of the following are true:
 - What candidate sampling rule is acceptable for fairness and ranking?
 - Which, if any, named policy justifies retaining platform-side worker
   occupancy?
+- Should the first implementation use transitional active claim with
+  foreground release/requeue, or introduce pending-offer lease before deleting
+  platform occupancy?
+- Which owner surface should define `WorkerDispatchOfferOutcome`, and which
+  protocol path should polling/realtime workers use to report accept/reject?
+- If WorkerRegistry task-worker occupancy is removed, does
+  `TaskWorkerAssignListener` use TaskWorkRuntime accepted-active view,
+  offer-accepted projection, or a policy that no longer needs active worker
+  count?
 - What worker meta shard count is appropriate for the largest expected worker
   group?
 - Should `exclusive-leases` remain as a global diagnostic index?
@@ -1211,6 +1324,7 @@ This roadmap is complete only when all of the following are true:
   become async/repair-style, or be removed from hot mutation paths?
 - Does removed-slot cleanup need a dedicated removing index, or can the cleanup
   owner avoid group-wide slot scans another way?
-- Should `WorkerPresenceStore#getPresence(workerId)` and related worker-id
-  projection APIs be removed entirely, or retained only as route-key-derived
-  operator conveniences that do not require `worker-route:{workerId}`?
+- Which transport-owned child slice removes or demotes
+  `WorkerPresenceStore#getPresence(workerId)` and related worker-id projection
+  APIs, and can any retained operator surface be route-key-derived without
+  `worker-route:{workerId}`?
