@@ -1,6 +1,7 @@
 package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
@@ -109,9 +110,16 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     @Override
     public List<DispatchOutcome> offer(DeliveryCommandBatch batch) {
         Objects.requireNonNull(batch, "batch");
+        DeliveryObservationGroupContext groupContext = observationGroup(batch);
         if (!running.get()) {
-            return batch.commands().stream()
-                    .map(command -> DispatchOutcome.shutdown(command, "delivery command handoff is stopped"))
+            return batch.items().stream()
+                    .map(item -> DeliveryObservationSupport.outcome(
+                            groupContext,
+                            item.command(),
+                            item.endpoint(),
+                            DispatchOutcomeStatus.SHUTDOWN,
+                            true,
+                            "delivery command handoff is stopped"))
                     .toList();
         }
         String laneKey = physicalLaneKey(batch.deliveryQueueKey(), batch.targetTransportNodeId());
@@ -131,12 +139,24 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         String status = values.isEmpty() ? "BACKPRESSURE" : String.valueOf(values.getFirst());
         String reason = values.size() > 1 ? String.valueOf(values.get(1)) : "delivery command offer failed";
         if ("QUEUED".equals(status)) {
-            return batch.commands().stream()
-                    .map(DispatchOutcome::queued)
+            return batch.items().stream()
+                    .map(item -> DeliveryObservationSupport.outcome(
+                            groupContext,
+                            item.command(),
+                            item.endpoint(),
+                            DispatchOutcomeStatus.QUEUED,
+                            false,
+                            null))
                     .toList();
         }
-        return batch.commands().stream()
-                .map(command -> DispatchOutcome.backpressure(command, reason))
+        return batch.items().stream()
+                .map(item -> DeliveryObservationSupport.outcome(
+                        groupContext,
+                        item.command(),
+                        item.endpoint(),
+                        DispatchOutcomeStatus.BACKPRESSURE,
+                        true,
+                        reason))
                 .toList();
     }
 
@@ -216,6 +236,14 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         return normalizeRequired(deliveryQueueKey, "deliveryQueueKey")
                 + "\n"
                 + normalizeRequired(targetTransportNodeId, "targetTransportNodeId");
+    }
+
+    private static DeliveryObservationGroupContext observationGroup(DeliveryCommandBatch batch) {
+        return DeliveryObservationGroupContext.now(
+                batch.adapterId(),
+                batch.deliveryQueueKey(),
+                batch.targetTransportNodeId()
+        );
     }
 
     private static String encodeToken(String value) {

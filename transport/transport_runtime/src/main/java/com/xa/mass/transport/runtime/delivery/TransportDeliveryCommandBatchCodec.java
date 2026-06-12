@@ -3,8 +3,8 @@ package com.xa.mass.transport.runtime.delivery;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.transport.model.DeliveryCommand;
-import com.xa.mass.transport.packet.PacketType;
-import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.model.TaskDispatchContent;
+import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 
 import java.util.List;
 import java.util.Map;
@@ -24,13 +24,14 @@ final class TransportDeliveryCommandBatchCodec {
 
     String encode(DeliveryCommandBatch batch) {
         Objects.requireNonNull(batch, "batch");
-        List<DeliveryCommandRecord> commands = batch.commands().stream()
+        List<ResolvedDeliveryItemRecord> items = batch.items().stream()
                 .map(this::toRecord)
                 .toList();
         return gson.toJson(new DeliveryCommandBatchRecord(
+                batch.adapterId(),
                 batch.deliveryQueueKey(),
                 batch.targetTransportNodeId(),
-                commands
+                items
         ));
     }
 
@@ -39,115 +40,207 @@ final class TransportDeliveryCommandBatchCodec {
             throw new IllegalArgumentException("json must not be blank");
         }
         DecodedDeliveryCommandBatchRecord record = gson.fromJson(json, DecodedDeliveryCommandBatchRecord.class);
-        if (record == null || record.deliveryQueueKey == null || record.targetTransportNodeId == null
-                || record.commands == null || record.commands.isEmpty()) {
+        if (record == null || record.adapterId == null || record.deliveryQueueKey == null || record.targetTransportNodeId == null
+                || record.items == null || record.items.isEmpty()) {
             throw new IllegalArgumentException("encoded delivery command batch is incomplete");
         }
-        List<DeliveryCommand> commands = record.commands.stream()
+        List<ResolvedDeliveryItem> items = record.items.stream()
                 .map(this::fromRecord)
                 .toList();
-        return new DeliveryCommandBatch(record.deliveryQueueKey, record.targetTransportNodeId, commands);
+        return new DeliveryCommandBatch(record.adapterId, record.deliveryQueueKey, record.targetTransportNodeId, items);
     }
 
-    private DeliveryCommandRecord toRecord(DeliveryCommand command) {
+    private ResolvedDeliveryItemRecord toRecord(ResolvedDeliveryItem item) {
+        return new ResolvedDeliveryItemRecord(
+                toCommandRecord(item.command()),
+                toEndpointRecord(item.endpoint())
+        );
+    }
+
+    private DeliveryCommandRecord toCommandRecord(DeliveryCommand command) {
         return new DeliveryCommandRecord(
                 command.getCommandId(),
-                command.getAdapterId(),
                 command.getSelectedWorkerId(),
-                command.getDeliveryQueueKey(),
-                command.getTargetTransportNodeId(),
-                command.getRouteKey(),
-                command.getConnectionToken(),
-                command.getPayload(),
-                command.getCorrelation(),
+                toContentRecord(command.getContent()),
+                toExecutionContextRecord(command.getExecutionContext()),
                 command.getDeadlineEpochMillis(),
                 command.getCreatedAtEpochMillis()
         );
     }
 
-    private DeliveryCommand fromRecord(DecodedDeliveryCommandRecord record) {
-        if (record == null || record.payload == null) {
+    private TaskDispatchContentRecord toContentRecord(TaskDispatchContent content) {
+        return new TaskDispatchContentRecord(
+                content.taskId(),
+                content.messageId(),
+                content.eventCode(),
+                content.input(),
+                content.sharedConfig()
+        );
+    }
+
+    private TaskDispatchExecutionContextRecord toExecutionContextRecord(TaskDispatchExecutionContext context) {
+        return new TaskDispatchExecutionContextRecord(
+                context.attemptId(),
+                context.attemptNo(),
+                context.retryCount(),
+                context.batchId(),
+                context.taskName(),
+                context.project(),
+                context.userId()
+        );
+    }
+
+    private EndpointLeaseRecord toEndpointRecord(EndpointLease endpoint) {
+        return new EndpointLeaseRecord(
+                endpoint.selectedWorkerId(),
+                endpoint.routeKey(),
+                endpoint.transportNodeId(),
+                endpoint.connectionId(),
+                endpoint.leaseExpireAtEpochMillis()
+        );
+    }
+
+    private ResolvedDeliveryItem fromRecord(DecodedResolvedDeliveryItemRecord record) {
+        if (record == null || record.command == null || record.endpoint == null) {
+            throw new IllegalArgumentException("encoded delivery item is incomplete");
+        }
+        return new ResolvedDeliveryItem(
+                fromCommandRecord(record.command),
+                fromEndpointRecord(record.endpoint)
+        );
+    }
+
+    private DeliveryCommand fromCommandRecord(DecodedDeliveryCommandRecord record) {
+        if (record == null || record.content == null || record.executionContext == null) {
             throw new IllegalArgumentException("encoded delivery command is incomplete");
         }
-        TransportPacket packet = TransportPacket.fromDecodedJson(
-                record.payload.version,
-                record.payload.packetId,
-                record.payload.traceId,
-                record.payload.type,
-                record.payload.adapterId,
-                record.payload.routeKey,
-                record.payload.taskId,
-                record.payload.messageId,
-                record.payload.attemptId,
-                record.payload.eventCode,
-                record.payload.contentType,
-                record.payload.payload
-        );
         return new DeliveryCommand(
                 record.commandId,
-                record.adapterId,
                 record.selectedWorkerId,
-                record.deliveryQueueKey,
-                record.targetTransportNodeId,
-                record.routeKey,
-                record.connectionToken,
-                packet,
-                record.correlation,
+                fromContentRecord(record.content),
+                fromExecutionContextRecord(record.executionContext),
                 record.deadlineEpochMillis,
                 record.createdAtEpochMillis
         );
     }
 
-    private record DeliveryCommandBatchRecord(String deliveryQueueKey,
+    private TaskDispatchContent fromContentRecord(DecodedTaskDispatchContentRecord record) {
+        return new TaskDispatchContent(
+                record.taskId,
+                record.messageId,
+                record.eventCode,
+                record.input,
+                record.sharedConfig
+        );
+    }
+
+    private TaskDispatchExecutionContext fromExecutionContextRecord(DecodedTaskDispatchExecutionContextRecord record) {
+        return new TaskDispatchExecutionContext(
+                record.attemptId,
+                record.attemptNo,
+                record.retryCount,
+                record.batchId,
+                record.taskName,
+                record.project,
+                record.userId
+        );
+    }
+
+    private EndpointLease fromEndpointRecord(DecodedEndpointLeaseRecord record) {
+        return new EndpointLease(
+                record.selectedWorkerId,
+                record.routeKey,
+                record.transportNodeId,
+                record.connectionId,
+                record.leaseExpireAtEpochMillis
+        );
+    }
+
+    private record DeliveryCommandBatchRecord(String adapterId,
+                                              String deliveryQueueKey,
                                               String targetTransportNodeId,
-                                              List<DeliveryCommandRecord> commands) {
+                                              List<ResolvedDeliveryItemRecord> items) {
+    }
+
+    private record ResolvedDeliveryItemRecord(DeliveryCommandRecord command,
+                                              EndpointLeaseRecord endpoint) {
     }
 
     private record DeliveryCommandRecord(String commandId,
-                                         String adapterId,
                                          String selectedWorkerId,
-                                         String deliveryQueueKey,
-                                         String targetTransportNodeId,
-                                         String routeKey,
-                                         String connectionToken,
-                                         TransportPacket payload,
-                                         Map<String, String> correlation,
+                                         TaskDispatchContentRecord content,
+                                         TaskDispatchExecutionContextRecord executionContext,
                                          long deadlineEpochMillis,
                                          long createdAtEpochMillis) {
     }
 
+    private record TaskDispatchContentRecord(String taskId,
+                                             String messageId,
+                                             String eventCode,
+                                             Map<String, Object> input,
+                                             Map<String, Object> sharedConfig) {
+    }
+
+    private record TaskDispatchExecutionContextRecord(String attemptId,
+                                                      int attemptNo,
+                                                      int retryCount,
+                                                      String batchId,
+                                                      String taskName,
+                                                      String project,
+                                                      String userId) {
+    }
+
+    private record EndpointLeaseRecord(String selectedWorkerId,
+                                       String routeKey,
+                                       String transportNodeId,
+                                       String connectionId,
+                                       long leaseExpireAtEpochMillis) {
+    }
+
     private static final class DecodedDeliveryCommandBatchRecord {
+        private String adapterId;
         private String deliveryQueueKey;
         private String targetTransportNodeId;
-        private List<DecodedDeliveryCommandRecord> commands;
+        private List<DecodedResolvedDeliveryItemRecord> items;
+    }
+
+    private static final class DecodedResolvedDeliveryItemRecord {
+        private DecodedDeliveryCommandRecord command;
+        private DecodedEndpointLeaseRecord endpoint;
     }
 
     private static final class DecodedDeliveryCommandRecord {
         private String commandId;
-        private String adapterId;
         private String selectedWorkerId;
-        private String deliveryQueueKey;
-        private String targetTransportNodeId;
-        private String routeKey;
-        private String connectionToken;
-        private DecodedTransportPacketRecord payload;
-        private Map<String, String> correlation;
+        private DecodedTaskDispatchContentRecord content;
+        private DecodedTaskDispatchExecutionContextRecord executionContext;
         private long deadlineEpochMillis;
         private long createdAtEpochMillis;
     }
 
-    private static final class DecodedTransportPacketRecord {
-        private int version;
-        private String packetId;
-        private String traceId;
-        private PacketType type;
-        private String adapterId;
-        private String routeKey;
+    private static final class DecodedTaskDispatchContentRecord {
         private String taskId;
         private String messageId;
-        private String attemptId;
         private String eventCode;
-        private String contentType;
-        private Map<String, Object> payload;
+        private Map<String, Object> input;
+        private Map<String, Object> sharedConfig;
+    }
+
+    private static final class DecodedTaskDispatchExecutionContextRecord {
+        private String attemptId;
+        private int attemptNo;
+        private int retryCount;
+        private String batchId;
+        private String taskName;
+        private String project;
+        private String userId;
+    }
+
+    private static final class DecodedEndpointLeaseRecord {
+        private String selectedWorkerId;
+        private String routeKey;
+        private String transportNodeId;
+        private String connectionId;
+        private long leaseExpireAtEpochMillis;
     }
 }

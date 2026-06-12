@@ -51,7 +51,6 @@ final class RedisTransportDispatchEnvelopeCodec {
         TransportDispatchEnvelope envelope = Objects.requireNonNull(entry.value(), "entry.value");
         RedisTransportDispatchEnvelopeRecord record = new RedisTransportDispatchEnvelopeRecord(
                 envelope.getDeliveryId(),
-                envelope.getDeliveryQueueKey(),
                 envelope.getSelectedWorkerId(),
                 envelope.getCreatedAtEpochMillis(),
                 envelope.getPacket()
@@ -69,7 +68,6 @@ final class RedisTransportDispatchEnvelopeCodec {
         );
         if (record == null
                 || record.deliveryId == null
-                || record.deliveryQueueKey == null
                 || record.selectedWorkerId == null
                 || record.packet == null) {
             throw new IllegalArgumentException("encoded dispatch envelope record is incomplete");
@@ -90,7 +88,6 @@ final class RedisTransportDispatchEnvelopeCodec {
         );
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 record.deliveryId,
-                record.deliveryQueueKey,
                 record.selectedWorkerId,
                 packet,
                 record.createdAtEpochMillis
@@ -114,7 +111,6 @@ final class RedisTransportDispatchEnvelopeCodec {
 
     private static final class DecodedRedisTransportDispatchEnvelopeRecord {
         private String deliveryId;
-        private String deliveryQueueKey;
         private String selectedWorkerId;
         private long createdAtEpochMillis;
         private DecodedTransportPacketRecord packet;

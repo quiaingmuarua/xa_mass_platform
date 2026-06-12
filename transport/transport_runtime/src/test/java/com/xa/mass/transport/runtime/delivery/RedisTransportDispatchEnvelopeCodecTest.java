@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class RedisTransportDispatchEnvelopeCodecTest {
 
@@ -29,7 +30,6 @@ class RedisTransportDispatchEnvelopeCodecTest {
     void dispatchEnvelopeEntryRoundTripsThroughJsonBytes() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
-                "websocket",
                 "worker-1",
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
@@ -58,10 +58,10 @@ class RedisTransportDispatchEnvelopeCodecTest {
         );
 
         byte[] encoded = codec.encodeEntry(new KeyedQueueEntry<>(envelope, envelope.getCreatedAtEpochMillis()));
+        assertFalse(new String(encoded, java.nio.charset.StandardCharsets.UTF_8).contains("deliveryQueueKey"));
         KeyedQueueEntry<TransportDispatchEnvelope> decoded = codec.decodeEntry(encoded);
 
         assertEquals("delivery-1", decoded.value().getDeliveryId());
-        assertEquals("websocket", decoded.value().getDeliveryQueueKey());
         assertEquals("worker-1", decoded.value().getSelectedWorkerId());
         assertEquals(1_234L, decoded.createdAtEpochMillis());
         assertEquals("packet-1", decoded.value().getPacket().packetId());

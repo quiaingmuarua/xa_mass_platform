@@ -1,7 +1,5 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.DeliveryCommand;
-import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
@@ -86,8 +84,8 @@ public final class RedisTransportDeliveryFailureChannel implements TransportDeli
     }
 
     @Override
-    public boolean handle(DeliveryCommand command, DispatchOutcome outcome, String detail) {
-        if (command == null || outcome == null || !running.get()) {
+    public boolean handle(TransportDeliveryFailureEvent event) {
+        if (event == null || !running.get()) {
             return false;
         }
         Object raw = commands.eval(
@@ -95,7 +93,7 @@ public final class RedisTransportDeliveryFailureChannel implements TransportDeli
                 ScriptOutputType.MULTI,
                 new String[]{queueKey},
                 Integer.toString(maxQueuedFailures),
-                codec.encode(new TransportDeliveryFailureEvent(command, outcome, detail))
+                codec.encode(event)
         );
         return raw instanceof List<?> values
                 && !values.isEmpty()

@@ -12,22 +12,36 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class TransportDeliveryFailureEventCodecTest {
 
     @Test
-    void encodesSingleFailureCommandWithoutRequiringTargetTransportNode() {
+    void encodesFailureSnapshotWithoutFullCommandOrPacketPayload() {
         DeliveryCommand command = DeliveryCommandFixtures.command("msg-no-owner", "worker-1", null);
-        DispatchOutcome outcome = DispatchOutcome.noEndpoint(command, "transport endpoint is unavailable after assignment");
+        DeliveryObservationGroupContext groupContext =
+                new DeliveryObservationGroupContext("websocket", "websocket", null, 42L);
+        DeliveryObservationItemSnapshot itemSnapshot =
+                DeliveryObservationItemSnapshot.from(command, null);
+        DispatchOutcome outcome = DeliveryObservationSupport.outcome(
+                groupContext,
+                itemSnapshot,
+                DispatchOutcomeStatus.NO_ENDPOINT,
+                true,
+                "transport endpoint is unavailable after assignment"
+        );
         TransportDeliveryFailureEventCodec codec = new TransportDeliveryFailureEventCodec();
 
         String json = codec.encode(new TransportDeliveryFailureEvent(
-                command,
+                groupContext,
+                itemSnapshot,
                 outcome,
                 "transport endpoint is unavailable after assignment"
         ));
         TransportDeliveryFailureEvent decoded = codec.decode(json);
 
         assertFalse(json.contains("commandBatchJson"), json);
-        assertEquals(command.getCommandId(), decoded.command().getCommandId());
-        assertEquals("worker-1", decoded.command().getSelectedWorkerId());
-        assertNull(decoded.command().getTargetTransportNodeId());
+        assertFalse(json.contains("\"payload\""), json);
+        assertFalse(json.contains("\"correlation\""), json);
+        assertEquals(command.getCommandId(), decoded.itemSnapshot().commandId());
+        assertEquals("worker-1", decoded.itemSnapshot().selectedWorkerId());
+        assertEquals("msg-no-owner", decoded.itemSnapshot().messageId());
+        assertNull(decoded.groupContext().targetTransportNodeId());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, decoded.outcome().getStatus());
         assertNull(decoded.outcome().getTransportNodeId());
     }

@@ -22,7 +22,7 @@ class DispatchOutcomeTest {
         assertEquals("websocket", outcome.getAdapterId());
         assertEquals("delivery-1", outcome.getDeliveryId());
         assertEquals("worker-1", outcome.getSelectedWorkerId());
-        assertEquals("polling", outcome.getDeliveryQueueKey());
+        assertNull(outcome.getDeliveryQueueKey());
         assertEquals("group-route-1", outcome.getRouteKey());
         assertEquals("attempt-1", outcome.getAttemptId());
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcome.getStatus());
@@ -42,6 +42,17 @@ class DispatchOutcomeTest {
         assertTrue(DispatchOutcome.unavailable("socket", envelope, "missing").isRetryable());
         assertFalse(DispatchOutcome.failed("socket", envelope, "bad frame", false).isRetryable());
         assertTrue(DispatchOutcome.failed("socket", envelope, "io", true).isRetryable());
+    }
+
+    @Test
+    void queuedOutcomeCanCarryExplicitStoreQueueContext() {
+        TransportDispatchEnvelope envelope = envelope();
+
+        DispatchOutcome outcome = DispatchOutcome.queued("polling", "lane-1", envelope);
+
+        assertEquals("lane-1", outcome.getDeliveryQueueKey());
+        assertEquals(DispatchOutcomeStatus.QUEUED, outcome.getStatus());
+        assertFalse(outcome.isRetryable());
     }
 
     @Test
@@ -107,7 +118,6 @@ class DispatchOutcomeTest {
         );
         return new TransportDispatchEnvelope(
                 "delivery-1",
-                "polling",
                 item.getWorkerId(),
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,

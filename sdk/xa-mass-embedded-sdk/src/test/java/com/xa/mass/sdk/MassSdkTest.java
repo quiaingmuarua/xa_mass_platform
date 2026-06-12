@@ -3699,9 +3699,11 @@ class MassSdkTest {
 
         @Override
         public com.xa.mass.transport.model.DispatchOutcome enqueue(
+                String deliveryQueueKey,
                 com.xa.mass.transport.model.TransportDispatchEnvelope envelope) {
             return com.xa.mass.transport.model.DispatchOutcome.queued(
                     envelope == null ? null : envelope.getAdapterId(),
+                    deliveryQueueKey,
                     envelope
             );
         }

@@ -4,11 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.DeliveryCommand;
-import com.xa.mass.transport.packet.PacketType;
-import com.xa.mass.transport.packet.TransportPacket;
 
-import java.util.Map;
 import java.util.Objects;
 
 final class TransportDeliveryFailureEventCodec {
@@ -26,7 +22,8 @@ final class TransportDeliveryFailureEventCodec {
     String encode(TransportDeliveryFailureEvent event) {
         Objects.requireNonNull(event, "event");
         return gson.toJson(new TransportDeliveryFailureEventRecord(
-                toRecord(event.command()),
+                toRecord(event.groupContext()),
+                toRecord(event.itemSnapshot()),
                 toRecord(event.outcome()),
                 event.detail()
         ));
@@ -38,29 +35,37 @@ final class TransportDeliveryFailureEventCodec {
         }
         DecodedTransportDeliveryFailureEventRecord record =
                 gson.fromJson(json, DecodedTransportDeliveryFailureEventRecord.class);
-        if (record == null || record.command == null || record.outcome == null) {
+        if (record == null || record.groupContext == null || record.itemSnapshot == null
+                || record.outcome == null) {
             throw new IllegalArgumentException("encoded delivery failure event is incomplete");
         }
         return new TransportDeliveryFailureEvent(
-                fromRecord(record.command),
+                fromRecord(record.groupContext),
+                fromRecord(record.itemSnapshot),
                 fromRecord(record.outcome),
                 record.detail
         );
     }
 
-    private static DeliveryCommandRecord toRecord(DeliveryCommand command) {
-        return new DeliveryCommandRecord(
-                command.getCommandId(),
-                command.getAdapterId(),
-                command.getSelectedWorkerId(),
-                command.getDeliveryQueueKey(),
-                command.getTargetTransportNodeId(),
-                command.getRouteKey(),
-                command.getConnectionToken(),
-                command.getPayload(),
-                command.getCorrelation(),
-                command.getDeadlineEpochMillis(),
-                command.getCreatedAtEpochMillis()
+    private static DeliveryObservationGroupContextRecord toRecord(DeliveryObservationGroupContext groupContext) {
+        return new DeliveryObservationGroupContextRecord(
+                groupContext.adapterId(),
+                groupContext.deliveryQueueKey(),
+                groupContext.targetTransportNodeId(),
+                groupContext.occurredAtEpochMillis()
+        );
+    }
+
+    private static DeliveryObservationItemSnapshotRecord toRecord(DeliveryObservationItemSnapshot itemSnapshot) {
+        return new DeliveryObservationItemSnapshotRecord(
+                itemSnapshot.commandId(),
+                itemSnapshot.selectedWorkerId(),
+                itemSnapshot.taskId(),
+                itemSnapshot.messageId(),
+                itemSnapshot.attemptId(),
+                itemSnapshot.attemptNo(),
+                itemSnapshot.routeKey(),
+                itemSnapshot.connectionId()
         );
     }
 
@@ -81,36 +86,25 @@ final class TransportDeliveryFailureEventCodec {
         );
     }
 
-    private static DeliveryCommand fromRecord(DecodedDeliveryCommandRecord record) {
-        if (record == null || record.payload == null) {
-            throw new IllegalArgumentException("encoded delivery command is incomplete");
-        }
-        TransportPacket packet = TransportPacket.fromDecodedJson(
-                record.payload.version,
-                record.payload.packetId,
-                record.payload.traceId,
-                record.payload.type,
-                record.payload.adapterId,
-                record.payload.routeKey,
-                record.payload.taskId,
-                record.payload.messageId,
-                record.payload.attemptId,
-                record.payload.eventCode,
-                record.payload.contentType,
-                record.payload.payload
-        );
-        return new DeliveryCommand(
-                record.commandId,
+    private static DeliveryObservationGroupContext fromRecord(DecodedDeliveryObservationGroupContextRecord record) {
+        return new DeliveryObservationGroupContext(
                 record.adapterId,
-                record.selectedWorkerId,
                 record.deliveryQueueKey,
                 record.targetTransportNodeId,
+                record.occurredAtEpochMillis
+        );
+    }
+
+    private static DeliveryObservationItemSnapshot fromRecord(DecodedDeliveryObservationItemSnapshotRecord record) {
+        return new DeliveryObservationItemSnapshot(
+                record.commandId,
+                record.selectedWorkerId,
+                record.taskId,
+                record.messageId,
+                record.attemptId,
+                record.attemptNo,
                 record.routeKey,
-                record.connectionToken,
-                packet,
-                record.correlation,
-                record.deadlineEpochMillis,
-                record.createdAtEpochMillis
+                record.connectionId
         );
     }
 
@@ -131,22 +125,26 @@ final class TransportDeliveryFailureEventCodec {
         );
     }
 
-    private record TransportDeliveryFailureEventRecord(DeliveryCommandRecord command,
+    private record TransportDeliveryFailureEventRecord(DeliveryObservationGroupContextRecord groupContext,
+                                                       DeliveryObservationItemSnapshotRecord itemSnapshot,
                                                        DispatchOutcomeRecord outcome,
                                                        String detail) {
     }
 
-    private record DeliveryCommandRecord(String commandId,
-                                         String adapterId,
-                                         String selectedWorkerId,
-                                         String deliveryQueueKey,
-                                         String targetTransportNodeId,
-                                         String routeKey,
-                                         String connectionToken,
-                                         TransportPacket payload,
-                                         Map<String, String> correlation,
-                                         long deadlineEpochMillis,
-                                         long createdAtEpochMillis) {
+    private record DeliveryObservationGroupContextRecord(String adapterId,
+                                                         String deliveryQueueKey,
+                                                         String targetTransportNodeId,
+                                                         long occurredAtEpochMillis) {
+    }
+
+    private record DeliveryObservationItemSnapshotRecord(String commandId,
+                                                         String selectedWorkerId,
+                                                         String taskId,
+                                                         String messageId,
+                                                         String attemptId,
+                                                         int attemptNo,
+                                                         String routeKey,
+                                                         String connectionId) {
     }
 
     private record DispatchOutcomeRecord(String deliveryId,
@@ -164,23 +162,28 @@ final class TransportDeliveryFailureEventCodec {
     }
 
     private static final class DecodedTransportDeliveryFailureEventRecord {
-        private DecodedDeliveryCommandRecord command;
+        private DecodedDeliveryObservationGroupContextRecord groupContext;
+        private DecodedDeliveryObservationItemSnapshotRecord itemSnapshot;
         private DecodedDispatchOutcomeRecord outcome;
         private String detail;
     }
 
-    private static final class DecodedDeliveryCommandRecord {
-        private String commandId;
+    private static final class DecodedDeliveryObservationGroupContextRecord {
         private String adapterId;
-        private String selectedWorkerId;
         private String deliveryQueueKey;
         private String targetTransportNodeId;
+        private long occurredAtEpochMillis;
+    }
+
+    private static final class DecodedDeliveryObservationItemSnapshotRecord {
+        private String commandId;
+        private String selectedWorkerId;
+        private String taskId;
+        private String messageId;
+        private String attemptId;
+        private int attemptNo;
         private String routeKey;
-        private String connectionToken;
-        private DecodedTransportPacketRecord payload;
-        private Map<String, String> correlation;
-        private long deadlineEpochMillis;
-        private long createdAtEpochMillis;
+        private String connectionId;
     }
 
     private static final class DecodedDispatchOutcomeRecord {
@@ -196,20 +199,5 @@ final class TransportDeliveryFailureEventCodec {
         private String transportNodeId;
         private String connectionId;
         private long occurredAtEpochMillis;
-    }
-
-    private static final class DecodedTransportPacketRecord {
-        private int version;
-        private String packetId;
-        private String traceId;
-        private PacketType type;
-        private String adapterId;
-        private String routeKey;
-        private String taskId;
-        private String messageId;
-        private String attemptId;
-        private String eventCode;
-        private String contentType;
-        private Map<String, Object> payload;
     }
 }

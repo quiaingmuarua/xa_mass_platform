@@ -61,17 +61,9 @@ public final class TransportDispatchEnvelopeFactory {
         );
         return new TransportDispatchEnvelope(
                 deliveryId,
-                resolveDeliveryQueueKey(adapterId),
                 selectedWorkerId,
                 packet,
                 currentTimeMillis.getAsLong()
         );
-    }
-
-    private static String resolveDeliveryQueueKey(String adapterId) {
-        if (adapterId == null || adapterId.isBlank()) {
-            return null;
-        }
-        return adapterId.trim().toLowerCase(java.util.Locale.ROOT);
     }
 }

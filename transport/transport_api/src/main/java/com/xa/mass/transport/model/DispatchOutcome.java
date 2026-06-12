@@ -70,65 +70,67 @@ public final class DispatchOutcome {
     }
 
     public static DispatchOutcome delivered(String adapterId, TransportDispatchEnvelope envelope) {
-        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.DELIVERED, false, null);
+        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.DELIVERED, false, null);
     }
 
     public static DispatchOutcome queued(String adapterId, TransportDispatchEnvelope envelope) {
-        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.QUEUED, false, null);
+        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.QUEUED, false, null);
     }
 
-    public static DispatchOutcome queued(DeliveryCommand command) {
-        return fromCommand(command, DispatchOutcomeStatus.QUEUED, false, null);
+    public static DispatchOutcome queued(String adapterId, String deliveryQueueKey, TransportDispatchEnvelope envelope) {
+        return fromEnvelope(adapterId, deliveryQueueKey, envelope, DispatchOutcomeStatus.QUEUED, false, null);
     }
 
     public static DispatchOutcome noEndpoint(String adapterId, TransportDispatchEnvelope envelope, String reason) {
-        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.NO_ENDPOINT, true, reason);
-    }
-
-    public static DispatchOutcome noEndpoint(DeliveryCommand command, String reason) {
-        return fromCommand(command, DispatchOutcomeStatus.NO_ENDPOINT, true, reason);
+        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.NO_ENDPOINT, true, reason);
     }
 
     public static DispatchOutcome backpressure(String adapterId, TransportDispatchEnvelope envelope, String reason) {
-        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.BACKPRESSURE, true, reason);
+        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.BACKPRESSURE, true, reason);
     }
 
-    public static DispatchOutcome backpressure(DeliveryCommand command, String reason) {
-        return fromCommand(command, DispatchOutcomeStatus.BACKPRESSURE, true, reason);
+    public static DispatchOutcome backpressure(String adapterId,
+                                               String deliveryQueueKey,
+                                               TransportDispatchEnvelope envelope,
+                                               String reason) {
+        return fromEnvelope(adapterId, deliveryQueueKey, envelope, DispatchOutcomeStatus.BACKPRESSURE, true, reason);
     }
 
     public static DispatchOutcome invalid(String adapterId, TransportDispatchEnvelope envelope, String reason) {
-        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.INVALID, false, reason);
+        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.INVALID, false, reason);
     }
 
-    public static DispatchOutcome invalid(DeliveryCommand command, String reason) {
-        return fromCommand(command, DispatchOutcomeStatus.INVALID, false, reason);
+    public static DispatchOutcome invalid(String adapterId,
+                                          String deliveryQueueKey,
+                                          TransportDispatchEnvelope envelope,
+                                          String reason) {
+        return fromEnvelope(adapterId, deliveryQueueKey, envelope, DispatchOutcomeStatus.INVALID, false, reason);
     }
 
     public static DispatchOutcome unavailable(String adapterId, TransportDispatchEnvelope envelope, String reason) {
-        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.UNAVAILABLE, true, reason);
+        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.UNAVAILABLE, true, reason);
     }
 
-    public static DispatchOutcome unavailable(DeliveryCommand command, String reason) {
-        return fromCommand(command, DispatchOutcomeStatus.UNAVAILABLE, true, reason);
+    public static DispatchOutcome unavailable(String adapterId,
+                                              String deliveryQueueKey,
+                                              TransportDispatchEnvelope envelope,
+                                              String reason) {
+        return fromEnvelope(adapterId, deliveryQueueKey, envelope, DispatchOutcomeStatus.UNAVAILABLE, true, reason);
     }
 
     public static DispatchOutcome failed(String adapterId,
                                          TransportDispatchEnvelope envelope,
                                          String reason,
                                          boolean retryable) {
-        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.FAILED, retryable, reason);
+        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.FAILED, retryable, reason);
     }
 
     public static DispatchOutcome shutdown(String adapterId, TransportDispatchEnvelope envelope, String reason) {
-        return fromEnvelope(adapterId, envelope, DispatchOutcomeStatus.SHUTDOWN, true, reason);
-    }
-
-    public static DispatchOutcome shutdown(DeliveryCommand command, String reason) {
-        return fromCommand(command, DispatchOutcomeStatus.SHUTDOWN, true, reason);
+        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.SHUTDOWN, true, reason);
     }
 
     private static DispatchOutcome fromEnvelope(String adapterId,
+                                                String deliveryQueueKey,
                                                 TransportDispatchEnvelope envelope,
                                                 DispatchOutcomeStatus status,
                                                 boolean retryable,
@@ -137,33 +139,13 @@ public final class DispatchOutcome {
                 envelope != null ? envelope.getDeliveryId() : null,
                 adapterId,
                 envelope != null ? envelope.getSelectedWorkerId() : null,
-                envelope != null ? envelope.getDeliveryQueueKey() : null,
+                deliveryQueueKey,
                 envelope != null ? envelope.getRouteKey() : null,
                 envelope != null ? envelope.getAttemptId() : null,
                 status,
                 retryable,
                 reason,
                 null,
-                null,
-                System.currentTimeMillis()
-        );
-    }
-
-    private static DispatchOutcome fromCommand(DeliveryCommand command,
-                                               DispatchOutcomeStatus status,
-                                               boolean retryable,
-                                               String reason) {
-        return new DispatchOutcome(
-                command != null ? command.getCommandId() : null,
-                command != null ? command.getAdapterId() : null,
-                command != null ? command.getSelectedWorkerId() : null,
-                command != null ? command.getDeliveryQueueKey() : null,
-                command != null ? command.getRouteKey() : null,
-                command != null && command.getPayload() != null ? command.getPayload().attemptId() : null,
-                status,
-                retryable,
-                reason,
-                command != null ? command.getTargetTransportNodeId() : null,
                 null,
                 System.currentTimeMillis()
         );

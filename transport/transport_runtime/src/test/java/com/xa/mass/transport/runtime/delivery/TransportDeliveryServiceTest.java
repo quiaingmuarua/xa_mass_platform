@@ -125,7 +125,7 @@ class TransportDeliveryServiceTest {
     void pollReturnsQueuedItems() {
         TransportDeliveryService service = service();
         TaskDispatchItem item = item("msg-1", "worker-1");
-        service.enqueue(List.of(envelope(item)));
+        service.enqueue("polling", List.of(envelope(item)));
 
         assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
                 .map(TransportDeliveryService::toDispatchView)
@@ -137,7 +137,7 @@ class TransportDeliveryServiceTest {
     void pollUsesCanonicalAdapterAndRouteKeys() {
         TransportDeliveryService service = service();
         TaskDispatchItem item = item("msg-1", " worker-1 ");
-        service.enqueue(List.of(envelope("delivery-msg-1", " Polling ", " group-route-1 ", item)));
+        service.enqueue("polling", List.of(envelope("delivery-msg-1", " Polling ", " group-route-1 ", item)));
 
         assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
                 .map(TransportDeliveryService::toDispatchView)
@@ -149,7 +149,7 @@ class TransportDeliveryServiceTest {
     void selectedWorkerPollDoesNotDrainAnotherWorkerSharingRouteKey() {
         TransportDeliveryService service = service();
         TaskDispatchItem item = item("msg-1", "worker-2");
-        service.enqueue(List.of(envelope("delivery-msg-1", "polling", "group-route-1", item)));
+        service.enqueue("polling", List.of(envelope("delivery-msg-1", "polling", "group-route-1", item)));
 
         assertTrue(service.pollEnvelopes("polling", "worker-1", 10, 0).isEmpty());
         assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-2", 10, 0).stream()
@@ -180,7 +180,7 @@ class TransportDeliveryServiceTest {
     @Test
     void statsExposeDeliveryStoreSnapshot() {
         TransportDeliveryService service = new TransportDeliveryService(new InMemoryTransportDeliveryStore(10));
-        service.enqueue(List.of(envelope(item("msg-1", "worker-1"))));
+        service.enqueue("polling", List.of(envelope(item("msg-1", "worker-1"))));
 
         TransportDeliveryServiceStats stats = service.stats();
 
@@ -218,7 +218,7 @@ class TransportDeliveryServiceTest {
     void queuedDeliveryDoesNotPopulateDirectCounters() {
         TransportDeliveryService service = service();
 
-        List<DispatchOutcome> outcomes = service.enqueue(List.of(envelope(item("msg-1", "worker-1"))));
+        List<DispatchOutcome> outcomes = service.enqueue("polling", List.of(envelope(item("msg-1", "worker-1"))));
 
         TransportDeliveryServiceStats stats = service.stats();
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED), statuses(outcomes));
@@ -235,14 +235,14 @@ class TransportDeliveryServiceTest {
     @Test
     void shutdownStopsQueuedDelivery() {
         TransportDeliveryService service = service();
-        service.enqueue(List.of(envelope(item("msg-1", "worker-1"))));
+        service.enqueue("polling", List.of(envelope(item("msg-1", "worker-1"))));
 
         service.shutdown();
 
         assertEquals(0, service.stats().getQueuedItems());
         assertTrue(service.pollEnvelopes("polling", "worker-1", 10, 0).isEmpty());
         assertEquals(DispatchOutcomeStatus.UNAVAILABLE,
-                service.enqueue(List.of(envelope(item("msg-2", "worker-1")))).get(0).getStatus());
+                service.enqueue("polling", List.of(envelope(item("msg-2", "worker-1")))).get(0).getStatus());
     }
 
     private TransportDeliveryService service() {
@@ -284,7 +284,6 @@ class TransportDeliveryServiceTest {
                                               TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 deliveryId,
-                adapterId,
                 item.getWorkerId(),
                 new TransportPacketFactory(() -> deliveryId)
                         .fromDispatchView(adapterId, routeKey, item.attemptId(), item),

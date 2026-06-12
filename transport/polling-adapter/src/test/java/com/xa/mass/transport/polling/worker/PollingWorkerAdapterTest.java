@@ -158,7 +158,6 @@ class PollingWorkerAdapterTest {
     private TransportDispatchEnvelope envelope(String deliveryId, String routeKey, TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 deliveryId,
-                PollingWorkerAdapter.PROTOCOL,
                 item.getWorkerId(),
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,

@@ -90,7 +90,6 @@ class SocketTaskDispatchChannelTest {
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 "delivery-" + item.getMessageId(),
-                "socket",
                 item.getWorkerId(),
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,

@@ -53,7 +53,7 @@ public final class TransportDeliveryFailureInboxPump {
                 if (event == null) {
                     continue;
                 }
-                boolean handled = delegate.handle(event.command(), event.outcome(), event.detail());
+                boolean handled = delegate.handle(event);
                 if (!handled) {
                     logger.error("Delivery failure inbox event was not handled: deliveryId={}, selectedWorkerId={}",
                             event.outcome().getDeliveryId(), event.outcome().getSelectedWorkerId());

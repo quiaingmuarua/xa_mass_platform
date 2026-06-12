@@ -2,7 +2,7 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
@@ -42,56 +42,88 @@ public final class TransportAssignedDeliverySubmitter {
         this.failureHandler = failureHandler;
     }
 
-    public List<DispatchOutcome> submit(List<DeliveryCommand> commands) {
-        if (commands == null || commands.isEmpty()) {
+    public List<DispatchOutcome> submit(DeliveryCommandGroup group) {
+        if (group == null) {
             return List.of();
         }
+        return submit(List.of(group));
+    }
+
+    public List<DispatchOutcome> submit(List<DeliveryCommandGroup> commandGroups) {
+        if (commandGroups == null || commandGroups.isEmpty()) {
+            return List.of();
+        }
+        List<DispatchOutcome> outcomes = new ArrayList<>();
+        for (DeliveryCommandGroup commandGroup : commandGroups) {
+            if (commandGroup != null) {
+                outcomes.addAll(submitGroup(commandGroup));
+            }
+        }
+        return Collections.unmodifiableList(outcomes);
+    }
+
+    private List<DispatchOutcome> submitGroup(DeliveryCommandGroup commandGroup) {
+        String adapterId = commandGroup.adapterId();
+        String deliveryQueueKey = deliveryQueueKey(adapterId);
         Map<String, CommandGroup> groups = new LinkedHashMap<>();
         List<DispatchOutcome> outcomes = new ArrayList<>();
 
-        for (DeliveryCommand command : commands) {
-            if (command == null) {
-                continue;
-            }
+        for (DeliveryCommand command : commandGroup.commands()) {
             Optional<WorkerDispatchRouteOwner> selectedOwner =
-                    routeOwnerView.activeOwnerForSelectedWorker(command.getAdapterId(), command.getSelectedWorkerId());
+                    routeOwnerView.activeOwnerForSelectedWorker(adapterId, command.getSelectedWorkerId());
             if (selectedOwner.isEmpty()) {
-                outcomes.add(handleRetryableFailure(
+                DeliveryObservationGroupContext groupContext =
+                        DeliveryObservationGroupContext.now(adapterId, deliveryQueueKey, null);
+                DispatchOutcome outcome = DeliveryObservationSupport.outcome(
+                        groupContext,
                         command,
-                        DispatchOutcome.noEndpoint(command, MISSING_OWNER_REASON),
+                        null,
+                        DispatchOutcomeStatus.NO_ENDPOINT,
+                        true,
                         MISSING_OWNER_REASON
-                ));
-                continue;
-            }
-            WorkerDispatchRouteOwner owner = selectedOwner.get();
-            if (!isNodeUsable(owner)) {
-                outcomes.add(handleRetryableFailure(
-                        command,
-                        DispatchOutcome.noEndpoint(command, UNAVAILABLE_NODE_REASON),
-                        UNAVAILABLE_NODE_REASON
-                ));
+                );
+                outcomes.add(handleRetryableFailure(groupContext, command, null, outcome, MISSING_OWNER_REASON));
                 continue;
             }
 
-            DeliveryCommand resolved = withDeliveryOwner(command, owner);
-            String groupKey = resolved.getDeliveryQueueKey() + "\n" + resolved.getTargetTransportNodeId();
+            WorkerDispatchRouteOwner owner = selectedOwner.get();
+            EndpointLease endpoint = EndpointLease.fromOwner(owner, command.getSelectedWorkerId());
+            DeliveryObservationGroupContext groupContext =
+                    DeliveryObservationGroupContext.now(adapterId, deliveryQueueKey, endpoint.transportNodeId());
+            if (!isNodeUsable(owner)) {
+                DispatchOutcome outcome = DeliveryObservationSupport.outcome(
+                        groupContext,
+                        command,
+                        endpoint,
+                        DispatchOutcomeStatus.NO_ENDPOINT,
+                        true,
+                        UNAVAILABLE_NODE_REASON
+                );
+                outcomes.add(handleRetryableFailure(groupContext, command, endpoint, outcome, UNAVAILABLE_NODE_REASON));
+                continue;
+            }
+
+            String groupKey = deliveryQueueKey + "\n" + endpoint.transportNodeId();
             CommandGroup group = groups.computeIfAbsent(
                     groupKey,
-                    ignored -> new CommandGroup(resolved.getDeliveryQueueKey(), resolved.getTargetTransportNodeId())
+                    ignored -> new CommandGroup(adapterId, deliveryQueueKey, endpoint.transportNodeId())
             );
-            group.commands.add(resolved);
+            group.items.add(new ResolvedDeliveryItem(command, endpoint));
         }
 
         for (CommandGroup group : groups.values()) {
             DeliveryCommandBatch batch = new DeliveryCommandBatch(
+                    group.adapterId,
                     group.deliveryQueueKey,
                     group.targetTransportNodeId,
-                    group.commands
+                    group.items
             );
-            Map<String, DeliveryCommand> commandById = new LinkedHashMap<>();
-            for (DeliveryCommand command : group.commands) {
-                commandById.put(command.getCommandId(), command);
+            Map<String, ResolvedDeliveryItem> itemById = new LinkedHashMap<>();
+            for (ResolvedDeliveryItem item : group.items) {
+                itemById.put(item.command().getCommandId(), item);
             }
+            DeliveryObservationGroupContext groupContext =
+                    DeliveryObservationGroupContext.now(group.adapterId, group.deliveryQueueKey, group.targetTransportNodeId);
             for (DispatchOutcome outcome : handoff.offer(batch)) {
                 if (outcome == null) {
                     continue;
@@ -100,10 +132,13 @@ public final class TransportAssignedDeliverySubmitter {
                 if (!outcome.isRetryable()) {
                     continue;
                 }
-                handleRetryableFailure(commandById.get(outcome.getDeliveryId()), outcome, outcome.getReason());
+                ResolvedDeliveryItem item = itemById.get(outcome.getDeliveryId());
+                if (item != null) {
+                    handleRetryableFailure(groupContext, item.command(), item.endpoint(), outcome, outcome.getReason());
+                }
             }
         }
-        return Collections.unmodifiableList(outcomes);
+        return outcomes;
     }
 
     private boolean isNodeUsable(WorkerDispatchRouteOwner owner) {
@@ -122,28 +157,11 @@ public final class TransportAssignedDeliverySubmitter {
         }
     }
 
-    private DeliveryCommand withDeliveryOwner(DeliveryCommand command, WorkerDispatchRouteOwner owner) {
-        String routeKey = firstNonBlank(command.getRouteKey(), owner.routeKey());
-        TransportPacket payload = command.getPayload();
-        if (routeKey != null && (payload.routeKey() == null || !routeKey.equals(payload.routeKey()))) {
-            payload = payload.withTransportAddress(command.getAdapterId(), routeKey);
-        }
-        return new DeliveryCommand(
-                command.getCommandId(),
-                command.getAdapterId(),
-                command.getSelectedWorkerId(),
-                command.getDeliveryQueueKey(),
-                owner.transportNodeId(),
-                routeKey,
-                owner.connectionId(),
-                payload,
-                command.getCorrelation(),
-                command.getDeadlineEpochMillis(),
-                command.getCreatedAtEpochMillis()
-        );
-    }
-
-    private DispatchOutcome handleRetryableFailure(DeliveryCommand command, DispatchOutcome outcome, String detail) {
+    private DispatchOutcome handleRetryableFailure(DeliveryObservationGroupContext groupContext,
+                                                   DeliveryCommand command,
+                                                   EndpointLease endpoint,
+                                                   DispatchOutcome outcome,
+                                                   String detail) {
         if (command == null || outcome == null || !outcome.isRetryable()) {
             return outcome;
         }
@@ -152,7 +170,13 @@ public final class TransportAssignedDeliverySubmitter {
                     outcome.getDeliveryId(), outcome.getSelectedWorkerId(), outcome.getStatus(), detail);
             return outcome;
         }
-        boolean handled = failureHandler.handle(command, outcome, detail);
+        boolean handled = failureHandler.handle(DeliveryObservationSupport.failure(
+                groupContext,
+                command,
+                endpoint,
+                outcome,
+                detail
+        ));
         if (!handled) {
             logger.error("Delivery failure was not handled: deliveryId={}, selectedWorkerId={}, status={}, reason={}",
                     outcome.getDeliveryId(), outcome.getSelectedWorkerId(), outcome.getStatus(), detail);
@@ -160,22 +184,18 @@ public final class TransportAssignedDeliverySubmitter {
         return outcome;
     }
 
-    private static String firstNonBlank(String first, String second) {
-        if (first != null && !first.isBlank()) {
-            return first.trim();
-        }
-        if (second != null && !second.isBlank()) {
-            return second.trim();
-        }
-        return null;
+    private static String deliveryQueueKey(String adapterId) {
+        return adapterId;
     }
 
     private static final class CommandGroup {
+        private final String adapterId;
         private final String deliveryQueueKey;
         private final String targetTransportNodeId;
-        private final List<DeliveryCommand> commands = new ArrayList<>();
+        private final List<ResolvedDeliveryItem> items = new ArrayList<>();
 
-        private CommandGroup(String deliveryQueueKey, String targetTransportNodeId) {
+        private CommandGroup(String adapterId, String deliveryQueueKey, String targetTransportNodeId) {
+            this.adapterId = adapterId;
             this.deliveryQueueKey = deliveryQueueKey;
             this.targetTransportNodeId = targetTransportNodeId;
         }

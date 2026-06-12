@@ -54,15 +54,21 @@ entry for `transport/`.
 - `WorkerSystemEventChannel` is current worker presence ingress only. It is not
   the lifecycle owner for future worker command, worker state-report, or
   capability self-report flows.
-- `DeliveryCommand` is the current engine/starter-to-transport command shape.
-  It carries explicit `adapterId`, `selectedWorkerId`, `deliveryQueueKey`,
-  target `transportNodeId`, opaque `routeKey`, packet payload, and correlation.
-- `TransportPacket` is the internal flat transport envelope. Dispatch now
-  creates packet-backed delivery commands before adapter delivery, but
-  worker-facing websocket/socket/polling JSON remains unchanged in this phase.
+- `DeliveryCommand` is the assigned-item delivery intent. It carries only
+  `selectedWorkerId`, minimal task dispatch content, typed execution context,
+  and item timing/id facts. Adapter, queue, node, route-owner, connection, and
+  session facts are not command fields.
+- `DeliveryCommandGroup` owns producer-side `adapterId`. `DeliveryCommandBatch`
+  owns the process-boundary lane: `adapterId`, `deliveryQueueKey`,
+  `targetTransportNodeId`, and resolved per-item endpoint leases.
+- `TaskDispatchItem` and task-dispatch `TransportPacket` are worker-facing or
+  final-hop projections assembled after endpoint evidence is known. They are
+  not the delivery-command handoff payload.
 - Queue mechanics may live under `platform_infra`; transport still owns
   `DeliveryCommand`, `TransportDispatchEnvelope`, `TransportDeliveryStore`, and
-  `DispatchOutcome`.
+  `DispatchOutcome`. `TransportDispatchEnvelope` does not carry
+  `deliveryQueueKey`; queue ownership is expressed by the delivery group/store
+  key.
 - Embedded runtime composition currently defaults to the in-memory delivery
   store, but SDK/starter wiring may swap in a Redis-backed
   `TransportDeliveryStore` without changing transport-facing contracts.

@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit;
  */
 public interface TransportDeliveryStore {
 
-    DispatchOutcome enqueue(TransportDispatchEnvelope envelope);
+    DispatchOutcome enqueue(String deliveryQueueKey, TransportDispatchEnvelope envelope);
 
     List<TransportDispatchEnvelope> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems);
 

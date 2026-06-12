@@ -38,13 +38,14 @@ public final class TransportDeliveryService {
         this.deliveryStore = Objects.requireNonNull(deliveryStore, "deliveryStore");
     }
 
-    public List<DispatchOutcome> enqueue(List<TransportDispatchEnvelope> envelopes) {
+    public List<DispatchOutcome> enqueue(String adapterId, List<TransportDispatchEnvelope> envelopes) {
         if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
+        String deliveryQueueKey = resolveDeliveryQueueKey(adapterId);
         List<DispatchOutcome> outcomes = new ArrayList<>(envelopes.size());
         for (TransportDispatchEnvelope envelope : envelopes) {
-            outcomes.add(deliveryStore.enqueue(envelope));
+            outcomes.add(deliveryStore.enqueue(deliveryQueueKey, envelope));
         }
         return Collections.unmodifiableList(outcomes);
     }

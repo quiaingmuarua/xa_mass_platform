@@ -192,6 +192,121 @@ class TransportConvergenceArchitectureGuardTest {
         );
     }
 
+    @Test
+    void deliveryCommandItemDoesNotRegainLaneRouteOrPacketFacts() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/DeliveryCommand.java")),
+                "deliveryQueueKey",
+                "targetTransportNodeId",
+                "connectionToken",
+                "connectionId",
+                "routeKey",
+                "TransportPacket",
+                "TaskDispatchItem",
+                "correlation",
+                "Map<String, String>"
+        );
+    }
+
+    @Test
+    void taskDispatchExecutionContextDoesNotCarryTransportRouteOrSessionFacts() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TaskDispatchExecutionContext.java")),
+                "workerId",
+                "routeKey",
+                "adapterId",
+                "deliveryQueueKey",
+                "targetTransportNodeId",
+                "connectionId",
+                "connectionToken",
+                "session",
+                "endpoint"
+        );
+    }
+
+    @Test
+    void starterDeliverySubmitterDoesNotBuildPacketBackedCommandsOrFakeRouteFacts() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/TaskDispatchDeliveryCommandSubmitter.java")),
+                "TransportPacket",
+                "TaskDispatchItem",
+                "routeKey",
+                "deliveryQueueKey",
+                "targetTransportNodeId",
+                "connectionToken",
+                "\"unknown\"",
+                "correlation"
+        );
+    }
+
+    @Test
+    void deliveryCommandBatchCodecKeepsCommandRecordMinimal() throws IOException {
+        Path codec = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandBatchCodec.java");
+        assertNoProductionSourceContains(
+                List.of(codec),
+                "TransportPacket",
+                "TaskDispatchItem",
+                "connectionToken",
+                "correlation",
+                "\"payload\""
+        );
+        assertSourceSliceDoesNotContain(
+                codec,
+                "private record DeliveryCommandRecord",
+                "private record TaskDispatchContentRecord",
+                "adapterId",
+                "deliveryQueueKey",
+                "targetTransportNodeId",
+                "routeKey",
+                "connectionId"
+        );
+    }
+
+    @Test
+    void transportDispatchEnvelopeDoesNotCarryStoreQueueKey() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TransportDispatchEnvelope.java")),
+                "deliveryQueueKey",
+                "getDeliveryQueueKey("
+        );
+    }
+
+    @Test
+    void redisDispatchEnvelopeValueDoesNotSerializeStoreQueueKey() throws IOException {
+        Path codec = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeCodec.java");
+        assertSourceSliceDoesNotContain(
+                codec,
+                "byte[] encodeEntry",
+                "private static String encodeKeyToken",
+                "deliveryQueueKey"
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeRecord.java")),
+                "deliveryQueueKey"
+        );
+    }
+
+    @Test
+    void deliveryStoreDoesNotRecoverQueueKeyFromEnvelopeValue() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/QueueBackedTransportDeliveryStore.java")),
+                "getDeliveryQueueKey("
+        );
+    }
+
+    @Test
+    void deliveryFailureEventCodecDoesNotSerializeFullCommandsOrPacketPayloads() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryFailureEventCodec.java")),
+                "DeliveryCommand",
+                "TransportPacket",
+                "TaskDispatchItem",
+                "connectionToken",
+                "correlation",
+                "\"payload\""
+        );
+    }
+
     private static void assertNoProductionSourceContains(List<Path> roots, String... forbiddenTokens) throws IOException {
         for (Path root : roots) {
             if (!Files.exists(root)) {
@@ -229,9 +344,27 @@ class TransportConvergenceArchitectureGuardTest {
         assertTrue(violations.isEmpty(), () -> "Forbidden transport convergence residue: " + violations);
     }
 
+    private static void assertSourceSliceDoesNotContain(Path path,
+                                                        String startToken,
+                                                        String endToken,
+                                                        String... forbiddenTokens) throws IOException {
+        String source = Files.readString(path);
+        int start = source.indexOf(startToken);
+        int end = source.indexOf(endToken, start + startToken.length());
+        assertTrue(start >= 0, () -> "Missing source slice start token: " + startToken + " in " + path);
+        assertTrue(end > start, () -> "Missing source slice end token: " + endToken + " in " + path);
+        String slice = source.substring(start, end);
+        for (String token : forbiddenTokens) {
+            assertTrue(!slice.contains(token), () -> "Forbidden token '" + token + "' in slice " + startToken + " of " + path);
+        }
+    }
+
     private static Path repoRoot() {
         Path current = Path.of("").toAbsolutePath();
-        while (current != null && !Files.exists(current.resolve("pom.xml"))) {
+        while (current != null
+                && !(Files.exists(current.resolve("pom.xml"))
+                && Files.exists(current.resolve("AGENTS.md"))
+                && Files.exists(current.resolve("xa-mass-engine")))) {
             current = current.getParent();
         }
         if (current == null) {

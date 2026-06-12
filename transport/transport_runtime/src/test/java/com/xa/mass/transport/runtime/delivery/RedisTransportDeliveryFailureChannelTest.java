@@ -61,15 +61,15 @@ class RedisTransportDeliveryFailureChannelTest {
     @Test
     void failureEventRoundTripsAcrossInstances() throws Exception {
         DeliveryCommand command = DeliveryCommandFixtures.command("msg-1", "worker-1", "node-a");
-        DispatchOutcome outcome = DispatchOutcome.noEndpoint(command, "adapter unavailable");
+        TransportDeliveryFailureEvent failure = failureEvent(command, "node-a", "route-1", "adapter unavailable");
 
-        assertTrue(writer.handle(command, outcome, "adapter unavailable"));
+        assertTrue(writer.handle(failure));
 
         TransportDeliveryFailureEvent event = reader.pollFailure(1000L);
 
         assertNotNull(event);
-        assertEquals(command.getCommandId(), event.command().getCommandId());
-        assertEquals("worker-1", event.command().getSelectedWorkerId());
+        assertEquals(command.getCommandId(), event.itemSnapshot().commandId());
+        assertEquals("worker-1", event.itemSnapshot().selectedWorkerId());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, event.outcome().getStatus());
         assertEquals("adapter unavailable", event.detail());
     }
@@ -79,33 +79,58 @@ class RedisTransportDeliveryFailureChannelTest {
         DeliveryCommand first = DeliveryCommandFixtures.command("msg-1", "worker-1", "node-a");
         DeliveryCommand second = DeliveryCommandFixtures.command("msg-2", "worker-2", "node-a");
 
-        assertTrue(writer.handle(first, DispatchOutcome.noEndpoint(first, "first"), "first"));
-        assertFalse(writer.handle(second, DispatchOutcome.noEndpoint(second, "second"), "second"));
+        assertTrue(writer.handle(failureEvent(first, "node-a", "route-1", "first")));
+        assertFalse(writer.handle(failureEvent(second, "node-a", "route-2", "second")));
 
         TransportDeliveryFailureEvent event = reader.pollFailure(1000L);
 
         assertNotNull(event);
-        assertEquals(first.getCommandId(), event.command().getCommandId());
-        assertEquals("msg-1", event.command().getPayload().messageId());
+        assertEquals(first.getCommandId(), event.itemSnapshot().commandId());
+        assertEquals("msg-1", event.itemSnapshot().messageId());
     }
 
     @Test
     void noOwnerFailureRoundTripsWithoutTargetTransportNode() throws Exception {
         DeliveryCommand command = DeliveryCommandFixtures.command("msg-no-owner", "worker-1", null);
-        DispatchOutcome outcome = DispatchOutcome.noEndpoint(
-                command,
-                "transport endpoint is unavailable after assignment"
-        );
 
-        assertTrue(writer.handle(command, outcome, "transport endpoint is unavailable after assignment"));
+        assertTrue(writer.handle(failureEvent(
+                command,
+                null,
+                null,
+                "transport endpoint is unavailable after assignment"
+        )));
 
         TransportDeliveryFailureEvent event = reader.pollFailure(1000L);
 
         assertNotNull(event);
-        assertEquals(command.getCommandId(), event.command().getCommandId());
-        assertEquals("worker-1", event.command().getSelectedWorkerId());
-        assertNull(event.command().getTargetTransportNodeId());
+        assertEquals(command.getCommandId(), event.itemSnapshot().commandId());
+        assertEquals("worker-1", event.itemSnapshot().selectedWorkerId());
+        assertNull(event.groupContext().targetTransportNodeId());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, event.outcome().getStatus());
         assertNull(event.outcome().getTransportNodeId());
+    }
+
+    private static TransportDeliveryFailureEvent failureEvent(DeliveryCommand command,
+                                                              String targetTransportNodeId,
+                                                              String routeKey,
+                                                              String reason) {
+        EndpointLease endpoint = targetTransportNodeId == null ? null : new EndpointLease(
+                command.getSelectedWorkerId(),
+                routeKey,
+                targetTransportNodeId,
+                "conn-" + command.getSelectedWorkerId(),
+                System.currentTimeMillis() + 30_000L
+        );
+        DeliveryObservationGroupContext groupContext =
+                DeliveryObservationGroupContext.now("websocket", "websocket", targetTransportNodeId);
+        DeliveryObservationItemSnapshot itemSnapshot = DeliveryObservationItemSnapshot.from(command, endpoint);
+        DispatchOutcome outcome = DeliveryObservationSupport.outcome(
+                groupContext,
+                itemSnapshot,
+                DispatchOutcomeStatus.NO_ENDPOINT,
+                true,
+                reason
+        );
+        return new TransportDeliveryFailureEvent(groupContext, itemSnapshot, outcome, reason);
     }
 }

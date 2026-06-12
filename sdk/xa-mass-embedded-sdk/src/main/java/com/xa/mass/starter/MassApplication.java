@@ -4,8 +4,6 @@ import com.google.gson.Gson;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
-import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchDeliveryFailure;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
@@ -36,6 +34,7 @@ import com.xa.mass.transport.runtime.TaskResultIngestInboxPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoffPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandListener;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
@@ -51,7 +50,6 @@ import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
@@ -402,14 +400,14 @@ public class MassApplication {
     }
 
     private TransportDeliveryFailureHandler createTransportDeliveryFailureHandler() {
-        return (command, outcome, detail) -> {
-            if (command == null) {
+        return event -> {
+            if (event == null || event.itemSnapshot() == null) {
                 return false;
             }
-            String taskId = firstNonBlank(command.getPayload().taskId(), command.getCorrelation().get("taskId"));
+            String taskId = event.itemSnapshot().taskId();
             if (taskId == null) {
                 logger.error("Cannot compensate delivery failure because task id is missing: deliveryId={}",
-                        outcome != null ? outcome.getDeliveryId() : command.getCommandId());
+                        event.outcome() != null ? event.outcome().getDeliveryId() : event.itemSnapshot().commandId());
                 return false;
             }
             Task storedTask = engineConfig.getTaskShellStore().getTask(taskId).orElse(null);
@@ -419,10 +417,10 @@ public class MassApplication {
             }
             TaskDispatchDeliveryFailure failure;
             try {
-                failure = toDeliveryFailure(command, outcome, detail);
+                failure = toDeliveryFailure(event);
             } catch (RuntimeException e) {
                 logger.error("Cannot compensate delivery failure because failure record is incomplete: deliveryId={}, reason={}",
-                        outcome != null ? outcome.getDeliveryId() : command.getCommandId(), e.getMessage());
+                        event.outcome() != null ? event.outcome().getDeliveryId() : event.itemSnapshot().commandId(), e.getMessage());
                 return false;
             }
             return engineConfig.getTaskAssignmentRuntimePort()
@@ -430,20 +428,14 @@ public class MassApplication {
         };
     }
 
-    private TaskDispatchDeliveryFailure toDeliveryFailure(com.xa.mass.transport.model.DeliveryCommand command,
-                                                          com.xa.mass.transport.model.DispatchOutcome outcome,
-                                                          String detail) {
-        String taskId = firstNonBlank(command.getPayload().taskId(), command.getCorrelation().get("taskId"));
-        String messageId = firstNonBlank(command.getPayload().messageId(), command.getCorrelation().get("messageId"));
-        String attemptId = firstNonBlank(command.getPayload().attemptId(), command.getCorrelation().get("attemptId"));
-        String attemptNo = command.getCorrelation().get("attemptNo");
+    private TaskDispatchDeliveryFailure toDeliveryFailure(TransportDeliveryFailureEvent event) {
         return new TaskDispatchDeliveryFailure(
-                taskId,
-                messageId,
-                attemptId,
-                parseAttemptNo(attemptNo),
-                command.getSelectedWorkerId(),
-                firstNonBlank(detail, outcome != null ? outcome.getReason() : null)
+                event.itemSnapshot().taskId(),
+                event.itemSnapshot().messageId(),
+                event.itemSnapshot().attemptId(),
+                event.itemSnapshot().attemptNo(),
+                event.itemSnapshot().selectedWorkerId(),
+                firstNonBlank(event.detail(), event.outcome() != null ? event.outcome().getReason() : null)
         );
     }
 
@@ -456,7 +448,6 @@ public class MassApplication {
         );
         return new TaskDispatchDeliveryCommandSubmitter(
                 assignedDeliverySubmitter,
-                this::mintTransportRouteKey,
                 createTransportDeliveryFailureHandler()
         );
     }
@@ -481,20 +472,6 @@ public class MassApplication {
             throw new IllegalStateException("Cannot resolve transport binding for worker " + worker.workerId()
                     + ": " + e.getMessage(), e);
         }
-    }
-
-    private String mintTransportRouteKey(TaskDispatchContext task, TaskDispatchBinding dispatchBinding) {
-        if (task == null || dispatchBinding == null) {
-            throw new IllegalArgumentException("task and dispatchBinding must not be null");
-        }
-        String workerGroupId = dispatchBinding.workerGroupId();
-        if ((workerGroupId == null || workerGroupId.isBlank()) && dispatchBinding.workerId() != null) {
-            WorkerResourceRecord worker = engineConfig.getWorkerResourceRuntime()
-                    .worker(dispatchBinding.workerId().trim())
-                    .orElse(null);
-            workerGroupId = worker != null ? worker.workerGroupId() : null;
-        }
-        return CanonicalWorkerGroupRouteKeyCodec.encode(workerGroupId);
     }
 
     private void startTransportNodeHeartbeat(List<TransportBinding> adapterBindings) {
@@ -833,17 +810,6 @@ public class MassApplication {
             return fallback.trim();
         }
         return null;
-    }
-
-    private static int parseAttemptNo(String value) {
-        if (value == null || value.isBlank()) {
-            return 1;
-        }
-        try {
-            return Math.max(1, Integer.parseInt(value.trim()));
-        } catch (NumberFormatException ignored) {
-            return 1;
-        }
     }
 
     public boolean sendRawTransportMessage(String workerId, String rawJson, String traceId) {

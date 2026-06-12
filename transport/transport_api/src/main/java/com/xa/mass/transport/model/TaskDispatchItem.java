@@ -142,20 +142,36 @@ public final class TaskDispatchItem {
     public static TaskDispatchItem from(TaskDispatchContext task, TaskDispatchBinding dispatchBinding) {
         Objects.requireNonNull(task, "task");
         Objects.requireNonNull(dispatchBinding, "dispatchBinding");
-        return new TaskDispatchItem(
-                task.taskId(),
-                dispatchBinding.messageId(),
-                firstNonBlank(dispatchBinding.eventCode(), task.eventCode()),
-                task.taskName(),
-                task.project(),
-                task.userId(),
-                dispatchBinding.retryCount(),
-                dispatchBinding.attemptId(),
+        return fromAssignedDelivery(
                 null,
                 dispatchBinding.workerId(),
-                dispatchBinding.batchId(),
-                normalizeInput(dispatchBinding.payload()),
-                task.sharedConfig()
+                TaskDispatchContent.from(task, dispatchBinding),
+                TaskDispatchExecutionContext.from(task, dispatchBinding)
+        );
+    }
+
+    public static TaskDispatchItem fromAssignedDelivery(String routeKey,
+                                                        String selectedWorkerId,
+                                                        TaskDispatchContent content,
+                                                        TaskDispatchExecutionContext executionContext) {
+        Objects.requireNonNull(content, "content");
+        Objects.requireNonNull(executionContext, "executionContext");
+        return new TaskDispatchItem(
+                content.taskId(),
+                content.messageId(),
+                content.eventCode(),
+                executionContext.taskName(),
+                executionContext.project(),
+                executionContext.userId(),
+                executionContext.retryCount(),
+                executionContext.attemptId(),
+                routeKey,
+                selectedWorkerId,
+                executionContext.batchId(),
+                content.input(),
+                content.sharedConfig(),
+                true,
+                null
         );
     }
 
@@ -303,43 +319,8 @@ public final class TaskDispatchItem {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, Object> normalizeInput(Map<String, Object> rawInput) {
-        if (rawInput == null || rawInput.isEmpty()) {
-            return Map.of();
-        }
-        if (isWrappedJsonPayload(rawInput)) {
-            Object data = rawInput.get("data");
-            return normalizeObject((Map<String, Object>) data, TransportPacket.PAYLOAD_INPUT);
-        }
-        if (isWrappedTextPayload(rawInput)) {
-            return Map.of("text", rawInput.get("text"));
-        }
-        return normalizeObject(rawInput, TransportPacket.PAYLOAD_INPUT);
-    }
-
-    private static boolean isWrappedJsonPayload(Map<String, Object> rawInput) {
-        if (rawInput == null) {
-            return false;
-        }
-        Object data = rawInput.get("data");
-        if (!(data instanceof Map<?, ?>)) {
-            return false;
-        }
-        Object type = rawInput.get("type");
-        return type instanceof String text && "json".equalsIgnoreCase(text);
-    }
-
-    private static boolean isWrappedTextPayload(Map<String, Object> rawInput) {
-        if (rawInput == null) {
-            return false;
-        }
-        Object text = rawInput.get("text");
-        if (!(text instanceof String)) {
-            return false;
-        }
-        Object type = rawInput.get("type");
-        return type instanceof String value && "text".equalsIgnoreCase(value);
+        return TaskDispatchContent.normalizeInput(rawInput);
     }
 
     private static String firstNonBlank(String primary, String fallback) {

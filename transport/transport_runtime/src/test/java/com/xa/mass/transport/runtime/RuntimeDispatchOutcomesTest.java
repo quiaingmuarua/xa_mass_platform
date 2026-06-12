@@ -65,7 +65,6 @@ class RuntimeDispatchOutcomesTest {
                                               TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 deliveryId,
-                adapterId,
                 item.getWorkerId(),
                 new TransportPacketFactory(() -> deliveryId)
                         .fromDispatchView(adapterId, routeKey, traceId, item),

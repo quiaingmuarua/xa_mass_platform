@@ -86,8 +86,8 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
     }
 
     @Override
-    public DispatchOutcome enqueue(TransportDispatchEnvelope envelope) {
-        return delegate.enqueue(envelope);
+    public DispatchOutcome enqueue(String deliveryQueueKey, TransportDispatchEnvelope envelope) {
+        return delegate.enqueue(deliveryQueueKey, envelope);
     }
 
     @Override

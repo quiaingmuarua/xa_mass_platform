@@ -5,10 +5,15 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.model.TaskDispatchContent;
+import com.xa.mass.transport.model.TaskDispatchExecutionContext;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandGroup;
+import com.xa.mass.transport.runtime.delivery.DeliveryObservationGroupContext;
+import com.xa.mass.transport.runtime.delivery.DeliveryObservationItemSnapshot;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
-import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.function.BiFunction;
 
 /**
  * Starter-owned translator from engine assignment bindings to transport
@@ -29,15 +33,11 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
     private static final Logger logger = LoggerFactory.getLogger(TaskDispatchDeliveryCommandSubmitter.class);
 
     private final TransportAssignedDeliverySubmitter assignedDeliverySubmitter;
-    private final BiFunction<TaskDispatchContext, TaskDispatchBinding, String> routeKeyFactory;
     private final TransportDeliveryFailureHandler failureHandler;
-    private final TransportPacketFactory packetFactory = new TransportPacketFactory();
 
     TaskDispatchDeliveryCommandSubmitter(TransportAssignedDeliverySubmitter assignedDeliverySubmitter,
-                                         BiFunction<TaskDispatchContext, TaskDispatchBinding, String> routeKeyFactory,
                                          TransportDeliveryFailureHandler failureHandler) {
         this.assignedDeliverySubmitter = Objects.requireNonNull(assignedDeliverySubmitter, "assignedDeliverySubmitter");
-        this.routeKeyFactory = Objects.requireNonNull(routeKeyFactory, "routeKeyFactory");
         this.failureHandler = failureHandler;
     }
 
@@ -46,7 +46,7 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
         if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
             return;
         }
-        List<DeliveryCommand> commands = new ArrayList<>();
+        Map<String, List<DeliveryCommand>> commandsByAdapter = new LinkedHashMap<>();
         List<TaskDispatchBinding> invalidBindings = new ArrayList<>();
         for (TaskDispatchBinding binding : dispatchBindings) {
             if (binding == null) {
@@ -58,75 +58,31 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
                 invalidBindings.add(binding);
                 continue;
             }
-            String routeKey = resolveRouteKey(task, binding);
-            commands.add(toCommand(task, binding, adapterId, selectedWorkerId, routeKey));
+            commandsByAdapter.computeIfAbsent(adapterId, ignored -> new ArrayList<>())
+                    .add(toCommand(task, binding, selectedWorkerId));
         }
 
         compensateInvalidBindings(task, invalidBindings, "delivery command translation failed before transport handoff");
-        assignedDeliverySubmitter.submit(commands);
+        if (commandsByAdapter.isEmpty()) {
+            return;
+        }
+        List<DeliveryCommandGroup> groups = commandsByAdapter.entrySet().stream()
+                .map(entry -> new DeliveryCommandGroup(entry.getKey(), entry.getValue()))
+                .toList();
+        assignedDeliverySubmitter.submit(groups);
     }
 
     private DeliveryCommand toCommand(TaskDispatchContext task,
                                       TaskDispatchBinding binding,
-                                      String adapterId,
-                                      String selectedWorkerId,
-                                      String routeKey) {
-        TaskDispatchItem dispatchItem = TaskDispatchItem.from(task, binding);
-        String commandId = UUID.randomUUID().toString();
-        String deliveryQueueKey = adapterId;
+                                      String selectedWorkerId) {
         return new DeliveryCommand(
-                commandId,
-                adapterId,
+                UUID.randomUUID().toString(),
                 selectedWorkerId,
-                deliveryQueueKey,
-                null,
-                routeKey,
-                null,
-                packetFactory.fromDispatchView(commandId, adapterId, routeKey, null, dispatchItem),
-                correlation(task, binding),
+                TaskDispatchContent.from(task, binding),
+                TaskDispatchExecutionContext.from(task, binding),
                 0L,
                 System.currentTimeMillis()
         );
-    }
-
-    private Map<String, String> correlation(TaskDispatchContext task, TaskDispatchBinding binding) {
-        Map<String, String> values = new LinkedHashMap<>();
-        put(values, "taskId", task.taskId());
-        put(values, "messageId", binding.messageId());
-        put(values, "attemptId", binding.attemptId());
-        put(values, "attemptNo", Integer.toString(binding.attemptNo()));
-        return values;
-    }
-
-    private String resolveRouteKey(TaskDispatchContext task, TaskDispatchBinding binding) {
-        try {
-            return normalize(routeKeyFactory.apply(
-                    task,
-                    binding
-            ));
-        } catch (RuntimeException e) {
-            logger.warn("Failed to resolve routeKey for delivery command: taskId={}, messageId={}, reason={}",
-                    task != null ? task.taskId() : null,
-                    binding != null ? binding.messageId() : null,
-                    e.getMessage());
-            return null;
-        }
-    }
-
-    private void handleDeliveryFailure(DeliveryCommand command, DispatchOutcome outcome, String detail) {
-        if (command == null || outcome == null || !outcome.isRetryable()) {
-            return;
-        }
-        if (failureHandler == null) {
-            logger.warn("Cannot compensate delivery failure because no failure handler is configured: deliveryId={}, selectedWorkerId={}, detail={}",
-                    outcome.getDeliveryId(), outcome.getSelectedWorkerId(), detail);
-            return;
-        }
-        boolean handled = failureHandler.handle(command, outcome, detail);
-        if (!handled) {
-            logger.error("Delivery failure was not compensated: deliveryId={}, selectedWorkerId={}, detail={}",
-                    outcome.getDeliveryId(), outcome.getSelectedWorkerId(), detail);
-        }
     }
 
     private void compensateInvalidBindings(TaskDispatchContext task, List<TaskDispatchBinding> bindings, String detail) {
@@ -141,21 +97,48 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
         for (TaskDispatchBinding binding : bindings) {
             String adapterId = normalize(binding.adapterId());
             String selectedWorkerId = normalize(binding.workerId());
-            if (adapterId == null) {
-                adapterId = "unknown";
+            String deliveryId = UUID.randomUUID().toString();
+            TaskDispatchContent content = TaskDispatchContent.from(task, binding);
+            TaskDispatchExecutionContext executionContext = TaskDispatchExecutionContext.from(task, binding);
+            DeliveryObservationGroupContext groupContext = DeliveryObservationGroupContext.now(
+                    adapterId,
+                    adapterId,
+                    null
+            );
+            DeliveryObservationItemSnapshot itemSnapshot = new DeliveryObservationItemSnapshot(
+                    deliveryId,
+                    selectedWorkerId,
+                    content.taskId(),
+                    content.messageId(),
+                    executionContext.attemptId(),
+                    executionContext.attemptNo(),
+                    null,
+                    null
+            );
+            DispatchOutcome outcome = new DispatchOutcome(
+                    deliveryId,
+                    adapterId,
+                    selectedWorkerId,
+                    adapterId,
+                    null,
+                    executionContext.attemptId(),
+                    DispatchOutcomeStatus.UNAVAILABLE,
+                    true,
+                    detail,
+                    null,
+                    null,
+                    System.currentTimeMillis()
+            );
+            boolean handled = failureHandler.handle(new TransportDeliveryFailureEvent(
+                    groupContext,
+                    itemSnapshot,
+                    outcome,
+                    detail
+            ));
+            if (!handled) {
+                logger.error("Delivery failure was not compensated: deliveryId={}, selectedWorkerId={}, detail={}",
+                        outcome.getDeliveryId(), outcome.getSelectedWorkerId(), detail);
             }
-            if (selectedWorkerId == null) {
-                selectedWorkerId = "unknown";
-            }
-            DeliveryCommand command = toCommand(task, binding, adapterId, selectedWorkerId, null);
-            handleDeliveryFailure(command, DispatchOutcome.unavailable(command, detail), detail);
-        }
-    }
-
-    private static void put(Map<String, String> values, String key, String value) {
-        String normalized = normalize(value);
-        if (normalized != null) {
-            values.put(key, normalized);
         }
     }
 

@@ -43,25 +43,36 @@ Transport should stay centered on these concepts only:
 
 - `TaskDispatchChannel`: adapter dispatch SPI returning `DispatchOutcome`
 - `DispatchOutcome`: adapter-neutral delivery result, never task-lifecycle truth
-- `DeliveryCommand`: engine/starter-to-transport command record. It carries
-  `adapterId`, `selectedWorkerId`, shared `deliveryQueueKey`, target
-  `transportNodeId`, optional opaque `routeKey`, packet payload, and opaque
-  correlation. It is not a task lifecycle object.
+- `DeliveryCommand`: assigned-item delivery intent. It carries item identity,
+  `selectedWorkerId`, minimal `TaskDispatchContent`,
+  `TaskDispatchExecutionContext`, deadline, and creation timestamp. Adapter,
+  lane, target node, route-owner, connection, session, packet, and generic
+  correlation facts are not command fields.
+- `DeliveryCommandGroup`: producer-side group for commands that share one
+  `adapterId`. It is created after engine assignment and before transport-owned
+  endpoint resolution.
+- `DeliveryCommandBatch`: process-boundary handoff record for one resolved
+  delivery lane. It carries `adapterId`, `deliveryQueueKey`,
+  `targetTransportNodeId`, and `ResolvedDeliveryItem` values. Each resolved
+  item contains the minimal command plus per-item `EndpointLease` evidence.
 - `TransportDispatchEnvelope`: runtime-owned dispatch envelope, not a `TaskMsg`
-  replacement. It carries the runtime `deliveryQueueKey` and the
-  engine-selected `selectedWorkerId` as first-class transport fields; adapters
-  must not recover the selected worker by decoding routeKey or packet payload.
+  replacement. It carries delivery identity, the engine-selected
+  `selectedWorkerId`, the final-hop task-dispatch packet, and creation time.
+  It does not carry the runtime `deliveryQueueKey`; queue ownership belongs to
+  the store key or dispatch group context. Adapters must not recover the
+  selected worker by decoding routeKey or packet payload.
 - `TransportDeliveryStore`: runtime-owned queueing/drain/poll seam for transport
   delivery. Assigned polling delivery is addressed by shared
-  `deliveryQueueKey + selectedWorkerId`, with routeKey kept as envelope
-  metadata/correlation.
+  `deliveryQueueKey + selectedWorkerId`, with routeKey kept as opaque
+  packet/endpoint metadata.
 - `TaskResultIngestChannel`: result-ingest seam back into engine/starter-owned
   result lifecycle validation
 - `TransportResultEnvelope`: transport metadata around `TaskResultReport`, not a second worker protocol
 - `TransportDeliveryCommandHandoff`: post-claim delivery queue between
-  engine/starter assembly and transport. It carries delivery commands grouped by
-  shared `deliveryQueueKey` and target transport node; `routeKey` remains
-  per-command opaque metadata, not the batch owner.
+  engine/starter assembly and transport. It carries resolved
+  `DeliveryCommandBatch` values grouped by shared `deliveryQueueKey` and
+  target transport node. Route key and connection id are per-item endpoint
+  evidence, not batch or command truth.
 - `TaskPullResult`: explicit pull-path status plus delivered dispatch items;
   empty queue, invalid request, temporary unavailability, and shutdown must not
   be flattened into one fake "no work" result on the transport mainline
@@ -129,13 +140,16 @@ lifecycle state.
   `TransportDeliveryCommandHandoff`, while split runtimes use Redis
   delivery-command inboxes awakened by `transportNodeId`
 - producer-side starter assembly translates immutable `TaskDispatchContext +
-  TaskDispatchBinding` assignment facts into `DeliveryCommand` records;
+  TaskDispatchBinding` assignment facts into `DeliveryCommandGroup` values;
   binding-level `workerId` becomes `selectedWorkerId`, the engine-selected
-  execution constraint. Transport-owned delivery submitters use that selected
-  worker constraint to choose a concrete active consumer through direct
-  `adapterId + selectedWorkerId` route-owner evidence. Transport consumers drain
-  only delivery commands and do not reselect workers or decode route-key minting
-  rules.
+  execution constraint on each minimal `DeliveryCommand`. Starter may group by
+  `adapterId`, but it does not write queue, node, route, connection, session, or
+  packet facts into command items. Transport-owned delivery submitters use the
+  selected-worker constraint to choose concrete active consumers through direct
+  `adapterId + selectedWorkerId` route-owner evidence, then create
+  `DeliveryCommandBatch` values with per-item endpoint leases. Transport
+  consumers drain only resolved delivery batches and do not reselect workers or
+  decode route-key minting rules.
 - worker transport-binding resolution from registered worker truth before
   dispatch handoff; transport consumers do not call worker-resource runtime for
   second-stage selection
@@ -236,13 +250,15 @@ The split runtime uses three transport/runtime channels:
   adapter mode uses `TransportDeliveryCommandHandoff` queues keyed by shared
   delivery queue and target transport node with node-local ready-lane indexes
   so each transport JVM is awakened only for work it can currently serve.
-  `routeKey` is per-command metadata only; Redis dispatch queue ownership is
-  not routeKey cardinality.
+  `DeliveryCommandBatch` carries lane and node facts once; route key,
+  connection id, and lease expiry remain per-item `EndpointLease` evidence.
+  Redis dispatch queue ownership is not routeKey cardinality.
 - delivery inbox: transport routes dispatch envelopes into
   `TransportDeliveryStore` by runtime `deliveryQueueKey` plus the
-  engine-selected `selectedWorkerId`. `routeKey` remains opaque envelope
-  metadata and connection/correlation address; it must not be the only queue
-  isolation key for assigned polling task delivery.
+  engine-selected `selectedWorkerId`. The `deliveryQueueKey` is supplied by
+  queue/store context, not repeated in every envelope value. `routeKey` remains
+  opaque packet/endpoint metadata and connection/correlation address; it must
+  not be the only queue isolation key for assigned polling task delivery.
 - result/compensation inboxes: transport writes `TransportResultEnvelope`
   values and retryable delivery-failure events to Redis-backed inboxes; the
   engine process drains those inboxes into its local result ingest and
@@ -256,12 +272,14 @@ membership, delayed visibility, active lease, retry timing, result application,
 and terminal convergence.
 
 `DeliveryCommandBatch` is the process-boundary payload for dispatch handoff. It
-contains only delivery commands for one shared delivery queue and target
-transport node, and must stay JSON-safe. The Redis/process-boundary codec
-serializes that record once; it must not wrap another encoded task-dispatch
-batch string such as `taskBatchJson`. Large item bodies continue to use
-`payloadRef` when needed; the handoff queue is not a copy of a million-item
-task queue.
+contains only minimal delivery commands plus per-item endpoint leases for one
+shared delivery queue and target transport node, and must stay JSON-safe. The
+Redis/process-boundary codec serializes batch facts once; per-command records
+must not repeat `adapterId`, `deliveryQueueKey`, `targetTransportNodeId`,
+`routeKey`, `connectionId`, or `connectionToken`, and must not wrap another
+encoded task-dispatch batch string such as `taskBatchJson`. Large item bodies
+continue to use `payloadRef` when needed; the handoff queue is not a copy of a
+million-item task queue.
 
 Worker runtime state is not a queue. The shared worker view contains
 route-owner records:
@@ -273,13 +291,13 @@ optional workerId, leaseExpireAt, updatedAt
 
 Engine matching still selects a worker from control-plane registration,
 capability, rule, lock, admission, and worker-runtime evidence. Only after
-assignment has produced concrete bindings does dispatch assembly mint opaque
-routeKey metadata and then find active route consumers by `adapterId +
-selectedWorkerId`. It writes delivery-command batches with explicit target
-transport-node facts to the selected consumers' node-local drain lanes.
-Missing or expired route owners, or offline transport nodes, go through
-engine-owned compensation/retry; transport does not re-schedule or mutate task
-lifecycle.
+assignment has produced concrete bindings does transport-owned final-hop
+submission find active route consumers by `adapterId + selectedWorkerId`. It
+writes delivery-command batches with explicit target transport-node facts to
+the selected consumers' node-local drain lanes, while endpoint route metadata
+stays on each resolved item. Missing or expired route owners, or offline
+transport nodes, go through engine-owned compensation/retry; transport does not
+re-schedule or mutate task lifecycle.
 
 SDK/starter assembly exposes three runtime roles:
 
@@ -352,57 +370,65 @@ or derive scheduling/admission truth in its Redis keyspace.
 
 ## Model Boundaries
 
-`TaskDispatchItem` is currently a hybrid dispatch payload:
+`DeliveryCommand` is the internal assigned-delivery item. It is not a full
+transport route, a worker API response, or a packet envelope. It carries:
 
-- worker-facing payload fields: task id, message id, event code, input, shared config
-- runtime metadata fields: worker id, optional legacy worker-context id, batch
-  id, internal attempt id
+- command id and selected worker id
+- `TaskDispatchContent`: task id, message id, event code, input, shared config
+- `TaskDispatchExecutionContext`: attempt id/no, retry count, batch id, task
+  name, project, and user id
+- item deadline and creation timestamp
 
-Dispatch input projection should be payload-shape driven. If transport needs to
-unwrap a worker-facing wrapper such as the current SDK `type=json,data=...` or
-`type=text,text=...` shapes, that decision must come from the dispatch payload
-itself, not from unrelated task metadata like `_sdk.payloadType`.
+`TaskDispatchExecutionContext` exists only for current worker-frame and
+result-correlation compatibility. It must not grow route, adapter, lane, node,
+endpoint, connection, session, capacity, lifecycle, or scheduling fields.
 
-Transport internals should prefer direct access to the hybrid's real owner
-fields. Packet assembly, routing, and internal result correlation should read
-`TaskDispatchItem` directly instead of rebuilding internal wrapper objects
-around the same data. Add a derived view only when it carries a distinct protocol
-or lifecycle boundary.
+`TaskDispatchContext` is no longer a transport runtime handoff object.
+SDK/starter assembly consumes the task-level dispatch snapshot plus concrete
+`TaskDispatchBinding` values and translates them into minimal
+`DeliveryCommand` items grouped by `adapterId` in `DeliveryCommandGroup`.
+Transport runtime consumes delivery command groups and resolved batches only.
 
-The internal attempt identity is intentionally exposed through `attemptId()`, not
+`TaskDispatchItem` is a worker-facing dispatch projection, not the internal
+delivery-command handoff payload. It may remain on public polling APIs and
+adapter codecs because current worker frames still expose fields such as
+`workerId`, `attemptId`, `batchId`, and optional route metadata. Those values
+are assembled from `selectedWorkerId`, `TaskDispatchContent`,
+`TaskDispatchExecutionContext`, and resolved endpoint evidence at final hop.
+They must not be copied back into `DeliveryCommand` or the handoff codec as
+parallel truth.
+
+The internal attempt identity remains exposed through `attemptId()`, not
 `getAttemptId()`, so JSON serializers do not add it to worker API responses by
 JavaBean convention. Do not add JavaBean getters for internal metadata unless
 the worker wire contract is intentionally changed.
 
-Do not split this hybrid opportunistically. That is a cross-adapter wire change
-touching adapter codecs and external worker API behavior.
+`TransportPacket` remains the internal flat transport envelope for dispatch,
+result, and worker-system-event shapes, but task-dispatch packets are assembled
+at final-hop delivery. Starter-side command construction must not create a
+packet-backed delivery command. `TransportDispatchEnvelope` may carry a
+`TASK_DISPATCH` packet plus item delivery identity for adapter/store delivery,
+but it must not carry store queue ownership. The delivery-command handoff codec
+must not serialize a generic task-dispatch `TransportPacket` as the item
+payload.
 
-`TaskDispatchContext` is no longer a transport runtime handoff object.
-SDK/starter assembly consumes the task-level dispatch snapshot plus concrete
-`TaskDispatchBinding` values and translates them into `DeliveryCommand`
-records. Transport runtime consumes delivery commands only.
+`TransportPacket.payload` is a JSON object boundary, not an arbitrary JVM
+object slot. Durable queue codecs must be able to round-trip packet payloads
+without relying on Java-local runtime types. Packet identity rules are
+type-specific and part of the transport contract: `TASK_DISPATCH` requires
+`taskId`, `messageId`, and `eventCode`; `TASK_RESULT` requires `taskId` and
+`messageId`; `WORKER_SYSTEM_EVENT` requires `eventCode`. Allowed payload values
+are JSON-safe primitives plus nested JSON-safe object or array shapes only:
+`String`, `Number`, `Boolean`, `null`, `Map<String, Object>`, and lists/arrays
+composed from the same value set. Transport must reject unsupported JVM-only
+objects at payload assembly time instead of letting different codecs or queue
+implementations observe different behavior.
 
-`TransportPacket` is now the internal flat transport envelope for dispatch,
-result, and worker-system-event shapes. In the current mainline, dispatch is
-packet-backed first: `TransportDispatchEnvelope` carries a `TASK_DISPATCH`
-packet plus runtime delivery identity. Adapters may read packet fields for
-routing and frame assembly, but external worker wire behavior remains the
-current JSON contract. `TransportPacket.payload` is a JSON object boundary,
-not an arbitrary JVM object slot. Durable queue codecs must be able to
-round-trip packet payloads without relying on Java-local runtime types.
-Packet identity rules are type-specific and part of the transport contract:
-`TASK_DISPATCH` requires `taskId`, `messageId`, and `eventCode`; `TASK_RESULT`
-requires `taskId` and `messageId`; `WORKER_SYSTEM_EVENT` requires `eventCode`.
-Allowed payload values are JSON-safe primitives plus nested JSON-safe object
-or array shapes only: `String`, `Number`, `Boolean`, `null`,
-`Map<String, Object>`, and lists/arrays composed from the same value set.
-Transport must reject unsupported JVM-only objects at payload assembly time
-instead of letting different codecs or queue implementations observe different
-behavior.
-`TaskDispatchItem` and `TaskResultReport` are the primary owners of their
-transport payload views: they should freeze nested JSON-safe values once and
-expose a stable payload map for packet assembly instead of rebuilding wrapper
-maps repeatedly across hot paths.
+Dispatch input projection should remain payload-shape driven. If transport
+needs to unwrap a worker-facing wrapper such as the current SDK
+`type=json,data=...` or `type=text,text=...` shapes, that decision must come
+from the dispatch payload itself, not from unrelated task metadata like
+`_sdk.payloadType`.
 
 `TransportResultEnvelope` is internal runtime metadata around a
 `TaskResultReport`. `TaskResultReport` remains the protocol payload. Envelope
@@ -531,11 +557,14 @@ attempts. Storage implementations should provide bounded lookups for:
 (taskId, messageId) -> latest-attempt compatibility residue view
 ```
 
-Dispatch is also a hot path. Delivery queues currently store
-`TransportDispatchEnvelope` values and should avoid deep-copying task payload
-maps beyond the immutable copies already owned by packet assembly. Retryable
-dispatch outcomes must correlate by explicit `attemptId`; transport trace ids
-are diagnostics and must not double as compensation keys.
+Dispatch is also a hot path. Delivery-command handoff queues store
+`DeliveryCommandBatch` values: batch-level lane/node facts, minimal per-item
+commands, and per-item endpoint leases. They must not deep-copy
+`TaskDispatchItem` or generic task-dispatch `TransportPacket` payloads as the
+handoff item shape. Adapter/store delivery may assemble
+`TransportDispatchEnvelope` values at the local final hop. Retryable dispatch
+outcomes must correlate by explicit `attemptId`; transport trace ids are
+diagnostics and must not double as compensation keys.
 
 Assignment-to-transport handoff is also part of the hot path. The embedded
 runtime uses an in-memory `TransportDeliveryCommandHandoff` plus

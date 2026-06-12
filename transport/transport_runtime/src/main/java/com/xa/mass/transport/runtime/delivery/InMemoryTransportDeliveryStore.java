@@ -45,8 +45,8 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     @Override
-    public DispatchOutcome enqueue(TransportDispatchEnvelope envelope) {
-        return delegate.enqueue(envelope);
+    public DispatchOutcome enqueue(String deliveryQueueKey, TransportDispatchEnvelope envelope) {
+        return delegate.enqueue(deliveryQueueKey, envelope);
     }
 
     @Override

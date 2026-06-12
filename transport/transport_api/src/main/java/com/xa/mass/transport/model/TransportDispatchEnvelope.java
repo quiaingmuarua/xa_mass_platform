@@ -12,18 +12,15 @@ import java.util.Objects;
 public final class TransportDispatchEnvelope {
 
     private final String deliveryId;
-    private final String deliveryQueueKey;
     private final String selectedWorkerId;
     private final TransportPacket packet;
     private final long createdAtEpochMillis;
 
     public TransportDispatchEnvelope(String deliveryId,
-                                     String deliveryQueueKey,
                                      String selectedWorkerId,
                                      TransportPacket packet,
                                      long createdAtEpochMillis) {
         this.deliveryId = requireText(deliveryId, "deliveryId");
-        this.deliveryQueueKey = TransportDeliveryAddressing.normalizeText(deliveryQueueKey);
         this.selectedWorkerId = TransportDeliveryAddressing.normalizeText(selectedWorkerId);
         this.packet = requireDispatchPacket(packet);
         this.createdAtEpochMillis = createdAtEpochMillis;
@@ -31,10 +28,6 @@ public final class TransportDispatchEnvelope {
 
     public String getDeliveryId() {
         return deliveryId;
-    }
-
-    public String getDeliveryQueueKey() {
-        return deliveryQueueKey;
     }
 
     public String getSelectedWorkerId() {

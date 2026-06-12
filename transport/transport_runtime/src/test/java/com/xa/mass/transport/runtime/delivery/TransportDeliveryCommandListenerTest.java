@@ -33,21 +33,18 @@ class TransportDeliveryCommandListenerTest {
 
         assertEquals(List.of(DispatchOutcomeStatus.UNAVAILABLE), outcomes.stream().map(DispatchOutcome::getStatus).toList());
         assertEquals(1, failures.events.size());
-        assertEquals(command.getCommandId(), failures.events.get(0).command().getCommandId());
+        assertEquals(command.getCommandId(), failures.events.get(0).itemSnapshot().commandId());
         assertEquals(DispatchOutcomeStatus.UNAVAILABLE, failures.events.get(0).outcome().getStatus());
     }
 
     private static final class RecordingFailureHandler implements TransportDeliveryFailureHandler {
-        private final List<FailureEvent> events = new ArrayList<>();
+        private final List<TransportDeliveryFailureEvent> events = new ArrayList<>();
 
         @Override
-        public boolean handle(DeliveryCommand command, DispatchOutcome outcome, String detail) {
-            events.add(new FailureEvent(command, outcome, detail));
+        public boolean handle(TransportDeliveryFailureEvent event) {
+            events.add(event);
             return true;
         }
-    }
-
-    private record FailureEvent(DeliveryCommand command, DispatchOutcome outcome, String detail) {
     }
 
     private static final class NoopWorkerAdapter implements WorkerAdapter {

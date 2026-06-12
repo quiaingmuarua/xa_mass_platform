@@ -1,6 +1,8 @@
 package com.xa.mass.transport.runtime.packet;
 
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TaskDispatchContent;
+import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
@@ -49,6 +51,22 @@ public final class TransportPacketFactory {
                 TransportPacket.JSON_CONTENT_TYPE,
                 dispatchView.transportPayloadView()
         );
+    }
+
+    public TransportPacket fromDispatchContent(String packetId,
+                                               String adapterId,
+                                               String routeKey,
+                                               String traceId,
+                                               String selectedWorkerId,
+                                               TaskDispatchContent content,
+                                               TaskDispatchExecutionContext executionContext) {
+        TaskDispatchItem dispatchView = TaskDispatchItem.fromAssignedDelivery(
+                routeKey,
+                selectedWorkerId,
+                content,
+                executionContext
+        );
+        return fromDispatchView(packetId, adapterId, routeKey, traceId, dispatchView);
     }
 
     public TransportPacket fromResultReport(String adapterId,

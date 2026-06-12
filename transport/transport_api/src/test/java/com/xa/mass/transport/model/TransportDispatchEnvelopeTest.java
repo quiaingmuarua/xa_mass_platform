@@ -16,7 +16,6 @@ class TransportDispatchEnvelopeTest {
     void constructorUsesNormalizedPacketAddressAndAttemptIdentity() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
-                "websocket",
                 " worker-1 ",
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
@@ -36,7 +35,6 @@ class TransportDispatchEnvelopeTest {
         );
 
         assertEquals("websocket", envelope.getAdapterId());
-        assertEquals("websocket", envelope.getDeliveryQueueKey());
         assertEquals("worker-1", envelope.getSelectedWorkerId());
         assertEquals("group-route-1", envelope.getRouteKey());
         assertEquals("attempt-1", envelope.getAttemptId());
@@ -49,7 +47,6 @@ class TransportDispatchEnvelopeTest {
     void constructorCarriesNullForBlankPacketAddressAndIdentityFields() {
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
-                " ",
                 " ",
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
@@ -69,7 +66,6 @@ class TransportDispatchEnvelopeTest {
         );
 
         assertNull(envelope.getAdapterId());
-        assertNull(envelope.getDeliveryQueueKey());
         assertNull(envelope.getSelectedWorkerId());
         assertNull(envelope.getRouteKey());
         assertNull(envelope.getAttemptId());
@@ -81,7 +77,6 @@ class TransportDispatchEnvelopeTest {
         TaskDispatchItem item = dispatchItem();
         TransportDispatchEnvelope envelope = new TransportDispatchEnvelope(
                 "delivery-1",
-                "websocket",
                 item.getWorkerId(),
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,

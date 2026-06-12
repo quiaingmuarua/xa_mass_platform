@@ -179,7 +179,6 @@ class WebSocketTaskDispatchChannelTest {
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 "delivery-" + item.getMessageId(),
-                "websocket",
                 item.getWorkerId(),
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,

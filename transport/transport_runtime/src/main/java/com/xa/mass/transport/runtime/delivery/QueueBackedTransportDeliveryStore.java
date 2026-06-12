@@ -40,24 +40,23 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
     }
 
     @Override
-    public DispatchOutcome enqueue(TransportDispatchEnvelope envelope) {
+    public DispatchOutcome enqueue(String deliveryQueueKey, TransportDispatchEnvelope envelope) {
         String normalizedAdapterId = TransportDeliveryAddressing.normalizeAdapterId(envelope == null ? null : envelope.getAdapterId());
         String normalizedRouteKey = envelope == null ? null : TransportDeliveryAddressing.normalizeRouteKey(envelope.getRouteKey());
-        String normalizedDeliveryQueueKey = envelope == null ? null : normalizeDeliveryQueueKey(envelope.getDeliveryQueueKey());
+        String normalizedDeliveryQueueKey = normalizeDeliveryQueueKey(deliveryQueueKey);
         String normalizedSelectedWorkerId = envelope == null ? null : TransportDeliveryAddressing.normalizeText(envelope.getSelectedWorkerId());
         if (envelope == null || normalizedDeliveryQueueKey == null) {
             localInvalidItems.incrementAndGet();
-            return DispatchOutcome.invalid(normalizedAdapterId, envelope, "deliveryQueueKey must not be blank");
+            return DispatchOutcome.invalid(normalizedAdapterId, normalizedDeliveryQueueKey, envelope, "deliveryQueueKey must not be blank");
         }
         if (normalizedSelectedWorkerId == null) {
             localInvalidItems.incrementAndGet();
-            return DispatchOutcome.invalid(normalizedAdapterId, envelope, "selectedWorkerId must not be blank");
+            return DispatchOutcome.invalid(normalizedAdapterId, normalizedDeliveryQueueKey, envelope, "selectedWorkerId must not be blank");
         }
 
         DeliveryQueueKey key = new DeliveryQueueKey(normalizedDeliveryQueueKey, normalizedSelectedWorkerId);
         TransportDispatchEnvelope normalizedEnvelope = normalizeEnvelope(
                 envelope,
-                normalizedDeliveryQueueKey,
                 normalizedSelectedWorkerId,
                 normalizedAdapterId,
                 normalizedRouteKey
@@ -68,10 +67,10 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
                 this.maxItemsPerRoute
         );
         return switch (result.status()) {
-            case ENQUEUED -> DispatchOutcome.queued(normalizedAdapterId, normalizedEnvelope);
-            case INVALID -> DispatchOutcome.invalid(normalizedAdapterId, normalizedEnvelope,
+            case ENQUEUED -> DispatchOutcome.queued(normalizedAdapterId, normalizedDeliveryQueueKey, normalizedEnvelope);
+            case INVALID -> DispatchOutcome.invalid(normalizedAdapterId, normalizedDeliveryQueueKey, normalizedEnvelope,
                     result.reason() == null ? "deliveryQueueKey must not be blank" : result.reason());
-            case UNAVAILABLE -> DispatchOutcome.unavailable(normalizedAdapterId, normalizedEnvelope,
+            case UNAVAILABLE -> DispatchOutcome.unavailable(normalizedAdapterId, normalizedDeliveryQueueKey, normalizedEnvelope,
                     "delivery store is stopped");
             case BACKPRESSURE_REJECTED -> {
                 backpressureRejectedItemsByDeliveryQueue
@@ -79,6 +78,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
                         .incrementAndGet();
                 yield DispatchOutcome.backpressure(
                         normalizedAdapterId,
+                        normalizedDeliveryQueueKey,
                         normalizedEnvelope,
                         resolveBackpressureReason(result.reason())
                 );
@@ -193,12 +193,10 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
     }
 
     private static TransportDispatchEnvelope normalizeEnvelope(TransportDispatchEnvelope envelope,
-                                                               String normalizedDeliveryQueueKey,
                                                                String normalizedSelectedWorkerId,
                                                                String normalizedAdapterId,
                                                                String normalizedRouteKey) {
-        if (Objects.equals(normalizedDeliveryQueueKey, envelope.getDeliveryQueueKey())
-                && Objects.equals(normalizedSelectedWorkerId, envelope.getSelectedWorkerId())
+        if (Objects.equals(normalizedSelectedWorkerId, envelope.getSelectedWorkerId())
                 && Objects.equals(normalizedAdapterId, envelope.getAdapterId())
                 && Objects.equals(normalizedRouteKey, envelope.getRouteKey())) {
             return envelope;
@@ -206,7 +204,6 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         TransportPacket normalizedPacket = envelope.getPacket().withTransportAddress(normalizedAdapterId, normalizedRouteKey);
         return new TransportDispatchEnvelope(
                 envelope.getDeliveryId(),
-                normalizedDeliveryQueueKey,
                 normalizedSelectedWorkerId,
                 normalizedPacket,
                 envelope.getCreatedAtEpochMillis()

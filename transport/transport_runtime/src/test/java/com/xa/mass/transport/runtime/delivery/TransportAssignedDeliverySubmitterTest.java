@@ -17,7 +17,6 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransportAssignedDeliverySubmitterTest {
@@ -34,11 +33,11 @@ class TransportAssignedDeliverySubmitterTest {
                 failures
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(List.of(command("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = submitter.submit(DeliveryCommandFixtures.group(command("msg-1", "worker-1")));
 
         assertEquals(List.of(DispatchOutcomeStatus.NO_ENDPOINT), statuses(outcomes));
         assertEquals(1, failures.events.size());
-        assertEquals("worker-1", failures.events.get(0).command().getSelectedWorkerId());
+        assertEquals("worker-1", failures.events.get(0).itemSnapshot().selectedWorkerId());
         assertEquals(0, handoff.offered.size());
     }
 
@@ -55,10 +54,11 @@ class TransportAssignedDeliverySubmitterTest {
                 failures
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(List.of(command("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = submitter.submit(DeliveryCommandFixtures.group(command("msg-1", "worker-1")));
 
         assertEquals(List.of(DispatchOutcomeStatus.NO_ENDPOINT), statuses(outcomes));
         assertEquals(1, failures.events.size());
+        assertEquals("node-offline", failures.events.get(0).groupContext().targetTransportNodeId());
         assertEquals(0, handoff.offered.size());
     }
 
@@ -76,11 +76,11 @@ class TransportAssignedDeliverySubmitterTest {
                 failures
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(List.of(command("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = submitter.submit(DeliveryCommandFixtures.group(command("msg-1", "worker-1")));
 
         assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE), statuses(outcomes));
         assertEquals(1, failures.events.size());
-        assertEquals("node-1", failures.events.get(0).command().getTargetTransportNodeId());
+        assertEquals("node-1", failures.events.get(0).groupContext().targetTransportNodeId());
     }
 
     @Test
@@ -97,7 +97,7 @@ class TransportAssignedDeliverySubmitterTest {
                 new RecordingFailureHandler()
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(List.of(
+        List<DispatchOutcome> outcomes = submitter.submit(DeliveryCommandFixtures.group(
                 command("msg-1", "worker-1"),
                 command("msg-2", "worker-2"),
                 command("msg-3", "worker-3")
@@ -128,14 +128,13 @@ class TransportAssignedDeliverySubmitterTest {
         );
 
         DeliveryCommand command = command("msg-1", "worker-selected");
-        assertNull(command.getTargetTransportNodeId());
 
-        submitter.submit(List.of(command));
+        submitter.submit(DeliveryCommandFixtures.group(command));
 
-        DeliveryCommand offered = handoff.offered.get(0).commands().get(0);
-        assertEquals("worker-selected", offered.getSelectedWorkerId());
-        assertEquals("node-1", offered.getTargetTransportNodeId());
-        assertEquals("conn-worker-selected", offered.getConnectionToken());
+        ResolvedDeliveryItem offered = handoff.offered.get(0).items().get(0);
+        assertEquals("worker-selected", offered.command().getSelectedWorkerId());
+        assertEquals("node-1", offered.endpoint().transportNodeId());
+        assertEquals("conn-worker-selected", offered.endpoint().connectionId());
     }
 
     private static DeliveryCommand command(String messageId, String selectedWorkerId) {
@@ -191,13 +190,30 @@ class TransportAssignedDeliverySubmitterTest {
         @Override
         public List<DispatchOutcome> offer(DeliveryCommandBatch batch) {
             offered.add(batch);
+            DeliveryObservationGroupContext groupContext = DeliveryObservationGroupContext.now(
+                    batch.adapterId(),
+                    batch.deliveryQueueKey(),
+                    batch.targetTransportNodeId()
+            );
             if (backpressure) {
-                return batch.commands().stream()
-                        .map(command -> DispatchOutcome.backpressure(command, "test backpressure"))
+                return batch.items().stream()
+                        .map(item -> DeliveryObservationSupport.outcome(
+                                groupContext,
+                                item.command(),
+                                item.endpoint(),
+                                DispatchOutcomeStatus.BACKPRESSURE,
+                                true,
+                                "test backpressure"))
                         .toList();
             }
-            return batch.commands().stream()
-                    .map(DispatchOutcome::queued)
+            return batch.items().stream()
+                    .map(item -> DeliveryObservationSupport.outcome(
+                            groupContext,
+                            item.command(),
+                            item.endpoint(),
+                            DispatchOutcomeStatus.QUEUED,
+                            false,
+                            null))
                     .toList();
         }
 
@@ -212,16 +228,13 @@ class TransportAssignedDeliverySubmitterTest {
     }
 
     private static final class RecordingFailureHandler implements TransportDeliveryFailureHandler {
-        private final List<FailureEvent> events = new ArrayList<>();
+        private final List<TransportDeliveryFailureEvent> events = new ArrayList<>();
 
         @Override
-        public boolean handle(DeliveryCommand command, DispatchOutcome outcome, String detail) {
-            events.add(new FailureEvent(command, outcome, detail));
+        public boolean handle(TransportDeliveryFailureEvent event) {
+            events.add(event);
             return true;
         }
-    }
-
-    private record FailureEvent(DeliveryCommand command, DispatchOutcome outcome, String detail) {
     }
 
     private static final class FakeNodeRegistry implements TransportNodeRegistry {

@@ -1,34 +1,48 @@
 package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DeliveryCommand;
+import com.xa.mass.transport.model.TransportDeliveryAddressing;
 
 import java.util.List;
 
 /**
  * Process-boundary batch for commands sharing one physical delivery lane.
  */
-public record DeliveryCommandBatch(String deliveryQueueKey,
+public record DeliveryCommandBatch(String adapterId,
+                                   String deliveryQueueKey,
                                    String targetTransportNodeId,
-                                   List<DeliveryCommand> commands) {
+                                   List<ResolvedDeliveryItem> items) {
 
     public DeliveryCommandBatch {
+        adapterId = requireAdapterId(adapterId);
         deliveryQueueKey = requireText(deliveryQueueKey, "deliveryQueueKey");
         targetTransportNodeId = requireText(targetTransportNodeId, "targetTransportNodeId");
-        commands = commands == null ? List.of() : List.copyOf(commands);
-        if (commands.isEmpty()) {
-            throw new IllegalArgumentException("commands must not be empty");
+        items = items == null ? List.of() : List.copyOf(items);
+        if (items.isEmpty()) {
+            throw new IllegalArgumentException("items must not be empty");
         }
-        for (DeliveryCommand command : commands) {
-            if (command == null) {
-                throw new IllegalArgumentException("commands must not contain null");
+        for (ResolvedDeliveryItem item : items) {
+            if (item == null) {
+                throw new IllegalArgumentException("items must not contain null");
             }
-            if (!deliveryQueueKey.equals(command.getDeliveryQueueKey())) {
-                throw new IllegalArgumentException("command deliveryQueueKey must match batch deliveryQueueKey");
-            }
-            if (!targetTransportNodeId.equals(command.getTargetTransportNodeId())) {
-                throw new IllegalArgumentException("command targetTransportNodeId must match batch targetTransportNodeId");
+            if (!targetTransportNodeId.equals(item.endpoint().transportNodeId())) {
+                throw new IllegalArgumentException("item endpoint transportNodeId must match batch targetTransportNodeId");
             }
         }
+    }
+
+    public List<DeliveryCommand> commands() {
+        return items.stream()
+                .map(ResolvedDeliveryItem::command)
+                .toList();
+    }
+
+    private static String requireAdapterId(String value) {
+        String normalized = TransportDeliveryAddressing.normalizeAdapterId(value);
+        if (normalized == null) {
+            throw new IllegalArgumentException("adapterId must not be blank");
+        }
+        return normalized;
     }
 
     private static String requireText(String value, String fieldName) {
