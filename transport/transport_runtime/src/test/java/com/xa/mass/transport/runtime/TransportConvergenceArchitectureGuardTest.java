@@ -143,8 +143,34 @@ class TransportConvergenceArchitectureGuardTest {
     void deliveryCommandSubmitterDoesNotUseRouteOwnerScansForSelectedWorkerLookup() throws IOException {
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/TaskDispatchDeliveryCommandSubmitter.java")),
+                "WorkerDispatchRouteOwnerView",
+                "WorkerDispatchRouteOwner",
+                "TransportNodeRegistry",
+                "activeOwnerForSelectedWorker(",
                 "activeOwners(",
                 "currentOwners("
+        );
+    }
+
+    @Test
+    void sdkWorkerInspectionDoesNotReadTransportRouteOwner() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdkApplication.java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/WorkerInspectionOperations.java")
+                ),
+                "WorkerDispatchRouteOwnerView",
+                "activeOwnerForSelectedWorker(",
+                "getWorkerRouteOwnerView("
+        );
+    }
+
+    @Test
+    void starterDoesNotExposeRouteOwnerViewAsSdkReadableInspectionSurface() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java")),
+                "public WorkerDispatchRouteOwnerView",
+                "getWorkerRouteOwnerView("
         );
     }
 

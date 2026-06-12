@@ -1,7 +1,8 @@
 package com.xa.mass.worker.runtime.evidence;
 
 /**
- * Cross-module read seam for transport-owned worker reachability.
+ * Cross-module read seam for worker-runtime reachability evidence consumed by
+ * scheduling.
  */
 @FunctionalInterface
 public interface WorkerReachabilityView {

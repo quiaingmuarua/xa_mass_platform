@@ -15,6 +15,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TransportRedisKeyspaceGuardTest {
 
     @Test
+    void transportRedisDefaultNamespacesAreManifestedInBoundaryBaseline() throws IOException {
+        Path baseline = repoRoot().resolve("transport/TRANSPORT_BOUNDARY_BASELINE.md");
+        String content = Files.readString(baseline, StandardCharsets.UTF_8);
+
+        for (String namespace : List.of(
+                RedisTransportNamespaces.ROUTE_OWNER,
+                RedisTransportNamespaces.DELIVERY,
+                RedisTransportNamespaces.NODES,
+                RedisTransportNamespaces.DELIVERY_COMMAND,
+                RedisTransportNamespaces.RESULT_INBOX,
+                RedisTransportNamespaces.DELIVERY_FAILURE
+        )) {
+            assertTrue(content.contains(namespace), () -> "missing transport Redis namespace manifest entry: " + namespace);
+        }
+
+        for (String keyFamily : List.of(
+                "route:<encodedRouteKey>:consumers",
+                "adapter:<encodedAdapterId>:worker:<encodedWorkerId>:owner",
+                "q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>",
+                "lane:<encodedDeliveryQueueKey+targetTransportNodeId>:q",
+                "node:<transportNodeId>:ready-lanes"
+        )) {
+            assertTrue(content.contains(keyFamily), () -> "missing transport Redis key family manifest entry: " + keyFamily);
+        }
+    }
+
+    @Test
     void currentCodeAndDocsDoNotKeepOldDistributedDefaultNamespace() throws IOException {
         Path root = repoRoot();
         String oldNamespace = "xa:mass:transport:" + "distributed" + ":v1";

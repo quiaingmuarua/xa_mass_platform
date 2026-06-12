@@ -126,18 +126,19 @@ external worker client flows.
 
 `transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. Realtime workers must always register with explicit `adapterId + transportHint`; only polling keeps the implicit family default to `polling`. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Adapter-id aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not accepted as runtime identities; use canonical adapter ids such as `websocket`, `polling`, or `socket`. `transportHint` aliases such as `websocket`, `ws`, `push`, `pull`, or `queue` are also not accepted; use canonical coarse families such as `realtime` or `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
 
-When runtime reachability needs cross-instance truth, configure shared transport
-route ownership through `redisDistributedChannels(...)`,
-`redisRouteOwnerStore(...)`, or `routeOwnerStoreFactory(...)`. Adapters still
-own local session/connect/heartbeat ingress, but shared route-owner evidence
-belongs to transport runtime rather than engine-local worker status. `routeKey`
-locates the transport delivery universe, such as a worker-group lane or a
-future adapter/group lane minted outside transport. Individual dispatch items
-may still carry the engine-selected `workerId` as an execution constraint;
-distributed handoff partitions the already assigned item to that worker's
-current route consumer node. Worker runtime capacity and multi-binding behavior
-remain owned by worker-runtime scheduling/admission, not by transport route
-ownership.
+When distributed final-hop delivery needs cross-instance connection evidence,
+configure shared transport route ownership through
+`redisDistributedChannels(...)`, `redisRouteOwnerStore(...)`, or
+`routeOwnerStoreFactory(...)`. Adapters still own local
+session/connect/heartbeat ingress, but shared route-owner evidence belongs to
+transport runtime as delivery feasibility, not SDK worker inspection or worker
+lifecycle truth. `routeKey` locates the transport delivery universe, such as a
+worker-group lane or a future adapter/group lane minted outside transport.
+Individual dispatch items carry the engine-selected `workerId` as
+`selectedWorkerId`; transport-owned delivery submitters partition the already
+assigned item to that worker's current route consumer node. Worker runtime
+capacity, lifecycle, and multi-binding behavior remain owned by worker-runtime
+scheduling/admission, not by transport route ownership.
 
 Task result reads are exposed through `TaskResultQueryOperations`, separate
 from task aggregate query. `readTaskResults(...)` and archive streaming read
@@ -215,8 +216,8 @@ MassSdkApplication transportConsumer = MassSdk.builder()
 ```
 
 The handoff carries only post-assignment `DeliveryCommand` values translated in
-SDK/starter assembly from neutral engine binding truth. In multi-adapter mode
-the engine producer resolves delivery feasibility before handoff and writes
+SDK/starter assembly from neutral engine binding truth. Transport-owned delivery
+submitters resolve selected-worker delivery feasibility before handoff and write
 bounded delivery-command batches to the target transport node. It is not a
 duplicate of the runtime ready queue, and transport consumers must not apply
 results, retry tasks, or mutate task lifecycle directly. Result and retryable
@@ -325,7 +326,7 @@ Current SDK contracts:
 | Area | Contract |
 | --- | --- |
 | task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` and `executeTaskCommand(taskId, MassTaskCommandRequest)` for lifecycle/governance; `taskName` is server-derived, and capability `eventCode` belongs on append batches or per-item ingress rather than task shell truth |
-| worker resources | `WorkerGroupDeclaration.eventBindings` declares capability truth; `WorkerRegistration` declares worker execution identity plus group/node membership. `isWorkerReachable(...)` reports delivery reachability by checking selected-worker transport owner evidence when available, then falls back to worker runtime availability for non-transport runtimes. WorkerContext registration/snapshot contracts have been removed from the SDK |
+| worker resources | `WorkerGroupDeclaration.eventBindings` declares capability truth; `WorkerRegistration` declares worker execution identity plus group/node membership. `isWorkerReachable(...)` reports worker runtime lifecycle availability and does not read selected-worker transport owner evidence. WorkerContext registration/snapshot contracts have been removed from the SDK |
 | resources | `ResourceOperations` owns project/event resources plus credential-principal projection for embedded runtimes; project is a first-class control-plane binding and enabled projects also bind into engine task creation and worker capability checks. |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
 | credential principals | in-memory principal/API-key binding only, not a full user subsystem; queries return `CredentialPrincipalProfile`, not raw credentials |
@@ -349,12 +350,14 @@ Embedded transport runtime assembly also consumes only
 broader worker facade or storage lookup seams.
 Assignment no longer hands dispatch-ready batches straight into a transport
 routing listener. SDK runtime assembly now translates assignment truth into
-`DeliveryCommand` and hands it to `TransportDeliveryCommandHandoff`; the bundled
-default is an in-memory bounded queue plus pump, while
+`DeliveryCommand` and hands it to a transport-owned selected-worker delivery
+submitter; the bundled default is an in-memory bounded queue plus pump, while
 `redisDistributedChannels(...)` uses Redis delivery-command inboxes with
-node-local drain lanes. Engine/starter assembly resolves `routeKey + adapterId`
-and the binding-level selected worker constraint before handoff; transport
-consumers drain already resolved delivery targets and do not reselect workers.
+node-local drain lanes. Starter assembly records `routeKey + adapterId` and
+carries the binding-level selected worker constraint; transport delivery
+resolves the current transport node for that selected worker before handoff.
+Transport consumers drain already resolved delivery targets and do not reselect
+workers.
 The companion result and delivery-failure Redis inboxes are runtime channels
 back to the engine process; they are not server APIs and they do not move task
 lifecycle ownership into transport.

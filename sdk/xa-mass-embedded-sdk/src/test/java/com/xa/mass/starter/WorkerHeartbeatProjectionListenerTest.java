@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class WorkerHeartbeatProjectionListenerTest {
 
     @Test
-    void workerOnlineEventRefreshesHeartbeatAndLeavesModelStatusUntouched() {
+    void workerOnlineAndOfflineEventsProjectWorkerRuntimeStatus() {
         AtomicInteger wakeups = new AtomicInteger();
         FakeWorkerResourceRuntime runtime = new FakeWorkerResourceRuntime();
         WorkerHeartbeatProjectionListener listener = new WorkerHeartbeatProjectionListener(runtime, wakeups::incrementAndGet);
@@ -34,7 +34,7 @@ class WorkerHeartbeatProjectionListenerTest {
         listener.onWorkerOnline(new WorkerOnlineEvent("w9", "connected", null));
         WorkerResourceRecord afterOnline = runtime.worker("w9").orElseThrow();
         assertNotNull(afterOnline.lastHeartbeat());
-        assertEquals(WorkerStatus.OFFLINE.name(), afterOnline.statusName());
+        assertEquals(WorkerStatus.ONLINE.name(), afterOnline.statusName());
         assertEquals(1, wakeups.get());
 
         listener.onWorkerOffline(new WorkerOfflineEvent("w9", "disconnected", null));
@@ -43,7 +43,7 @@ class WorkerHeartbeatProjectionListenerTest {
     }
 
     @Test
-    void workerHeartbeatEventRefreshesLastHeartbeatWithoutChangingWorkerModelAvailability() {
+    void workerHeartbeatEventRefreshesLastHeartbeatAndRestoresWorkerRuntimeAvailability() {
         AtomicInteger wakeups = new AtomicInteger();
         FakeWorkerResourceRuntime runtime = new FakeWorkerResourceRuntime();
         WorkerHeartbeatProjectionListener listener = new WorkerHeartbeatProjectionListener(runtime, wakeups::incrementAndGet);
@@ -53,8 +53,11 @@ class WorkerHeartbeatProjectionListenerTest {
 
         WorkerResourceRecord afterHeartbeat = runtime.worker("w10").orElseThrow();
         assertNotNull(afterHeartbeat.lastHeartbeat());
-        assertEquals(WorkerStatus.OFFLINE.name(), afterHeartbeat.statusName());
-        assertEquals(0, wakeups.get());
+        assertEquals(WorkerStatus.ONLINE.name(), afterHeartbeat.statusName());
+        assertEquals(1, wakeups.get());
+
+        listener.onWorkerHeartbeat(new WorkerHeartbeatEvent("w10", "heartbeat", null));
+        assertEquals(1, wakeups.get());
     }
 
     private static WorkerResourceRecord worker(String workerId, WorkerStatus status) {

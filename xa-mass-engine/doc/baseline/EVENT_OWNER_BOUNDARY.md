@@ -42,7 +42,7 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | `TaskResultReport` | task result payload | worker task-result input | worker command ack, worker state report |
 | `TransportResultEnvelope` | transport ingress metadata | adapter/route/attempt context around task results | final result classification |
 | `WorkerSystemEventChannel` | transport ingress | current worker presence signals | command lifecycle, state projection, capability truth |
-| `WorkerReachabilityView` | transport-derived read model | dispatchability evidence | device state, load, command status |
+| `WorkerReachabilityView` | worker-runtime read model | dispatchability evidence | transport route-owner leases, device state, load, command status |
 | `WorkerRegistry` / `WorkerSlot` | scheduling resource owner | active/reserved task-work capacity and exclusive execution-lane evidence | reachability, device state, command lifecycle |
 | trace/audit plane | evidence | historical facts | current runtime truth |
 
@@ -282,7 +282,8 @@ task result, or scheduling lifecycle truth by itself.
     event-binding ceilings
   - event availability is intersected with registration-approved event codes
   - stale, conflicting, and unknown-worker reports are rejected as no-ops
-- `WorkerReachabilityView` stays presence evidence, not generic health.
+- `WorkerReachabilityView` stays worker-runtime reachability evidence, not
+  transport route-owner lease truth or generic health.
 - `WorkerRegistry` stays task-work capacity and exclusive execution-lane
   evidence, not device state.
 - `WorkerSystemEventChannel` must not import engine scheduling packages or

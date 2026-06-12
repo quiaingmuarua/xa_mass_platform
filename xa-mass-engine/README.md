@@ -407,9 +407,9 @@ Repo-level mainline surfaces:
   must not grow a direct dependency on transport routing/runtime classes, and
   transport-side consumption now happens through the batch handoff seam rather
   than a direct dispatch-listener callback
-- transport reachability is read through `WorkerReachabilityView`; dispatch
-  eligibility online truth belongs to transport presence rather than engine
-  heartbeat folding on `Worker.status`
+- worker-runtime reachability is read through `WorkerReachabilityView`;
+  dispatch eligibility must not read transport route-owner leases as worker
+  lifecycle truth
 - task-create input consumed by `TaskCommandService` now lives in the neutral
   base model layer; cross-module create flows should not import engine-owned
   DTO packages just to submit tasks
@@ -492,9 +492,11 @@ Worker selection boundaries:
   lease counters; `WorkerLoadSnapshot` is a read-side value derived from the
   current slot, not a separate mutable owner
 - `Worker.status` and worker lock state are typed truth, not attributes
-- `Worker.status` is control-plane lifecycle truth, not transport reachability
-- dispatch eligibility must read transport reachability from
-  `WorkerReachabilityView`, not local heartbeat-expiry heuristics
+- `Worker.status` is worker-runtime lifecycle truth, not transport route-owner
+  truth
+- dispatch eligibility must read worker-runtime reachability from
+  `WorkerReachabilityView`, not transport route-owner expiry or local
+  heartbeat-expiry heuristics
 - `workerSchedulingAttributes` is one worker-selection evidence family for labels,
   fingerprints, and routing hints; it is not the whole policy model
 - default rules must use declarative task intent, worker capability, and static
@@ -572,7 +574,7 @@ Current scheduling-matrix scenarios include:
 - multi-task contention on worker resources and across a worker pool
 - worker eligibility rejection for unreachable, locked, capacity-exhausted,
   routing-mismatch, and target-attribute mismatch candidates
-- active contention after transport reachability drops, with backup-worker dispatch
+- active contention after worker-runtime reachability drops, with backup-worker dispatch
 - reachability-aware minimum-worker gates that avoid half-dispatch when an eligible worker drops
 - retry expiry re-entering the competition pool when retry budget remains
 - retry-exhausted batch finality releasing resources for waiting work

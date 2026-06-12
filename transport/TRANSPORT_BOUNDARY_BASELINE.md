@@ -131,10 +131,11 @@ lifecycle state.
 - producer-side starter assembly translates immutable `TaskDispatchContext +
   TaskDispatchBinding` assignment facts into `DeliveryCommand` records;
   binding-level `workerId` becomes `selectedWorkerId`, the engine-selected
-  execution constraint used to choose a concrete active consumer through direct
-  `adapterId + selectedWorkerId` route-owner evidence. Transport consumers
-  drain only delivery commands and do not reselect workers or decode route-key
-  minting rules.
+  execution constraint. Transport-owned delivery submitters use that selected
+  worker constraint to choose a concrete active consumer through direct
+  `adapterId + selectedWorkerId` route-owner evidence. Transport consumers drain
+  only delivery commands and do not reselect workers or decode route-key minting
+  rules.
 - worker transport-binding resolution from registered worker truth before
   dispatch handoff; transport consumers do not call worker-resource runtime for
   second-stage selection
@@ -150,22 +151,21 @@ Concrete adapters own protocol I/O only:
 - calls into runtime delivery and result-ingest contracts
 - accept/read/write loops submitted through the runtime executor context when they block
 
-Engine/starter dispatch assembly may read transport route-owner evidence after
-worker selection has already produced concrete bindings. Transport owns only
-route-owner heartbeat evidence, not worker online/offline lifecycle. Heartbeat
-expiry is a transport lease rule, not an engine selector heuristic. Expired
-owner evidence is not dispatchable; readers may derive unreachable/stale views
-without transport persisting a status enum. Shared-store implementations such
-as Redis must preserve the same route-owner semantics as the in-memory default.
-One opaque `routeKey` may have multiple active consumer records.
-SDK/operator worker inspection must not require route-owner worker-id
-projections. When a caller needs delivery reachability for a known worker, it
-uses worker runtime metadata to resolve `adapterId`, then reads the direct
-`adapterId + selectedWorkerId` route-owner evidence. Engine must not write
-presence, read adapter sessions, or treat presence as a schedule owner.
-Runtime assembly may keep the `TransportRouteOwnerStore` write surface for adapter
-writes and shutdown ownership, but dispatch handoff assembly should bind only
-`WorkerDispatchRouteOwnerView`.
+Transport-owned final-hop delivery submitters may read route-owner evidence
+after worker selection has already produced concrete bindings. Transport owns
+only route-owner heartbeat evidence, not worker online/offline lifecycle.
+Heartbeat expiry is a transport lease rule, not an engine selector heuristic.
+Expired owner evidence is not dispatchable; missing or stale owner evidence is
+a retryable delivery-failure input, not permission to reselect workers or mark
+workers offline. Shared-store implementations such as Redis must preserve the
+same route-owner semantics as the in-memory default. One opaque `routeKey` may
+have multiple active consumer records.
+SDK/operator worker inspection must not read route-owner worker-id projections;
+it reads worker runtime lifecycle state. Engine and SDK inspection must not
+write presence, read adapter sessions, or treat presence as a schedule owner.
+Runtime assembly may keep the `TransportRouteOwnerStore` write surface for
+adapter writes and shutdown ownership, but direct route-owner lookup is bound
+into transport delivery components only.
 
 ## Worker Registration Relation Baseline
 

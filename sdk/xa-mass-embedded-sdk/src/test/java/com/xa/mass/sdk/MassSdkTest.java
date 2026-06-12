@@ -1127,36 +1127,6 @@ class MassSdkTest {
     }
 
     @Test
-    void sdkWorkerReachableUsesSelectedWorkerRouteOwnerWhenAvailable() {
-        MassApplication delegate = mock(MassApplication.class);
-        MassEngine engine = mock(MassEngine.class);
-        EngineConfig config = mock(EngineConfig.class);
-        WorkerResourceRuntime workerRuntime = mock(WorkerResourceRuntime.class);
-        WorkerDispatchRouteOwnerView routeOwnerView = mock(WorkerDispatchRouteOwnerView.class);
-        when(delegate.getEngine()).thenReturn(engine);
-        when(delegate.getWorkerRouteOwnerView()).thenReturn(routeOwnerView);
-        when(engine.isRunning()).thenReturn(true);
-        when(engine.getConfig()).thenReturn(config);
-        when(config.getWorkerResourceRuntime()).thenReturn(workerRuntime);
-        when(workerRuntime.worker("worker-route-owner")).thenReturn(java.util.Optional.of(
-                workerResource("worker-route-owner", "group-1", WorkerStatus.OFFLINE.name(), "polling")));
-        when(routeOwnerView.activeOwnerForSelectedWorker("polling", "worker-route-owner"))
-                .thenReturn(java.util.Optional.of(new com.xa.mass.transport.route.WorkerDispatchRouteOwner(
-                        "worker-route-owner",
-                        "polling",
-                        "route-1",
-                        "transport-node-1",
-                        "conn-1",
-                        System.currentTimeMillis() + 30_000L,
-                        System.currentTimeMillis()
-                )));
-
-        MassSdkApplication app = new MassSdkApplication(delegate);
-
-        assertTrue(app.isWorkerReachable("worker-route-owner"));
-    }
-
-    @Test
     void sessionDiagnosticsExposeAdapterIdAndRouteKey() {
         MassApplication delegate = mock(MassApplication.class);
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class,

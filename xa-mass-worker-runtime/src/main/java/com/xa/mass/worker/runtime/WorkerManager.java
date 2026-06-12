@@ -52,8 +52,9 @@ import java.util.Set;
 /**
  * Worker access facade for the active engine runtime.
  *
- * <p>Transport reachability is read through {@link WorkerReachabilityView},
- * while the worker model remains the engine-owned control-plane record.
+ * <p>Reachability is read through {@link WorkerReachabilityView}, while
+ * route-owner connection leases stay in transport delivery and must not be
+ * promoted into worker lifecycle truth.
  */
 public class WorkerManager implements WorkerResourceRuntime,
         WorkerCandidateRuntime,

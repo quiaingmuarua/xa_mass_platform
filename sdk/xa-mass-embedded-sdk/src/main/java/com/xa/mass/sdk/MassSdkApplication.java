@@ -59,7 +59,6 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
-import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -1791,25 +1790,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (worker == null || worker.workerId() == null || worker.workerId().isBlank()) {
             return false;
         }
-        WorkerDispatchRouteOwnerView routeOwnerView = delegate.getWorkerRouteOwnerView();
-        if (routeOwnerView != null) {
-            String adapterId = resolveWorkerAdapterIdForReachability(worker);
-            return adapterId != null
-                    && routeOwnerView.activeOwnerForSelectedWorker(adapterId, worker.workerId()).isPresent();
-        }
         return workerStatusAvailable(worker.statusName());
-    }
-
-    private String resolveWorkerAdapterIdForReachability(WorkerResourceRecord worker) {
-        String adapterId = blankToNull(worker.adapterId());
-        if (adapterId != null) {
-            return adapterId.toLowerCase(Locale.ROOT);
-        }
-        try {
-            return delegate.resolveWorkerAdapterId(worker.workerId());
-        } catch (RuntimeException ignored) {
-            return null;
-        }
     }
 
     private WorkerResourceRecord loadWorker(String workerId) {

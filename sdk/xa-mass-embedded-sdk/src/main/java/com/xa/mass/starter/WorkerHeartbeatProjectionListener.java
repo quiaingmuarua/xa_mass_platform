@@ -4,6 +4,7 @@ import com.xa.mass.base.channel.eventbus.core.MassSubscribe;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
+import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 import org.slf4j.Logger;
@@ -13,11 +14,12 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 
 /**
- * Legacy observer for process-local runtime worker heartbeat events.
+ * Process-local projection from worker lifecycle events into worker runtime
+ * state.
  *
- * <p>Reachability truth lives in transport presence. This bridge only refreshes
- * worker-registry heartbeat evidence for existing worker rows. It must not be
- * treated as worker status, online/offline, or declaration-store truth.</p>
+ * <p>The events are worker-runtime lifecycle evidence. Transport route-owner
+ * leases remain delivery feasibility evidence and must not drive this
+ * projection.</p>
  */
 public final class WorkerHeartbeatProjectionListener {
     private static final Logger log = LoggerFactory.getLogger(WorkerHeartbeatProjectionListener.class);
@@ -33,35 +35,46 @@ public final class WorkerHeartbeatProjectionListener {
 
     @MassSubscribe
     public void onWorkerOnline(WorkerOnlineEvent event) {
-        if (recordHeartbeat(event.getWorkerId())) {
+        if (projectWorkerState(event.getWorkerId(), WorkerStatus.ONLINE, true).updated()) {
             notifyDispatchWakeup();
         }
     }
 
     @MassSubscribe
     public void onWorkerHeartbeat(WorkerHeartbeatEvent event) {
-        recordHeartbeat(event.getWorkerId());
+        ProjectionUpdate update = projectWorkerState(event.getWorkerId(), WorkerStatus.ONLINE, true);
+        if (update.becameAvailable()) {
+            notifyDispatchWakeup();
+        }
     }
 
     @MassSubscribe
     public void onWorkerOffline(WorkerOfflineEvent event) {
-        log.debug("Worker offline event observed for {}", event.getWorkerId());
+        projectWorkerState(event.getWorkerId(), WorkerStatus.OFFLINE, false);
     }
 
-    private boolean recordHeartbeat(String workerId) {
+    private ProjectionUpdate projectWorkerState(String workerId, WorkerStatus status, boolean refreshHeartbeat) {
         WorkerResourceRecord worker = workerResourceRuntime.worker(workerId).orElse(null);
         if (worker == null) {
-            log.debug("Ignoring heartbeat for unregistered worker {}", workerId);
-            return false;
+            log.debug("Ignoring worker lifecycle event for unregistered worker {}", workerId);
+            return ProjectionUpdate.unchanged();
         }
-        workerResourceRuntime.updateWorker(withHeartbeat(worker, LocalDateTime.now()));
-        return true;
+        boolean becameAvailable = !workerStatusAvailable(worker.statusName()) && status.isAvailable();
+        WorkerResourceRecord updated = withRuntimeState(
+                worker,
+                status,
+                refreshHeartbeat ? LocalDateTime.now() : worker.lastHeartbeat()
+        );
+        boolean persisted = workerResourceRuntime.updateWorker(updated);
+        return persisted ? new ProjectionUpdate(true, becameAvailable) : ProjectionUpdate.unchanged();
     }
 
-    private static WorkerResourceRecord withHeartbeat(WorkerResourceRecord worker, LocalDateTime lastHeartbeat) {
+    private static WorkerResourceRecord withRuntimeState(WorkerResourceRecord worker,
+                                                         WorkerStatus status,
+                                                         LocalDateTime lastHeartbeat) {
         return new WorkerResourceRecord(
                 worker.workerId(),
-                worker.statusName(),
+                status.name(),
                 worker.agentVersion(),
                 lastHeartbeat,
                 worker.supportedProjects(),
@@ -73,8 +86,19 @@ public final class WorkerHeartbeatProjectionListener {
                 worker.maxConcurrentWork(),
                 worker.attributes(),
                 worker.createTime(),
-                worker.updateTime()
+                LocalDateTime.now()
         );
+    }
+
+    private static boolean workerStatusAvailable(String statusName) {
+        if (statusName == null || statusName.isBlank()) {
+            return false;
+        }
+        try {
+            return WorkerStatus.valueOf(statusName.trim()).isAvailable();
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
     }
 
     private void notifyDispatchWakeup() {
@@ -82,6 +106,12 @@ public final class WorkerHeartbeatProjectionListener {
             dispatchWakeupCallback.run();
         } catch (RuntimeException e) {
             log.warn("Worker online dispatch wakeup callback failed", e);
+        }
+    }
+
+    private record ProjectionUpdate(boolean updated, boolean becameAvailable) {
+        private static ProjectionUpdate unchanged() {
+            return new ProjectionUpdate(false, false);
         }
     }
 }

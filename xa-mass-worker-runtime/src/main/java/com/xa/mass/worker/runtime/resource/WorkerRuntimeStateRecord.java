@@ -9,8 +9,8 @@ import java.time.LocalDateTime;
  * Current runtime state view for a worker.
  *
  * <p>This is not declaration-store truth. It is assembled from registry,
- * transport reachability, heartbeat freshness, dispatch gate, and admission
- * evidence at observation time.</p>
+ * worker-runtime reachability, heartbeat freshness, dispatch gate, and
+ * admission evidence at observation time.</p>
  */
 public record WorkerRuntimeStateRecord(
         String workerId,

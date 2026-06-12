@@ -14,16 +14,15 @@ public interface WorkerInspectionOperations {
     List<WorkerSnapshot> getAllWorkers();
 
     /**
-     * Returns worker ids with current delivery reachability when transport
-     * evidence is available; otherwise falls back to worker runtime availability.
+     * Returns worker ids currently available according to worker runtime
+     * lifecycle state.
      */
     List<String> listReachableWorkerIds();
 
     /**
-     * Returns whether the worker currently has delivery reachability.
-     *
-     * <p>Transport-backed runtimes resolve this through the selected-worker
-     * route-owner view. This is not a worker lifecycle or scheduling truth.</p>
+     * Returns whether the worker is currently available according to worker
+     * runtime lifecycle state. Transport route-owner leases are delivery
+     * feasibility evidence and are not read by this inspection API.
      */
     boolean isWorkerReachable(String workerId);
 }

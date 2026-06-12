@@ -36,6 +36,7 @@ import com.xa.mass.transport.runtime.TaskResultIngestInboxPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoffPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandListener;
+import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
@@ -447,11 +448,15 @@ public class MassApplication {
     }
 
     private TaskDispatchBatchListener createDispatchSubmitter(TransportDeliveryCommandHandoff handoff) {
-        return new TaskDispatchDeliveryCommandSubmitter(
+        TransportAssignedDeliverySubmitter assignedDeliverySubmitter = new TransportAssignedDeliverySubmitter(
                 handoff,
-                this::mintTransportRouteKey,
                 workerRouteOwnerView,
                 transportNodeRegistry,
+                createTransportDeliveryFailureHandler()
+        );
+        return new TaskDispatchDeliveryCommandSubmitter(
+                assignedDeliverySubmitter,
+                this::mintTransportRouteKey,
                 createTransportDeliveryFailureHandler()
         );
     }
@@ -928,10 +933,6 @@ public class MassApplication {
 
     public String resolveWorkerTransportHint(String workerId) {
         return resolveTransportBinding(requireWorkerResource(workerId)).getTransportHint();
-    }
-
-    public WorkerDispatchRouteOwnerView getWorkerRouteOwnerView() {
-        return workerRouteOwnerView;
     }
 
     private String encodeWorkerCommandFrame(WorkerCommandRecord command) {

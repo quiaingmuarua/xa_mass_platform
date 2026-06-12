@@ -6,13 +6,8 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TaskDispatchItem;
-import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
-import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
-import com.xa.mass.transport.runtime.dispatch.AdapterDispatchLane;
-import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.function.BiFunction;
 
@@ -34,22 +28,16 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
 
     private static final Logger logger = LoggerFactory.getLogger(TaskDispatchDeliveryCommandSubmitter.class);
 
-    private final TransportDeliveryCommandHandoff handoff;
+    private final TransportAssignedDeliverySubmitter assignedDeliverySubmitter;
     private final BiFunction<TaskDispatchContext, TaskDispatchBinding, String> routeKeyFactory;
-    private final WorkerDispatchRouteOwnerView routeOwnerView;
-    private final TransportNodeRegistry transportNodeRegistry;
     private final TransportDeliveryFailureHandler failureHandler;
     private final TransportPacketFactory packetFactory = new TransportPacketFactory();
 
-    TaskDispatchDeliveryCommandSubmitter(TransportDeliveryCommandHandoff handoff,
+    TaskDispatchDeliveryCommandSubmitter(TransportAssignedDeliverySubmitter assignedDeliverySubmitter,
                                          BiFunction<TaskDispatchContext, TaskDispatchBinding, String> routeKeyFactory,
-                                         WorkerDispatchRouteOwnerView routeOwnerView,
-                                         TransportNodeRegistry transportNodeRegistry,
                                          TransportDeliveryFailureHandler failureHandler) {
-        this.handoff = Objects.requireNonNull(handoff, "handoff");
+        this.assignedDeliverySubmitter = Objects.requireNonNull(assignedDeliverySubmitter, "assignedDeliverySubmitter");
         this.routeKeyFactory = Objects.requireNonNull(routeKeyFactory, "routeKeyFactory");
-        this.routeOwnerView = Objects.requireNonNull(routeOwnerView, "routeOwnerView");
-        this.transportNodeRegistry = transportNodeRegistry;
         this.failureHandler = failureHandler;
     }
 
@@ -58,7 +46,7 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
         if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
             return;
         }
-        Map<String, CommandGroup> groups = new LinkedHashMap<>();
+        List<DeliveryCommand> commands = new ArrayList<>();
         List<TaskDispatchBinding> invalidBindings = new ArrayList<>();
         for (TaskDispatchBinding binding : dispatchBindings) {
             if (binding == null) {
@@ -71,68 +59,27 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
                 continue;
             }
             String routeKey = resolveRouteKey(task, binding);
-            Optional<WorkerDispatchRouteOwner> selectedOwner = selectDeliveryOwner(adapterId, selectedWorkerId);
-            if (selectedOwner.isEmpty()) {
-                DeliveryCommand command = toCommand(task, binding, adapterId, selectedWorkerId, null, routeKey);
-                handleDeliveryFailure(
-                        command,
-                        DispatchOutcome.noEndpoint(
-                                command,
-                                "transport endpoint is unavailable after assignment"
-                        ),
-                        "transport endpoint is unavailable after assignment"
-                );
-                continue;
-            }
-
-            WorkerDispatchRouteOwner owner = selectedOwner.get();
-            AdapterDispatchLane adapterLane = AdapterDispatchLane.forTransportNode(adapterId, owner.transportNodeId());
-            DeliveryCommand command = toCommand(task, binding, adapterId, selectedWorkerId, adapterLane, routeKey);
-            String groupKey = command.getDeliveryQueueKey() + "\n" + command.getTargetTransportNodeId();
-            CommandGroup group = groups.computeIfAbsent(
-                    groupKey,
-                    ignored -> new CommandGroup(command.getDeliveryQueueKey(), command.getTargetTransportNodeId())
-            );
-            group.commands.add(command);
+            commands.add(toCommand(task, binding, adapterId, selectedWorkerId, routeKey));
         }
 
         compensateInvalidBindings(task, invalidBindings, "delivery command translation failed before transport handoff");
-
-        for (CommandGroup group : groups.values()) {
-            DeliveryCommandBatch batch = new DeliveryCommandBatch(
-                    group.deliveryQueueKey,
-                    group.targetTransportNodeId,
-                    group.commands
-            );
-            for (DispatchOutcome outcome : handoff.offer(batch)) {
-                if (outcome == null || !outcome.isRetryable()) {
-                    continue;
-                }
-                DeliveryCommand command = group.commands.stream()
-                        .filter(candidate -> candidate.getCommandId().equals(outcome.getDeliveryId()))
-                        .findFirst()
-                        .orElse(null);
-                handleDeliveryFailure(command, outcome, outcome.getReason());
-            }
-        }
+        assignedDeliverySubmitter.submit(commands);
     }
 
     private DeliveryCommand toCommand(TaskDispatchContext task,
                                       TaskDispatchBinding binding,
                                       String adapterId,
                                       String selectedWorkerId,
-                                      AdapterDispatchLane adapterLane,
                                       String routeKey) {
         TaskDispatchItem dispatchItem = TaskDispatchItem.from(task, binding);
         String commandId = UUID.randomUUID().toString();
         String deliveryQueueKey = adapterId;
-        String targetTransportNodeId = adapterLane != null ? adapterLane.lanePartition() : null;
         return new DeliveryCommand(
                 commandId,
                 adapterId,
                 selectedWorkerId,
                 deliveryQueueKey,
-                targetTransportNodeId,
+                null,
                 routeKey,
                 null,
                 packetFactory.fromDispatchView(commandId, adapterId, routeKey, null, dispatchItem),
@@ -164,18 +111,6 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
                     e.getMessage());
             return null;
         }
-    }
-
-    private Optional<WorkerDispatchRouteOwner> selectDeliveryOwner(String adapterId, String selectedWorkerId) {
-        return routeOwnerView.activeOwnerForSelectedWorker(adapterId, selectedWorkerId)
-                .filter(this::isNodeUsable);
-    }
-
-    private boolean isNodeUsable(WorkerDispatchRouteOwner owner) {
-        return owner != null
-                && owner.transportNodeId() != null
-                && !owner.transportNodeId().isBlank()
-                && (transportNodeRegistry == null || transportNodeRegistry.isNodeOnline(owner.transportNodeId()));
     }
 
     private void handleDeliveryFailure(DeliveryCommand command, DispatchOutcome outcome, String detail) {
@@ -212,7 +147,7 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
             if (selectedWorkerId == null) {
                 selectedWorkerId = "unknown";
             }
-            DeliveryCommand command = toCommand(task, binding, adapterId, selectedWorkerId, null, null);
+            DeliveryCommand command = toCommand(task, binding, adapterId, selectedWorkerId, null);
             handleDeliveryFailure(command, DispatchOutcome.unavailable(command, detail), detail);
         }
     }
@@ -229,16 +164,5 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
             return null;
         }
         return value.trim();
-    }
-
-    private static final class CommandGroup {
-        private final String deliveryQueueKey;
-        private final String targetTransportNodeId;
-        private final List<DeliveryCommand> commands = new ArrayList<>();
-
-        private CommandGroup(String deliveryQueueKey, String targetTransportNodeId) {
-            this.deliveryQueueKey = deliveryQueueKey;
-            this.targetTransportNodeId = targetTransportNodeId;
-        }
     }
 }
