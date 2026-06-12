@@ -1,9 +1,7 @@
 package com.xa.mass.worker.runtime.candidate;
 
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -15,33 +13,15 @@ import java.util.Map;
  */
 public record WorkerCandidateRow(
         String workerId,
-        String statusName,
         String agentVersion,
-        LocalDateTime lastHeartbeat,
-        List<String> supportedProjects,
-        List<String> supportedEventCodes,
         String workerGroupId,
         String adapterNodeId,
         String adapterId,
         String onlineStrategy,
-        int maxConcurrentWork,
-        Map<String, String> attributes,
-        LocalDateTime createTime,
-        LocalDateTime updateTime,
-        boolean available
+        Map<String, String> attributes
 ) {
     public WorkerCandidateRow {
-        supportedProjects = copyList(supportedProjects);
-        supportedEventCodes = copyList(supportedEventCodes);
         attributes = copyMap(attributes);
-        maxConcurrentWork = Math.max(1, maxConcurrentWork);
-    }
-
-    private static List<String> copyList(List<String> source) {
-        if (source == null || source.isEmpty()) {
-            return List.of();
-        }
-        return List.copyOf(source);
     }
 
     private static Map<String, String> copyMap(Map<String, String> source) {

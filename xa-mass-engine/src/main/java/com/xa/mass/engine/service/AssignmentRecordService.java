@@ -11,7 +11,6 @@ import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.monkey.snapshot.TaskSnapshot;
 import com.xa.mass.engine.monkey.snapshot.WorkerSchedulingSnapshot;
 import com.xa.mass.engine.monkey.snapshot.WorkerSnapshot;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,12 +36,12 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
                                                    List<RuleEvaluationDetail> ruleEvaluations,
                                                    Map<String, Object> contextSnapshot,
                                                    boolean workerLocked) {
-        WorkerCandidateRow worker = candidate.getCandidateRow();
+        WorkerSchedulingView schedulingView = candidate.getSchedulingView();
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.WORKER_ASSIGN);
         record.setTaskId(task.getTid());
-        record.setWorkerId(worker.workerId());
+        record.setWorkerId(schedulingView.workerId());
         record.setBatchId("batch-" + System.currentTimeMillis());
         record.setResult(result);
         record.setReason(reason);
@@ -57,8 +56,8 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
         record.setContextSnapshot(contextSnapshot);
 
         record.setTaskSnapshot(createTaskSnapshot(task));
-        record.setWorkerSnapshot(createWorkerSnapshot(worker, workerLocked));
-        record.setWorkerSchedulingSnapshot(createWorkerSchedulingSnapshot(candidate.getSchedulingView()));
+        record.setWorkerSnapshot(createWorkerSnapshot(schedulingView, workerLocked));
+        record.setWorkerSchedulingSnapshot(createWorkerSchedulingSnapshot(schedulingView));
 
         records.put(record.getRecordId(), record);
         logAssignmentRecord(record);
@@ -73,20 +72,20 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
                                                     String messageId, String batchId,
                                                     AssignmentResult result, String reason,
                                                     boolean workerLocked) {
-        WorkerCandidateRow worker = candidate.getCandidateRow();
+        WorkerSchedulingView schedulingView = candidate.getSchedulingView();
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.MSG_ASSIGN);
         record.setTaskId(task.getTid());
-        record.setWorkerId(worker.workerId());
+        record.setWorkerId(schedulingView.workerId());
         record.setMessageId(messageId);
         record.setBatchId(batchId);
         record.setResult(result);
         record.setReason(reason);
 
         record.setTaskSnapshot(createTaskSnapshot(task));
-        record.setWorkerSnapshot(createWorkerSnapshot(worker, workerLocked));
-        record.setWorkerSchedulingSnapshot(createWorkerSchedulingSnapshot(candidate.getSchedulingView()));
+        record.setWorkerSnapshot(createWorkerSnapshot(schedulingView, workerLocked));
+        record.setWorkerSchedulingSnapshot(createWorkerSchedulingSnapshot(schedulingView));
 
         records.put(record.getRecordId(), record);
         logAssignmentRecord(record);
@@ -140,20 +139,16 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
         return snapshot;
     }
 
-    private WorkerSnapshot createWorkerSnapshot(WorkerCandidateRow worker, boolean workerLocked) {
+    private WorkerSnapshot createWorkerSnapshot(WorkerSchedulingView view, boolean workerLocked) {
         WorkerSnapshot snapshot = new WorkerSnapshot();
-        snapshot.setWorkerId(worker.workerId());
-        snapshot.setWorkerStatus(worker.statusName());
-        snapshot.setAgentVersion(worker.agentVersion());
-        snapshot.setLastHeartbeat(worker.lastHeartbeat());
-        snapshot.setSupportedProjects(worker.supportedProjects());
-        snapshot.setWorkerGroupId(worker.workerGroupId());
-        snapshot.setOnlineStrategy(worker.onlineStrategy());
-        snapshot.setAttributes(worker.attributes());
-        snapshot.setCreateTime(worker.createTime());
-        snapshot.setUpdateTime(worker.updateTime());
-        snapshot.setAppCount(worker.supportedProjects() != null ? worker.supportedProjects().size() : 0);
-        snapshot.setWorkerAvailable(worker.available());
+        snapshot.setWorkerId(view.workerId());
+        snapshot.setAgentVersion(view.agentVersion());
+        snapshot.setSupportedProjects(view.supportedProjects());
+        snapshot.setWorkerGroupId(view.workerGroupId());
+        snapshot.setOnlineStrategy(view.onlineStrategy());
+        snapshot.setAttributes(view.workerAttributes());
+        snapshot.setAppCount(view.supportedProjects().size());
+        snapshot.setWorkerAvailable(view.schedulingResourceAvailable());
         snapshot.setWorkerLocked(workerLocked);
         return snapshot;
     }
@@ -161,7 +156,6 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
     private WorkerSchedulingSnapshot createWorkerSchedulingSnapshot(WorkerSchedulingView view) {
         WorkerSchedulingSnapshot snapshot = new WorkerSchedulingSnapshot();
         snapshot.setWorkerId(view.workerId());
-        snapshot.setWorkerStatus(view.workerStatusName());
         snapshot.setWorkerGroupId(view.workerGroupId());
         snapshot.setAgentVersion(view.agentVersion());
         snapshot.setSupportedProjects(view.supportedProjects());

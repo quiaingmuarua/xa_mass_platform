@@ -7,8 +7,9 @@ import java.util.Objects;
 /**
  * Scheduling candidate chosen by the matching layer.
  *
- * <p>The candidate handoff is worker-level and carries no account-slot
- * identity.</p>
+ * <p>The candidate handoff carries worker identity plus WorkerGroup evidence.
+ * Live reachability, dispatch-gate, load, and admission evidence stay on the
+ * scheduling view and admission contracts.</p>
  */
 public final class WorkerSchedulingCandidate {
 

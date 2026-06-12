@@ -2,11 +2,12 @@ package com.xa.mass.transport.polling.worker;
 
 import com.xa.mass.transport.channel.PulledTaskDispatch;
 import com.xa.mass.transport.channel.TaskPullStatus;
+import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.AdapterEndpoint;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.packet.PacketType;
-import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.model.TaskDispatchContent;
+import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
@@ -25,12 +26,12 @@ class PollingWorkerAdapterTest {
     void dispatchQueuesItemsForPollingWorker() {
         PollingWorkerAdapter adapter = adapter();
 
-        List<DispatchOutcome> outcomes = adapter.dispatchEnvelopes(List.of(envelope("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = adapter.dispatch(List.of(request("msg-1", "worker-1")));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.QUEUED, outcomes.get(0).getStatus());
         assertEquals(TaskPullStatus.DELIVERED, adapter.pollTaskMessagesResult("worker-1", 1, 0).getStatus());
-        adapter.dispatchEnvelopes(List.of(envelope("msg-2", "worker-1")));
+        adapter.dispatch(List.of(request("msg-2", "worker-1")));
         assertEquals(List.of("msg-2"), adapter.pollTaskMessages("worker-1", 10, 0).stream()
                 .map(PulledTaskDispatch::getMessageId)
                 .toList());
@@ -40,7 +41,7 @@ class PollingWorkerAdapterTest {
     void dispatchRejectsMissingWorkerIdAsInvalidItem() {
         PollingWorkerAdapter adapter = adapter();
 
-        List<DispatchOutcome> outcomes = adapter.dispatchEnvelopes(List.of(invalidEnvelope("msg-1", null)));
+        List<DispatchOutcome> outcomes = adapter.dispatch(java.util.Collections.singletonList(null));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.INVALID, outcomes.get(0).getStatus());
@@ -51,7 +52,7 @@ class PollingWorkerAdapterTest {
     @Test
     void sharedRouteAndDeliveryQueueDoNotCrossConsumeSelectedWorkerItems() {
         PollingWorkerAdapter adapter = adapter();
-        adapter.dispatchEnvelopes(List.of(envelope("msg-2", "worker-2")));
+        adapter.dispatch(List.of(request("msg-2", "worker-2")));
 
         assertEquals(TaskPullStatus.EMPTY, adapter.pollTaskMessagesResult("worker-1", 10, 0).getStatus());
         assertEquals(List.of("msg-2"), adapter.pollTaskMessages("worker-2", 10, 0).stream()
@@ -62,12 +63,12 @@ class PollingWorkerAdapterTest {
     @Test
     void dispatchReportsBackpressureWhenWorkerInboxIsFull() {
         PollingWorkerAdapter adapter = adapter();
-        List<TransportDispatchEnvelope> items = new ArrayList<>();
+        List<AdapterDispatchRequest> items = new ArrayList<>();
         for (int i = 0; i < PollingWorkerAdapter.MAX_INBOX_SIZE + 1; i++) {
-            items.add(envelope("msg-" + i, "worker-1"));
+            items.add(request("msg-" + i, "worker-1"));
         }
 
-        List<DispatchOutcome> outcomes = adapter.dispatchEnvelopes(items);
+        List<DispatchOutcome> outcomes = adapter.dispatch(items);
 
         assertEquals(PollingWorkerAdapter.MAX_INBOX_SIZE + 1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.BACKPRESSURE,
@@ -80,7 +81,7 @@ class PollingWorkerAdapterTest {
     @Test
     void pollResultPreservesDeliveredAndInvalidRequestStatuses() {
         PollingWorkerAdapter adapter = adapter();
-        adapter.dispatchEnvelopes(List.of(envelope("msg-1", "worker-1")));
+        adapter.dispatch(List.of(request("msg-1", "worker-1")));
 
         assertEquals(TaskPullStatus.DELIVERED, adapter.pollTaskMessagesResult("worker-1", 1, 0).getStatus());
         assertEquals(TaskPullStatus.INVALID_REQUEST, adapter.pollTaskMessagesResult(" ", 10, 0).getStatus());
@@ -129,39 +130,24 @@ class PollingWorkerAdapterTest {
         );
     }
 
-    private TransportDispatchEnvelope envelope(String messageId, String workerId) {
-        return envelope("delivery-" + messageId, "group-route-1", messageId, workerId);
+    private AdapterDispatchRequest request(String messageId, String workerId) {
+        return request("delivery-" + messageId, "group-route-1", messageId, workerId);
     }
 
-    private TransportDispatchEnvelope invalidEnvelope(String messageId, String workerId) {
-        return envelope("delivery-" + messageId, "group-route-1", messageId, workerId);
-    }
-
-    private TransportDispatchEnvelope envelope(String deliveryId, String routeKey, String messageId, String workerId) {
-        return new TransportDispatchEnvelope(
+    private AdapterDispatchRequest request(String deliveryId, String routeKey, String messageId, String workerId) {
+        return new AdapterDispatchRequest(
                 deliveryId,
+                PollingWorkerAdapter.PROTOCOL,
                 workerId,
-                new TransportPacket(
-                        TransportPacket.CURRENT_VERSION,
-                        deliveryId,
-                        "trace-" + messageId,
-                        PacketType.TASK_DISPATCH,
-                        PollingWorkerAdapter.PROTOCOL,
-                        routeKey,
+                new TaskDispatchContent(
                         "task-1",
                         messageId,
-                        "attempt-" + messageId,
                         "crawler.fetch-page",
-                        TransportPacket.JSON_CONTENT_TYPE,
-                        Map.of(
-                                TransportPacket.PAYLOAD_ATTEMPT_NO, 1,
-                                TransportPacket.PAYLOAD_RETRY_COUNT, 0,
-                                TransportPacket.PAYLOAD_WORKER_ID, workerId == null ? "" : workerId,
-                                TransportPacket.PAYLOAD_BATCH_ID, "batch-1",
-                                TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
-                                TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
-                        )
+                        Map.of("target", "target-1"),
+                        Map.of()
                 ),
+                new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1", null, null, null),
+                new AdapterEndpoint(routeKey, "node-1", "conn-" + workerId, 10_000L),
                 1L
         );
     }

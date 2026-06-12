@@ -8,13 +8,13 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchContent;
 import com.xa.mass.transport.model.TaskDispatchExecutionContext;
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.route.TransportRouteOwnerRecord;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
@@ -24,9 +24,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
-import com.xa.mass.transport.runtime.delivery.EndpointLease;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
-import com.xa.mass.transport.runtime.delivery.ResolvedDeliveryItem;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
@@ -96,12 +94,10 @@ class MassApplicationDistributedTransportTest {
             DeliveryCommandBatch firstBatch = handoff.submitted.get(0);
             assertEquals(List.of("msg-1"), messages(firstBatch));
             assertEquals("node-1", firstBatch.targetTransportNodeId());
-            assertEquals(routeKey(), firstBatch.items().getFirst().endpoint().routeKey());
             assertEquals("worker-1", firstBatch.commands().getFirst().getSelectedWorkerId());
             DeliveryCommandBatch secondBatch = handoff.submitted.get(1);
             assertEquals(List.of("msg-2"), messages(secondBatch));
             assertEquals("node-2", secondBatch.targetTransportNodeId());
-            assertEquals(routeKey(), secondBatch.items().getFirst().endpoint().routeKey());
             assertEquals("worker-2", secondBatch.commands().getFirst().getSelectedWorkerId());
         } finally {
             app.stop();
@@ -116,9 +112,12 @@ class MassApplicationDistributedTransportTest {
         LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff("node-1");
         handoff.offer(deliveryBatch("msg-node-2", "worker-2", "node-2"));
         handoff.offer(deliveryBatch("msg-node-1", "worker-1", "node-1"));
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-1");
+        routeOwnerStore.claimRouteOwner("worker-1", "websocket", routeKey(), "conn-worker-1", "test-fixture");
 
         RecordingAdapter adapter = new RecordingAdapter("websocket", 1);
         TransportConfig transport = disabledTransportConsumerTransport("node-1");
+        transport.setRouteOwnerStoreFactory(() -> routeOwnerStore);
         transport.setDeliveryCommandHandoffFactory(() -> handoff);
         transport.setTaskResultInboxFactory(() -> mock(RedisTaskResultIngestChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
@@ -215,16 +214,7 @@ class MassApplicationDistributedTransportTest {
                 "websocket",
                 "websocket",
                 transportNodeId,
-                List.of(new ResolvedDeliveryItem(
-                        command,
-                        new EndpointLease(
-                                workerId,
-                                routeKey(),
-                                transportNodeId,
-                                "conn-" + workerId,
-                                System.currentTimeMillis() + 30_000L
-                        )
-                ))
+                List.of(command)
         );
     }
 
@@ -254,23 +244,19 @@ class MassApplicationDistributedTransportTest {
     }
 
     private static DispatchOutcome outcome(DeliveryCommandBatch batch,
-                                           ResolvedDeliveryItem item,
+                                           DeliveryCommand item,
                                            DispatchOutcomeStatus status,
                                            boolean retryable,
                                            String reason) {
-        return new DispatchOutcome(
-                item.command().getCommandId(),
+        return DispatchOutcome.fromCommand(
                 batch.adapterId(),
-                item.command().getSelectedWorkerId(),
                 batch.deliveryQueueKey(),
-                item.endpoint().routeKey(),
-                item.command().getExecutionContext().attemptId(),
+                batch.targetTransportNodeId(),
+                item,
+                null,
                 status,
                 retryable,
-                reason,
-                batch.targetTransportNodeId(),
-                item.endpoint().connectionId(),
-                System.currentTimeMillis()
+                reason
         );
     }
 
@@ -407,12 +393,12 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
+        public List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests) {
             List<DispatchOutcome> outcomes = new ArrayList<>();
-            for (TransportDispatchEnvelope envelope : envelopes) {
-                dispatchedMessageIds.add(envelope.getPacket().messageId());
-                dispatchedRouteKeys.add(envelope.getRouteKey());
-                outcomes.add(DispatchOutcome.delivered(adapterId, envelope));
+            for (AdapterDispatchRequest request : requests) {
+                dispatchedMessageIds.add(request.content().messageId());
+                dispatchedRouteKeys.add(request.endpoint().routeKey());
+                outcomes.add(DispatchOutcome.delivered(adapterId, request));
                 dispatchLatch.countDown();
             }
             return List.copyOf(outcomes);

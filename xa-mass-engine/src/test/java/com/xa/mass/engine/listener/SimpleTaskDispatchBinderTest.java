@@ -21,6 +21,7 @@ import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.worker.runtime.WorkerManager;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,7 +61,7 @@ public class SimpleTaskDispatchBinderTest {
         );
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
-        when(workerManager.confirmWorkerReservation(anyString(), anyString())).thenReturn(true);
+        when(workerManager.confirmWorkerReservation(any(WorkerAdmissionTarget.class))).thenReturn(true);
         when(workerManager.hasWorkerExclusiveLease(anyString())).thenReturn(true);
         listener = newAssignmentListener();
     }
@@ -123,7 +124,7 @@ public class SimpleTaskDispatchBinderTest {
         );
 
         assertEquals(1, dispatched.size());
-        verify(workerManager).releaseWorkerReservation("d2", task.getTid());
+        verify(workerManager).releaseWorkerReservation(admissionTarget("d2", task.getTid()));
         verify(workerManager).releaseWorkerExclusiveLease("d2");
     }
 
@@ -149,8 +150,8 @@ public class SimpleTaskDispatchBinderTest {
         assertEquals(1, failedBindings.get().size());
         assertEquals(1, taskWorkRuntime.stats(task.getTid()).readyCount());
         assertEquals(0, taskWorkRuntime.stats(task.getTid()).inflightCount());
-        verify(workerManager).confirmWorkerReservation("d1", task.getTid());
-        verify(workerManager).recordWorkFinal("d1", task.getTid());
+        verify(workerManager).confirmWorkerReservation(admissionTarget("d1", task.getTid()));
+        verify(workerManager).recordWorkFinal(admissionTarget("d1", task.getTid()));
         verify(workerManager).releaseWorkerExclusiveLease("d1");
     }
 
@@ -228,6 +229,10 @@ public class SimpleTaskDispatchBinderTest {
                 workerManager,
                 recordService
         );
+    }
+
+    private static WorkerAdmissionTarget admissionTarget(String workerId, String taskId) {
+        return WorkerAdmissionTarget.groupScoped("group-a", workerId, taskId);
     }
 
     private static final class NonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {

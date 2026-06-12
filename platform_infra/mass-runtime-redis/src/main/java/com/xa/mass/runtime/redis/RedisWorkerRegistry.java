@@ -302,13 +302,29 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         String bucketKey = normalizedAdapterNodeId == null
                 ? keyspace.groupCandidateBucket(normalizedGroupId, normalizedCandidateBucketKey)
                 : keyspace.nodeCandidateBucket(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey);
-        List<String> workerIds = new ArrayList<>(commands.smembers(bucketKey));
+        List<String> workerIds = new ArrayList<>(commands.srandmember(bucketKey, maxCandidateCount));
         workerIds.sort(String::compareTo);
         return samplingPolicy.sample(
                 new WorkerCandidateSamplingContext(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey),
                 workerIds,
                 maxCandidateCount
         );
+    }
+
+    @Override
+    public synchronized ReserveStatus slotLifecycleStatus(String groupId, String workerId, long nowMillis) {
+        String normalizedGroupId = normalizeNullable(groupId);
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedGroupId == null || normalizedWorkerId == null) {
+            return ReserveStatus.MISSING_SLOT;
+        }
+        Optional<WorkerSlot> slot = slot(normalizedGroupId, normalizedWorkerId);
+        if (slot.isEmpty()) {
+            return slotByWorkerId(normalizedWorkerId).isPresent()
+                    ? ReserveStatus.GROUP_MISMATCH
+                    : ReserveStatus.MISSING_SLOT;
+        }
+        return validateSlotLifecycle(slot.orElseThrow(), normalizedGroupId, normalizedWorkerId, nowMillis);
     }
 
     @Override
@@ -737,6 +753,20 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                                           String workerId,
                                           int permits,
                                           long nowMillis) {
+        ReserveStatus lifecycleStatus = validateSlotLifecycle(current, groupId, workerId, nowMillis);
+        if (lifecycleStatus != ReserveStatus.ACCEPTED) {
+            return lifecycleStatus;
+        }
+        if (current.occupiedPermits() + permits > current.declaredCapacity()) {
+            return ReserveStatus.CAPACITY_UNAVAILABLE;
+        }
+        return ReserveStatus.ACCEPTED;
+    }
+
+    private ReserveStatus validateSlotLifecycle(WorkerSlot current,
+                                                String groupId,
+                                                String workerId,
+                                                long nowMillis) {
         if (current == null) {
             return ReserveStatus.MISSING_SLOT;
         }
@@ -751,9 +781,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         }
         if (!current.dispatchEnabled()) {
             return ReserveStatus.DISPATCH_DISABLED;
-        }
-        if (current.occupiedPermits() + permits > current.declaredCapacity()) {
-            return ReserveStatus.CAPACITY_UNAVAILABLE;
         }
         return ReserveStatus.ACCEPTED;
     }

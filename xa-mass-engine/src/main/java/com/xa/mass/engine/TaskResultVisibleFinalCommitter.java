@@ -28,6 +28,9 @@ final class TaskResultVisibleFinalCommitter {
             return CommitResult.rejected("summary must not be null");
         }
         String workerId = attempt != null ? attempt.workerId() : summary.latestAttemptWorkerId();
+        String workerGroupId = nonBlank(attempt != null ? attempt.workerGroupId() : null)
+                ? attempt.workerGroupId()
+                : stagedDraft != null ? stagedDraft.workerGroupId() : null;
         return taskResultRuntime.commitVisibleFinal(TaskResultFinalDraft.workerLevel(
                 summary.taskId(),
                 summary.messageId(),
@@ -37,6 +40,7 @@ final class TaskResultVisibleFinalCommitter {
                 summary.retryCount(),
                 summary.maxRetryCount(),
                 workerId,
+                workerGroupId,
                 attempt != null ? attempt.batchId() : summary.latestAttemptBatchId(),
                 attempt != null ? attempt.attemptId() : summary.latestAttemptId(),
                 summary.payloadRef(),
@@ -79,5 +83,9 @@ final class TaskResultVisibleFinalCommitter {
 
     private Instant toInstant(LocalDateTime value) {
         return value == null ? null : value.atZone(ZoneId.systemDefault()).toInstant();
+    }
+
+    private static boolean nonBlank(String value) {
+        return value != null && !value.isBlank();
     }
 }

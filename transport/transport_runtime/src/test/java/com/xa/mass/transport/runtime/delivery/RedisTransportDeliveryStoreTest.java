@@ -2,9 +2,7 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.packet.PacketType;
-import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.model.TaskDispatchContent;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -77,18 +75,18 @@ class RedisTransportDeliveryStoreTest {
 
     @Test
     void enqueueDrainAndPollUseSelectedWorkerSelectorUnderSharedDeliveryQueue() throws Exception {
-        DispatchOutcome first = store.enqueue(" Polling ", envelope(" Polling ", item("msg-1", " worker-1 ")));
-        store.enqueue("polling", envelope("polling", item("msg-2", "worker-2")));
+        DispatchOutcome first = store.enqueue(" Polling ", " Polling ", queued(" Polling ", item("msg-1", " worker-1 ")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-2")));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
         assertEquals("polling", first.getAdapterId());
-        assertEquals("group-route-1", first.getRouteKey());
+        assertEquals("polling", first.getDeliveryQueueKey());
         assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 10)));
         assertTrue(store.drain("polling", "worker-1", 10).isEmpty());
 
-        CompletableFuture<List<TransportDispatchEnvelope>> polled = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<List<QueuedPulledDispatch>> polled = CompletableFuture.supplyAsync(() -> {
             try {
-                return store.poll("polling", "worker-2", 10, 1, TimeUnit.SECONDS).getEnvelopes();
+                return store.poll("polling", "worker-2", 10, 1, TimeUnit.SECONDS).getItems();
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
                 return List.of();
@@ -100,13 +98,13 @@ class RedisTransportDeliveryStoreTest {
 
     @Test
     void enqueueRejectsInvalidAndBackpressureStates() {
-        DispatchOutcome invalid = store.enqueue("polling", invalidEnvelope("polling", item("msg-1", null)));
-        DispatchOutcome first = store.enqueue("polling", envelope("polling", item("msg-2", "worker-1")));
-        DispatchOutcome second = store.enqueue("polling", envelope("polling", item("msg-3", "worker-1")));
-        DispatchOutcome third = store.enqueue("polling", envelope("polling", item("msg-4", "worker-1")));
-        DispatchOutcome fourth = store.enqueue("polling", envelope("polling", item("msg-5", "worker-2")));
-        DispatchOutcome fifth = store.enqueue("polling", envelope("polling", item("msg-6", "worker-3")));
-        DispatchOutcome sixth = store.enqueue("polling", envelope("polling", item("msg-7", "worker-4")));
+        DispatchOutcome invalid = store.enqueue("polling", "polling", invalidQueued("polling", item("msg-1", null)));
+        DispatchOutcome first = store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-1")));
+        DispatchOutcome second = store.enqueue("polling", "polling", queued("polling", item("msg-3", "worker-1")));
+        DispatchOutcome third = store.enqueue("polling", "polling", queued("polling", item("msg-4", "worker-1")));
+        DispatchOutcome fourth = store.enqueue("polling", "polling", queued("polling", item("msg-5", "worker-2")));
+        DispatchOutcome fifth = store.enqueue("polling", "polling", queued("polling", item("msg-6", "worker-3")));
+        DispatchOutcome sixth = store.enqueue("polling", "polling", queued("polling", item("msg-7", "worker-4")));
 
         assertEquals(DispatchOutcomeStatus.INVALID, invalid.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
@@ -120,8 +118,8 @@ class RedisTransportDeliveryStoreTest {
 
     @Test
     void statsExposeDeliveryQueueBreakdownAndShutdownClearing() {
-        store.enqueue("polling", envelope("polling", item("msg-1", "worker-1")));
-        store.enqueue("polling", envelope("polling", item("msg-2", "worker-2")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-2")));
 
         TransportDeliveryStoreStats queued = store.stats();
         assertEquals(2, queued.getQueuedItems());
@@ -143,45 +141,31 @@ class RedisTransportDeliveryStoreTest {
         return new DispatchFixture(messageId, workerId);
     }
 
-    private TransportDispatchEnvelope envelope(String adapterId, DispatchFixture item) {
+    private QueuedPulledDispatch queued(String adapterId, DispatchFixture item) {
         String deliveryId = "delivery-" + adapterId + "-" + item.messageId();
-        return new TransportDispatchEnvelope(
+        return new QueuedPulledDispatch(
                 deliveryId,
                 item.workerId(),
-                packet(deliveryId, adapterId, "group-route-1", item),
+                content(item),
+                attemptId(item),
+                1,
+                0,
+                "batch-1",
                 1L
         );
     }
 
-    private TransportDispatchEnvelope invalidEnvelope(String adapterId, DispatchFixture item) {
-        String deliveryId = "delivery-" + adapterId + "-" + item.messageId();
-        return new TransportDispatchEnvelope(
-                deliveryId,
-                item.workerId(),
-                packet(deliveryId, adapterId, " ", item),
-                1L
-        );
+    private QueuedPulledDispatch invalidQueued(String adapterId, DispatchFixture item) {
+        return null;
     }
 
-    private TransportPacket packet(String deliveryId, String adapterId, String routeKey, DispatchFixture item) {
-        return new TransportPacket(
-                TransportPacket.CURRENT_VERSION,
-                deliveryId,
-                "trace-" + item.messageId(),
-                PacketType.TASK_DISPATCH,
-                adapterId,
-                routeKey,
+    private TaskDispatchContent content(DispatchFixture item) {
+        return new TaskDispatchContent(
                 "task-1",
                 item.messageId(),
-                attemptId(item),
                 "crawler.fetch-page",
-                TransportPacket.JSON_CONTENT_TYPE,
-                Map.of(
-                        TransportPacket.PAYLOAD_WORKER_ID, item.workerId() == null ? "" : item.workerId(),
-                        TransportPacket.PAYLOAD_BATCH_ID, "batch-1",
-                        TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
-                        TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
-                )
+                Map.of("target", "target-1"),
+                Map.of()
         );
     }
 
@@ -189,10 +173,9 @@ class RedisTransportDeliveryStoreTest {
         return "attempt-" + item.messageId();
     }
 
-    private List<String> messageIds(List<TransportDispatchEnvelope> envelopes) {
-        return envelopes.stream()
-                .map(TransportDispatchEnvelope::getPacket)
-                .map(TransportPacket::messageId)
+    private List<String> messageIds(List<QueuedPulledDispatch> items) {
+        return items.stream()
+                .map(item -> item.content().messageId())
                 .toList();
     }
 

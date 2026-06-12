@@ -23,7 +23,6 @@ import java.util.Set;
  */
 public final class WorkerSchedulingView {
     private final String workerId;
-    private final String workerStatusName;
     private final String workerGroupId;
     private final String adapterNodeId;
     private final String adapterId;
@@ -49,7 +48,6 @@ public final class WorkerSchedulingView {
                                  boolean workerLocked,
                                  WorkerLoadSnapshot workerLoad) {
         this.workerId = candidateRow.workerId();
-        this.workerStatusName = candidateRow.statusName();
         this.workerGroupId = candidateRow.workerGroupId();
         this.adapterNodeId = candidateRow.adapterNodeId();
         this.adapterId = candidateRow.adapterId();
@@ -107,10 +105,6 @@ public final class WorkerSchedulingView {
 
     public String workerId() {
         return workerId;
-    }
-
-    public String workerStatusName() {
-        return workerStatusName;
     }
 
     public String workerGroupId() {

@@ -8,6 +8,7 @@ import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
+import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.ManagedTransportAdapter;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
@@ -19,7 +20,6 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
@@ -349,9 +349,9 @@ class MassApplicationStopOrderTest {
                     }
 
                     @Override
-                public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
-                    return List.of();
-                }
+                    public List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests) {
+                        return List.of();
+                    }
                 })
                 .build();
     }

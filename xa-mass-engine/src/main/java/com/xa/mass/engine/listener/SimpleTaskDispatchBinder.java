@@ -24,6 +24,7 @@ import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -179,7 +180,8 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         }
 
         List<WorkerClaimTarget> claimTargets = dispatchSlots.stream()
-                .map(slot -> WorkerClaimTarget.workerLevel(
+                .map(slot -> WorkerClaimTarget.groupScoped(
+                        slot.candidate.getSchedulingView().workerGroupId(),
                         slot.workerId(),
                         slot.batchId(),
                         perWorkerBatchLimit,
@@ -202,8 +204,9 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             }
             TaskDispatchBinding dispatchBinding = bindClaimedTaskWork(task, work, slot);
             dispatchBindings.add(dispatchBinding);
-            if (!workerAdmissionRuntime.confirmWorkerReservation(work.workerId(), task.getTid())) {
-                workerAdmissionRuntime.recordWorkClaimed(work.workerId(), task.getTid());
+            WorkerAdmissionTarget admissionTarget = admissionTarget(task.getTid(), slot.candidate);
+            if (!workerAdmissionRuntime.confirmWorkerReservation(admissionTarget)) {
+                workerAdmissionRuntime.recordWorkClaimed(admissionTarget);
             }
             slot.incrementAssigned();
 
@@ -287,7 +290,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             return;
         }
         for (TaskDispatchBinding binding : dispatchBindings) {
-            workerAdmissionRuntime.recordWorkFinal(binding.workerId(), binding.taskId());
+            workerAdmissionRuntime.recordWorkFinal(admissionTarget(binding));
         }
     }
 
@@ -324,6 +327,23 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             }
         }
         return null;
+    }
+
+    private static WorkerAdmissionTarget admissionTarget(String taskId, WorkerSchedulingCandidate candidate) {
+        WorkerSchedulingView schedulingView = candidate.getSchedulingView();
+        return WorkerAdmissionTarget.groupScoped(
+                schedulingView.workerGroupId(),
+                candidate.getWorkerId(),
+                taskId
+        );
+    }
+
+    private static WorkerAdmissionTarget admissionTarget(TaskDispatchBinding binding) {
+        return WorkerAdmissionTarget.groupScoped(
+                binding.workerGroupId(),
+                binding.workerId(),
+                binding.taskId()
+        );
     }
 
     private TaskDispatchBinding bindClaimedTaskWork(Task task, ClaimedTaskWork work, DispatchSlot slot) {

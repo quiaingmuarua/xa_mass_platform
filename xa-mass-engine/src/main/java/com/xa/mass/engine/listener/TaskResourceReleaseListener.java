@@ -15,6 +15,7 @@ import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -93,7 +94,7 @@ public class TaskResourceReleaseListener {
             if (lease == null || lease.workerId() == null || lease.workerId().isBlank()) {
                 continue;
             }
-            workerAdmissionRuntime.recordWorkFinal(lease.workerId(), task.getTid());
+            workerAdmissionRuntime.recordWorkFinal(admissionTarget(task.getTid(), lease));
             WorkerDispatchResourceUsage usage = resourcePolicy.usageForAttempt(task);
             if (usage.exclusiveWorkerLock()) {
                 exclusiveWorkerIds.add(lease.workerId());
@@ -114,7 +115,7 @@ public class TaskResourceReleaseListener {
         if (workerId == null || workerId.isBlank()) {
             return;
         }
-        workerAdmissionRuntime.recordWorkFinal(workerId, task.getTid());
+        workerAdmissionRuntime.recordWorkFinal(admissionTarget(task.getTid(), event));
         if (hasOtherActiveAttempts(task.getTid(), workerId)) {
             return;
         }
@@ -133,5 +134,13 @@ public class TaskResourceReleaseListener {
 
     private boolean hasOtherActiveAttempts(String taskId, String workerId) {
         return leaseMaintenancePort.hasActiveWorkForWorker(taskId, workerId);
+    }
+
+    private static WorkerAdmissionTarget admissionTarget(String taskId, ActiveLeaseRecord lease) {
+        return WorkerAdmissionTarget.groupScoped(lease.workerGroupId(), lease.workerId(), taskId);
+    }
+
+    private static WorkerAdmissionTarget admissionTarget(String taskId, TaskWorkAttemptClosedEvent event) {
+        return WorkerAdmissionTarget.groupScoped(event.workerGroupId(), event.workerId(), taskId);
     }
 }

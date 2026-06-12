@@ -157,20 +157,12 @@ public final class WorkerCandidateSourceOwner {
     private static WorkerCandidateRow toCandidateRow(Worker worker) {
         return new WorkerCandidateRow(
                 worker.getWorkerId(),
-                worker.getStatus() == null ? null : worker.getStatus().name(),
                 worker.getAgentVersion(),
-                worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
                 worker.getWorkerGroupId(),
                 worker.getAdapterNodeId(),
                 worker.getAdapterId(),
                 worker.getOnlineStrategy(),
-                worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime(),
-                worker.isAvailable()
+                worker.getAttributes()
         );
     }
 

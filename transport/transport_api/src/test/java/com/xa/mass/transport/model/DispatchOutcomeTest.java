@@ -1,7 +1,5 @@
 package com.xa.mass.transport.model;
 
-import com.xa.mass.transport.packet.PacketType;
-import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -15,9 +13,9 @@ class DispatchOutcomeTest {
 
     @Test
     void deliveredCopiesDeliveryIdentityAndNormalizesAdapterId() {
-        TransportDispatchEnvelope envelope = envelope();
+        AdapterDispatchRequest request = request();
 
-        DispatchOutcome outcome = DispatchOutcome.delivered(" WebSocket ", envelope);
+        DispatchOutcome outcome = DispatchOutcome.delivered(" WebSocket ", request);
 
         assertEquals("websocket", outcome.getAdapterId());
         assertEquals("delivery-1", outcome.getDeliveryId());
@@ -25,6 +23,9 @@ class DispatchOutcomeTest {
         assertNull(outcome.getDeliveryQueueKey());
         assertEquals("group-route-1", outcome.getRouteKey());
         assertEquals("attempt-1", outcome.getAttemptId());
+        assertEquals("task-1", outcome.getTaskId());
+        assertEquals("msg-1", outcome.getMessageId());
+        assertEquals(1, outcome.getAttemptNo());
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcome.getStatus());
         assertFalse(outcome.isRetryable());
         assertNull(outcome.getReason());
@@ -33,31 +34,32 @@ class DispatchOutcomeTest {
 
     @Test
     void factoryMethodsSetRetryabilityDefaults() {
-        TransportDispatchEnvelope envelope = envelope();
+        AdapterDispatchRequest request = request();
 
-        assertFalse(DispatchOutcome.queued("polling", envelope).isRetryable());
-        assertTrue(DispatchOutcome.noEndpoint("websocket", envelope, "offline").isRetryable());
-        assertTrue(DispatchOutcome.backpressure("polling", envelope, "full").isRetryable());
-        assertFalse(DispatchOutcome.invalid("polling", envelope, "bad").isRetryable());
-        assertTrue(DispatchOutcome.unavailable("socket", envelope, "missing").isRetryable());
-        assertFalse(DispatchOutcome.failed("socket", envelope, "bad frame", false).isRetryable());
-        assertTrue(DispatchOutcome.failed("socket", envelope, "io", true).isRetryable());
+        assertFalse(DispatchOutcome.queued("polling", "lane-1", "delivery-1", "worker-1", "attempt-1", "task-1", "msg-1", 1).isRetryable());
+        assertTrue(DispatchOutcome.noEndpoint("websocket", request, "offline").isRetryable());
+        assertTrue(DispatchOutcome.backpressure("polling", "lane-1", "delivery-1", "worker-1", "attempt-1", "task-1", "msg-1", 1, "full").isRetryable());
+        assertFalse(DispatchOutcome.invalid("polling", request, "bad").isRetryable());
+        assertTrue(DispatchOutcome.unavailable("socket", request, "missing").isRetryable());
+        assertFalse(DispatchOutcome.failed("socket", request, "bad frame", false).isRetryable());
+        assertTrue(DispatchOutcome.failed("socket", request, "io", true).isRetryable());
     }
 
     @Test
     void queuedOutcomeCanCarryExplicitStoreQueueContext() {
-        TransportDispatchEnvelope envelope = envelope();
-
-        DispatchOutcome outcome = DispatchOutcome.queued("polling", "lane-1", envelope);
+        DispatchOutcome outcome = DispatchOutcome.queued("polling", "lane-1", "delivery-1", "worker-1", "attempt-1", "task-1", "msg-1", 1);
 
         assertEquals("lane-1", outcome.getDeliveryQueueKey());
+        assertEquals("task-1", outcome.getTaskId());
+        assertEquals("msg-1", outcome.getMessageId());
+        assertEquals(1, outcome.getAttemptNo());
         assertEquals(DispatchOutcomeStatus.QUEUED, outcome.getStatus());
         assertFalse(outcome.isRetryable());
     }
 
     @Test
     void invalidOutcomeToleratesNullEnvelope() {
-        DispatchOutcome outcome = DispatchOutcome.invalid(null, null, "missing item");
+        DispatchOutcome outcome = DispatchOutcome.invalid(null, null, null, null, null, null, null, 0, "missing item");
 
         assertNull(outcome.getAdapterId());
         assertNull(outcome.getDeliveryId());
@@ -78,6 +80,9 @@ class DispatchOutcomeTest {
                 " lane-1 ",
                 " route-2 ",
                 " attempt-2 ",
+                " task-2 ",
+                " msg-2 ",
+                2,
                 DispatchOutcomeStatus.NO_ENDPOINT,
                 true,
                 "missing endpoint",
@@ -92,6 +97,9 @@ class DispatchOutcomeTest {
         assertEquals("lane-1", outcome.getDeliveryQueueKey());
         assertEquals("route-2", outcome.getRouteKey());
         assertEquals("attempt-2", outcome.getAttemptId());
+        assertEquals("task-2", outcome.getTaskId());
+        assertEquals("msg-2", outcome.getMessageId());
+        assertEquals(2, outcome.getAttemptNo());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcome.getStatus());
         assertTrue(outcome.isRetryable());
         assertEquals("missing endpoint", outcome.getReason());
@@ -100,28 +108,20 @@ class DispatchOutcomeTest {
         assertEquals(42L, outcome.getOccurredAtEpochMillis());
     }
 
-    private TransportDispatchEnvelope envelope() {
-        return new TransportDispatchEnvelope(
+    private AdapterDispatchRequest request() {
+        return new AdapterDispatchRequest(
                 "delivery-1",
+                "polling",
                 "worker-1",
-                new TransportPacket(
-                        TransportPacket.CURRENT_VERSION,
-                        "delivery-1",
-                        "attempt-1",
-                        PacketType.TASK_DISPATCH,
-                        "polling",
-                        "group-route-1",
+                new TaskDispatchContent(
                         "task-1",
                         "msg-1",
-                        "attempt-1",
                         "crawler.fetch-page",
-                        TransportPacket.JSON_CONTENT_TYPE,
-                        Map.of(
-                                TransportPacket.PAYLOAD_RETRY_COUNT, 0,
-                                TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
-                                TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
-                        )
+                        Map.of("target", "target-1"),
+                        Map.of()
                 ),
+                new TaskDispatchExecutionContext("attempt-1", 1, 0, "batch-1", null, null, null),
+                new AdapterEndpoint("group-route-1", "node-1", "conn-1", 10_000L),
                 10L
         );
     }

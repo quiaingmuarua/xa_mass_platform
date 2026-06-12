@@ -882,6 +882,7 @@ class TaskResultService {
                 messageId,
                 ctx.activeLeaseToken(),
                 ctx.workerId(),
+                ctx.workerGroupId(),
                 ctx.batchId(),
                 ctx.payloadRef(),
                 ctx.retryCount(),
@@ -995,6 +996,7 @@ class TaskResultService {
         String identityDigest = callbackIdentityDigest(taskId, messageId, success, detail, errorCode, output, activeLease);
         String stageId = TaskResultCallbackDraft.stageId(taskId, messageId, identityDigest);
         String workerId = activeLease != null ? activeLease.workerId() : null;
+        String workerGroupId = activeLease != null ? activeLease.workerGroupId() : null;
         return TaskResultCallbackDraft.workerLevel(
                 stageId,
                 taskId,
@@ -1011,6 +1013,7 @@ class TaskResultService {
                 null,
                 identityDigest,
                 workerId,
+                workerGroupId,
                 activeLease != null ? activeLease.batchId() : null,
                 activeLease != null ? activeLease.payloadRef() : runtimeWork != null ? runtimeWork.payloadRef() : null,
                 runtimeWork != null ? runtimeWork.eventCode() : task != null ? com.xa.mass.base.model.TaskSharedConfig.sdkEventCode(task) : null,
@@ -1330,6 +1333,7 @@ class TaskResultService {
                 row.messageId(),
                 0,
                 row.workerId(),
+                row.workerGroupId(),
                 row.batchId()
         );
         repairAttempt.status = attemptStatusForRepair(workSummary.status());
@@ -1396,6 +1400,7 @@ class TaskResultService {
                         attempt.attemptId(),
                         attempt.attemptNo(),
                         attempt.workerId(),
+                        attempt.workerGroupId(),
                         attempt.batchId(),
                         attempt.status(),
                         attempt.finalReason()
@@ -1565,6 +1570,7 @@ class TaskResultService {
         private final String messageId;
         private final int attemptNo;
         private final String workerId;
+        private final String workerGroupId;
         private final String batchId;
         private AttemptStatus status;
         private AttemptFinalReason finalReason;
@@ -1577,12 +1583,14 @@ class TaskResultService {
                                       String messageId,
                                       int attemptNo,
                                       String workerId,
+                                      String workerGroupId,
                                       String batchId) {
             this.attemptId = attemptId;
             this.taskId = taskId;
             this.messageId = messageId;
             this.attemptNo = attemptNo;
             this.workerId = workerId;
+            this.workerGroupId = workerGroupId;
             this.batchId = batchId;
             this.status = AttemptStatus.DISPATCHED;
         }
@@ -1601,6 +1609,7 @@ class TaskResultService {
                     messageId,
                     attemptNo,
                     activeLease.workerId(),
+                    activeLease.workerGroupId(),
                     activeLease.batchId()
             );
             return attempt;
@@ -1624,6 +1633,10 @@ class TaskResultService {
 
         String workerId() {
             return workerId;
+        }
+
+        String workerGroupId() {
+            return workerGroupId;
         }
 
         String batchId() {

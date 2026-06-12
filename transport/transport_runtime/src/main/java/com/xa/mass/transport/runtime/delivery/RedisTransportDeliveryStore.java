@@ -7,7 +7,6 @@ import com.xa.mass.runtime.redis.queue.RedisKeyedQueueNamespace;
 import com.xa.mass.runtime.redis.queue.RedisKeyedQueueOptions;
 import com.xa.mass.runtime.redis.queue.RedisKeyedQueueScripts;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -80,18 +79,18 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
         );
     }
 
-    RedisTransportDeliveryStore(KeyedBlockingQueueStore<DeliveryQueueKey, TransportDispatchEnvelope> queueStore,
+    RedisTransportDeliveryStore(KeyedBlockingQueueStore<DeliveryQueueKey, QueuedPulledDispatch> queueStore,
                                 int maxItemsPerRoute) {
         this.delegate = new QueueBackedTransportDeliveryStore(queueStore, maxItemsPerRoute);
     }
 
     @Override
-    public DispatchOutcome enqueue(String deliveryQueueKey, TransportDispatchEnvelope envelope) {
-        return delegate.enqueue(deliveryQueueKey, envelope);
+    public DispatchOutcome enqueue(String adapterId, String deliveryQueueKey, QueuedPulledDispatch item) {
+        return delegate.enqueue(adapterId, deliveryQueueKey, item);
     }
 
     @Override
-    public List<TransportDispatchEnvelope> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems) {
+    public List<QueuedPulledDispatch> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems) {
         return delegate.drain(deliveryQueueKey, selectedWorkerId, maxItems);
     }
 
@@ -114,9 +113,9 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
         delegate.shutdown();
     }
 
-    private static final class DeliveryQueueCodec implements RedisKeyedQueueCodec<DeliveryQueueKey, TransportDispatchEnvelope> {
+    private static final class DeliveryQueueCodec implements RedisKeyedQueueCodec<DeliveryQueueKey, QueuedPulledDispatch> {
 
-        private final RedisTransportDispatchEnvelopeCodec codec = new RedisTransportDispatchEnvelopeCodec();
+        private final RedisQueuedPulledDispatchCodec codec = new RedisQueuedPulledDispatchCodec();
 
         @Override
         public String encodeKeyPart(DeliveryQueueKey key) {
@@ -129,12 +128,12 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
         }
 
         @Override
-        public byte[] encodeValue(com.xa.mass.runtime.queue.KeyedQueueEntry<TransportDispatchEnvelope> entry) {
+        public byte[] encodeValue(com.xa.mass.runtime.queue.KeyedQueueEntry<QueuedPulledDispatch> entry) {
             return codec.encodeEntry(entry);
         }
 
         @Override
-        public com.xa.mass.runtime.queue.KeyedQueueEntry<TransportDispatchEnvelope> decodeValue(byte[] bytes) {
+        public com.xa.mass.runtime.queue.KeyedQueueEntry<QueuedPulledDispatch> decodeValue(byte[] bytes) {
             return codec.decodeEntry(bytes);
         }
     }

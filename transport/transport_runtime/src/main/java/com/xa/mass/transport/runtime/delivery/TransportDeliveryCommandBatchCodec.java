@@ -24,8 +24,8 @@ final class TransportDeliveryCommandBatchCodec {
 
     String encode(DeliveryCommandBatch batch) {
         Objects.requireNonNull(batch, "batch");
-        List<ResolvedDeliveryItemRecord> items = batch.items().stream()
-                .map(this::toRecord)
+        List<DeliveryCommandRecord> items = batch.items().stream()
+                .map(this::toCommandRecord)
                 .toList();
         return gson.toJson(new DeliveryCommandBatchRecord(
                 batch.adapterId(),
@@ -44,17 +44,10 @@ final class TransportDeliveryCommandBatchCodec {
                 || record.items == null || record.items.isEmpty()) {
             throw new IllegalArgumentException("encoded delivery command batch is incomplete");
         }
-        List<ResolvedDeliveryItem> items = record.items.stream()
-                .map(this::fromRecord)
+        List<DeliveryCommand> items = record.items.stream()
+                .map(this::fromCommandRecord)
                 .toList();
         return new DeliveryCommandBatch(record.adapterId, record.deliveryQueueKey, record.targetTransportNodeId, items);
-    }
-
-    private ResolvedDeliveryItemRecord toRecord(ResolvedDeliveryItem item) {
-        return new ResolvedDeliveryItemRecord(
-                toCommandRecord(item.command()),
-                toEndpointRecord(item.endpoint())
-        );
     }
 
     private DeliveryCommandRecord toCommandRecord(DeliveryCommand command) {
@@ -87,26 +80,6 @@ final class TransportDeliveryCommandBatchCodec {
                 context.taskName(),
                 context.project(),
                 context.userId()
-        );
-    }
-
-    private EndpointLeaseRecord toEndpointRecord(EndpointLease endpoint) {
-        return new EndpointLeaseRecord(
-                endpoint.selectedWorkerId(),
-                endpoint.routeKey(),
-                endpoint.transportNodeId(),
-                endpoint.connectionId(),
-                endpoint.leaseExpireAtEpochMillis()
-        );
-    }
-
-    private ResolvedDeliveryItem fromRecord(DecodedResolvedDeliveryItemRecord record) {
-        if (record == null || record.command == null || record.endpoint == null) {
-            throw new IllegalArgumentException("encoded delivery item is incomplete");
-        }
-        return new ResolvedDeliveryItem(
-                fromCommandRecord(record.command),
-                fromEndpointRecord(record.endpoint)
         );
     }
 
@@ -146,24 +119,10 @@ final class TransportDeliveryCommandBatchCodec {
         );
     }
 
-    private EndpointLease fromEndpointRecord(DecodedEndpointLeaseRecord record) {
-        return new EndpointLease(
-                record.selectedWorkerId,
-                record.routeKey,
-                record.transportNodeId,
-                record.connectionId,
-                record.leaseExpireAtEpochMillis
-        );
-    }
-
     private record DeliveryCommandBatchRecord(String adapterId,
                                               String deliveryQueueKey,
                                               String targetTransportNodeId,
-                                              List<ResolvedDeliveryItemRecord> items) {
-    }
-
-    private record ResolvedDeliveryItemRecord(DeliveryCommandRecord command,
-                                              EndpointLeaseRecord endpoint) {
+                                              List<DeliveryCommandRecord> items) {
     }
 
     private record DeliveryCommandRecord(String commandId,
@@ -190,23 +149,11 @@ final class TransportDeliveryCommandBatchCodec {
                                                       String userId) {
     }
 
-    private record EndpointLeaseRecord(String selectedWorkerId,
-                                       String routeKey,
-                                       String transportNodeId,
-                                       String connectionId,
-                                       long leaseExpireAtEpochMillis) {
-    }
-
     private static final class DecodedDeliveryCommandBatchRecord {
         private String adapterId;
         private String deliveryQueueKey;
         private String targetTransportNodeId;
-        private List<DecodedResolvedDeliveryItemRecord> items;
-    }
-
-    private static final class DecodedResolvedDeliveryItemRecord {
-        private DecodedDeliveryCommandRecord command;
-        private DecodedEndpointLeaseRecord endpoint;
+        private List<DecodedDeliveryCommandRecord> items;
     }
 
     private static final class DecodedDeliveryCommandRecord {
@@ -236,11 +183,4 @@ final class TransportDeliveryCommandBatchCodec {
         private String userId;
     }
 
-    private static final class DecodedEndpointLeaseRecord {
-        private String selectedWorkerId;
-        private String routeKey;
-        private String transportNodeId;
-        private String connectionId;
-        private long leaseExpireAtEpochMillis;
-    }
 }

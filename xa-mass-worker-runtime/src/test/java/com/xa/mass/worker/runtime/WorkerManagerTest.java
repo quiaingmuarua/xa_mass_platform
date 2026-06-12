@@ -11,6 +11,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
@@ -139,13 +140,13 @@ public class WorkerManagerTest {
     void exposesObservedWorkerLoadFromWorkerRegistrySlot() {
         addWorker(worker("worker-load", "us"));
 
-        manager.recordWorkClaimed("worker-load", "task-1");
-        manager.recordWorkClaimed("worker-load", "task-1");
+        manager.recordWorkClaimed(admissionTarget("us", "worker-load", "task-1"));
+        manager.recordWorkClaimed(admissionTarget("us", "worker-load", "task-1"));
 
         assertEquals(2, manager.getWorkerLoad("worker-load").activeLeaseCount());
         assertEquals(2.0, manager.getWorkerLoad("worker-load").estimatedLoadRatio());
 
-        manager.recordWorkFinal("worker-load", "task-1");
+        manager.recordWorkFinal(admissionTarget("us", "worker-load", "task-1"));
 
         assertEquals(1, manager.getWorkerLoad("worker-load").activeLeaseCount());
     }
@@ -154,16 +155,16 @@ public class WorkerManagerTest {
     void exposesWorkerLoadReservationLifecycle() {
         addWorker(worker("worker-reserve", "us"));
 
-        assertTrue(manager.reserveWorkerCapacity("worker-reserve", "task-1").accepted());
-        assertFalse(manager.reserveWorkerCapacity("worker-reserve", "task-2").accepted());
+        assertTrue(manager.reserveWorkerCapacity(admissionTarget("us", "worker-reserve", "task-1")).accepted());
+        assertFalse(manager.reserveWorkerCapacity(admissionTarget("us", "worker-reserve", "task-2")).accepted());
         assertEquals(1, manager.getWorkerLoad("worker-reserve").reservedCount());
 
-        assertTrue(manager.confirmWorkerReservation("worker-reserve", "task-1"));
+        assertTrue(manager.confirmWorkerReservation(admissionTarget("us", "worker-reserve", "task-1")));
 
         assertEquals(0, manager.getWorkerLoad("worker-reserve").reservedCount());
         assertEquals(1, manager.getWorkerLoad("worker-reserve").activeLeaseCount());
 
-        manager.recordWorkFinal("worker-reserve", "task-1");
+        manager.recordWorkFinal(admissionTarget("us", "worker-reserve", "task-1"));
         assertEquals(0, manager.getWorkerLoad("worker-reserve").activeLeaseCount());
     }
 
@@ -175,10 +176,10 @@ public class WorkerManagerTest {
         addWorker(worker);
 
         assertEquals(3, manager.getWorkerLoad("worker-capacity").declaredCapacity());
-        assertTrue(manager.reserveWorkerCapacity("worker-capacity", "task-1").accepted());
-        assertTrue(manager.reserveWorkerCapacity("worker-capacity", "task-2").accepted());
-        assertTrue(manager.reserveWorkerCapacity("worker-capacity", "task-3").accepted());
-        assertFalse(manager.reserveWorkerCapacity("worker-capacity", "task-4").accepted());
+        assertTrue(manager.reserveWorkerCapacity(admissionTarget("us", "worker-capacity", "task-1")).accepted());
+        assertTrue(manager.reserveWorkerCapacity(admissionTarget("us", "worker-capacity", "task-2")).accepted());
+        assertTrue(manager.reserveWorkerCapacity(admissionTarget("us", "worker-capacity", "task-3")).accepted());
+        assertFalse(manager.reserveWorkerCapacity(admissionTarget("us", "worker-capacity", "task-4")).accepted());
     }
 
     @Test
@@ -318,7 +319,7 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void nodeGroupBindingStateChangesDoNotAffectWorkerCandidates() {
+    void nodeGroupBindingStateChangesGateWorkerCandidateEligibility() {
         declareEventGroup("crawler", "demoApp", "crawler.fetch");
         manager.registerAdapterNode(adapterNode("node-a"));
         manager.bindNodeGroup(binding("node-a", "crawler"));
@@ -332,6 +333,13 @@ public class WorkerManagerTest {
         assertFalse(disabled.enabled());
         assertTrue(draining.draining());
         assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+        assertTrue(candidateIndexIds(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))).isEmpty());
+
+        manager.setNodeGroupBindingEnabled("node-a", "crawler", true);
+        manager.setNodeGroupBindingDraining("node-a", "crawler", false);
+
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
         assertEquals(List.of("w-binding"),
                 candidateIndexIds(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
                         Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))));
@@ -499,7 +507,8 @@ public class WorkerManagerTest {
         WorkerManager storageBackedManager = new WorkerManager(storage, new InMemoryWorkerRegistry());
 
         assertEquals(2, storageBackedManager.getWorkerLoad("worker-storage-direct").declaredCapacity());
-        assertFalse(storageBackedManager.reserveWorkerCapacity("worker-storage-direct", "task-1").accepted());
+        assertFalse(storageBackedManager.reserveWorkerCapacity(
+                admissionTarget("us", "worker-storage-direct", "task-1")).accepted());
     }
 
     @Test
@@ -895,7 +904,7 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void workerRegistrySnapshotCanBeRefreshedAfterDirectStorageMutation() {
+    void directStorageSnapshotRefreshDoesNotCreateLifecycleEligibleCandidate() {
         TestWorkerDeclarationStore storage = new TestWorkerDeclarationStore();
         WorkerManager storageBackedManager = new WorkerManager(storage, new InMemoryWorkerRegistry());
         storageBackedManager.upsertWorkerGroup(WorkerGroupRecord.builder("crawler")
@@ -911,9 +920,12 @@ public class WorkerManagerTest {
 
         storageBackedManager.refreshWorkerRegistrySnapshot();
 
-        assertEquals(List.of("w-storage-direct-snapshot"),
-                candidateIndexIds(storageBackedManager, task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))));
+        assertEquals("crawler", storageBackedManager.getWorkerRegistrySnapshot()
+                .worker("w-storage-direct-snapshot")
+                .orElseThrow()
+                .getWorkerGroupId());
+        assertTrue(candidateIndexIds(storageBackedManager, task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))).isEmpty());
     }
 
 
@@ -1195,6 +1207,10 @@ public class WorkerManagerTest {
         );
     }
 
+    private static WorkerAdmissionTarget admissionTarget(String groupId, String workerId, String taskId) {
+        return WorkerAdmissionTarget.groupScoped(groupId, workerId, taskId);
+    }
+
     private static InMemoryWorkerRegistry platformRegistry() {
         return new InMemoryWorkerRegistry(
                 WorkerCandidateBucketPolicies.defaultPolicy(),
@@ -1205,20 +1221,12 @@ public class WorkerManagerTest {
     private static WorkerCandidateRow workerCandidateRow(Worker worker) {
         return new WorkerCandidateRow(
                 worker.getWorkerId(),
-                worker.getStatus() == null ? null : worker.getStatus().name(),
                 worker.getAgentVersion(),
-                worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
                 worker.getWorkerGroupId(),
                 worker.getAdapterNodeId(),
                 worker.getAdapterId(),
                 worker.getOnlineStrategy(),
-                worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime(),
-                worker.isAvailable()
+                worker.getAttributes()
         );
     }
 

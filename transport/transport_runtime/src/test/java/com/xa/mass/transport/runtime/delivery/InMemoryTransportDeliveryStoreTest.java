@@ -2,9 +2,7 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.packet.PacketType;
-import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.model.TaskDispatchContent;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -28,8 +26,8 @@ class InMemoryTransportDeliveryStoreTest {
         DispatchFixture firstWorkerItem = item("msg-1", "worker-1");
         DispatchFixture secondWorkerItem = item("msg-2", "worker-2");
 
-        DispatchOutcome firstOutcome = store.enqueue("polling", envelope("polling", firstWorkerItem));
-        DispatchOutcome secondOutcome = store.enqueue("polling", envelope("polling", secondWorkerItem));
+        DispatchOutcome firstOutcome = store.enqueue("polling", "polling", queued("polling", firstWorkerItem));
+        DispatchOutcome secondOutcome = store.enqueue("polling", "polling", queued("polling", secondWorkerItem));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, firstOutcome.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, secondOutcome.getStatus());
@@ -39,13 +37,13 @@ class InMemoryTransportDeliveryStoreTest {
     }
 
     @Test
-    void enqueueAndDrainUseCanonicalAdapterAndRouteKeys() {
+    void enqueueAndDrainUseCanonicalDeliveryQueueKey() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
 
-        DispatchOutcome outcome = store.enqueue(" Polling ", envelope(" Polling ", item("msg-1", " worker-1 ")));
+        DispatchOutcome outcome = store.enqueue(" Polling ", " Polling ", queued(" Polling ", item("msg-1", " worker-1 ")));
 
         assertEquals("polling", outcome.getAdapterId());
-        assertEquals("group-route-1", outcome.getRouteKey());
+        assertEquals("polling", outcome.getDeliveryQueueKey());
         assertEquals(List.of("msg-1"), messageIds(store.drain(" Polling ", " worker-1 ", 10)));
         assertTrue(store.drain("polling", "worker-1", 10).isEmpty());
     }
@@ -54,7 +52,7 @@ class InMemoryTransportDeliveryStoreTest {
     void enqueueRejectsInvalidItem() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
 
-        DispatchOutcome outcome = store.enqueue("polling", invalidEnvelope("polling", item("msg-1", null)));
+        DispatchOutcome outcome = store.enqueue("polling", "polling", invalidQueued("polling", item("msg-1", null)));
 
         assertEquals(DispatchOutcomeStatus.INVALID, outcome.getStatus());
         assertTrue(store.drain("polling", "worker-1", 10).isEmpty());
@@ -67,8 +65,8 @@ class InMemoryTransportDeliveryStoreTest {
                 1
         );
 
-        DispatchOutcome first = store.enqueue("polling", envelope("polling", item("msg-1", "worker-1")));
-        DispatchOutcome second = store.enqueue("polling", envelope("polling", item("msg-2", "worker-1")));
+        DispatchOutcome first = store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1")));
+        DispatchOutcome second = store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-1")));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
         assertEquals(DispatchOutcomeStatus.BACKPRESSURE, second.getStatus());
@@ -81,8 +79,8 @@ class InMemoryTransportDeliveryStoreTest {
     void enqueueRejectsWhenGlobalBacklogIsFull() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(1, 10);
 
-        DispatchOutcome first = store.enqueue("polling", envelope("polling", item("msg-1", "worker-1")));
-        DispatchOutcome second = store.enqueue("polling", envelope("polling", item("msg-2", "worker-2")));
+        DispatchOutcome first = store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1")));
+        DispatchOutcome second = store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-2")));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
         assertEquals(DispatchOutcomeStatus.BACKPRESSURE, second.getStatus());
@@ -97,7 +95,7 @@ class InMemoryTransportDeliveryStoreTest {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
         store.shutdown();
 
-        DispatchOutcome outcome = store.enqueue("polling", envelope("polling", item("msg-1", "worker-1")));
+        DispatchOutcome outcome = store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1")));
 
         assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcome.getStatus());
         assertTrue(outcome.isRetryable());
@@ -107,8 +105,8 @@ class InMemoryTransportDeliveryStoreTest {
     @Test
     void drainRespectsMaxItemsAndKeepsRemainingItems() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
-        store.enqueue("polling", envelope("polling", item("msg-1", "worker-1")));
-        store.enqueue("polling", envelope("polling", item("msg-2", "worker-1")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-1")));
 
         assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 1)));
         assertEquals(List.of("msg-2"), messageIds(store.drain("polling", "worker-1", 10)));
@@ -118,10 +116,10 @@ class InMemoryTransportDeliveryStoreTest {
     void statsTrackQueuedItemsQueuesAndCapacity() {
         AtomicLong now = new AtomicLong(1_000L);
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(10, InMemoryTransportDeliveryStore.DEFAULT_MAX_ITEMS_PER_ROUTE, now::get);
-        store.enqueue("polling", envelope("polling", item("msg-1", "worker-1"), now.get()));
+        store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1"), now.get()));
         now.set(1_250L);
-        store.enqueue("polling", envelope("polling", item("msg-2", "worker-1"), now.get()));
-        store.enqueue("polling", envelope("polling", item("msg-3", "worker-2"), now.get()));
+        store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-1"), now.get()));
+        store.enqueue("polling", "polling", queued("polling", item("msg-3", "worker-2"), now.get()));
         now.set(1_500L);
 
         TransportDeliveryStoreStats queued = store.stats();
@@ -152,7 +150,7 @@ class InMemoryTransportDeliveryStoreTest {
     void statsUseShortLivedSnapshotCacheBeforeRefreshing() {
         AtomicLong now = new AtomicLong(1_000L);
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(10, InMemoryTransportDeliveryStore.DEFAULT_MAX_ITEMS_PER_ROUTE, now::get);
-        store.enqueue("polling", envelope("polling", item("msg-1", "worker-1"), now.get()));
+        store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1"), now.get()));
 
         TransportDeliveryStoreStats initial = store.stats();
         assertEquals(1, initial.getQueuedItems());
@@ -175,12 +173,12 @@ class InMemoryTransportDeliveryStoreTest {
     @Test
     void statsTrackRejectedAndUnavailableDeliveryOutcomes() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(1, 1);
-        store.enqueue("polling", invalidEnvelope("polling", item("msg-1", null)));
-        store.enqueue("polling", envelope("polling", item("msg-2", "worker-1")));
-        store.enqueue("polling", envelope("polling", item("msg-3", "worker-1")));
-        store.enqueue("polling", envelope("polling", item("msg-4", "worker-2")));
+        store.enqueue("polling", "polling", invalidQueued("polling", item("msg-1", null)));
+        store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-1")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-3", "worker-1")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-4", "worker-2")));
         store.shutdown();
-        store.enqueue("polling", envelope("polling", item("msg-5", "worker-1")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-5", "worker-1")));
 
         TransportDeliveryStoreStats stats = store.stats();
         assertEquals(1L, stats.getInvalidItems());
@@ -195,9 +193,9 @@ class InMemoryTransportDeliveryStoreTest {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
         DispatchFixture item = item("msg-1", "worker-1");
 
-        CompletableFuture<List<TransportDispatchEnvelope>> polled = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<List<QueuedPulledDispatch>> polled = CompletableFuture.supplyAsync(() -> {
             try {
-                return store.poll("polling", "worker-1", 10, 1, TimeUnit.SECONDS).getEnvelopes();
+                return store.poll("polling", "worker-1", 10, 1, TimeUnit.SECONDS).getItems();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return List.of();
@@ -205,7 +203,7 @@ class InMemoryTransportDeliveryStoreTest {
         });
 
         Thread.sleep(50L);
-        store.enqueue("polling", envelope("polling", item));
+        store.enqueue("polling", "polling", queued("polling", item));
 
         assertEquals(List.of("msg-1"), messageIds(polled.get(1, TimeUnit.SECONDS)));
     }
@@ -214,25 +212,24 @@ class InMemoryTransportDeliveryStoreTest {
     void enqueueWakesOnePollerPerQueuedItemForSameWorker() throws Exception {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
 
-        CompletableFuture<List<TransportDispatchEnvelope>> firstPoller = pollAsync(store, "worker-1");
-        CompletableFuture<List<TransportDispatchEnvelope>> secondPoller = pollAsync(store, "worker-1");
+        CompletableFuture<List<QueuedPulledDispatch>> firstPoller = pollAsync(store, "worker-1");
+        CompletableFuture<List<QueuedPulledDispatch>> secondPoller = pollAsync(store, "worker-1");
 
         waitUntil(() -> store.stats().getWaitingPollers() == 2);
-        store.enqueue("polling", envelope("polling", item("msg-1", "worker-1")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1")));
 
-        CompletableFuture<List<TransportDispatchEnvelope>> completed =
-                CompletableFuture.anyOf(firstPoller, secondPoller).thenApply(result -> castEnvelopes(result));
+        CompletableFuture<List<QueuedPulledDispatch>> completed =
+                CompletableFuture.anyOf(firstPoller, secondPoller).thenApply(result -> castItems(result));
         assertEquals(List.of("msg-1"), messageIds(completed.get(1, TimeUnit.SECONDS)));
         assertEquals(1, store.stats().getWaitingPollers());
         assertFalse(firstPoller.isDone() && secondPoller.isDone());
 
-        store.enqueue("polling", envelope("polling", item("msg-2", "worker-1")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-1")));
 
         assertEquals(List.of("msg-1", "msg-2"),
                 List.of(firstPoller.get(1, TimeUnit.SECONDS), secondPoller.get(1, TimeUnit.SECONDS)).stream()
                         .flatMap(List::stream)
-                        .map(TransportDispatchEnvelope::getPacket)
-                        .map(TransportPacket::messageId)
+                        .map(item -> item.content().messageId())
                         .sorted()
                         .toList());
     }
@@ -241,9 +238,9 @@ class InMemoryTransportDeliveryStoreTest {
     void statsTrackWaitingPollers() throws Exception {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
 
-        CompletableFuture<List<TransportDispatchEnvelope>> polled = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<List<QueuedPulledDispatch>> polled = CompletableFuture.supplyAsync(() -> {
             try {
-                return store.poll("polling", "worker-1", 10, 1, TimeUnit.SECONDS).getEnvelopes();
+                return store.poll("polling", "worker-1", 10, 1, TimeUnit.SECONDS).getItems();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return List.of();
@@ -252,7 +249,7 @@ class InMemoryTransportDeliveryStoreTest {
 
         waitUntil(() -> store.stats().getWaitingPollers() == 1);
         assertEquals(1, store.stats().getQueueByAdapter().get("polling").getWaitingPollers());
-        store.enqueue("polling", envelope("polling", item("msg-1", "worker-1")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1")));
 
         assertEquals(List.of("msg-1"), messageIds(polled.get(1, TimeUnit.SECONDS)));
         assertEquals(0, store.stats().getWaitingPollers());
@@ -263,8 +260,8 @@ class InMemoryTransportDeliveryStoreTest {
     void statsExposePerAdapterQueueBreakdown() {
         AtomicLong now = new AtomicLong(2_000L);
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(10, InMemoryTransportDeliveryStore.DEFAULT_MAX_ITEMS_PER_ROUTE, now::get);
-        store.enqueue("polling", envelope("polling", item("msg-1", "worker-1"), now.get()));
-        store.enqueue("websocket", envelope("websocket", item("msg-2", "worker-2"), now.get()));
+        store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1"), now.get()));
+        store.enqueue("websocket", "websocket", queued("websocket", item("msg-2", "worker-2"), now.get()));
         now.set(2_300L);
 
         TransportDeliveryStoreStats stats = store.stats();
@@ -279,13 +276,13 @@ class InMemoryTransportDeliveryStoreTest {
     @Test
     void shutdownWakesWaitingPollersAndClearsQueuedItems() throws Exception {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
-        store.enqueue("polling", envelope("polling", item("queued", "worker-2")));
-        CompletableFuture<List<TransportDispatchEnvelope>> polled = CompletableFuture.supplyAsync(() -> {
+        store.enqueue("polling", "polling", queued("polling", item("queued", "worker-2")));
+        CompletableFuture<List<QueuedPulledDispatch>> polled = CompletableFuture.supplyAsync(() -> {
             try {
-                return store.poll("polling", "worker-1", 10, 30, TimeUnit.SECONDS).getEnvelopes();
+                return store.poll("polling", "worker-1", 10, 30, TimeUnit.SECONDS).getItems();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return List.of(envelope("polling", item("interrupted", "worker-1")));
+                return List.of(queued("polling", item("interrupted", "worker-1")));
             }
         });
 
@@ -307,7 +304,7 @@ class InMemoryTransportDeliveryStoreTest {
         TransportDeliveryPollResult items = store.poll("polling", "worker-1", 10, 50, TimeUnit.MILLISECONDS);
 
         assertEquals(TransportDeliveryPollStatus.EMPTY, items.getStatus());
-        assertTrue(items.getEnvelopes().isEmpty());
+        assertTrue(items.getItems().isEmpty());
     }
 
     @Test
@@ -320,12 +317,12 @@ class InMemoryTransportDeliveryStoreTest {
                 Future<TransportDeliveryPollResult> poll = executor.submit(
                         () -> store.poll("polling", "worker-1", 1, 1, TimeUnit.MILLISECONDS));
 
-                DispatchOutcome outcome = store.enqueue("polling", envelope("polling", item(messageId, "worker-1")));
+                DispatchOutcome outcome = store.enqueue("polling", "polling", queued("polling", item(messageId, "worker-1")));
                 assertEquals(DispatchOutcomeStatus.QUEUED, outcome.getStatus());
 
                 TransportDeliveryPollResult polled = poll.get(1, TimeUnit.SECONDS);
                 if (polled.getStatus() == TransportDeliveryPollStatus.DELIVERED) {
-                    assertEquals(List.of(messageId), messageIds(polled.getEnvelopes()));
+                    assertEquals(List.of(messageId), messageIds(polled.getItems()));
                 } else {
                     assertEquals(List.of(messageId), messageIds(store.drain("polling", "worker-1", 1)));
                 }
@@ -344,9 +341,9 @@ class InMemoryTransportDeliveryStoreTest {
     void statsGlobalQueuedItemsMatchPerAdapterBreakdown() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
 
-        store.enqueue("polling", envelope("polling", item("msg-1", "worker-1")));
-        store.enqueue("polling", envelope("polling", item("msg-2", "worker-2")));
-        store.enqueue("websocket", envelope("websocket", item("msg-3", "worker-3")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1")));
+        store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-2")));
+        store.enqueue("websocket", "websocket", queued("websocket", item("msg-3", "worker-3")));
 
         TransportDeliveryStoreStats queued = store.stats();
         assertQueueBreakdownConsistent(queued);
@@ -360,49 +357,35 @@ class InMemoryTransportDeliveryStoreTest {
         return new DispatchFixture(messageId, workerId);
     }
 
-    private TransportDispatchEnvelope envelope(String adapterId, DispatchFixture item) {
-        return envelope(adapterId, item, 1L);
+    private QueuedPulledDispatch queued(String adapterId, DispatchFixture item) {
+        return queued(adapterId, item, 1L);
     }
 
-    private TransportDispatchEnvelope envelope(String adapterId, DispatchFixture item, long createdAtEpochMillis) {
+    private QueuedPulledDispatch queued(String adapterId, DispatchFixture item, long createdAtEpochMillis) {
         String deliveryId = "delivery-" + adapterId + "-" + item.messageId();
-        return new TransportDispatchEnvelope(
+        return new QueuedPulledDispatch(
                 deliveryId,
                 item.workerId(),
-                packet(deliveryId, adapterId, "group-route-1", item),
+                content(item),
+                attemptId(item),
+                1,
+                0,
+                "batch-1",
                 createdAtEpochMillis
         );
     }
 
-    private TransportDispatchEnvelope invalidEnvelope(String adapterId, DispatchFixture item) {
-        String deliveryId = "delivery-" + adapterId + "-" + item.messageId();
-        return new TransportDispatchEnvelope(
-                deliveryId,
-                item.workerId(),
-                packet(deliveryId, adapterId, " ", item),
-                1L
-        );
+    private QueuedPulledDispatch invalidQueued(String adapterId, DispatchFixture item) {
+        return null;
     }
 
-    private TransportPacket packet(String deliveryId, String adapterId, String routeKey, DispatchFixture item) {
-        return new TransportPacket(
-                TransportPacket.CURRENT_VERSION,
-                deliveryId,
-                "trace-" + item.messageId(),
-                PacketType.TASK_DISPATCH,
-                adapterId,
-                routeKey,
+    private TaskDispatchContent content(DispatchFixture item) {
+        return new TaskDispatchContent(
                 "task-1",
                 item.messageId(),
-                attemptId(item),
                 "crawler.fetch-page",
-                TransportPacket.JSON_CONTENT_TYPE,
-                Map.of(
-                        TransportPacket.PAYLOAD_WORKER_ID, item.workerId() == null ? "" : item.workerId(),
-                        TransportPacket.PAYLOAD_BATCH_ID, "batch-1",
-                        TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
-                        TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
-                )
+                Map.of("target", "target-1"),
+                Map.of()
         );
     }
 
@@ -410,10 +393,10 @@ class InMemoryTransportDeliveryStoreTest {
         return "attempt-" + item.messageId();
     }
 
-    private CompletableFuture<List<TransportDispatchEnvelope>> pollAsync(InMemoryTransportDeliveryStore store, String workerId) {
+    private CompletableFuture<List<QueuedPulledDispatch>> pollAsync(InMemoryTransportDeliveryStore store, String workerId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                return store.poll("polling", workerId, 10, 2, TimeUnit.SECONDS).getEnvelopes();
+                return store.poll("polling", workerId, 10, 2, TimeUnit.SECONDS).getItems();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return List.of();
@@ -422,14 +405,13 @@ class InMemoryTransportDeliveryStoreTest {
     }
 
     @SuppressWarnings("unchecked")
-    private List<TransportDispatchEnvelope> castEnvelopes(Object result) {
-        return (List<TransportDispatchEnvelope>) result;
+    private List<QueuedPulledDispatch> castItems(Object result) {
+        return (List<QueuedPulledDispatch>) result;
     }
 
-    private List<String> messageIds(List<TransportDispatchEnvelope> envelopes) {
-        return envelopes.stream()
-                .map(TransportDispatchEnvelope::getPacket)
-                .map(TransportPacket::messageId)
+    private List<String> messageIds(List<QueuedPulledDispatch> items) {
+        return items.stream()
+                .map(item -> item.content().messageId())
                 .toList();
     }
 

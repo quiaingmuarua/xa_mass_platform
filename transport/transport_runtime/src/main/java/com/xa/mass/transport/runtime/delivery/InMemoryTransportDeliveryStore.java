@@ -3,7 +3,6 @@ package com.xa.mass.transport.runtime.delivery;
 import com.xa.mass.runtime.queue.InMemoryKeyedBlockingQueueStore;
 import com.xa.mass.runtime.queue.KeyedBlockingQueueStore;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.List;
 import java.util.Objects;
@@ -36,7 +35,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         this(new InMemoryKeyedBlockingQueueStore<>(maxQueuedItems, currentTimeMillis), maxItemsPerRoute);
     }
 
-    InMemoryTransportDeliveryStore(KeyedBlockingQueueStore<DeliveryQueueKey, TransportDispatchEnvelope> queueStore,
+    InMemoryTransportDeliveryStore(KeyedBlockingQueueStore<DeliveryQueueKey, QueuedPulledDispatch> queueStore,
                                    int maxItemsPerRoute) {
         this.delegate = new QueueBackedTransportDeliveryStore(
                 Objects.requireNonNull(queueStore, "queueStore"),
@@ -45,12 +44,12 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     @Override
-    public DispatchOutcome enqueue(String deliveryQueueKey, TransportDispatchEnvelope envelope) {
-        return delegate.enqueue(deliveryQueueKey, envelope);
+    public DispatchOutcome enqueue(String adapterId, String deliveryQueueKey, QueuedPulledDispatch item) {
+        return delegate.enqueue(adapterId, deliveryQueueKey, item);
     }
 
     @Override
-    public List<TransportDispatchEnvelope> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems) {
+    public List<QueuedPulledDispatch> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems) {
         return delegate.drain(deliveryQueueKey, selectedWorkerId, maxItems);
     }
 

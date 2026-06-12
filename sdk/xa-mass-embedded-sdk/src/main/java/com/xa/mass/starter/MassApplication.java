@@ -15,6 +15,7 @@ import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryResult;
 import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.transport.model.TransportOutboundMessage;
+import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
@@ -356,6 +357,8 @@ public class MassApplication {
                 if (runtimeRole == TransportRuntimeRole.EMBEDDED) {
                     TransportDeliveryCommandListener batchListener = new TransportDeliveryCommandListener(
                             transportRuntimeRegistry,
+                            workerRouteOwnerView,
+                            transportRuntimeComposition.getTransportNodeId(),
                             createTransportDeliveryFailureHandler(),
                             transportRuntimeTaskExecutor
                     );
@@ -373,6 +376,8 @@ public class MassApplication {
                 deliveryFailureInbox = transportRuntimeComposition.resolveDeliveryFailureInbox();
                 TransportDeliveryCommandListener batchListener = new TransportDeliveryCommandListener(
                         transportRuntimeRegistry,
+                        workerRouteOwnerView,
+                        transportRuntimeComposition.getTransportNodeId(),
                         deliveryFailureInbox,
                         transportRuntimeTaskExecutor
                 );
@@ -401,13 +406,14 @@ public class MassApplication {
 
     private TransportDeliveryFailureHandler createTransportDeliveryFailureHandler() {
         return event -> {
-            if (event == null || event.itemSnapshot() == null) {
+            if (event == null || event.outcome() == null) {
                 return false;
             }
-            String taskId = event.itemSnapshot().taskId();
+            DispatchOutcome outcome = event.outcome();
+            String taskId = outcome.getTaskId();
             if (taskId == null) {
                 logger.error("Cannot compensate delivery failure because task id is missing: deliveryId={}",
-                        event.outcome() != null ? event.outcome().getDeliveryId() : event.itemSnapshot().commandId());
+                        outcome.getDeliveryId());
                 return false;
             }
             Task storedTask = engineConfig.getTaskShellStore().getTask(taskId).orElse(null);
@@ -420,7 +426,7 @@ public class MassApplication {
                 failure = toDeliveryFailure(event);
             } catch (RuntimeException e) {
                 logger.error("Cannot compensate delivery failure because failure record is incomplete: deliveryId={}, reason={}",
-                        event.outcome() != null ? event.outcome().getDeliveryId() : event.itemSnapshot().commandId(), e.getMessage());
+                        outcome.getDeliveryId(), e.getMessage());
                 return false;
             }
             return engineConfig.getTaskAssignmentRuntimePort()
@@ -429,13 +435,14 @@ public class MassApplication {
     }
 
     private TaskDispatchDeliveryFailure toDeliveryFailure(TransportDeliveryFailureEvent event) {
+        DispatchOutcome outcome = event.outcome();
         return new TaskDispatchDeliveryFailure(
-                event.itemSnapshot().taskId(),
-                event.itemSnapshot().messageId(),
-                event.itemSnapshot().attemptId(),
-                event.itemSnapshot().attemptNo(),
-                event.itemSnapshot().selectedWorkerId(),
-                firstNonBlank(event.detail(), event.outcome() != null ? event.outcome().getReason() : null)
+                outcome.getTaskId(),
+                outcome.getMessageId(),
+                outcome.getAttemptId(),
+                outcome.getAttemptNo(),
+                outcome.getSelectedWorkerId(),
+                firstNonBlank(event.detail(), outcome.getReason())
         );
     }
 

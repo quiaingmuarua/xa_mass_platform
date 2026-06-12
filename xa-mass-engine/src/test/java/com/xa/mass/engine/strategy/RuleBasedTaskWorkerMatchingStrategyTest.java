@@ -31,6 +31,7 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionStatus;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -542,8 +543,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Worker lowLoadWorker = worker("worker-low-load", "pool-b");
         registerWorker(workerManager, highLoadWorker);
         registerWorker(workerManager, lowLoadWorker);
-        workerManager.recordWorkClaimed("worker-high-load", "existing-task-1");
-        workerManager.recordWorkClaimed("worker-high-load", "existing-task-2");
+        workerManager.recordWorkClaimed(admissionTarget("pool-a", "worker-high-load", "existing-task-1"));
+        workerManager.recordWorkClaimed(admissionTarget("pool-a", "worker-high-load", "existing-task-2"));
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
@@ -580,7 +581,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setStatus(TaskStatus.READY);
 
         registerWorker(workerManager, worker("worker-at-capacity", "pool-a"));
-        workerManager.recordWorkClaimed("worker-at-capacity", "existing-task");
+        workerManager.recordWorkClaimed(admissionTarget("pool-a", "worker-at-capacity", "existing-task"));
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
@@ -601,7 +602,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 new InMemoryWorkerRegistry()
         ) {
             @Override
-            public WorkerAdmissionResult reserveWorkerCapacity(String workerId, String taskId) {
+            public WorkerAdmissionResult reserveWorkerCapacity(WorkerAdmissionTarget target) {
                 return WorkerAdmissionResult.rejected(WorkerAdmissionStatus.STALE_HEARTBEAT, "worker heartbeat stale");
             }
         };
@@ -852,6 +853,10 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 .orElse(null);
     }
 
+    private static WorkerAdmissionTarget admissionTarget(String groupId, String workerId, String taskId) {
+        return WorkerAdmissionTarget.groupScoped(groupId, workerId, taskId);
+    }
+
     private static final class RecordingWorkerManager extends WorkerManager {
         private final List<Worker> candidates;
         private int lastMaxCandidateCount;
@@ -873,7 +878,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         }
 
         @Override
-        public WorkerAdmissionResult reserveWorkerCapacity(String workerId, String taskId) {
+        public WorkerAdmissionResult reserveWorkerCapacity(WorkerAdmissionTarget target) {
             return WorkerAdmissionResult.acceptedResult();
         }
 

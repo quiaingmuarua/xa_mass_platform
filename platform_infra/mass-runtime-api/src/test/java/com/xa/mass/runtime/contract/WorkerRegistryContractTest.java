@@ -40,6 +40,19 @@ public abstract class WorkerRegistryContractTest {
     }
 
     @Test
+    void acquireCandidatesReturnsBoundedSourceBatch() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));
+        registry.upsertSlot(meta("worker-2", "group-a"), 1, Set.of(eventKey()));
+        registry.upsertSlot(meta("worker-3", "group-a"), 1, Set.of(eventKey()));
+
+        List<String> candidates = registry.acquireCandidates("group-a", "default", 2);
+
+        assertTrue(candidates.size() <= 2);
+        assertTrue(Set.of("worker-1", "worker-2", "worker-3").containsAll(candidates));
+    }
+
+    @Test
     void tryReserveDoesNotDeduplicateByTaskId() {
         WorkerRegistry registry = createRegistry();
         registry.upsertSlot(meta("worker-1", "group-a"), 2, Set.of(eventKey()));
@@ -89,6 +102,41 @@ public abstract class WorkerRegistryContractTest {
                 registry.tryReserve("worker-1", "task-1", 1, 1000).status());
         assertTrue(registry.clearDispatchDisable("worker-1", WORKER_COMMAND));
         assertTrue(registry.isDispatchEnabled("worker-1"));
+    }
+
+    @Test
+    void slotLifecycleStatusCoversRegistryOwnedEligibilityButNotCapacity() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));
+
+        assertEquals(ReserveStatus.ACCEPTED,
+                registry.slotLifecycleStatus("group-a", "worker-1", 1000));
+        assertTrue(registry.tryReserve("group-a", "worker-1", "task-1", 1, 1000).accepted());
+        assertEquals(ReserveStatus.ACCEPTED,
+                registry.slotLifecycleStatus("group-a", "worker-1", 1000));
+        assertEquals(ReserveStatus.CAPACITY_UNAVAILABLE,
+                registry.tryReserve("group-a", "worker-1", "task-2", 1, 1000).status());
+    }
+
+    @Test
+    void slotLifecycleStatusRejectsStaleDisabledRemovingAndGroupMismatch() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(metaAt("worker-stale", "group-a", 1_000), 1, Set.of(eventKey()));
+        registry.upsertSlot(meta("worker-disabled", "group-a"), 1, Set.of(eventKey()));
+        registry.upsertSlot(meta("worker-removing", "group-a"), 1, Set.of(eventKey()));
+        registry.disableDispatch("group-a", "worker-disabled", WORKER_STATE);
+        registry.markSlotRemoving("group-a", "worker-removing", "test");
+
+        assertEquals(ReserveStatus.STALE_HEARTBEAT,
+                registry.slotLifecycleStatus("group-a", "worker-stale", 31_001));
+        assertEquals(ReserveStatus.DISPATCH_DISABLED,
+                registry.slotLifecycleStatus("group-a", "worker-disabled", 1000));
+        assertEquals(ReserveStatus.REMOVING_SLOT,
+                registry.slotLifecycleStatus("group-a", "worker-removing", 1000));
+        assertEquals(ReserveStatus.GROUP_MISMATCH,
+                registry.slotLifecycleStatus("other-group", "worker-disabled", 1000));
+        assertEquals(ReserveStatus.MISSING_SLOT,
+                registry.slotLifecycleStatus("group-a", "missing-worker", 1000));
     }
 
     @Test

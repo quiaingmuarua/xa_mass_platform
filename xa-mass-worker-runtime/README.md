@@ -31,6 +31,12 @@ lifecycle state, admission operations, and evidence; it does not evaluate match
 rules, rank candidates, choose allocation budgets, bind dispatches, converge
 results, or apply dispatch-control side effects from command lifecycle changes.
 
+Scheduling admission is WorkerGroup-scoped in the engine mainline. Candidate
+acquisition and runtime work evidence must carry `workerGroupId` into
+`WorkerAdmissionTarget`; reserve, confirm, release, claim, and final accounting
+must not depend on worker-id reverse lookup when group evidence is already
+known or recoverable from runtime lifecycle records.
+
 ## Package Map
 
 ```text

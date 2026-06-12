@@ -47,6 +47,7 @@ class TaskResultCorrelationSupportTest {
                 "msg-1",
                 "lease-1",
                 "worker-1",
+                null,
                 "batch-1",
                 null,
                 0,

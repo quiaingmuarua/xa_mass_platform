@@ -156,6 +156,7 @@ Package: `com.xa.mass.worker.runtime.admission`
 Owned contracts:
 
 - `WorkerAdmissionRuntime`
+- `WorkerAdmissionTarget`
 - `WorkerAdmissionResult`
 - `WorkerAdmissionStatus`
 - `WorkerAvailabilityWakeupRuntime`
@@ -171,6 +172,14 @@ Allowed callers:
 Admission translates registry reserve/release primitives into worker-plane
 results. Engine strategy must not consume `ReserveResult` or `ReserveStatus`
 directly.
+
+`WorkerAdmissionTarget` is the engine-facing mutation target for reserve,
+confirm, release, claim, and final accounting. It carries
+`workerGroupId + workerId + taskId + permits`; the engine scheduling lifecycle
+must pass known or runtime-recoverable group evidence instead of calling
+worker-id-only admission mutations. Worker-id reverse lookup belongs below this
+contract as low-level registry support for diagnostics, commands, or genuinely
+group-less paths.
 
 ### Report
 

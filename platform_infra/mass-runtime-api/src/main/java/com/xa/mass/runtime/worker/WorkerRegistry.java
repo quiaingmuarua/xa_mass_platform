@@ -9,12 +9,11 @@ import java.util.Set;
  * Runtime worker registry contract for bounded candidate acquisition and
  * semantic worker-state operations.
  *
- * <p>Upper runtime owners should prefer worker-id semantic methods such as
- * {@link #workerMeta(String)}, {@link #tryReserve(String, String, int, long)},
- * and {@link #disableDispatch(String, DispatchAvailabilitySource)}. Slot and
- * group-scoped methods are retained for registry implementation contracts and
- * bounded maintenance paths; they must not leak Redis physical key shape into
- * engine or worker-runtime callers.</p>
+ * <p>Scheduling hot paths should carry WorkerGroup evidence and use group-scoped
+ * lifecycle/admission methods. Worker-id semantic methods are support surfaces
+ * for diagnostics, commands, and paths that genuinely lack group evidence; they
+ * must not leak Redis physical key shape into engine or worker-runtime
+ * callers.</p>
  */
 public interface WorkerRegistry {
 
@@ -86,12 +85,37 @@ public interface WorkerRegistry {
         return changed;
     }
 
+    /**
+     * Acquires a bounded Stage-1 candidate source batch.
+     *
+     * <p>The returned list is not a complete-set contract. Implementations may
+     * read a bounded subset from their local storage before applying
+     * {@link WorkerCandidateSamplingPolicy}. Callers must still validate slot
+     * lifecycle and reserve capacity before dispatch binding.</p>
+     */
     List<String> acquireCandidates(String groupId, String candidateBucketKey, int maxCandidateCount);
 
+    /**
+     * Acquires a bounded Stage-1 candidate source batch scoped by group and
+     * optional adapter node.
+     */
     List<String> acquireCandidates(String groupId,
                                    String adapterNodeId,
                                    String candidateBucketKey,
                                    int maxCandidateCount);
+
+    /**
+     * Registry-owned slot lifecycle predicate for scheduling candidate sources.
+     *
+     * <p>This covers slot existence, group membership, removing state, heartbeat
+     * freshness, and dispatch gate. It intentionally excludes capacity so reserve
+     * remains the final admission authority under contention.</p>
+     */
+    ReserveStatus slotLifecycleStatus(String groupId, String workerId, long nowMillis);
+
+    default boolean isSlotLifecycleEligible(String groupId, String workerId, long nowMillis) {
+        return slotLifecycleStatus(groupId, workerId, nowMillis) == ReserveStatus.ACCEPTED;
+    }
 
     ReserveResult tryReserve(String groupId, String workerId, String taskId, int permits, long nowMillis);
 

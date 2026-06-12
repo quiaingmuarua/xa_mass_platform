@@ -72,43 +72,41 @@ public final class TransportAssignedDeliverySubmitter {
             Optional<WorkerDispatchRouteOwner> selectedOwner =
                     routeOwnerView.activeOwnerForSelectedWorker(adapterId, command.getSelectedWorkerId());
             if (selectedOwner.isEmpty()) {
-                DeliveryObservationGroupContext groupContext =
-                        DeliveryObservationGroupContext.now(adapterId, deliveryQueueKey, null);
-                DispatchOutcome outcome = DeliveryObservationSupport.outcome(
-                        groupContext,
+                DispatchOutcome outcome = DispatchOutcome.fromCommand(
+                        adapterId,
+                        deliveryQueueKey,
+                        null,
                         command,
                         null,
                         DispatchOutcomeStatus.NO_ENDPOINT,
                         true,
                         MISSING_OWNER_REASON
                 );
-                outcomes.add(handleRetryableFailure(groupContext, command, null, outcome, MISSING_OWNER_REASON));
+                outcomes.add(handleRetryableFailure(outcome, MISSING_OWNER_REASON));
                 continue;
             }
 
-            WorkerDispatchRouteOwner owner = selectedOwner.get();
-            EndpointLease endpoint = EndpointLease.fromOwner(owner, command.getSelectedWorkerId());
-            DeliveryObservationGroupContext groupContext =
-                    DeliveryObservationGroupContext.now(adapterId, deliveryQueueKey, endpoint.transportNodeId());
-            if (!isNodeUsable(owner)) {
-                DispatchOutcome outcome = DeliveryObservationSupport.outcome(
-                        groupContext,
+            if (!isNodeUsable(selectedOwner.get())) {
+                DispatchOutcome outcome = DispatchOutcome.fromCommand(
+                        adapterId,
+                        deliveryQueueKey,
+                        selectedOwner.get().transportNodeId(),
                         command,
-                        endpoint,
+                        null,
                         DispatchOutcomeStatus.NO_ENDPOINT,
                         true,
                         UNAVAILABLE_NODE_REASON
                 );
-                outcomes.add(handleRetryableFailure(groupContext, command, endpoint, outcome, UNAVAILABLE_NODE_REASON));
+                outcomes.add(handleRetryableFailure(outcome, UNAVAILABLE_NODE_REASON));
                 continue;
             }
 
-            String groupKey = deliveryQueueKey + "\n" + endpoint.transportNodeId();
+            String groupKey = deliveryQueueKey + "\n" + selectedOwner.get().transportNodeId();
             CommandGroup group = groups.computeIfAbsent(
                     groupKey,
-                    ignored -> new CommandGroup(adapterId, deliveryQueueKey, endpoint.transportNodeId())
+                    ignored -> new CommandGroup(adapterId, deliveryQueueKey, selectedOwner.get().transportNodeId())
             );
-            group.items.add(new ResolvedDeliveryItem(command, endpoint));
+            group.items.add(command);
         }
 
         for (CommandGroup group : groups.values()) {
@@ -118,12 +116,10 @@ public final class TransportAssignedDeliverySubmitter {
                     group.targetTransportNodeId,
                     group.items
             );
-            Map<String, ResolvedDeliveryItem> itemById = new LinkedHashMap<>();
-            for (ResolvedDeliveryItem item : group.items) {
-                itemById.put(item.command().getCommandId(), item);
+            Map<String, DeliveryCommand> itemById = new LinkedHashMap<>();
+            for (DeliveryCommand item : group.items) {
+                itemById.put(item.getCommandId(), item);
             }
-            DeliveryObservationGroupContext groupContext =
-                    DeliveryObservationGroupContext.now(group.adapterId, group.deliveryQueueKey, group.targetTransportNodeId);
             for (DispatchOutcome outcome : handoff.offer(batch)) {
                 if (outcome == null) {
                     continue;
@@ -132,9 +128,9 @@ public final class TransportAssignedDeliverySubmitter {
                 if (!outcome.isRetryable()) {
                     continue;
                 }
-                ResolvedDeliveryItem item = itemById.get(outcome.getDeliveryId());
+                DeliveryCommand item = itemById.get(outcome.getDeliveryId());
                 if (item != null) {
-                    handleRetryableFailure(groupContext, item.command(), item.endpoint(), outcome, outcome.getReason());
+                    handleRetryableFailure(outcome, outcome.getReason());
                 }
             }
         }
@@ -157,12 +153,9 @@ public final class TransportAssignedDeliverySubmitter {
         }
     }
 
-    private DispatchOutcome handleRetryableFailure(DeliveryObservationGroupContext groupContext,
-                                                   DeliveryCommand command,
-                                                   EndpointLease endpoint,
-                                                   DispatchOutcome outcome,
+    private DispatchOutcome handleRetryableFailure(DispatchOutcome outcome,
                                                    String detail) {
-        if (command == null || outcome == null || !outcome.isRetryable()) {
+        if (outcome == null || !outcome.isRetryable()) {
             return outcome;
         }
         if (failureHandler == null) {
@@ -170,13 +163,7 @@ public final class TransportAssignedDeliverySubmitter {
                     outcome.getDeliveryId(), outcome.getSelectedWorkerId(), outcome.getStatus(), detail);
             return outcome;
         }
-        boolean handled = failureHandler.handle(DeliveryObservationSupport.failure(
-                groupContext,
-                command,
-                endpoint,
-                outcome,
-                detail
-        ));
+        boolean handled = failureHandler.handle(new TransportDeliveryFailureEvent(outcome, detail));
         if (!handled) {
             logger.error("Delivery failure was not handled: deliveryId={}, selectedWorkerId={}, status={}, reason={}",
                     outcome.getDeliveryId(), outcome.getSelectedWorkerId(), outcome.getStatus(), detail);
@@ -192,7 +179,7 @@ public final class TransportAssignedDeliverySubmitter {
         private final String adapterId;
         private final String deliveryQueueKey;
         private final String targetTransportNodeId;
-        private final List<ResolvedDeliveryItem> items = new ArrayList<>();
+        private final List<DeliveryCommand> items = new ArrayList<>();
 
         private CommandGroup(String adapterId, String deliveryQueueKey, String targetTransportNodeId) {
             this.adapterId = adapterId;

@@ -10,20 +10,14 @@ public final class TestWorkerCandidateRows {
     public static WorkerCandidateRow from(Worker worker) {
         return new WorkerCandidateRow(
                 worker.getWorkerId(),
-                worker.getStatus() == null ? null : worker.getStatus().name(),
                 worker.getAgentVersion(),
-                worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
-                worker.getWorkerGroupId(),
+                worker.getWorkerGroupId() == null || worker.getWorkerGroupId().isBlank()
+                        ? "group-a"
+                        : worker.getWorkerGroupId(),
                 worker.getAdapterNodeId(),
                 worker.getAdapterId(),
                 worker.getOnlineStrategy(),
-                worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime(),
-                worker.isAvailable()
+                worker.getAttributes()
         );
     }
 }

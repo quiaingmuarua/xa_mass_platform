@@ -19,6 +19,7 @@ import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -54,7 +55,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskTerminal(task);
 
-        verify(workerManager).recordWorkFinal("worker-1", "task-1");
+        verify(workerManager).recordWorkFinal(admissionTarget("worker-1", "task-1"));
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
     }
 
@@ -68,7 +69,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskTerminal(task);
 
-        verify(workerManager).recordWorkFinal("worker-1", "task-1");
+        verify(workerManager).recordWorkFinal(admissionTarget("worker-1", "task-1"));
         verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
     }
 
@@ -82,7 +83,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskTerminal(task);
 
-        verify(workerManager).recordWorkFinal("worker-1", "task-1");
+        verify(workerManager).recordWorkFinal(admissionTarget("worker-1", "task-1"));
         verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
     }
 
@@ -129,7 +130,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
-        verify(workerManager).recordWorkFinal("worker-1", "task-1");
+        verify(workerManager).recordWorkFinal(admissionTarget("worker-1", "task-1"));
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
         verify(dispatchWakeupPort).requestTaskDispatch(same(task));
     }
@@ -167,7 +168,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
-        verify(workerManager).recordWorkFinal("worker-1", "task-1");
+        verify(workerManager).recordWorkFinal(admissionTarget("worker-1", "task-1"));
         verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
         verify(dispatchWakeupPort).requestTaskDispatch(same(task));
     }
@@ -193,7 +194,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
-        verify(workerManager).recordWorkFinal("worker-1", "task-1");
+        verify(workerManager).recordWorkFinal(admissionTarget("worker-1", "task-1"));
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
         verify(dispatchWakeupPort, never()).hasDispatchReadyWork("task-1");
         verify(dispatchWakeupPort, never()).requestTaskDispatch(any());
@@ -221,7 +222,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
-        verify(workerManager).recordWorkFinal("worker-1", "task-1");
+        verify(workerManager).recordWorkFinal(admissionTarget("worker-1", "task-1"));
         verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
     }
 
@@ -321,6 +322,7 @@ public class TaskResourceReleaseListenerTest {
                 attemptId,
                 1,
                 workerId,
+                "group-a",
                 null,
                 AttemptStatus.SUCCEEDED,
                 AttemptFinalReason.SUCCESS
@@ -335,10 +337,14 @@ public class TaskResourceReleaseListenerTest {
                         Map.of("target", messageId), null, 0, 3, null, null, Instant.now()),
                 WorkEnqueueOptions.DEFAULT);
         runtime.claimReady(taskId,
-                List.of(WorkerClaimTarget.workerLevel(workerId, "batch-1", 1)),
+                List.of(WorkerClaimTarget.groupScoped("group-a", workerId, "batch-1", 1, java.util.Set.of())),
                 1,
                 30);
         return runtime.activeLeases(taskId);
+    }
+
+    private static WorkerAdmissionTarget admissionTarget(String workerId, String taskId) {
+        return WorkerAdmissionTarget.groupScoped("group-a", workerId, taskId);
     }
 
     private static final class NonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {

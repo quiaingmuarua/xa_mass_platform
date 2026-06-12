@@ -37,7 +37,7 @@ class TransportAssignedDeliverySubmitterTest {
 
         assertEquals(List.of(DispatchOutcomeStatus.NO_ENDPOINT), statuses(outcomes));
         assertEquals(1, failures.events.size());
-        assertEquals("worker-1", failures.events.get(0).itemSnapshot().selectedWorkerId());
+        assertEquals("worker-1", failures.events.get(0).outcome().getSelectedWorkerId());
         assertEquals(0, handoff.offered.size());
     }
 
@@ -58,7 +58,7 @@ class TransportAssignedDeliverySubmitterTest {
 
         assertEquals(List.of(DispatchOutcomeStatus.NO_ENDPOINT), statuses(outcomes));
         assertEquals(1, failures.events.size());
-        assertEquals("node-offline", failures.events.get(0).groupContext().targetTransportNodeId());
+        assertEquals("node-offline", failures.events.get(0).outcome().getTransportNodeId());
         assertEquals(0, handoff.offered.size());
     }
 
@@ -80,7 +80,7 @@ class TransportAssignedDeliverySubmitterTest {
 
         assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE), statuses(outcomes));
         assertEquals(1, failures.events.size());
-        assertEquals("node-1", failures.events.get(0).groupContext().targetTransportNodeId());
+        assertEquals("node-1", failures.events.get(0).outcome().getTransportNodeId());
     }
 
     @Test
@@ -131,10 +131,9 @@ class TransportAssignedDeliverySubmitterTest {
 
         submitter.submit(DeliveryCommandFixtures.group(command));
 
-        ResolvedDeliveryItem offered = handoff.offered.get(0).items().get(0);
-        assertEquals("worker-selected", offered.command().getSelectedWorkerId());
-        assertEquals("node-1", offered.endpoint().transportNodeId());
-        assertEquals("conn-worker-selected", offered.endpoint().connectionId());
+        DeliveryCommand offered = handoff.offered.get(0).items().get(0);
+        assertEquals("worker-selected", offered.getSelectedWorkerId());
+        assertEquals("node-1", handoff.offered.get(0).targetTransportNodeId());
     }
 
     private static DeliveryCommand command(String messageId, String selectedWorkerId) {
@@ -190,27 +189,26 @@ class TransportAssignedDeliverySubmitterTest {
         @Override
         public List<DispatchOutcome> offer(DeliveryCommandBatch batch) {
             offered.add(batch);
-            DeliveryObservationGroupContext groupContext = DeliveryObservationGroupContext.now(
-                    batch.adapterId(),
-                    batch.deliveryQueueKey(),
-                    batch.targetTransportNodeId()
-            );
             if (backpressure) {
                 return batch.items().stream()
-                        .map(item -> DeliveryObservationSupport.outcome(
-                                groupContext,
-                                item.command(),
-                                item.endpoint(),
+                        .map(item -> DispatchOutcome.fromCommand(
+                                batch.adapterId(),
+                                batch.deliveryQueueKey(),
+                                batch.targetTransportNodeId(),
+                                item,
+                                null,
                                 DispatchOutcomeStatus.BACKPRESSURE,
                                 true,
                                 "test backpressure"))
                         .toList();
             }
             return batch.items().stream()
-                    .map(item -> DeliveryObservationSupport.outcome(
-                            groupContext,
-                            item.command(),
-                            item.endpoint(),
+                    .map(item -> DispatchOutcome.fromCommand(
+                            batch.adapterId(),
+                            batch.deliveryQueueKey(),
+                            batch.targetTransportNodeId(),
+                            item,
+                            null,
                             DispatchOutcomeStatus.QUEUED,
                             false,
                             null))

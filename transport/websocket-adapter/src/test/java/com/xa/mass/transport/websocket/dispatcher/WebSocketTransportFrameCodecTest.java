@@ -2,7 +2,10 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.AdapterEndpoint;
+import com.xa.mass.transport.model.TaskDispatchContent;
+import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,31 +31,31 @@ class WebSocketTransportFrameCodecTest {
 
     @Test
     void encodesCanonicalTaskDispatch() {
-        TransportPacket packet = new TransportPacket(
-                TransportPacket.CURRENT_VERSION,
-                "packet-1",
-                "trace-1",
-                PacketType.TASK_DISPATCH,
+        AdapterDispatchRequest request = new AdapterDispatchRequest(
+                "delivery-1",
                 "websocket",
-                "route-1",
-                "task-1",
-                "msg-1",
-                "attempt-1",
-                "crawler.fetch-page",
-                TransportPacket.JSON_CONTENT_TYPE,
-                Map.of(
-                        TransportPacket.PAYLOAD_TASK_NAME, "task-name",
-                        TransportPacket.PAYLOAD_PROJECT, "demoApp",
-                        TransportPacket.PAYLOAD_USER_ID, "user-a",
-                        TransportPacket.PAYLOAD_RETRY_COUNT, 2,
-                        TransportPacket.PAYLOAD_WORKER_ID, "worker-1",
-                        TransportPacket.PAYLOAD_BATCH_ID, "batch-1",
-                        TransportPacket.PAYLOAD_INPUT, Map.of("target", "https://example.test"),
-                        TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of("textContent", "hello")
-                )
+                "worker-1",
+                new TaskDispatchContent(
+                        "task-1",
+                        "msg-1",
+                        "crawler.fetch-page",
+                        Map.of("target", "https://example.test"),
+                        Map.of("textContent", "hello")
+                ),
+                new TaskDispatchExecutionContext(
+                        "attempt-1",
+                        1,
+                        2,
+                        "batch-1",
+                        "task-name",
+                        "demoApp",
+                        "user-a"
+                ),
+                new AdapterEndpoint("route-1", "node-1", "conn-1", 10_000L),
+                1L
         );
 
-        JsonObject frame = codec.parseObject(codec.encodeCanonicalTaskDispatch(packet));
+        JsonObject frame = codec.parseObject(codec.encodeCanonicalTaskDispatch(request));
 
         assertNotNull(frame);
         assertEquals("msg-1", frame.get("messageId").getAsString());

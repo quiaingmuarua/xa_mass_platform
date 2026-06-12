@@ -14,7 +14,6 @@ import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
-import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 
 /**
  * Adapter-owned bootstrap for embedded WebSocket runtime contribution.
@@ -48,10 +47,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
         if (config.isEnabled()) {
             context.registerTransportBinding(TransportBinding.builder(
-                    new WebSocketRealtimeWorkerAdapter(
-                            config.getAdapterId(),
-                            new WebSocketTaskDispatchChannel(dispatcherContext, context.getDeliveryService())
-                    )
+                    new WebSocketTaskDispatchChannel(dispatcherContext, context.getDeliveryService())
             ).build());
             context.registerRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(config.getAdapterId(), endpointRegistry));
         }

@@ -9,8 +9,6 @@ import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchContent;
 import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandGroup;
-import com.xa.mass.transport.runtime.delivery.DeliveryObservationGroupContext;
-import com.xa.mass.transport.runtime.delivery.DeliveryObservationItemSnapshot;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
@@ -100,21 +98,6 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
             String deliveryId = UUID.randomUUID().toString();
             TaskDispatchContent content = TaskDispatchContent.from(task, binding);
             TaskDispatchExecutionContext executionContext = TaskDispatchExecutionContext.from(task, binding);
-            DeliveryObservationGroupContext groupContext = DeliveryObservationGroupContext.now(
-                    adapterId,
-                    adapterId,
-                    null
-            );
-            DeliveryObservationItemSnapshot itemSnapshot = new DeliveryObservationItemSnapshot(
-                    deliveryId,
-                    selectedWorkerId,
-                    content.taskId(),
-                    content.messageId(),
-                    executionContext.attemptId(),
-                    executionContext.attemptNo(),
-                    null,
-                    null
-            );
             DispatchOutcome outcome = new DispatchOutcome(
                     deliveryId,
                     adapterId,
@@ -122,6 +105,9 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
                     adapterId,
                     null,
                     executionContext.attemptId(),
+                    content.taskId(),
+                    content.messageId(),
+                    executionContext.attemptNo(),
                     DispatchOutcomeStatus.UNAVAILABLE,
                     true,
                     detail,
@@ -129,12 +115,7 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
                     null,
                     System.currentTimeMillis()
             );
-            boolean handled = failureHandler.handle(new TransportDeliveryFailureEvent(
-                    groupContext,
-                    itemSnapshot,
-                    outcome,
-                    detail
-            ));
+            boolean handled = failureHandler.handle(new TransportDeliveryFailureEvent(outcome, detail));
             if (!handled) {
                 logger.error("Delivery failure was not compensated: deliveryId={}, selectedWorkerId={}, detail={}",
                         outcome.getDeliveryId(), outcome.getSelectedWorkerId(), detail);

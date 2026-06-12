@@ -250,6 +250,18 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     }
 
     @Override
+    public ReserveStatus slotLifecycleStatus(String groupId, String workerId, long nowMillis) {
+        Optional<AtomicReference<WorkerSlot>> slotRef = slotRef(groupId, workerId);
+        if (slotRef.isEmpty()) {
+            return slotByWorkerId(workerId).isPresent()
+                    ? ReserveStatus.GROUP_MISMATCH
+                    : ReserveStatus.MISSING_SLOT;
+        }
+        WorkerSlot current = slotRef.orElseThrow().get();
+        return validateSlotLifecycle(current, groupId, workerId, nowMillis);
+    }
+
+    @Override
     public ReserveResult tryReserve(String groupId, String workerId, String taskId, int permits, long nowMillis) {
         int normalizedPermits = Math.max(1, permits);
         Optional<AtomicReference<WorkerSlot>> slotRef = slotRef(groupId, workerId);
@@ -648,6 +660,20 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                                           String workerId,
                                           int permits,
                                           long nowMillis) {
+        ReserveStatus lifecycleStatus = validateSlotLifecycle(current, groupId, workerId, nowMillis);
+        if (lifecycleStatus != ReserveStatus.ACCEPTED) {
+            return lifecycleStatus;
+        }
+        if (current.occupiedPermits() + permits > current.declaredCapacity()) {
+            return ReserveStatus.CAPACITY_UNAVAILABLE;
+        }
+        return ReserveStatus.ACCEPTED;
+    }
+
+    private ReserveStatus validateSlotLifecycle(WorkerSlot current,
+                                                String groupId,
+                                                String workerId,
+                                                long nowMillis) {
         if (current == null) {
             return ReserveStatus.MISSING_SLOT;
         }
@@ -664,9 +690,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         }
         if (!current.dispatchEnabled()) {
             return ReserveStatus.DISPATCH_DISABLED;
-        }
-        if (current.occupiedPermits() + permits > current.declaredCapacity()) {
-            return ReserveStatus.CAPACITY_UNAVAILABLE;
         }
         return ReserveStatus.ACCEPTED;
     }

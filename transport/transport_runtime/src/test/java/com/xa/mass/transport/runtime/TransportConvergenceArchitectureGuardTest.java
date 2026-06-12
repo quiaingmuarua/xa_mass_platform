@@ -263,25 +263,40 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void transportDispatchEnvelopeDoesNotCarryStoreQueueKey() throws IOException {
-        assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TransportDispatchEnvelope.java")),
-                "deliveryQueueKey",
-                "getDeliveryQueueKey("
+    void removedEnvelopeAndEndpointLeaseModelsDoNotReappear() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TransportDispatchEnvelope.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/TaskDispatchChannel.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/EndpointLease.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/ResolvedDeliveryItem.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DeliveryObservationGroupContext.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DeliveryObservationItemSnapshot.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DeliveryObservationSupport.java")
         );
     }
 
     @Test
-    void redisDispatchEnvelopeValueDoesNotSerializeStoreQueueKey() throws IOException {
-        Path codec = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeCodec.java");
+    void redisPollingQueueValueIsTypedPulledDispatchNotPacketEnvelope() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeCodec.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeRecord.java")
+        );
+        Path codec = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisQueuedPulledDispatchCodec.java");
+        assertNoProductionSourceContains(
+                List.of(codec),
+                "TransportPacket",
+                "TaskDispatchItem",
+                "transportPayload"
+        );
         assertSourceSliceDoesNotContain(
                 codec,
-                "byte[] encodeEntry",
-                "private static String encodeKeyToken",
-                "deliveryQueueKey"
-        );
-        assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeRecord.java")),
+                "private record RedisQueuedPulledDispatchRecord",
+                "private record TaskDispatchContentRecord",
+                "routeKey",
+                "\"workerId\"",
+                "taskName",
+                "project",
+                "userId",
                 "deliveryQueueKey"
         );
     }
@@ -301,6 +316,9 @@ class TransportConvergenceArchitectureGuardTest {
                 "DeliveryCommand",
                 "TransportPacket",
                 "TaskDispatchItem",
+                "DeliveryObservation",
+                "groupContext",
+                "itemSnapshot",
                 "connectionToken",
                 "correlation",
                 "\"payload\""
@@ -401,6 +419,13 @@ class TransportConvergenceArchitectureGuardTest {
                 .filter(path -> containsAny(path, forbiddenTokens))
                 .toList();
         assertTrue(violations.isEmpty(), () -> "Forbidden transport convergence residue: " + violations);
+    }
+
+    private static void assertPathsDoNotExist(Path... paths) {
+        List<Path> existing = Stream.of(paths)
+                .filter(Files::exists)
+                .toList();
+        assertTrue(existing.isEmpty(), () -> "Removed transport convergence files still exist: " + existing);
     }
 
     private static void assertSourceSliceDoesNotContain(Path path,

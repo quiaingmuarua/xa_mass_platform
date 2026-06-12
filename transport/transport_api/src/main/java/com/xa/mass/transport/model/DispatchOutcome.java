@@ -13,6 +13,9 @@ public final class DispatchOutcome {
     private final String deliveryQueueKey;
     private final String routeKey;
     private final String attemptId;
+    private final String taskId;
+    private final String messageId;
+    private final int attemptNo;
     private final DispatchOutcomeStatus status;
     private final boolean retryable;
     private final String reason;
@@ -22,33 +25,13 @@ public final class DispatchOutcome {
 
     public DispatchOutcome(String deliveryId,
                            String adapterId,
-                           String routeKey,
-                           String attemptId,
-                           DispatchOutcomeStatus status,
-                           boolean retryable,
-                           String reason) {
-        this(
-                deliveryId,
-                adapterId,
-                null,
-                null,
-                routeKey,
-                attemptId,
-                status,
-                retryable,
-                reason,
-                null,
-                null,
-                0L
-        );
-    }
-
-    public DispatchOutcome(String deliveryId,
-                           String adapterId,
                            String selectedWorkerId,
                            String deliveryQueueKey,
                            String routeKey,
                            String attemptId,
+                           String taskId,
+                           String messageId,
+                           int attemptNo,
                            DispatchOutcomeStatus status,
                            boolean retryable,
                            String reason,
@@ -61,6 +44,9 @@ public final class DispatchOutcome {
         this.deliveryQueueKey = normalizeText(deliveryQueueKey);
         this.routeKey = TransportDeliveryAddressing.normalizeRouteKey(routeKey);
         this.attemptId = normalizeText(attemptId);
+        this.taskId = normalizeText(taskId);
+        this.messageId = normalizeText(messageId);
+        this.attemptNo = Math.max(0, attemptNo);
         this.status = Objects.requireNonNull(status, "status");
         this.retryable = retryable;
         this.reason = reason;
@@ -69,79 +55,187 @@ public final class DispatchOutcome {
         this.occurredAtEpochMillis = Math.max(0L, occurredAtEpochMillis);
     }
 
-    public static DispatchOutcome delivered(String adapterId, TransportDispatchEnvelope envelope) {
-        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.DELIVERED, false, null);
+    public static DispatchOutcome delivered(String adapterId, AdapterDispatchRequest request) {
+        return fromRequest(adapterId, null, request, DispatchOutcomeStatus.DELIVERED, false, null);
     }
 
-    public static DispatchOutcome queued(String adapterId, TransportDispatchEnvelope envelope) {
-        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.QUEUED, false, null);
+    public static DispatchOutcome queued(String adapterId,
+                                         String deliveryQueueKey,
+                                         String deliveryId,
+                                         String selectedWorkerId,
+                                         String attemptId,
+                                         String taskId,
+                                         String messageId,
+                                         int attemptNo) {
+        return basic(
+                deliveryId,
+                adapterId,
+                deliveryQueueKey,
+                selectedWorkerId,
+                attemptId,
+                taskId,
+                messageId,
+                attemptNo,
+                DispatchOutcomeStatus.QUEUED,
+                false,
+                null
+        );
     }
 
-    public static DispatchOutcome queued(String adapterId, String deliveryQueueKey, TransportDispatchEnvelope envelope) {
-        return fromEnvelope(adapterId, deliveryQueueKey, envelope, DispatchOutcomeStatus.QUEUED, false, null);
-    }
-
-    public static DispatchOutcome noEndpoint(String adapterId, TransportDispatchEnvelope envelope, String reason) {
-        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.NO_ENDPOINT, true, reason);
-    }
-
-    public static DispatchOutcome backpressure(String adapterId, TransportDispatchEnvelope envelope, String reason) {
-        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.BACKPRESSURE, true, reason);
+    public static DispatchOutcome noEndpoint(String adapterId, AdapterDispatchRequest request, String reason) {
+        return fromRequest(adapterId, null, request, DispatchOutcomeStatus.NO_ENDPOINT, true, reason);
     }
 
     public static DispatchOutcome backpressure(String adapterId,
                                                String deliveryQueueKey,
-                                               TransportDispatchEnvelope envelope,
+                                               String deliveryId,
+                                               String selectedWorkerId,
+                                               String attemptId,
+                                               String taskId,
+                                               String messageId,
+                                               int attemptNo,
                                                String reason) {
-        return fromEnvelope(adapterId, deliveryQueueKey, envelope, DispatchOutcomeStatus.BACKPRESSURE, true, reason);
-    }
-
-    public static DispatchOutcome invalid(String adapterId, TransportDispatchEnvelope envelope, String reason) {
-        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.INVALID, false, reason);
+        return basic(
+                deliveryId,
+                adapterId,
+                deliveryQueueKey,
+                selectedWorkerId,
+                attemptId,
+                taskId,
+                messageId,
+                attemptNo,
+                DispatchOutcomeStatus.BACKPRESSURE,
+                true,
+                reason
+        );
     }
 
     public static DispatchOutcome invalid(String adapterId,
                                           String deliveryQueueKey,
-                                          TransportDispatchEnvelope envelope,
+                                          String deliveryId,
+                                          String selectedWorkerId,
+                                          String attemptId,
+                                          String taskId,
+                                          String messageId,
+                                          int attemptNo,
                                           String reason) {
-        return fromEnvelope(adapterId, deliveryQueueKey, envelope, DispatchOutcomeStatus.INVALID, false, reason);
+        return basic(
+                deliveryId,
+                adapterId,
+                deliveryQueueKey,
+                selectedWorkerId,
+                attemptId,
+                taskId,
+                messageId,
+                attemptNo,
+                DispatchOutcomeStatus.INVALID,
+                false,
+                reason
+        );
     }
 
-    public static DispatchOutcome unavailable(String adapterId, TransportDispatchEnvelope envelope, String reason) {
-        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.UNAVAILABLE, true, reason);
+    public static DispatchOutcome invalid(String adapterId, AdapterDispatchRequest request, String reason) {
+        return fromRequest(adapterId, null, request, DispatchOutcomeStatus.INVALID, false, reason);
+    }
+
+    public static DispatchOutcome unavailable(String adapterId, AdapterDispatchRequest request, String reason) {
+        return fromRequest(adapterId, null, request, DispatchOutcomeStatus.UNAVAILABLE, true, reason);
     }
 
     public static DispatchOutcome unavailable(String adapterId,
                                               String deliveryQueueKey,
-                                              TransportDispatchEnvelope envelope,
+                                              AdapterDispatchRequest request,
                                               String reason) {
-        return fromEnvelope(adapterId, deliveryQueueKey, envelope, DispatchOutcomeStatus.UNAVAILABLE, true, reason);
+        return fromRequest(adapterId, deliveryQueueKey, request, DispatchOutcomeStatus.UNAVAILABLE, true, reason);
+    }
+
+    public static DispatchOutcome fromCommand(String adapterId,
+                                              String deliveryQueueKey,
+                                              String targetTransportNodeId,
+                                              DeliveryCommand command,
+                                              AdapterEndpoint endpoint,
+                                              DispatchOutcomeStatus status,
+                                              boolean retryable,
+                                              String reason) {
+        Objects.requireNonNull(command, "command");
+        TaskDispatchContent content = command.getContent();
+        TaskDispatchExecutionContext executionContext = command.getExecutionContext();
+        return new DispatchOutcome(
+                command.getCommandId(),
+                adapterId,
+                command.getSelectedWorkerId(),
+                deliveryQueueKey,
+                endpoint != null ? endpoint.routeKey() : null,
+                executionContext.attemptId(),
+                content.taskId(),
+                content.messageId(),
+                executionContext.attemptNo(),
+                status,
+                retryable,
+                reason,
+                endpoint != null ? endpoint.transportNodeId() : targetTransportNodeId,
+                endpoint != null ? endpoint.connectionId() : null,
+                System.currentTimeMillis()
+        );
     }
 
     public static DispatchOutcome failed(String adapterId,
-                                         TransportDispatchEnvelope envelope,
+                                         AdapterDispatchRequest request,
                                          String reason,
                                          boolean retryable) {
-        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.FAILED, retryable, reason);
+        return fromRequest(adapterId, null, request, DispatchOutcomeStatus.FAILED, retryable, reason);
     }
 
-    public static DispatchOutcome shutdown(String adapterId, TransportDispatchEnvelope envelope, String reason) {
-        return fromEnvelope(adapterId, null, envelope, DispatchOutcomeStatus.SHUTDOWN, true, reason);
+    public static DispatchOutcome shutdown(String adapterId, AdapterDispatchRequest request, String reason) {
+        return fromRequest(adapterId, null, request, DispatchOutcomeStatus.SHUTDOWN, true, reason);
     }
 
-    private static DispatchOutcome fromEnvelope(String adapterId,
-                                                String deliveryQueueKey,
-                                                TransportDispatchEnvelope envelope,
-                                                DispatchOutcomeStatus status,
-                                                boolean retryable,
-                                                String reason) {
+    private static DispatchOutcome fromRequest(String adapterId,
+                                               String deliveryQueueKey,
+                                               AdapterDispatchRequest request,
+                                               DispatchOutcomeStatus status,
+                                               boolean retryable,
+                                               String reason) {
         return new DispatchOutcome(
-                envelope != null ? envelope.getDeliveryId() : null,
+                request != null ? request.deliveryId() : null,
                 adapterId,
-                envelope != null ? envelope.getSelectedWorkerId() : null,
+                request != null ? request.selectedWorkerId() : null,
                 deliveryQueueKey,
-                envelope != null ? envelope.getRouteKey() : null,
-                envelope != null ? envelope.getAttemptId() : null,
+                request != null ? request.endpoint().routeKey() : null,
+                request != null ? request.executionContext().attemptId() : null,
+                request != null ? request.content().taskId() : null,
+                request != null ? request.content().messageId() : null,
+                request != null ? request.executionContext().attemptNo() : 0,
+                status,
+                retryable,
+                reason,
+                request != null ? request.endpoint().transportNodeId() : null,
+                request != null ? request.endpoint().connectionId() : null,
+                System.currentTimeMillis()
+        );
+    }
+
+    private static DispatchOutcome basic(String deliveryId,
+                                         String adapterId,
+                                         String deliveryQueueKey,
+                                         String selectedWorkerId,
+                                         String attemptId,
+                                         String taskId,
+                                         String messageId,
+                                         int attemptNo,
+                                         DispatchOutcomeStatus status,
+                                         boolean retryable,
+                                         String reason) {
+        return new DispatchOutcome(
+                deliveryId,
+                adapterId,
+                selectedWorkerId,
+                deliveryQueueKey,
+                null,
+                attemptId,
+                taskId,
+                messageId,
+                attemptNo,
                 status,
                 retryable,
                 reason,
@@ -173,6 +267,18 @@ public final class DispatchOutcome {
 
     public String getAttemptId() {
         return attemptId;
+    }
+
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public String getMessageId() {
+        return messageId;
+    }
+
+    public int getAttemptNo() {
+        return attemptNo;
     }
 
     public DispatchOutcomeStatus getStatus() {

@@ -1,6 +1,11 @@
 # Worker Runtime Bounded Candidate Acquisition Roadmap
 
-Status: proposed successor roadmap.
+Status: candidate acquisition slice complete, roadmap active. BCA-0/BCA-1
+landed for scheduling candidate acquisition: `WorkerCandidateSamplingPolicy`
+now receives an implementation-provided bounded source batch rather than a
+guaranteed complete bucket, and Redis candidate acquisition uses bounded
+`SRANDMEMBER` instead of full-bucket `SMEMBERS`. Node-group maintenance
+pagination remains active BCA-3 work.
 
 Parent:
 
@@ -20,12 +25,14 @@ just Redis physical shape.
 
 ## Current Facts
 
-- `WorkerRegistry#acquireCandidates(...)` returns a bounded list, but the Redis
-  implementation currently materializes the full candidate bucket before calling
-  `WorkerCandidateSamplingPolicy`.
-- `WorkerCandidateSamplingPolicy#sample(...)` currently receives the complete
-  candidate list for the selected group/bucket. Redis-side sampling would change
-  that policy contract.
+- `WorkerRegistry#acquireCandidates(...)` is now a bounded Stage-1 source batch
+  contract. It does not promise complete bucket materialization.
+- `WorkerCandidateSamplingPolicy#sample(...)` receives an
+  implementation-provided source batch. Memory may pass a complete in-memory
+  bucket; Redis may pass a bounded Redis-side subset.
+- Redis candidate acquisition uses `SRANDMEMBER(bucketKey, maxCandidateCount)`
+  before applying `WorkerCandidateSamplingPolicy`, so the scheduling path no
+  longer requires full bucket `SMEMBERS`.
 - `WorkerRegistry#workerIdsByAdapterNodeGroup(...)` currently returns the full
   current worker set for one adapter node / worker group.
 - Node-group dispatch gate default methods iterate that full set to apply or
@@ -35,11 +42,14 @@ just Redis physical shape.
 
 ## Boundary Decision
 
-Current complete-set semantics stay valid until this roadmap changes the SPI.
+Candidate acquisition is a bounded-source contract. The sampling policy may
+filter, reorder, or sample the implementation-provided source batch, but it must
+not depend on seeing every bucket member.
 
-Do not change `acquireCandidates(...)` to Redis-side random sampling while
-`WorkerCandidateSamplingPolicy` still claims to receive the complete candidate
-list.
+Do not reintroduce complete-list assumptions into
+`WorkerCandidateSamplingPolicy` or `WorkerRegistry#acquireCandidates(...)`.
+Stage-2 slot lifecycle validation and reserve remain the correctness boundary
+for stale or ineligible sampled members.
 
 Do not add a node-membership Redis key family only to make
 `workerIdsByAdapterNodeGroup(...)` cheaper. First decide whether the runtime SPI
@@ -55,6 +65,12 @@ owner.
 - No hidden compatibility bridge that keeps old and new SPI semantics live.
 
 ## BCA-0: Caller And Cost Inventory
+
+Current slice status: candidate acquisition inventory landed. Production
+scheduling enters `WorkerRegistry#acquireCandidates(...)` only through
+`WorkerCandidateIndex`. Node-group maintenance enters
+`workerIdsByAdapterNodeGroup(...)` through `WorkerRelationshipOwner` dispatch
+gate changes and remains BCA-3 follow-up.
 
 Goal:
 
@@ -81,6 +97,10 @@ Acceptance:
 
 ## BCA-1: Candidate Acquisition Contract Decision
 
+Current slice status: landed. Selected outcome: narrow
+`WorkerCandidateSamplingPolicy` so it explicitly accepts an
+implementation-provided bounded source batch.
+
 Goal:
 
 Decide the contract before changing Redis reads.
@@ -102,6 +122,11 @@ Acceptance:
 - Tests prove behavior through candidate outcome, not field-copy assertions.
 
 ## BCA-2: Redis Candidate Read Implementation
+
+Current slice status: landed for existing candidate buckets. Redis
+`acquireCandidates(...)` reads a bounded source batch with `SRANDMEMBER` and
+keeps Stage-2 source guard / reserve validation. Deadline-aware slot lifecycle
+indexes are owned by CES-3/CES-4, not by this BCA slice.
 
 Goal:
 
@@ -149,9 +174,11 @@ Acceptance:
 
 ```powershell
 rg -n "acquireCandidates\\(|workerIdsByAdapterNodeGroup\\(|disableDispatchForAdapterNodeGroup\\(|clearDispatchDisableForAdapterNodeGroup\\(" platform_infra xa-mass-worker-runtime xa-mass-engine --glob '!**/target/**'
+rg -n "smembers\\(bucketKey\\)|srandmember\\(bucketKey" platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistry.java
 .\mvnw.cmd -pl platform_infra/mass-runtime-memory "-Dtest=InMemoryWorkerRegistryTest" test
 .\mvnw.cmd -pl platform_infra/mass-runtime-redis "-Dtest=RedisWorkerRegistryTest" test
 .\mvnw.cmd -pl xa-mass-engine "-Dtest=EngineSchedulingCoreArchitectureGuardTest#upperRuntimeCallersUseWorkerRegistrySemanticOperations" test
+.\mvnw.cmd -pl xa-mass-engine -am "-Dtest=EngineSchedulingCoreArchitectureGuardTest#redisWorkerRegistryCandidateAcquisitionDoesNotMaterializeFullBucket" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## Completion Criteria
@@ -159,10 +186,11 @@ rg -n "acquireCandidates\\(|workerIdsByAdapterNodeGroup\\(|disableDispatchForAda
 This roadmap is complete when:
 
 1. Candidate acquisition has an explicit complete-set or bounded-subset
-   contract.
-2. Redis candidate reads match that contract.
+   contract. Landed for scheduling candidate acquisition.
+2. Redis candidate reads match that contract. Landed for current candidate
+   buckets.
 3. Node-group maintenance has an explicit complete-set or paged/batched
-   contract.
+   contract. Pending BCA-3.
 4. No duplicate Redis worker membership truth is introduced without owner
    review.
 5. Memory and Redis `WorkerRegistry` behavior remain aligned by contract tests.

@@ -9,6 +9,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.worker.runtime.admission.WorkerAvailabilityWakeupRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
@@ -342,24 +343,28 @@ public class WorkerManager implements WorkerResourceRuntime,
     }
 
     @Override
-    public WorkerAdmissionResult reserveWorkerCapacity(String workerId, String taskId) {
-        return admissionOwner.reserveWorkerCapacity(workerId, taskId);
+    public WorkerAdmissionResult reserveWorkerCapacity(WorkerAdmissionTarget target) {
+        return admissionOwner.reserveWorkerCapacity(target);
     }
 
-    public boolean confirmWorkerReservation(String workerId, String taskId) {
-        return admissionOwner.confirmWorkerReservation(workerId, taskId);
+    @Override
+    public boolean confirmWorkerReservation(WorkerAdmissionTarget target) {
+        return admissionOwner.confirmWorkerReservation(target);
     }
 
-    public void releaseWorkerReservation(String workerId, String taskId) {
-        admissionOwner.releaseWorkerReservation(workerId, taskId);
+    @Override
+    public void releaseWorkerReservation(WorkerAdmissionTarget target) {
+        admissionOwner.releaseWorkerReservation(target);
     }
 
-    public void recordWorkClaimed(String workerId, String taskId) {
-        admissionOwner.recordWorkClaimed(workerId, taskId);
+    @Override
+    public void recordWorkClaimed(WorkerAdmissionTarget target) {
+        admissionOwner.recordWorkClaimed(target);
     }
 
-    public void recordWorkFinal(String workerId, String taskId) {
-        admissionOwner.recordWorkFinal(workerId, taskId);
+    @Override
+    public void recordWorkFinal(WorkerAdmissionTarget target) {
+        admissionOwner.recordWorkFinal(target);
     }
 
     private void publishWorkerRegistrySnapshot() {

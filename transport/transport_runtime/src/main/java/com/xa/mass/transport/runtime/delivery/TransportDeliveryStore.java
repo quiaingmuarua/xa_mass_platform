@@ -1,7 +1,6 @@
 package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -12,8 +11,7 @@ import java.util.concurrent.TimeUnit;
  * <p>This contract is transport-specific but intentionally Redis-friendly.
  * Queue ownership is the transport runtime {@code deliveryQueueKey}; assigned
  * polling delivery is selected by {@code selectedWorkerId} under that shared
- * queue owner. {@code routeKey} stays envelope metadata and must not be used as
- * the only queue isolation key for assigned task delivery.
+ * queue owner.
  *
  * <p>{@link #poll(String, String, int, long, TimeUnit)} returns transport
  * delivery status, but store implementations should throw
@@ -30,9 +28,9 @@ import java.util.concurrent.TimeUnit;
  */
 public interface TransportDeliveryStore {
 
-    DispatchOutcome enqueue(String deliveryQueueKey, TransportDispatchEnvelope envelope);
+    DispatchOutcome enqueue(String adapterId, String deliveryQueueKey, QueuedPulledDispatch item);
 
-    List<TransportDispatchEnvelope> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems);
+    List<QueuedPulledDispatch> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems);
 
     TransportDeliveryPollResult poll(String deliveryQueueKey,
                                      String selectedWorkerId,

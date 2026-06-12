@@ -98,8 +98,7 @@ class TaskWorkerEligibilityTest {
         List<ActiveLeaseRecord> firstLeases = harness.activeLeases(firstTask.getTid());
         assertEquals(1, firstLeases.size());
         assertEquals("worker-backup", firstLeases.getFirst().workerId());
-        assertRejected(harness, firstTask.getTid(), "worker-draining",
-                AssignmentResult.RESOURCE_UNAVAILABLE, "worker unavailable");
+        assertTrue(harness.workerRecords(firstTask.getTid(), "worker-draining").isEmpty());
 
         harness.workerManager.clearWorkerDispatchDisable("worker-draining", WORKER_STATE, "ready");
 

@@ -44,28 +44,8 @@ final class DeliveryCommandFixtures {
         );
     }
 
-    static ResolvedDeliveryItem item(DeliveryCommand command, String targetTransportNodeId, String routeKey) {
-        return new ResolvedDeliveryItem(
-                command,
-                new EndpointLease(
-                        command.getSelectedWorkerId(),
-                        routeKey,
-                        targetTransportNodeId,
-                        "conn-" + command.getSelectedWorkerId(),
-                        System.currentTimeMillis() + 30_000L
-                )
-        );
-    }
-
     static DeliveryCommandBatch batch(String targetTransportNodeId, DeliveryCommand... commands) {
-        List<ResolvedDeliveryItem> items = List.of(commands).stream()
-                .map(command -> item(command, targetTransportNodeId, "route-" + command.getContent().messageId()))
-                .toList();
-        return new DeliveryCommandBatch("websocket", "websocket", targetTransportNodeId, items);
-    }
-
-    static DeliveryCommandBatch batch(String targetTransportNodeId, ResolvedDeliveryItem... items) {
-        return new DeliveryCommandBatch("websocket", "websocket", targetTransportNodeId, List.of(items));
+        return new DeliveryCommandBatch("websocket", "websocket", targetTransportNodeId, List.of(commands));
     }
 
     static DeliveryCommandGroup group(DeliveryCommand... commands) {

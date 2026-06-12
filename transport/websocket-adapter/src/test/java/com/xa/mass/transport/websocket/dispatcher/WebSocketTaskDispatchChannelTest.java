@@ -7,15 +7,15 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.AdapterEndpoint;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchContent;
 import com.xa.mass.transport.model.TaskDispatchExecutionContext;
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -50,7 +50,7 @@ class WebSocketTaskDispatchChannelTest {
 
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(context, deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope()));
+        List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
@@ -96,7 +96,7 @@ class WebSocketTaskDispatchChannelTest {
                 null
         ), deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope()));
+        List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcomes.get(0).getStatus());
@@ -113,7 +113,7 @@ class WebSocketTaskDispatchChannelTest {
                 null
         ), deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope()));
+        List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcomes.get(0).getStatus());
@@ -124,7 +124,7 @@ class WebSocketTaskDispatchChannelTest {
     void returnsAdapterUnavailableWhenRuntimeContextIsMissing() {
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(null, deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope()));
+        List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcomes.get(0).getStatus());
@@ -164,21 +164,16 @@ class WebSocketTaskDispatchChannelTest {
         return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
     }
 
-    private TransportDispatchEnvelope envelope() {
+    private AdapterDispatchRequest request() {
         TaskDispatchBinding binding = binding();
         TaskDispatchContext context = TaskDispatchContext.from(task());
-        return new TransportDispatchEnvelope(
+        return new AdapterDispatchRequest(
                 "delivery-" + binding.messageId(),
+                "websocket",
                 binding.workerId(),
-                new TransportPacketFactory(() -> "delivery-" + binding.messageId()).fromDispatchContent(
-                        "delivery-" + binding.messageId(),
-                        "websocket",
-                        "group-route-1",
-                        "trace-1",
-                        binding.workerId(),
-                        TaskDispatchContent.from(context, binding),
-                        TaskDispatchExecutionContext.from(context, binding)
-                ),
+                TaskDispatchContent.from(context, binding),
+                TaskDispatchExecutionContext.from(context, binding),
+                new AdapterEndpoint("group-route-1", "node-1", "conn-" + binding.workerId(), 10_000L),
                 1L
         );
     }

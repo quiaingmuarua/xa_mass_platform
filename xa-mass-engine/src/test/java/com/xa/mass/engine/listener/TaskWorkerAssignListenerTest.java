@@ -26,6 +26,7 @@ import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.engine.TraceEventLogger;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -181,9 +182,9 @@ public class TaskWorkerAssignListenerTest {
         assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(assignmentRuntime).updateTask(same(task));
         verify(dispatchBinder).bindDispatches(same(task), eq(List.of(matched1)));
-        verify(workerManager).releaseWorkerReservation("worker-2", task.getTid());
-        verify(workerManager).releaseWorkerReservation("worker-3", task.getTid());
-        verify(workerManager).releaseWorkerReservation("worker-4", task.getTid());
+        verify(workerManager).releaseWorkerReservation(admissionTarget("worker-2", task.getTid()));
+        verify(workerManager).releaseWorkerReservation(admissionTarget("worker-3", task.getTid()));
+        verify(workerManager).releaseWorkerReservation(admissionTarget("worker-4", task.getTid()));
         verify(workerManager).releaseWorkerExclusiveLease("worker-2");
         verify(workerManager).releaseWorkerExclusiveLease("worker-3");
         verify(workerManager).releaseWorkerExclusiveLease("worker-4");
@@ -267,7 +268,7 @@ public class TaskWorkerAssignListenerTest {
         assertEquals(TaskStatus.PAUSED, task.getStatus());
         assertEquals(0, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
-        verify(workerManager).releaseWorkerReservation("worker-1", task.getTid());
+        verify(workerManager).releaseWorkerReservation(admissionTarget("worker-1", task.getTid()));
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
         verify(assignmentRuntime, never()).updateTask(task);
         verifyNoInteractions(dispatchBinder);
@@ -400,7 +401,7 @@ public class TaskWorkerAssignListenerTest {
 
         assertTrue(listener.onTaskAssign(task));
 
-        verify(workerManager).releaseWorkerReservation("worker-2", task.getTid());
+        verify(workerManager).releaseWorkerReservation(admissionTarget("worker-2", task.getTid()));
         verify(workerManager, never()).releaseWorkerExclusiveLease("worker-2");
     }
 
@@ -442,7 +443,7 @@ public class TaskWorkerAssignListenerTest {
     }
 
     private TaskDispatchBinding binding(String messageId, String workerId) {
-        return new TaskDispatchBinding(
+        return TaskDispatchBinding.workerLevelWithEvidence(
                 "task-1",
                 messageId,
                 "demo-event",
@@ -453,8 +454,16 @@ public class TaskWorkerAssignListenerTest {
                 1,
                 "lease-" + messageId,
                 workerId,
-                "batch-" + messageId
+                "batch-" + messageId,
+                "pool-a",
+                null,
+                null,
+                "test-candidate"
         );
+    }
+
+    private WorkerAdmissionTarget admissionTarget(String workerId, String taskId) {
+        return WorkerAdmissionTarget.groupScoped("pool-a", workerId, taskId);
     }
 
     private WorkerSchedulingCandidate matched(Worker worker) {

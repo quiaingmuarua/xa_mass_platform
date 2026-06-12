@@ -1,10 +1,10 @@
 package com.xa.mass.transport.runtime.delivery;
 
+import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskResultReport;
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
@@ -20,20 +20,28 @@ class TransportDeliveryCommandListenerTest {
 
     @Test
     void adapterUnavailableEmitsOneRetryableFailure() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-1");
         TransportRuntimeRegistry registry = new TransportRuntimeRegistry(
                 (TaskResultReport report) -> true,
-                new InMemoryTransportRouteOwnerStore(),
+                routeOwnerStore,
                 List.of(TransportBinding.builder(new NoopWorkerAdapter("socket")).build())
         );
+        routeOwnerStore.claimRouteOwner("worker-1", "websocket", "route-1", "conn-1", "test");
         RecordingFailureHandler failures = new RecordingFailureHandler();
-        TransportDeliveryCommandListener listener = new TransportDeliveryCommandListener(registry, failures, null);
+        TransportDeliveryCommandListener listener = new TransportDeliveryCommandListener(
+                registry,
+                routeOwnerStore,
+                "node-1",
+                failures,
+                null
+        );
         DeliveryCommand command = DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1");
 
         List<DispatchOutcome> outcomes = listener.onDeliveryCommandBatch(DeliveryCommandFixtures.batch("node-1", command));
 
         assertEquals(List.of(DispatchOutcomeStatus.UNAVAILABLE), outcomes.stream().map(DispatchOutcome::getStatus).toList());
         assertEquals(1, failures.events.size());
-        assertEquals(command.getCommandId(), failures.events.get(0).itemSnapshot().commandId());
+        assertEquals(command.getCommandId(), failures.events.get(0).outcome().getDeliveryId());
         assertEquals(DispatchOutcomeStatus.UNAVAILABLE, failures.events.get(0).outcome().getStatus());
     }
 
@@ -60,7 +68,7 @@ class TransportDeliveryCommandListenerTest {
         }
 
         @Override
-        public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
+        public List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests) {
             return List.of();
         }
     }

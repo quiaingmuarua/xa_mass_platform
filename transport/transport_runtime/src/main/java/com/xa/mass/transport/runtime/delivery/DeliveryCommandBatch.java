@@ -11,7 +11,7 @@ import java.util.List;
 public record DeliveryCommandBatch(String adapterId,
                                    String deliveryQueueKey,
                                    String targetTransportNodeId,
-                                   List<ResolvedDeliveryItem> items) {
+                                   List<DeliveryCommand> items) {
 
     public DeliveryCommandBatch {
         adapterId = requireAdapterId(adapterId);
@@ -21,20 +21,15 @@ public record DeliveryCommandBatch(String adapterId,
         if (items.isEmpty()) {
             throw new IllegalArgumentException("items must not be empty");
         }
-        for (ResolvedDeliveryItem item : items) {
+        for (DeliveryCommand item : items) {
             if (item == null) {
                 throw new IllegalArgumentException("items must not contain null");
-            }
-            if (!targetTransportNodeId.equals(item.endpoint().transportNodeId())) {
-                throw new IllegalArgumentException("item endpoint transportNodeId must match batch targetTransportNodeId");
             }
         }
     }
 
     public List<DeliveryCommand> commands() {
-        return items.stream()
-                .map(ResolvedDeliveryItem::command)
-                .toList();
+        return items;
     }
 
     private static String requireAdapterId(String value) {

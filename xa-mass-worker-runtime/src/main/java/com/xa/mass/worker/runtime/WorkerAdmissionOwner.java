@@ -3,6 +3,8 @@ package com.xa.mass.worker.runtime;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.ReserveResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionStatus;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 
 import java.util.List;
@@ -50,24 +52,44 @@ public final class WorkerAdmissionOwner {
         return workerRegistry.activeWorkerCountForTask(taskId);
     }
 
-    public WorkerAdmissionResult reserveWorkerCapacity(String workerId, String taskId) {
-        ReserveResult reserveResult = workerRegistry.tryReserve(workerId, taskId, 1, System.currentTimeMillis());
+    public WorkerAdmissionResult reserveWorkerCapacity(WorkerAdmissionTarget target) {
+        if (target == null) {
+            return WorkerAdmissionResult.rejected(WorkerAdmissionStatus.MISSING_SLOT, "worker admission target missing");
+        }
+        ReserveResult reserveResult = workerRegistry.tryReserve(
+                target.workerGroupId(),
+                target.workerId(),
+                target.taskId(),
+                target.permits(),
+                System.currentTimeMillis());
         return WorkerAdmissionResult.fromReserveResult(reserveResult);
     }
 
-    public boolean confirmWorkerReservation(String workerId, String taskId) {
-        return workerRegistry.confirmReservation(workerId, taskId, 1);
+    public boolean confirmWorkerReservation(WorkerAdmissionTarget target) {
+        if (target == null) {
+            return false;
+        }
+        return workerRegistry.confirmReservation(target.workerGroupId(), target.workerId(), target.taskId(), target.permits());
     }
 
-    public void releaseWorkerReservation(String workerId, String taskId) {
-        workerRegistry.releaseReservation(workerId, taskId, 1);
+    public void releaseWorkerReservation(WorkerAdmissionTarget target) {
+        if (target == null) {
+            return;
+        }
+        workerRegistry.releaseReservation(target.workerGroupId(), target.workerId(), target.taskId(), target.permits());
     }
 
-    public void recordWorkClaimed(String workerId, String taskId) {
-        workerRegistry.recordWorkClaimed(workerId, taskId, 1);
+    public void recordWorkClaimed(WorkerAdmissionTarget target) {
+        if (target == null) {
+            return;
+        }
+        workerRegistry.recordWorkClaimed(target.workerGroupId(), target.workerId(), target.taskId(), target.permits());
     }
 
-    public void recordWorkFinal(String workerId, String taskId) {
-        workerRegistry.recordWorkFinal(workerId, taskId, 1);
+    public void recordWorkFinal(WorkerAdmissionTarget target) {
+        if (target == null) {
+            return;
+        }
+        workerRegistry.recordWorkFinal(target.workerGroupId(), target.workerId(), target.taskId(), target.permits());
     }
 }

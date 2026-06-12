@@ -199,11 +199,12 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             "end",
             "local claimed = {}",
             "for slot = 1, slotCount do",
-            "  local workerBase = argCursor + ((slot - 1) * 4)",
+            "  local workerBase = argCursor + ((slot - 1) * 5)",
             "  local workerId = ARGV[workerBase]",
-            "  local batchId = ARGV[workerBase + 1]",
-            "  local leaseToken = ARGV[workerBase + 2]",
-            "  local encodedScope = ARGV[workerBase + 3]",
+            "  local workerGroupId = ARGV[workerBase + 1]",
+            "  local batchId = ARGV[workerBase + 2]",
+            "  local leaseToken = ARGV[workerBase + 3]",
+            "  local encodedScope = ARGV[workerBase + 4]",
             "  local queueLength = redis.call('LLEN', readyQueue)",
             "  local scanned = 0",
             "  local messageId = redis.call('LPOP', readyQueue)",
@@ -222,6 +223,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             "        redis.call('HSET', leaseHash,",
             "          'leaseToken', leaseToken,",
             "          'workerId', workerId,",
+            "          'workerGroupId', workerGroupId,",
             "          'batchId', batchId,",
             "          'payloadRef', payloadRef,",
             "          'retryCount', tostring(retryCount),",
@@ -236,6 +238,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             "        table.insert(claimed, messageId)",
             "        table.insert(claimed, leaseToken)",
             "        table.insert(claimed, workerId)",
+            "        table.insert(claimed, workerGroupId)",
             "        table.insert(claimed, batchId)",
             "        table.insert(claimed, eventCode)",
             "        table.insert(claimed, payloadJson)",
@@ -481,12 +484,13 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             "end",
             "-- Capture full lease snapshot (before any mutation, before potential DEL)",
             "local workerId = redis.call('HGET', KEYS[2], 'workerId') or ''",
+            "local workerGroupId = redis.call('HGET', KEYS[2], 'workerGroupId') or ''",
             "local batchId = redis.call('HGET', KEYS[2], 'batchId') or ''",
             "local payloadRef = redis.call('HGET', KEYS[2], 'payloadRef') or ''",
             "local retryCount = tonumber(redis.call('HGET', KEYS[2], 'retryCount') or '0')",
             "local leasedAtMillis = redis.call('HGET', KEYS[2], 'leasedAtMillis') or '0'",
             "local maxRetryCount = tonumber(redis.call('HGET', KEYS[1], 'maxRetryCount') or '0')",
-            "local snapshot = {workerId, batchId, leaseToken, payloadRef,",
+            "local snapshot = {workerId, workerGroupId, batchId, leaseToken, payloadRef,",
             "                   tostring(retryCount), tostring(maxRetryCount), leasedAtMillis}",
             "if providedLeaseToken ~= '' and leaseToken ~= providedLeaseToken then",
             "  redis.call('HINCRBY', KEYS[8], 'staleResultItems', 1)",
@@ -1013,6 +1017,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         for (WorkerClaimTarget target : claimPlan) {
             String leaseToken = UUID.randomUUID().toString();
             args.add(target.workerId());
+            args.add(nullToEmpty(target.workerGroupId()));
             args.add(nullToEmpty(target.batchId()));
             args.add(leaseToken);
             args.add(encodeSupportedEventCodes(target.supportedEventCodes()));
@@ -1034,8 +1039,8 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         if (rawClaimed.isEmpty()) {
             return List.of();
         }
-        List<ClaimedTaskWork> claimed = new ArrayList<>(rawClaimed.size() / 8);
-        for (int i = 0; i + 7 < rawClaimed.size(); i += 8) {
+        List<ClaimedTaskWork> claimed = new ArrayList<>(rawClaimed.size() / 9);
+        for (int i = 0; i + 8 < rawClaimed.size(); i += 9) {
             claimed.add(new ClaimedTaskWork(
                     taskId,
                     stringValue(rawClaimed.get(i)),
@@ -1043,9 +1048,10 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
                     stringValue(rawClaimed.get(i + 2)),
                     emptyToNull(stringValue(rawClaimed.get(i + 3))),
                     emptyToNull(stringValue(rawClaimed.get(i + 4))),
-                    deserializeMap(stringValue(rawClaimed.get(i + 5))),
-                    emptyToNull(stringValue(rawClaimed.get(i + 6))),
-                    parseInt(stringValue(rawClaimed.get(i + 7))),
+                    emptyToNull(stringValue(rawClaimed.get(i + 5))),
+                    deserializeMap(stringValue(rawClaimed.get(i + 6))),
+                    emptyToNull(stringValue(rawClaimed.get(i + 7))),
+                    parseInt(stringValue(rawClaimed.get(i + 8))),
                     leaseExpireAt
             ));
         }
@@ -1180,18 +1186,19 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             default -> ResultApplyOutcome.failed(result, "unexpected applyResultWithContext status: " + status);
         };
         // 1-element response = NO_ACTIVE_LEASE (or unexpected): no snapshot available.
-        if (raw.size() < 8) {
+        if (raw.size() < 9) {
             return RuntimeResultApplyContext.noLease(outcome);
         }
         return RuntimeResultApplyContext.withSnapshot(
                 outcome,
                 emptyToNull(stringValue(raw.get(1))),   // workerId
-                emptyToNull(stringValue(raw.get(2))),   // batchId
-                emptyToNull(stringValue(raw.get(3))),   // activeLeaseToken
-                emptyToNull(stringValue(raw.get(4))),   // payloadRef
-                parseInt(stringValue(raw.get(5))),      // retryCount
-                parseInt(stringValue(raw.get(6))),      // maxRetryCount
-                parseInstant(stringValue(raw.get(7)))   // leasedAt
+                emptyToNull(stringValue(raw.get(2))),   // workerGroupId
+                emptyToNull(stringValue(raw.get(3))),   // batchId
+                emptyToNull(stringValue(raw.get(4))),   // activeLeaseToken
+                emptyToNull(stringValue(raw.get(5))),   // payloadRef
+                parseInt(stringValue(raw.get(6))),      // retryCount
+                parseInt(stringValue(raw.get(7))),      // maxRetryCount
+                parseInstant(stringValue(raw.get(8)))   // leasedAt
         );
     }
 
@@ -1386,6 +1393,7 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
                 messageId,
                 emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_LEASE_TOKEN)),
                 emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_WORKER_ID)),
+                emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_WORKER_GROUP_ID)),
                 emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_BATCH_ID)),
                 emptyToNull(fields.get(RedisTaskWorkKeyspace.FIELD_LEASE_PAYLOAD_REF)),
                 parseInt(fields.get(RedisTaskWorkKeyspace.FIELD_LEASE_RETRY_COUNT)),

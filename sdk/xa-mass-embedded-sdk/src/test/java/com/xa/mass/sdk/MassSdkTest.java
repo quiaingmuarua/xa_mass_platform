@@ -3590,10 +3590,10 @@ class MassSdkTest {
         }
 
         @Override
-        public List<com.xa.mass.transport.model.DispatchOutcome> dispatchEnvelopes(
-                List<com.xa.mass.transport.model.TransportDispatchEnvelope> envelopes) {
-            return envelopes == null ? List.of() : envelopes.stream()
-                    .map(envelope -> com.xa.mass.transport.model.DispatchOutcome.delivered(adapterId(), envelope))
+        public List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
+                List<com.xa.mass.transport.model.AdapterDispatchRequest> requests) {
+            return requests == null ? List.of() : requests.stream()
+                    .map(request -> com.xa.mass.transport.model.DispatchOutcome.delivered(adapterId(), request))
                     .toList();
         }
     }
@@ -3622,10 +3622,10 @@ class MassSdkTest {
         }
 
         @Override
-        public List<com.xa.mass.transport.model.DispatchOutcome> dispatchEnvelopes(
-                List<com.xa.mass.transport.model.TransportDispatchEnvelope> envelopes) {
-            return envelopes == null ? List.of() : envelopes.stream()
-                    .map(envelope -> com.xa.mass.transport.model.DispatchOutcome.delivered(adapterId(), envelope))
+        public List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
+                List<com.xa.mass.transport.model.AdapterDispatchRequest> requests) {
+            return requests == null ? List.of() : requests.stream()
+                    .map(request -> com.xa.mass.transport.model.DispatchOutcome.delivered(adapterId(), request))
                     .toList();
         }
 
@@ -3699,17 +3699,25 @@ class MassSdkTest {
 
         @Override
         public com.xa.mass.transport.model.DispatchOutcome enqueue(
+                String adapterId,
                 String deliveryQueueKey,
-                com.xa.mass.transport.model.TransportDispatchEnvelope envelope) {
+                com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch item) {
             return com.xa.mass.transport.model.DispatchOutcome.queued(
-                    envelope == null ? null : envelope.getAdapterId(),
+                    adapterId,
                     deliveryQueueKey,
-                    envelope
+                    item != null ? item.deliveryId() : null,
+                    item != null ? item.selectedWorkerId() : null,
+                    item != null ? item.attemptId() : null,
+                    item != null ? item.content().taskId() : null,
+                    item != null ? item.content().messageId() : null,
+                    item != null ? item.attemptNo() : 0
             );
         }
 
         @Override
-        public List<com.xa.mass.transport.model.TransportDispatchEnvelope> drain(String adapterId, String routeKey, int maxItems) {
+        public List<com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch> drain(String deliveryQueueKey,
+                                                                                       String selectedWorkerId,
+                                                                                       int maxItems) {
             return List.of();
         }
 

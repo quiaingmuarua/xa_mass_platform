@@ -4,13 +4,13 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
  * Releases dispatch-time worker reservations and exclusive locks.
@@ -32,8 +32,8 @@ public final class WorkerDispatchResourceReleaser {
         if (task == null || candidates == null || candidates.isEmpty()) {
             return;
         }
-        for (String workerId : distinctWorkerIds(candidates)) {
-            workerAdmissionRuntime.releaseWorkerReservation(workerId, task.getTid());
+        for (WorkerCleanupDecision decision : cleanupDecisions(task, candidates)) {
+            workerAdmissionRuntime.releaseWorkerReservation(decision.admissionTarget());
         }
     }
 
@@ -46,7 +46,7 @@ public final class WorkerDispatchResourceReleaser {
             return;
         }
         for (WorkerCleanupDecision decision : cleanupDecisions(task, candidates)) {
-            workerAdmissionRuntime.releaseWorkerReservation(decision.workerId(), task.getTid());
+            workerAdmissionRuntime.releaseWorkerReservation(decision.admissionTarget());
             releaseLockIfExclusive(task, decision.workerId(), decision.exclusiveWorkerLock(),
                     trigger, source, reason);
         }
@@ -78,7 +78,7 @@ public final class WorkerDispatchResourceReleaser {
         if (workerId == null || workerId.isBlank()) {
             return;
         }
-        workerAdmissionRuntime.releaseWorkerReservation(workerId, task.getTid());
+        workerAdmissionRuntime.releaseWorkerReservation(admissionTarget(task.getTid(), candidate));
         releaseLockIfExclusive(task, workerId,
                 resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock(),
                 trigger, source, reason);
@@ -127,18 +127,9 @@ public final class WorkerDispatchResourceReleaser {
         releaseWorkerExclusiveLease(task, workerId, trigger, source, reason);
     }
 
-    private List<String> distinctWorkerIds(Collection<WorkerSchedulingCandidate> candidates) {
-        return candidates.stream()
-                .filter(Objects::nonNull)
-                .map(WorkerSchedulingCandidate::getWorkerId)
-                .filter(workerId -> workerId != null && !workerId.isBlank())
-                .distinct()
-                .collect(Collectors.toList());
-    }
-
     private List<WorkerCleanupDecision> cleanupDecisions(Task task,
                                                          Collection<WorkerSchedulingCandidate> candidates) {
-        Map<String, Boolean> exclusiveLockByWorkerId = new LinkedHashMap<>();
+        Map<WorkerAdmissionTarget, Boolean> exclusiveLockByTarget = new LinkedHashMap<>();
         candidates.stream()
                 .filter(Objects::nonNull)
                 .forEach(candidate -> {
@@ -148,13 +139,26 @@ public final class WorkerDispatchResourceReleaser {
                     }
                     boolean exclusiveWorkerLock =
                             resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock();
-                    exclusiveLockByWorkerId.merge(workerId, exclusiveWorkerLock, Boolean::logicalOr);
+                    exclusiveLockByTarget.merge(admissionTarget(task.getTid(), candidate),
+                            exclusiveWorkerLock,
+                            Boolean::logicalOr);
                 });
-        return exclusiveLockByWorkerId.entrySet().stream()
+        return exclusiveLockByTarget.entrySet().stream()
                 .map(entry -> new WorkerCleanupDecision(entry.getKey(), entry.getValue()))
                 .toList();
     }
 
-    private record WorkerCleanupDecision(String workerId, boolean exclusiveWorkerLock) {
+    private static WorkerAdmissionTarget admissionTarget(String taskId, WorkerSchedulingCandidate candidate) {
+        return WorkerAdmissionTarget.groupScoped(
+                candidate.getSchedulingView().workerGroupId(),
+                candidate.getWorkerId(),
+                taskId
+        );
+    }
+
+    private record WorkerCleanupDecision(WorkerAdmissionTarget admissionTarget, boolean exclusiveWorkerLock) {
+        String workerId() {
+            return admissionTarget.workerId();
+        }
     }
 }

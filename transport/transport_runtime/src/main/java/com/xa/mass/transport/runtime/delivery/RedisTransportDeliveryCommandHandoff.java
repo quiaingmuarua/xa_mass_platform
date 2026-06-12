@@ -110,13 +110,14 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     @Override
     public List<DispatchOutcome> offer(DeliveryCommandBatch batch) {
         Objects.requireNonNull(batch, "batch");
-        DeliveryObservationGroupContext groupContext = observationGroup(batch);
         if (!running.get()) {
             return batch.items().stream()
-                    .map(item -> DeliveryObservationSupport.outcome(
-                            groupContext,
-                            item.command(),
-                            item.endpoint(),
+                    .map(item -> DispatchOutcome.fromCommand(
+                            batch.adapterId(),
+                            batch.deliveryQueueKey(),
+                            batch.targetTransportNodeId(),
+                            item,
+                            null,
                             DispatchOutcomeStatus.SHUTDOWN,
                             true,
                             "delivery command handoff is stopped"))
@@ -140,20 +141,24 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         String reason = values.size() > 1 ? String.valueOf(values.get(1)) : "delivery command offer failed";
         if ("QUEUED".equals(status)) {
             return batch.items().stream()
-                    .map(item -> DeliveryObservationSupport.outcome(
-                            groupContext,
-                            item.command(),
-                            item.endpoint(),
+                    .map(item -> DispatchOutcome.fromCommand(
+                            batch.adapterId(),
+                            batch.deliveryQueueKey(),
+                            batch.targetTransportNodeId(),
+                            item,
+                            null,
                             DispatchOutcomeStatus.QUEUED,
                             false,
                             null))
                     .toList();
         }
         return batch.items().stream()
-                .map(item -> DeliveryObservationSupport.outcome(
-                        groupContext,
-                        item.command(),
-                        item.endpoint(),
+                .map(item -> DispatchOutcome.fromCommand(
+                        batch.adapterId(),
+                        batch.deliveryQueueKey(),
+                        batch.targetTransportNodeId(),
+                        item,
+                        null,
                         DispatchOutcomeStatus.BACKPRESSURE,
                         true,
                         reason))
@@ -236,14 +241,6 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         return normalizeRequired(deliveryQueueKey, "deliveryQueueKey")
                 + "\n"
                 + normalizeRequired(targetTransportNodeId, "targetTransportNodeId");
-    }
-
-    private static DeliveryObservationGroupContext observationGroup(DeliveryCommandBatch batch) {
-        return DeliveryObservationGroupContext.now(
-                batch.adapterId(),
-                batch.deliveryQueueKey(),
-                batch.targetTransportNodeId()
-        );
     }
 
     private static String encodeToken(String value) {

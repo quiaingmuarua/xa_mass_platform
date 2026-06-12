@@ -6,18 +6,23 @@ import java.util.List;
 
 /**
  * Runtime admission and occupancy surface for matched workers.
+ *
+ * <p>Scheduling callers must carry WorkerGroup evidence from candidate source
+ * through reserve, confirm/release, claim, and final accounting. Worker-id-only
+ * reverse lookup belongs below this contract, not on the engine-facing
+ * admission surface.</p>
  */
 public interface WorkerAdmissionRuntime {
 
-    WorkerAdmissionResult reserveWorkerCapacity(String workerId, String taskId);
+    WorkerAdmissionResult reserveWorkerCapacity(WorkerAdmissionTarget target);
 
-    boolean confirmWorkerReservation(String workerId, String taskId);
+    boolean confirmWorkerReservation(WorkerAdmissionTarget target);
 
-    void releaseWorkerReservation(String workerId, String taskId);
+    void releaseWorkerReservation(WorkerAdmissionTarget target);
 
-    void recordWorkClaimed(String workerId, String taskId);
+    void recordWorkClaimed(WorkerAdmissionTarget target);
 
-    void recordWorkFinal(String workerId, String taskId);
+    void recordWorkFinal(WorkerAdmissionTarget target);
 
     boolean tryAcquireWorkerExclusiveLease(String workerId);
 

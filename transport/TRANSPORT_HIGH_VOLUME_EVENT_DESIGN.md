@@ -26,8 +26,8 @@ High-volume transport should stay on this mainline:
 
 ```text
 engine assignment
-  -> TaskDispatchItem or future compact envelope
-  -> TransportRoutingTaskMsgDispatchListener
+  -> DeliveryCommand / AdapterDispatchRequest
+  -> TransportDeliveryCommandListener
   -> TransportDeliveryService
   -> TransportDeliveryStore
   -> adapter drain/send
@@ -39,9 +39,10 @@ engine assignment
 
 Permanent transport concepts remain:
 
-- `TaskDispatchChannel`
+- `WorkerAdapter.dispatch(List<AdapterDispatchRequest>)`
 - `DispatchOutcome`
-- `TransportDispatchEnvelope`
+- `AdapterDispatchRequest`
+- `QueuedPulledDispatch`
 - `TransportDeliveryService`
 - `TransportDeliveryStore`
 - `TransportResultEnvelope`

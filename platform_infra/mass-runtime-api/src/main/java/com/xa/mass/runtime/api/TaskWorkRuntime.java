@@ -85,6 +85,7 @@ public interface TaskWorkRuntime {
         return RuntimeResultApplyContext.withSnapshot(
                 outcome,
                 lease.workerId(),
+                lease.workerGroupId(),
                 lease.batchId(),
                 lease.leaseToken(),
                 lease.payloadRef(),

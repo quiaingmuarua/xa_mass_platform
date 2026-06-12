@@ -6,16 +6,19 @@ import java.util.Set;
 /**
  * Runtime claim target.
  *
- * <p>Claims are worker-level. Account/context identity is not part of the
- * runtime claim contract.</p>
+ * <p>Claims execute against a concrete worker slot. Scheduling hot paths should
+ * carry the worker group evidence that identified the slot; lower-level
+ * worker-id-only factories remain support surfaces for tests and non-scheduling
+ * callers.</p>
  */
 public record WorkerClaimTarget(String workerId,
+                                String workerGroupId,
                                 String batchId,
                                 int capacity,
                                 Set<String> supportedEventCodes) {
 
     public WorkerClaimTarget(String workerId, String batchId, int capacity) {
-        this(workerId, batchId, capacity, Set.of());
+        this(workerId, null, batchId, capacity, Set.of());
     }
 
     public static WorkerClaimTarget workerLevel(String workerId, String batchId, int capacity) {
@@ -26,10 +29,19 @@ public record WorkerClaimTarget(String workerId,
                                                 String batchId,
                                                 int capacity,
                                                 Set<String> supportedEventCodes) {
-        return new WorkerClaimTarget(workerId, batchId, capacity, supportedEventCodes);
+        return new WorkerClaimTarget(workerId, null, batchId, capacity, supportedEventCodes);
+    }
+
+    public static WorkerClaimTarget groupScoped(String workerGroupId,
+                                                String workerId,
+                                                String batchId,
+                                                int capacity,
+                                                Set<String> supportedEventCodes) {
+        return new WorkerClaimTarget(workerId, workerGroupId, batchId, capacity, supportedEventCodes);
     }
 
     public WorkerClaimTarget {
+        workerGroupId = normalizeNullable(workerGroupId);
         capacity = Math.max(0, capacity);
         supportedEventCodes = normalizeSupportedEventCodes(supportedEventCodes);
     }
@@ -59,6 +71,10 @@ public record WorkerClaimTarget(String workerId,
             }
         }
         return normalized.isEmpty() ? Set.of() : Set.copyOf(normalized);
+    }
+
+    private static String normalizeNullable(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }
 

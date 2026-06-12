@@ -2,6 +2,7 @@ package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionStatus;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import org.junit.jupiter.api.Test;
 
@@ -21,15 +22,15 @@ class WorkerAdmissionOwnerTest {
         registry.upsertSlot(workerMeta("worker-1"), 1, Set.of());
         WorkerAdmissionOwner owner = new WorkerAdmissionOwner(registry);
 
-        assertTrue(owner.reserveWorkerCapacity("worker-1", "task-1").accepted());
-        assertFalse(owner.reserveWorkerCapacity("worker-1", "task-2").accepted());
+        assertTrue(owner.reserveWorkerCapacity(admissionTarget("worker-1", "task-1")).accepted());
+        assertFalse(owner.reserveWorkerCapacity(admissionTarget("worker-1", "task-2")).accepted());
         assertEquals(1, owner.getWorkerLoad("worker-1").reservedCount());
 
-        assertTrue(owner.confirmWorkerReservation("worker-1", "task-1"));
+        assertTrue(owner.confirmWorkerReservation(admissionTarget("worker-1", "task-1")));
         assertEquals(0, owner.getWorkerLoad("worker-1").reservedCount());
         assertEquals(1, owner.getWorkerLoad("worker-1").activeLeaseCount());
 
-        owner.recordWorkFinal("worker-1", "task-1");
+        owner.recordWorkFinal(admissionTarget("worker-1", "task-1"));
         assertEquals(0, owner.getWorkerLoad("worker-1").activeLeaseCount());
     }
 
@@ -52,7 +53,11 @@ class WorkerAdmissionOwnerTest {
         WorkerAdmissionOwner owner = new WorkerAdmissionOwner(new InMemoryWorkerRegistry());
 
         assertEquals(WorkerAdmissionStatus.MISSING_SLOT,
-                owner.reserveWorkerCapacity("missing-worker", "task-1").status());
+                owner.reserveWorkerCapacity(admissionTarget("missing-worker", "task-1")).status());
+    }
+
+    private static WorkerAdmissionTarget admissionTarget(String workerId, String taskId) {
+        return WorkerAdmissionTarget.groupScoped("group-1", workerId, taskId);
     }
 
     private static WorkerMeta workerMeta(String workerId) {

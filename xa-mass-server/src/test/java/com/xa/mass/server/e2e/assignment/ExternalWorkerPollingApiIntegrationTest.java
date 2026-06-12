@@ -167,9 +167,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> item = items.get(0);
         assertEquals(taskId, item.get("taskId"));
-        assertEquals(workerId, item.get("workerId"));
+        assertPollItemHasExecutionContextButNoWorkerIdentity(item);
         assertEquals("crawler.fetch-page", item.get("eventCode"));
-        assertFalse(item.containsKey("attemptId"), "attemptId must remain internal and out of worker-api poll response");
 
         Map<String, Object> resultResponse = exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
                 "taskId", item.get("taskId"),
@@ -306,7 +305,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> item = selectedItems.getFirst();
         assertEquals(taskId, item.get("taskId"));
-        assertEquals(selectedWorkerId, item.get("workerId"));
+        assertEquals(selectedWorkerId, responseData(selectedPollResponse).get("workerId"));
+        assertPollItemHasExecutionContextButNoWorkerIdentity(item);
         submitSuccessfulWorkerResult(selectedWorkerId, selectedWorkerHeaders, item, "shared-route-selected-worker-success");
 
         RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
@@ -540,7 +540,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertFalse(resumedItems.isEmpty(), "worker should receive new work after reporting AVAILABLE");
         Map<String, Object> item = resumedItems.getFirst();
         assertEquals(taskId, item.get("taskId"));
-        assertEquals(workerId, item.get("workerId"));
+        assertPollItemHasExecutionContextButNoWorkerIdentity(item);
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
                 "taskId", item.get("taskId"),
@@ -634,6 +634,14 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 "detail", detail,
                 "output", Map.of("workerId", workerId)
         ), workerHeaders));
+    }
+
+    private static void assertPollItemHasExecutionContextButNoWorkerIdentity(Map<String, Object> item) {
+        assertFalse(item.containsKey("workerId"), "poll item must not carry worker identity; worker is bound by poll path");
+        assertNotNull(item.get("messageId"));
+        assertNotNull(item.get("attemptId"));
+        assertTrue(((Number) item.get("attemptNo")).intValue() >= 1);
+        assertNotNull(item.get("batchId"));
     }
 
     private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {

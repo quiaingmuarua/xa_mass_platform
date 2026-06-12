@@ -10,7 +10,7 @@ import java.util.Objects;
  */
 public final class WebSocketAdapterConfig {
 
-    private String adapterId = com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID;
+    private String adapterId = com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel.DEFAULT_ADAPTER_ID;
     private boolean enabled = true;
     private boolean serverEnabled = true;
     private int serverPort = 8080;

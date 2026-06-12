@@ -11,16 +11,8 @@ class TransportDeliveryCommandBatchCodecTest {
     void encodesCommandBatchWithoutTopLevelRouteKeyOrNestedTaskBatchJson() {
         DeliveryCommandBatch batch = DeliveryCommandFixtures.batch(
                 "node-1",
-                DeliveryCommandFixtures.item(
-                        DeliveryCommandFixtures.command("msg-1", "worker-1", null),
-                        "node-1",
-                        "route-a"
-                ),
-                DeliveryCommandFixtures.item(
-                        DeliveryCommandFixtures.command("msg-2", "worker-2", null),
-                        "node-1",
-                        "route-b"
-                )
+                DeliveryCommandFixtures.command("msg-1", "worker-1", null),
+                DeliveryCommandFixtures.command("msg-2", "worker-2", null)
         );
         TransportDeliveryCommandBatchCodec codec = new TransportDeliveryCommandBatchCodec();
 
@@ -31,14 +23,15 @@ class TransportDeliveryCommandBatchCodecTest {
         assertFalse(json.contains("\"payload\""), json);
         assertFalse(json.contains("\"correlation\""), json);
         assertFalse(json.contains("\"connectionToken\""), json);
+        assertFalse(json.contains("\"routeKey\""), json);
+        assertFalse(json.contains("\"connectionId\""), json);
+        assertFalse(json.contains("\"leaseExpireAtEpochMillis\""), json);
         assertEquals(1, occurrences(json, "\"adapterId\""));
         assertEquals(1, occurrences(json, "\"deliveryQueueKey\""));
         assertEquals(1, occurrences(json, "\"targetTransportNodeId\""));
         assertEquals("websocket", decoded.adapterId());
         assertEquals("websocket", decoded.deliveryQueueKey());
         assertEquals("node-1", decoded.targetTransportNodeId());
-        assertEquals("route-a", decoded.items().get(0).endpoint().routeKey());
-        assertEquals("route-b", decoded.items().get(1).endpoint().routeKey());
         assertEquals("msg-1", decoded.commands().get(0).getContent().messageId());
         assertEquals("msg-2", decoded.commands().get(1).getContent().messageId());
         assertEquals("worker-1", decoded.commands().get(0).getSelectedWorkerId());

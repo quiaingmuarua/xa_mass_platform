@@ -10,7 +10,6 @@ import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.server.SocketTransportServer;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
-import com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter;
 
 /**
  * Adapter-owned bootstrap for embedded raw-socket runtime contribution.
@@ -38,12 +37,12 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
 
         if (config.isEnabled()) {
             context.registerTransportBinding(TransportBinding.builder(
-                    new SocketRealtimeWorkerAdapter(config.getAdapterId(), new SocketTaskDispatchChannel(
+                    new SocketTaskDispatchChannel(
                             config.getAdapterId(),
                             sessionManager,
                             frameCodec,
                             context.getDeliveryService()
-                    ))
+                    )
             ).build());
             context.registerRawWorkerMessageChannel(new SocketRawWorkerMessageChannel(config.getAdapterId(), sessionManager));
         }

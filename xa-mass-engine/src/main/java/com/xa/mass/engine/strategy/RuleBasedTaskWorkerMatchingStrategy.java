@@ -26,6 +26,7 @@ import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionStatus;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -178,10 +179,10 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                     new WorkerMatchContext(candidate, task, dispatchIntent, taskSchedulingPolicy);
 
             if (log.isDebugEnabled()) {
-                log.debug("[Debug] WorkerId={}, workerGroupId={}, status={}, locked={}, supportedProjects={}",
+                log.debug("[Debug] WorkerId={}, workerGroupId={}, readiness={}, locked={}, supportedProjects={}",
                         worker.workerId(),
                         worker.workerGroupId(),
-                        worker.statusName(),
+                        candidate.getSchedulingView().readinessState(),
                         admissionRuntime.hasWorkerExclusiveLease(worker.workerId()),
                         String.join(", ", candidate.getSchedulingView().supportedProjects())
                 );
@@ -267,7 +268,12 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             WorkerCandidateRow worker = candidate.getCandidateRow();
             double candidateScore = rankScore(rankedContext, dispatchIntent);
             boolean exclusiveWorkerLock = resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock();
-            WorkerAdmissionResult reserveResult = admissionRuntime.reserveWorkerCapacity(worker.workerId(), task.getTid());
+            WorkerAdmissionTarget admissionTarget = WorkerAdmissionTarget.groupScoped(
+                    worker.workerGroupId(),
+                    worker.workerId(),
+                    task.getTid()
+            );
+            WorkerAdmissionResult reserveResult = admissionRuntime.reserveWorkerCapacity(admissionTarget);
             if (!reserveResult.accepted()) {
                 String reserveRejectionReason = reserveRejectionReason(reserveResult);
                 traceEventLogger.workerMatchRejected(task, candidate,
@@ -320,7 +326,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         task.getTid(),
                         rank);
             } else {
-                admissionRuntime.releaseWorkerReservation(worker.workerId(), task.getTid());
+                admissionRuntime.releaseWorkerReservation(admissionTarget);
                 traceEventLogger.workerMatchRejected(task, candidate,
                         "worker lock conflict after candidate ranking", rank, candidateScore,
                         admissionRuntime.getWorkerLoad(worker.workerId()));

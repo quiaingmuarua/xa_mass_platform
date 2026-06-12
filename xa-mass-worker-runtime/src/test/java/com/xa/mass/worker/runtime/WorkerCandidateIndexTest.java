@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_STATE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -172,6 +173,63 @@ public class WorkerCandidateIndexTest {
     }
 
     @Test
+    void groupLookupRejectsSlotLifecycleIneligibleWorkersBeforeStageTwo() {
+        WorkerRegistrySnapshot snapshot = WorkerRegistrySnapshot.from(List.of(
+                group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
+        ), List.of(
+                worker("worker-fresh", "crawler"),
+                worker("worker-disabled", "crawler"),
+                worker("worker-removing", "crawler"),
+                worker("worker-stale", "crawler")
+        ));
+        InMemoryWorkerRegistry registry = registryFor(snapshot);
+        registry.upsertSlot(meta("worker-fresh", "crawler", 31_000L), 1, Set.of());
+        registry.upsertSlot(meta("worker-disabled", "crawler", 31_000L), 1, Set.of());
+        registry.upsertSlot(meta("worker-removing", "crawler", 31_000L), 1, Set.of());
+        registry.disableDispatch("crawler", "worker-disabled", WORKER_STATE);
+        registry.markSlotRemoving("crawler", "worker-removing", "test");
+        registry.upsertSlot(meta("worker-stale", "crawler", 1_000L), 1, Set.of());
+        WorkerCandidateIndex index = new WorkerCandidateIndex(
+                snapshot,
+                registry,
+                WorkerCandidateBucketPolicies.defaultPolicy(),
+                () -> 31_001L
+        );
+
+        assertEquals(List.of("worker-fresh"),
+                workerIds(index.workersFor(task("demoApp", "crawler.fetch", null, "crawler"), 10)));
+    }
+
+    @Test
+    void targetWorkerLookupRejectsSlotLifecycleIneligibleWorkerBeforeReserve() {
+        WorkerRegistrySnapshot snapshot = WorkerRegistrySnapshot.from(List.of(
+                group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
+        ), List.of(
+                worker("worker-disabled", "crawler")
+        ));
+        InMemoryWorkerRegistry registry = registryFor(snapshot);
+        registry.disableDispatch("crawler", "worker-disabled", WORKER_STATE);
+        WorkerCandidateIndex index = new WorkerCandidateIndex(
+                snapshot,
+                registry,
+                WorkerCandidateBucketPolicies.defaultPolicy(),
+                () -> 1_000L
+        );
+
+        WorkerCandidateIndex.SourceGuardResult result = index.sourceGuard(
+                task("demoApp", "crawler.fetch", "worker-disabled", "crawler"),
+                "crawler",
+                null,
+                WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY,
+                "worker-disabled"
+        );
+
+        assertFalse(result.accepted());
+        assertEquals(WorkerCandidateIndex.SourceGuardRejectionReason.DISPATCH_DISABLED, result.rejectionReason());
+        assertTrue(index.workersFor(task("demoApp", "crawler.fetch", "worker-disabled", "crawler")).isEmpty());
+    }
+
+    @Test
     void routeAttributesNarrowNonTargetedEventLookupThroughApprovedBucket() {
         WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
@@ -226,6 +284,15 @@ public class WorkerCandidateIndexTest {
     }
 
     private static WorkerCandidateIndex index(WorkerRegistrySnapshot snapshot) {
+        return new WorkerCandidateIndex(
+                snapshot,
+                registryFor(snapshot),
+                WorkerCandidateBucketPolicies.defaultPolicy(),
+                () -> 1_000L
+        );
+    }
+
+    private static InMemoryWorkerRegistry registryFor(WorkerRegistrySnapshot snapshot) {
         InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry(
                 WorkerCandidateBucketPolicies.defaultPolicy(),
                 RandomWorkerCandidateSamplingPolicy.defaultPolicy()
@@ -247,7 +314,22 @@ public class WorkerCandidateIndexTest {
                     worker.getStatus() == null ? null : worker.getStatus().name()
             ), worker.getMaxConcurrentWork(), Set.of());
         }
-        return new WorkerCandidateIndex(snapshot, registry, WorkerCandidateBucketPolicies.defaultPolicy());
+        return registry;
+    }
+
+    private static WorkerMeta meta(String workerId, String groupId, long lastHeartbeatMillis) {
+        return new WorkerMeta(
+                workerId,
+                groupId,
+                null,
+                null,
+                null,
+                Map.of(),
+                null,
+                null,
+                lastHeartbeatMillis,
+                null
+        );
     }
 
     private static WorkerTaskSelector task(String project, String eventCode, String targetWorkerId, String... groupIds) {

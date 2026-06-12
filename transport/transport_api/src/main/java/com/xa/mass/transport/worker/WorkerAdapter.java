@@ -1,13 +1,16 @@
 package com.xa.mass.transport.worker;
 
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.channel.TaskDispatchChannel;
+import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DispatchOutcome;
+
+import java.util.List;
 
 /**
  * Extension seam for worker transport adapters (WebSocket, HTTP, gRPC, etc.).
  *
  * <p>A {@code WorkerAdapter} bundles the dispatch side of the worker lifecycle
- * (pushing transport-neutral dispatch envelopes to workers) with a protocol
+ * (pushing final-hop dispatch requests to workers) with a protocol
  * identifier so that multiple transports can coexist and be selected at runtime.
  * Runtime selection uses {@link #adapterId()} as the concrete adapter identity
  * and {@link #transportHint()} as the coarse transport family.
@@ -18,7 +21,9 @@ import com.xa.mass.transport.channel.TaskDispatchChannel;
  * into canonical result-ingest seams such as
  * {@code TaskResultIngestChannel}.
  */
-public interface WorkerAdapter extends TaskDispatchChannel {
+public interface WorkerAdapter {
+
+    List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests);
 
     /**
      * Returns the adapter's implementation/protocol label.

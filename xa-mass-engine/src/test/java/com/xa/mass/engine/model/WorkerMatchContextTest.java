@@ -208,7 +208,6 @@ public class WorkerMatchContextTest {
                 "batchSize",
                 "minRequiredWorkerCount",
                 "appCount",
-                "workerStatus",
                 "transportReachability",
                 "isTransportReachable",
                 "agentVersion",

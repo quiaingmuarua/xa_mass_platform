@@ -1,6 +1,7 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.ReserveStatus;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.LongSupplier;
 
 /**
  * Stage-1 worker candidate source index backed by WorkerRegistry when available.
@@ -26,6 +28,7 @@ public final class WorkerCandidateIndex {
     private final WorkerRegistrySnapshot snapshot;
     private final WorkerRegistry workerRegistry;
     private final WorkerCandidateBucketPolicy candidateBucketPolicy;
+    private final LongSupplier nowMillisSupplier;
 
     public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot, WorkerRegistry workerRegistry) {
         this(snapshot, workerRegistry, WorkerCandidateBucketPolicies.defaultPolicy());
@@ -34,11 +37,19 @@ public final class WorkerCandidateIndex {
     public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot,
                                 WorkerRegistry workerRegistry,
                                 WorkerCandidateBucketPolicy candidateBucketPolicy) {
+        this(snapshot, workerRegistry, candidateBucketPolicy, System::currentTimeMillis);
+    }
+
+    WorkerCandidateIndex(WorkerRegistrySnapshot snapshot,
+                         WorkerRegistry workerRegistry,
+                         WorkerCandidateBucketPolicy candidateBucketPolicy,
+                         LongSupplier nowMillisSupplier) {
         this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
         this.workerRegistry = Objects.requireNonNull(workerRegistry, "workerRegistry");
         this.candidateBucketPolicy = candidateBucketPolicy != null
                 ? candidateBucketPolicy
                 : WorkerCandidateBucketPolicies.defaultPolicy();
+        this.nowMillisSupplier = nowMillisSupplier != null ? nowMillisSupplier : System::currentTimeMillis;
     }
 
     public List<Worker> workersFor(WorkerTaskSelector selector) {
@@ -150,6 +161,14 @@ public final class WorkerCandidateIndex {
         if (!currentWorkerCandidateBucketKeys.contains(candidateBucketKey)) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.CANDIDATE_BUCKET_MISMATCH);
         }
+        ReserveStatus lifecycleStatus = workerRegistry.slotLifecycleStatus(
+                normalizedGroupId,
+                normalizedWorkerId,
+                nowMillisSupplier.getAsLong()
+        );
+        if (lifecycleStatus != ReserveStatus.ACCEPTED) {
+            return SourceGuardResult.rejected(sourceGuardRejection(lifecycleStatus));
+        }
         Optional<Worker> worker = snapshot.worker(normalizedWorkerId);
         if (worker.isEmpty()) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.MISSING_WORKER);
@@ -226,6 +245,21 @@ public final class WorkerCandidateIndex {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
+    private static SourceGuardRejectionReason sourceGuardRejection(ReserveStatus status) {
+        if (status == null) {
+            return SourceGuardRejectionReason.MISSING_SLOT;
+        }
+        return switch (status) {
+            case MISSING_SLOT -> SourceGuardRejectionReason.MISSING_SLOT;
+            case GROUP_MISMATCH -> SourceGuardRejectionReason.GROUP_MISMATCH;
+            case REMOVING_SLOT -> SourceGuardRejectionReason.REMOVING_SLOT;
+            case STALE_HEARTBEAT -> SourceGuardRejectionReason.STALE_HEARTBEAT;
+            case DISPATCH_DISABLED -> SourceGuardRejectionReason.DISPATCH_DISABLED;
+            case ADAPTER_NODE_MISMATCH -> SourceGuardRejectionReason.ADAPTER_NODE_MISMATCH;
+            case CAPACITY_UNAVAILABLE, ACCEPTED -> SourceGuardRejectionReason.MISSING_SLOT;
+        };
+    }
+
     private record CandidateSource(String workerId, String candidateBucketKey) {
     }
 
@@ -250,6 +284,9 @@ public final class WorkerCandidateIndex {
         MISSING_GROUP,
         GROUP_MISMATCH,
         ADAPTER_NODE_MISMATCH,
-        CANDIDATE_BUCKET_MISMATCH
+        CANDIDATE_BUCKET_MISMATCH,
+        REMOVING_SLOT,
+        STALE_HEARTBEAT,
+        DISPATCH_DISABLED
     }
 }

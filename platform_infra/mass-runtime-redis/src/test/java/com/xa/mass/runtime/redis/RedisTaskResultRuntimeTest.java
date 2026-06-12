@@ -259,6 +259,7 @@ class RedisTaskResultRuntimeTest {
                 0,
                 3,
                 "worker-1",
+                "group-a",
                 "batch-1",
                 "attempt-1",
                 "payload-ref",

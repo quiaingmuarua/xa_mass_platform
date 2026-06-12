@@ -680,7 +680,7 @@ Acceptance:
 
 - trace can show `eventCode -> group -> worker -> adapter node`
 - transport still resolves routes from selected worker/adapter evidence
-- `TaskDispatchItem` worker-facing fields are unchanged in the first slice;
+- `PulledTaskDispatch` worker-facing fields are unchanged in the first slice;
   evidence fields land only on internal binding, trace, or diagnostics
 - polling, websocket, and socket remain peer transport consumers of the same
   engine-selected dispatch binding

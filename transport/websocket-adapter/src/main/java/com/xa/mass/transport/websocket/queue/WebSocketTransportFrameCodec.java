@@ -6,6 +6,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
+import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.TaskDispatchContent;
+import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.packet.TransportPacket;
@@ -85,21 +88,23 @@ public final class WebSocketTransportFrameCodec {
                 && hasBoolean(frame, TransportPacket.PAYLOAD_SUCCESS);
     }
 
-    public String encodeCanonicalTaskDispatch(TransportPacket packet) {
+    public String encodeCanonicalTaskDispatch(AdapterDispatchRequest request) {
+        TaskDispatchContent content = request.content();
+        TaskDispatchExecutionContext context = request.executionContext();
         JsonObject frame = new JsonObject();
-        frame.addProperty(MESSAGE_ID_FIELD, packet.messageId());
-        put(frame, WORKER_ID_FIELD, packet.payloadString(WORKER_ID_FIELD));
-        put(frame, PROJECT_FIELD, packet.payloadString(PROJECT_FIELD));
-        if (packet.eventCode() != null) {
-            frame.addProperty(EVENT_CODE_FIELD, packet.eventCode());
+        frame.addProperty(MESSAGE_ID_FIELD, content.messageId());
+        put(frame, WORKER_ID_FIELD, request.selectedWorkerId());
+        put(frame, PROJECT_FIELD, context.project());
+        if (content.eventCode() != null) {
+            frame.addProperty(EVENT_CODE_FIELD, content.eventCode());
         }
-        frame.addProperty("taskId", packet.taskId());
-        put(frame, TransportPacket.PAYLOAD_TASK_NAME, packet.payloadString(TransportPacket.PAYLOAD_TASK_NAME));
-        put(frame, TransportPacket.PAYLOAD_USER_ID, packet.payloadString(TransportPacket.PAYLOAD_USER_ID));
-        frame.addProperty(TransportPacket.PAYLOAD_RETRY_COUNT, packet.payloadInt(TransportPacket.PAYLOAD_RETRY_COUNT));
-        put(frame, TransportPacket.PAYLOAD_BATCH_ID, packet.payloadString(TransportPacket.PAYLOAD_BATCH_ID));
-        frame.add(TransportPacket.PAYLOAD_INPUT, gson.toJsonTree(packet.payloadObject(TransportPacket.PAYLOAD_INPUT)));
-        frame.add(TransportPacket.PAYLOAD_SHARED_CONFIG, gson.toJsonTree(packet.payloadObject(TransportPacket.PAYLOAD_SHARED_CONFIG)));
+        frame.addProperty("taskId", content.taskId());
+        put(frame, TransportPacket.PAYLOAD_TASK_NAME, context.taskName());
+        put(frame, TransportPacket.PAYLOAD_USER_ID, context.userId());
+        frame.addProperty(TransportPacket.PAYLOAD_RETRY_COUNT, context.retryCount());
+        put(frame, TransportPacket.PAYLOAD_BATCH_ID, context.batchId());
+        frame.add(TransportPacket.PAYLOAD_INPUT, gson.toJsonTree(content.input()));
+        frame.add(TransportPacket.PAYLOAD_SHARED_CONFIG, gson.toJsonTree(content.sharedConfig()));
         return gson.toJson(frame);
     }
 

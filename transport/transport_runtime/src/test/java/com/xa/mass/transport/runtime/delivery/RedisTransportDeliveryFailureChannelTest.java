@@ -3,6 +3,7 @@ package com.xa.mass.transport.runtime.delivery;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.model.AdapterEndpoint;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import org.junit.jupiter.api.AfterEach;
@@ -68,8 +69,8 @@ class RedisTransportDeliveryFailureChannelTest {
         TransportDeliveryFailureEvent event = reader.pollFailure(1000L);
 
         assertNotNull(event);
-        assertEquals(command.getCommandId(), event.itemSnapshot().commandId());
-        assertEquals("worker-1", event.itemSnapshot().selectedWorkerId());
+        assertEquals(command.getCommandId(), event.outcome().getDeliveryId());
+        assertEquals("worker-1", event.outcome().getSelectedWorkerId());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, event.outcome().getStatus());
         assertEquals("adapter unavailable", event.detail());
     }
@@ -85,8 +86,8 @@ class RedisTransportDeliveryFailureChannelTest {
         TransportDeliveryFailureEvent event = reader.pollFailure(1000L);
 
         assertNotNull(event);
-        assertEquals(first.getCommandId(), event.itemSnapshot().commandId());
-        assertEquals("msg-1", event.itemSnapshot().messageId());
+        assertEquals(first.getCommandId(), event.outcome().getDeliveryId());
+        assertEquals("msg-1", event.outcome().getMessageId());
     }
 
     @Test
@@ -103,9 +104,9 @@ class RedisTransportDeliveryFailureChannelTest {
         TransportDeliveryFailureEvent event = reader.pollFailure(1000L);
 
         assertNotNull(event);
-        assertEquals(command.getCommandId(), event.itemSnapshot().commandId());
-        assertEquals("worker-1", event.itemSnapshot().selectedWorkerId());
-        assertNull(event.groupContext().targetTransportNodeId());
+        assertEquals(command.getCommandId(), event.outcome().getDeliveryId());
+        assertEquals("worker-1", event.outcome().getSelectedWorkerId());
+        assertNull(event.outcome().getTransportNodeId());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, event.outcome().getStatus());
         assertNull(event.outcome().getTransportNodeId());
     }
@@ -114,23 +115,22 @@ class RedisTransportDeliveryFailureChannelTest {
                                                               String targetTransportNodeId,
                                                               String routeKey,
                                                               String reason) {
-        EndpointLease endpoint = targetTransportNodeId == null ? null : new EndpointLease(
-                command.getSelectedWorkerId(),
+        AdapterEndpoint endpoint = targetTransportNodeId == null ? null : new AdapterEndpoint(
                 routeKey,
                 targetTransportNodeId,
                 "conn-" + command.getSelectedWorkerId(),
                 System.currentTimeMillis() + 30_000L
         );
-        DeliveryObservationGroupContext groupContext =
-                DeliveryObservationGroupContext.now("websocket", "websocket", targetTransportNodeId);
-        DeliveryObservationItemSnapshot itemSnapshot = DeliveryObservationItemSnapshot.from(command, endpoint);
-        DispatchOutcome outcome = DeliveryObservationSupport.outcome(
-                groupContext,
-                itemSnapshot,
+        DispatchOutcome outcome = DispatchOutcome.fromCommand(
+                "websocket",
+                "websocket",
+                targetTransportNodeId,
+                command,
+                endpoint,
                 DispatchOutcomeStatus.NO_ENDPOINT,
                 true,
                 reason
         );
-        return new TransportDeliveryFailureEvent(groupContext, itemSnapshot, outcome, reason);
+        return new TransportDeliveryFailureEvent(outcome, reason);
     }
 }

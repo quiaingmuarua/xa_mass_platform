@@ -942,7 +942,7 @@ Request body:
 
 Response notes:
 
-- returns `TaskDispatchItem[]` in `data.items`
+- returns `PulledTaskDispatch[]` in `data.items`
 - `eventCode` is the worker handler identity
 - `input` is the per-item logical payload
 - `sharedConfig` is the task-level shared payload

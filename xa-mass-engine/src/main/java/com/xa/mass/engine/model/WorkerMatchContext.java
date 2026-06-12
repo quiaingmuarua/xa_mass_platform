@@ -246,7 +246,6 @@ public class WorkerMatchContext {
 
     private static void putWorkerSchedulingFields(Map<String, Object> ctx, WorkerSchedulingView schedulingView) {
         ctx.put("workerId", schedulingView.workerId());
-        ctx.put("workerStatus", schedulingView.workerStatusName());
         ctx.put("transportReachability", schedulingView.reachability().name());
         ctx.put("isTransportReachable", schedulingView.isTransportReachable());
         ctx.put("workerGroupId", schedulingView.workerGroupId());

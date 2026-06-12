@@ -9,6 +9,7 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.engine.TraceEventLogger;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -50,7 +51,7 @@ class WorkerDispatchResourceReleaserTest {
                             && "TestSource".equals(mdc.get("source")));
         }
 
-        verify(workerManager).releaseWorkerReservation("worker-1", "task-1");
+        verify(workerManager).releaseWorkerReservation(admissionTarget("worker-1", "task-1"));
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
     }
 
@@ -73,7 +74,7 @@ class WorkerDispatchResourceReleaserTest {
                 "test release"
         );
 
-        verify(workerManager).releaseWorkerReservation("worker-1", "task-1");
+        verify(workerManager).releaseWorkerReservation(admissionTarget("worker-1", "task-1"));
         verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
     }
 
@@ -96,7 +97,7 @@ class WorkerDispatchResourceReleaserTest {
                 "test lock only"
         );
 
-        verify(workerManager, never()).releaseWorkerReservation("worker-1", "task-1");
+        verify(workerManager, never()).releaseWorkerReservation(admissionTarget("worker-1", "task-1"));
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
     }
 
@@ -118,7 +119,7 @@ class WorkerDispatchResourceReleaserTest {
                 "test lock only"
         );
 
-        verify(workerManager, never()).releaseWorkerReservation("worker-1", "task-1");
+        verify(workerManager, never()).releaseWorkerReservation(admissionTarget("worker-1", "task-1"));
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
     }
 
@@ -157,6 +158,10 @@ class WorkerDispatchResourceReleaserTest {
                 WorkerSchedulingView.from(TestWorkerCandidateRows.from(worker), WorkerReachabilityState.ONLINE,
                         true, false)
         );
+    }
+
+    private static WorkerAdmissionTarget admissionTarget(String workerId, String taskId) {
+        return WorkerAdmissionTarget.groupScoped("group-a", workerId, taskId);
     }
 
     private static final class CandidateExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {

@@ -8,6 +8,7 @@ import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
@@ -27,18 +28,21 @@ final class PerfWorkerMatchingSupport {
                                                          Task task,
                                                          WorkerResourceRecord worker) {
         if (admissionRuntime == null || schedulingViewRuntime == null || task == null || worker == null
-                || worker.workerId() == null || worker.workerId().isBlank()) {
+                || worker.workerId() == null || worker.workerId().isBlank()
+                || worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
             return null;
         }
         String workerId = worker.workerId();
-        WorkerAdmissionResult reserveResult = admissionRuntime.reserveWorkerCapacity(workerId, task.getTid());
+        WorkerAdmissionTarget admissionTarget =
+                WorkerAdmissionTarget.groupScoped(worker.workerGroupId(), workerId, task.getTid());
+        WorkerAdmissionResult reserveResult = admissionRuntime.reserveWorkerCapacity(admissionTarget);
         if (!reserveResult.accepted()) {
             return null;
         }
         WorkerSchedulingCandidate candidate = candidate(schedulingViewRuntime, worker);
         if (RESOURCE_POLICY.usageForCandidate(task, candidate).exclusiveWorkerLock()
                 && !admissionRuntime.tryAcquireWorkerExclusiveLease(workerId)) {
-            admissionRuntime.releaseWorkerReservation(workerId, task.getTid());
+            admissionRuntime.releaseWorkerReservation(admissionTarget);
             return null;
         }
         return candidate(schedulingViewRuntime, worker);

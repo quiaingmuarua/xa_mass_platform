@@ -24,4 +24,21 @@ class WorkerClaimTargetTest {
         assertThat(target.supportsEvent("event.a")).isTrue();
         assertThat(target.supportsEvent("event.b")).isFalse();
     }
+
+    @Test
+    void groupScopedFactoryCarriesWorkerGroupEvidence() {
+        WorkerClaimTarget target = WorkerClaimTarget.groupScoped(
+                " group-a ",
+                "worker-1",
+                "batch-1",
+                2,
+                Set.of(" event.a ")
+        );
+
+        assertThat(target.workerGroupId()).isEqualTo("group-a");
+        assertThat(target.workerId()).isEqualTo("worker-1");
+        assertThat(target.batchId()).isEqualTo("batch-1");
+        assertThat(target.capacity()).isEqualTo(2);
+        assertThat(target.supportsEvent("event.a")).isTrue();
+    }
 }

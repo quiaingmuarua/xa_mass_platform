@@ -27,6 +27,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
     private static final String RETIRED_PRESET_HELPER = "TaskPolicyPreset" + "Semantics";
     private static final Path WORKER_MANAGER_SOURCE = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
             "com", "xa", "mass", "worker", "runtime", "WorkerManager.java");
+    private static final Path WORKER_CANDIDATE_ROW_SOURCE = Path.of("..", "xa-mass-worker-runtime",
+            "src", "main", "java", "com", "xa", "mass", "worker", "runtime", "candidate",
+            "WorkerCandidateRow.java");
 
     private static final Map<String, Pattern> FORBIDDEN_MAINLINE_PATTERNS = Map.ofEntries(
             Map.entry("TaskMessageProjection", Pattern.compile("\\bTaskMessageProjection\\b")),
@@ -783,7 +786,13 @@ class EngineSchedulingCoreArchitectureGuardTest {
             violations.add(binderPath + " passes candidate WorkerContext identity into runtime claim target");
         }
         if (Pattern.compile("new\\s+WorkerClaimTarget\\s*\\(", Pattern.DOTALL).matcher(binderSource).find()) {
-            violations.add(binderPath + " should use WorkerClaimTarget.workerLevel(...) for scheduling claims");
+            violations.add(binderPath + " should use WorkerClaimTarget.groupScoped(...) for scheduling claims");
+        }
+        if (Pattern.compile("WorkerClaimTarget\\.workerLevel\\s*\\(", Pattern.DOTALL).matcher(binderSource).find()) {
+            violations.add(binderPath + " uses worker-id-only claim targets in the engine scheduling mainline");
+        }
+        if (!Pattern.compile("WorkerClaimTarget\\.groupScoped\\s*\\(", Pattern.DOTALL).matcher(binderSource).find()) {
+            violations.add(binderPath + " does not carry WorkerGroup evidence into runtime claim targets");
         }
         if (Pattern.compile("private\\s+String\\s+workerContextId\\s*\\(\\s*\\)", Pattern.DOTALL).matcher(binderSource).find()) {
             violations.add(binderPath + " keeps a workerContextId dispatch-slot accessor in the scheduling path");
@@ -1586,6 +1595,193 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerAdmissionMutationSurfaceStaysGroupScoped() throws IOException {
+        Path runtimeContractPath = repositoryRoot().resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/admission/WorkerAdmissionRuntime.java");
+        Path targetPath = repositoryRoot().resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/admission/WorkerAdmissionTarget.java");
+        String contract = Files.readString(runtimeContractPath, StandardCharsets.UTF_8);
+        String target = Files.readString(targetPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        for (String method : List.of(
+                "reserveWorkerCapacity",
+                "confirmWorkerReservation",
+                "releaseWorkerReservation",
+                "recordWorkClaimed",
+                "recordWorkFinal"
+        )) {
+            if (!Pattern.compile("\\b" + method + "\\s*\\(\\s*WorkerAdmissionTarget\\s+target\\s*\\)")
+                    .matcher(contract)
+                    .find()) {
+                violations.add(runtimeContractPath + " does not expose group-scoped target method: " + method);
+            }
+            if (Pattern.compile("\\b" + method + "\\s*\\(\\s*String\\s+workerId", Pattern.DOTALL)
+                    .matcher(contract)
+                    .find()) {
+                violations.add(runtimeContractPath + " exposes worker-id-only admission mutation: " + method);
+            }
+        }
+        if (!target.contains("String workerGroupId")) {
+            violations.add(targetPath + " does not carry workerGroupId");
+        }
+        if (Pattern.compile("\\bworkerLevel\\s*\\(").matcher(target).find()) {
+            violations.add(targetPath + " reintroduces a worker-id-only target factory");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerAdmissionRuntime is the engine-facing admission lifecycle surface. "
+                        + "Reserve, confirm, release, claim, and final accounting must carry "
+                        + "WorkerAdmissionTarget instead of worker-id-only mutation calls:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void engineAndWorkerRuntimeMainlineDoNotExposeRedisWorkerKeyShape() throws IOException {
+        Path repo = repositoryRoot();
+        List<Path> guardedRoots = List.of(
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"),
+                repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime")
+        );
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("redis runtime adapter import",
+                        Pattern.compile("\\bcom\\.xa\\.mass\\.runtime\\.redis\\.")),
+                Map.entry("RedisWorkerRegistry type",
+                        Pattern.compile("\\bRedisWorkerRegistry\\b")),
+                Map.entry("Redis keyspace type",
+                        Pattern.compile("\\bRedis[A-Za-z0-9_]*Keyspace\\b")),
+                Map.entry("worker group key literal",
+                        Pattern.compile("\"[^\"]*worker:group[^\"]*\"")),
+                Map.entry("group slots key literal",
+                        Pattern.compile("\"[^\"]*group:\\{groupId}:slots[^\"]*\"")),
+                Map.entry("candidate bucket membership key literal",
+                        Pattern.compile("\"[^\"]*bucket-membership[^\"]*\"")),
+                Map.entry("worker meta split key literal",
+                        Pattern.compile("\"[^\"]*worker:meta[^\"]*\"")),
+                Map.entry("worker occupancy split key literal",
+                        Pattern.compile("\"[^\"]*worker:occupancy[^\"]*\"")),
+                Map.entry("available shard key literal",
+                        Pattern.compile("\"[^\"]*available:\\{shard}[^\"]*\""))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : guardedRoots) {
+            for (Path sourcePath : javaSourceFiles(root)) {
+                String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+                for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+                    if (forbiddenPattern.getValue().matcher(source).find()) {
+                        violations.add(sourcePath + " exposes Redis worker key shape: "
+                                + forbiddenPattern.getKey());
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Engine and worker-runtime mainline contracts must not expose Redis worker keyspace "
+                        + "classes, key-family names, or adapter payload shape. Keep Redis physical "
+                        + "structure inside the runtime adapter:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void redisWorkerRegistryDoesNotConsumeTransportPresenceKeys() throws IOException {
+        Path registryPath = repositoryRoot().resolve(
+                "platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistry.java");
+        String source = Files.readString(registryPath, StandardCharsets.UTF_8);
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("transport package dependency",
+                        Pattern.compile("\\bcom\\.xa\\.mass\\.transport\\.")),
+                Map.entry("transport presence store",
+                        Pattern.compile("\\bRedisWorkerPresenceStore\\b|\\bWorkerPresenceStore\\b")),
+                Map.entry("route presence key literal",
+                        Pattern.compile("\"[^\"]*route-presence[^\"]*\"")),
+                Map.entry("worker routes key literal",
+                        Pattern.compile("\"[^\"]*worker-routes[^\"]*\"|\"[^\"]*worker-route[^\"]*\"")),
+                Map.entry("route owner key literal",
+                        Pattern.compile("\"[^\"]*route-owner[^\"]*\"|\"[^\"]*owner-shards[^\"]*\""))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+            if (forbiddenPattern.getValue().matcher(source).find()) {
+                violations.add(registryPath + " consumes transport reachability truth: "
+                        + forbiddenPattern.getKey());
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "RedisWorkerRegistry owns registry slot lifecycle and admission facts only. "
+                        + "Transport route-owner/presence keys are not worker reachability truth "
+                        + "and must not be consumed by the Redis registry:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void redisWorkerRegistryCandidateAcquisitionDoesNotMaterializeFullBucket() throws IOException {
+        Path registryPath = repositoryRoot().resolve(
+                "platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistry.java");
+        String source = Files.readString(registryPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\.smembers\\s*\\(\\s*bucketKey\\s*\\)").matcher(source).find()) {
+            violations.add(registryPath + "#acquireCandidates materializes the full candidate bucket");
+        }
+        if (!Pattern.compile("\\.srandmember\\s*\\(\\s*bucketKey\\s*,\\s*maxCandidateCount\\s*\\)")
+                .matcher(source)
+                .find()) {
+            violations.add(registryPath + "#acquireCandidates does not use bounded Redis sampling");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Redis candidate acquisition must honor BCA bounded-source semantics. "
+                        + "Do not reintroduce full-bucket SMEMBERS in the scheduling path:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void engineSchedulingLifecycleBuildsGroupScopedAdmissionTargets() throws IOException {
+        Map<Path, String> guardedFiles = Map.ofEntries(
+                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java"),
+                        "matching strategy"),
+                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java"),
+                        "dispatch binder"),
+                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/resource/WorkerDispatchResourceReleaser.java"),
+                        "dispatch resource releaser"),
+                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/TaskResourceReleaseListener.java"),
+                        "terminal/attempt release listener")
+        );
+        Pattern workerIdOnlyFactory = Pattern.compile("\\bWorkerAdmissionTarget\\.workerLevel\\s*\\(");
+        Pattern rawTargetConstruction = Pattern.compile("\\bnew\\s+WorkerAdmissionTarget\\s*\\(");
+        Pattern workerIdOnlyMutation = Pattern.compile("\\.(?:reserveWorkerCapacity|confirmWorkerReservation|"
+                + "releaseWorkerReservation|recordWorkClaimed|recordWorkFinal)\\s*\\(\\s*"
+                + "(?:workerId\\b|candidate\\.getWorkerId\\s*\\(|worker\\.workerId\\s*\\(|"
+                + "lease\\.workerId\\s*\\(|event\\.workerId\\s*\\()", Pattern.DOTALL);
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<Path, String> guardedFile : guardedFiles.entrySet()) {
+            String source = Files.readString(guardedFile.getKey(), StandardCharsets.UTF_8);
+            if (workerIdOnlyFactory.matcher(source).find()) {
+                violations.add(guardedFile.getValue() + " uses worker-id-only admission target factory");
+            }
+            if (rawTargetConstruction.matcher(source).find()) {
+                violations.add(guardedFile.getValue() + " constructs admission target directly");
+            }
+            if (workerIdOnlyMutation.matcher(source).find()) {
+                violations.add(guardedFile.getValue() + " calls admission mutation with workerId evidence only");
+            }
+            if (!source.contains("WorkerAdmissionTarget.groupScoped")) {
+                violations.add(guardedFile.getValue() + " does not build group-scoped admission targets");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Engine scheduling lifecycle must carry WorkerGroup evidence into admission mutations. "
+                        + "Do not recover the hot path through worker-id reverse lookup:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void dispatchReleasePathUsesWorkerAdmissionRuntime() throws IOException {
         Map<Path, String> guardedFiles = Map.of(
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java"),
@@ -1785,6 +1981,57 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "WorkerCandidateRuntime is the strategy-facing candidate acquisition contract. "
                         + "Keep diagnostics and warm hint writes off candidate acquisition; warm hints "
                         + "belong on WorkerWarmHintRuntime:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerCandidateRowCarriesOnlySourceIdentityAndStaticMetadata() throws IOException {
+        String source = Files.readString(WORKER_CANDIDATE_ROW_SOURCE, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        for (String requiredField : List.of(
+                "String workerId",
+                "String agentVersion",
+                "String workerGroupId",
+                "String adapterNodeId",
+                "String adapterId",
+                "String onlineStrategy",
+                "Map<String, String> attributes"
+        )) {
+            if (!source.contains(requiredField)) {
+                violations.add(WORKER_CANDIDATE_ROW_SOURCE + " is missing source/static field: "
+                        + requiredField);
+            }
+        }
+
+        for (String forbiddenField : List.of(
+                "statusName",
+                "lastHeartbeat",
+                "supportedProjects",
+                "supportedEventCodes",
+                "maxConcurrentWork",
+                "createTime",
+                "updateTime",
+                "available",
+                "capacity",
+                "dispatchEnabled",
+                "workerLocked",
+                "activeLease",
+                "reserved",
+                "slotLifecycle",
+                "WorkerReachabilityState",
+                "WorkerLoadSnapshot"
+        )) {
+            if (source.contains(forbiddenField)) {
+                violations.add(WORKER_CANDIDATE_ROW_SOURCE + " carries live or diagnostic evidence: "
+                        + forbiddenField);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerCandidateRow is the hot-path candidate-source row. Runtime lifecycle, "
+                        + "capability, load, dispatch, and diagnostic evidence must be joined through "
+                        + "separate worker-runtime evidence/read surfaces:\n"
                         + String.join("\n", violations));
     }
 

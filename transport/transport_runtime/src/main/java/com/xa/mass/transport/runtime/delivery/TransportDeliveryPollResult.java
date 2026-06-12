@@ -1,35 +1,33 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
-
 import java.util.List;
 import java.util.Objects;
 
 public final class TransportDeliveryPollResult {
 
     private final TransportDeliveryPollStatus status;
-    private final List<TransportDispatchEnvelope> envelopes;
+    private final List<QueuedPulledDispatch> items;
 
-    private TransportDeliveryPollResult(TransportDeliveryPollStatus status, List<TransportDispatchEnvelope> envelopes) {
-        this(status, envelopes, false);
+    private TransportDeliveryPollResult(TransportDeliveryPollStatus status, List<QueuedPulledDispatch> items) {
+        this(status, items, false);
     }
 
     private TransportDeliveryPollResult(TransportDeliveryPollStatus status,
-                                        List<TransportDispatchEnvelope> envelopes,
+                                        List<QueuedPulledDispatch> items,
                                         boolean trustedView) {
         this.status = Objects.requireNonNull(status, "status");
-        if (envelopes == null || envelopes.isEmpty()) {
-            this.envelopes = List.of();
+        if (items == null || items.isEmpty()) {
+            this.items = List.of();
             return;
         }
-        this.envelopes = trustedView ? envelopes : List.copyOf(envelopes);
+        this.items = trustedView ? items : List.copyOf(items);
     }
 
     public static TransportDeliveryPollResult of(TransportDeliveryPollStatus status,
-                                                 List<TransportDispatchEnvelope> envelopes) {
+                                                 List<QueuedPulledDispatch> items) {
         Objects.requireNonNull(status, "status");
         return switch (status) {
-            case DELIVERED -> delivered(envelopes);
+            case DELIVERED -> delivered(items);
             case EMPTY -> empty();
             case INVALID_REQUEST -> invalidRequest();
             case UNAVAILABLE -> unavailable();
@@ -37,18 +35,18 @@ public final class TransportDeliveryPollResult {
         };
     }
 
-    public static TransportDeliveryPollResult delivered(List<TransportDispatchEnvelope> envelopes) {
-        if (envelopes == null || envelopes.isEmpty()) {
-            throw new IllegalArgumentException("delivered poll result must include at least one envelope");
+    public static TransportDeliveryPollResult delivered(List<QueuedPulledDispatch> items) {
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("delivered poll result must include at least one item");
         }
-        return new TransportDeliveryPollResult(TransportDeliveryPollStatus.DELIVERED, envelopes);
+        return new TransportDeliveryPollResult(TransportDeliveryPollStatus.DELIVERED, items);
     }
 
-    static TransportDeliveryPollResult deliveredView(List<TransportDispatchEnvelope> envelopes) {
-        if (envelopes == null || envelopes.isEmpty()) {
-            throw new IllegalArgumentException("delivered poll result must include at least one envelope");
+    static TransportDeliveryPollResult deliveredView(List<QueuedPulledDispatch> items) {
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("delivered poll result must include at least one item");
         }
-        return new TransportDeliveryPollResult(TransportDeliveryPollStatus.DELIVERED, envelopes, true);
+        return new TransportDeliveryPollResult(TransportDeliveryPollStatus.DELIVERED, items, true);
     }
 
     public static TransportDeliveryPollResult empty() {
@@ -71,7 +69,7 @@ public final class TransportDeliveryPollResult {
         return status;
     }
 
-    public List<TransportDispatchEnvelope> getEnvelopes() {
-        return envelopes;
+    public List<QueuedPulledDispatch> getItems() {
+        return items;
     }
 }

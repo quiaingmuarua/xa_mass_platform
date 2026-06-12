@@ -1,8 +1,6 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.packet.PacketType;
-import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.model.TaskDispatchContent;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,49 +12,42 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class TransportDeliveryPollResultTest {
 
     @Test
-    void deliveredRequiresAtLeastOneEnvelope() {
+    void deliveredRequiresAtLeastOneItem() {
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
                 () -> TransportDeliveryPollResult.delivered(List.of())
         );
 
-        assertEquals("delivered poll result must include at least one envelope", error.getMessage());
+        assertEquals("delivered poll result must include at least one item", error.getMessage());
     }
 
     @Test
-    void ofNormalizesNonDeliveredStatusesToEmptyEnvelopeList() {
+    void ofNormalizesNonDeliveredStatusesToEmptyItemList() {
         TransportDeliveryPollResult result = TransportDeliveryPollResult.of(
                 TransportDeliveryPollStatus.SHUTDOWN,
-                List.of(envelope("msg-1", "worker-1"))
+                List.of(item("msg-1", "worker-1"))
         );
 
         assertEquals(TransportDeliveryPollStatus.SHUTDOWN, result.getStatus());
-        assertEquals(List.of(), result.getEnvelopes());
+        assertEquals(List.of(), result.getItems());
     }
 
-    private static TransportDispatchEnvelope envelope(String messageId, String workerId) {
+    private static QueuedPulledDispatch item(String messageId, String workerId) {
         String deliveryId = "delivery-" + messageId;
-        return new TransportDispatchEnvelope(
+        return new QueuedPulledDispatch(
                 deliveryId,
                 workerId,
-                new TransportPacket(
-                        TransportPacket.CURRENT_VERSION,
-                        deliveryId,
-                        "trace-" + messageId,
-                        PacketType.TASK_DISPATCH,
-                        "polling",
-                        "group-route-1",
+                new TaskDispatchContent(
                         "task-1",
                         messageId,
-                        "attempt-" + messageId,
                         "crawler.fetch-page",
-                        TransportPacket.JSON_CONTENT_TYPE,
-                        Map.of(
-                                TransportPacket.PAYLOAD_WORKER_ID, workerId,
-                                TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
-                                TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
-                        )
+                        Map.of("target", "target-1"),
+                        Map.of()
                 ),
+                "attempt-" + messageId,
+                1,
+                0,
+                "batch-1",
                 1L
         );
     }

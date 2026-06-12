@@ -27,13 +27,14 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
     @Override
     public List<DispatchOutcome> offer(DeliveryCommandBatch batch) {
         Objects.requireNonNull(batch, "batch");
-        DeliveryObservationGroupContext groupContext = observationGroup(batch);
         if (!running.get()) {
             return batch.items().stream()
-                    .map(item -> DeliveryObservationSupport.outcome(
-                            groupContext,
-                            item.command(),
-                            item.endpoint(),
+                    .map(item -> DispatchOutcome.fromCommand(
+                            batch.adapterId(),
+                            batch.deliveryQueueKey(),
+                            batch.targetTransportNodeId(),
+                            item,
+                            null,
                             DispatchOutcomeStatus.SHUTDOWN,
                             true,
                             "delivery command handoff is stopped"))
@@ -42,20 +43,24 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         boolean accepted = queue.offer(batch);
         if (accepted) {
             return batch.items().stream()
-                    .map(item -> DeliveryObservationSupport.outcome(
-                            groupContext,
-                            item.command(),
-                            item.endpoint(),
+                    .map(item -> DispatchOutcome.fromCommand(
+                            batch.adapterId(),
+                            batch.deliveryQueueKey(),
+                            batch.targetTransportNodeId(),
+                            item,
+                            null,
                             DispatchOutcomeStatus.QUEUED,
                             false,
                             null))
                     .toList();
         }
         return batch.items().stream()
-                .map(item -> DeliveryObservationSupport.outcome(
-                        groupContext,
-                        item.command(),
-                        item.endpoint(),
+                .map(item -> DispatchOutcome.fromCommand(
+                        batch.adapterId(),
+                        batch.deliveryQueueKey(),
+                        batch.targetTransportNodeId(),
+                        item,
+                        null,
                         DispatchOutcomeStatus.BACKPRESSURE,
                         true,
                         "delivery command handoff queue is full"))
@@ -73,13 +78,5 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
     @Override
     public void shutdown() {
         running.set(false);
-    }
-
-    private static DeliveryObservationGroupContext observationGroup(DeliveryCommandBatch batch) {
-        return DeliveryObservationGroupContext.now(
-                batch.adapterId(),
-                batch.deliveryQueueKey(),
-                batch.targetTransportNodeId()
-        );
     }
 }

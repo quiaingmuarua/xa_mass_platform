@@ -180,6 +180,7 @@ public abstract class TaskResultRuntimeContractTest {
                 "worker-1",
                 "digest-null-output",
                 "worker-1",
+                "group-a",
                 "batch-1",
                 "payload-ref",
                 "demo.event",
@@ -200,6 +201,7 @@ public abstract class TaskResultRuntimeContractTest {
                 0,
                 3,
                 "worker-1",
+                "group-a",
                 "batch-1",
                 "attempt-1",
                 "payload-ref",
@@ -218,6 +220,9 @@ public abstract class TaskResultRuntimeContractTest {
         assertThat(runtime.getVisibleByMessageId("task-1", "msg-1")).get()
                 .extracting(row -> row.output())
                 .isEqualTo(output);
+        assertThat(runtime.getVisibleByMessageId("task-1", "msg-1")).get()
+                .extracting(row -> row.workerGroupId())
+                .isEqualTo("group-a");
     }
 
     @Test
@@ -440,6 +445,7 @@ public abstract class TaskResultRuntimeContractTest {
                 "worker-1",
                 digest,
                 "worker-1",
+                "group-a",
                 "batch-1",
                 "payload-ref",
                 "demo.event",
@@ -460,6 +466,7 @@ public abstract class TaskResultRuntimeContractTest {
                 0,
                 3,
                 "worker-1",
+                "group-a",
                 "batch-1",
                 "attempt-1",
                 "payload-ref",

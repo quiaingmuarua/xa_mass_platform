@@ -60,15 +60,23 @@ entry for `transport/`.
   session facts are not command fields.
 - `DeliveryCommandGroup` owns producer-side `adapterId`. `DeliveryCommandBatch`
   owns the process-boundary lane: `adapterId`, `deliveryQueueKey`,
-  `targetTransportNodeId`, and resolved per-item endpoint leases.
+  `targetTransportNodeId`, and command items only. It carries a node hint, not
+  routeKey, connectionId, or endpoint leases.
+- `TransportDeliveryCommandListener` re-resolves endpoint evidence on the
+  target transport node before calling an adapter. `AdapterDispatchRequest` is
+  the final-hop adapter request.
 - `PulledTaskDispatch` is the polling worker pull DTO. Task-dispatch
   `TransportPacket` is a final-hop/wire projection assembled after endpoint
   evidence is known. Neither is the delivery-command handoff payload.
+- `QueuedPulledDispatch` is the polling queue value. It carries only the typed
+  pull DTO source facts and selected worker sub-lane identity; packet, route,
+  endpoint, taskName/project/userId, and deliveryQueueKey are not serialized in
+  the Redis queue value.
 - Queue mechanics may live under `platform_infra`; transport still owns
-  `DeliveryCommand`, `TransportDispatchEnvelope`, `TransportDeliveryStore`, and
-  `DispatchOutcome`. `TransportDispatchEnvelope` does not carry
-  `deliveryQueueKey`; queue ownership is expressed by the delivery group/store
-  key.
+  `DeliveryCommand`, `DeliveryCommandBatch`, `AdapterDispatchRequest`,
+  `QueuedPulledDispatch`, `TransportDeliveryStore`, and `DispatchOutcome`.
+  `DispatchOutcome` is the single delivery-failure fact owner; failure inbox
+  events wrap the outcome instead of maintaining group/item snapshot copies.
 - Embedded runtime composition currently defaults to the in-memory delivery
   store, but SDK/starter wiring may swap in a Redis-backed
   `TransportDeliveryStore` without changing transport-facing contracts.

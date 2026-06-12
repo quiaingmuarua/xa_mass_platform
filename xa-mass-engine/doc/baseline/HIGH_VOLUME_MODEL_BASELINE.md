@@ -66,7 +66,7 @@ High-volume changes must preserve these unless explicitly approved otherwise:
 
 - `POST /api/v1/tasks` followed by `POST /api/v1/tasks/{taskId}/items`
 - append + seal semantics for open intake
-- polling worker contract around `TaskDispatchItem`
+- polling worker contract around `PulledTaskDispatch`
 - result submission contract around `TaskResultReport`
 - task terminal immutability to late results
 
