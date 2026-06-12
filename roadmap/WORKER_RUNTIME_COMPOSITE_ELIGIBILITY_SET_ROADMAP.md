@@ -1021,8 +1021,9 @@ This roadmap is complete when:
    slot-lifecycle candidate contract; no proof-only source remains beside the
    real matching path.
 4. The slot-lifecycle source/validator contract is named, and its relation to
-   BCA is documented; `WorkerRegistry#acquireCandidates(...)` is not retargeted
-   before BCA-1 selects that contract or is updated in the same change.
+   BCA is documented; `WorkerRegistry#acquireCandidates(...)` uses the landed
+   BCA-1 bounded source-batch contract and is not treated as lifecycle
+   eligibility by itself.
 5. Target-worker lookup and group candidate acquisition use the same
    slot-lifecycle predicate before reserve.
 6. Hot-path candidate identity/source rows are separated from runtime
@@ -1037,14 +1038,14 @@ This roadmap is complete when:
    projection writer with proof.
 10. The source predicate covers registry-owned heartbeat deadline, dispatch gate,
    removing state, and group membership.
-11. BCA-1 has selected candidate acquisition semantics before Redis read-shape
-   replacement lands.
+11. BCA-1 has selected candidate acquisition semantics before Redis slot
+   lifecycle read-shape replacement lands.
 12. The hot-path performance model records read/write budget, stale tolerance,
     deadline behavior, and projection/batch thresholds before Redis physical
     shape is selected.
 13. Redis implementation uses a deadline-aware derived index for registry-owned
    slot lifecycle eligibility and no full-bucket materialization is required for
-   that read under the selected BCA contract.
+   that lifecycle read under the selected BCA contract.
 14. Scheduling reserve passes `workerGroupId` when group evidence is present;
    confirm/release/claim/final in the current engine lifecycle are group-scoped.
    Admission interfaces, owner docs, and guards no longer encourage

@@ -173,11 +173,11 @@ Acceptance:
 ## Verification Candidates
 
 ```powershell
-rg -n "acquireCandidates\\(|workerIdsByAdapterNodeGroup\\(|disableDispatchForAdapterNodeGroup\\(|clearDispatchDisableForAdapterNodeGroup\\(" platform_infra xa-mass-worker-runtime xa-mass-engine --glob '!**/target/**'
-rg -n "smembers\\(bucketKey\\)|srandmember\\(bucketKey" platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistry.java
-.\mvnw.cmd -pl platform_infra/mass-runtime-memory "-Dtest=InMemoryWorkerRegistryTest" test
-.\mvnw.cmd -pl platform_infra/mass-runtime-redis "-Dtest=RedisWorkerRegistryTest" test
-.\mvnw.cmd -pl xa-mass-engine "-Dtest=EngineSchedulingCoreArchitectureGuardTest#upperRuntimeCallersUseWorkerRegistrySemanticOperations" test
+rg -n "acquireCandidates\(|workerIdsByAdapterNodeGroup\(|disableDispatchForAdapterNodeGroup\(|clearDispatchDisableForAdapterNodeGroup\(" platform_infra xa-mass-worker-runtime xa-mass-engine --glob '!**/target/**'
+rg -n "smembers\(bucketKey\)|srandmember\(bucketKey" platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistry.java
+.\mvnw.cmd -pl platform_infra/mass-runtime-memory "-Dtest=InMemoryWorkerRegistryTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+.\mvnw.cmd -pl platform_infra/mass-runtime-redis -am "-Dtest=RedisWorkerRegistryTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+.\mvnw.cmd -pl xa-mass-engine -am "-Dtest=EngineSchedulingCoreArchitectureGuardTest#upperRuntimeCallersUseWorkerRegistrySemanticOperations" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl xa-mass-engine -am "-Dtest=EngineSchedulingCoreArchitectureGuardTest#redisWorkerRegistryCandidateAcquisitionDoesNotMaterializeFullBucket" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
