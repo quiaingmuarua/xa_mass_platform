@@ -117,9 +117,9 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="Online capacity" min-width="140">
+            <el-table-column label="Reachable unlocked" min-width="150">
               <template #default="{ row }">
-                {{ dispatchEligibleForEvent(row.code) }} /
+                {{ reachableUnlockedForEvent(row.code) }} /
                 {{ configuredWorkersForEvent(row.code) }}
               </template>
             </el-table-column>
@@ -161,14 +161,14 @@
                     {{ row.workerCount }}
                   </template>
                 </el-table-column>
-                <el-table-column label="Dispatch eligible" min-width="140">
+                <el-table-column label="Reachable unlocked" min-width="150">
                   <template #default="{ row }">
-                    {{ row.dispatchEligibleCount }}
+                    {{ row.reachableUnlockedBindingCount }}
                   </template>
                 </el-table-column>
-                <el-table-column label="Transport online" min-width="160">
+                <el-table-column label="Reachable by transport" min-width="180">
                   <template #default="{ row }">
-                    {{ transportOnlineTotal(row) }}
+                    {{ reachableByTransportTotal(row) }}
                   </template>
                 </el-table-column>
               </el-table>
@@ -191,16 +191,16 @@
                 <div class="row-secondary">{{ row.workerGroupId || 'no group' }}</div>
               </template>
             </el-table-column>
-            <el-table-column label="Model status" min-width="120">
+            <el-table-column label="Runtime status" min-width="120">
               <template #default="{ row }">
-                <el-tag :type="row.status === 'ONLINE' ? 'success' : 'info'">
-                  {{ row.status }}
+                <el-tag :type="row.runtimeStatus === 'ONLINE' ? 'success' : 'info'">
+                  {{ row.runtimeStatus }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="Transport" min-width="150">
+            <el-table-column label="Reachability" min-width="150">
               <template #default="{ row }">
-                {{ row.transportReachability || (row.transportOnline ? 'ONLINE' : 'OFFLINE') }}
+                {{ row.reachability || (row.reachable ? 'ONLINE' : 'OFFLINE') }}
               </template>
             </el-table-column>
             <el-table-column label="Events" min-width="220">
@@ -377,9 +377,9 @@ function groupsForEvent(eventCode: string): WorkerGroupCapability[] {
   )
 }
 
-function dispatchEligibleForEvent(eventCode: string): number {
+function reachableUnlockedForEvent(eventCode: string): number {
   return groupsForEvent(eventCode).reduce(
-    (sum, group) => sum + group.dispatchEligibleCount,
+    (sum, group) => sum + group.reachableUnlockedBindingCount,
     0,
   )
 }
@@ -395,8 +395,8 @@ function eventCodesForGroup(group: WorkerGroupCapability): string[] {
   return group.eventBindings.map((binding) => binding.eventCode)
 }
 
-function transportOnlineTotal(group: WorkerGroupCapability): number {
-  return Object.values(group.transportOnlineCounts).reduce(
+function reachableByTransportTotal(group: WorkerGroupCapability): number {
+  return Object.values(group.reachableWorkerCountsByTransport).reduce(
     (sum, count) => sum + count,
     0,
   )

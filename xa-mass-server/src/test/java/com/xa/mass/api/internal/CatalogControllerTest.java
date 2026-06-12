@@ -164,7 +164,7 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.convergenceMode=='FINAL_RESULT')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.targetScope=='WORKER')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.projectCodes[0]=='crawlerApp' && @.projectCodes[1]=='demoApp')]").exists())
-                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.workerIds[0]=='crawler-worker-1')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.declaredWorkerIds[0]=='crawler-worker-1')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.reachableWorkerIds[0]=='crawler-worker-1')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.invocationModel=='DIRECT_RUNTIME')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.priorityClass=='CONTROL')]").exists())
@@ -173,8 +173,8 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.convergenceMode=='NONE')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.targetScope=='TASK_ENGINE')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.hasDirectRuntimeHandler==true)]").exists())
-                .andExpect(jsonPath("$.data[?(@.eventCode=='chatbot.reply' && @.hasOnlineWorkerCoverage==false)]").exists())
-                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.workerIds.length()==1)]").exists());
+                .andExpect(jsonPath("$.data[?(@.eventCode=='chatbot.reply' && @.hasReachableWorkerCoverage==false)]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.declaredWorkerIds.length()==1)]").exists());
     }
 
     @Test
@@ -192,7 +192,9 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.connections[0].adapterId=='ws-public')]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.hasActiveEndpoint==true)]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.fieldSources.workerGroupId=='declaration')]").exists())
-                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.fieldSources.online=='transport')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.reachability=='ONLINE')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.reachable==true)]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.fieldSources.reachable=='workerRuntimeReachability')]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.fieldSources.supportedEventCodes=='workerGroupCapability')]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.supportedEventCodes[0]=='legacy.worker.event')]").doesNotExist())
                 .andExpect(jsonPath("$.data[?(@.workerId=='chat-worker-1' && @.locked==true)]").exists());
@@ -208,11 +210,11 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.eventBindings[0].eventCode=='crawler.fetch-page')]").exists())
                 .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.adapterNodes[0].adapterNodeId=='node-crawler')]").exists())
                 .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.transportCounts.realtime==1)]").exists())
-                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.transportOnlineCounts.realtime==1)]").exists())
-                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.modelStatusCounts.ONLINE==1)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.reachableWorkerCountsByTransport.realtime==1)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.runtimeStatusCounts.ONLINE==1)]").exists())
                 .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.lockedCount==0)]").exists())
-                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.dispatchEligibleCount==1)]").exists())
-                .andExpect(jsonPath("$.data[?(@.groupId=='chat' && @.dispatchEligibleCount==0)]").exists());
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.reachableUnlockedBindingCount==1)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='chat' && @.reachableUnlockedBindingCount==0)]").exists());
     }
 
     @Test
@@ -238,7 +240,7 @@ class CatalogControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.length()").value(125))
-                .andExpect(jsonPath("$.data[?(@.workerId=='worker-0002' && @.online==true)]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='worker-0002' && @.reachable==true)]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='worker-0003' && @.locked==true)]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='worker-0005' && @.connections[0].endpointId=='endpoint-worker-0005')]").exists());
 
@@ -265,7 +267,7 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.length()").value(5))
                 .andExpect(jsonPath("$.data[?(@.groupId=='group-00' && @.workerCount==25)]").exists())
-                .andExpect(jsonPath("$.data[?(@.groupId=='group-00' && @.dispatchEligibleCount > 0)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='group-00' && @.reachableUnlockedBindingCount > 0)]").exists())
                 .andExpect(jsonPath("$.data[?(@.groupId=='group-02' && @.lockedCount > 0)]").exists());
 
         verify(workerQueries, times(1)).getAllWorkers();

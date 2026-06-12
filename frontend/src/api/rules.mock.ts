@@ -3,11 +3,11 @@ import type {RuleListResponse, RuleMetaResponse} from '@/types/rules'
 const mockRules: RuleListResponse = {
     items: [
         {
-            ruleId: 'rule-worker-online',
-            name: 'Online workers only',
+            ruleId: 'rule-worker-region',
+            name: 'Regional workers only',
             type: 'QL_EXPRESS',
-            content: "worker.status == 'ONLINE'",
-            description: 'Only dispatch work to workers with online status.',
+            content: "worker.attributes['region'] == 'us-east-1'",
+            description: 'Only dispatch work to workers with a declared routing region.',
             enabled: true,
             priority: 10,
         },

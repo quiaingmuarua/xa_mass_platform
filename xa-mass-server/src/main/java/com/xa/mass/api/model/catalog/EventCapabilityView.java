@@ -53,15 +53,15 @@ public record EventCapabilityView(
         String invocationModel,
         @Schema(description = "Project codes that expose this event")
         List<String> projectCodes,
-        @Schema(description = "Workers that declare this event capability")
-        List<String> workerIds,
-        @Schema(description = "Currently online workers that declare this event capability")
+        @Schema(description = "Workers declared in WorkerGroups that expose this event capability")
+        List<String> declaredWorkerIds,
+        @Schema(description = "Currently reachable workers that declare this event capability")
         List<String> reachableWorkerIds,
         @Schema(description = "Whether this event has a direct SDK runtime handler", example = "false")
         boolean hasDirectRuntimeHandler,
-        @Schema(description = "Whether at least one online worker declares this event", example = "true")
-        boolean hasOnlineWorkerCoverage,
-        @Schema(description = "Whether the event has an immediately usable direct handler or online worker coverage", example = "true")
-        boolean ready
+        @Schema(description = "Whether at least one reachable worker declares this event", example = "true")
+        boolean hasReachableWorkerCoverage,
+        @Schema(description = "Whether the catalog has direct-runtime or reachable-worker invocation coverage; not scheduling eligibility", example = "true")
+        boolean hasInvocationCoverage
 ) {
 }

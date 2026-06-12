@@ -59,7 +59,7 @@ describe('ProjectDetailPage', () => {
         expect(wrapper.text()).toContain('STANDARD')
         expect(wrapper.text()).toContain('FINAL_RESULT')
         expect(wrapper.text()).toContain('WORKER')
-        expect(wrapper.text()).toContain('Scoped principals')
+        expect(wrapper.text()).toContain('public-probe-ops')
         expect(wrapper.text()).toContain('WorkerGroup coverage')
         expect(wrapper.text()).toContain('Project tasks')
         expect(wrapper.text()).toContain('Public provider reachability batch')

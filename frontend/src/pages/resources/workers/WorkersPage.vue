@@ -25,8 +25,8 @@
           <div class="metric-value">{{ workers.length }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Transport online</div>
-          <div class="metric-value">{{ onlineWorkerCount }}</div>
+          <div class="metric-label">Reachable</div>
+          <div class="metric-value">{{ reachableWorkerCount }}</div>
         </div>
         <div class="metric-tile">
           <div class="metric-label">Locked</div>
@@ -54,17 +54,17 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="Model status" min-width="120">
+        <el-table-column prop="runtimeStatus" label="Runtime status" min-width="120">
           <template #default="{ row }">
-            <el-tag :type="tagForWorkerStatus(row.status)">
-              {{ row.status }}
+            <el-tag :type="tagForWorkerStatus(row.runtimeStatus)">
+              {{ row.runtimeStatus }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="Transport" min-width="150">
+        <el-table-column label="Reachability" min-width="150">
           <template #default="{ row }">
-            <el-tag :type="row.transportOnline ? 'success' : 'info'">
-              {{ row.transportReachability || (row.transportOnline ? 'ONLINE' : 'OFFLINE') }}
+            <el-tag :type="row.reachable ? 'success' : 'info'">
+              {{ row.reachability || (row.reachable ? 'ONLINE' : 'OFFLINE') }}
             </el-tag>
             <div class="row-secondary">{{ row.transportHint || '-' }}</div>
           </template>
@@ -156,8 +156,8 @@ const router = useRouter()
 const loading = ref(false)
 const workers = ref<WorkerListItem[]>([])
 const errorMessage = ref('')
-const onlineWorkerCount = computed(
-  () => workers.value.filter((worker) => worker.transportOnline).length,
+const reachableWorkerCount = computed(
+  () => workers.value.filter((worker) => worker.reachable).length,
 )
 const lockedWorkerCount = computed(
   () => workers.value.filter((worker) => worker.locked).length,

@@ -34,10 +34,10 @@ class RuleApiControllerTest {
     void listRulesReturnsCoreFields() throws Exception {
         when(ruleOperations.listDefaultRules()).thenReturn(List.of(Map.of(
                 "ruleId", "rule-001",
-                "name", "Prefer online workers",
+                "name", "Prefer regional workers",
                 "type", "QL_EXPRESS",
-                "content", "worker.status == 'ONLINE'",
-                "description", "Mainline worker match rule",
+                "content", "worker.attributes['region'] == 'us-east-1'",
+                "description", "Mainline worker attribute match rule",
                 "enabled", true,
                 "priority", 10
         )));
@@ -48,7 +48,7 @@ class RuleApiControllerTest {
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].ruleId").value("rule-001"))
                 .andExpect(jsonPath("$.data.items[0].type").value("QL_EXPRESS"))
-                .andExpect(jsonPath("$.data.items[0].content").value("worker.status == 'ONLINE'"));
+                .andExpect(jsonPath("$.data.items[0].content").value("worker.attributes['region'] == 'us-east-1'"));
     }
 
     @Test

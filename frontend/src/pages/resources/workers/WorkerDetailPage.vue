@@ -35,8 +35,8 @@
           <div class="metric-value metric-text mono">{{ worker.workerId }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Status</div>
-          <div class="metric-value metric-text">{{ worker.status }}</div>
+          <div class="metric-label">Runtime status</div>
+          <div class="metric-value metric-text">{{ worker.runtimeStatus }}</div>
         </div>
         <div class="metric-tile">
           <div class="metric-label">Projects</div>
@@ -64,8 +64,11 @@
               <el-descriptions-item label="Worker ID">
                 <span class="mono">{{ worker.workerId }}</span>
               </el-descriptions-item>
-              <el-descriptions-item label="Status">
-                {{ worker.status }}
+              <el-descriptions-item label="Runtime status">
+                {{ worker.runtimeStatus }}
+              </el-descriptions-item>
+              <el-descriptions-item label="Reachability">
+                {{ worker.reachability || (worker.reachable ? 'ONLINE' : 'OFFLINE') }}
               </el-descriptions-item>
               <el-descriptions-item label="Group">
                 {{ worker.workerGroupId || '-' }}

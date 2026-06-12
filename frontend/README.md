@@ -106,6 +106,7 @@ source.
 - `src/auth/*`: auth provider boundary and permission bridge
 - `src/api/*`: domain API modules
 - `src/pages/*`: page-level view logic
-- `WORKER_SOURCE_AWARE_PRESENTATION_FOLLOWUP.md`: optional worker page
-  presentation follow-up for backend-provided `fieldSources`
+- `WORKER_SOURCE_AWARE_PRESENTATION_FOLLOWUP.md`: historical worker page
+  presentation handoff absorbed by WES-4; current pages consume backend-owned
+  source-labeled worker fields and preserve `fieldSources`
 - `AGENTS.md`: extension rules for future agents

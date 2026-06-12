@@ -23,9 +23,9 @@ describe('workers.real', () => {
                     items: [
                         {
                             workerId: 'worker-001',
-                            status: 'ONLINE',
-                            transportReachability: 'ONLINE',
-                            transportOnline: true,
+                            runtimeStatus: 'ONLINE',
+                            reachability: 'ONLINE',
+                            reachable: true,
                             workerGroupId: 'group-a',
                             adapterNodeId: 'node-a',
                             agentVersion: '1.2.3',
@@ -37,8 +37,9 @@ describe('workers.real', () => {
                             updateTime: '2026-04-21 10:16:00',
                             fieldSources: {
                                 workerId: 'declaration',
-                                status: 'runtime',
-                                transportReachability: 'transport',
+                                runtimeStatus: 'runtimeStatusDisplay',
+                                reachability: 'workerRuntimeReachability',
+                                reachable: 'workerRuntimeReachability',
                             },
                         },
                     ],
@@ -55,6 +56,6 @@ describe('workers.real', () => {
             expect.any(Object),
         )
         expect(response.items[0].fieldSources?.workerId).toBe('declaration')
-        expect(response.items[0].fieldSources?.status).toBe('runtime')
+        expect(response.items[0].fieldSources?.runtimeStatus).toBe('runtimeStatusDisplay')
     })
 })

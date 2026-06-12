@@ -5,7 +5,7 @@
         <div class="debug-worker-line">
           <strong class="mono">{{ worker.workerId }}</strong>
           <el-tag :type="statusTagType">
-            {{ worker.status }}
+            {{ worker.runtimeStatus }}
           </el-tag>
         </div>
         <div class="row-secondary">
@@ -225,10 +225,10 @@ const defaultProject = computed(
   () => props.worker.supportedProjects[0] ?? props.projectOptions?.[0] ?? '',
 )
 const statusTagType = computed(() => {
-  if (props.worker.status === 'ONLINE') {
+  if (props.worker.runtimeStatus === 'ONLINE') {
     return 'success'
   }
-  if (props.worker.status === 'OFFLINE') {
+  if (props.worker.runtimeStatus === 'OFFLINE') {
     return 'info'
   }
   return 'warning'

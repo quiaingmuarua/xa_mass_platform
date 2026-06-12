@@ -120,8 +120,9 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[0].eventBindings[0].projectCodes[0]").value("demoApp"))
                 .andExpect(jsonPath("$.data.items[0].adapterId").value("websocket"))
                 .andExpect(jsonPath("$.data.items[0].transportHint").value("realtime"))
-                .andExpect(jsonPath("$.data.items[0].transportReachability").value("ONLINE"))
-                .andExpect(jsonPath("$.data.items[0].transportOnline").value(true))
+                .andExpect(jsonPath("$.data.items[0].runtimeStatus").value("ONLINE"))
+                .andExpect(jsonPath("$.data.items[0].reachability").value("ONLINE"))
+                .andExpect(jsonPath("$.data.items[0].reachable").value(true))
                 .andExpect(jsonPath("$.data.items[0].connections[0].endpointId").value("ws-1"))
                 .andExpect(jsonPath("$.data.items[0].connections[0].routeKey").value("route-1"))
                 .andExpect(jsonPath("$.data.items[0].connections[0].adapterId").value("ws-public"))
@@ -129,8 +130,8 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[0].locked").value(true))
                 .andExpect(jsonPath("$.data.items[0].lastHeartbeat").value("2026-04-21 10:15:00"))
                 .andExpect(jsonPath("$.data.items[0].fieldSources.workerGroupId").value("declaration"))
-                .andExpect(jsonPath("$.data.items[0].fieldSources.status").value("runtime"))
-                .andExpect(jsonPath("$.data.items[0].fieldSources.transportReachability").value("transport"))
+                .andExpect(jsonPath("$.data.items[0].fieldSources.runtimeStatus").value("runtimeStatusDisplay"))
+                .andExpect(jsonPath("$.data.items[0].fieldSources.reachability").value("workerRuntimeReachability"))
                 .andExpect(jsonPath("$.data.items[0].fieldSources.supportedEventCodes")
                         .value("compatibilityProjection"));
     }
@@ -173,9 +174,9 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.limit").value(200))
                 .andExpect(jsonPath("$.data.items.length()").value(120))
                 .andExpect(jsonPath("$.data.items[0].workerId").value("worker-0001"))
-                .andExpect(jsonPath("$.data.items[0].transportOnline").value(false))
+                .andExpect(jsonPath("$.data.items[0].reachable").value(false))
                 .andExpect(jsonPath("$.data.items[1].workerId").value("worker-0002"))
-                .andExpect(jsonPath("$.data.items[1].transportOnline").value(true))
+                .andExpect(jsonPath("$.data.items[1].reachable").value(true))
                 .andExpect(jsonPath("$.data.items[2].locked").value(true))
                 .andExpect(jsonPath("$.data.items[19].connections[0].endpointId").value("endpoint-worker-0020"));
 

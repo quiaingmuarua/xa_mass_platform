@@ -202,9 +202,13 @@ Notes:
   create plus item ingest flow
 - `invocationModel=DIRECT_RUNTIME` means the event is handled directly by the
   SDK runtime definition
-- `ready=true` means either a direct runtime handler exists or at least one
-  online worker belongs to a WorkerGroup whose capability declaration binds the
-  event
+- `declaredWorkerIds` are workers declared in WorkerGroups whose capability
+  declarations bind the event; they are not currently eligible workers
+- `reachableWorkerIds` and `hasReachableWorkerCoverage` are current
+  worker-runtime reachability observations for those declared workers
+- `hasInvocationCoverage=true` means either a direct runtime handler exists or
+  reachable worker coverage exists. It is catalog invocation coverage, not
+  scheduler eligibility or reserve success.
 
 ### 4.4 List Worker Capability Snapshots
 
@@ -214,20 +218,43 @@ Notes:
 
 Notes:
 
-- joins WorkerGroup capability declarations, worker declarations, and current
-  transport/session snapshots by `workerGroupId` / `workerId`
+- joins WorkerGroup capability declarations, worker declarations, current
+  worker-runtime reachability, and bounded transport/session diagnostic
+  snapshots by `workerGroupId` / `workerId`
 - `eventBindings` is projected from WorkerGroup capability truth
 - `supportedEventCodes` remains a flat compatibility/read convenience derived
   from WorkerGroup capability declarations; do not treat it as a separate
   worker-row matching owner
 - `adapterId` is the concrete runtime adapter identity
 - `transportHint` is the coarse transport family
-- `online` follows transport presence truth, not the worker model status field
-- `connections` and `hasActiveEndpoint` are reachability facts from the
-  transport/session layer, not capability truth
+- `runtimeStatus` is a display/runtime status label, not scheduling truth
+- `reachability` / `reachable` are worker-runtime reachability observations,
+  not route-owner transport proof and not reserve success
+- `connections` and `hasActiveEndpoint` are bounded transport/session
+  diagnostics, not capability truth
 - each row includes `fieldSources`, a field-to-owner label map. Expected
-  owners are `declaration`, `runtime`, `transport`,
+  owners include `declaration`, `runtimeStatusDisplay`,
+  `workerRuntimeReachability`, `transportSessionEvidence`,
   `declarationOrTransport`, and `workerGroupCapability`.
+
+### 4.5 List WorkerGroup Capability Snapshots
+
+- Method: `GET`
+- Path: `/api/v1/catalog/worker-group-capabilities`
+- Status: `Implemented`
+
+Notes:
+
+- `declaredWorkerIds` are group membership declarations, not currently eligible
+  workers
+- `transportCounts` groups declared workers by their transport hint
+- `reachableWorkerCountsByTransport` groups currently reachable workers by
+  transport hint; it is not route-owner proof
+- `runtimeStatusCounts` is a display/runtime status summary
+- `reachableUnlockedBindingCount` is a source-labeled catalog coverage count:
+  reachable + not locked + available node binding. It excludes rule
+  evaluation, target-worker policy, capacity reservation races, and reserve
+  mutation outcome, so it must not be presented as CES composite eligibility.
 
 ## 5. Task API
 
@@ -750,13 +777,14 @@ Behavior:
 
 Notes:
 
-- `status` is the control-plane worker model status
-- `transportReachability` and `transportOnline` are transport-owned reachability
-  facts read through the SDK/transport presence view
-- joins worker state with current connection snapshots
+- `runtimeStatus` is a display/runtime status label, not scheduling truth
+- `reachability` and `reachable` are worker-runtime reachability observations,
+  not route-owner transport proof and not reserve success
+- joins worker state with current bounded connection snapshots
 - `eventBindings` remains the richer capability read model
 - each row includes `fieldSources`, a field-to-owner label map. Expected
-  owners are `declaration`, `runtime`, `transport`,
+  owners include `declaration`, `runtimeStatusDisplay`,
+  `workerRuntimeReachability`, `transportSessionEvidence`,
   `declarationOrTransport`, and review materialization evidence.
 - this is an operator/console diagnostic response, not public SDK worker
   browsing. The response window bounds payload size; deeper owner-side paging is

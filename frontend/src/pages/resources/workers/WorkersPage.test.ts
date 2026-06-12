@@ -36,9 +36,9 @@ function stubWorkersApi() {
                     items: [
                         {
                             workerId: 'phone-device-probe-ws-sg-001',
-                            status: 'ONLINE',
-                            transportReachability: 'ONLINE',
-                            transportOnline: true,
+                            runtimeStatus: 'ONLINE',
+                            reachability: 'ONLINE',
+                            reachable: true,
                             workerGroupId: 'phone-device-probe',
                             adapterNodeId: 'control-console-websocket',
                             transportHint: 'realtime',

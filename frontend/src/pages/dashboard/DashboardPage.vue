@@ -29,7 +29,7 @@
 
       <MetricGrid :columns="4">
         <MetricCard label="Running tasks" :value="runningTaskCount" />
-        <MetricCard label="Online workers" :value="onlineWorkerCount" tone="success" />
+        <MetricCard label="Reachable workers" :value="reachableWorkerCount" tone="success" />
         <MetricCard label="Locked workers" :value="lockedWorkerCount" tone="warning" />
         <MetricCard label="Integration mode" :value="integrationMode" compact />
       </MetricGrid>
@@ -165,8 +165,8 @@ const capabilityCount = computed(
 const runningTaskCount = computed(
   () => tasks.value.filter((task) => task.status === 'RUNNING').length,
 )
-const onlineWorkerCount = computed(
-  () => workers.value.filter((worker) => worker.status === 'ONLINE').length,
+const reachableWorkerCount = computed(
+  () => workers.value.filter((worker) => worker.reachable).length,
 )
 const lockedWorkerCount = computed(
   () => workers.value.filter((worker) => worker.locked).length,

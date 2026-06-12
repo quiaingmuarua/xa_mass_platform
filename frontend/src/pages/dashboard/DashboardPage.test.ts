@@ -56,9 +56,9 @@ describe('DashboardPage', () => {
                                 items: [
                                     {
                                         workerId: 'public-probe-http-poll-use1-001',
-                                        status: 'ONLINE',
-                                        transportReachability: 'ONLINE',
-                                        transportOnline: true,
+                                        runtimeStatus: 'ONLINE',
+                                        reachability: 'ONLINE',
+                                        reachable: true,
                                         workerGroupId: 'public-probe-http',
                                         agentVersion: '1.4.0',
                                         supportedProjects: ['publicProbe'],
@@ -83,10 +83,10 @@ describe('DashboardPage', () => {
                             items: [
                                 {
                                     ruleId: 'rule-001',
-                                    name: 'Prefer online workers',
+                                    name: 'Prefer regional workers',
                                     type: 'QL_EXPRESS',
-                                    content: "worker.status == 'ONLINE'",
-                                    description: 'Only online workers.',
+                                    content: "worker.attributes['region'] == 'us-east-1'",
+                                    description: 'Prefer workers with a declared routing region.',
                                     enabled: true,
                                     priority: 10,
                                 },
@@ -110,7 +110,7 @@ describe('DashboardPage', () => {
         expect(wrapper.text()).toContain('Operator cockpit')
         expect(wrapper.text()).toContain('Public provider reachability batch')
         expect(wrapper.text()).toContain('Running tasks')
-        expect(wrapper.text()).toContain('Online workers')
+        expect(wrapper.text()).toContain('Reachable workers')
         expect(wrapper.text()).toContain('Capabilities')
         expect(fetchMock).toHaveBeenCalledTimes(3)
     })

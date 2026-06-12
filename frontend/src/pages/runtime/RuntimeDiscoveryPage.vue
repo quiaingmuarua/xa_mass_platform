@@ -4,10 +4,10 @@
       <div>
         <h2 class="page-title">Control-plane Discovery</h2>
         <p class="page-subtitle">
-          Project directory, event capability inventory, and live worker
-          presence in one control-plane view. Use it to inspect which projects
+          Project directory, event capability inventory, and worker
+          reachability in one control-plane view. Use it to inspect which projects
           and events were explicitly registered in the backend runtime, then
-          compare them with currently available workers.
+          compare them with currently reachable workers.
         </p>
       </div>
       <div class="header-actions">
@@ -25,9 +25,9 @@
           />
         </el-select>
         <el-switch
-          v-model="showOnlineOnly"
+          v-model="showReachableOnly"
           inline-prompt
-          active-text="Online"
+          active-text="Reachable"
           inactive-text="All"
         />
         <el-button @click="loadDiscovery">Refresh</el-button>
@@ -58,8 +58,8 @@
           <div class="metric-value">{{ enabledEventCount }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Online workers</div>
-          <div class="metric-value">{{ onlineWorkerCount }}</div>
+          <div class="metric-label">Reachable workers</div>
+          <div class="metric-value">{{ reachableWorkerCount }}</div>
         </div>
         <div class="metric-tile">
           <div class="metric-label">Projects with worker coverage</div>
@@ -87,8 +87,8 @@
                   modes.
                 </li>
                 <li>
-                  Confirm at least one online worker declares the target event in
-                  its supported event list.
+                  Confirm at least one reachable worker declares the target
+                  event in its supported event list.
                 </li>
                 <li>
                   Use project selection as a coarse scope filter only; runtime
@@ -116,8 +116,8 @@
                 <el-descriptions-item label="Visible workers">
                   {{ visibleWorkerRows.length }}
                 </el-descriptions-item>
-                <el-descriptions-item label="Online coverage">
-                  {{ selectedOnlineWorkerSummary }}
+                <el-descriptions-item label="Reachable coverage">
+                  {{ selectedReachableWorkerSummary }}
                 </el-descriptions-item>
                 <el-descriptions-item label="Project filter">
                   {{
@@ -239,7 +239,7 @@
                   <el-descriptions-item label="Event">
                     {{ selectedEventRow.name }} ({{ selectedEventRow.code }})
                   </el-descriptions-item>
-                <el-descriptions-item label="Task modes">
+                  <el-descriptions-item label="Task modes">
                     {{ selectedEventRow.taskModes.join(', ') || '-' }}
                   </el-descriptions-item>
                   <el-descriptions-item label="Invocation model">
@@ -260,11 +260,11 @@
                   <el-descriptions-item label="Projects">
                     {{ selectedEventRow.projectCodes.join(', ') || '-' }}
                   </el-descriptions-item>
-                  <el-descriptions-item label="Online workers">
+                  <el-descriptions-item label="Reachable workers">
                     {{ selectedEventWorkerSummary }}
                   </el-descriptions-item>
-                  <el-descriptions-item label="Runtime readiness">
-                    {{ selectedEventRow.ready ? 'Ready' : 'No active capability' }}
+                  <el-descriptions-item label="Invocation coverage">
+                    {{ selectedEventRow.hasInvocationCoverage ? 'Covered' : 'No active capability' }}
                   </el-descriptions-item>
                   <el-descriptions-item label="Description">
                     {{ selectedEventRow.description || '-' }}
@@ -327,9 +327,9 @@
                 {{ row.resolvedEvents.length }}
               </template>
             </el-table-column>
-            <el-table-column label="Workers for events" min-width="150">
+            <el-table-column label="Reachable workers" min-width="150">
               <template #default="{ row }">
-                {{ row.onlineWorkerIds.length }}
+                {{ row.reachableWorkerIds.length }}
               </template>
             </el-table-column>
             <el-table-column
@@ -360,7 +360,7 @@
 
         <el-card class="page-card">
           <template #header>
-            <strong>Available workers</strong>
+            <strong>Reachable workers</strong>
           </template>
           <PageEmptyState
             v-if="visibleWorkerRows.length === 0"
@@ -375,11 +375,14 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="status" label="Status" min-width="120">
+            <el-table-column prop="runtimeStatus" label="Runtime status" min-width="120">
               <template #default="{ row }">
-                <el-tag :type="tagForWorkerStatus(row.status)">
-                  {{ row.status }}
+                <el-tag :type="tagForWorkerStatus(row.runtimeStatus)">
+                  {{ row.runtimeStatus }}
                 </el-tag>
+                <div class="row-secondary">
+                  {{ row.reachability || (row.reachable ? 'ONLINE' : 'OFFLINE') }}
+                </div>
               </template>
             </el-table-column>
             <el-table-column label="Project hints" min-width="220">
@@ -498,7 +501,7 @@
             </el-table-column>
             <el-table-column label="Capability" min-width="170">
               <template #default="{ row }">
-                <el-tag :type="row.ready ? 'success' : 'info'" round>
+                <el-tag :type="row.hasInvocationCoverage ? 'success' : 'info'" round>
                   {{ invocationModelLabel(row.invocationModel) }}
                 </el-tag>
               </template>
@@ -517,9 +520,9 @@
                 {{ row.projectCodes.join(', ') || '-' }}
               </template>
             </el-table-column>
-            <el-table-column label="Online workers" min-width="150">
+            <el-table-column label="Reachable workers" min-width="150">
               <template #default="{ row }">
-                {{ row.onlineWorkerIds.length }}
+                {{ row.reachableWorkerIds.length }}
               </template>
             </el-table-column>
             <el-table-column
@@ -575,7 +578,7 @@ const TAG_LIMIT = 4
 
 interface ProjectRow extends ProjectDefinition {
   resolvedEvents: EventDefinition[]
-  onlineWorkerIds: string[]
+  reachableWorkerIds: string[]
 }
 
 interface WorkerDiscoveryRow extends WorkerListItem {
@@ -586,11 +589,11 @@ interface WorkerDiscoveryRow extends WorkerListItem {
 interface EventRow extends EventDefinition {
   invocationModel: EventInvocationModel
   projectCodes: string[]
-  workerIds: string[]
-  onlineWorkerIds: string[]
+  declaredWorkerIds: string[]
+  reachableWorkerIds: string[]
   hasDirectRuntimeHandler: boolean
-  hasOnlineWorkerCoverage: boolean
-  ready: boolean
+  hasReachableWorkerCoverage: boolean
+  hasInvocationCoverage: boolean
 }
 
 const router = useRouter()
@@ -607,7 +610,7 @@ const apiKeySnapshot = ref<CurrentApiKeySnapshot>({
 })
 const selectedProjectCode = ref(ALL_PROJECTS)
 const selectedEventCode = ref('')
-const showOnlineOnly = ref(true)
+const showReachableOnly = ref(true)
 
 const sortedProjects = computed(() =>
   [...projects.value].sort((left, right) => left.code.localeCompare(right.code)),
@@ -673,16 +676,16 @@ const projectRows = computed<ProjectRow[]>(() =>
     const resolvedEvents = project.eventCodes
       .map((eventCode) => eventByCode.value[eventCode])
       .filter((event): event is EventDefinition => Boolean(event))
-    const onlineWorkerIds = uniqueStrings(
+    const reachableWorkerIds = uniqueStrings(
       project.eventCodes.flatMap(
-        (eventCode) => capabilityByEvent.value[eventCode]?.onlineWorkerIds ?? [],
+        (eventCode) => capabilityByEvent.value[eventCode]?.reachableWorkerIds ?? [],
       ),
     )
 
     return {
       ...project,
       resolvedEvents,
-      onlineWorkerIds,
+      reachableWorkerIds,
     }
   }),
 )
@@ -719,7 +722,7 @@ const visibleWorkerRows = computed(() =>
       worker.visibleSupportedEventCodes.length > 0 ||
       worker.matchedProjects.length > 0
     const matchesAvailability =
-      !showOnlineOnly.value || worker.transportOnline === true
+      !showReachableOnly.value || worker.reachable === true
 
     return matchesProject && matchesAvailability
   }),
@@ -741,10 +744,10 @@ const selectedEventRows = computed<EventRow[]>(() =>
       const directRuntime = event.taskModes.length === 0
       const projectCodes =
         capability?.projectCodes ?? projectCodesByEvent.value[event.code] ?? []
-      const onlineWorkerIds = capability?.onlineWorkerIds ?? workers.value
+      const reachableWorkerIds = capability?.reachableWorkerIds ?? workers.value
           .filter(
             (worker) =>
-              worker.transportOnline === true &&
+              worker.reachable === true &&
               worker.supportedEventCodes.includes(event.code),
           )
           .map((worker) => worker.workerId)
@@ -754,11 +757,13 @@ const selectedEventRows = computed<EventRow[]>(() =>
         invocationModel:
           capability?.invocationModel ?? (directRuntime ? 'DIRECT_RUNTIME' : 'TASK_BACKED'),
         projectCodes,
-        workerIds: capability?.workerIds ?? onlineWorkerIds,
-        onlineWorkerIds,
+        declaredWorkerIds: capability?.declaredWorkerIds ?? reachableWorkerIds,
+        reachableWorkerIds,
         hasDirectRuntimeHandler: capability?.hasDirectRuntimeHandler ?? directRuntime,
-        hasOnlineWorkerCoverage: capability?.hasOnlineWorkerCoverage ?? onlineWorkerIds.length > 0,
-        ready: capability?.ready ?? (directRuntime || onlineWorkerIds.length > 0),
+        hasReachableWorkerCoverage:
+          capability?.hasReachableWorkerCoverage ?? reachableWorkerIds.length > 0,
+        hasInvocationCoverage:
+          capability?.hasInvocationCoverage ?? (directRuntime || reachableWorkerIds.length > 0),
       }
     }),
 )
@@ -768,13 +773,13 @@ const enabledProjectCount = computed(
 const enabledEventCount = computed(
   () => events.value.filter((event) => event.enabled).length,
 )
-const onlineWorkerCount = computed(
-  () => workers.value.filter((worker) => worker.transportOnline).length,
+const reachableWorkerCount = computed(
+  () => workers.value.filter((worker) => worker.reachable).length,
 )
 const coveredProjectCount = computed(
   () =>
     projectRows.value.filter(
-      (project) => project.enabled && project.onlineWorkerIds.length > 0,
+      (project) => project.enabled && project.reachableWorkerIds.length > 0,
     ).length,
 )
 const apiKeyProfile = computed(() => apiKeySnapshot.value.profile)
@@ -815,13 +820,13 @@ const selectedEventTitle = computed(() => {
 
   return `${selectedEventRow.value.name} (${selectedEventRow.value.code})`
 })
-const selectedOnlineWorkerSummary = computed(() => {
+const selectedReachableWorkerSummary = computed(() => {
   const ids = uniqueStrings(
-    projectRows.value.flatMap((project) => project.onlineWorkerIds),
+    projectRows.value.flatMap((project) => project.reachableWorkerIds),
   )
 
   if (ids.length === 0) {
-    return 'No online worker coverage'
+    return 'No reachable worker coverage'
   }
 
   return ids.join(', ')
@@ -833,9 +838,9 @@ const selectedProjectCoverageSummary = computed(() => {
 
   const ids =
     projectRows.value.find((project) => project.code === selectedProject.value?.code)
-      ?.onlineWorkerIds ?? []
+      ?.reachableWorkerIds ?? []
 
-  return ids.length > 0 ? ids.join(', ') : 'No online workers'
+  return ids.length > 0 ? ids.join(', ') : 'No reachable workers'
 })
 const selectedEventWorkerSummary = computed(() => {
   if (!selectedEventRow.value) {
@@ -848,9 +853,9 @@ const selectedEventWorkerSummary = computed(() => {
       : 'No direct runtime handler'
   }
 
-  return selectedEventRow.value.onlineWorkerIds.length > 0
-    ? selectedEventRow.value.onlineWorkerIds.join(', ')
-    : 'No online workers'
+  return selectedEventRow.value.reachableWorkerIds.length > 0
+    ? selectedEventRow.value.reachableWorkerIds.join(', ')
+    : 'No reachable workers'
 })
 const selectedProjectStarter = computed(() => {
   if (!selectedProject.value) {

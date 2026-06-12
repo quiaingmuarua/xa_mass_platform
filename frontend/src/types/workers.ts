@@ -1,8 +1,8 @@
 export interface WorkerListItem {
     workerId: string
-    status: string
-    transportReachability?: string
-    transportOnline?: boolean
+    runtimeStatus: string
+    reachability?: string
+    reachable?: boolean
     workerGroupId: string | null
     adapterNodeId?: string | null
     agentVersion: string | null

@@ -13,7 +13,9 @@ vi.mock('@/api/tasks', () => ({
 describe('WorkerDebugPanel', () => {
     const worker = {
         workerId: 'worker-us-01',
-        status: 'ONLINE',
+        runtimeStatus: 'ONLINE',
+        reachability: 'ONLINE',
+        reachable: true,
         workerGroupId: null,
         agentVersion: '1.0.0',
         supportedProjects: ['demoApp'],

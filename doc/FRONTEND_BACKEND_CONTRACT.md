@@ -119,6 +119,13 @@ Rules:
 - `Worker.eventBindings` is the capability truth exposed to the UI;
   `supportedEventCodes` and `supportedProjects` are derived display/filter
   helpers only
+- worker lifecycle and catalog coverage DTOs must use backend-owned,
+  source-labeled fields. Frontend may display `runtimeStatus`, `reachability`,
+  `reachable`, `declaredWorkerIds`, `reachableWorkerIds`,
+  `hasReachableWorkerCoverage`, `hasInvocationCoverage`,
+  `reachableWorkerCountsByTransport`, `runtimeStatusCounts`, and
+  `reachableUnlockedBindingCount`, but it must not combine them into a local
+  scheduler eligibility predicate.
 
 ## Backend Route Guardrails For Console Needs
 

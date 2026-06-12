@@ -152,7 +152,7 @@ public class CatalogController {
                             connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("workerId", worker.getWorkerId());
-                    item.put("status", worker.getStatus());
+                    item.put("runtimeStatus", worker.getStatus());
                     item.put("workerGroupId", worker.getWorkerGroupId());
                     item.put("agentVersion", worker.getAgentVersion());
                     item.put("supportedProjects", groupProjectCodes(group));
@@ -162,7 +162,9 @@ public class CatalogController {
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
-                    item.put("online", reachableWorkerIds.contains(worker.getWorkerId()));
+                    boolean reachable = reachableWorkerIds.contains(worker.getWorkerId());
+                    item.put("reachability", reachable ? "ONLINE" : "OFFLINE");
+                    item.put("reachable", reachable);
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
                     item.put("locked", lockedWorkerIds.contains(worker.getWorkerId()));
@@ -338,13 +340,13 @@ public class CatalogController {
                         worker -> normalizeTransport(worker.getOnlineStrategy()),
                         LinkedHashMap::new,
                         java.util.stream.Collectors.counting()));
-        Map<String, Long> transportOnlineCounts = groupWorkers.stream()
+        Map<String, Long> reachableWorkerCountsByTransport = groupWorkers.stream()
                 .filter(worker -> reachableWorkerIds.contains(worker.getWorkerId()))
                 .collect(java.util.stream.Collectors.groupingBy(
                         worker -> normalizeTransport(worker.getOnlineStrategy()),
                         LinkedHashMap::new,
                         java.util.stream.Collectors.counting()));
-        Map<String, Long> modelStatusCounts = groupWorkers.stream()
+        Map<String, Long> runtimeStatusCounts = groupWorkers.stream()
                 .collect(java.util.stream.Collectors.groupingBy(
                         worker -> blankToDefault(worker.getStatus(), "UNKNOWN"),
                         LinkedHashMap::new,
@@ -359,7 +361,7 @@ public class CatalogController {
                         java.util.stream.Collectors.counting()));
 
         long lockedCount = groupWorkers.stream().filter(worker -> lockedWorkerIds.contains(worker.getWorkerId())).count();
-        long dispatchEligibleCount = groupWorkers.stream()
+        long reachableUnlockedBindingCount = groupWorkers.stream()
                 .filter(worker -> reachableWorkerIds.contains(worker.getWorkerId()))
                 .filter(worker -> !lockedWorkerIds.contains(worker.getWorkerId()))
                 .filter(worker -> hasAvailableBinding(worker, bindings, adapterNodesById))
@@ -374,12 +376,12 @@ public class CatalogController {
         item.put("adapterNodes", adapterNodes);
         item.put("nodeGroupBindings", bindings);
         item.put("workerCount", groupWorkers.size());
-        item.put("workerIds", workerIds);
+        item.put("declaredWorkerIds", workerIds);
         item.put("transportCounts", transportCounts);
-        item.put("transportOnlineCounts", transportOnlineCounts);
-        item.put("modelStatusCounts", modelStatusCounts);
+        item.put("reachableWorkerCountsByTransport", reachableWorkerCountsByTransport);
+        item.put("runtimeStatusCounts", runtimeStatusCounts);
         item.put("lockedCount", lockedCount);
-        item.put("dispatchEligibleCount", dispatchEligibleCount);
+        item.put("reachableUnlockedBindingCount", reachableUnlockedBindingCount);
         item.put("fingerprintDistribution", fingerprintDistribution);
         return item;
     }

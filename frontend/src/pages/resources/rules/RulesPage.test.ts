@@ -38,11 +38,11 @@ describe('RulesPage', () => {
                         data: {
                             items: [
                                 {
-                                    ruleId: 'rule-worker-online',
-                                    name: 'Online workers only',
+                                    ruleId: 'rule-worker-region',
+                                    name: 'Regional workers only',
                                     type: 'QL_EXPRESS',
-                                    content: "worker.status == 'ONLINE'",
-                                    description: 'Only online workers.',
+                                    content: "worker.attributes['region'] == 'us-east-1'",
+                                    description: 'Only workers with a declared routing region.',
                                     enabled: true,
                                     priority: 10,
                                 },
@@ -62,8 +62,8 @@ describe('RulesPage', () => {
 
         await flushPromises()
 
-        expect(wrapper.text()).toContain('Online workers only')
+        expect(wrapper.text()).toContain('Regional workers only')
         expect(wrapper.text()).toContain('QL_EXPRESS')
-        expect(wrapper.text()).toContain("worker.status == 'ONLINE'")
+        expect(wrapper.text()).toContain("worker.attributes['region'] == 'us-east-1'")
     })
 })

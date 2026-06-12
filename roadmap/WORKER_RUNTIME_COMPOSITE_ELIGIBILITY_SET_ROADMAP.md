@@ -13,6 +13,7 @@ cleanup remain active follow-up phases.
 
 Related:
 
+- `roadmap/WORKER_RUNTIME_EXTERNAL_ELIGIBILITY_SURFACE_ROADMAP.md`
 - `roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md`
 - `platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md`
 - `xa-mass-worker-runtime/README.md`
@@ -42,6 +43,15 @@ Engine-external surface consistency is follow-up work unless a current slice
 touches that surface directly. Server inspection/controller/API DTOs, SDK-facing
 worker views, transport semantic contracts, and frontend console DTOs should get
 a separate roadmap once the engine mainline mechanism is established.
+
+Deferred issues are not removed from the architecture plan just because they
+are outside this CES slice. Engine-external API/SDK/server/frontend vocabulary
+cleanup is carried by
+`roadmap/WORKER_RUNTIME_EXTERNAL_ELIGIBILITY_SURFACE_ROADMAP.md`. A future
+reachability projection implementation, if WRP-0 proves one is needed, must be
+created as its own roadmap with writer, reader, staleness, and failure-mode
+proof. CES should delete only observations that are false against current code,
+not unresolved problems that need a later owner.
 
 It does not supersede
 `roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md`. BCA remains
@@ -126,17 +136,19 @@ of reintroducing complete-bucket assumptions.
 - `WorkerRegistry` / Redis owns slot metadata, heartbeat deadline, dispatch
   gate, removing state, exclusive lease flag, reserve/capacity counters, and
   task-worker active counts. It does not own transport reachability.
-- `WorkerSchedulingCandidateEnumerator` currently composes worker scheduling
-  evidence per candidate by reading reachability, dispatch gate, exclusive
-  lease, WorkerGroup capability, and load. The dispatch-gate read is now
-  duplicate evidence for candidates that passed slot lifecycle validation, but
-  it remains in place until CES-7 decides whether to remove or classify that
-  duplicate read. CES-5 preserves the current per-candidate reachability read.
+- `WorkerSchedulingCandidateEnumerator` currently composes Stage-2 scheduling
+  evidence per candidate by reading reachability, exclusive lease, WorkerGroup
+  capability, and load. It no longer rereads dispatch gate as a candidate
+  predicate; dispatch gate is filtered by Stage-1 candidate acquisition/source
+  guard and revalidated by reserve. CES-5 preserves the current per-candidate
+  reachability read.
 - `WorkerCandidateRow` is now the candidate-source identity row only. It no
   longer carries worker status, heartbeat, worker-level capability lists,
   capacity, availability, or create/update timestamps.
-- `RuleBasedTaskWorkerMatchingStrategy` rejects candidates when dispatch is
-  disabled, reachability is not `ONLINE`, or the worker is locked.
+- `RuleBasedTaskWorkerMatchingStrategy` rejects candidates when reachability is
+  not `ONLINE` or the worker is locked. Dispatch-disabled candidates should
+  have been rejected before Stage-2 by slot lifecycle acquisition/source guard,
+  with reserve as the mutation-path revalidation.
 - `WorkerRegistry#tryReserve(groupId, workerId, ...)` revalidates slot
   existence, group, removing state, heartbeat freshness, dispatch gate, and
   capacity in the mutation path.
@@ -1007,6 +1019,11 @@ rg -n "smembers\(bucketKey\)|srandmember\(bucketKey|candidateBucketLifecycleDead
 .\mvnw.cmd -pl xa-mass-worker-runtime -am "-Dtest=WorkerCandidateIndexTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl xa-mass-engine -am "-Dtest=EngineSchedulingCoreArchitectureGuardTest#redisWorkerRegistryCandidateAcquisitionDoesNotMaterializeFullBucket+workerCandidateIndexPassesSchedulingClockToCandidateAcquisition+engineStageTwoDoesNotRereadDispatchGateAsCandidatePredicate+workerRegistryImplementationsDoNotOwnAttributeBucketDimensions" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl xa-mass-engine -am "-Dtest=TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,RuleBasedTaskWorkerMatchingStrategyTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+```
+
+Compile-only check, not test evidence:
+
+```powershell
 .\mvnw.cmd -pl xa-mass-testing -am -DskipTests test
 ```
 
@@ -1057,9 +1074,12 @@ rg -n "getRuleContext|ruleContext|transportReachability|isWorkerAvailable|worker
 .\mvnw.cmd -pl xa-mass-worker-runtime -am "-Dtest=WorkerCandidateIndexTest,WorkerManagerTest,WorkerAdmissionOwnerTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl platform_infra/mass-runtime-memory -am "-Dtest=InMemoryWorkerRegistryTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl platform_infra/mass-runtime-redis -am "-Dtest=RedisWorkerRegistryTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
-.\mvnw.cmd -pl xa-mass-engine "-Dtest=WorkerStateReportSchedulingIntegrationTest,TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,WorkerMatchContextTest,WorkerSchedulingCandidateEnumeratorTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreArchitectureGuardTest" test
-.\mvnw.cmd -pl xa-mass-engine "-Dtest=EngineSchedulingCoreSuite" test
 ```
+
+Historical/non-gate note: full `EngineSchedulingCoreArchitectureGuardTest` and
+`EngineSchedulingCoreSuite` are not current-slice gates while adjacent
+resolved-scheduling-plane guard rows remain unrelated failures. Use the focused
+guard selectors above for CES completion until those rows are repaired or split.
 
 Current CES-3 proof is command-shape and contract-test based. Add a true Redis
 latency/throughput benchmark only when deployment sizing needs observed timing

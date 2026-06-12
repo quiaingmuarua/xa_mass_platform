@@ -71,9 +71,9 @@
               {{ row.workerGroupCount }}
             </template>
           </el-table-column>
-          <el-table-column label="Online capacity" min-width="140">
+          <el-table-column label="Reachable unlocked" min-width="150">
             <template #default="{ row }">
-              {{ row.dispatchEligibleCount }} / {{ row.workerCount }}
+              {{ row.reachableUnlockedBindingCount }} / {{ row.workerCount }}
             </template>
           </el-table-column>
           <el-table-column label="Owner" min-width="180">
@@ -118,7 +118,7 @@ import {toErrorMessage} from '@/utils/errors'
 interface ProjectRow extends ProjectDefinition {
   eventCount: number
   workerGroupCount: number
-  dispatchEligibleCount: number
+  reachableUnlockedBindingCount: number
   workerCount: number
 }
 
@@ -138,8 +138,8 @@ const projectRows = computed<ProjectRow[]>(() =>
       ...project,
       eventCount: project.eventCodes.length,
       workerGroupCount: workerGroupsForProject(project).length,
-      dispatchEligibleCount: workerGroupsForProject(project).reduce(
-        (sum, group) => sum + group.dispatchEligibleCount,
+      reachableUnlockedBindingCount: workerGroupsForProject(project).reduce(
+        (sum, group) => sum + group.reachableUnlockedBindingCount,
         0,
       ),
       workerCount: workerGroupsForProject(project).reduce(

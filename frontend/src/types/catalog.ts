@@ -31,11 +31,11 @@ export interface EventCapability {
     targetScope: TargetScope
     invocationModel: EventInvocationModel
     projectCodes: string[]
-    workerIds: string[]
-    onlineWorkerIds: string[]
+    declaredWorkerIds: string[]
+    reachableWorkerIds: string[]
     hasDirectRuntimeHandler: boolean
-    hasOnlineWorkerCoverage: boolean
-    ready: boolean
+    hasReachableWorkerCoverage: boolean
+    hasInvocationCoverage: boolean
 }
 
 export interface WorkerGroupCapability {
@@ -47,12 +47,12 @@ export interface WorkerGroupCapability {
     adapterNodes: AdapterNodeCapability[]
     nodeGroupBindings: NodeGroupBindingCapability[]
     workerCount: number
-    workerIds: string[]
+    declaredWorkerIds: string[]
     transportCounts: Record<string, number>
-    transportOnlineCounts: Record<string, number>
-    modelStatusCounts: Record<string, number>
+    reachableWorkerCountsByTransport: Record<string, number>
+    runtimeStatusCounts: Record<string, number>
     lockedCount: number
-    dispatchEligibleCount: number
+    reachableUnlockedBindingCount: number
     fingerprintDistribution: Record<string, number>
 }
 

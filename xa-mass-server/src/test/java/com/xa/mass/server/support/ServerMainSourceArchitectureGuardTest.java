@@ -117,6 +117,68 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void workerEligibilitySurfacesDoNotExposeLegacyOrRedisInternalShape() throws IOException {
+        List<Path> scannedRoots = List.of(
+                SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/internal"),
+                SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/model")
+        );
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("legacy transportReachability DTO field",
+                        Pattern.compile("\\btransportReachability\\b")),
+                Map.entry("legacy transportOnline DTO field",
+                        Pattern.compile("\\btransportOnline\\b")),
+                Map.entry("legacy onlineWorkerIds DTO field",
+                        Pattern.compile("\\bonlineWorkerIds\\b")),
+                Map.entry("legacy hasOnlineWorkerCoverage DTO field",
+                        Pattern.compile("\\bhasOnlineWorkerCoverage\\b")),
+                Map.entry("legacy transportOnlineCounts DTO field",
+                        Pattern.compile("\\btransportOnlineCounts\\b")),
+                Map.entry("legacy dispatchEligibleCount DTO field",
+                        Pattern.compile("\\bdispatchEligibleCount\\b")),
+                Map.entry("legacy modelStatusCounts DTO field",
+                        Pattern.compile("\\bmodelStatusCounts\\b")),
+                Map.entry("legacy live worker status rule example",
+                        Pattern.compile("worker\\.status\\s*==")),
+                Map.entry("redis worker group key literal",
+                        Pattern.compile("\"[^\"]*worker:group[^\"]*\"")),
+                Map.entry("redis group slots key literal",
+                        Pattern.compile("\"[^\"]*group:\\{groupId}:slots[^\"]*\"")),
+                Map.entry("redis candidate bucket membership key literal",
+                        Pattern.compile("\"[^\"]*bucket-membership[^\"]*\"")),
+                Map.entry("redis lifecycle deadline key literal",
+                        Pattern.compile("\"[^\"]*slot-lifecycle-deadlines[^\"]*\""))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : scannedRoots) {
+            if (!Files.exists(root)) {
+                continue;
+            }
+            try (Stream<Path> paths = Files.walk(root)) {
+                paths.filter(Files::isRegularFile)
+                        .filter(path -> path.toString().endsWith(".java"))
+                        .forEach(path -> {
+                            try {
+                                String source = Files.readString(path, StandardCharsets.UTF_8);
+                                forbiddenPatterns.forEach((label, pattern) -> {
+                                    if (pattern.matcher(source).find()) {
+                                        violations.add(path + " exposes " + label);
+                                    }
+                                });
+                            } catch (IOException e) {
+                                violations.add(path + " could not be read: " + e.getMessage());
+                            }
+                        });
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "server API worker/catalog surfaces must expose source-labeled lifecycle fields, "
+                        + "not old online/eligible vocabulary or Redis worker key internals:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void controlConsoleScenarioDoesNotSeedTasksOrWorkersFromServerMainSource() throws IOException {
         Path provider = SERVER_MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/server/bootstrap/ControlConsoleScenarioBootstrapDataProvider.java");
