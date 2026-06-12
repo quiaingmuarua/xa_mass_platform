@@ -307,6 +307,65 @@ class TransportConvergenceArchitectureGuardTest {
         );
     }
 
+    @Test
+    void productionCodeDoesNotImportRemovedTaskDispatchItem() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java"),
+                        repoRoot().resolve("xa-mass-server/src/main/java"),
+                        repoRoot().resolve("xa-mass-testing/src/main/java")
+                ),
+                "com.xa.mass.transport.model.TaskDispatchItem"
+        );
+    }
+
+    @Test
+    void taskPullResultUsesPulledTaskItems() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/TaskPullResult.java")),
+                "TaskDispatchItem",
+                "dispatchViews",
+                "getDispatchViews"
+        );
+    }
+
+    @Test
+    void pulledTaskDispatchDoesNotCarryTransportOrWorkerIdentityFacts() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/PulledTaskDispatch.java")),
+                "routeKey",
+                "transportPayload",
+                "TransportPacket",
+                "workerId",
+                "taskName",
+                "project",
+                "userId",
+                "adapterId",
+                "deliveryQueueKey",
+                "targetTransportNodeId",
+                "connectionId",
+                "session",
+                "endpoint"
+        );
+    }
+
+    @Test
+    void transportDeliveryServiceDoesNotExposeWorkerFacingProjectionHelpers() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryService.java")),
+                "TaskDispatchItem",
+                "PulledTaskDispatch",
+                "pollDispatchViews",
+                "toDispatchView",
+                "toDispatchViews"
+        );
+    }
+
     private static void assertNoProductionSourceContains(List<Path> roots, String... forbiddenTokens) throws IOException {
         for (Path root : roots) {
             if (!Files.exists(root)) {

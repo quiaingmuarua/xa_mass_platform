@@ -119,11 +119,11 @@ import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullChannel;
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -3081,10 +3081,10 @@ class MassSdkTest {
 
             assertTrue(app.approveTask(task.getTaskId()));
 
-            TaskDispatchItem dispatchItem = waitFor(
+            PulledTaskDispatch dispatchItem = waitFor(
                     Duration.ofSeconds(10),
                     () -> {
-                        List<TaskDispatchItem> polled = session.poll(1, 250L);
+                        List<PulledTaskDispatch> polled = session.poll(1, 250L);
                         return polled.isEmpty() ? null : polled.get(0);
                     }
             );

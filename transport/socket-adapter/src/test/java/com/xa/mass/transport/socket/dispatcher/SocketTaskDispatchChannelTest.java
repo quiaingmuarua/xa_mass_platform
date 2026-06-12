@@ -2,7 +2,6 @@ package com.xa.mass.transport.socket.dispatcher;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
@@ -34,7 +33,7 @@ class SocketTaskDispatchChannelTest {
                 .thenReturn(true);
         SocketTaskDispatchChannel channel = channel(sessionManager);
 
-        List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
+        List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope("msg-1", "worker-1")));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
@@ -54,28 +53,11 @@ class SocketTaskDispatchChannelTest {
                 .thenReturn(false);
         SocketTaskDispatchChannel channel = channel(sessionManager);
 
-        List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
+        List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope("msg-1", "worker-1")));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcomes.get(0).getStatus());
         assertTrue(outcomes.get(0).isRetryable());
-    }
-
-    private TaskDispatchItem item(String messageId, String workerId) {
-        return new TaskDispatchItem(
-                "task-1",
-                messageId,
-                "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "attempt-" + messageId,
-                workerId,
-                "batch-1",
-                Map.of("target", "target-1"),
-                Map.of()
-        );
     }
 
     private SocketTaskDispatchChannel channel(SocketSessionManager sessionManager) {
@@ -87,23 +69,28 @@ class SocketTaskDispatchChannelTest {
         );
     }
 
-    private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
+    private TransportDispatchEnvelope envelope(String messageId, String workerId) {
         return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                item.getWorkerId(),
+                "delivery-" + messageId,
+                workerId,
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
-                        "delivery-" + item.getMessageId(),
-                        item.attemptId(),
+                        "delivery-" + messageId,
+                        "trace-" + messageId,
                         PacketType.TASK_DISPATCH,
                         "socket",
                         "group-route-1",
-                        item.getTaskId(),
-                        item.getMessageId(),
-                        item.attemptId(),
-                        item.getEventCode(),
+                        "task-1",
+                        messageId,
+                        "attempt-" + messageId,
+                        "crawler.fetch-page",
                         TransportPacket.JSON_CONTENT_TYPE,
-                        item.transportPayloadView()
+                        Map.of(
+                                TransportPacket.PAYLOAD_WORKER_ID, workerId,
+                                TransportPacket.PAYLOAD_BATCH_ID, "batch-1",
+                                TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
+                                TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
+                        )
                 ),
                 1L
         );

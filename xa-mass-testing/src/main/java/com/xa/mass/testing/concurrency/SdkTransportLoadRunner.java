@@ -31,7 +31,7 @@ import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
@@ -663,7 +663,7 @@ public final class SdkTransportLoadRunner {
         private void runLoop() {
             try {
                 while (running.get()) {
-                    List<TaskDispatchItem> items = session.poll(config.pollBatchSize());
+                    List<PulledTaskDispatch> items = session.poll(config.pollBatchSize());
                     metrics.recordReceiveBatch(items == null ? 0 : items.size());
                     if (items == null || items.isEmpty()) {
                         if (stopRequested.get()) {
@@ -672,7 +672,7 @@ public final class SdkTransportLoadRunner {
                         Thread.sleep(20L);
                         continue;
                     }
-                    for (TaskDispatchItem item : items) {
+                    for (PulledTaskDispatch item : items) {
                         processingExecutor.submit(() -> processTaskDispatch(item, workerId, config, metrics, deliveryAttempts,
                                 (success, detail, output) -> session.submitResult(item, success, detail, output)));
                     }
@@ -900,7 +900,7 @@ public final class SdkTransportLoadRunner {
         boolean submit(boolean success, String detail, Map<String, Object> output);
     }
 
-    private static void processTaskDispatch(TaskDispatchItem item,
+    private static void processTaskDispatch(PulledTaskDispatch item,
                                             String workerId,
                                             LoadConfig config,
                                             RuntimeMetrics metrics,

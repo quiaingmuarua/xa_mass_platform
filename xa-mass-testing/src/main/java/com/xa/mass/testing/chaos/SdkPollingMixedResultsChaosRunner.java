@@ -13,7 +13,7 @@ import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.sink.ExecutionEventType;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -293,14 +293,14 @@ public final class SdkPollingMixedResultsChaosRunner {
         private void runLoop() {
             try {
                 while (running.get()) {
-                    List<TaskDispatchItem> items = session.poll(1, 0L);
+                    List<PulledTaskDispatch> items = session.poll(1, 0L);
                     pollCycles.incrementAndGet();
                     if (items == null || items.isEmpty()) {
                         emptyPollCycles.incrementAndGet();
                         Thread.sleep(20L);
                         continue;
                     }
-                    for (TaskDispatchItem item : items) {
+                    for (PulledTaskDispatch item : items) {
                         receivedDispatches.incrementAndGet();
                         ChaosSupport.maybeSleep(config.processingDelayMillis());
 
@@ -331,7 +331,7 @@ public final class SdkPollingMixedResultsChaosRunner {
             }
         }
 
-        private static boolean isShouldFail(TaskDispatchItem item) {
+        private static boolean isShouldFail(PulledTaskDispatch item) {
             Map<String, Object> input = item.getInput();
             if (input == null) {
                 return false;

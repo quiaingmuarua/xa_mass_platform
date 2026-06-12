@@ -2,9 +2,9 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -19,7 +19,7 @@ class RuntimeDispatchOutcomesTest {
     void adapterUnavailableKeepsOneOutcomePerItemAndNormalizesInvalidItems() {
         List<DispatchOutcome> outcomes = RuntimeDispatchOutcomes.adapterUnavailable(
                 "websocket",
-                List.of(envelope(item("msg-1", "worker-1")), invalidEnvelope(item("msg-2", " "))),
+                List.of(envelope("msg-1", "worker-1"), invalidEnvelope("msg-2", " ")),
                 "dispatch channel is unavailable"
         );
 
@@ -37,43 +37,43 @@ class RuntimeDispatchOutcomesTest {
         assertTrue(RuntimeDispatchOutcomes.adapterUnavailable("socket", List.of(), "missing").isEmpty());
     }
 
-    private TaskDispatchItem item(String messageId, String workerId) {
-        return new TaskDispatchItem(
-                "task-1",
-                messageId,
-                "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "attempt-" + messageId,
-                workerId,
-                "batch-1",
-                Map.of("target", "target-1"),
-                Map.of()
-        );
-    }
-
-    private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
-        return envelope("delivery-" + item.getMessageId(), "websocket", "group-route-1", item.attemptId(), item);
+    private TransportDispatchEnvelope envelope(String messageId, String workerId) {
+        return envelope("delivery-" + messageId, "websocket", "group-route-1", "attempt-" + messageId, messageId, workerId);
     }
 
     private TransportDispatchEnvelope envelope(String deliveryId,
                                               String adapterId,
                                               String routeKey,
                                               String traceId,
-                                              TaskDispatchItem item) {
+                                              String messageId,
+                                              String workerId) {
         return new TransportDispatchEnvelope(
                 deliveryId,
-                item.getWorkerId(),
-                new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchView(adapterId, routeKey, traceId, item),
+                workerId,
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        deliveryId,
+                        traceId,
+                        PacketType.TASK_DISPATCH,
+                        adapterId,
+                        routeKey,
+                        "task-1",
+                        messageId,
+                        traceId,
+                        "crawler.fetch-page",
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        Map.of(
+                                TransportPacket.PAYLOAD_WORKER_ID, workerId == null ? "" : workerId,
+                                TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
+                                TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
+                        )
+                ),
                 1L
         );
     }
 
-    private TransportDispatchEnvelope invalidEnvelope(TaskDispatchItem item) {
-        return envelope("delivery-" + item.getMessageId(), "websocket", " ", item.attemptId(), item);
+    private TransportDispatchEnvelope invalidEnvelope(String messageId, String workerId) {
+        return envelope("delivery-" + messageId, "websocket", " ", "attempt-" + messageId, messageId, workerId);
     }
 }
 

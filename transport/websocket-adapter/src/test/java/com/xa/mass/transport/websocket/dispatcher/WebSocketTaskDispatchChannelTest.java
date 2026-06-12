@@ -9,12 +9,13 @@ import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TaskDispatchContent;
+import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
+import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -48,12 +49,8 @@ class WebSocketTaskDispatchChannelTest {
         );
 
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(context, deliveryService());
-        Task task = task();
 
-        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope(TaskDispatchItem.from(
-                TaskDispatchContext.from(task),
-                binding()
-        ))));
+        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope()));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
@@ -99,10 +96,7 @@ class WebSocketTaskDispatchChannelTest {
                 null
         ), deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope(TaskDispatchItem.from(
-                TaskDispatchContext.from(task()),
-                binding()
-        ))));
+        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope()));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcomes.get(0).getStatus());
@@ -119,10 +113,7 @@ class WebSocketTaskDispatchChannelTest {
                 null
         ), deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope(TaskDispatchItem.from(
-                TaskDispatchContext.from(task()),
-                binding()
-        ))));
+        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope()));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcomes.get(0).getStatus());
@@ -133,10 +124,7 @@ class WebSocketTaskDispatchChannelTest {
     void returnsAdapterUnavailableWhenRuntimeContextIsMissing() {
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(null, deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope(TaskDispatchItem.from(
-                TaskDispatchContext.from(task()),
-                binding()
-        ))));
+        List<DispatchOutcome> outcomes = publisher.dispatchEnvelopes(List.of(envelope()));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcomes.get(0).getStatus());
@@ -176,23 +164,20 @@ class WebSocketTaskDispatchChannelTest {
         return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
     }
 
-    private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
+    private TransportDispatchEnvelope envelope() {
+        TaskDispatchBinding binding = binding();
+        TaskDispatchContext context = TaskDispatchContext.from(task());
         return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                item.getWorkerId(),
-                new TransportPacket(
-                        TransportPacket.CURRENT_VERSION,
-                        "delivery-" + item.getMessageId(),
-                        item.attemptId(),
-                        PacketType.TASK_DISPATCH,
+                "delivery-" + binding.messageId(),
+                binding.workerId(),
+                new TransportPacketFactory(() -> "delivery-" + binding.messageId()).fromDispatchContent(
+                        "delivery-" + binding.messageId(),
                         "websocket",
                         "group-route-1",
-                        item.getTaskId(),
-                        item.getMessageId(),
-                        item.attemptId(),
-                        item.getEventCode(),
-                        TransportPacket.JSON_CONTENT_TYPE,
-                        item.transportPayloadView()
+                        "trace-1",
+                        binding.workerId(),
+                        TaskDispatchContent.from(context, binding),
+                        TaskDispatchExecutionContext.from(context, binding)
                 ),
                 1L
         );

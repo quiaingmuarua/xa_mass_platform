@@ -2,10 +2,9 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -140,43 +139,54 @@ class RedisTransportDeliveryStoreTest {
         assertEquals(0, observerCommands.exists(namespacePrefix + ":queues", namespacePrefix + ":stats"));
     }
 
-    private TaskDispatchItem item(String messageId, String workerId) {
-        return new TaskDispatchItem(
+    private DispatchFixture item(String messageId, String workerId) {
+        return new DispatchFixture(messageId, workerId);
+    }
+
+    private TransportDispatchEnvelope envelope(String adapterId, DispatchFixture item) {
+        String deliveryId = "delivery-" + adapterId + "-" + item.messageId();
+        return new TransportDispatchEnvelope(
+                deliveryId,
+                item.workerId(),
+                packet(deliveryId, adapterId, "group-route-1", item),
+                1L
+        );
+    }
+
+    private TransportDispatchEnvelope invalidEnvelope(String adapterId, DispatchFixture item) {
+        String deliveryId = "delivery-" + adapterId + "-" + item.messageId();
+        return new TransportDispatchEnvelope(
+                deliveryId,
+                item.workerId(),
+                packet(deliveryId, adapterId, " ", item),
+                1L
+        );
+    }
+
+    private TransportPacket packet(String deliveryId, String adapterId, String routeKey, DispatchFixture item) {
+        return new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                deliveryId,
+                "trace-" + item.messageId(),
+                PacketType.TASK_DISPATCH,
+                adapterId,
+                routeKey,
                 "task-1",
-                messageId,
+                item.messageId(),
+                attemptId(item),
                 "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "attempt-" + messageId,
-                workerId,
-                "batch-1",
-                Map.of("target", "target-1"),
-                Map.of()
+                TransportPacket.JSON_CONTENT_TYPE,
+                Map.of(
+                        TransportPacket.PAYLOAD_WORKER_ID, item.workerId() == null ? "" : item.workerId(),
+                        TransportPacket.PAYLOAD_BATCH_ID, "batch-1",
+                        TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
+                        TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
+                )
         );
     }
 
-    private TransportDispatchEnvelope envelope(String adapterId, TaskDispatchItem item) {
-        String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
-        return new TransportDispatchEnvelope(
-                deliveryId,
-                item.getWorkerId(),
-                new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchView(adapterId, "group-route-1", item.attemptId(), item),
-                1L
-        );
-    }
-
-    private TransportDispatchEnvelope invalidEnvelope(String adapterId, TaskDispatchItem item) {
-        String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
-        return new TransportDispatchEnvelope(
-                deliveryId,
-                item.getWorkerId(),
-                new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchView(adapterId, " ", item.attemptId(), item),
-                1L
-        );
+    private String attemptId(DispatchFixture item) {
+        return "attempt-" + item.messageId();
     }
 
     private List<String> messageIds(List<TransportDispatchEnvelope> envelopes) {
@@ -190,6 +200,9 @@ class RedisTransportDeliveryStoreTest {
         return key.startsWith(namespacePrefix + ":q:")
                 || key.startsWith(namespacePrefix + ":meta:")
                 || Set.of(namespacePrefix + ":queues", namespacePrefix + ":stats").contains(key);
+    }
+
+    private record DispatchFixture(String messageId, String workerId) {
     }
 }
 

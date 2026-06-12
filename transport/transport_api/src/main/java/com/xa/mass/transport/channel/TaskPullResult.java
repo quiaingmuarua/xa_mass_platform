@@ -1,24 +1,22 @@
 package com.xa.mass.transport.channel;
 
-import com.xa.mass.transport.model.TaskDispatchItem;
-
 import java.util.List;
 import java.util.Objects;
 
 public final class TaskPullResult {
 
     private final TaskPullStatus status;
-    private final List<TaskDispatchItem> dispatchViews;
+    private final List<PulledTaskDispatch> items;
 
-    private TaskPullResult(TaskPullStatus status, List<TaskDispatchItem> dispatchViews) {
+    private TaskPullResult(TaskPullStatus status, List<PulledTaskDispatch> items) {
         this.status = Objects.requireNonNull(status, "status");
-        this.dispatchViews = dispatchViews == null || dispatchViews.isEmpty() ? List.of() : List.copyOf(dispatchViews);
+        this.items = items == null || items.isEmpty() ? List.of() : List.copyOf(items);
     }
 
-    public static TaskPullResult of(TaskPullStatus status, List<TaskDispatchItem> dispatchViews) {
+    public static TaskPullResult of(TaskPullStatus status, List<PulledTaskDispatch> items) {
         Objects.requireNonNull(status, "status");
         return switch (status) {
-            case DELIVERED -> delivered(dispatchViews);
+            case DELIVERED -> delivered(items);
             case EMPTY -> empty();
             case INVALID_REQUEST -> invalidRequest();
             case UNAVAILABLE -> unavailable();
@@ -26,11 +24,11 @@ public final class TaskPullResult {
         };
     }
 
-    public static TaskPullResult delivered(List<TaskDispatchItem> dispatchViews) {
-        if (dispatchViews == null || dispatchViews.isEmpty()) {
+    public static TaskPullResult delivered(List<PulledTaskDispatch> items) {
+        if (items == null || items.isEmpty()) {
             throw new IllegalArgumentException("delivered pull result must include at least one item");
         }
-        return new TaskPullResult(TaskPullStatus.DELIVERED, dispatchViews);
+        return new TaskPullResult(TaskPullStatus.DELIVERED, items);
     }
 
     public static TaskPullResult empty() {
@@ -53,11 +51,7 @@ public final class TaskPullResult {
         return status;
     }
 
-    /**
-     * Worker-facing dispatch views reconstructed from transport packets when
-     * delivery succeeds.
-     */
-    public List<TaskDispatchItem> getDispatchViews() {
-        return dispatchViews;
+    public List<PulledTaskDispatch> getItems() {
+        return items;
     }
 }

@@ -23,7 +23,7 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.model.WorkerStateReportRequest;
 import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 import com.xa.mass.transport.model.TaskResultReport;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -323,7 +323,7 @@ public class ExternalWorkerApiController {
         requirePollingWorker(boundWorkerId, "poll");
         int maxMessages = requestBody == null || requestBody.getMaxMessages() == null ? 1 : requestBody.getMaxMessages();
         long timeoutMs = requestBody == null || requestBody.getTimeoutMs() == null ? 0L : requestBody.getTimeoutMs();
-        List<TaskDispatchItem> items = workerClient.pollTasks(boundWorkerId, maxMessages, timeoutMs);
+        List<PulledTaskDispatch> items = workerClient.pollTasks(boundWorkerId, maxMessages, timeoutMs);
         return ApiResponse.success(Map.of(
                 "workerId", boundWorkerId,
                 "items", items,

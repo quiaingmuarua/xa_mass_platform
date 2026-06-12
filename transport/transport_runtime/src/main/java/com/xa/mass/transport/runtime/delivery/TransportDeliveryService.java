@@ -2,12 +2,10 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.RuntimeDispatchOutcomes;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.ArrayList;
-import java.util.AbstractList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -73,24 +71,6 @@ public final class TransportDeliveryService {
             return TransportDeliveryPollResult.unavailable();
         }
         return result;
-    }
-
-    public List<TaskDispatchItem> pollDispatchViews(String adapterId, String selectedWorkerId, int maxItems, long timeoutMillis) {
-        return toDispatchViews(pollEnvelopeResult(adapterId, selectedWorkerId, maxItems, timeoutMillis).getEnvelopes());
-    }
-
-    public static TaskDispatchItem toDispatchView(TransportDispatchEnvelope envelope) {
-        if (envelope == null) {
-            throw new IllegalArgumentException("envelope must not be null");
-        }
-        return TaskDispatchItem.fromTransportPacket(envelope.getPacket());
-    }
-
-    public static List<TaskDispatchItem> toDispatchViews(List<TransportDispatchEnvelope> envelopes) {
-        if (envelopes == null || envelopes.isEmpty()) {
-            return List.of();
-        }
-        return Collections.unmodifiableList(new DispatchItemListView(envelopes));
     }
 
     public TransportDeliveryServiceStats stats() {
@@ -190,30 +170,4 @@ public final class TransportDeliveryService {
         }
     }
 
-    private static final class DispatchItemListView extends AbstractList<TaskDispatchItem> {
-        private final List<TransportDispatchEnvelope> envelopes;
-        private final TaskDispatchItem[] cache;
-
-        private DispatchItemListView(List<TransportDispatchEnvelope> envelopes) {
-            this.envelopes = Objects.requireNonNull(envelopes, "envelopes");
-            this.cache = new TaskDispatchItem[envelopes.size()];
-        }
-
-        @Override
-        public TaskDispatchItem get(int index) {
-            TaskDispatchItem cached = cache[index];
-            if (cached != null) {
-                return cached;
-            }
-            TaskDispatchItem resolved = toDispatchView(envelopes.get(index));
-            cache[index] = resolved;
-            return resolved;
-        }
-
-        @Override
-        public int size() {
-            return envelopes.size();
-        }
-    }
 }
-

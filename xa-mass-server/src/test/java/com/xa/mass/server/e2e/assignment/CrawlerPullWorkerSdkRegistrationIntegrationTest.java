@@ -10,13 +10,14 @@ import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskResultItemSnapshot;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -101,8 +102,12 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
 
         PullWorkerSession session = app.pullWorker(workerId);
         session.connect();
+        boolean workerOnline = false;
         try {
-            waitUntil(() -> app.isWorkerReachable(workerId), "pull session connect must surface transport presence online");
+            assertFalse(app.isWorkerReachable(workerId), "pull session connect must not own worker lifecycle reachability");
+            app.workerOnline(workerId, session.connectionId(), "pull-worker-online");
+            workerOnline = true;
+            waitUntil(() -> app.isWorkerReachable(workerId), "worker online must surface lifecycle reachability");
             TaskExecutionOptions executionSpec = new TaskExecutionOptions();
             executionSpec.setBatchSize(1);
 
@@ -121,7 +126,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
 
             assertTrue(app.approveTask(task.getTaskId()));
 
-            List<TaskDispatchItem> items = List.of();
+            List<PulledTaskDispatch> items = List.of();
             for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
                 items = session.poll(10);
                 if (items.isEmpty()) {
@@ -130,9 +135,8 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
             }
             assertFalse(items.isEmpty(), "Expected crawler task dispatch via polling");
 
-            TaskDispatchItem item = items.get(0);
+            PulledTaskDispatch item = items.get(0);
             assertEquals(task.getTaskId(), item.getTaskId());
-            assertEquals(workerId, item.getWorkerId());
             assertEquals("https://example.test/page-1", item.getInput().get("url"));
 
             assertTrue(session.submitResult(
@@ -145,18 +149,22 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
             TaskSnapshot terminal = waitForTerminalTask(task.getTaskId());
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-            assertEquals("SUCCESS", terminal.messages().get(0).get("status"));
-            assertEquals(workerId, terminal.messages().get(0).get("latestAttemptWorkerId"));
-            assertTrue(terminal.messages().get(0).get("output") instanceof Map);
-            Map<?, ?> output = (Map<?, ?>) terminal.messages().get(0).get("output");
+            TaskResultItemSnapshot result = waitForSingleResult(task.getTaskId());
+            assertEquals("SUCCESS", result.getStatus());
+            assertEquals(workerId, result.getWorkerId());
+            Map<?, ?> output = result.getOutput();
             assertEquals("https://example.test/page-1", output.get("url"));
             assertEquals(200, ((Number) output.get("statusCode")).intValue());
             assertEquals("Example Page", output.get("title"));
         } finally {
-            session.disconnect();
+            if (workerOnline) {
+                app.workerOffline(workerId, session.connectionId(), "pull-worker-offline");
+            } else {
+                session.disconnect();
+            }
         }
 
-        waitUntil(() -> !app.isWorkerReachable(workerId), "pull session disconnect must converge transport presence offline");
+        waitUntil(() -> !app.isWorkerReachable(workerId), "worker offline must converge lifecycle reachability offline");
     }
 
     private TaskShellSnapshot createShellWithOptionalItems(MassTaskShellCreateRequest request,
@@ -194,5 +202,17 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
             Thread.sleep(100L);
         }
         assertTrue(condition.getAsBoolean(), failureMessage);
+    }
+
+    private TaskResultItemSnapshot waitForSingleResult(String taskId) throws InterruptedException {
+        for (int attempt = 0; attempt < 60; attempt++) {
+            var window = app.readTaskResults(taskId, 0, 10);
+            if (!window.getItems().isEmpty()) {
+                return window.getItems().getFirst();
+            }
+            Thread.sleep(100L);
+        }
+        fail("task result row was not materialized for " + taskId);
+        return null;
     }
 }

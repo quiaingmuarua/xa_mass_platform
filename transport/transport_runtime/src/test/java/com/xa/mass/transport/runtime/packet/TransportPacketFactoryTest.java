@@ -1,6 +1,7 @@
 package com.xa.mass.transport.runtime.packet;
 
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TaskDispatchContent;
+import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
@@ -16,23 +17,32 @@ class TransportPacketFactoryTest {
     @Test
     void dispatchPacketProjectsDispatchIdentityAndPayload() {
         TransportPacketFactory factory = new TransportPacketFactory(() -> "packet-1");
-        TaskDispatchItem item = new TaskDispatchItem(
+        TaskDispatchContent content = new TaskDispatchContent(
                 "task-1",
                 "msg-1",
                 "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "user-a",
-                2,
-                "attempt-1",
-                null,
-                "worker-1",
-                "batch-1",
                 Map.of("target", "https://example.test"),
                 Map.of("textContent", "hello")
         );
+        TaskDispatchExecutionContext context = new TaskDispatchExecutionContext(
+                "attempt-1",
+                3,
+                2,
+                "batch-1",
+                "task-name",
+                "demoApp",
+                "user-a"
+        );
 
-        TransportPacket packet = factory.fromDispatchView("websocket", "route-1", "trace-1", item);
+        TransportPacket packet = factory.fromDispatchContent(
+                "packet-1",
+                "websocket",
+                "route-1",
+                "trace-1",
+                "worker-1",
+                content,
+                context
+        );
 
         assertEquals("packet-1", packet.packetId());
         assertEquals(PacketType.TASK_DISPATCH, packet.type());
@@ -44,6 +54,8 @@ class TransportPacketFactoryTest {
         assertEquals("crawler.fetch-page", packet.eventCode());
         Map<?, ?> payload = assertInstanceOf(Map.class, packet.payload());
         assertEquals("worker-1", payload.get(TransportPacket.PAYLOAD_WORKER_ID));
+        assertEquals(3, payload.get(TransportPacket.PAYLOAD_ATTEMPT_NO));
+        assertEquals(2, payload.get(TransportPacket.PAYLOAD_RETRY_COUNT));
         assertEquals("https://example.test",
                 assertInstanceOf(Map.class, payload.get(TransportPacket.PAYLOAD_INPUT)).get("target"));
     }

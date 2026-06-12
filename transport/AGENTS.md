@@ -61,9 +61,9 @@ entry for `transport/`.
 - `DeliveryCommandGroup` owns producer-side `adapterId`. `DeliveryCommandBatch`
   owns the process-boundary lane: `adapterId`, `deliveryQueueKey`,
   `targetTransportNodeId`, and resolved per-item endpoint leases.
-- `TaskDispatchItem` and task-dispatch `TransportPacket` are worker-facing or
-  final-hop projections assembled after endpoint evidence is known. They are
-  not the delivery-command handoff payload.
+- `PulledTaskDispatch` is the polling worker pull DTO. Task-dispatch
+  `TransportPacket` is a final-hop/wire projection assembled after endpoint
+  evidence is known. Neither is the delivery-command handoff payload.
 - Queue mechanics may live under `platform_infra`; transport still owns
   `DeliveryCommand`, `TransportDispatchEnvelope`, `TransportDeliveryStore`, and
   `DispatchOutcome`. `TransportDispatchEnvelope` does not carry

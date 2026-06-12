@@ -1,10 +1,10 @@
 package com.xa.mass.sdk.worker;
 
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
@@ -16,10 +16,6 @@ import java.util.Objects;
 /**
  * SDK-facing pull worker session for crawlers, queue consumers, and other
  * executors that receive work by polling instead of server push.
- *
- * <p>This session exposes {@link TaskDispatchItem} as the worker-facing pull
- * view. Transport runtime still owns packet/envelope assembly and canonical
- * addressing underneath.</p>
  */
 public class PullWorkerSession {
 
@@ -106,12 +102,12 @@ public class PullWorkerSession {
         routeOwnerStore.refreshHeartbeat(workerId, adapterId, routeKey, connectionId, normalizedReason);
     }
 
-    public List<TaskDispatchItem> poll(int maxMessages) {
+    public List<PulledTaskDispatch> poll(int maxMessages) {
         return poll(maxMessages, 0L);
     }
 
-    public List<TaskDispatchItem> poll(int maxMessages, long timeoutMillis) {
-        return pollResult(maxMessages, timeoutMillis).getDispatchViews();
+    public List<PulledTaskDispatch> poll(int maxMessages, long timeoutMillis) {
+        return pollResult(maxMessages, timeoutMillis).getItems();
     }
 
     public TaskPullResult pollResult(int maxMessages) {
@@ -122,28 +118,28 @@ public class PullWorkerSession {
         return taskPullChannel.pollTaskMessagesResult(workerId, maxMessages, timeoutMillis);
     }
 
-    public boolean submitResult(TaskDispatchItem dispatchItem, boolean success, String detail) {
-        Objects.requireNonNull(dispatchItem, "dispatchItem");
-        return submitResult(dispatchItem, success, detail, null, Map.of());
+    public boolean submitResult(PulledTaskDispatch item, boolean success, String detail) {
+        Objects.requireNonNull(item, "item");
+        return submitResult(item, success, detail, null, Map.of());
     }
 
-    public boolean submitResult(TaskDispatchItem dispatchItem,
+    public boolean submitResult(PulledTaskDispatch item,
                                 boolean success,
                                 String detail,
                                 Map<String, Object> output) {
-        Objects.requireNonNull(dispatchItem, "dispatchItem");
-        return submitResult(dispatchItem, success, detail, null, output);
+        Objects.requireNonNull(item, "item");
+        return submitResult(item, success, detail, null, output);
     }
 
-    public boolean submitResult(TaskDispatchItem dispatchItem,
+    public boolean submitResult(PulledTaskDispatch item,
                                 boolean success,
                                 String detail,
                                 String errorCode,
                                 Map<String, Object> output) {
-        Objects.requireNonNull(dispatchItem, "dispatchItem");
+        Objects.requireNonNull(item, "item");
         TaskResultReport report = new TaskResultReport(
-                dispatchItem.getTaskId(),
-                dispatchItem.getMessageId(),
+                item.getTaskId(),
+                item.getMessageId(),
                 success,
                 detail,
                 errorCode,
@@ -151,8 +147,8 @@ public class PullWorkerSession {
         );
         return taskResultIngestChannel.ingest(new TransportResultEnvelope(
                 adapterId,
-                routeKeyForResult(dispatchItem),
-                dispatchItem.attemptId(),
+                routeKey,
+                item.getAttemptId(),
                 null,
                 null,
                 report
@@ -182,13 +178,6 @@ public class PullWorkerSession {
 
     private String normalizeReason(String reason, String defaultReason) {
         return reason == null || reason.isBlank() ? defaultReason : reason.trim();
-    }
-
-    private String routeKeyForResult(TaskDispatchItem dispatchItem) {
-        if (dispatchItem.routeKey() != null && !dispatchItem.routeKey().isBlank()) {
-            return dispatchItem.routeKey();
-        }
-        return routeKey;
     }
 
     private static String requireText(String value, String fieldName) {

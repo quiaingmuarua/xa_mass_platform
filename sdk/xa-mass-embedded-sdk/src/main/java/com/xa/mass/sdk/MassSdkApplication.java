@@ -56,8 +56,8 @@ import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 import com.xa.mass.transport.channel.TaskPullResult;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 
 import java.io.IOException;
@@ -720,7 +720,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<TaskDispatchItem> pollTasks(String workerId, int maxMessages) {
+    public List<PulledTaskDispatch> pollTasks(String workerId, int maxMessages) {
         return pollTasks(workerId, maxMessages, 0L);
     }
 
@@ -733,8 +733,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
-        return pollTasksResult(workerId, maxMessages, timeoutMillis).getDispatchViews();
+    public List<PulledTaskDispatch> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
+        return pollTasksResult(workerId, maxMessages, timeoutMillis).getItems();
     }
 
     @Override

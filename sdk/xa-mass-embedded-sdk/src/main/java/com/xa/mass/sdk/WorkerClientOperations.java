@@ -1,8 +1,8 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 import com.xa.mass.transport.channel.TaskPullResult;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 
 import java.util.List;
@@ -30,12 +30,12 @@ public interface WorkerClientOperations {
 
     TaskPullResult pollTasksResult(String workerId, int maxMessages, long timeoutMillis);
 
-    default List<TaskDispatchItem> pollTasks(String workerId, int maxMessages) {
+    default List<PulledTaskDispatch> pollTasks(String workerId, int maxMessages) {
         return pollTasks(workerId, maxMessages, 0L);
     }
 
-    default List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
-        return pollTasksResult(workerId, maxMessages, timeoutMillis).getDispatchViews();
+    default List<PulledTaskDispatch> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
+        return pollTasksResult(workerId, maxMessages, timeoutMillis).getItems();
     }
 
     boolean submitResult(String workerId, TaskResultReport report);

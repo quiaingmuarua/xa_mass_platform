@@ -124,12 +124,14 @@ The stable third-party worker protocol today is the polling surface:
 - `POST /worker-api/v1/workers/{workerId}/commands/{commandId}:ack`
 - `POST /worker-api/v1/workers/{workerId}:offline`
 
-Polling workers receive `TaskDispatchItem`, execute by `eventCode`, and submit
-`TaskResultReport`. They may also proactively report bounded worker capability
-and state snapshots, and acknowledge owner-issued worker commands. In current
-mainline, `report-state(DRAINING)` stops new dispatches to that worker but does
-not revoke or interrupt already in-flight work. Acknowledging a `DRAIN` command
-to an accepted state converges to the same dispatch-gate behavior.
+Polling workers receive pulled task dispatch items, execute by `eventCode`, and
+submit `TaskResultReport`. The pulled item does not carry worker identity or
+route metadata; those come from the worker session/path context. Workers may
+also proactively report bounded worker capability and state snapshots, and
+acknowledge owner-issued worker commands. In current mainline,
+`report-state(DRAINING)` stops new dispatches to that worker but does not
+revoke or interrupt already in-flight work. Acknowledging a `DRAIN` command to
+an accepted state converges to the same dispatch-gate behavior.
 Presence calls (`online`, `heartbeat`, and `offline`) require a stable
 per-session `sessionToken`; stale tokens must not revoke a newer active worker
 session.
@@ -140,8 +142,11 @@ Example dispatch payload:
 {
   "taskId": "...",
   "messageId": "...",
-  "workerId": "node-worker-api-001",
   "eventCode": "crawler.fetch-page",
+  "attemptId": "...",
+  "attemptNo": 1,
+  "retryCount": 0,
+  "batchId": "...",
   "input": {
     "url": "https://example.com"
   },

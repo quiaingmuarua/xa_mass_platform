@@ -1,6 +1,5 @@
 package com.xa.mass.transport.channel;
 
-import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -26,23 +25,20 @@ class TaskPullResultTest {
         TaskPullResult result = TaskPullResult.of(TaskPullStatus.UNAVAILABLE, List.of(item("msg-1")));
 
         assertEquals(TaskPullStatus.UNAVAILABLE, result.getStatus());
-        assertEquals(List.of(), result.getDispatchViews());
+        assertEquals(List.of(), result.getItems());
     }
 
-    private static TaskDispatchItem item(String messageId) {
-        return new TaskDispatchItem(
+    private static PulledTaskDispatch item(String messageId) {
+        return new PulledTaskDispatch(
                 "task-1",
                 messageId,
                 "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "worker-1",
-                null,
-                "batch-1",
                 Map.of("target", "target-1"),
-                Map.of()
+                Map.of(),
+                "attempt-1",
+                1,
+                0,
+                "batch-1"
         );
     }
 }

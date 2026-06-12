@@ -12,7 +12,7 @@ import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 
@@ -240,7 +240,7 @@ public final class SdkPollingRedisRestartRecoveryChaosRunner {
         private final AtomicInteger receivedDispatches = new AtomicInteger();
         private final AtomicInteger stalledDispatches = new AtomicInteger();
         private final AtomicInteger successfulResults = new AtomicInteger();
-        private final AtomicReference<TaskDispatchItem> stalledDispatch = new AtomicReference<>();
+        private final AtomicReference<PulledTaskDispatch> stalledDispatch = new AtomicReference<>();
         private final CountDownLatch stopped = new CountDownLatch(1);
         private Thread pollThread;
 
@@ -279,7 +279,7 @@ public final class SdkPollingRedisRestartRecoveryChaosRunner {
         }
 
         private String stalledMessageId() {
-            TaskDispatchItem item = stalledDispatch.get();
+            PulledTaskDispatch item = stalledDispatch.get();
             return item != null ? item.getMessageId() : null;
         }
 
@@ -299,14 +299,14 @@ public final class SdkPollingRedisRestartRecoveryChaosRunner {
         private void runLoop() {
             try {
                 while (running.get()) {
-                    List<TaskDispatchItem> items = session.poll(1, 0L);
+                    List<PulledTaskDispatch> items = session.poll(1, 0L);
                     pollCycles.incrementAndGet();
                     if (items == null || items.isEmpty()) {
                         emptyPollCycles.incrementAndGet();
                         Thread.sleep(20L);
                         continue;
                     }
-                    for (TaskDispatchItem item : items) {
+                    for (PulledTaskDispatch item : items) {
                         receivedDispatches.incrementAndGet();
                         if (mode == WorkerMode.STALL_WITHOUT_RESULT && stallBudgetConsumed.compareAndSet(false, true)) {
                             stalledDispatch.set(item);
@@ -324,7 +324,7 @@ public final class SdkPollingRedisRestartRecoveryChaosRunner {
             }
         }
 
-        private void processNormally(TaskDispatchItem item) {
+        private void processNormally(PulledTaskDispatch item) {
             ChaosSupport.maybeSleep(config.processingDelayMillis());
             boolean accepted = session.submitResult(
                     item,

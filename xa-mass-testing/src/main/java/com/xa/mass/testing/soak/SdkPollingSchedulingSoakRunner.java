@@ -34,7 +34,7 @@ import com.xa.mass.trace.operator.TraceValidateResponse;
 import com.xa.mass.trace.operator.TraceOperatorService;
 import com.xa.mass.trace.sink.JsonlExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -748,7 +748,7 @@ public final class SdkPollingSchedulingSoakRunner {
         private void runLoop() {
             while (running.get()) {
                 try {
-                    List<TaskDispatchItem> items = session.poll(config.pollBatchSize());
+                    List<PulledTaskDispatch> items = session.poll(config.pollBatchSize());
                     metrics.recordPoll(workerId, items == null ? 0 : items.size());
                     if (items == null || items.isEmpty()) {
                         if (stopRequested.get()) {
@@ -759,7 +759,7 @@ public final class SdkPollingSchedulingSoakRunner {
                         }
                         continue;
                     }
-                    for (TaskDispatchItem item : items) {
+                    for (PulledTaskDispatch item : items) {
                         metrics.recordReceivedItem(workerId, item.getTaskId());
                         processingExecutor.submit(() -> process(item));
                     }
@@ -772,7 +772,7 @@ public final class SdkPollingSchedulingSoakRunner {
             }
         }
 
-        private void process(TaskDispatchItem item) {
+        private void process(PulledTaskDispatch item) {
             long started = System.nanoTime();
             metrics.beginProcessing();
             try {
@@ -812,7 +812,7 @@ public final class SdkPollingSchedulingSoakRunner {
             }
         }
 
-        private long globalSeq(TaskDispatchItem item) {
+        private long globalSeq(PulledTaskDispatch item) {
             Object value = item.getInput().get("globalSeq");
             if (value instanceof Number number) {
                 return number.longValue();
@@ -820,7 +820,7 @@ public final class SdkPollingSchedulingSoakRunner {
             return Math.abs((long) item.getMessageId().hashCode());
         }
 
-        private int deterministicJitterMillis(TaskDispatchItem item) {
+        private int deterministicJitterMillis(PulledTaskDispatch item) {
             int jitterBound = config.processingJitterMillis();
             if (jitterBound <= 0) {
                 return 0;
@@ -830,7 +830,7 @@ public final class SdkPollingSchedulingSoakRunner {
                     workerId,
                     item.getTaskId(),
                     item.getMessageId(),
-                    item.attemptId(),
+                    item.getAttemptId(),
                     item.getRetryCount()
             );
             return Math.floorMod(hash, jitterBound + 1);

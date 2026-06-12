@@ -73,9 +73,10 @@ Transport should stay centered on these concepts only:
   `DeliveryCommandBatch` values grouped by shared `deliveryQueueKey` and
   target transport node. Route key and connection id are per-item endpoint
   evidence, not batch or command truth.
-- `TaskPullResult`: explicit pull-path status plus delivered dispatch items;
-  empty queue, invalid request, temporary unavailability, and shutdown must not
-  be flattened into one fake "no work" result on the transport mainline
+- `TaskPullResult`: explicit pull-path status plus delivered
+  `PulledTaskDispatch` items; empty queue, invalid request, temporary
+  unavailability, and shutdown must not be flattened into one fake "no work"
+  result on the transport mainline
 - `TransportRouteOwnerStore`: transport adapter write surface for route-owner claim,
   heartbeat refresh, and owner release; it does not expose dispatch routing or
   worker-id inspection reads, which belong to worker runtime/resource views
@@ -389,19 +390,16 @@ SDK/starter assembly consumes the task-level dispatch snapshot plus concrete
 `DeliveryCommand` items grouped by `adapterId` in `DeliveryCommandGroup`.
 Transport runtime consumes delivery command groups and resolved batches only.
 
-`TaskDispatchItem` is a worker-facing dispatch projection, not the internal
-delivery-command handoff payload. It may remain on public polling APIs and
-adapter codecs because current worker frames still expose fields such as
-`workerId`, `attemptId`, `batchId`, and optional route metadata. Those values
-are assembled from `selectedWorkerId`, `TaskDispatchContent`,
+`PulledTaskDispatch` is the polling worker pull DTO, not the internal
+delivery-command handoff payload and not a transport metadata carrier. It
+contains only task id, message id, event code, input, shared config, attempt id,
+attempt no, retry count, and batch id. Worker identity comes from the poll
+session/path, and route/session/endpoint facts stay inside transport delivery.
+WebSocket/socket worker frames may still include protocol compatibility fields
+assembled from `selectedWorkerId`, `TaskDispatchContent`,
 `TaskDispatchExecutionContext`, and resolved endpoint evidence at final hop.
-They must not be copied back into `DeliveryCommand` or the handoff codec as
-parallel truth.
-
-The internal attempt identity remains exposed through `attemptId()`, not
-`getAttemptId()`, so JSON serializers do not add it to worker API responses by
-JavaBean convention. Do not add JavaBean getters for internal metadata unless
-the worker wire contract is intentionally changed.
+Those values must not be copied back into `DeliveryCommand`, `TaskPullResult`,
+or handoff codecs as parallel truth.
 
 `TransportPacket` remains the internal flat transport envelope for dispatch,
 result, and worker-system-event shapes, but task-dispatch packets are assembled
@@ -560,7 +558,7 @@ attempts. Storage implementations should provide bounded lookups for:
 Dispatch is also a hot path. Delivery-command handoff queues store
 `DeliveryCommandBatch` values: batch-level lane/node facts, minimal per-item
 commands, and per-item endpoint leases. They must not deep-copy
-`TaskDispatchItem` or generic task-dispatch `TransportPacket` payloads as the
+worker pull DTOs or generic task-dispatch `TransportPacket` payloads as the
 handoff item shape. Adapter/store delivery may assemble
 `TransportDispatchEnvelope` values at the local final hop. Retryable dispatch
 outcomes must correlate by explicit `attemptId`; transport trace ids are
@@ -587,7 +585,7 @@ results without forcing callers to treat every non-delivery outcome as an empty
 queue. `TaskPullChannel.pollTaskMessagesResult(...)` is the transport mainline
 for that statusful view and receives the polling worker's registered worker id
 as `selectedWorkerId`; list-only pull helpers are convenience wrappers above
-it. `DELIVERED` status must always carry one or more dispatch items/envelopes;
+it. `DELIVERED` status must always carry one or more pulled items/envelopes;
 empty payload sets are `EMPTY`, not a second encoding of delivery. Thread interruption is not a store result contract; store
 implementations should throw interruption and let callers handle it above the
 store boundary. Store shutdown is

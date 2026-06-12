@@ -101,24 +101,9 @@ class DispatchOutcomeTest {
     }
 
     private TransportDispatchEnvelope envelope() {
-        TaskDispatchItem item = new TaskDispatchItem(
-                "task-1",
-                "msg-1",
-                "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "attempt-1",
-                "group-route-1",
-                "worker-1",
-                "batch-1",
-                Map.of("target", "target-1"),
-                Map.of()
-        );
         return new TransportDispatchEnvelope(
                 "delivery-1",
-                item.getWorkerId(),
+                "worker-1",
                 new TransportPacket(
                         TransportPacket.CURRENT_VERSION,
                         "delivery-1",
@@ -126,12 +111,16 @@ class DispatchOutcomeTest {
                         PacketType.TASK_DISPATCH,
                         "polling",
                         "group-route-1",
-                        item.getTaskId(),
-                        item.getMessageId(),
-                        item.attemptId(),
-                        item.getEventCode(),
+                        "task-1",
+                        "msg-1",
+                        "attempt-1",
+                        "crawler.fetch-page",
                         TransportPacket.JSON_CONTENT_TYPE,
-                        item.transportPayloadView()
+                        Map.of(
+                                TransportPacket.PAYLOAD_RETRY_COUNT, 0,
+                                TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
+                                TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
+                        )
                 ),
                 10L
         );

@@ -14,6 +14,7 @@ public final class TransportPacket {
     public static final String PAYLOAD_PROJECT = "project";
     public static final String PAYLOAD_USER_ID = "userId";
     public static final String PAYLOAD_RETRY_COUNT = "retryCount";
+    public static final String PAYLOAD_ATTEMPT_NO = "attemptNo";
     public static final String PAYLOAD_WORKER_ID = "workerId";
     public static final String PAYLOAD_BATCH_ID = "batchId";
     public static final String PAYLOAD_INPUT = "input";

@@ -1,8 +1,8 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -27,37 +27,36 @@ class TransportDeliveryPollResultTest {
     void ofNormalizesNonDeliveredStatusesToEmptyEnvelopeList() {
         TransportDeliveryPollResult result = TransportDeliveryPollResult.of(
                 TransportDeliveryPollStatus.SHUTDOWN,
-                List.of(envelope(item("msg-1", "worker-1")))
+                List.of(envelope("msg-1", "worker-1"))
         );
 
         assertEquals(TransportDeliveryPollStatus.SHUTDOWN, result.getStatus());
         assertEquals(List.of(), result.getEnvelopes());
     }
 
-    private static TaskDispatchItem item(String messageId, String workerId) {
-        return new TaskDispatchItem(
-                "task-1",
-                messageId,
-                "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "attempt-" + messageId,
-                workerId,
-                "batch-1",
-                Map.of("target", "target-1"),
-                Map.of()
-        );
-    }
-
-    private static TransportDispatchEnvelope envelope(TaskDispatchItem item) {
-        String deliveryId = "delivery-" + item.getMessageId();
+    private static TransportDispatchEnvelope envelope(String messageId, String workerId) {
+        String deliveryId = "delivery-" + messageId;
         return new TransportDispatchEnvelope(
                 deliveryId,
-                item.getWorkerId(),
-                new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchView("polling", "group-route-1", item.attemptId(), item),
+                workerId,
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        deliveryId,
+                        "trace-" + messageId,
+                        PacketType.TASK_DISPATCH,
+                        "polling",
+                        "group-route-1",
+                        "task-1",
+                        messageId,
+                        "attempt-" + messageId,
+                        "crawler.fetch-page",
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        Map.of(
+                                TransportPacket.PAYLOAD_WORKER_ID, workerId,
+                                TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
+                                TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
+                        )
+                ),
                 1L
         );
     }

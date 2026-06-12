@@ -2,9 +2,9 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,7 +13,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransportDeliveryServiceTest {
@@ -24,7 +23,7 @@ class TransportDeliveryServiceTest {
 
         List<DispatchOutcome> outcomes = service.sendDirect(
                 "websocket",
-                List.of(envelope(item("msg-1", "worker-1"))),
+                List.of(envelope("msg-1", "worker-1")),
                 envelope -> true,
                 "unavailable"
         );
@@ -40,7 +39,7 @@ class TransportDeliveryServiceTest {
 
         List<DispatchOutcome> outcomes = service.sendDirect(
                 "socket",
-                List.of(envelope(item("msg-1", "worker-1"))),
+                List.of(envelope("msg-1", "worker-1")),
                 envelope -> false,
                 "unavailable"
         );
@@ -57,7 +56,7 @@ class TransportDeliveryServiceTest {
 
         List<DispatchOutcome> outcomes = service.sendDirect(
                 "websocket",
-                List.of(envelope(item("msg-1", "worker-1"))),
+                List.of(envelope("msg-1", "worker-1")),
                 null,
                 "dispatcher context is unavailable"
         );
@@ -75,7 +74,7 @@ class TransportDeliveryServiceTest {
 
         List<DispatchOutcome> outcomes = service.sendDirect(
                 "websocket",
-                List.of(invalidEnvelope(item("msg-1", null))),
+                List.of(invalidEnvelope("msg-1", null)),
                 envelope -> {
                     called.set(true);
                     return true;
@@ -95,7 +94,7 @@ class TransportDeliveryServiceTest {
 
         List<DispatchOutcome> outcomes = service.sendDirect(
                 "socket",
-                List.of(envelope(item("msg-1", "worker-1"))),
+                List.of(envelope("msg-1", "worker-1")),
                 envelope -> {
                     throw new IllegalStateException("write failed");
                 },
@@ -113,8 +112,8 @@ class TransportDeliveryServiceTest {
     void directStatsByAdapterNormalizeAdapterIds() {
         TransportDeliveryService service = service();
 
-        service.sendDirect(" WebSocket ", List.of(envelope(item("msg-1", "worker-1"))), envelope -> true, "unavailable");
-        service.sendDirect("websocket", List.of(envelope(item("msg-2", "worker-2"))), envelope -> false, "unavailable");
+        service.sendDirect(" WebSocket ", List.of(envelope("msg-1", "worker-1")), envelope -> true, "unavailable");
+        service.sendDirect("websocket", List.of(envelope("msg-2", "worker-2")), envelope -> false, "unavailable");
 
         TransportDirectDeliveryStats stats = service.directStatsByAdapter().get("websocket");
         assertEquals(1L, stats.getSentItems());
@@ -124,37 +123,31 @@ class TransportDeliveryServiceTest {
     @Test
     void pollReturnsQueuedItems() {
         TransportDeliveryService service = service();
-        TaskDispatchItem item = item("msg-1", "worker-1");
-        service.enqueue("polling", List.of(envelope(item)));
+        service.enqueue("polling", List.of(envelope("msg-1", "worker-1")));
 
         assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
-                .map(TransportDeliveryService::toDispatchView)
-                .map(TaskDispatchItem::getMessageId)
+                .map(envelope -> envelope.getPacket().messageId())
                 .toList());
     }
 
     @Test
     void pollUsesCanonicalAdapterAndRouteKeys() {
         TransportDeliveryService service = service();
-        TaskDispatchItem item = item("msg-1", " worker-1 ");
-        service.enqueue("polling", List.of(envelope("delivery-msg-1", " Polling ", " group-route-1 ", item)));
+        service.enqueue("polling", List.of(envelope("delivery-msg-1", " Polling ", " group-route-1 ", "msg-1", " worker-1 ")));
 
         assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
-                .map(TransportDeliveryService::toDispatchView)
-                .map(TaskDispatchItem::getMessageId)
+                .map(envelope -> envelope.getPacket().messageId())
                 .toList());
     }
 
     @Test
     void selectedWorkerPollDoesNotDrainAnotherWorkerSharingRouteKey() {
         TransportDeliveryService service = service();
-        TaskDispatchItem item = item("msg-1", "worker-2");
-        service.enqueue("polling", List.of(envelope("delivery-msg-1", "polling", "group-route-1", item)));
+        service.enqueue("polling", List.of(envelope("delivery-msg-1", "polling", "group-route-1", "msg-1", "worker-2")));
 
         assertTrue(service.pollEnvelopes("polling", "worker-1", 10, 0).isEmpty());
         assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-2", 10, 0).stream()
-                .map(TransportDeliveryService::toDispatchView)
-                .map(TaskDispatchItem::getMessageId)
+                .map(envelope -> envelope.getPacket().messageId())
                 .toList());
     }
 
@@ -169,18 +162,9 @@ class TransportDeliveryServiceTest {
     }
 
     @Test
-    void toDispatchItemsCachesProjectedItemsPerEnvelopeIndex() {
-        TaskDispatchItem item = item("msg-1", "worker-1");
-        List<TaskDispatchItem> projected = TransportDeliveryService.toDispatchViews(List.of(envelope(item)));
-
-        assertSame(projected.get(0), projected.get(0));
-        assertEquals("msg-1", projected.get(0).getMessageId());
-    }
-
-    @Test
     void statsExposeDeliveryStoreSnapshot() {
         TransportDeliveryService service = new TransportDeliveryService(new InMemoryTransportDeliveryStore(10));
-        service.enqueue("polling", List.of(envelope(item("msg-1", "worker-1"))));
+        service.enqueue("polling", List.of(envelope("msg-1", "worker-1")));
 
         TransportDeliveryServiceStats stats = service.stats();
 
@@ -200,7 +184,7 @@ class TransportDeliveryServiceTest {
 
         List<DispatchOutcome> outcomes = service.sendDirect(
                 "websocket",
-                List.of(envelope(item("msg-1", "worker-1"))),
+                List.of(envelope("msg-1", "worker-1")),
                 envelope -> true,
                 "unavailable"
         );
@@ -218,7 +202,7 @@ class TransportDeliveryServiceTest {
     void queuedDeliveryDoesNotPopulateDirectCounters() {
         TransportDeliveryService service = service();
 
-        List<DispatchOutcome> outcomes = service.enqueue("polling", List.of(envelope(item("msg-1", "worker-1"))));
+        List<DispatchOutcome> outcomes = service.enqueue("polling", List.of(envelope("msg-1", "worker-1")));
 
         TransportDeliveryServiceStats stats = service.stats();
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED), statuses(outcomes));
@@ -235,14 +219,14 @@ class TransportDeliveryServiceTest {
     @Test
     void shutdownStopsQueuedDelivery() {
         TransportDeliveryService service = service();
-        service.enqueue("polling", List.of(envelope(item("msg-1", "worker-1"))));
+        service.enqueue("polling", List.of(envelope("msg-1", "worker-1")));
 
         service.shutdown();
 
         assertEquals(0, service.stats().getQueuedItems());
         assertTrue(service.pollEnvelopes("polling", "worker-1", 10, 0).isEmpty());
         assertEquals(DispatchOutcomeStatus.UNAVAILABLE,
-                service.enqueue("polling", List.of(envelope(item("msg-2", "worker-1")))).get(0).getStatus());
+                service.enqueue("polling", List.of(envelope("msg-2", "worker-1"))).get(0).getStatus());
     }
 
     private TransportDeliveryService service() {
@@ -253,40 +237,41 @@ class TransportDeliveryServiceTest {
         return outcomes.stream().map(DispatchOutcome::getStatus).toList();
     }
 
-    private TaskDispatchItem item(String messageId, String workerId) {
-        return new TaskDispatchItem(
-                "task-1",
-                messageId,
-                "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "attempt-" + messageId,
-                workerId,
-                "batch-1",
-                Map.of("target", "target-1"),
-                Map.of()
-        );
+    private TransportDispatchEnvelope envelope(String messageId, String workerId) {
+        return envelope("delivery-" + messageId, "polling", "group-route-1", messageId, workerId);
     }
 
-    private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
-        return envelope("delivery-" + item.getMessageId(), "polling", "group-route-1", item);
-    }
-
-    private TransportDispatchEnvelope invalidEnvelope(TaskDispatchItem item) {
-        return envelope("delivery-" + item.getMessageId(), "polling", " ", item);
+    private TransportDispatchEnvelope invalidEnvelope(String messageId, String workerId) {
+        return envelope("delivery-" + messageId, "polling", " ", messageId, workerId);
     }
 
     private TransportDispatchEnvelope envelope(String deliveryId,
                                               String adapterId,
                                               String routeKey,
-                                              TaskDispatchItem item) {
+                                              String messageId,
+                                              String workerId) {
         return new TransportDispatchEnvelope(
                 deliveryId,
-                item.getWorkerId(),
-                new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchView(adapterId, routeKey, item.attemptId(), item),
+                workerId,
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        deliveryId,
+                        "trace-" + messageId,
+                        PacketType.TASK_DISPATCH,
+                        adapterId,
+                        routeKey,
+                        "task-1",
+                        messageId,
+                        "attempt-" + messageId,
+                        "crawler.fetch-page",
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        Map.of(
+                                TransportPacket.PAYLOAD_WORKER_ID, workerId == null ? "" : workerId,
+                                TransportPacket.PAYLOAD_BATCH_ID, "batch-1",
+                                TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
+                                TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
+                        )
+                ),
                 1L
         );
     }

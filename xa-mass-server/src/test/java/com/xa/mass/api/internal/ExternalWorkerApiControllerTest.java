@@ -20,7 +20,7 @@ import com.xa.mass.sdk.model.WorkerStateProjectionSnapshot;
 import com.xa.mass.sdk.model.WorkerStateReportRequest;
 import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -482,19 +482,16 @@ class ExternalWorkerApiControllerTest {
     @Test
     void pollTasksReturnsTransportNeutralItems() throws Exception {
         when(workerClient.pollTasks("node-worker-1", 2, 250L)).thenReturn(List.of(
-                new TaskDispatchItem(
+                new PulledTaskDispatch(
                         "task-1",
                         "msg-1",
                         "crawler.fetch-page",
-                        "fetch-page",
-                        "crawlerApp",
-                        "user-1",
-                        0,
-                        "node-worker-1",
-                        "ctx-node-1",
-                        null,
                         Map.of("url", "https://example.test"),
-                        Map.of("timeoutMs", 1000)
+                        Map.of("timeoutMs", 1000),
+                        "attempt-1",
+                        1,
+                        0,
+                        "batch-1"
                 )
         ));
 

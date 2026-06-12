@@ -1,11 +1,11 @@
 package com.xa.mass.sdk.worker;
 
+import com.xa.mass.transport.channel.PulledTaskDispatch;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskPullStatus;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import org.junit.jupiter.api.Test;
@@ -35,11 +35,11 @@ class PullWorkerSessionTest {
 
         assertEquals(TaskPullStatus.DELIVERED, result.getStatus());
         assertEquals(routeKey(), session.routeKey());
-        assertEquals(List.of("msg-1"), result.getDispatchViews().stream().map(TaskDispatchItem::getMessageId).toList());
+        assertEquals(List.of("msg-1"), result.getItems().stream().map(PulledTaskDispatch::getMessageId).toList());
     }
 
     @Test
-    void pollKeepsLegacyListViewOnTopOfExplicitPullResult() {
+    void pollReturnsPulledTaskItemsFromExplicitPullResult() {
         TaskPullChannel taskPullChannel = mock(TaskPullChannel.class);
         when(taskPullChannel.pollTaskMessagesResult("worker-1", 3, 100L))
                 .thenReturn(TaskPullResult.delivered(List.of(item("msg-1"), item("msg-2"))));
@@ -47,40 +47,36 @@ class PullWorkerSessionTest {
         PullWorkerSession session = session(taskPullChannel, mock(TaskResultIngestChannel.class),
                 new InMemoryTransportRouteOwnerStore());
 
-        List<TaskDispatchItem> items = session.poll(3, 100L);
+        List<PulledTaskDispatch> items = session.poll(3, 100L);
 
-        assertEquals(List.of("msg-1", "msg-2"), items.stream().map(TaskDispatchItem::getMessageId).toList());
+        assertEquals(List.of("msg-1", "msg-2"), items.stream().map(PulledTaskDispatch::getMessageId).toList());
     }
 
     @Test
-    void submitResultUsesDispatchRouteKeyInsteadOfAssumingWorkerId() {
+    void submitResultUsesSessionRouteKeyAndPulledAttemptContext() {
         TaskResultIngestChannel resultIngestChannel = mock(TaskResultIngestChannel.class);
         when(resultIngestChannel.ingest(any(TransportResultEnvelope.class))).thenReturn(true);
 
         PullWorkerSession session = session(mock(TaskPullChannel.class), resultIngestChannel,
                 new InMemoryTransportRouteOwnerStore());
 
-        TaskDispatchItem dispatchItem = new TaskDispatchItem(
+        PulledTaskDispatch item = new PulledTaskDispatch(
                 "task-1",
                 "msg-1",
                 "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "attempt-1",
-                "route-9",
-                "worker-1",
-                "batch-1",
                 Map.of("target", "target-1"),
-                Map.of()
+                Map.of(),
+                "attempt-1",
+                1,
+                0,
+                "batch-1"
         );
 
-        session.submitResult(dispatchItem, true, "ok");
+        session.submitResult(item, true, "ok");
 
         var captured = org.mockito.ArgumentCaptor.forClass(TransportResultEnvelope.class);
         verify(resultIngestChannel).ingest(captured.capture());
-        assertEquals("route-9", captured.getValue().getRouteKey());
+        assertEquals(routeKey(), captured.getValue().getRouteKey());
         assertEquals("attempt-1", captured.getValue().getAttemptId());
     }
 
@@ -147,20 +143,17 @@ class PullWorkerSessionTest {
         return CanonicalWorkerGroupRouteKeyCodec.encode("group-1");
     }
 
-    private static TaskDispatchItem item(String messageId) {
-        return new TaskDispatchItem(
+    private static PulledTaskDispatch item(String messageId) {
+        return new PulledTaskDispatch(
                 "task-1",
                 messageId,
                 "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "attempt-" + messageId,
-                "worker-1",
-                "batch-1",
                 Map.of("target", "target-1"),
-                Map.of()
+                Map.of(),
+                "attempt-" + messageId,
+                1,
+                0,
+                "batch-1"
         );
     }
 }

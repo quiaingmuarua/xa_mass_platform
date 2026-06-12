@@ -2,10 +2,9 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -26,8 +25,8 @@ class InMemoryTransportDeliveryStoreTest {
     @Test
     void selectedWorkerSelectorSeparatesWorkersSharingRouteAndDeliveryQueue() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
-        TaskDispatchItem firstWorkerItem = item("msg-1", "worker-1");
-        TaskDispatchItem secondWorkerItem = item("msg-2", "worker-2");
+        DispatchFixture firstWorkerItem = item("msg-1", "worker-1");
+        DispatchFixture secondWorkerItem = item("msg-2", "worker-2");
 
         DispatchOutcome firstOutcome = store.enqueue("polling", envelope("polling", firstWorkerItem));
         DispatchOutcome secondOutcome = store.enqueue("polling", envelope("polling", secondWorkerItem));
@@ -194,7 +193,7 @@ class InMemoryTransportDeliveryStoreTest {
     @Test
     void pollWaitsUntilDeliveryArrives() throws Exception {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
-        TaskDispatchItem item = item("msg-1", "worker-1");
+        DispatchFixture item = item("msg-1", "worker-1");
 
         CompletableFuture<List<TransportDispatchEnvelope>> polled = CompletableFuture.supplyAsync(() -> {
             try {
@@ -357,47 +356,58 @@ class InMemoryTransportDeliveryStoreTest {
         assertQueueBreakdownConsistent(remaining);
     }
 
-    private TaskDispatchItem item(String messageId, String workerId) {
-        return new TaskDispatchItem(
-                "task-1",
-                messageId,
-                "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "attempt-" + messageId,
-                workerId,
-                "batch-1",
-                Map.of("target", "target-1"),
-                Map.of()
-        );
+    private DispatchFixture item(String messageId, String workerId) {
+        return new DispatchFixture(messageId, workerId);
     }
 
-    private TransportDispatchEnvelope envelope(String adapterId, TaskDispatchItem item) {
+    private TransportDispatchEnvelope envelope(String adapterId, DispatchFixture item) {
         return envelope(adapterId, item, 1L);
     }
 
-    private TransportDispatchEnvelope envelope(String adapterId, TaskDispatchItem item, long createdAtEpochMillis) {
-        String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
+    private TransportDispatchEnvelope envelope(String adapterId, DispatchFixture item, long createdAtEpochMillis) {
+        String deliveryId = "delivery-" + adapterId + "-" + item.messageId();
         return new TransportDispatchEnvelope(
                 deliveryId,
-                item.getWorkerId(),
-                new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchView(adapterId, "group-route-1", item.attemptId(), item),
+                item.workerId(),
+                packet(deliveryId, adapterId, "group-route-1", item),
                 createdAtEpochMillis
         );
     }
 
-    private TransportDispatchEnvelope invalidEnvelope(String adapterId, TaskDispatchItem item) {
-        String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
+    private TransportDispatchEnvelope invalidEnvelope(String adapterId, DispatchFixture item) {
+        String deliveryId = "delivery-" + adapterId + "-" + item.messageId();
         return new TransportDispatchEnvelope(
                 deliveryId,
-                item.getWorkerId(),
-                new TransportPacketFactory(() -> deliveryId)
-                        .fromDispatchView(adapterId, " ", item.attemptId(), item),
+                item.workerId(),
+                packet(deliveryId, adapterId, " ", item),
                 1L
         );
+    }
+
+    private TransportPacket packet(String deliveryId, String adapterId, String routeKey, DispatchFixture item) {
+        return new TransportPacket(
+                TransportPacket.CURRENT_VERSION,
+                deliveryId,
+                "trace-" + item.messageId(),
+                PacketType.TASK_DISPATCH,
+                adapterId,
+                routeKey,
+                "task-1",
+                item.messageId(),
+                attemptId(item),
+                "crawler.fetch-page",
+                TransportPacket.JSON_CONTENT_TYPE,
+                Map.of(
+                        TransportPacket.PAYLOAD_WORKER_ID, item.workerId() == null ? "" : item.workerId(),
+                        TransportPacket.PAYLOAD_BATCH_ID, "batch-1",
+                        TransportPacket.PAYLOAD_INPUT, Map.of("target", "target-1"),
+                        TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of()
+                )
+        );
+    }
+
+    private String attemptId(DispatchFixture item) {
+        return "attempt-" + item.messageId();
     }
 
     private CompletableFuture<List<TransportDispatchEnvelope>> pollAsync(InMemoryTransportDeliveryStore store, String workerId) {
@@ -446,5 +456,8 @@ class InMemoryTransportDeliveryStoreTest {
     @FunctionalInterface
     private interface BooleanSupplier {
         boolean getAsBoolean();
+    }
+
+    private record DispatchFixture(String messageId, String workerId) {
     }
 }

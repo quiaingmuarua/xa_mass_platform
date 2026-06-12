@@ -134,11 +134,13 @@ session/connect/heartbeat ingress, but shared route-owner evidence belongs to
 transport runtime as delivery feasibility, not SDK worker inspection or worker
 lifecycle truth. `routeKey` locates the transport delivery universe, such as a
 worker-group lane or a future adapter/group lane minted outside transport.
-Individual dispatch items carry the engine-selected `workerId` as
-`selectedWorkerId`; transport-owned delivery submitters partition the already
-assigned item to that worker's current route consumer node. Worker runtime
-capacity, lifecycle, and multi-binding behavior remain owned by worker-runtime
-scheduling/admission, not by transport route ownership.
+Delivery commands carry the engine-selected worker as `selectedWorkerId`;
+polling worker responses expose `PulledTaskDispatch` without worker or route
+metadata because worker identity comes from the session/path context.
+Transport-owned delivery submitters partition the already assigned item to that
+worker's current route consumer node. Worker runtime capacity, lifecycle, and
+multi-binding behavior remain owned by worker-runtime scheduling/admission, not
+by transport route ownership.
 
 Task result reads are exposed through `TaskResultQueryOperations`, separate
 from task aggregate query. `readTaskResults(...)` and archive streaming read
