@@ -270,29 +270,33 @@ transport reachability or worker-originated status strings.
 
 Hard predecessor:
 
-- BCA-0 must inventory candidate acquisition callers.
+- BCA-0 must inventory candidate acquisition callers. Landed for scheduling
+  candidate acquisition; node-group maintenance remains BCA-3 follow-up.
 - BCA-1 must decide whether candidate acquisition sees complete candidate sets
-  or bounded subsets.
+  or bounded subsets. Landed for scheduling candidate acquisition as bounded
+  source batches.
 
-Only after that decision may CES select a Redis physical shape inside the Redis
-adapter. Candidate implementation strategies to measure:
+CES may now select a Redis physical shape inside the Redis adapter, but only
+after CES-3 records the performance model. Candidate implementation strategies
+to measure:
 
 1. Adapter-internal deadline ZSET:
    - member: `workerId`
    - score: heartbeat deadline millis
-   - read semantics must come from BCA-1; a likely shape is bounded
-     `ZRANGEBYSCORE` / `ZRANGE BYSCORE` for members with score greater than
-     `now`
+   - read semantics must honor BCA-1 bounded source-batch acquisition; a likely
+     shape is bounded `ZRANGEBYSCORE` / `ZRANGE BYSCORE` for members with score
+     greater than `now`
 
 2. Adapter-internal membership SET plus deadline ZSET:
-   - read semantics must come from BCA-1; a likely shape is bounded random
-     sampling from the SET, followed by deadline filtering and source guard
+   - read semantics must honor BCA-1 bounded source-batch acquisition; a likely
+     shape is bounded random sampling from the SET, followed by deadline
+     filtering and source guard
    - cleanup uses the ZSET to prune expired SET members
 
 ZSET writes are `O(log N)` and can be more expensive than plain `SADD`, so this
 must be measured under heartbeat refresh load. A bounded ZSET read may still be
-better than full-bucket `SMEMBERS`, but the roadmap must not assume that before
-CES-3 records evidence.
+better than the current bounded source-bucket baseline, but the roadmap must not
+assume that before CES-3 records evidence.
 
 The selected Redis shape must preserve these rules:
 
@@ -339,8 +343,8 @@ made, worker runtime may:
 
 - query the group-scoped slot lifecycle eligible source and filter metadata in
   bounded batches,
-- continue using existing candidate bucket keys as a current implementation
-  detail after BCA-1 allows the read semantics,
+- continue using existing candidate bucket keys as a bounded source-level
+  implementation detail under BCA-1 semantics,
 - add policy-owned bucket declarations only after caller, cost, storage owner,
   and runtime consumer are named.
 
@@ -397,9 +401,10 @@ prove the current engine / worker-runtime mainline does not depend on Redis
 keyspace classes, key-family literals, or Redis payload shapes. SDK/server/
 transport/frontend surface cleanup is follow-up unless directly touched.
 
-Do not start by optimizing the existing `SMEMBERS` bucket read or adding more
-attribute buckets. First define the slot lifecycle eligibility predicate and
-BCA candidate acquisition semantics.
+Do not treat the bounded candidate bucket read as the slot lifecycle
+eligibility implementation. BCA only bounded source membership acquisition;
+CES still needs the lifecycle predicate, performance model, and deadline-aware
+projection decision before changing Redis lifecycle keys.
 
 Do not add a plain `available` set without deadline semantics. It will either
 return stale workers until cleanup catches up, or push correctness back into
@@ -513,8 +518,8 @@ Scope:
   production mainline.
 - Define the relation to BCA: CES owns the lifecycle predicate and validator;
   BCA owns complete-set versus bounded-subset semantics, sampling order, paging,
-  read budget, and whether the existing `acquireCandidates(...)` API is
-  retargeted.
+  and read budget. Current BCA-1 retargeted
+  `WorkerRegistry#acquireCandidates(...)` to a bounded source-batch contract.
 - Define worker-runtime `dispatchEligible` as a composition layer that may still
   read `WorkerReachabilityView`.
 - Add or refine group-scoped hot-path methods where needed.
@@ -547,9 +552,9 @@ Acceptance:
 - Contract names the slot-lifecycle source/validator and states how
   `WorkerCandidateRuntime` is replaced, narrowed, or backed by it. A source that
   is not consumed by the production candidate runtime does not satisfy CES-1.
-- Contract states that `WorkerRegistry#acquireCandidates(...)` keeps its current
-  source-membership semantics until BCA-1 selects a retarget, unless BCA-1 is
-  updated in the same change.
+- Contract states that `WorkerRegistry#acquireCandidates(...)` is a bounded
+  source-membership acquisition contract after BCA-1. Slot lifecycle validation
+  still happens through the CES predicate before Stage-2 matching/reserve.
 - Contract does not require Redis/registry to own reachability.
 - Contract says whether exclusive lease is included in slot lifecycle
   eligibility or checked after candidate acquisition.
@@ -572,7 +577,7 @@ Current slice status: mainline validator landed. The implementation uses the
 shared registry predicate `slotLifecycleStatus(groupId, workerId, now)` in the
 production `WorkerCandidateIndex` source guard rather than introducing a
 separate proof-only projection. A physical eligible-worker source/projection is
-still a later Redis/BCA-dependent phase.
+still a later Redis/CES-3-dependent phase.
 
 Goal:
 
@@ -585,9 +590,10 @@ Scope:
   in the memory registry or worker-runtime owner. A proof-only projection that
   is not consumed by the production candidate path is not sufficient.
 - Implement or exercise the named slot-lifecycle source/validator from CES-1.
-  If BCA-1 has not selected a Redis candidate-acquisition retarget, keep Redis
-  reads unchanged, but the memory proof must still be consumed through
-  `WorkerCandidateRuntime` or its selected successor.
+  Redis candidate acquisition may already use the BCA-1 bounded source-batch
+  contract, but CES-2 is satisfied only when the memory/mainline slot lifecycle
+  validator is consumed through `WorkerCandidateRuntime` or its selected
+  successor.
 - Update tests for heartbeat freshness, dispatch disabled, removing slot, and
   target-worker behavior.
 - Add a target-worker proof that the fixed-worker path calls the same
@@ -602,8 +608,9 @@ Acceptance:
   dispatch is disabled, or the slot is removing.
 - A worker does not leave the slot lifecycle eligible source only because
   capacity is full; reserve rejects capacity-full workers.
-- `WorkerRegistry#acquireCandidates(...)` still means current candidate
-  source-membership acquisition unless BCA-1 has selected its retarget.
+- `WorkerRegistry#acquireCandidates(...)` remains source-membership acquisition
+  under BCA-1 bounded source-batch semantics; it is not the slot lifecycle
+  eligibility predicate by itself.
 - CES-2 is not complete unless the memory slot-lifecycle source/validator is
   consumed by `WorkerCandidateRuntime` or its selected successor in the matching
   path.
@@ -617,23 +624,26 @@ Acceptance:
 
 Goal:
 
-Prevent CES from making Redis read-shape decisions before candidate acquisition
-semantics are defined, without blocking the memory/mainline lifecycle mechanism.
+Record the candidate acquisition contract that Redis lifecycle work must build
+on, without confusing bounded source membership with slot lifecycle
+eligibility.
 
 Scope:
 
-- Complete BCA-0 and BCA-1, or update BCA in the same change with an explicit
-  supersession/merge decision.
-- Decide whether acquisition sees complete sets, bounded subsets, paged reads,
-  random samples, or ordered deadline reads.
-- State which interface name owns the production mainline after the decision.
-  Reusing an old method name with changed semantics is allowed only when the
-  contract and all in-repo callers are updated in the same slice.
+- Use the landed BCA-0/BCA-1 decision: scheduling candidate acquisition sees an
+  implementation-provided bounded source batch.
+- Treat random sampling, ordered deadline reads, and cleanup thresholds as Redis
+  implementation choices that must still satisfy the bounded source-batch
+  contract.
+- Keep BCA-3 node-group maintenance pagination separate from scheduling
+  candidate acquisition unless a later slice touches adapter-node group gate
+  mutation.
 
 Acceptance:
 
-- Redis read-shape replacement slices cite the BCA-1 outcome.
-- No Redis candidate read replacement lands before this gate.
+- Redis slot lifecycle read-shape replacement slices cite the BCA-1 bounded
+  source-batch outcome.
+- No Redis slot lifecycle projection lands without CES-3 performance evidence.
 
 ## CES-3: Mainline Performance Model And Redis Shape Evidence
 
@@ -660,8 +670,8 @@ Scope:
   - bounded slot lifecycle eligible read cost at small, medium, and large group
     sizes,
   - stale/expired member cleanup cost.
-- Compare ZSET-only and SET plus deadline ZSET against the current full bucket
-  `SMEMBERS` path under the selected BCA-1 semantics.
+- Compare ZSET-only and SET plus deadline ZSET against the current bounded
+  source-bucket `SRANDMEMBER` baseline under BCA-1 semantics.
 - Decide whether deadline updates need coalescing, such as only writing when
   the deadline bucket changes.
 
@@ -789,7 +799,9 @@ calls the registry slot lifecycle predicate before matching/ranking, and engine
 admission calls are group-scoped. The hot-path candidate row has been slimmed
 and guarded. Reachability is still read separately through the current
 worker-runtime view, the dispatch-gate read remains duplicate evidence for now,
-and Redis candidate read shape remains unchanged until BCA/CES-3.
+and Redis lifecycle projection remains pending until CES-3/CES-4. Redis
+candidate acquisition is already bounded by BCA-1 but still reads source
+membership, not a deadline-aware lifecycle projection.
 
 Goal:
 
