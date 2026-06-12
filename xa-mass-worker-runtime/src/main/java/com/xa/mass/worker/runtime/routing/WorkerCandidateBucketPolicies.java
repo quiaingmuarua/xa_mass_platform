@@ -16,6 +16,8 @@ import java.util.Set;
  */
 public final class WorkerCandidateBucketPolicies {
 
+    private static final int MAX_APPROVED_ATTRIBUTE_KEYS = 8;
+
     public static final String DEFAULT_CANDIDATE_BUCKET_KEY = WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY;
 
     public static final List<String> STANDARD_APPROVED_ROUTE_ATTRIBUTES =
@@ -70,6 +72,11 @@ public final class WorkerCandidateBucketPolicies {
             return routeAttributes.isEmpty()
                     ? WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY
                     : bucketKey(routeAttributes);
+        }
+
+        @Override
+        public int maxBucketFanout() {
+            return maxBucketFanout(approvedAttributeKeys.size());
         }
 
         private Map<String, String> approvedAttributes(Map<String, String> attributes) {
@@ -132,7 +139,17 @@ public final class WorkerCandidateBucketPolicies {
                     normalized.add(key.trim());
                 }
             }
+            if (normalized.size() > MAX_APPROVED_ATTRIBUTE_KEYS) {
+                throw new IllegalArgumentException("approvedAttributeKeys fan-out is too high: " + normalized.size());
+            }
             return List.copyOf(normalized);
+        }
+
+        private static int maxBucketFanout(int approvedAttributeCount) {
+            if (approvedAttributeCount <= 0) {
+                return 1;
+            }
+            return 1 << approvedAttributeCount;
         }
 
         private static String escape(String value) {

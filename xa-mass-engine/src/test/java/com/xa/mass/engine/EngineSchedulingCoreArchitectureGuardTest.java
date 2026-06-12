@@ -1727,15 +1727,63 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("\\.smembers\\s*\\(\\s*bucketKey\\s*\\)").matcher(source).find()) {
             violations.add(registryPath + "#acquireCandidates materializes the full candidate bucket");
         }
-        if (!Pattern.compile("\\.srandmember\\s*\\(\\s*bucketKey\\s*,\\s*maxCandidateCount\\s*\\)")
+        if (!Pattern.compile("\\.srandmember\\s*\\(\\s*bucketKey\\s*,\\s*sourceLimit\\s*\\)")
                 .matcher(source)
                 .find()) {
-            violations.add(registryPath + "#acquireCandidates does not use bounded Redis sampling");
+            violations.add(registryPath + "#acquireCandidates support path does not use bounded Redis sampling");
+        }
+        if (!Pattern.compile("\\.zrangebyscore\\s*\\(\\s*keyspace\\.candidateBucketLifecycleDeadlinesZset\\s*\\(\\s*bucketKey\\s*\\)",
+                Pattern.DOTALL).matcher(source).find()) {
+            violations.add(registryPath + "#acquireCandidates scheduling path does not use deadline lifecycle projection");
         }
 
         assertTrue(violations.isEmpty(),
                 "Redis candidate acquisition must honor BCA bounded-source semantics. "
-                        + "Do not reintroduce full-bucket SMEMBERS in the scheduling path:\n"
+                        + "Do not reintroduce full-bucket SMEMBERS in the scheduling path, "
+                        + "and keep deadline lifecycle acquisition on the derived projection:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerCandidateIndexPassesSchedulingClockToCandidateAcquisition() throws IOException {
+        Path indexPath = repositoryRoot().resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateIndex.java");
+        String source = Files.readString(indexPath, StandardCharsets.UTF_8);
+
+        assertTrue(Pattern.compile(
+                        "workerRegistry\\.acquireCandidates\\s*\\([^;]*maxCandidateCount\\s*,\\s*nowMillis\\s*\\)",
+                        Pattern.DOTALL)
+                .matcher(source)
+                .find(),
+                "WorkerCandidateIndex must pass the scheduling clock into WorkerRegistry#acquireCandidates "
+                        + "so Redis deadline-aware slot lifecycle projection and the source guard share "
+                        + "the same nowMillis evidence.");
+    }
+
+    @Test
+    void engineStageTwoDoesNotRereadDispatchGateAsCandidatePredicate() throws IOException {
+        Path enumeratorPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java");
+        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
+        String enumeratorSource = Files.readString(enumeratorPath, StandardCharsets.UTF_8);
+        String strategySource = Files.readString(strategyPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\.isWorkerDispatchEnabled\\s*\\(").matcher(enumeratorSource).find()) {
+            violations.add(enumeratorPath + " rereads dispatch gate for every candidate");
+        }
+        if (Pattern.compile("\\.dispatchEnabled\\s*\\(\\s*\\)").matcher(strategySource).find()) {
+            violations.add(strategyPath + " uses dispatchEnabled as a stage-two matching predicate");
+        }
+        if (strategySource.contains("DISPATCH_GATE")) {
+            violations.add(strategyPath + " reintroduces a dispatch-gate rejection owner in stage two");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Dispatch gate belongs to stage-1 slot lifecycle acquisition/source guard and reserve "
+                        + "revalidation. Stage two may keep diagnostic snapshots, but must not reread "
+                        + "dispatch gate or reject candidates through a second predicate:\n"
                         + String.join("\n", violations));
     }
 
@@ -2833,6 +2881,46 @@ class EngineSchedulingCoreArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "WorkerRegistry implementations must consume runtime-api candidate-bucket policy, "
                         + "not engine worker policy:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerRegistryImplementationsDoNotOwnAttributeBucketDimensions() throws IOException {
+        Path repo = repositoryRoot();
+        List<Path> roots = List.of(
+                repo.resolve("platform_infra/mass-runtime-memory/src/main/java"),
+                repo.resolve("platform_infra/mass-runtime-redis/src/main/java")
+        );
+        Path policyPath = repo.resolve(
+                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerCandidateBucketPolicy.java");
+        String policySource = Files.readString(policyPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (!policySource.contains("maxBucketFanout()")) {
+            violations.add(policyPath + " does not expose candidate bucket fan-out cost");
+        }
+        for (Path root : roots) {
+            for (Path path : javaSourceFiles(root)) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (!source.contains("WorkerRegistry")) {
+                    continue;
+                }
+                if (Pattern.compile("\\.attributes\\s*\\(\\s*\\)\\s*\\.\\s*(?:get|containsKey)\\s*\\(")
+                        .matcher(source)
+                        .find()) {
+                    violations.add(path + " interprets worker attributes instead of consuming WorkerCandidateBucketPolicy");
+                }
+                for (String literal : List.of("\"attr:", "\"business\"", "\"tenant\"", "\"region\"", "\"pool\"")) {
+                    if (source.contains(literal)) {
+                        violations.add(path + " hardcodes candidate attribute bucket dimension " + literal);
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerRegistry implementations may execute source-bucket policy, but must not own "
+                        + "attribute index dimensions or hide their write fan-out cost:\n"
                         + String.join("\n", violations));
     }
 

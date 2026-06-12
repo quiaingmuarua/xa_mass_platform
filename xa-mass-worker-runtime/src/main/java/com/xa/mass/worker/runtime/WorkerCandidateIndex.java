@@ -64,7 +64,9 @@ public final class WorkerCandidateIndex {
 
         String targetWorkerId = selector.targetWorkerId();
         if (targetWorkerId != null && !targetWorkerId.isBlank()) {
-            return workerForWorkerId(selector, groupIds, targetWorkerId).map(List::of).orElseGet(List::of);
+            return workerForWorkerId(selector, groupIds, targetWorkerId, nowMillisSupplier.getAsLong())
+                    .map(List::of)
+                    .orElseGet(List::of);
         }
 
         return workersForGroups(selector, groupIds, maxCandidateCount);
@@ -76,19 +78,21 @@ public final class WorkerCandidateIndex {
         }
         String adapterNodeId = selector == null ? null : selector.adapterNodeId();
         List<Worker> workers = new ArrayList<>();
+        long nowMillis = nowMillisSupplier.getAsLong();
         for (CandidateSourceBucket sourceBucket : candidateSourceBuckets(selector, groupIds)) {
             int remaining = remaining(maxCandidateCount, workers.size());
             if (remaining <= 0) {
                 break;
             }
             int sourceBudget = sourceBudget(remaining, sourceBucket.remainingSourceCount());
-            for (CandidateSource source : acquireWorkerIds(sourceBucket, adapterNodeId, sourceBudget)) {
+            for (CandidateSource source : acquireWorkerIds(sourceBucket, adapterNodeId, sourceBudget, nowMillis)) {
                 SourceGuardResult guardResult = sourceGuard(
                         selector,
                         sourceBucket.groupId(),
                         adapterNodeId,
                         source.candidateBucketKey(),
-                        source.workerId()
+                        source.workerId(),
+                        nowMillis
                 );
                 if (!guardResult.accepted()) {
                     continue;
@@ -99,7 +103,10 @@ public final class WorkerCandidateIndex {
         return List.copyOf(workers);
     }
 
-    private Optional<Worker> workerForWorkerId(WorkerTaskSelector selector, List<String> selectedGroupIds, String workerId) {
+    private Optional<Worker> workerForWorkerId(WorkerTaskSelector selector,
+                                               List<String> selectedGroupIds,
+                                               String workerId,
+                                               long nowMillis) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null || selectedGroupIds == null || selectedGroupIds.isEmpty()) {
             return Optional.empty();
@@ -117,7 +124,8 @@ public final class WorkerCandidateIndex {
                         normalizedGroupId,
                         adapterNodeId,
                         candidateBucketKey,
-                        normalizedWorkerId
+                        normalizedWorkerId,
+                        nowMillis
                 );
                 if (guardResult.accepted()) {
                     return guardResult.worker();
@@ -133,6 +141,22 @@ public final class WorkerCandidateIndex {
                                          String observedAdapterNodeId,
                                          String observedCandidateBucketKey,
                                          String workerId) {
+        return sourceGuard(
+                selector,
+                selectedGroupId,
+                observedAdapterNodeId,
+                observedCandidateBucketKey,
+                workerId,
+                nowMillisSupplier.getAsLong()
+        );
+    }
+
+    private SourceGuardResult sourceGuard(WorkerTaskSelector selector,
+                                          String selectedGroupId,
+                                          String observedAdapterNodeId,
+                                          String observedCandidateBucketKey,
+                                          String workerId,
+                                          long nowMillis) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.MISSING_WORKER);
@@ -164,7 +188,7 @@ public final class WorkerCandidateIndex {
         ReserveStatus lifecycleStatus = workerRegistry.slotLifecycleStatus(
                 normalizedGroupId,
                 normalizedWorkerId,
-                nowMillisSupplier.getAsLong()
+                nowMillis
         );
         if (lifecycleStatus != ReserveStatus.ACCEPTED) {
             return SourceGuardResult.rejected(sourceGuardRejection(lifecycleStatus));
@@ -178,7 +202,8 @@ public final class WorkerCandidateIndex {
 
     private List<CandidateSource> acquireWorkerIds(CandidateSourceBucket sourceBucket,
                                                    String adapterNodeId,
-                                                   int maxCandidateCount) {
+                                                   int maxCandidateCount,
+                                                   long nowMillis) {
         LinkedHashSet<CandidateSource> acquired = new LinkedHashSet<>();
         if (sourceBucket == null || maxCandidateCount <= 0) {
             return List.of();
@@ -187,7 +212,8 @@ public final class WorkerCandidateIndex {
                 sourceBucket.groupId(),
                 adapterNodeId,
                 sourceBucket.candidateBucketKey(),
-                maxCandidateCount
+                maxCandidateCount,
+                nowMillis
         )) {
             acquired.add(new CandidateSource(workerId, sourceBucket.candidateBucketKey()));
         }

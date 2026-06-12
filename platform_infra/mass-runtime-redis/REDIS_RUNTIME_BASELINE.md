@@ -15,10 +15,11 @@ Current implementation note:
 - delayed promotion and read-side visibility checks still use bounded command
   flows around the same keyspace truth
 - Redis-backed `WorkerRegistry` has a first-slice implementation using
-  group-partitioned slot hashes, group/node candidate buckets, heartbeat deadline
-  indexes, a group-local bucket membership hash, and `WATCH` / `MULTI` /
-  `EXEC` over the group-local slot hash. It is contract-tested but is not yet
-  the default engine/server runtime switch.
+  group-partitioned slot hashes, group/node candidate source buckets, per-bucket
+  lifecycle deadline indexes, group heartbeat deadline indexes, a group-local
+  bucket membership hash, and `WATCH` / `MULTI` / `EXEC` over the group-local
+  slot hash. It is contract-tested but is not yet the default engine/server
+  runtime switch.
 
 Use with:
 
@@ -298,15 +299,31 @@ Per-group heartbeat, slot, and candidate indexes:
     removable fields to reclaim
   - upper runtime callers should not depend on this physical aggregate; they
     should use `WorkerRegistry` semantic methods such as `workerMeta(workerId)`,
-    worker-id admission operations, and dispatch-gate operations
+    group-scoped scheduling admission operations when group evidence is present,
+    support-only worker-id lookup methods, and dispatch-gate operations
 - `...:group:{groupId}:bucket:{candidateBucketKey}:workers`
   - `SET`
   - member: `workerId`
-  - group-level candidate bucket
-  - current `acquireCandidates(...)` reads the full bucket before
-    `WorkerCandidateSamplingPolicy` because the policy contract currently sees
-    complete candidate sets; bounded acquisition is deferred to
-    `roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md`
+  - group-level candidate source bucket
+  - source membership for WorkerGroup / policy bucket narrowing; it is not
+    canonical slot lifecycle eligibility
+  - `candidateBucketKey` is produced by the injected runtime-api
+    `WorkerCandidateBucketPolicy`; Redis must not hardcode or interpret worker
+    attribute dimensions
+  - support acquisition uses bounded `SRANDMEMBER`; scheduling acquisition uses
+    the sibling lifecycle deadline zset below
+- `...:group:{groupId}:bucket:{candidateBucketKey}:workers:slot-lifecycle-deadlines`
+  - `ZSET`
+  - member: `workerId`
+  - score: heartbeat deadline millis
+  - derived scheduling index for group-level candidate acquisition
+  - maintained from canonical `WorkerSlot` truth on slot upsert/heartbeat
+    refresh, dispatch-gate mutation, removing-slot mutation, and bucket cleanup
+  - dispatch-disabled and removing workers are removed from this zset while
+    ordinary source bucket membership may remain available for metadata and
+    maintenance paths
+  - scheduling acquisition reads bounded future-deadline members and still
+    revalidates slot lifecycle and reserve before dispatch binding
 - `...:group:{groupId}:buckets`
   - `SET`
   - member: `candidateBucketKey`
@@ -318,6 +335,12 @@ Per-group heartbeat, slot, and candidate indexes:
   - also backs current complete-set node/group maintenance lookup; paged
     maintenance is deferred to
     `roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md`
+- `...:group:{groupId}:node:{adapterNodeId}:bucket:{candidateBucketKey}:workers:slot-lifecycle-deadlines`
+  - `ZSET`
+  - member: `workerId`
+  - score: heartbeat deadline millis
+  - node-scoped scheduling index with the same derived-truth rules as the
+    group-level lifecycle deadline zset
 - `...:group:{groupId}:node-buckets`
   - `SET`
   - member: encoded `adapterNodeId + candidateBucketKey`
@@ -354,8 +377,9 @@ First-slice constraints:
   finer-grained Lua mutation is the next optimization if same-group contention
   becomes material.
 - Candidate buckets may be briefly stale; stale candidates are rejected by
-  Stage-2 reservation and removed through bounded cleanup. Stale bucket cleanup
-  samples at most the remaining cleanup limit from each group bucket.
+  the scheduling acquisition deadline zset, source guard, or Stage-2
+  reservation and removed through bounded cleanup. Stale bucket cleanup samples
+  at most the remaining cleanup limit from each group bucket.
 - Heartbeat expiry cleanup is bounded at the per-group zset read. Group
   discovery still uses `...:groups`; sharding this index is deferred until group
   cardinality becomes a demonstrated deployment issue.

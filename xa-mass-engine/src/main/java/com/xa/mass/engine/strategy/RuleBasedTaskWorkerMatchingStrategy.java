@@ -47,7 +47,6 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             Integer.getInteger("xa.mass.engine.stageOneCandidateOversampleFactor", 4);
     private static final String REJECTION_OWNER_STAGE2_POLICY = "STAGE2_POLICY";
     private static final String REJECTION_OWNER_RESERVE = "RESERVE";
-    private static final String REJECTION_OWNER_DISPATCH_GATE = "DISPATCH_GATE";
 
     private final MatchingRuleSetProvider ruleSetProvider;
     private final MatchingRuleEvaluator<Map<String, Object>> ruleEvaluator;
@@ -424,10 +423,6 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 dispatchIntent,
                 taskSchedulingPolicy
         );
-        if (!schedulingView.dispatchEnabled()) {
-            return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
-                    "worker unavailable", contextSnapshot, false, REJECTION_OWNER_DISPATCH_GATE);
-        }
         if (reachability != WorkerReachabilityState.ONLINE) {
             return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
                     "worker transport unreachable", contextSnapshot, false, REJECTION_OWNER_STAGE2_POLICY);

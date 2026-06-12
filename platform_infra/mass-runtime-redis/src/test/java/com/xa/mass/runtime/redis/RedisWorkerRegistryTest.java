@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -312,6 +313,51 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 registry.acquireCandidates("group-a", "attr:region=us", 10));
     }
 
+    @Test
+    void schedulingCandidateProjectionKeepsSourceBucketAndLifecycleDeadlineSeparate() {
+        WorkerRegistry workerRegistry = createRegistry();
+        workerRegistry.upsertSlot(meta("worker-1", "group-a", 2_000), 1, Set.of(eventKey()));
+        String bucketKey = keyspace.groupCandidateBucket("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY);
+        String lifecycleDeadlineKey = keyspace.groupCandidateBucketLifecycleDeadlinesZset(
+                "group-a",
+                RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY
+        );
+
+        assertTrue(commands.sismember(bucketKey, "worker-1"));
+        assertEquals(List.of("worker-1"), commands.zrange(lifecycleDeadlineKey, 0, -1));
+        assertEquals(List.of("worker-1"),
+                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY, 10, 31_001));
+
+        assertTrue(workerRegistry.disableDispatch("group-a", "worker-1", DispatchAvailabilitySource.WORKER_STATE));
+
+        assertTrue(commands.sismember(bucketKey, "worker-1"));
+        assertNull(commands.zscore(lifecycleDeadlineKey, "worker-1"));
+        assertTrue(workerRegistry.acquireCandidates(
+                "group-a",
+                RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY,
+                10,
+                31_001
+        ).isEmpty());
+
+        assertTrue(workerRegistry.clearDispatchDisable("group-a", "worker-1", DispatchAvailabilitySource.WORKER_STATE));
+
+        assertEquals(List.of("worker-1"), commands.zrange(lifecycleDeadlineKey, 0, -1));
+        assertEquals(List.of("worker-1"),
+                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY, 10, 31_001));
+    }
+
+    @Test
+    void schedulingCandidateProjectionFiltersExpiredDeadlineBeforeCleanup() {
+        WorkerRegistry workerRegistry = createRegistry();
+        workerRegistry.upsertSlot(meta("worker-stale", "group-a", 1_000), 1, Set.of(eventKey()));
+        workerRegistry.upsertSlot(meta("worker-fresh", "group-a", 2_000), 1, Set.of(eventKey()));
+        String bucketKey = keyspace.groupCandidateBucket("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY);
+
+        assertEquals(Set.of("worker-stale", "worker-fresh"), commands.smembers(bucketKey));
+        assertEquals(List.of("worker-fresh"),
+                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY, 10, 31_001));
+    }
+
 
     @Test
     void staleHeartbeatCandidateIsRejectedThenCleanedFromCandidateBucket() {
@@ -369,14 +415,15 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
 
         CleanupSummary cleanup = workerRegistry.cleanupStaleBucketMembers("group-a", 10);
 
-        assertEquals(2, cleanup.scanned());
-        assertEquals(2, cleanup.removed());
+        assertEquals(1, cleanup.scanned());
+        assertEquals(1, cleanup.removed());
         assertTrue(workerRegistry.acquireCandidates(
                 "group-a",
                 RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY,
                 10
         ).isEmpty());
         assertTrue(workerRegistry.acquireCandidates("group-a", "attr:region=us", 10).isEmpty());
+        assertTrue(workerRegistry.acquireCandidates("group-a", "node-a", "attr:region=us", 10).isEmpty());
     }
 
     @Test
@@ -475,12 +522,20 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
     }
 
     private static WorkerCandidateBucketPolicy regionRoutePolicy() {
-        return meta -> {
-            String region = meta == null || meta.attributes() == null ? null : meta.attributes().get("region");
-            if (region == null || region.isBlank()) {
-                return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
+        return new WorkerCandidateBucketPolicy() {
+            @Override
+            public Set<String> candidateBucketKeysForWorkerMeta(WorkerMeta meta) {
+                String region = meta == null || meta.attributes() == null ? null : meta.attributes().get("region");
+                if (region == null || region.isBlank()) {
+                    return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
+                }
+                return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY, "attr:region=" + region.trim());
             }
-            return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY, "attr:region=" + region.trim());
+
+            @Override
+            public int maxBucketFanout() {
+                return 2;
+            }
         };
     }
 

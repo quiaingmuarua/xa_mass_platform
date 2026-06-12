@@ -48,6 +48,10 @@ public final class RedisWorkerRegistryKeyspace {
         return groupPrefix(groupId) + ":bucket:" + requireToken(candidateBucketKey, "candidateBucketKey") + ":workers";
     }
 
+    public String groupCandidateBucketLifecycleDeadlinesZset(String groupId, String candidateBucketKey) {
+        return candidateBucketLifecycleDeadlinesZset(groupCandidateBucket(groupId, candidateBucketKey));
+    }
+
     public String groupCandidateBucketsSet(String groupId) {
         return groupPrefix(groupId) + ":buckets";
     }
@@ -57,6 +61,14 @@ public final class RedisWorkerRegistryKeyspace {
                 + ":node:" + requireToken(adapterNodeId, "adapterNodeId")
                 + ":bucket:" + requireToken(candidateBucketKey, "candidateBucketKey")
                 + ":workers";
+    }
+
+    public String nodeCandidateBucketLifecycleDeadlinesZset(String groupId, String adapterNodeId, String candidateBucketKey) {
+        return candidateBucketLifecycleDeadlinesZset(nodeCandidateBucket(groupId, adapterNodeId, candidateBucketKey));
+    }
+
+    public String candidateBucketLifecycleDeadlinesZset(String candidateBucketStorageKey) {
+        return requireToken(candidateBucketStorageKey, "candidateBucketStorageKey") + ":slot-lifecycle-deadlines";
     }
 
     public String groupNodeCandidateBucketsSet(String groupId) {

@@ -39,8 +39,11 @@ selection.
   outside the current implementation
 - Redis and memory worker registries share the same runtime-api candidate-bucket
   default policy; workers with approved route attributes are indexed into both
-  `default` and attribute buckets. Candidate buckets derived from route
-  attributes are hints, not readiness, occupancy, or policy truth.
+  `default` and attribute buckets. The policy owns attribute dimensions and
+  declares max bucket fan-out; Redis executes that policy without interpreting
+  worker attribute names. Candidate buckets derived from route attributes are
+  source hints, not readiness, occupancy, lifecycle eligibility, or policy
+  truth.
 
 ## Guardrails
 

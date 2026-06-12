@@ -3,9 +3,10 @@
 Status: candidate acquisition slice complete, roadmap active. BCA-0/BCA-1
 landed for scheduling candidate acquisition: `WorkerCandidateSamplingPolicy`
 now receives an implementation-provided bounded source batch rather than a
-guaranteed complete bucket, and Redis candidate acquisition uses bounded
-`SRANDMEMBER` instead of full-bucket `SMEMBERS`. Node-group maintenance
-pagination remains active BCA-3 work.
+guaranteed complete bucket. Redis support/source acquisition uses bounded
+`SRANDMEMBER`, and the CES scheduling path may use bounded lifecycle deadline
+reads under the same contract. Node-group maintenance pagination remains active
+BCA-3 work.
 
 Parent:
 
@@ -30,9 +31,10 @@ just Redis physical shape.
 - `WorkerCandidateSamplingPolicy#sample(...)` receives an
   implementation-provided source batch. Memory may pass a complete in-memory
   bucket; Redis may pass a bounded Redis-side subset.
-- Redis candidate acquisition uses `SRANDMEMBER(bucketKey, maxCandidateCount)`
-  before applying `WorkerCandidateSamplingPolicy`, so the scheduling path no
-  longer requires full bucket `SMEMBERS`.
+- Redis candidate acquisition no longer requires full bucket `SMEMBERS`.
+  Support/source acquisition uses `SRANDMEMBER`, while CES scheduling
+  acquisition may use bounded deadline-ordered lifecycle reads before applying
+  `WorkerCandidateSamplingPolicy`.
 - `WorkerRegistry#workerIdsByAdapterNodeGroup(...)` currently returns the full
   current worker set for one adapter node / worker group.
 - Node-group dispatch gate default methods iterate that full set to apply or
@@ -124,9 +126,11 @@ Acceptance:
 ## BCA-2: Redis Candidate Read Implementation
 
 Current slice status: landed for existing candidate buckets. Redis
-`acquireCandidates(...)` reads a bounded source batch with `SRANDMEMBER` and
-keeps Stage-2 source guard / reserve validation. Deadline-aware slot lifecycle
-indexes are owned by CES-3/CES-4, not by this BCA slice.
+source-only `acquireCandidates(...)` reads a bounded source batch with
+`SRANDMEMBER`; CES-owned scheduling acquisition may read bounded lifecycle
+deadline projections. Both paths keep Stage-2 source guard / reserve
+validation. Deadline-aware slot lifecycle indexes are owned by CES-3/CES-4,
+not by this BCA slice.
 
 Goal:
 
@@ -134,7 +138,8 @@ Implement the selected contract in Redis without changing admission truth.
 
 Scope:
 
-- Replace full bucket `SMEMBERS` on the scheduling path only after BCA-1.
+- Keep the scheduling path on bounded source-batch reads after BCA-1; do not
+  reintroduce full bucket `SMEMBERS` for current candidate buckets.
 - Preserve Stage-2 reserve validation.
 - Preserve or explicitly redefine ordering/randomness semantics.
 - Keep stale candidates correctness-neutral.
@@ -174,7 +179,7 @@ Acceptance:
 
 ```powershell
 rg -n "acquireCandidates\(|workerIdsByAdapterNodeGroup\(|disableDispatchForAdapterNodeGroup\(|clearDispatchDisableForAdapterNodeGroup\(" platform_infra xa-mass-worker-runtime xa-mass-engine --glob '!**/target/**'
-rg -n "smembers\(bucketKey\)|srandmember\(bucketKey" platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistry.java
+rg -n "smembers\(bucketKey\)|srandmember\(bucketKey|candidateBucketLifecycleDeadlinesZset|zrangebyscore" platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistry.java
 .\mvnw.cmd -pl platform_infra/mass-runtime-memory "-Dtest=InMemoryWorkerRegistryTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl platform_infra/mass-runtime-redis -am "-Dtest=RedisWorkerRegistryTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl xa-mass-engine -am "-Dtest=EngineSchedulingCoreArchitectureGuardTest#upperRuntimeCallersUseWorkerRegistrySemanticOperations" "-Dsurefire.failIfNoSpecifiedTests=false" test

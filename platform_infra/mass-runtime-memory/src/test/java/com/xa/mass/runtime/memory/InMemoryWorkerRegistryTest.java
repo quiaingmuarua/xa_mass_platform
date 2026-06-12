@@ -121,12 +121,20 @@ class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
     }
 
     private static WorkerCandidateBucketPolicy regionRoutePolicy() {
-        return meta -> {
-            String region = meta == null || meta.attributes() == null ? null : meta.attributes().get("region");
-            if (region == null || region.isBlank()) {
-                return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
+        return new WorkerCandidateBucketPolicy() {
+            @Override
+            public Set<String> candidateBucketKeysForWorkerMeta(WorkerMeta meta) {
+                String region = meta == null || meta.attributes() == null ? null : meta.attributes().get("region");
+                if (region == null || region.isBlank()) {
+                    return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
+                }
+                return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY, "attr:region=" + region.trim());
             }
-            return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY, "attr:region=" + region.trim());
+
+            @Override
+            public int maxBucketFanout() {
+                return 2;
+            }
         };
     }
 }

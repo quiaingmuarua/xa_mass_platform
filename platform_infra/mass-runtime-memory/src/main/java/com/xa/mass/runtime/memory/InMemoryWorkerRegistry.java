@@ -226,9 +226,34 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
 
     @Override
     public List<String> acquireCandidates(String groupId,
+                                          String candidateBucketKey,
+                                          int maxCandidateCount,
+                                          long nowMillis) {
+        return acquireCandidates(groupId, null, candidateBucketKey, maxCandidateCount, Long.valueOf(nowMillis));
+    }
+
+    @Override
+    public List<String> acquireCandidates(String groupId,
                                           String adapterNodeId,
                                           String candidateBucketKey,
                                           int maxCandidateCount) {
+        return acquireCandidates(groupId, adapterNodeId, candidateBucketKey, maxCandidateCount, null);
+    }
+
+    @Override
+    public List<String> acquireCandidates(String groupId,
+                                          String adapterNodeId,
+                                          String candidateBucketKey,
+                                          int maxCandidateCount,
+                                          long nowMillis) {
+        return acquireCandidates(groupId, adapterNodeId, candidateBucketKey, maxCandidateCount, Long.valueOf(nowMillis));
+    }
+
+    private List<String> acquireCandidates(String groupId,
+                                           String adapterNodeId,
+                                           String candidateBucketKey,
+                                           int maxCandidateCount,
+                                           Long nowMillis) {
         String normalizedGroupId = normalizeNullable(groupId);
         String normalizedCandidateBucketKey = normalizeCandidateBucketKey(candidateBucketKey);
         String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
@@ -242,9 +267,15 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                         new NodeGroupCandidateBucketKey(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey),
                         Set.of()
                 );
+        List<String> sourceWorkerIds = snapshotWorkerIds(workerIds);
+        if (nowMillis != null) {
+            sourceWorkerIds = sourceWorkerIds.stream()
+                    .filter(workerId -> slotLifecycleStatus(normalizedGroupId, workerId, nowMillis) == ReserveStatus.ACCEPTED)
+                    .toList();
+        }
         return samplingPolicy.sample(
                 new WorkerCandidateSamplingContext(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey),
-                snapshotWorkerIds(workerIds),
+                sourceWorkerIds,
                 maxCandidateCount
         );
     }

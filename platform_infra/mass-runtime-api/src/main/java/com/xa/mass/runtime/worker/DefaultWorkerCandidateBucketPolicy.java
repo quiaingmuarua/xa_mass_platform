@@ -7,8 +7,17 @@ import java.util.Set;
  */
 public final class DefaultWorkerCandidateBucketPolicy {
 
-    private static final WorkerCandidateBucketPolicy DEFAULT =
-            meta -> Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
+    private static final WorkerCandidateBucketPolicy DEFAULT = new WorkerCandidateBucketPolicy() {
+        @Override
+        public Set<String> candidateBucketKeysForWorkerMeta(WorkerMeta meta) {
+            return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
+        }
+
+        @Override
+        public int maxBucketFanout() {
+            return 1;
+        }
+    };
 
     private DefaultWorkerCandidateBucketPolicy() {
     }

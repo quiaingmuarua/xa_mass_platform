@@ -96,6 +96,23 @@ public interface WorkerRegistry {
     List<String> acquireCandidates(String groupId, String candidateBucketKey, int maxCandidateCount);
 
     /**
+     * Acquires a bounded Stage-1 scheduling candidate batch using the supplied
+     * scheduling clock.
+     *
+     * <p>Implementations that maintain a deadline-aware slot lifecycle
+     * projection should use {@code nowMillis} to avoid returning expired
+     * heartbeat members as accepted source candidates. Callers must still keep
+     * the slot lifecycle guard and reserve revalidation because derived indexes
+     * are not canonical truth.</p>
+     */
+    default List<String> acquireCandidates(String groupId,
+                                           String candidateBucketKey,
+                                           int maxCandidateCount,
+                                           long nowMillis) {
+        return acquireCandidates(groupId, candidateBucketKey, maxCandidateCount);
+    }
+
+    /**
      * Acquires a bounded Stage-1 candidate source batch scoped by group and
      * optional adapter node.
      */
@@ -103,6 +120,18 @@ public interface WorkerRegistry {
                                    String adapterNodeId,
                                    String candidateBucketKey,
                                    int maxCandidateCount);
+
+    /**
+     * Acquires a bounded Stage-1 scheduling candidate batch scoped by group,
+     * optional adapter node, and scheduling clock.
+     */
+    default List<String> acquireCandidates(String groupId,
+                                           String adapterNodeId,
+                                           String candidateBucketKey,
+                                           int maxCandidateCount,
+                                           long nowMillis) {
+        return acquireCandidates(groupId, adapterNodeId, candidateBucketKey, maxCandidateCount);
+    }
 
     /**
      * Registry-owned slot lifecycle predicate for scheduling candidate sources.

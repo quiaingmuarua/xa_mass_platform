@@ -53,6 +53,20 @@ public abstract class WorkerRegistryContractTest {
     }
 
     @Test
+    void schedulingAcquireCandidatesFiltersSlotLifecycleByDeadlineAndGate() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(metaAt("worker-stale", "group-a", 1_000), 1, Set.of(eventKey()));
+        registry.upsertSlot(metaAt("worker-disabled", "group-a", 2_000), 1, Set.of(eventKey()));
+        registry.upsertSlot(metaAt("worker-removing", "group-a", 2_000), 1, Set.of(eventKey()));
+        registry.upsertSlot(metaAt("worker-fresh", "group-a", 2_000), 1, Set.of(eventKey()));
+        registry.disableDispatch("group-a", "worker-disabled", WORKER_STATE);
+        registry.markSlotRemoving("group-a", "worker-removing", "test");
+
+        assertEquals(List.of("worker-fresh"),
+                registry.acquireCandidates("group-a", "default", 10, 31_001));
+    }
+
+    @Test
     void tryReserveDoesNotDeduplicateByTaskId() {
         WorkerRegistry registry = createRegistry();
         registry.upsertSlot(meta("worker-1", "group-a"), 2, Set.of(eventKey()));

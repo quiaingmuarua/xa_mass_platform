@@ -35,19 +35,19 @@ final class WorkerSchedulingCandidateEnumerator {
 
     private WorkerSchedulingCandidate toSchedulingCandidate(WorkerCandidateRow candidateRow) {
         WorkerReachabilityState reachability = schedulingViewRuntime.getWorkerReachability(candidateRow.workerId());
-        boolean dispatchEnabled = schedulingViewRuntime.isWorkerDispatchEnabled(candidateRow.workerId());
         boolean workerLocked = schedulingViewRuntime.hasWorkerExclusiveLease(candidateRow.workerId());
         String workerGroupId = candidateRow.workerGroupId();
         WorkerGroupCapabilityView workerGroup = workerGroupId == null || workerGroupId.isBlank()
                 ? null
                 : schedulingViewRuntime.workerGroupReadView(workerGroupId).orElse(null);
+        // Dispatch gate is filtered by stage-1 candidate acquisition/source guard and revalidated by reserve.
         return new WorkerSchedulingCandidate(
                 candidateRow,
                 WorkerSchedulingView.from(
                         candidateRow,
                         workerGroup,
                         reachability,
-                        dispatchEnabled,
+                        true,
                         workerLocked,
                         schedulingViewRuntime.getWorkerLoad(candidateRow.workerId())
                 )

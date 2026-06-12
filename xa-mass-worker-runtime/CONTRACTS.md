@@ -111,6 +111,19 @@ Allowed callers:
 Candidate acquisition must start from an explicit WorkerGroup selector. It must
 not reintroduce all-worker scans.
 
+Production scheduling candidate acquisition carries the scheduling clock into
+`WorkerRegistry#acquireCandidates(...)` so registry implementations may use
+deadline-aware slot lifecycle projections before the source guard. The source
+guard and reserve mutation still revalidate canonical slot truth; Redis
+deadline indexes remain adapter-internal derived indexes and are not exposed as
+worker-runtime or engine contracts.
+
+Candidate bucket keys are source-index hints selected by `WorkerTaskSelector`
+and validated against the runtime-api `WorkerCandidateBucketPolicy`. They are
+not lifecycle eligibility truth. The policy owns optional attribute dimensions
+and declares max bucket fan-out cost; registry implementations execute the
+policy and fall back to the `default` bucket when it returns no keys.
+
 ### Evidence
 
 Package: `com.xa.mass.worker.runtime.evidence`
@@ -273,8 +286,11 @@ Owned contract:
 
 - `WorkerCandidateBucketPolicies`
 
-`WorkerCandidateBucketPolicies` is the platform approved-attribute candidate-bucket policy.
-The registry-level candidate-bucket SPI remains in `mass-runtime-api`.
+`WorkerCandidateBucketPolicies` is the current platform approved-attribute
+candidate-bucket policy. Its standard route attributes are a worker-runtime
+default, not Redis keyspace truth. The registry-level `WorkerCandidateBucketPolicy`
+SPI remains in `mass-runtime-api` and exposes bucket fan-out cost so attribute
+indexing write amplification is visible.
 
 ## Online And Heartbeat Semantics
 

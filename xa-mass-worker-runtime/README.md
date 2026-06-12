@@ -37,6 +37,19 @@ acquisition and runtime work evidence must carry `workerGroupId` into
 must not depend on worker-id reverse lookup when group evidence is already
 known or recoverable from runtime lifecycle records.
 
+Stage-1 scheduling candidate acquisition passes one scheduling clock into the
+registry acquisition and source guard. Redis may use that clock against an
+adapter-internal deadline projection, but WorkerRuntime contracts still expose
+only bounded candidate acquisition plus canonical source-guard validation, not
+Redis key shapes.
+
+Candidate bucket policy is source-index policy, not lifecycle truth. The
+runtime-api `WorkerCandidateBucketPolicy` owns bucket key calculation and its
+declared max fan-out cost; memory and Redis registries execute that policy and
+must not hardcode worker attribute dimensions. When no policy-specific bucket is
+available, scheduling falls back to the `default` source bucket plus bounded
+acquisition, source guard, and metadata/rule filtering.
+
 ## Package Map
 
 ```text

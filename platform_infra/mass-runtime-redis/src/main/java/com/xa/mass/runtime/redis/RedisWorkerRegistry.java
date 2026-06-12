@@ -48,6 +48,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
 
     private static final Gson GSON = new Gson();
     private static final int DEFAULT_WATCH_RETRIES = 32;
+    private static final int DEFAULT_UNBOUNDED_SOURCE_BATCH_LIMIT = 256;
 
     private final RedisClient redisClient;
     private final StatefulRedisConnection<String, String> connection;
@@ -169,7 +170,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             });
         });
         removeFromBuckets(groupId, workerId);
-        addToBuckets(meta);
+        slot(groupId, workerId).ifPresent(this::addToBuckets);
     }
 
     @Override
@@ -290,9 +291,26 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
 
     @Override
     public synchronized List<String> acquireCandidates(String groupId,
+                                                       String candidateBucketKey,
+                                                       int maxCandidateCount,
+                                                       long nowMillis) {
+        return acquireCandidates(groupId, null, candidateBucketKey, maxCandidateCount, nowMillis);
+    }
+
+    @Override
+    public synchronized List<String> acquireCandidates(String groupId,
                                           String adapterNodeId,
                                           String candidateBucketKey,
                                           int maxCandidateCount) {
+        return acquireCandidates(groupId, adapterNodeId, candidateBucketKey, maxCandidateCount, Long.MIN_VALUE);
+    }
+
+    @Override
+    public synchronized List<String> acquireCandidates(String groupId,
+                                                       String adapterNodeId,
+                                                       String candidateBucketKey,
+                                                       int maxCandidateCount,
+                                                       long nowMillis) {
         String normalizedGroupId = normalizeNullable(groupId);
         String normalizedCandidateBucketKey = normalizeCandidateBucketKey(candidateBucketKey);
         String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
@@ -302,7 +320,14 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         String bucketKey = normalizedAdapterNodeId == null
                 ? keyspace.groupCandidateBucket(normalizedGroupId, normalizedCandidateBucketKey)
                 : keyspace.nodeCandidateBucket(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey);
-        List<String> workerIds = new ArrayList<>(commands.srandmember(bucketKey, maxCandidateCount));
+        int sourceLimit = sourceBatchLimit(maxCandidateCount);
+        List<String> workerIds = nowMillis == Long.MIN_VALUE
+                ? new ArrayList<>(commands.srandmember(bucketKey, sourceLimit))
+                : commands.zrangebyscore(
+                        keyspace.candidateBucketLifecycleDeadlinesZset(bucketKey),
+                        Range.create(nextDeadlineMillis(nowMillis), Double.POSITIVE_INFINITY),
+                        Limit.create(0, sourceLimit)
+                );
         workerIds.sort(String::compareTo);
         return samplingPolicy.sample(
                 new WorkerCandidateSamplingContext(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey),
@@ -539,6 +564,8 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     @Override
     public synchronized boolean disableDispatch(String groupId, String workerId, DispatchAvailabilitySource source) {
         Objects.requireNonNull(source, "source");
+        String normalizedGroupId = normalizeNullable(groupId);
+        String normalizedWorkerId = normalizeNullable(workerId);
         MutationResult result = updateSlot(groupId, workerId, current -> {
             if (current == null) {
                 return SlotUpdate.noop(null, false);
@@ -559,12 +586,18 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             );
             return SlotUpdate.write(updated, null, changed);
         });
-        return Boolean.TRUE.equals(result.payload());
+        boolean changed = Boolean.TRUE.equals(result.payload());
+        if (changed) {
+            removeFromLifecycleProjection(normalizedGroupId, normalizedWorkerId);
+        }
+        return changed;
     }
 
     @Override
     public synchronized boolean clearDispatchDisable(String groupId, String workerId, DispatchAvailabilitySource source) {
         Objects.requireNonNull(source, "source");
+        String normalizedGroupId = normalizeNullable(groupId);
+        String normalizedWorkerId = normalizeNullable(workerId);
         MutationResult result = updateSlot(groupId, workerId, current -> {
             if (current == null) {
                 return SlotUpdate.noop(null, false);
@@ -585,7 +618,11 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             );
             return SlotUpdate.write(updated, null, changed);
         });
-        return Boolean.TRUE.equals(result.payload());
+        boolean changed = Boolean.TRUE.equals(result.payload());
+        if (changed) {
+            slot(normalizedGroupId, normalizedWorkerId).ifPresent(this::refreshLifecycleProjection);
+        }
+        return changed;
     }
 
     @Override
@@ -674,8 +711,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             for (String workerId : commands.srandmember(bucketKey, remaining)) {
                 scanned++;
                 if (slot(normalizedGroupId, workerId).isEmpty()) {
-                    commands.srem(bucketKey, workerId);
-                    commands.hdel(keyspace.groupBucketMembershipHash(normalizedGroupId), workerId);
+                    removeFromBuckets(normalizedGroupId, workerId);
                     removed++;
                 }
             }
@@ -785,18 +821,21 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         return ReserveStatus.ACCEPTED;
     }
 
-    private void addToBuckets(WorkerMeta meta) {
+    private void addToBuckets(WorkerSlot slot) {
+        WorkerMeta meta = slot.meta();
         LinkedHashSet<String> bucketKeys = new LinkedHashSet<>();
         for (String candidateBucketKey : candidateBucketKeys(meta)) {
             commands.sadd(keyspace.groupCandidateBucketsSet(meta.groupId()), candidateBucketKey);
             String groupBucketKey = keyspace.groupCandidateBucket(meta.groupId(), candidateBucketKey);
             commands.sadd(groupBucketKey, meta.workerId());
             bucketKeys.add(groupBucketKey);
+            addToLifecycleProjectionIfEligible(slot, groupBucketKey);
             if (meta.adapterNodeId() != null) {
                 commands.sadd(keyspace.groupNodeCandidateBucketsSet(meta.groupId()), keyspace.nodeCandidateBucketMember(meta.adapterNodeId(), candidateBucketKey));
                 String nodeBucketKey = keyspace.nodeCandidateBucket(meta.groupId(), meta.adapterNodeId(), candidateBucketKey);
                 commands.sadd(nodeBucketKey, meta.workerId());
                 bucketKeys.add(nodeBucketKey);
+                addToLifecycleProjectionIfEligible(slot, nodeBucketKey);
             }
         }
         if (!bucketKeys.isEmpty()) {
@@ -816,8 +855,43 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         Set<String> bucketKeys = decodeBucketMembership(commands.hget(membershipKey, workerId));
         for (String bucketKey : bucketKeys) {
             commands.srem(bucketKey, workerId);
+            commands.zrem(keyspace.candidateBucketLifecycleDeadlinesZset(bucketKey), workerId);
         }
         commands.hdel(membershipKey, workerId);
+    }
+
+    private void removeFromLifecycleProjection(String groupId, String workerId) {
+        if (groupId == null || workerId == null) {
+            return;
+        }
+        String membershipKey = keyspace.groupBucketMembershipHash(groupId);
+        Set<String> bucketKeys = decodeBucketMembership(commands.hget(membershipKey, workerId));
+        for (String bucketKey : bucketKeys) {
+            commands.zrem(keyspace.candidateBucketLifecycleDeadlinesZset(bucketKey), workerId);
+        }
+    }
+
+    private void refreshLifecycleProjection(WorkerSlot slot) {
+        if (slot == null) {
+            return;
+        }
+        String membershipKey = keyspace.groupBucketMembershipHash(slot.groupId());
+        Set<String> bucketKeys = decodeBucketMembership(commands.hget(membershipKey, slot.workerId()));
+        for (String bucketKey : bucketKeys) {
+            commands.zrem(keyspace.candidateBucketLifecycleDeadlinesZset(bucketKey), slot.workerId());
+            addToLifecycleProjectionIfEligible(slot, bucketKey);
+        }
+    }
+
+    private void addToLifecycleProjectionIfEligible(WorkerSlot slot, String bucketKey) {
+        if (slot == null || bucketKey == null || slot.removing() || !slot.dispatchEnabled()) {
+            return;
+        }
+        commands.zadd(
+                keyspace.candidateBucketLifecycleDeadlinesZset(bucketKey),
+                heartbeatDeadlineMillis(slot.meta()),
+                slot.workerId()
+        );
     }
 
     private String encodeBucketMembership(Set<String> bucketKeys) {
@@ -873,6 +947,19 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         long lastHeartbeatMillis = Math.max(0L, meta.lastHeartbeatMillis());
         long maxIncrement = Long.MAX_VALUE - lastHeartbeatMillis;
         return lastHeartbeatMillis + Math.min(heartbeatFreshnessMillis, maxIncrement);
+    }
+
+    private static int sourceBatchLimit(int maxCandidateCount) {
+        if (maxCandidateCount <= 0) {
+            return 0;
+        }
+        return maxCandidateCount == Integer.MAX_VALUE
+                ? DEFAULT_UNBOUNDED_SOURCE_BATCH_LIMIT
+                : maxCandidateCount;
+    }
+
+    private static double nextDeadlineMillis(long nowMillis) {
+        return nowMillis == Long.MAX_VALUE ? Double.POSITIVE_INFINITY : (double) nowMillis + 1.0d;
     }
 
     private void incrementTaskProjection(RedisCommands<String, String> tx, String taskId, String workerId, int permits) {
