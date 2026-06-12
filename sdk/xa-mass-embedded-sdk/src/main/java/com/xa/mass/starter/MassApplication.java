@@ -53,7 +53,6 @@ import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
-import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import org.slf4j.Logger;
@@ -95,7 +94,6 @@ public class MassApplication {
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportRouteOwnerStore routeOwnerStore;
     private WorkerDispatchRouteOwnerView workerRouteOwnerView;
-    private TransportRouteOwnerInspectionView routeOwnerInspectionView;
     private TransportDeliveryService transportDeliveryService;
     private TransportDeliveryCommandHandoff transportDeliveryCommandHandoff;
     private TransportDeliveryCommandHandoffPump transportDeliveryCommandHandoffPump;
@@ -278,7 +276,6 @@ public class MassApplication {
             workerSystemEventChannel = systemEventChannel;
             routeOwnerStore = transportRuntimeComposition.resolveTransportRouteOwnerStore();
             workerRouteOwnerView = requireWorkerRouteOwnerView(routeOwnerStore);
-            routeOwnerInspectionView = requireRouteOwnerInspectionView(routeOwnerStore);
             transportNodeRegistry = transportRuntimeComposition.resolveTransportNodeRegistry();
             TransportDeliveryStore deliveryStore = transportRuntimeComposition.resolveTransportDeliveryStore();
             TransportDeliveryService deliveryService = new TransportDeliveryService(deliveryStore);
@@ -600,7 +597,6 @@ public class MassApplication {
         TransportRouteOwnerStore store = routeOwnerStore;
         routeOwnerStore = null;
         workerRouteOwnerView = null;
-        routeOwnerInspectionView = null;
         if (store instanceof AutoCloseable closeable) {
             closeable.close();
         }
@@ -611,13 +607,6 @@ public class MassApplication {
             return routeOwnerView;
         }
         throw new IllegalStateException("TransportRouteOwnerStore must also implement WorkerDispatchRouteOwnerView");
-    }
-
-    private static TransportRouteOwnerInspectionView requireRouteOwnerInspectionView(TransportRouteOwnerStore store) {
-        if (store instanceof TransportRouteOwnerInspectionView inspectionView) {
-            return inspectionView;
-        }
-        throw new IllegalStateException("TransportRouteOwnerStore must also implement TransportRouteOwnerInspectionView");
     }
 
     private void stopTaskDispatchHandoff() {
@@ -852,10 +841,6 @@ public class MassApplication {
         }
     }
 
-    public TransportRouteOwnerInspectionView getRouteOwnerInspectionView() {
-        return routeOwnerInspectionView;
-    }
-
     public boolean sendRawTransportMessage(String workerId, String rawJson, String traceId) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
@@ -943,6 +928,10 @@ public class MassApplication {
 
     public String resolveWorkerTransportHint(String workerId) {
         return resolveTransportBinding(requireWorkerResource(workerId)).getTransportHint();
+    }
+
+    public WorkerDispatchRouteOwnerView getWorkerRouteOwnerView() {
+        return workerRouteOwnerView;
     }
 
     private String encodeWorkerCommandFrame(WorkerCommandRecord command) {

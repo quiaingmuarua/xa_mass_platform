@@ -14,18 +14,16 @@ public interface WorkerInspectionOperations {
     List<WorkerSnapshot> getAllWorkers();
 
     /**
-     * Returns worker ids that currently have transport reachability.
-     *
-     * <p>List/read models should prefer this snapshot over calling
-     * {@link #isWorkerReachable(String)} once per row.</p>
+     * Returns worker ids with current delivery reachability when transport
+     * evidence is available; otherwise falls back to worker runtime availability.
      */
     List<String> listReachableWorkerIds();
 
     /**
-     * Returns whether the worker currently has transport reachability.
+     * Returns whether the worker currently has delivery reachability.
      *
-     * <p>When transport presence is available this query reflects transport
-     * truth; otherwise it falls back to the engine-owned worker model.</p>
+     * <p>Transport-backed runtimes resolve this through the selected-worker
+     * route-owner view. This is not a worker lifecycle or scheduling truth.</p>
      */
     boolean isWorkerReachable(String workerId);
 }

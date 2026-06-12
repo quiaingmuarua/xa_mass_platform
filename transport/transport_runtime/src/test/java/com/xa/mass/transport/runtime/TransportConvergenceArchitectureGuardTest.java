@@ -15,8 +15,23 @@ class TransportConvergenceArchitectureGuardTest {
     @Test
     void transportRuntimeDoesNotImportWorkerResourceRuntime() throws IOException {
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java")),
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java")
+                ),
+                "com.xa.mass.worker.runtime",
                 "WorkerResourceQueryRuntime"
+        );
+    }
+
+    @Test
+    void transportRuntimeAndPollingAdapterDoNotDependOnWorkerRuntime() throws IOException {
+        assertNoTextFilesContain(
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/pom.xml"),
+                        repoRoot().resolve("transport/polling-adapter/pom.xml")
+                ),
+                "<artifactId>xa-mass-worker-runtime</artifactId>"
         );
     }
 
@@ -178,6 +193,14 @@ class TransportConvergenceArchitectureGuardTest {
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read " + path, e);
         }
+    }
+
+    private static void assertNoTextFilesContain(List<Path> paths, String... forbiddenTokens) throws IOException {
+        List<Path> violations = paths.stream()
+                .filter(Files::exists)
+                .filter(path -> containsAny(path, forbiddenTokens))
+                .toList();
+        assertTrue(violations.isEmpty(), () -> "Forbidden transport convergence residue: " + violations);
     }
 
     private static Path repoRoot() {

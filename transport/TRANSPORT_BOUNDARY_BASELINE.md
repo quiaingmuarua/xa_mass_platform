@@ -67,14 +67,12 @@ Transport should stay centered on these concepts only:
   be flattened into one fake "no work" result on the transport mainline
 - `TransportRouteOwnerStore`: transport adapter write surface for route-owner claim,
   heartbeat refresh, and owner release; it does not expose dispatch routing or
-  worker-id inspection reads
+  worker-id inspection reads, which belong to worker runtime/resource views
 - `WorkerDispatchRouteOwnerView`: narrow read-only route-owner view used by
   engine/starter-side dispatch assembly after worker matching has already
   selected worker bindings. Task-dispatch lookup is by `adapterId +
   selectedWorkerId`; route-key reads on this view are bounded diagnostics or
   maintenance helpers, not the dispatch hot path.
-- `TransportRouteOwnerInspectionView`: worker-id projection view for SDK/operator
-  inspection; it is not a dispatch routing dependency
 - `WorkerSystemEventChannel`: transport-neutral ingress seam for worker
   connect/disconnect/heartbeat signals. It is not a worker command, worker
   state-report, or capability-report lifecycle owner.
@@ -160,16 +158,14 @@ owner evidence is not dispatchable; readers may derive unreachable/stale views
 without transport persisting a status enum. Shared-store implementations such
 as Redis must preserve the same route-owner semantics as the in-memory default.
 One opaque `routeKey` may have multiple active consumer records.
-`getLatestOwnerByWorker(workerId)`, `isWorkerReachable(workerId)`, and
-`findRouteOwners(workerId)` are SDK/operator inspection projections derived
-from route-owner truth; task dispatch must resolve active consumers by direct
-`adapterId + selectedWorkerId` evidence after engine assignment. Engine must
-not write presence, read adapter sessions, or treat presence as a schedule
-owner.
+SDK/operator worker inspection must not require route-owner worker-id
+projections. When a caller needs delivery reachability for a known worker, it
+uses worker runtime metadata to resolve `adapterId`, then reads the direct
+`adapterId + selectedWorkerId` route-owner evidence. Engine must not write
+presence, read adapter sessions, or treat presence as a schedule owner.
 Runtime assembly may keep the `TransportRouteOwnerStore` write surface for adapter
 writes and shutdown ownership, but dispatch handoff assembly should bind only
-`WorkerDispatchRouteOwnerView`; SDK/operator reads
-should bind `TransportRouteOwnerInspectionView`.
+`WorkerDispatchRouteOwnerView`.
 
 ## Worker Registration Relation Baseline
 
@@ -310,7 +306,7 @@ Route-owner semantics are also part of the transport contract:
   direct feasibility lookup
 - `activeOwnerForSelectedWorker(adapterId, selectedWorkerId)` is the dispatch
   producer lookup; `currentOwners(routeKey)` is a bounded read for maintenance,
-  diagnostics, raw side-channels, and inspection support
+  diagnostics, and raw side-channels
 - `connectionId` identifies one live consumer connection for that route
 - `claimRouteOwner(...)` may install or refresh a consumer value for the same
   `routeKey` with `adapterId + transportNodeId + connectionId`
@@ -328,7 +324,7 @@ default component namespaces are:
 
 | Component | Default namespace | Retained key families |
 | --- | --- | --- |
-| route-owner | `xa:mass:transport:route-owner:v1` | `route:<encodedRouteKey>:consumers`, `routes`, `deadline`, `worker-route:<workerId>`, `adapter:<encodedAdapterId>:worker:<encodedWorkerId>:owner` |
+| route-owner | `xa:mass:transport:route-owner:v1` | `route:<encodedRouteKey>:consumers`, `deadline`, `adapter:<encodedAdapterId>:worker:<encodedWorkerId>:owner` |
 | delivery | `xa:mass:transport:delivery:v1` | `q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `meta:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `queues`, `stats` |
 | nodes | `xa:mass:transport:nodes:v1` | transport-node owner/heartbeat records and deadlines |
 | delivery-command | `xa:mass:transport:delivery-command:v1` | `lane:<encodedDeliveryQueueKey+targetTransportNodeId>:q`, `lanes`, `node:<transportNodeId>:ready-lanes` |
@@ -337,17 +333,15 @@ default component namespaces are:
 
 Route-owner truth is keyed by opaque route and consumer id. Redis stores a
 route consumer hash plus deadline index so one opaque `routeKey` can have
-multiple active consumer records. `worker-route:<workerId>` is a
-transport-derived SDK/operator projection from worker id to the latest known
-route key. `adapter:<adapterId>:worker:<workerId>:owner` is a derived
-selected-worker feasibility index pointing back to the owning route consumer
-record; it must validate the consumer lease and must not become worker
-lifecycle, capacity, or scheduling truth.
+multiple active consumer records. `adapter:<adapterId>:worker:<workerId>:owner`
+is a derived selected-worker feasibility index pointing back to the owning route
+consumer record; it must validate the consumer lease and must not become worker
+lifecycle, capacity, scheduling truth, or a worker-id inspection view.
 
 Forbidden transport key families:
 
-- route-owner-side `workers`, `owner-shards`, `worker-routes:*`, and
-  `route-presence:*`
+- route-owner-side `workers`, `owner-shards`, `worker-routes:*`,
+  `worker-route:*`, `routes`, and `route-presence:*`
 - transport-owned worker capacity, reservation, active lease, dispatch gate,
   event-binding ceiling, `group:{groupId}:slots`, `worker:meta:*`, or
   `worker:occupancy:*` keys

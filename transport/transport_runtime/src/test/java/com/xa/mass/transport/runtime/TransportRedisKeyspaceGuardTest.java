@@ -46,7 +46,8 @@ class TransportRedisKeyspaceGuardTest {
     void transportRuntimeProductionCodeDoesNotUseDeprecatedPresenceFamilies() throws IOException {
         Path root = repoRoot();
         Path sourceRoot = root.resolve("transport/transport_runtime/src/main/java");
-        List<String> forbidden = List.of("owner-shards", "worker-routes", "route-presence", ":workers");
+        List<String> forbidden = List.of("owner-shards", "worker-routes", "route-presence", ":workers",
+                "worker-route", ":routes");
         List<String> offenders = new ArrayList<>();
         try (Stream<Path> paths = scanTextFiles(sourceRoot)) {
             paths.filter(path -> forbidden.stream().anyMatch(token -> contains(path, token)))

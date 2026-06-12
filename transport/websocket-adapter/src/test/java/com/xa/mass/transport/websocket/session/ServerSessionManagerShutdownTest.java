@@ -76,14 +76,20 @@ class ServerSessionManagerShutdownTest {
 
         manager.addSession("route-1", "worker-1", channel, ctx);
 
-        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
-        assertEquals("route-1", routeOwnerStore.getLatestOwnerByWorker("worker-1").getRouteKey());
-        assertEquals("ws-node-1", routeOwnerStore.findRouteOwners("worker-1").getFirst().transportNodeId());
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                .orElseThrow()
+                .isActive(System.currentTimeMillis()));
+        assertEquals("route-1", routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                .orElseThrow()
+                .routeKey());
+        assertEquals("ws-node-1", routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                .orElseThrow()
+                .transportNodeId());
         assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
 
         manager.removeSession(channel);
 
-        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1").isEmpty());
         assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
@@ -102,8 +108,10 @@ class ServerSessionManagerShutdownTest {
 
         manager.removeSession(firstChannel);
 
-        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
-        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-2").isLeaseActive(System.currentTimeMillis()));
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1").isEmpty());
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-2")
+                .orElseThrow()
+                .isActive(System.currentTimeMillis()));
         assertEquals(1, routeOwnerStore.currentOwners("group-route").size());
         assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "group-route"));
     }
@@ -163,7 +171,9 @@ class ServerSessionManagerShutdownTest {
         assertEquals(secondChannel, manager.getChannel("route-new"));
         assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-old"));
         assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-new"));
-        assertEquals("route-new", routeOwnerStore.getLatestOwnerByWorker("worker-1").getRouteKey());
+        assertEquals("route-new", routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                .orElseThrow()
+                .routeKey());
         verify(firstChannel).close();
 
         assertTrue(manager.sendToSelectedWorker(manager.getAdapterId(), "worker-1", "{\"messageId\":\"msg-new\"}"));
@@ -186,7 +196,9 @@ class ServerSessionManagerShutdownTest {
         manager.addSession("route-1", "worker-1", firstChannel, firstCtx);
 
         assertEquals(secondChannel, manager.getChannel("route-1"));
-        assertEquals("worker-1-new", routeOwnerStore.getLatestOwnerByWorker("worker-1").getConnectionId());
+        assertEquals("worker-1-new", routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                .orElseThrow()
+                .connectionId());
         verify(firstChannel).close();
     }
 
@@ -204,13 +216,17 @@ class ServerSessionManagerShutdownTest {
 
         manager.removeSession(firstChannel);
 
-        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
-        assertEquals("worker-1-new", routeOwnerStore.getLatestOwnerByWorker("worker-1").getConnectionId());
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                .orElseThrow()
+                .isActive(System.currentTimeMillis()));
+        assertEquals("worker-1-new", routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                .orElseThrow()
+                .connectionId());
         assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
 
         manager.removeSession(secondChannel);
 
-        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1").isEmpty());
         assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
@@ -244,7 +260,7 @@ class ServerSessionManagerShutdownTest {
 
         manager.shutdown();
 
-        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1").isEmpty());
         assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
@@ -259,7 +275,9 @@ class ServerSessionManagerShutdownTest {
 
         assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
             Thread.sleep(2_200L);
-            assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+            assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                    .orElseThrow()
+                    .isActive(System.currentTimeMillis()));
         });
     }
 
@@ -274,10 +292,18 @@ class ServerSessionManagerShutdownTest {
         manager.addSession("route-1", "worker-1", channel, ctx);
         manager.setRouteOwnerStore(secondStore);
 
-        assertTrue(secondStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
-        assertEquals("route-1", secondStore.getLatestOwnerByWorker("worker-1").getRouteKey());
-        assertEquals("worker-1", secondStore.getLatestOwnerByWorker("worker-1").getConnectionId());
-        assertEquals("ws-node-2", secondStore.findRouteOwners("worker-1").getFirst().transportNodeId());
+        assertTrue(secondStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                .orElseThrow()
+                .isActive(System.currentTimeMillis()));
+        assertEquals("route-1", secondStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                .orElseThrow()
+                .routeKey());
+        assertEquals("worker-1", secondStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                .orElseThrow()
+                .connectionId());
+        assertEquals("ws-node-2", secondStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
+                .orElseThrow()
+                .transportNodeId());
         assertTrue(secondStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 

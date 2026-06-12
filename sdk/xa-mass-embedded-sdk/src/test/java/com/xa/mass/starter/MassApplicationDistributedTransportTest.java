@@ -13,7 +13,6 @@ import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
-import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
 import com.xa.mass.transport.route.TransportRouteOwnerRecord;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
@@ -408,8 +407,7 @@ class MassApplicationDistributedTransportTest {
     }
 
     private static final class CombinedRouteOwnerStore implements TransportRouteOwnerStore,
-            WorkerDispatchRouteOwnerView,
-            TransportRouteOwnerInspectionView {
+            WorkerDispatchRouteOwnerView {
         private final List<InMemoryTransportRouteOwnerStore> stores;
 
         private CombinedRouteOwnerStore(List<InMemoryTransportRouteOwnerStore> stores) {
@@ -444,14 +442,6 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public TransportRouteOwnerRecord getLatestOwnerByWorker(String workerId) {
-            return listActiveRouteOwners().stream()
-                    .filter(owner -> workerId.equals(owner.getWorkerId()))
-                    .findFirst()
-                    .orElse(null);
-        }
-
-        @Override
         public List<WorkerDispatchRouteOwner> currentOwners(String routeKey) {
             List<WorkerDispatchRouteOwner> owners = new ArrayList<>();
             for (InMemoryTransportRouteOwnerStore store : stores) {
@@ -471,15 +461,6 @@ class MassApplicationDistributedTransportTest {
                 }
             }
             return java.util.Optional.empty();
-        }
-
-        @Override
-        public List<TransportRouteOwnerRecord> listActiveRouteOwners() {
-            List<TransportRouteOwnerRecord> owners = new ArrayList<>();
-            for (InMemoryTransportRouteOwnerStore store : stores) {
-                owners.addAll(store.listActiveRouteOwners());
-            }
-            return List.copyOf(owners);
         }
 
         @Override

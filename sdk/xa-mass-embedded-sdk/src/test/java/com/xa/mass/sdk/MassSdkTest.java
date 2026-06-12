@@ -111,8 +111,6 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
-import com.xa.mass.transport.route.TransportRouteOwnerRecord;
-import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import com.xa.mass.transport.worker.WorkerAdapter;
@@ -1094,45 +1092,34 @@ class MassSdkTest {
     }
 
     @Test
-    void sdkWorkerReachableReadsTransportRouteOwnerBeforeWorkerModelStatus() {
+    void sdkWorkerReachableReadsWorkerRuntimeStatus() {
         MassApplication delegate = mock(MassApplication.class);
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
-        routeOwnerStore.claimRouteOwner("worker-1", "polling", "worker-1", "worker-1", "connected");
-        when(delegate.getRouteOwnerInspectionView()).thenReturn(routeOwnerStore);
+        MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        WorkerResourceRuntime workerRuntime = mock(WorkerResourceRuntime.class);
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getWorkerResourceRuntime()).thenReturn(workerRuntime);
+        when(workerRuntime.worker("worker-1")).thenReturn(java.util.Optional.of(workerResource("worker-1", "group-1")));
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         assertTrue(app.isWorkerReachable("worker-1"));
-
-        routeOwnerStore.releaseRouteOwner("worker-1", "polling", "worker-1", "worker-1", "disconnect");
-
-        assertFalse(app.isWorkerReachable("worker-1"));
     }
 
     @Test
-    void sdkWorkerReachableTreatsStaleRouteOwnerAsOffline() {
+    void sdkWorkerReachableTreatsUnavailableWorkerRuntimeStatusAsOffline() {
         MassApplication delegate = mock(MassApplication.class);
-        TransportRouteOwnerInspectionView routeOwnerView = new TransportRouteOwnerInspectionView() {
-            @Override
-            public TransportRouteOwnerRecord getLatestOwnerByWorker(String workerId) {
-                return new TransportRouteOwnerRecord(
-                        workerId,
-                        "polling",
-                        workerId,
-                        1L,
-                        1L,
-                        "runtime-a",
-                        workerId,
-                        1L
-                );
-            }
-
-            @Override
-            public List<TransportRouteOwnerRecord> listActiveRouteOwners() {
-                return List.of();
-            }
-        };
-        when(delegate.getRouteOwnerInspectionView()).thenReturn(routeOwnerView);
+        MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        WorkerResourceRuntime workerRuntime = mock(WorkerResourceRuntime.class);
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getWorkerResourceRuntime()).thenReturn(workerRuntime);
+        when(workerRuntime.worker("worker-stale")).thenReturn(java.util.Optional.of(
+                workerResource("worker-stale", "group-1", WorkerStatus.OFFLINE.name())));
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -1140,27 +1127,33 @@ class MassSdkTest {
     }
 
     @Test
-    void sdkWorkerReachableFollowsNewestRouteOwnerAfterReconnect() {
+    void sdkWorkerReachableUsesSelectedWorkerRouteOwnerWhenAvailable() {
         MassApplication delegate = mock(MassApplication.class);
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
-        when(delegate.getRouteOwnerInspectionView()).thenReturn(routeOwnerStore);
+        MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        WorkerResourceRuntime workerRuntime = mock(WorkerResourceRuntime.class);
+        WorkerDispatchRouteOwnerView routeOwnerView = mock(WorkerDispatchRouteOwnerView.class);
+        when(delegate.getEngine()).thenReturn(engine);
+        when(delegate.getWorkerRouteOwnerView()).thenReturn(routeOwnerView);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getWorkerResourceRuntime()).thenReturn(workerRuntime);
+        when(workerRuntime.worker("worker-route-owner")).thenReturn(java.util.Optional.of(
+                workerResource("worker-route-owner", "group-1", WorkerStatus.OFFLINE.name(), "polling")));
+        when(routeOwnerView.activeOwnerForSelectedWorker("polling", "worker-route-owner"))
+                .thenReturn(java.util.Optional.of(new com.xa.mass.transport.route.WorkerDispatchRouteOwner(
+                        "worker-route-owner",
+                        "polling",
+                        "route-1",
+                        "transport-node-1",
+                        "conn-1",
+                        System.currentTimeMillis() + 30_000L,
+                        System.currentTimeMillis()
+                )));
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        routeOwnerStore.claimRouteOwner("worker-2", "websocket", "route-old", "conn-old", "connected");
-        assertTrue(app.isWorkerReachable("worker-2"));
-
-        routeOwnerStore.claimRouteOwner("worker-2", "socket", "route-new", "conn-new", "reconnected");
-        routeOwnerStore.releaseRouteOwner("worker-2", "websocket", "route-old", "conn-old", "late-disconnect");
-
-        assertTrue(app.isWorkerReachable("worker-2"));
-        assertEquals("conn-new", routeOwnerStore.getLatestOwnerByWorker("worker-2").getConnectionId());
-        assertEquals("socket", routeOwnerStore.getLatestOwnerByWorker("worker-2").getAdapterId());
-        assertEquals("route-new", routeOwnerStore.getLatestOwnerByWorker("worker-2").getRouteKey());
-
-        routeOwnerStore.releaseRouteOwner("worker-2", "socket", "route-new", "conn-new", "disconnect");
-
-        assertFalse(app.isWorkerReachable("worker-2"));
+        assertTrue(app.isWorkerReachable("worker-route-owner"));
     }
 
     @Test
@@ -3540,16 +3533,27 @@ class MassSdkTest {
     }
 
     private static WorkerResourceRecord workerResource(String workerId, String workerGroupId) {
+        return workerResource(workerId, workerGroupId, WorkerStatus.ONLINE.name());
+    }
+
+    private static WorkerResourceRecord workerResource(String workerId, String workerGroupId, String statusName) {
+        return workerResource(workerId, workerGroupId, statusName, null);
+    }
+
+    private static WorkerResourceRecord workerResource(String workerId,
+                                                       String workerGroupId,
+                                                       String statusName,
+                                                       String adapterId) {
         return new WorkerResourceRecord(
                 workerId,
-                WorkerStatus.ONLINE.name(),
+                statusName,
                 null,
                 null,
                 List.of("demoApp"),
                 List.of(),
                 workerGroupId,
                 null,
-                null,
+                adapterId,
                 null,
                 1,
                 Map.of(),
@@ -3760,7 +3764,6 @@ class MassSdkTest {
     private static final class StubTransportRouteOwnerStore
             implements TransportRouteOwnerStore,
             WorkerDispatchRouteOwnerView,
-            TransportRouteOwnerInspectionView,
             AutoCloseable {
 
         private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -3794,11 +3797,6 @@ class MassSdkTest {
         }
 
         @Override
-        public com.xa.mass.transport.route.TransportRouteOwnerRecord getLatestOwnerByWorker(String workerId) {
-            return delegate.getLatestOwnerByWorker(workerId);
-        }
-
-        @Override
         public boolean hasActiveRouteOwner(String adapterId, String routeKey) {
             return delegate.hasActiveRouteOwner(adapterId, routeKey);
         }
@@ -3813,11 +3811,6 @@ class MassSdkTest {
                 String adapterId,
                 String selectedWorkerId) {
             return delegate.activeOwnerForSelectedWorker(adapterId, selectedWorkerId);
-        }
-
-        @Override
-        public List<com.xa.mass.transport.route.TransportRouteOwnerRecord> listActiveRouteOwners() {
-            return delegate.listActiveRouteOwners();
         }
 
         @Override

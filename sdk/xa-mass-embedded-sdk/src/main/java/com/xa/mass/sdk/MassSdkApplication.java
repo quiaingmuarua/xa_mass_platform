@@ -59,8 +59,7 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
-import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
-import com.xa.mass.transport.route.TransportRouteOwnerRecord;
+import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -656,22 +655,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<String> listReachableWorkerIds() {
-        TransportRouteOwnerInspectionView presenceView = delegate.getRouteOwnerInspectionView();
-        if (presenceView != null) {
-            long now = System.currentTimeMillis();
-            return presenceView.listActiveRouteOwners().stream()
-                    .filter(Objects::nonNull)
-                    .filter(presence -> presence.isLeaseActive(now))
-                    .map(TransportRouteOwnerRecord::getWorkerId)
-                    .filter(Objects::nonNull)
-                    .map(String::trim)
-                    .filter(workerId -> !workerId.isEmpty())
-                    .distinct()
-                    .toList();
-        }
         return requireStartedWorkerResourceRuntime().workers().stream()
                 .filter(Objects::nonNull)
-                .filter(worker -> workerStatusAvailable(worker.statusName()))
+                .filter(this::isWorkerReachable)
                 .map(WorkerResourceRecord::workerId)
                 .filter(Objects::nonNull)
                 .map(String::trim)
@@ -768,12 +754,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public boolean isWorkerReachable(String workerId) {
         String normalizedWorkerId = requireWorkerId(workerId);
-        TransportRouteOwnerInspectionView presenceView = delegate.getRouteOwnerInspectionView();
-        if (presenceView != null) {
-            return presenceView.isWorkerReachable(normalizedWorkerId);
-        }
         WorkerResourceRecord worker = loadWorker(normalizedWorkerId);
-        return worker != null && workerStatusAvailable(worker.statusName());
+        return isWorkerReachable(worker);
     }
 
     @Override
@@ -1802,6 +1784,31 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             return WorkerStatus.valueOf(statusName.trim().toUpperCase(Locale.ROOT)).isAvailable();
         } catch (IllegalArgumentException ignored) {
             return false;
+        }
+    }
+
+    private boolean isWorkerReachable(WorkerResourceRecord worker) {
+        if (worker == null || worker.workerId() == null || worker.workerId().isBlank()) {
+            return false;
+        }
+        WorkerDispatchRouteOwnerView routeOwnerView = delegate.getWorkerRouteOwnerView();
+        if (routeOwnerView != null) {
+            String adapterId = resolveWorkerAdapterIdForReachability(worker);
+            return adapterId != null
+                    && routeOwnerView.activeOwnerForSelectedWorker(adapterId, worker.workerId()).isPresent();
+        }
+        return workerStatusAvailable(worker.statusName());
+    }
+
+    private String resolveWorkerAdapterIdForReachability(WorkerResourceRecord worker) {
+        String adapterId = blankToNull(worker.adapterId());
+        if (adapterId != null) {
+            return adapterId.toLowerCase(Locale.ROOT);
+        }
+        try {
+            return delegate.resolveWorkerAdapterId(worker.workerId());
+        } catch (RuntimeException ignored) {
+            return null;
         }
     }
 

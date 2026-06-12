@@ -10,10 +10,9 @@ package com.xa.mass.transport.route;
  * disconnect or heartbeat events from an older connection from revoking a newer
  * active consumer on the same route.</p>
  *
- * <p>This write surface deliberately does not expose route-owner reads or
- * worker-id inspection. Dispatch routing should depend on
- * {@link WorkerDispatchRouteOwnerView}; SDK/operator inspection should depend
- * on {@link TransportRouteOwnerInspectionView}.</p>
+ * <p>This write surface deliberately does not expose worker-id inspection.
+ * Assigned delivery routing should depend on {@link WorkerDispatchRouteOwnerView};
+ * worker-id read models belong to worker runtime/resource views.</p>
  */
 public interface TransportRouteOwnerStore {
 

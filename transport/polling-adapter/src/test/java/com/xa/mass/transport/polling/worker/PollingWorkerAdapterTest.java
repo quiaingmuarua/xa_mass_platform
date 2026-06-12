@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PollingWorkerAdapterTest {
@@ -96,17 +95,23 @@ class PollingWorkerAdapterTest {
 
         adapter.announceWorkerOnline("worker-1", "route-1", "conn-1", "poll connected");
 
-        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
-        assertEquals("poll-node-1", routeOwnerStore.findRouteOwners("worker-1").getFirst().transportNodeId());
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(PollingWorkerAdapter.PROTOCOL, "worker-1")
+                .orElseThrow()
+                .isActive(System.currentTimeMillis()));
+        assertEquals("poll-node-1", routeOwnerStore.activeOwnerForSelectedWorker(PollingWorkerAdapter.PROTOCOL, "worker-1")
+                .orElseThrow()
+                .transportNodeId());
         assertTrue(routeOwnerStore.hasActiveRouteOwner(PollingWorkerAdapter.PROTOCOL, "route-1"));
 
         adapter.refreshRouteOwnerHeartbeat("worker-1", "route-1", "conn-1", "poll heartbeat");
-        assertTrue(routeOwnerStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(PollingWorkerAdapter.PROTOCOL, "worker-1")
+                .orElseThrow()
+                .isActive(System.currentTimeMillis()));
 
         adapter.announceWorkerOffline("worker-1", "route-1", "conn-1", "poll disconnect");
 
-        assertNull(routeOwnerStore.getLatestOwnerByWorker("worker-1"));
-        assertTrue(routeOwnerStore.listActiveRouteOwners().isEmpty());
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(PollingWorkerAdapter.PROTOCOL, "worker-1").isEmpty());
+        assertTrue(routeOwnerStore.currentOwners("route-1").isEmpty());
     }
 
     private PollingWorkerAdapter adapter() {

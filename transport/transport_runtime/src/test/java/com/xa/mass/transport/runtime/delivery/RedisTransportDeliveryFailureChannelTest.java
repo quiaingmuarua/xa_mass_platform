@@ -15,6 +15,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RedisTransportDeliveryFailureChannelTest {
@@ -86,5 +87,25 @@ class RedisTransportDeliveryFailureChannelTest {
         assertNotNull(event);
         assertEquals(first.getCommandId(), event.command().getCommandId());
         assertEquals("msg-1", event.command().getPayload().messageId());
+    }
+
+    @Test
+    void noOwnerFailureRoundTripsWithoutTargetTransportNode() throws Exception {
+        DeliveryCommand command = DeliveryCommandFixtures.command("msg-no-owner", "worker-1", null);
+        DispatchOutcome outcome = DispatchOutcome.noEndpoint(
+                command,
+                "transport endpoint is unavailable after assignment"
+        );
+
+        assertTrue(writer.handle(command, outcome, "transport endpoint is unavailable after assignment"));
+
+        TransportDeliveryFailureEvent event = reader.pollFailure(1000L);
+
+        assertNotNull(event);
+        assertEquals(command.getCommandId(), event.command().getCommandId());
+        assertEquals("worker-1", event.command().getSelectedWorkerId());
+        assertNull(event.command().getTargetTransportNodeId());
+        assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, event.outcome().getStatus());
+        assertNull(event.outcome().getTransportNodeId());
     }
 }

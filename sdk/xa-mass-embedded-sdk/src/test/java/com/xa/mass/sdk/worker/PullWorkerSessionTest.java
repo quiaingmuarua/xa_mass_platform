@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -107,18 +106,26 @@ class PullWorkerSessionTest {
                 presenceStore);
 
         session.connect("connected");
-        assertTrue(presenceStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertTrue(presenceStore.activeOwnerForSelectedWorker("polling", "worker-1")
+                .orElseThrow()
+                .isActive(System.currentTimeMillis()));
         assertTrue(presenceStore.hasActiveRouteOwner("polling", routeKey()));
-        assertEquals("conn-1", presenceStore.getLatestOwnerByWorker("worker-1").getConnectionId());
+        assertEquals("conn-1", presenceStore.activeOwnerForSelectedWorker("polling", "worker-1")
+                .orElseThrow()
+                .connectionId());
 
         presenceStore.releaseRouteOwner("worker-1", "polling", routeKey(), "stale-conn", "stale-disconnect");
-        assertTrue(presenceStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertTrue(presenceStore.activeOwnerForSelectedWorker("polling", "worker-1")
+                .orElseThrow()
+                .isActive(System.currentTimeMillis()));
 
         session.heartbeat("heartbeat");
-        assertTrue(presenceStore.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
+        assertTrue(presenceStore.activeOwnerForSelectedWorker("polling", "worker-1")
+                .orElseThrow()
+                .isActive(System.currentTimeMillis()));
 
         session.disconnect("disconnect");
-        assertNull(presenceStore.getLatestOwnerByWorker("worker-1"));
+        assertTrue(presenceStore.activeOwnerForSelectedWorker("polling", "worker-1").isEmpty());
     }
 
     private static PullWorkerSession session(TaskPullChannel taskPullChannel,

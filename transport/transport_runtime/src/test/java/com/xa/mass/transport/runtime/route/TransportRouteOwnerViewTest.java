@@ -17,9 +17,8 @@ class TransportRouteOwnerViewTest {
         store.releaseRouteOwner("worker-1", "websocket", "route-1", "conn-1", "disconnect");
 
         assertTrue(store.hasActiveOwner("route-1"));
-        assertTrue(store.isWorkerReachable("worker-1"));
-        assertEquals(1, store.findRouteOwners("worker-1").size());
-        assertEquals("socket", store.findRouteOwners("worker-1").getFirst().adapterId());
+        assertTrue(store.activeOwnerForSelectedWorker("socket", "worker-1").isPresent());
+        assertTrue(store.activeOwnerForSelectedWorker("websocket", "worker-1").isEmpty());
     }
 
     @Test
@@ -29,8 +28,7 @@ class TransportRouteOwnerViewTest {
         store.claimRouteOwner("worker-1", "websocket", "route-1", "conn-1", "connected");
         Thread.sleep(40L);
 
-        assertFalse(store.getLatestOwnerByWorker("worker-1").isLeaseActive(System.currentTimeMillis()));
         assertFalse(store.hasActiveOwner("route-1"));
-        assertTrue(store.findRouteOwners("worker-1").isEmpty());
+        assertTrue(store.activeOwnerForSelectedWorker("websocket", "worker-1").isEmpty());
     }
 }
