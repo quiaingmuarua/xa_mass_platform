@@ -2,6 +2,7 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchDeliveryFailure;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
@@ -30,5 +31,7 @@ public interface TaskAssignmentRuntimePort {
     boolean compensateDispatchSubmitFailure(Task task,
                                             List<TaskDispatchBinding> dispatchBindings,
                                             String detail);
-}
 
+    boolean compensateDispatchDeliveryFailure(Task task,
+                                              List<TaskDispatchDeliveryFailure> failures);
+}

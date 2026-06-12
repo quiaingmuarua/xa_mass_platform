@@ -1,7 +1,8 @@
-package com.xa.mass.transport.runtime;
+package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.transport.model.DeliveryCommand;
+import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -13,11 +14,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Redis-backed producer/consumer for retryable dispatch failure compensation.
+ * Redis-backed producer/consumer for retryable delivery failure events.
  */
-public final class RedisTransportDispatchFailureChannel implements TransportDispatchFailureHandler, AutoCloseable {
+public final class RedisTransportDeliveryFailureChannel implements TransportDeliveryFailureHandler, AutoCloseable {
 
-    public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.DISPATCH_FAILURE;
+    public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.DELIVERY_FAILURE;
     public static final int DEFAULT_MAX_QUEUED_FAILURES = 100_000;
     private static final long POLL_SLEEP_MILLIS = 100L;
     private static final String OFFER_SCRIPT = """
@@ -25,14 +26,14 @@ public final class RedisTransportDispatchFailureChannel implements TransportDisp
             local maxQueuedItems = tonumber(ARGV[1])
             local value = ARGV[2]
             if maxQueuedItems <= 0 then
-              return {'BACKPRESSURE_REJECTED', 'queue capacity is exhausted'}
+              return {'BACKPRESSURE', 'queue capacity is exhausted'}
             end
             local queuedItems = redis.call('LLEN', queueKey)
             if queuedItems >= maxQueuedItems then
-              return {'BACKPRESSURE_REJECTED', 'dispatch failure inbox backlog is full'}
+              return {'BACKPRESSURE', 'delivery failure inbox backlog is full'}
             end
             redis.call('RPUSH', queueKey, value)
-            return {'ENQUEUED', ''}
+            return {'QUEUED', ''}
             """;
 
     private final RedisClient redisClient;
@@ -42,33 +43,33 @@ public final class RedisTransportDispatchFailureChannel implements TransportDisp
     private final int maxQueuedFailures;
     private final boolean ownsClient;
     private final AtomicBoolean running = new AtomicBoolean(true);
-    private final TransportDispatchFailureEventCodec codec = new TransportDispatchFailureEventCodec();
+    private final TransportDeliveryFailureEventCodec codec = new TransportDeliveryFailureEventCodec();
 
-    public RedisTransportDispatchFailureChannel(String redisUri) {
+    public RedisTransportDeliveryFailureChannel(String redisUri) {
         this(redisUri, DEFAULT_NAMESPACE_PREFIX, DEFAULT_MAX_QUEUED_FAILURES);
     }
 
-    public RedisTransportDispatchFailureChannel(String redisUri, String namespacePrefix, int maxQueuedFailures) {
+    public RedisTransportDeliveryFailureChannel(String redisUri, String namespacePrefix, int maxQueuedFailures) {
         this(RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 namespacePrefix,
                 maxQueuedFailures,
                 true);
     }
 
-    RedisTransportDispatchFailureChannel(RedisClient redisClient,
+    RedisTransportDeliveryFailureChannel(RedisClient redisClient,
                                          String namespacePrefix,
                                          int maxQueuedFailures,
                                          boolean ownsClient) {
         this(redisClient, redisClient.connect(), namespacePrefix, maxQueuedFailures, ownsClient);
     }
 
-    RedisTransportDispatchFailureChannel(StatefulRedisConnection<String, String> connection,
+    RedisTransportDeliveryFailureChannel(StatefulRedisConnection<String, String> connection,
                                          String namespacePrefix,
                                          int maxQueuedFailures) {
         this(null, connection, namespacePrefix, maxQueuedFailures, false);
     }
 
-    private RedisTransportDispatchFailureChannel(RedisClient redisClient,
+    private RedisTransportDeliveryFailureChannel(RedisClient redisClient,
                                                  StatefulRedisConnection<String, String> connection,
                                                  String namespacePrefix,
                                                  int maxQueuedFailures,
@@ -85,8 +86,8 @@ public final class RedisTransportDispatchFailureChannel implements TransportDisp
     }
 
     @Override
-    public boolean compensate(TaskDispatchContext task, List<TaskDispatchBinding> dispatchBindings, String detail) {
-        if (task == null || dispatchBindings == null || dispatchBindings.isEmpty() || !running.get()) {
+    public boolean handle(DeliveryCommand command, DispatchOutcome outcome, String detail) {
+        if (command == null || outcome == null || !running.get()) {
             return false;
         }
         Object raw = commands.eval(
@@ -94,14 +95,14 @@ public final class RedisTransportDispatchFailureChannel implements TransportDisp
                 ScriptOutputType.MULTI,
                 new String[]{queueKey},
                 Integer.toString(maxQueuedFailures),
-                codec.encode(new TransportDispatchFailureEvent(task, dispatchBindings, detail))
+                codec.encode(new TransportDeliveryFailureEvent(command, outcome, detail))
         );
-        return raw instanceof java.util.List<?> values
+        return raw instanceof List<?> values
                 && !values.isEmpty()
-                && "ENQUEUED".equals(String.valueOf(values.getFirst()));
+                && "QUEUED".equals(String.valueOf(values.getFirst()));
     }
 
-    public TransportDispatchFailureEvent pollFailure(long timeoutMillis) throws InterruptedException {
+    public TransportDeliveryFailureEvent pollFailure(long timeoutMillis) throws InterruptedException {
         if (!running.get()) {
             return null;
         }

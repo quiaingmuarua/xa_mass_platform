@@ -57,7 +57,7 @@ class InMemoryTransportDeliveryStoreTest {
 
         DispatchOutcome outcome = store.enqueue(invalidEnvelope("polling", item("msg-1", null)));
 
-        assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcome.getStatus());
+        assertEquals(DispatchOutcomeStatus.INVALID, outcome.getStatus());
         assertTrue(store.drain("polling", "worker-1", 10).isEmpty());
     }
 
@@ -72,7 +72,7 @@ class InMemoryTransportDeliveryStoreTest {
         DispatchOutcome second = store.enqueue(envelope("polling", item("msg-2", "worker-1")));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
-        assertEquals(DispatchOutcomeStatus.BACKPRESSURE_REJECTED, second.getStatus());
+        assertEquals(DispatchOutcomeStatus.BACKPRESSURE, second.getStatus());
         assertTrue(second.isRetryable());
         assertEquals(List.of("msg-1"),
                 messageIds(store.drain("polling", "worker-1", 10)));
@@ -86,7 +86,7 @@ class InMemoryTransportDeliveryStoreTest {
         DispatchOutcome second = store.enqueue(envelope("polling", item("msg-2", "worker-2")));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
-        assertEquals(DispatchOutcomeStatus.BACKPRESSURE_REJECTED, second.getStatus());
+        assertEquals(DispatchOutcomeStatus.BACKPRESSURE, second.getStatus());
         assertTrue(second.isRetryable());
         assertEquals("runtime delivery backlog is full", second.getReason());
         assertEquals(1, store.stats().getQueuedItems());
@@ -100,7 +100,7 @@ class InMemoryTransportDeliveryStoreTest {
 
         DispatchOutcome outcome = store.enqueue(envelope("polling", item("msg-1", "worker-1")));
 
-        assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcome.getStatus());
+        assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcome.getStatus());
         assertTrue(outcome.isRetryable());
         assertEquals("delivery store is stopped", outcome.getReason());
     }

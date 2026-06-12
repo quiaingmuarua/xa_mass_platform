@@ -5,6 +5,8 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchDeliveryFailure;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.base.model.Task;
@@ -23,30 +25,26 @@ import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.runtime.ManagedTransportAdapter;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
-import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
 import com.xa.mass.transport.runtime.TracingWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
-import com.xa.mass.transport.runtime.TransportDispatchRouteContext;
-import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
-import com.xa.mass.transport.runtime.TransportRouteKeyResolver;
 import com.xa.mass.transport.runtime.BufferedTaskResultIngestChannel;
-import com.xa.mass.transport.runtime.RuntimeTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchHandoff;
-import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchHandoffPump;
 import com.xa.mass.transport.runtime.TaskResultIngestInboxPump;
-import com.xa.mass.transport.runtime.TransportDispatchFailureInboxPump;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoffPump;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandListener;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureInboxPump;
 import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
 import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.runtime.node.TransportNodeRegistryHeartbeat;
-import com.xa.mass.transport.runtime.worker.RouteTargetedTaskDispatchListener;
-import com.xa.mass.transport.runtime.worker.RouteTargetedTaskDispatchSubmitter;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
@@ -99,12 +97,12 @@ public class MassApplication {
     private WorkerDispatchRouteOwnerView workerRouteOwnerView;
     private TransportRouteOwnerInspectionView routeOwnerInspectionView;
     private TransportDeliveryService transportDeliveryService;
-    private RouteTargetedTaskDispatchHandoff routeTargetedTaskDispatchHandoff;
-    private RouteTargetedTaskDispatchHandoffPump routeTargetedTaskDispatchHandoffPump;
+    private TransportDeliveryCommandHandoff transportDeliveryCommandHandoff;
+    private TransportDeliveryCommandHandoffPump transportDeliveryCommandHandoffPump;
     private RedisTaskResultIngestChannel taskResultInbox;
     private TaskResultIngestInboxPump taskResultInboxPump;
-    private RedisTransportDispatchFailureChannel dispatchFailureInbox;
-    private TransportDispatchFailureInboxPump dispatchFailureInboxPump;
+    private RedisTransportDeliveryFailureChannel deliveryFailureInbox;
+    private TransportDeliveryFailureInboxPump deliveryFailureInboxPump;
     private TransportNodeRegistry transportNodeRegistry;
     private TransportNodeRegistryHeartbeat transportNodeHeartbeat;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
@@ -312,13 +310,13 @@ public class MassApplication {
                             transportRuntimeTaskExecutor
                     );
                     taskResultInboxPump.start();
-                    dispatchFailureInbox = transportRuntimeComposition.resolveDispatchFailureInbox();
-                    dispatchFailureInboxPump = new TransportDispatchFailureInboxPump(
-                            dispatchFailureInbox,
-                            createTransportDispatchFailureHandler(),
+                    deliveryFailureInbox = transportRuntimeComposition.resolveDeliveryFailureInbox();
+                    deliveryFailureInboxPump = new TransportDeliveryFailureInboxPump(
+                            deliveryFailureInbox,
+                            createTransportDeliveryFailureHandler(),
                             transportRuntimeTaskExecutor
                     );
-                    dispatchFailureInboxPump.start();
+                    deliveryFailureInboxPump.start();
                     logger.info("Distributed transport inbox pumps started for engine-producer role");
                 }
             }
@@ -328,7 +326,6 @@ public class MassApplication {
             }
 
             if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
-                TransportRouteKeyResolver routeKeyResolver = this::resolveTransportRouteKey;
                 for (TransportAdapterBootstrap transportAdapterBootstrap
                         : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
                     TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
@@ -337,8 +334,7 @@ public class MassApplication {
                             systemEventChannel,
                             routeOwnerStore,
                             deliveryService,
-                            transportRuntimeTaskExecutor,
-                            routeKeyResolver
+                            transportRuntimeTaskExecutor
                     );
                     transportAdapterBootstrap.contribute(bootstrapContext);
                     registerTransportBootstrapContext(bootstrapContext, adapterBindings);
@@ -351,7 +347,6 @@ public class MassApplication {
                         systemEventChannel,
                         routeOwnerStore,
                         deliveryService,
-                        this::resolveTransportRouteKey,
                         adapterBindings
                 );
                 configureRealtimeWorkerCommandDelivery();
@@ -360,37 +355,37 @@ public class MassApplication {
                 startTransportNodeHeartbeat(adapterBindings);
             }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                routeTargetedTaskDispatchHandoff =
-                        transportRuntimeComposition.resolveRouteTargetedTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
+                transportDeliveryCommandHandoff =
+                        transportRuntimeComposition.resolveTransportDeliveryCommandHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 if (runtimeRole == TransportRuntimeRole.EMBEDDED) {
-                    RouteTargetedTaskDispatchListener batchListener = new RouteTargetedTaskDispatchListener(
+                    TransportDeliveryCommandListener batchListener = new TransportDeliveryCommandListener(
                             transportRuntimeRegistry,
-                            createTransportDispatchFailureHandler(),
+                            createTransportDeliveryFailureHandler(),
                             transportRuntimeTaskExecutor
                     );
-                    routeTargetedTaskDispatchHandoffPump = new RouteTargetedTaskDispatchHandoffPump(
-                            routeTargetedTaskDispatchHandoff,
+                    transportDeliveryCommandHandoffPump = new TransportDeliveryCommandHandoffPump(
+                            transportDeliveryCommandHandoff,
                             batchListener,
                             transportRuntimeTaskExecutor
                     );
-                    routeTargetedTaskDispatchHandoffPump.start();
+                    transportDeliveryCommandHandoffPump.start();
                 }
-                taskDispatchListener = createDispatchSubmitter(routeTargetedTaskDispatchHandoff);
+                taskDispatchListener = createDispatchSubmitter(transportDeliveryCommandHandoff);
             } else if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                routeTargetedTaskDispatchHandoff =
-                        transportRuntimeComposition.resolveRouteTargetedTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
-                dispatchFailureInbox = transportRuntimeComposition.resolveDispatchFailureInbox();
-                RouteTargetedTaskDispatchListener batchListener = new RouteTargetedTaskDispatchListener(
+                transportDeliveryCommandHandoff =
+                        transportRuntimeComposition.resolveTransportDeliveryCommandHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
+                deliveryFailureInbox = transportRuntimeComposition.resolveDeliveryFailureInbox();
+                TransportDeliveryCommandListener batchListener = new TransportDeliveryCommandListener(
                         transportRuntimeRegistry,
-                        dispatchFailureInbox,
+                        deliveryFailureInbox,
                         transportRuntimeTaskExecutor
                 );
-                routeTargetedTaskDispatchHandoffPump = new RouteTargetedTaskDispatchHandoffPump(
-                        routeTargetedTaskDispatchHandoff,
+                transportDeliveryCommandHandoffPump = new TransportDeliveryCommandHandoffPump(
+                        transportDeliveryCommandHandoff,
                         batchListener,
                         transportRuntimeTaskExecutor
                 );
-                routeTargetedTaskDispatchHandoffPump.start();
+                transportDeliveryCommandHandoffPump.start();
             }
             return taskDispatchListener;
         } catch (Exception e) {
@@ -408,28 +403,59 @@ public class MassApplication {
         }
     }
 
-    private TransportDispatchFailureHandler createTransportDispatchFailureHandler() {
-        return (task, dispatchBindings, detail) -> {
-            if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
-                return true;
+    private TransportDeliveryFailureHandler createTransportDeliveryFailureHandler() {
+        return (command, outcome, detail) -> {
+            if (command == null) {
+                return false;
             }
-            Task storedTask = engineConfig.getTaskShellStore().getTask(task.taskId()).orElse(null);
+            String taskId = firstNonBlank(command.getPayload().taskId(), command.getCorrelation().get("taskId"));
+            if (taskId == null) {
+                logger.error("Cannot compensate delivery failure because task id is missing: deliveryId={}",
+                        outcome != null ? outcome.getDeliveryId() : command.getCommandId());
+                return false;
+            }
+            Task storedTask = engineConfig.getTaskShellStore().getTask(taskId).orElse(null);
             if (storedTask == null) {
-                logger.error("Cannot compensate transport dispatch failure because task {} is missing", task.taskId());
+                logger.error("Cannot compensate delivery failure because task {} is missing", taskId);
+                return false;
+            }
+            TaskDispatchDeliveryFailure failure;
+            try {
+                failure = toDeliveryFailure(command, outcome, detail);
+            } catch (RuntimeException e) {
+                logger.error("Cannot compensate delivery failure because failure record is incomplete: deliveryId={}, reason={}",
+                        outcome != null ? outcome.getDeliveryId() : command.getCommandId(), e.getMessage());
                 return false;
             }
             return engineConfig.getTaskAssignmentRuntimePort()
-                    .compensateDispatchSubmitFailure(storedTask, dispatchBindings, detail);
+                    .compensateDispatchDeliveryFailure(storedTask, List.of(failure));
         };
     }
 
-    private TaskDispatchBatchListener createDispatchSubmitter(RouteTargetedTaskDispatchHandoff handoff) {
-        return new RouteTargetedTaskDispatchSubmitter(
+    private TaskDispatchDeliveryFailure toDeliveryFailure(com.xa.mass.transport.model.DeliveryCommand command,
+                                                          com.xa.mass.transport.model.DispatchOutcome outcome,
+                                                          String detail) {
+        String taskId = firstNonBlank(command.getPayload().taskId(), command.getCorrelation().get("taskId"));
+        String messageId = firstNonBlank(command.getPayload().messageId(), command.getCorrelation().get("messageId"));
+        String attemptId = firstNonBlank(command.getPayload().attemptId(), command.getCorrelation().get("attemptId"));
+        String attemptNo = command.getCorrelation().get("attemptNo");
+        return new TaskDispatchDeliveryFailure(
+                taskId,
+                messageId,
+                attemptId,
+                parseAttemptNo(attemptNo),
+                command.getSelectedWorkerId(),
+                firstNonBlank(detail, outcome != null ? outcome.getReason() : null)
+        );
+    }
+
+    private TaskDispatchBatchListener createDispatchSubmitter(TransportDeliveryCommandHandoff handoff) {
+        return new TaskDispatchDeliveryCommandSubmitter(
                 handoff,
-                this::resolveTransportRouteKey,
+                this::mintTransportRouteKey,
                 workerRouteOwnerView,
                 transportNodeRegistry,
-                createTransportDispatchFailureHandler()
+                createTransportDeliveryFailureHandler()
         );
     }
 
@@ -455,15 +481,14 @@ public class MassApplication {
         }
     }
 
-    private String resolveTransportRouteKey(TaskDispatchBinding dispatchBinding,
-                                            TransportDispatchRouteContext routeContext) {
-        if (routeContext == null) {
-            throw new IllegalArgumentException("routeContext must not be null");
+    private String mintTransportRouteKey(TaskDispatchContext task, TaskDispatchBinding dispatchBinding) {
+        if (task == null || dispatchBinding == null) {
+            throw new IllegalArgumentException("task and dispatchBinding must not be null");
         }
-        String workerGroupId = routeContext.workerGroupId();
-        if ((workerGroupId == null || workerGroupId.isBlank()) && routeContext.workerId() != null) {
+        String workerGroupId = dispatchBinding.workerGroupId();
+        if ((workerGroupId == null || workerGroupId.isBlank()) && dispatchBinding.workerId() != null) {
             WorkerResourceRecord worker = engineConfig.getWorkerResourceRuntime()
-                    .worker(routeContext.workerId().trim())
+                    .worker(dispatchBinding.workerId().trim())
                     .orElse(null);
             workerGroupId = worker != null ? worker.workerGroupId() : null;
         }
@@ -596,13 +621,13 @@ public class MassApplication {
     }
 
     private void stopTaskDispatchHandoff() {
-        RouteTargetedTaskDispatchHandoffPump pump = routeTargetedTaskDispatchHandoffPump;
-        routeTargetedTaskDispatchHandoffPump = null;
+        TransportDeliveryCommandHandoffPump pump = transportDeliveryCommandHandoffPump;
+        transportDeliveryCommandHandoffPump = null;
         if (pump != null) {
             pump.stop();
         }
-        RouteTargetedTaskDispatchHandoff handoff = routeTargetedTaskDispatchHandoff;
-        routeTargetedTaskDispatchHandoff = null;
+        TransportDeliveryCommandHandoff handoff = transportDeliveryCommandHandoff;
+        transportDeliveryCommandHandoff = null;
         if (handoff != null) {
             handoff.shutdown();
         }
@@ -619,8 +644,8 @@ public class MassApplication {
         if (resultPump != null) {
             resultPump.stop();
         }
-        TransportDispatchFailureInboxPump failurePump = dispatchFailureInboxPump;
-        dispatchFailureInboxPump = null;
+        TransportDeliveryFailureInboxPump failurePump = deliveryFailureInboxPump;
+        deliveryFailureInboxPump = null;
         if (failurePump != null) {
             failurePump.stop();
         }
@@ -632,8 +657,8 @@ public class MassApplication {
         if (resultInbox != null) {
             resultInbox.shutdown();
         }
-        RedisTransportDispatchFailureChannel failureInbox = dispatchFailureInbox;
-        dispatchFailureInbox = null;
+        RedisTransportDeliveryFailureChannel failureInbox = deliveryFailureInbox;
+        deliveryFailureInbox = null;
         if (failureInbox != null) {
             failureInbox.shutdown();
         }
@@ -804,6 +829,27 @@ public class MassApplication {
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return value.trim();
+    }
+
+    private static String firstNonBlank(String primary, String fallback) {
+        if (primary != null && !primary.isBlank()) {
+            return primary.trim();
+        }
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback.trim();
+        }
+        return null;
+    }
+
+    private static int parseAttemptNo(String value) {
+        if (value == null || value.isBlank()) {
+            return 1;
+        }
+        try {
+            return Math.max(1, Integer.parseInt(value.trim()));
+        } catch (NumberFormatException ignored) {
+            return 1;
+        }
     }
 
     public TransportRouteOwnerInspectionView getRouteOwnerInspectionView() {

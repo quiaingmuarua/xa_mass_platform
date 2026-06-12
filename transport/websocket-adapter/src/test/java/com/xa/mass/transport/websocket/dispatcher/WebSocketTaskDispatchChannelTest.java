@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.model.DispatchOutcome;
@@ -41,6 +42,7 @@ class WebSocketTaskDispatchChannelTest {
         WebSocketDispatcherContext context = new WebSocketDispatcherContext(
                 "websocket",
                 endpointRegistry,
+                mock(RawWorkerRouteEndpointRegistry.class),
                 codec,
                 null
         );
@@ -54,7 +56,7 @@ class WebSocketTaskDispatchChannelTest {
         ))));
 
         assertEquals(1, outcomes.size());
-        assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
+        assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
 
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
         verify(endpointRegistry).sendToSelectedWorker(
@@ -92,6 +94,7 @@ class WebSocketTaskDispatchChannelTest {
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketDispatcherContext(
                 "websocket",
                 endpointRegistry,
+                mock(RawWorkerRouteEndpointRegistry.class),
                 new WebSocketTransportFrameCodec(),
                 null
         ), deliveryService());
@@ -102,7 +105,7 @@ class WebSocketTaskDispatchChannelTest {
         ))));
 
         assertEquals(1, outcomes.size());
-        assertEquals(DispatchOutcomeStatus.ENDPOINT_OFFLINE, outcomes.get(0).getStatus());
+        assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcomes.get(0).getStatus());
         assertTrue(outcomes.get(0).isRetryable());
     }
 
@@ -111,6 +114,7 @@ class WebSocketTaskDispatchChannelTest {
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketDispatcherContext(
                 "websocket",
                 null,
+                mock(RawWorkerRouteEndpointRegistry.class),
                 new WebSocketTransportFrameCodec(),
                 null
         ), deliveryService());
@@ -121,7 +125,7 @@ class WebSocketTaskDispatchChannelTest {
         ))));
 
         assertEquals(1, outcomes.size());
-        assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
+        assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcomes.get(0).getStatus());
         assertTrue(outcomes.get(0).isRetryable());
     }
 
@@ -135,7 +139,7 @@ class WebSocketTaskDispatchChannelTest {
         ))));
 
         assertEquals(1, outcomes.size());
-        assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
+        assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcomes.get(0).getStatus());
         assertTrue(outcomes.get(0).isRetryable());
     }
 

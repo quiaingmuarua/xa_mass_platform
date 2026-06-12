@@ -2732,7 +2732,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                                         repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java"),
                                         repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java"),
                                         repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeTaskResultIngestChannel.java"),
+                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/RuntimeTaskResultIngestChannel.java"),
                                         repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTaskResultIngestChannel.java")
                                 ),
                                 Pattern.compile("\\b(?:ResponseMode|DeliveryAcknowledgementMode|EventConvergenceMode)\\b|\\.get(?:ResponseMode|DeliveryAcknowledgementMode|ConvergenceMode)\\s*\\("))),
@@ -2749,7 +2749,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                                 List.of(
                                         repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java"),
                                         repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeTaskResultIngestChannel.java"),
+                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/RuntimeTaskResultIngestChannel.java"),
                                         repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTaskResultIngestChannel.java")
                                 ),
                                 Pattern.compile("\\b(?:WorkerCommand(?:Ack|Status)?|WorkerStateReport)\\b"))),
@@ -2907,7 +2907,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                                 List.of(
                                         repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java"),
                                         repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeTaskResultIngestChannel.java"),
+                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/RuntimeTaskResultIngestChannel.java"),
                                         repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTaskResultIngestChannel.java")
                                 ),
                                 workerControlOrState)),

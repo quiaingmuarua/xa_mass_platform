@@ -349,11 +349,10 @@ class MassApplicationStopOrderTest {
                     }
 
                     @Override
-                    public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
-                        return List.of();
-                    }
+                public List<DispatchOutcome> dispatchEnvelopes(List<TransportDispatchEnvelope> envelopes) {
+                    return List.of();
+                }
                 })
-                .routeKeyResolver((binding, context) -> context.workerId())
                 .build();
     }
 

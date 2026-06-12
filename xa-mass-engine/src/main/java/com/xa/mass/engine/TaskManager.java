@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchDeliveryFailure;
 import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
@@ -740,6 +741,31 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
             String messageId = dispatchBinding.messageId();
             TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(task.getTid(), messageId,
                     () -> resultService.compensateDispatchSubmitFailure(task, dispatchBinding, detail));
+            if (!outcome.accepted()) {
+                return false;
+            }
+            progressDirty |= outcome.progressDirty();
+        }
+        if (progressDirty) {
+            updateTaskProgress(task.getTid());
+        }
+        return true;
+    }
+
+    @Override
+    public boolean compensateDispatchDeliveryFailure(Task task,
+                                                     List<TaskDispatchDeliveryFailure> failures) {
+        if (task == null || failures == null || failures.isEmpty()) {
+            return true;
+        }
+        boolean progressDirty = false;
+        for (TaskDispatchDeliveryFailure failure : failures) {
+            if (failure == null || failure.messageId() == null) {
+                continue;
+            }
+            String messageId = failure.messageId();
+            TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(task.getTid(), messageId,
+                    () -> resultService.compensateDispatchDeliveryFailure(task, failure));
             if (!outcome.accepted()) {
                 return false;
             }

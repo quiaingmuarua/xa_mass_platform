@@ -37,7 +37,7 @@ class SocketTaskDispatchChannelTest {
         List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
 
         assertEquals(1, outcomes.size());
-        assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
+        assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
         verify(sessionManager).sendToSelectedWorker(
                 org.mockito.ArgumentMatchers.eq("socket"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
@@ -57,7 +57,7 @@ class SocketTaskDispatchChannelTest {
         List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
 
         assertEquals(1, outcomes.size());
-        assertEquals(DispatchOutcomeStatus.ENDPOINT_OFFLINE, outcomes.get(0).getStatus());
+        assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcomes.get(0).getStatus());
         assertTrue(outcomes.get(0).isRetryable());
     }
 

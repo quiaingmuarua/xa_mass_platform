@@ -32,7 +32,7 @@ Repository truth-layer rules already classify Redis as runtime state for:
 - worker registry slot/admission state,
 - transport worker presence / route-owner view,
 - transport dispatch handoff,
-- transport result and dispatch-failure inboxes,
+- transport result and delivery-failure inboxes,
 - Redis-backed result runtime rows and barriers.
 
 Current proof gap:
@@ -77,7 +77,7 @@ Redis runtime key truth belongs to the runtime owners that write it:
 - `platform_infra/mass-runtime-redis` for `TaskWorkRuntime`,
   `TaskResultRuntime`, and `WorkerRegistry` keyspaces.
 - `transport/transport_runtime` for transport presence, dispatch handoff,
-  delivery, result, and dispatch-failure inbox keyspaces.
+  delivery, result, and delivery-failure inbox keyspaces.
 
 `tools/xa-mass-redis-runtime-proof` owns only a read-only proof surface:
 

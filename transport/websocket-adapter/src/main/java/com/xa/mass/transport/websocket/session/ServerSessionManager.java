@@ -1,5 +1,6 @@
 package com.xa.mass.transport.websocket.session;
 
+import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
@@ -22,7 +23,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpointInspector {
+public class ServerSessionManager
+        implements WorkerEndpointRegistry, WorkerEndpointInspector, RawWorkerRouteEndpointRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(ServerSessionManager.class);
 
@@ -53,7 +55,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
             return;
         }
         RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> previousForWorker =
-                activeEntryForWorker(routeKey, workerId, channel);
+                activeEntryForWorker(workerId, channel);
         RouteEndpointIndex.BindResult<Channel, WebSocketRouteEndpoint> result = routeIndex.bind(
                 routeKey,
                 workerId,
@@ -248,14 +250,13 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         return adapterId;
     }
 
-    private RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> activeEntryForWorker(String routeKey,
-                                                                                           String workerId,
+    private RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> activeEntryForWorker(String workerId,
                                                                                            Channel excludedChannel) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null) {
             return null;
         }
-        for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
+        for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entriesForWorker(normalizedWorkerId)) {
             if (entry.handle() == excludedChannel || !normalizedWorkerId.equals(entry.workerId())) {
                 continue;
             }

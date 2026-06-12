@@ -1,14 +1,15 @@
 package com.xa.mass.transport.model;
 
 /**
- * Transport-level dispatch outcome shared by concrete worker adapters.
+ * Transport-level delivery outcome shared by concrete worker adapters.
  */
 public enum DispatchOutcomeStatus {
-    SENT,
+    DELIVERED,
     QUEUED,
-    ENDPOINT_OFFLINE,
-    BACKPRESSURE_REJECTED,
-    INVALID_ITEM,
-    ADAPTER_UNAVAILABLE,
-    FAILED
+    NO_ENDPOINT,
+    BACKPRESSURE,
+    INVALID,
+    UNAVAILABLE,
+    FAILED,
+    SHUTDOWN
 }

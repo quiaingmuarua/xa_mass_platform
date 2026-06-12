@@ -1,4 +1,4 @@
-package com.xa.mass.transport.runtime;
+package com.xa.mass.starter;
 
 import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;

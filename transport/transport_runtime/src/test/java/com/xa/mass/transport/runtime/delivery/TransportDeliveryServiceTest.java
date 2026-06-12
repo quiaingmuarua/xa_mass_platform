@@ -29,7 +29,7 @@ class TransportDeliveryServiceTest {
                 "unavailable"
         );
 
-        assertEquals(List.of(DispatchOutcomeStatus.SENT), statuses(outcomes));
+        assertEquals(List.of(DispatchOutcomeStatus.DELIVERED), statuses(outcomes));
         assertEquals(1L, service.stats().getDirectSentItems());
         assertEquals(1L, service.directStatsByAdapter().get("websocket").getSentItems());
     }
@@ -45,7 +45,7 @@ class TransportDeliveryServiceTest {
                 "unavailable"
         );
 
-        assertEquals(DispatchOutcomeStatus.ENDPOINT_OFFLINE, outcomes.get(0).getStatus());
+        assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcomes.get(0).getStatus());
         assertTrue(outcomes.get(0).isRetryable());
         assertEquals(1L, service.stats().getDirectOfflineItems());
         assertEquals(1L, service.directStatsByAdapter().get("socket").getOfflineItems());
@@ -62,7 +62,7 @@ class TransportDeliveryServiceTest {
                 "dispatcher context is unavailable"
         );
 
-        assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
+        assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcomes.get(0).getStatus());
         assertEquals("dispatcher context is unavailable", outcomes.get(0).getReason());
         assertEquals(1L, service.stats().getDirectUnavailableItems());
         assertEquals(1L, service.directStatsByAdapter().get("websocket").getUnavailableItems());
@@ -83,7 +83,7 @@ class TransportDeliveryServiceTest {
                 "unavailable"
         );
 
-        assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcomes.get(0).getStatus());
+        assertEquals(DispatchOutcomeStatus.INVALID, outcomes.get(0).getStatus());
         assertFalse(called.get());
         assertEquals(1L, service.stats().getDirectInvalidItems());
         assertEquals(1L, service.directStatsByAdapter().get("websocket").getInvalidItems());
@@ -206,7 +206,7 @@ class TransportDeliveryServiceTest {
         );
 
         TransportDeliveryServiceStats stats = service.stats();
-        assertEquals(List.of(DispatchOutcomeStatus.SENT), statuses(outcomes));
+        assertEquals(List.of(DispatchOutcomeStatus.DELIVERED), statuses(outcomes));
         assertEquals(0, stats.getQueuedItems());
         assertEquals(0, stats.getQueueCount());
         assertEquals(Map.of(), stats.getQueueByAdapter());
@@ -241,7 +241,7 @@ class TransportDeliveryServiceTest {
 
         assertEquals(0, service.stats().getQueuedItems());
         assertTrue(service.pollEnvelopes("polling", "worker-1", 10, 0).isEmpty());
-        assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE,
+        assertEquals(DispatchOutcomeStatus.UNAVAILABLE,
                 service.enqueue(List.of(envelope(item("msg-2", "worker-1")))).get(0).getStatus());
     }
 

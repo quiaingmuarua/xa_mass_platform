@@ -41,6 +41,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         WebSocketDispatcherContext dispatcherContext = new WebSocketDispatcherContext(
                 config.getAdapterId(),
                 endpointRegistry,
+                endpointRegistry,
                 new WebSocketTransportFrameCodec(),
                 context.getTaskResultIngestChannel()
         );
@@ -51,7 +52,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                             config.getAdapterId(),
                             new WebSocketTaskDispatchChannel(dispatcherContext, context.getDeliveryService())
                     )
-            ).routeKeyResolver(context.getRouteKeyResolver()).build());
+            ).build());
             context.registerRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(config.getAdapterId(), endpointRegistry));
         }
 
@@ -112,11 +113,11 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             implements com.xa.mass.transport.runtime.RawWorkerMessageChannel {
 
         private final String adapterId;
-        private final com.xa.mass.transport.WorkerEndpointRegistry endpointRegistry;
+        private final com.xa.mass.transport.RawWorkerRouteEndpointRegistry endpointRegistry;
 
         private WebSocketRawWorkerMessageChannel(
                 String adapterId,
-                com.xa.mass.transport.WorkerEndpointRegistry endpointRegistry) {
+                com.xa.mass.transport.RawWorkerRouteEndpointRegistry endpointRegistry) {
             this.adapterId = adapterId;
             this.endpointRegistry = endpointRegistry;
         }

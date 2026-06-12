@@ -9,7 +9,9 @@ import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 import com.xa.mass.transport.route.TransportRouteOwnerInspectionView;
 import com.xa.mass.transport.route.TransportRouteOwnerRecord;
@@ -17,15 +19,15 @@ import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
-import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.dispatch.AdapterDispatchLane;
-import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchBatch;
-import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchBinding;
-import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchHandoff;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
+import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
+import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
@@ -68,13 +70,13 @@ class MassApplicationDistributedTransportTest {
         nodeRegistry.register("node-1", List.of("websocket"), 1L);
         nodeRegistry.register("node-2", List.of("websocket"), 1L);
 
-        CapturingRouteTargetedHandoff handoff = new CapturingRouteTargetedHandoff();
+        CapturingDeliveryCommandHandoff handoff = new CapturingDeliveryCommandHandoff();
         TransportConfig transport = disabledEngineProducerTransport();
         transport.setRouteOwnerStoreFactory(() -> routeOwnerStore);
         transport.setTransportNodeRegistryFactory(() -> nodeRegistry);
-        transport.setRouteTargetedTaskDispatchHandoffFactory(() -> handoff);
+        transport.setDeliveryCommandHandoffFactory(() -> handoff);
         transport.setTaskResultInboxFactory(() -> mock(RedisTaskResultIngestChannel.class));
-        transport.setDispatchFailureInboxFactory(() -> mock(RedisTransportDispatchFailureChannel.class));
+        transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
 
         CapturingMassEngine massEngine = new CapturingMassEngine(engine);
         MassApplication app = new MassApplication(massEngine, transport, engine);
@@ -90,14 +92,16 @@ class MassApplicationDistributedTransportTest {
             ));
 
             assertEquals(2, handoff.submitted.size());
-            RouteTargetedTaskDispatchBatch firstBatch = handoff.submitted.get(0);
-            assertEquals(routeKey(), firstBatch.routeKey());
+            DeliveryCommandBatch firstBatch = handoff.submitted.get(0);
             assertEquals(List.of("msg-1"), messages(firstBatch));
             assertEquals("node-1", firstBatch.targetTransportNodeId());
-            RouteTargetedTaskDispatchBatch secondBatch = handoff.submitted.get(1);
-            assertEquals(routeKey(), secondBatch.routeKey());
+            assertEquals(routeKey(), firstBatch.commands().getFirst().getRouteKey());
+            assertEquals("worker-1", firstBatch.commands().getFirst().getSelectedWorkerId());
+            DeliveryCommandBatch secondBatch = handoff.submitted.get(1);
             assertEquals(List.of("msg-2"), messages(secondBatch));
             assertEquals("node-2", secondBatch.targetTransportNodeId());
+            assertEquals(routeKey(), secondBatch.commands().getFirst().getRouteKey());
+            assertEquals("worker-2", secondBatch.commands().getFirst().getSelectedWorkerId());
         } finally {
             app.stop();
         }
@@ -108,25 +112,15 @@ class MassApplicationDistributedTransportTest {
         EngineConfig engine = new EngineConfig();
         engine.setEnabled(false);
 
-        LocalRouteTargetedHandoff handoff = new LocalRouteTargetedHandoff("node-1");
-        handoff.submit(new RouteTargetedTaskDispatchBatch(
-                context(),
-                routeKey(),
-                "node-2",
-                List.of(delivery("msg-node-2", "worker-2", "node-2"))
-        ));
-        handoff.submit(new RouteTargetedTaskDispatchBatch(
-                context(),
-                routeKey(),
-                "node-1",
-                List.of(delivery("msg-node-1", "worker-1", "node-1"))
-        ));
+        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff("node-1");
+        handoff.offer(deliveryBatch("msg-node-2", "worker-2", "node-2"));
+        handoff.offer(deliveryBatch("msg-node-1", "worker-1", "node-1"));
 
         RecordingAdapter adapter = new RecordingAdapter("websocket", 1);
         TransportConfig transport = disabledTransportConsumerTransport("node-1");
-        transport.setRouteTargetedTaskDispatchHandoffFactory(() -> handoff);
+        transport.setDeliveryCommandHandoffFactory(() -> handoff);
         transport.setTaskResultInboxFactory(() -> mock(RedisTaskResultIngestChannel.class));
-        transport.setDispatchFailureInboxFactory(() -> mock(RedisTransportDispatchFailureChannel.class));
+        transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
         transport.setPrimaryTransportAdapterBootstrap(new RecordingAdapterBootstrap(adapter));
 
         MassApplication app = new MassApplication(new CapturingMassEngine(engine), transport, engine);
@@ -214,16 +208,33 @@ class MassApplicationDistributedTransportTest {
         );
     }
 
-    private static RouteTargetedTaskDispatchBinding delivery(String messageId, String workerId) {
-        return delivery(messageId, workerId, "node-1");
+    private static DeliveryCommandBatch deliveryBatch(String messageId, String workerId, String transportNodeId) {
+        DeliveryCommand command = deliveryCommand(messageId, workerId, transportNodeId);
+        return new DeliveryCommandBatch(command.getDeliveryQueueKey(), command.getTargetTransportNodeId(), List.of(command));
     }
 
-    private static RouteTargetedTaskDispatchBinding delivery(String messageId, String workerId, String transportNodeId) {
-        return new RouteTargetedTaskDispatchBinding(
-                routeKey(),
-                AdapterDispatchLane.forTransportNode("websocket", transportNodeId),
+    private static DeliveryCommand deliveryCommand(String messageId, String workerId, String transportNodeId) {
+        TaskDispatchBinding binding = binding(messageId, workerId);
+        TaskDispatchItem item = TaskDispatchItem.from(context(), binding);
+        AdapterDispatchLane lane = AdapterDispatchLane.forTransportNode("websocket", transportNodeId);
+        String commandId = "cmd-" + messageId;
+        return new DeliveryCommand(
+                commandId,
+                "websocket",
                 workerId,
-                binding(messageId, workerId)
+                "websocket",
+                lane.lanePartition(),
+                routeKey(),
+                null,
+                new TransportPacketFactory(() -> commandId).fromDispatchView(commandId, "websocket", routeKey(), null, item),
+                Map.of(
+                        "taskId", "task-1",
+                        "messageId", messageId,
+                        "attemptId", "attempt-" + messageId,
+                        "attemptNo", "1"
+                ),
+                0L,
+                System.currentTimeMillis()
         );
     }
 
@@ -231,12 +242,11 @@ class MassApplicationDistributedTransportTest {
         return CanonicalWorkerGroupRouteKeyCodec.encode("demo-workers");
     }
 
-    private static List<String> messages(RouteTargetedTaskDispatchBatch batch) {
+    private static List<String> messages(DeliveryCommandBatch batch) {
         return batch == null
                 ? List.of()
-                : batch.deliveryBindings().stream()
-                .map(RouteTargetedTaskDispatchBinding::dispatchBinding)
-                .map(TaskDispatchBinding::messageId)
+                : batch.commands().stream()
+                .map(command -> command.getPayload().messageId())
                 .toList();
     }
 
@@ -265,16 +275,17 @@ class MassApplicationDistributedTransportTest {
         }
     }
 
-    private static final class CapturingRouteTargetedHandoff implements RouteTargetedTaskDispatchHandoff {
-        private final List<RouteTargetedTaskDispatchBatch> submitted = new ArrayList<>();
+    private static final class CapturingDeliveryCommandHandoff implements TransportDeliveryCommandHandoff {
+        private final List<DeliveryCommandBatch> submitted = new ArrayList<>();
 
         @Override
-        public void submit(RouteTargetedTaskDispatchBatch batch) {
+        public List<DispatchOutcome> offer(DeliveryCommandBatch batch) {
             submitted.add(batch);
+            return batch.commands().stream().map(DispatchOutcome::queued).toList();
         }
 
         @Override
-        public RouteTargetedTaskDispatchBatch poll(long timeoutMillis) {
+        public DeliveryCommandBatch poll(long timeoutMillis) {
             return null;
         }
 
@@ -283,28 +294,31 @@ class MassApplicationDistributedTransportTest {
         }
     }
 
-    private static final class LocalRouteTargetedHandoff implements RouteTargetedTaskDispatchHandoff {
+    private static final class LocalDeliveryCommandHandoff implements TransportDeliveryCommandHandoff {
         private final String localTransportNodeId;
-        private final Queue<RouteTargetedTaskDispatchBatch> batches = new ConcurrentLinkedQueue<>();
+        private final Queue<DeliveryCommandBatch> batches = new ConcurrentLinkedQueue<>();
         private volatile boolean running = true;
 
-        private LocalRouteTargetedHandoff(String localTransportNodeId) {
+        private LocalDeliveryCommandHandoff(String localTransportNodeId) {
             this.localTransportNodeId = localTransportNodeId;
         }
 
         @Override
-        public void submit(RouteTargetedTaskDispatchBatch batch) {
+        public List<DispatchOutcome> offer(DeliveryCommandBatch batch) {
             if (!running) {
-                throw new IllegalStateException("handoff is stopped");
+                return batch.commands().stream()
+                        .map(command -> DispatchOutcome.shutdown(command, "handoff is stopped"))
+                        .toList();
             }
             batches.add(batch);
+            return batch.commands().stream().map(DispatchOutcome::queued).toList();
         }
 
         @Override
-        public RouteTargetedTaskDispatchBatch poll(long timeoutMillis) throws InterruptedException {
+        public DeliveryCommandBatch poll(long timeoutMillis) throws InterruptedException {
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
             do {
-                RouteTargetedTaskDispatchBatch local = pollForNode(localTransportNodeId);
+                DeliveryCommandBatch local = pollForNode(localTransportNodeId);
                 if (local != null || timeoutMillis <= 0L) {
                     return local;
                 }
@@ -313,8 +327,8 @@ class MassApplicationDistributedTransportTest {
             return null;
         }
 
-        private RouteTargetedTaskDispatchBatch pollForNode(String transportNodeId) {
-            for (RouteTargetedTaskDispatchBatch batch : List.copyOf(batches)) {
+        private DeliveryCommandBatch pollForNode(String transportNodeId) {
+            for (DeliveryCommandBatch batch : List.copyOf(batches)) {
                 if (batch.targetTransportNodeId().equals(transportNodeId)
                         && batches.remove(batch)) {
                     return batch;
@@ -339,7 +353,6 @@ class MassApplicationDistributedTransportTest {
         @Override
         public void contribute(TransportAdapterBootstrapContext context) {
             context.registerTransportBinding(TransportBinding.builder(adapter)
-                    .routeKeyResolver(context.getRouteKeyResolver())
                     .build());
         }
     }
@@ -371,7 +384,7 @@ class MassApplicationDistributedTransportTest {
             for (TransportDispatchEnvelope envelope : envelopes) {
                 dispatchedMessageIds.add(envelope.getPacket().messageId());
                 dispatchedRouteKeys.add(envelope.getRouteKey());
-                outcomes.add(DispatchOutcome.sent(adapterId, envelope));
+                outcomes.add(DispatchOutcome.delivered(adapterId, envelope));
                 dispatchLatch.countDown();
             }
             return List.copyOf(outcomes);

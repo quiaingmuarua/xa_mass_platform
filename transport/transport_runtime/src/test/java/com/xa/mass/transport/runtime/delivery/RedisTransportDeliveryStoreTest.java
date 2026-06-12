@@ -109,13 +109,13 @@ class RedisTransportDeliveryStoreTest {
         DispatchOutcome fifth = store.enqueue(envelope("polling", item("msg-6", "worker-3")));
         DispatchOutcome sixth = store.enqueue(envelope("polling", item("msg-7", "worker-4")));
 
-        assertEquals(DispatchOutcomeStatus.INVALID_ITEM, invalid.getStatus());
+        assertEquals(DispatchOutcomeStatus.INVALID, invalid.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, second.getStatus());
-        assertEquals(DispatchOutcomeStatus.BACKPRESSURE_REJECTED, third.getStatus());
+        assertEquals(DispatchOutcomeStatus.BACKPRESSURE, third.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, fourth.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, fifth.getStatus());
-        assertEquals(DispatchOutcomeStatus.BACKPRESSURE_REJECTED, sixth.getStatus());
+        assertEquals(DispatchOutcomeStatus.BACKPRESSURE, sixth.getStatus());
         assertTrue(observerCommands.keys(namespacePrefix + ":*").stream().allMatch(this::isDeliveryKeyFamily));
     }
 

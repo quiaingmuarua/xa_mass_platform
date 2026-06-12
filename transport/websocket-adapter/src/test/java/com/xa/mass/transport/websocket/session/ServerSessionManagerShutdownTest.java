@@ -147,6 +147,31 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
+    void replacingSelectedWorkerWithDifferentRouteRetiresOldEndpoint() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        manager.setRouteOwnerStore(routeOwnerStore);
+        Channel firstChannel = mockActiveChannel("worker-1-old");
+        Channel secondChannel = mockActiveChannel("worker-1-new");
+        ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
+        ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("route-old", "worker-1", firstChannel, firstCtx);
+        manager.addSession("route-new", "worker-1", secondChannel, secondCtx);
+
+        assertEquals(1, manager.getWorkerConnectionCount());
+        assertNull(manager.getChannel("route-old"));
+        assertEquals(secondChannel, manager.getChannel("route-new"));
+        assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-old"));
+        assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-new"));
+        assertEquals("route-new", routeOwnerStore.getLatestOwnerByWorker("worker-1").getRouteKey());
+        verify(firstChannel).close();
+
+        assertTrue(manager.sendToSelectedWorker(manager.getAdapterId(), "worker-1", "{\"messageId\":\"msg-new\"}"));
+        verify(firstChannel, never()).writeAndFlush(any());
+        verify(secondChannel).writeAndFlush(any());
+    }
+
+    @Test
     void retiredWebSocketChannelCannotReclaimRouteOwner() {
         InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
         manager.setRouteOwnerStore(routeOwnerStore);

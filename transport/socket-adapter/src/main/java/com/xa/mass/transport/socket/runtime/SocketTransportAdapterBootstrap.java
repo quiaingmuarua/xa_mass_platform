@@ -44,7 +44,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                             frameCodec,
                             context.getDeliveryService()
                     ))
-            ).routeKeyResolver(context.getRouteKeyResolver()).build());
+            ).build());
             context.registerRawWorkerMessageChannel(new SocketRawWorkerMessageChannel(config.getAdapterId(), sessionManager));
         }
         if (config.isServerEnabled()) {
@@ -84,9 +84,11 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
     private static final class SocketRawWorkerMessageChannel implements RawWorkerMessageChannel {
 
         private final String adapterId;
-        private final SocketSessionManager sessionManager;
+        private final com.xa.mass.transport.RawWorkerRouteEndpointRegistry sessionManager;
 
-        private SocketRawWorkerMessageChannel(String adapterId, SocketSessionManager sessionManager) {
+        private SocketRawWorkerMessageChannel(
+                String adapterId,
+                com.xa.mass.transport.RawWorkerRouteEndpointRegistry sessionManager) {
             this.adapterId = adapterId;
             this.sessionManager = sessionManager;
         }

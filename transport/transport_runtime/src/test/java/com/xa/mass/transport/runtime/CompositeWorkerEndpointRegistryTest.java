@@ -1,5 +1,6 @@
 package com.xa.mass.transport.runtime;
 
+import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
@@ -112,7 +113,8 @@ class CompositeWorkerEndpointRegistryTest {
         assertFalse(socket.selectedWorkerSendInvoked);
     }
 
-    private static final class TestRegistry implements WorkerEndpointRegistry, WorkerEndpointInspector {
+    private static final class TestRegistry
+            implements WorkerEndpointRegistry, WorkerEndpointInspector, RawWorkerRouteEndpointRegistry {
         private final List<WorkerEndpointSnapshot> snapshots;
         private final boolean onlineResult;
         private final boolean sendResult;

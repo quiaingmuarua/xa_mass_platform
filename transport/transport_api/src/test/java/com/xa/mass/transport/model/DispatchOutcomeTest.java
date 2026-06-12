@@ -14,18 +14,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DispatchOutcomeTest {
 
     @Test
-    void sentCopiesDispatchIdentityAndNormalizesAdapterId() {
+    void deliveredCopiesDeliveryIdentityAndNormalizesAdapterId() {
         TransportDispatchEnvelope envelope = envelope();
 
-        DispatchOutcome outcome = DispatchOutcome.sent(" WebSocket ", envelope);
+        DispatchOutcome outcome = DispatchOutcome.delivered(" WebSocket ", envelope);
 
         assertEquals("websocket", outcome.getAdapterId());
         assertEquals("delivery-1", outcome.getDeliveryId());
+        assertEquals("worker-1", outcome.getSelectedWorkerId());
+        assertEquals("polling", outcome.getDeliveryQueueKey());
         assertEquals("group-route-1", outcome.getRouteKey());
         assertEquals("attempt-1", outcome.getAttemptId());
-        assertEquals(DispatchOutcomeStatus.SENT, outcome.getStatus());
+        assertEquals(DispatchOutcomeStatus.DELIVERED, outcome.getStatus());
         assertFalse(outcome.isRetryable());
         assertNull(outcome.getReason());
+        assertTrue(outcome.getOccurredAtEpochMillis() > 0L);
     }
 
     @Test
@@ -33,10 +36,10 @@ class DispatchOutcomeTest {
         TransportDispatchEnvelope envelope = envelope();
 
         assertFalse(DispatchOutcome.queued("polling", envelope).isRetryable());
-        assertTrue(DispatchOutcome.endpointOffline("websocket", envelope, "offline").isRetryable());
-        assertTrue(DispatchOutcome.backpressureRejected("polling", envelope, "full").isRetryable());
+        assertTrue(DispatchOutcome.noEndpoint("websocket", envelope, "offline").isRetryable());
+        assertTrue(DispatchOutcome.backpressure("polling", envelope, "full").isRetryable());
         assertFalse(DispatchOutcome.invalid("polling", envelope, "bad").isRetryable());
-        assertTrue(DispatchOutcome.adapterUnavailable("socket", envelope, "missing").isRetryable());
+        assertTrue(DispatchOutcome.unavailable("socket", envelope, "missing").isRetryable());
         assertFalse(DispatchOutcome.failed("socket", envelope, "bad frame", false).isRetryable());
         assertTrue(DispatchOutcome.failed("socket", envelope, "io", true).isRetryable());
     }
@@ -47,10 +50,43 @@ class DispatchOutcomeTest {
 
         assertNull(outcome.getAdapterId());
         assertNull(outcome.getDeliveryId());
+        assertNull(outcome.getSelectedWorkerId());
+        assertNull(outcome.getDeliveryQueueKey());
         assertNull(outcome.getRouteKey());
         assertNull(outcome.getAttemptId());
-        assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcome.getStatus());
+        assertEquals(DispatchOutcomeStatus.INVALID, outcome.getStatus());
         assertEquals("missing item", outcome.getReason());
+    }
+
+    @Test
+    void explicitConstructorCarriesExecutorEvidence() {
+        DispatchOutcome outcome = new DispatchOutcome(
+                " delivery-2 ",
+                " SOCKET ",
+                " worker-2 ",
+                " lane-1 ",
+                " route-2 ",
+                " attempt-2 ",
+                DispatchOutcomeStatus.NO_ENDPOINT,
+                true,
+                "missing endpoint",
+                " node-1 ",
+                " conn-1 ",
+                42L
+        );
+
+        assertEquals("delivery-2", outcome.getDeliveryId());
+        assertEquals("socket", outcome.getAdapterId());
+        assertEquals("worker-2", outcome.getSelectedWorkerId());
+        assertEquals("lane-1", outcome.getDeliveryQueueKey());
+        assertEquals("route-2", outcome.getRouteKey());
+        assertEquals("attempt-2", outcome.getAttemptId());
+        assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcome.getStatus());
+        assertTrue(outcome.isRetryable());
+        assertEquals("missing endpoint", outcome.getReason());
+        assertEquals("node-1", outcome.getTransportNodeId());
+        assertEquals("conn-1", outcome.getConnectionId());
+        assertEquals(42L, outcome.getOccurredAtEpochMillis());
     }
 
     private TransportDispatchEnvelope envelope() {

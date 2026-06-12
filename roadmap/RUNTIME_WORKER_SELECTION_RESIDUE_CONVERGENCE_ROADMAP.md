@@ -6,9 +6,7 @@ Transport route-key and dispatch-handoff truth has moved to
 `transport/TRANSPORT_BOUNDARY_BASELINE.md` and `doc/PROOF_REGISTRY.md`: current
 SDK/starter routeKey minting is worker-group-level, transport treats routeKey
 as opaque metadata, transport route evidence is not worker online/offline
-truth, and distributed dispatch handoff uses adapter-lane physical queues with
-selected-worker delivery constraints rather than node-targeted or
-worker-resource-resolving dispatch. Historical transport convergence records
+truth, and distributed dispatch handoff uses delivery-command batches with selected-worker delivery constraints rather than node-targeted or worker-resource-resolving dispatch. Historical transport convergence records
 are archived under `doc/archive/transport/2026-06-12_*TRANSPORT_*`. The
 remaining worker-selection cleanup in this roadmap must be re-read through the
 current transport baseline before implementation.
@@ -280,7 +278,7 @@ Suggested proof:
 
 ```bash
 ./mvnw -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk -am \
-  -Dtest=RouteTargetedTaskDispatchSubmitterTest,RedisTransportRouteOwnerStoreTest,MassApplicationDistributedTransportTest \
+  -Dtest=MassApplicationDistributedTransportTest,RedisTransportRouteOwnerStoreTest,MassApplicationDistributedTransportTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
@@ -338,7 +336,7 @@ Scope:
   - worker reservation/resource is released or made retry-safe,
   - transport does not choose an alternate worker.
 - Prefer existing `RuleBasedTaskWorkerMatchingStrategyTest`,
-  `RouteTargetedTaskDispatchSubmitterTest`, and scheduling matrix tests over new
+  `MassApplicationDistributedTransportTest`, and scheduling matrix tests over new
   broad suites.
 - Do not split the production strategy unless a small extraction removes
   repeated failure compensation code without hiding owner boundaries.
@@ -356,7 +354,7 @@ Suggested proof:
 
 ```bash
 ./mvnw -q -pl xa-mass-engine,transport/transport_runtime -am \
-  -Dtest=RuleBasedTaskWorkerMatchingStrategyTest,TaskSchedulingContentionTest,TaskSchedulingGateAndTargetingTest,RouteTargetedTaskDispatchSubmitterTest \
+  -Dtest=RuleBasedTaskWorkerMatchingStrategyTest,TaskSchedulingContentionTest,TaskSchedulingGateAndTargetingTest,MassApplicationDistributedTransportTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
@@ -449,7 +447,7 @@ Minimum completion proof:
   -Dtest=WorkerMatchContextTest,RuleBasedTaskWorkerMatchingStrategyTest,DefaultSchedulingPlaneResolverTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,EngineSchedulingCoreArchitectureGuardTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ./mvnw -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk -am \
-  -Dtest=RouteTargetedTaskDispatchSubmitterTest,RedisTransportRouteOwnerStoreTest,MassApplicationDistributedTransportTest \
+  -Dtest=MassApplicationDistributedTransportTest,RedisTransportRouteOwnerStoreTest,MassApplicationDistributedTransportTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 git diff --check
 ```

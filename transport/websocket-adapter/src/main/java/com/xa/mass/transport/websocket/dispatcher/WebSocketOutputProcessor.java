@@ -20,7 +20,7 @@ public final class WebSocketOutputProcessor {
 
     public boolean process(TransportOutboundMessage delivery) {
         try {
-            boolean sent = context.getEndpointRegistry().sendToAdapterRoute(
+            boolean sent = context.getRawRouteEndpointRegistry().sendToAdapterRoute(
                     context.getAdapterId(),
                     delivery.getRouteKey(),
                     delivery.getRawJson()

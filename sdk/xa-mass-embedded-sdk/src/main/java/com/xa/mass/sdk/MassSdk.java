@@ -163,13 +163,13 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions redisRouteTargetedDispatchHandoff(String redisUri) {
-            delegate.redisRouteTargetedDispatchHandoff(redisUri);
+        public TransportOptions redisDeliveryCommandHandoff(String redisUri) {
+            delegate.redisDeliveryCommandHandoff(redisUri);
             return this;
         }
 
-        public TransportOptions redisRouteTargetedDispatchHandoff(String redisUri, String namespacePrefix) {
-            delegate.redisRouteTargetedDispatchHandoff(redisUri, namespacePrefix);
+        public TransportOptions redisDeliveryCommandHandoff(String redisUri, String namespacePrefix) {
+            delegate.redisDeliveryCommandHandoff(redisUri, namespacePrefix);
             return this;
         }
 
@@ -183,13 +183,13 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions redisDispatchFailureInbox(String redisUri) {
-            delegate.redisDispatchFailureInbox(redisUri);
+        public TransportOptions redisDeliveryFailureInbox(String redisUri) {
+            delegate.redisDeliveryFailureInbox(redisUri);
             return this;
         }
 
-        public TransportOptions redisDispatchFailureInbox(String redisUri, String namespacePrefix) {
-            delegate.redisDispatchFailureInbox(redisUri, namespacePrefix);
+        public TransportOptions redisDeliveryFailureInbox(String redisUri, String namespacePrefix) {
+            delegate.redisDeliveryFailureInbox(redisUri, namespacePrefix);
             return this;
         }
 

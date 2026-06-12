@@ -103,7 +103,6 @@ import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.runtime.TransportRouteKeyResolver;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
@@ -432,7 +431,6 @@ class MassSdkTest {
                                                      systemEventChannel,
                                                      routeOwnerStore,
                                                      deliveryService,
-                                                     routeKeyResolver,
                                                      adapterBindings) -> mock(TransportRuntimeRegistry.class);
         config.setWorkerTransportRuntimeFactory(customFactory);
 
@@ -507,9 +505,9 @@ class MassSdkTest {
                 TransportRuntimeComposition.class
         );
 
-        assertCapturedNamespace(runtimeComposition, "routeTargetedTaskDispatchHandoffFactory", RedisTransportNamespaces.DISPATCH_ROUTE);
+        assertCapturedNamespace(runtimeComposition, "deliveryCommandHandoffFactory", RedisTransportNamespaces.DELIVERY_COMMAND);
         assertCapturedNamespace(runtimeComposition, "taskResultInboxFactory", RedisTransportNamespaces.RESULT_INBOX);
-        assertCapturedNamespace(runtimeComposition, "dispatchFailureInboxFactory", RedisTransportNamespaces.DISPATCH_FAILURE);
+        assertCapturedNamespace(runtimeComposition, "deliveryFailureInboxFactory", RedisTransportNamespaces.DELIVERY_FAILURE);
         assertCapturedNamespace(runtimeComposition, "routeOwnerStoreFactory", RedisTransportNamespaces.ROUTE_OWNER);
         assertCapturedNamespace(runtimeComposition, "deliveryStoreFactory", RedisTransportNamespaces.DELIVERY);
         assertCapturedNamespace(runtimeComposition, "transportNodeRegistryFactory", RedisTransportNamespaces.NODES);
@@ -549,8 +547,7 @@ class MassSdkTest {
                     new RuntimeEventBusWorkerSystemEventChannel(),
                     new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
-                    runtimeTaskExecutor,
-                    routeKeyResolver()
+                    runtimeTaskExecutor
             );
             adapterBootstrap(runtimeComposition, "socket").contribute(bootstrapContext);
         } finally {
@@ -579,8 +576,7 @@ class MassSdkTest {
                     new RuntimeEventBusWorkerSystemEventChannel(),
                     new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
-                    runtimeTaskExecutor,
-                    routeKeyResolver()
+                    runtimeTaskExecutor
             );
             adapterBootstrap(runtimeComposition, "websocket").contribute(bootstrapContext);
         } finally {
@@ -611,8 +607,7 @@ class MassSdkTest {
                     new RuntimeEventBusWorkerSystemEventChannel(),
                     new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
-                    runtimeTaskExecutor,
-                    routeKeyResolver()
+                    runtimeTaskExecutor
             );
             adapterBootstrap(runtimeComposition, "ws-public").contribute(bootstrapContext);
         } finally {
@@ -645,8 +640,7 @@ class MassSdkTest {
                     new RuntimeEventBusWorkerSystemEventChannel(),
                     new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
-                    runtimeTaskExecutor,
-                    routeKeyResolver()
+                    runtimeTaskExecutor
             );
             adapterBootstrap(runtimeComposition, "socket-edge").contribute(bootstrapContext);
         } finally {
@@ -679,8 +673,7 @@ class MassSdkTest {
                                     runtimeComposition.resolveSystemEventChannel(),
                                     new InMemoryTransportRouteOwnerStore(),
                                     deliveryService(),
-                                    runtimeTaskExecutor,
-                                    routeKeyResolver()
+                                    runtimeTaskExecutor
                             )
                     )
             );
@@ -710,8 +703,7 @@ class MassSdkTest {
                                     new RuntimeEventBusWorkerSystemEventChannel(),
                                     new InMemoryTransportRouteOwnerStore(),
                                     deliveryService(),
-                                    runtimeTaskExecutor,
-                                    routeKeyResolver()
+                                    runtimeTaskExecutor
                             )
                     )
             );
@@ -742,8 +734,7 @@ class MassSdkTest {
                                     new RuntimeEventBusWorkerSystemEventChannel(),
                                     new InMemoryTransportRouteOwnerStore(),
                                     deliveryService(),
-                                    runtimeTaskExecutor,
-                                    routeKeyResolver()
+                                    runtimeTaskExecutor
                             )
                     )
             );
@@ -806,7 +797,6 @@ class MassSdkTest {
                                                 systemEventChannel,
                                                 routeOwnerStore,
                                                 deliveryService,
-                                                routeKeyResolver,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
@@ -830,7 +820,6 @@ class MassSdkTest {
                                                 systemEventChannel,
                                                 routeOwnerStore,
                                                 deliveryService,
-                                                routeKeyResolver,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
         config.setPrimaryTransportAdapterBootstrap(new DescriptorOnlyBootstrap(
                 new TransportAdapterDescriptor("custom-rt", WorkerTransportHints.REALTIME)
@@ -858,7 +847,6 @@ class MassSdkTest {
                                                    WorkerSystemEventChannel systemEventChannel,
                                                    com.xa.mass.transport.route.TransportRouteOwnerStore routeOwnerStore,
                                                    TransportDeliveryService deliveryService,
-                                                   TransportRouteKeyResolver routeKeyResolver,
                                                    List<TransportBinding> adapterBindings) {
                 return mock(TransportRuntimeRegistry.class);
             }
@@ -2723,7 +2711,6 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
-                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 routeOwnerStore,
@@ -2762,7 +2749,6 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
-                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 routeOwnerStore,
@@ -2804,7 +2790,6 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
-                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 routeOwnerStore,
@@ -2845,7 +2830,6 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
-                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 routeOwnerStore,
@@ -2942,7 +2926,6 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
-                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 routeOwnerStore,
@@ -3002,7 +2985,6 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
-                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 routeOwnerStore,
@@ -3047,7 +3029,6 @@ class MassSdkTest {
                                                          systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
-                                                         routeKeyResolver,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 routeOwnerStore,
@@ -3492,20 +3473,13 @@ class MassSdkTest {
 
     private static TransportBinding canonicalRouteBinding(WorkerAdapter adapter) {
         return TransportBinding.builder(adapter)
-                .routeKeyResolver(routeKeyResolver())
                 .build();
     }
 
     private static TransportBinding canonicalRouteBinding(WorkerAdapter adapter, TaskPullChannel taskPullChannel) {
         return TransportBinding.builder(adapter)
-                .routeKeyResolver(routeKeyResolver())
                 .taskPullChannel(taskPullChannel)
                 .build();
-    }
-
-    private static TransportRouteKeyResolver routeKeyResolver() {
-        return (dispatchBinding, routeContext) ->
-                CanonicalWorkerGroupRouteKeyCodec.encode(routeContext.workerGroupId());
     }
 
     private static <T> T waitFor(Duration timeout, ThrowingSupplier<T> supplier) throws Exception {
@@ -3645,7 +3619,7 @@ class MassSdkTest {
         public List<com.xa.mass.transport.model.DispatchOutcome> dispatchEnvelopes(
                 List<com.xa.mass.transport.model.TransportDispatchEnvelope> envelopes) {
             return envelopes == null ? List.of() : envelopes.stream()
-                    .map(envelope -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), envelope))
+                    .map(envelope -> com.xa.mass.transport.model.DispatchOutcome.delivered(adapterId(), envelope))
                     .toList();
         }
     }
@@ -3677,7 +3651,7 @@ class MassSdkTest {
         public List<com.xa.mass.transport.model.DispatchOutcome> dispatchEnvelopes(
                 List<com.xa.mass.transport.model.TransportDispatchEnvelope> envelopes) {
             return envelopes == null ? List.of() : envelopes.stream()
-                    .map(envelope -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), envelope))
+                    .map(envelope -> com.xa.mass.transport.model.DispatchOutcome.delivered(adapterId(), envelope))
                     .toList();
         }
 

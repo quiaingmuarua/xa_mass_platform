@@ -31,13 +31,16 @@ entry for `transport/`.
   their own selected-worker sub-lane.
 - `CanonicalWorkerGroupRouteKeyCodec` is the current SDK/starter default
   worker-consumption route mint rule from `workerGroupId`; transport runtime
-  and adapters receive explicit route keys or injected resolvers instead of
-  importing that rule.
+  and adapters receive explicit route keys as opaque metadata instead of
+  importing or resolving that rule.
 - route-only endpoint helpers may exist inside one concrete adapter for
   raw/manual side channels. Task dispatch must use selected-worker addressing:
   producer feasibility lookup goes through `adapterId + selectedWorkerId`, and
   push adapters dispatch through `sendToSelectedWorker(...)` rather than a
   route-only fallback.
+- `WorkerEndpointRegistry` is selected-worker only. Raw/manual route delivery
+  uses `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`, not the
+  assigned-task endpoint interface.
 - raw/debug worker side-channels are also adapter-scoped. They may resolve one
   concrete active route for a worker, but once resolved they must dispatch via
   the serving adapter identity instead of reviving route-only shared semantics.
@@ -51,11 +54,15 @@ entry for `transport/`.
 - `WorkerSystemEventChannel` is current worker presence ingress only. It is not
   the lifecycle owner for future worker command, worker state-report, or
   capability self-report flows.
+- `DeliveryCommand` is the current engine/starter-to-transport command shape.
+  It carries explicit `adapterId`, `selectedWorkerId`, `deliveryQueueKey`,
+  target `transportNodeId`, opaque `routeKey`, packet payload, and correlation.
 - `TransportPacket` is the internal flat transport envelope. Dispatch now
-  creates packet-backed envelopes before adapter delivery, but worker-facing
-  websocket/socket/polling JSON remains unchanged in this phase.
+  creates packet-backed delivery commands before adapter delivery, but
+  worker-facing websocket/socket/polling JSON remains unchanged in this phase.
 - Queue mechanics may live under `platform_infra`; transport still owns
-  `TransportDispatchEnvelope`, `TransportDeliveryStore`, and `DispatchOutcome`.
+  `DeliveryCommand`, `TransportDispatchEnvelope`, `TransportDeliveryStore`, and
+  `DispatchOutcome`.
 - Embedded runtime composition currently defaults to the in-memory delivery
   store, but SDK/starter wiring may swap in a Redis-backed
   `TransportDeliveryStore` without changing transport-facing contracts.
@@ -123,9 +130,9 @@ Use this order for transport changes:
 Prefer these after transport changes:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,RouteTargetedTaskDispatchSubmitterTest,RouteTargetedTaskDispatchBatchCodecTest,RouteTargetedTaskDispatchHandoffPumpTest,InMemoryRouteTargetedTaskDispatchHandoffTest,InMemoryTransportRouteOwnerStoreTest,RedisTransportRouteOwnerStoreTest,RouteEndpointIndexTest,TransportConvergenceArchitectureGuardTest
+./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDeliveryCommandHandoffTest,TransportDeliveryCommandBatchCodecTest,RedisTransportDeliveryCommandHandoffTest,RedisTransportDeliveryFailureChannelTest,InMemoryTransportRouteOwnerStoreTest,RedisTransportRouteOwnerStoreTest,RouteEndpointIndexTest,TransportConvergenceArchitectureGuardTest
 ./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,WebSocketInputProcessorTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,ServerSessionManagerShutdownTest
-./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Acceptance focus:
@@ -135,4 +142,5 @@ Acceptance focus:
   `selectedWorkerId` and cannot fallback to route-only delivery
 - polling `poll` and result submission work
 - realtime direct-send and route-owner reachability perception work
-- result ingest remains transport-only and does not mutate engine lifecycle directly
+- result lifecycle validation remains outside transport runtime; starter/engine
+  assembly applies result correlation before engine mutation

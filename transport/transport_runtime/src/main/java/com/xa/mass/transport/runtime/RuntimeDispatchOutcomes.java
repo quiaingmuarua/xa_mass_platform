@@ -23,7 +23,7 @@ public final class RuntimeDispatchOutcomes {
         return envelopes.stream()
                 .map(envelope -> missingRoute(envelope)
                         ? DispatchOutcome.invalid(adapterId, envelope, "routeKey must not be blank")
-                        : DispatchOutcome.adapterUnavailable(adapterId, envelope, reason))
+                        : DispatchOutcome.unavailable(adapterId, envelope, reason))
                 .toList();
     }
 

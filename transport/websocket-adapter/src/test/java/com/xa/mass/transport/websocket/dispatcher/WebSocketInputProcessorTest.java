@@ -1,6 +1,7 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.JsonObject;
+import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
@@ -24,6 +25,7 @@ class WebSocketInputProcessorTest {
     private WebSocketTransportFrameCodec codec;
     private WebSocketDispatcherContext context;
     private WorkerEndpointRegistry endpointRegistry;
+    private RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry;
     private WebSocketInputProcessor inputProcessor;
 
     @BeforeEach
@@ -31,6 +33,7 @@ class WebSocketInputProcessorTest {
     void setUp() {
         codec = new WebSocketTransportFrameCodec();
         endpointRegistry = mock(WorkerEndpointRegistry.class);
+        rawRouteEndpointRegistry = mock(RawWorkerRouteEndpointRegistry.class);
         context = createContext(null);
         inputProcessor = new WebSocketInputProcessor(context);
     }
@@ -253,6 +256,7 @@ class WebSocketInputProcessorTest {
         return new WebSocketDispatcherContext(
                 "websocket",
                 endpointRegistry,
+                rawRouteEndpointRegistry,
                 codec,
                 taskResultIngestChannel
         );

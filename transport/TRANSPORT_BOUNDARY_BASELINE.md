@@ -43,6 +43,10 @@ Transport should stay centered on these concepts only:
 
 - `TaskDispatchChannel`: adapter dispatch SPI returning `DispatchOutcome`
 - `DispatchOutcome`: adapter-neutral delivery result, never task-lifecycle truth
+- `DeliveryCommand`: engine/starter-to-transport command record. It carries
+  `adapterId`, `selectedWorkerId`, shared `deliveryQueueKey`, target
+  `transportNodeId`, optional opaque `routeKey`, packet payload, and opaque
+  correlation. It is not a task lifecycle object.
 - `TransportDispatchEnvelope`: runtime-owned dispatch envelope, not a `TaskMsg`
   replacement. It carries the runtime `deliveryQueueKey` and the
   engine-selected `selectedWorkerId` as first-class transport fields; adapters
@@ -51,12 +55,13 @@ Transport should stay centered on these concepts only:
   delivery. Assigned polling delivery is addressed by shared
   `deliveryQueueKey + selectedWorkerId`, with routeKey kept as envelope
   metadata/correlation.
-- `TaskResultIngestChannel`: result-ingest seam back into engine lifecycle
+- `TaskResultIngestChannel`: result-ingest seam back into engine/starter-owned
+  result lifecycle validation
 - `TransportResultEnvelope`: transport metadata around `TaskResultReport`, not a second worker protocol
-- `RouteTargetedTaskDispatchHandoff`: post-claim delivery queue between engine
-  and transport. It carries an opaque `routeKey`, the selected worker
-  constraint, and an explicit adapter dispatch lane for the selected consumer's
-  node-local drain lane; it is not the runtime ready queue.
+- `TransportDeliveryCommandHandoff`: post-claim delivery queue between
+  engine/starter assembly and transport. It carries delivery commands grouped by
+  shared `deliveryQueueKey` and target transport node; `routeKey` remains
+  per-command opaque metadata, not the batch owner.
 - `TaskPullResult`: explicit pull-path status plus delivered dispatch items;
   empty queue, invalid request, temporary unavailability, and shutdown must not
   be flattened into one fake "no work" result on the transport mainline
@@ -118,19 +123,20 @@ lifecycle state.
   dispatch handoff
 - delivery backlog admission control and store statistics
 - runtime executor handoff into adapter bootstraps for transport-owned blocking work
-- result-envelope validation and runtime logging
-- adapter dispatch from already resolved route-targeted handoff batches
-- engine-to-transport dispatch handoff queue/store ownership after assignment;
-  current embedded default wiring is an in-memory
-  `RouteTargetedTaskDispatchHandoff`, while split runtimes use Redis
-  route-targeted inboxes awakened by `transportNodeId`
-- producer-side assembly submits immutable `TaskDispatchContext +
-  List<TaskDispatchBinding>` batches into route-targeted delivery bindings;
-  binding-level `workerId`, when present, remains the engine-selected execution
-  constraint used to choose a concrete active consumer through direct
-  `adapterId + selectedWorkerId` route-owner evidence; transport consumers
-  drain only pre-resolved route metadata plus adapter-lane delivery targets and
-  do not reselect workers or decode route-key minting rules
+- result-envelope queueing, buffering, and runtime logging; result correlation
+  and lease/attempt validation live in SDK/starter or engine-owned result code
+- adapter dispatch from already resolved delivery-command batches
+- engine-to-transport delivery-command handoff queue/store ownership after
+  assignment; current embedded default wiring is an in-memory
+  `TransportDeliveryCommandHandoff`, while split runtimes use Redis
+  delivery-command inboxes awakened by `transportNodeId`
+- producer-side starter assembly translates immutable `TaskDispatchContext +
+  TaskDispatchBinding` assignment facts into `DeliveryCommand` records;
+  binding-level `workerId` becomes `selectedWorkerId`, the engine-selected
+  execution constraint used to choose a concrete active consumer through direct
+  `adapterId + selectedWorkerId` route-owner evidence. Transport consumers
+  drain only delivery commands and do not reselect workers or decode route-key
+  minting rules.
 - worker transport-binding resolution from registered worker truth before
   dispatch handoff; transport consumers do not call worker-resource runtime for
   second-stage selection
@@ -228,20 +234,21 @@ plane owner.
 
 The split runtime uses three transport/runtime channels:
 
-- dispatch handoff: engine/starter assembly submits route-targeted delivery
-  batches after claim, attempt creation, lease, and worker binding have already
+- dispatch handoff: engine/starter assembly submits delivery-command batches
+  after claim, attempt creation, lease, and worker binding have already
   happened; transport drains only this small assigned window. Multi-process
-  adapter mode uses `RouteTargetedTaskDispatchHandoff` adapter-lane queues with
-  node-local ready-lane indexes so each transport JVM is awakened only for work
-  it can currently serve. The batch still carries routeKey metadata, but Redis
-  dispatch queue ownership is not routeKey cardinality.
+  adapter mode uses `TransportDeliveryCommandHandoff` queues keyed by shared
+  delivery queue and target transport node with node-local ready-lane indexes
+  so each transport JVM is awakened only for work it can currently serve.
+  `routeKey` is per-command metadata only; Redis dispatch queue ownership is
+  not routeKey cardinality.
 - delivery inbox: transport routes dispatch envelopes into
   `TransportDeliveryStore` by runtime `deliveryQueueKey` plus the
   engine-selected `selectedWorkerId`. `routeKey` remains opaque envelope
   metadata and connection/correlation address; it must not be the only queue
   isolation key for assigned polling task delivery.
 - result/compensation inboxes: transport writes `TransportResultEnvelope`
-  values and retryable dispatch-failure events to Redis-backed inboxes; the
+  values and retryable delivery-failure events to Redis-backed inboxes; the
   engine process drains those inboxes into its local result ingest and
   assignment compensation ports. Result lifecycle ownership is defined in
   [../doc/TASK_LIFECYCLE_BASELINE.md](../doc/TASK_LIFECYCLE_BASELINE.md).
@@ -252,13 +259,13 @@ durable task lifecycle truth. `TaskWorkRuntime` remains the only owner of ready
 membership, delayed visibility, active lease, retry timing, result application,
 and terminal convergence.
 
-`RouteTargetedTaskDispatchBatch` is the process-boundary payload for dispatch
-handoff. It contains `TaskDispatchContext` plus route-targeted bindings with
-explicit `selectedWorkerId` and `AdapterDispatchLane` facts, and must stay
-JSON-safe. The Redis/process-boundary codec serializes that record once; it
-must not wrap another encoded `TaskDispatchBatch` string such as
-`taskBatchJson`. Large item bodies continue to use `payloadRef` when needed;
-the handoff queue is not a copy of a million-item task queue.
+`DeliveryCommandBatch` is the process-boundary payload for dispatch handoff. It
+contains only delivery commands for one shared delivery queue and target
+transport node, and must stay JSON-safe. The Redis/process-boundary codec
+serializes that record once; it must not wrap another encoded task-dispatch
+batch string such as `taskBatchJson`. Large item bodies continue to use
+`payloadRef` when needed; the handoff queue is not a copy of a million-item
+task queue.
 
 Worker runtime state is not a queue. The shared worker view contains
 route-owner records:
@@ -270,10 +277,10 @@ optional workerId, leaseExpireAt, updatedAt
 
 Engine matching still selects a worker from control-plane registration,
 capability, rule, lock, admission, and worker-runtime evidence. Only after
-assignment has produced concrete bindings does dispatch assembly resolve the
-opaque routeKey metadata and then find active route consumers by `adapterId +
-selectedWorkerId`. It writes route-targeted batches with explicit
-`AdapterDispatchLane` facts to the selected consumers' node-local drain lanes.
+assignment has produced concrete bindings does dispatch assembly mint opaque
+routeKey metadata and then find active route consumers by `adapterId +
+selectedWorkerId`. It writes delivery-command batches with explicit target
+transport-node facts to the selected consumers' node-local drain lanes.
 Missing or expired route owners, or offline transport nodes, go through
 engine-owned compensation/retry; transport does not re-schedule or mutate task
 lifecycle.
@@ -282,12 +289,12 @@ SDK/starter assembly exposes three runtime roles:
 
 - `EMBEDDED`: engine, local handoff pump, transport runtime, adapters, and local
   result ingest run in one JVM
-- `ENGINE_PRODUCER`: engine runs and submits dispatch batches into the configured
-  handoff; it drains result and dispatch-failure inboxes back into local engine
-  ports, but does not start transport adapters
+- `ENGINE_PRODUCER`: engine runs and submits delivery-command batches into the
+  configured handoff; it drains result and delivery-failure inboxes back into
+  local engine ports, but does not start transport adapters
 - `TRANSPORT_CONSUMER`: transport adapters, route-owner store, delivery store,
-  and route-targeted handoff pump run without starting the engine; results and
-  retryable dispatch failures are enqueued for engine-side draining
+  and delivery-command handoff pump run without starting the engine; results
+  and retryable delivery failures are enqueued for engine-side draining
 
 Transport consumers consume already resolved delivery targets. They must not
 call worker runtime, engine, or server APIs for worker lookup, worker
@@ -324,9 +331,9 @@ default component namespaces are:
 | route-owner | `xa:mass:transport:route-owner:v1` | `route:<encodedRouteKey>:consumers`, `routes`, `deadline`, `worker-route:<workerId>`, `adapter:<encodedAdapterId>:worker:<encodedWorkerId>:owner` |
 | delivery | `xa:mass:transport:delivery:v1` | `q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `meta:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `queues`, `stats` |
 | nodes | `xa:mass:transport:nodes:v1` | transport-node owner/heartbeat records and deadlines |
-| dispatch-route | `xa:mass:transport:dispatch-route:v1` | `lane:<encodedAdapterLaneKey>:q`, `lanes`, `node:<transportNodeId>:ready-lanes` |
+| delivery-command | `xa:mass:transport:delivery-command:v1` | `lane:<encodedDeliveryQueueKey+targetTransportNodeId>:q`, `lanes`, `node:<transportNodeId>:ready-lanes` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
-| dispatch-failure | `xa:mass:transport:dispatch-failure:v1` | engine-drained retryable dispatch-failure entries |
+| delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
 
 Route-owner truth is keyed by opaque route and consumer id. Redis stores a
 route consumer hash plus deadline index so one opaque `routeKey` can have
@@ -376,11 +383,10 @@ the worker wire contract is intentionally changed.
 Do not split this hybrid opportunistically. That is a cross-adapter wire change
 touching adapter codecs and external worker API behavior.
 
-`TaskDispatchContext` is the current task-level dispatch snapshot passed through
-the engine -> transport handoff seam. It freezes the task shell fields needed
-for delivery payload assembly after assignment has already selected concrete
-`TaskDispatchBinding` values. Transport should consume this snapshot instead of
-depending on a live mutable `Task` reference across the handoff boundary.
+`TaskDispatchContext` is no longer a transport runtime handoff object.
+SDK/starter assembly consumes the task-level dispatch snapshot plus concrete
+`TaskDispatchBinding` values and translates them into `DeliveryCommand`
+records. Transport runtime consumes delivery commands only.
 
 `TransportPacket` is now the internal flat transport envelope for dispatch,
 result, and worker-system-event shapes. In the current mainline, dispatch is
@@ -406,9 +412,10 @@ maps repeatedly across hot paths.
 
 `TransportResultEnvelope` is internal runtime metadata around a
 `TaskResultReport`. `TaskResultReport` remains the protocol payload. Envelope
-fields such as `routeKey`, `attemptId`, and `leaseToken` may be used by runtime
-validation, but old workers that only submit `TaskResultReport` remain valid
-until the security model explicitly changes. `routeKey` is transport route
+fields such as `routeKey`, `attemptId`, and `leaseToken` may be used by
+starter/engine-side result validation, but old workers that only submit
+`TaskResultReport` remain valid until the security model explicitly changes.
+`routeKey` is transport route
 evidence/correlation metadata; enveloped result ingress must carry a non-blank
 route key when route-owner evidence is enforced, but that value must not be
 treated as worker-selection truth. Adapter-local worker/session/connection
@@ -416,7 +423,7 @@ identities are local diagnostics only and do not belong on the shared
 result-envelope mainline.
 
 When envelope identity validation rejects stale attempt or lease evidence,
-transport result ingress returns accepted-noop semantics: the envelope was
+starter-owned result ingress returns accepted-noop semantics: the envelope was
 handled and intentionally not applied. Transport still does not decide retry,
 finality, task terminal convergence, or public result read truth.
 
@@ -445,11 +452,9 @@ Current runtime rules:
   route rule from `workerGroupId`; a future assembly policy may mint a route
   from `adapterId`, worker group, or another lane key. Transport
   runtime/adapters must not import or hard-code any of those rules.
-- transport bindings must declare their route-key resolver explicitly at
-  assembly time; runtime must not hide `workerId -> routeKey` policy behind
-  builder defaults or shared fallback helpers
-- mainline polling/websocket/socket bindings use the resolver injected by
-  runtime assembly
+- route-key assembly happens in SDK/starter or an explicit integration layer;
+  transport binding and adapter runtime code must not hide `workerId ->
+  routeKey` policy behind builder defaults or shared fallback helpers
 - adapter ingress must receive an explicit routeKey; public managed SDK
   sessions generate that key from worker group. Handshake / hello fallback to
   raw worker id is not a target path.
@@ -458,6 +463,10 @@ Current runtime rules:
   default implementation that drops the selected worker and falls back to
   route-only send. Route-only send is reserved for explicit raw/manual
   side-channels.
+- `WorkerEndpointRegistry` is the assigned-task selected-worker endpoint
+  contract. Route-only raw/manual sends are separated behind
+  `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`; assigned task
+  delivery callers must not receive those helpers through the same interface.
 - blank `routeKey` is invalid for direct-send delivery and route-owner evidence.
   Queued polling delivery must not rely on routeKey as the only isolation key.
 - assigned polling queues are addressed by
@@ -468,10 +477,10 @@ Current runtime rules:
   constraint and `routeKey` is only opaque connection/correlation metadata.
   Transport runtime must not reinterpret routeKey as task, attempt, lease,
   worker-group, worker, or business routing truth.
-- route-only endpoint helpers may exist in the shared registry only as explicit
-  raw/manual adapter-scoped side-channels. They are not task-dispatch mainline
-  operations and must not be used to infer selected-worker ownership from
-  endpoint snapshots.
+- route-only endpoint helpers may exist only as explicit raw/manual
+  adapter-scoped side-channels. They are not task-dispatch mainline operations
+  and must not be used to infer selected-worker ownership from endpoint
+  snapshots.
 - worker-addressed debug/raw side-channels are not task-dispatch truth; if they
   remain, they must stay separate from selected-worker task dispatch and must
   not reintroduce a route-only fallback for assigned items.
@@ -483,7 +492,7 @@ WRB convergence note:
 - `CanonicalWorkerGroupRouteKeyCodec` names the current SDK/starter default
   route-key mint rule: route identity is minted from `workerGroupId`. This is
   not a transport runtime rule; adapters and shared runtime code receive
-  explicit route keys or injected resolvers.
+  explicit opaque route keys.
 - `routeKey` locates a delivery domain. Binding-level `workerId`, when present,
   remains the selected execution identity and adapter delivery constraint within
   that domain.
@@ -517,9 +526,11 @@ behavior.
 
 ## Hot-Path Rule
 
-Result ingest is a hot path. Validation may read runtime lease metadata plus a
-bounded latest-attempt projection, but it must not load full task history or
-scan all attempts. Storage implementations should provide bounded lookups for:
+Result ingest is a hot path. Transport runtime may buffer, enqueue, and relay
+result envelopes, but result validation belongs to starter/engine-owned result
+ingestion. That validation may read runtime lease metadata plus a bounded
+latest-attempt projection, but it must not load full task history or scan all
+attempts. Storage implementations should provide bounded lookups for:
 
 ```text
 (taskId, messageId) -> active runtime lease
@@ -533,12 +544,13 @@ dispatch outcomes must correlate by explicit `attemptId`; transport trace ids
 are diagnostics and must not double as compensation keys.
 
 Assignment-to-transport handoff is also part of the hot path. The embedded
-runtime uses an in-memory `RouteTargetedTaskDispatchHandoff` plus
-`RouteTargetedTaskDispatchHandoffPump`; split runtime uses Redis-backed
-route-targeted handoffs with the same producer/consumer contract. Do not
-reintroduce direct synchronous engine->transport callback coupling as a
-parallel mainline, and do not treat any handoff queue as a second runtime ready
-queue.
+runtime uses an in-memory `TransportDeliveryCommandHandoff` plus
+`TransportDeliveryCommandHandoffPump`; split runtime uses Redis-backed
+delivery-command handoffs with the same producer/consumer contract. Producer
+handoff is a bounded offer that returns delivery outcomes such as backpressure,
+not a blocking engine hot-path call. Do not reintroduce direct synchronous
+engine->transport callback coupling as a parallel mainline, and do not treat
+any handoff queue as a second runtime ready queue.
 
 Runtime delivery stores must enforce explicit admission control. The current
 in-memory store has per selected-worker sub-lane caps under a shared

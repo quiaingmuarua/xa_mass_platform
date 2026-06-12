@@ -33,7 +33,6 @@ class TransportRuntimeRegistryTest {
 
     private static TransportBinding canonicalRouteBinding(com.xa.mass.transport.worker.WorkerAdapter adapter) {
         return TransportBinding.builder(adapter)
-                .routeKeyResolver((dispatchBinding, routeContext) -> "route:" + routeContext.workerId())
                 .build();
     }
 
@@ -60,7 +59,7 @@ class TransportRuntimeRegistryTest {
         public java.util.List<com.xa.mass.transport.model.DispatchOutcome> dispatchEnvelopes(
                 java.util.List<com.xa.mass.transport.model.TransportDispatchEnvelope> envelopes) {
             return envelopes == null ? java.util.List.of() : envelopes.stream()
-                    .map(envelope -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), envelope))
+                    .map(envelope -> com.xa.mass.transport.model.DispatchOutcome.delivered(adapterId(), envelope))
                     .toList();
         }
     }

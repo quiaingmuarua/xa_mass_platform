@@ -1,6 +1,6 @@
 # Transport Delivery Executor Convergence Roadmap
 
-Status: proposed direction document.
+Status: completed and archived on 2026-06-12.
 
 Related current truth:
 
@@ -10,17 +10,38 @@ Related current truth:
 - `doc/INFRA_TRUTH_LAYERS.md`
 - `doc/PROOF_REGISTRY.md`
 
+Current implementation progress:
+
+- DEX-0 inventory is archived beside this roadmap at
+  `2026-06-12_TRANSPORT_DELIVERY_EXECUTOR_CONVERGENCE_INVENTORY.md`.
+- DEX-1 introduced `DeliveryCommand` and `InboundEnvelope` in `transport_api`.
+- DEX-1 converged outcome semantics in place through `DispatchOutcome` /
+  `DispatchOutcomeStatus`; no production `DeliveryOutcome` type exists.
+- DEX-2 moved task-dispatch-to-delivery translation into SDK/starter assembly.
+  Engine core remains transport-free and still emits neutral assignment/binding
+  truth.
+- DEX-3 retargeted in-memory and Redis handoff to `DeliveryCommandBatch` and
+  bounded offer semantics. The old route-targeted dispatch handoff/listener/
+  failure bridge was removed from transport runtime mainline.
+- DEX-4 moved `RuntimeTaskResultIngestChannel` into SDK/starter assembly.
+  Transport runtime no longer imports `TaskResultIngestFacade` or
+  `TaskResultCorrelation`.
+- DEX-5 landed fully: WebSocket/socket replacement is selected-worker scoped
+  (`adapterId + selectedWorkerId` inside each adapter), not routeKey scoped.
+  `WorkerEndpointRegistry` is selected-worker only; raw/manual route sends use
+  `RawWorkerRouteEndpointRegistry` or adapter-local `RawWorkerMessageChannel`.
+
 ## Purpose
 
 Transport has already converged important selected-worker delivery facts:
 `selectedWorkerId` is the delivery target, `routeKey` is opaque connection or
 domain metadata, and `deliveryQueueKey` is a batching/sharding primitive.
 
-That convergence is necessary but not sufficient. Current transport runtime
-still contains task-dispatch and result-lifecycle vocabulary in its core
-handoff, listener, failure, and result-ingest paths. It also still has
-producer-side blocking handoff behavior and route-shaped endpoint residue that
-keeps transport larger than its real owner boundary.
+That convergence is necessary but not sufficient. This roadmap removes
+task-dispatch and result-lifecycle vocabulary from transport runtime core
+handoff, listener, failure, and result-ingest paths. It also removes
+producer-side blocking handoff behavior and route-shaped endpoint replacement
+residue that kept transport larger than its real owner boundary.
 
 This roadmap moves transport away from building a complex runtime around task
 dispatch. Transport should be a delivery executor:
@@ -45,38 +66,27 @@ surface easier to reason about.
 
 ## Current Code Observations
 
-- `RouteTargetedTaskDispatchSubmitter` currently implements
-  `TaskDispatchBatchListener` and consumes `TaskDispatchContext` plus
-  `TaskDispatchBinding` directly. It already looks up delivery feasibility by
-  `adapterId + selectedWorkerId`, but it still resolves `routeKey`, builds
-  `RouteTargetedTaskDispatchBatch`, and calls a transport failure handler with
-  task-dispatch bindings.
-- `RouteTargetedTaskDispatchSubmitter` and `RouteTargetedTaskDispatchBatch`
-  still group and validate process-boundary batches by top-level `routeKey`.
-  Redis physical queues are already adapter-lane keyed, so the route-key batch
-  shape is residue, not the desired owner model.
-- `RouteTargetedTaskDispatchListener` currently turns route-targeted batches
-  into `TransportDispatchEnvelope` values, groups by adapter, dispatches to
-  adapters, and compensates retryable failures.
-- `DispatchOutcome` is already the current adapter-neutral delivery result
-  contract returned by adapter dispatch SPIs. A future `DeliveryOutcome` name is
-  semantic target language only unless the same slice migrates all mainline
-  callers and removes the old outcome path.
-- `TransportDispatchFailureHandler` is currently a transport-runtime bridge that
-  accepts task dispatch context and bindings, then performs post-assignment
-  compensation. That bridge contradicts the final "Engine compensates" owner
-  boundary and must not become the new executor's failure contract.
-- Current engine core accepts only the neutral `TaskDispatchBatchListener`
-  boundary. SDK/starter assembly creates the transport submitter. The delivery
-  translator must not move transport contracts into engine core as a convenience
-  dependency.
-- `RouteTargetedTaskDispatchHandoff#submit` is a blocking producer call today:
-  in-memory handoff uses a blocking queue put, and Redis handoff loops around
-  capacity checks and sleeps. That makes transport backpressure a potential
-  engine hot-path stall instead of an explicit delivery outcome.
-- `RuntimeTaskResultIngestChannel` currently validates result envelope identity
-  against `TaskResultIngestFacade#getResultCorrelation`, including active lease,
-  lease token, and attempt id checks before forwarding `TaskResultReport`.
+- SDK/starter assembly owns `TaskDispatchDeliveryCommandSubmitter`, the single
+  translator from `TaskDispatchContext + TaskDispatchBinding` into
+  `DeliveryCommand`. Engine core does not import transport contracts.
+- `DeliveryCommand` and `InboundEnvelope` live in `transport_api`.
+  `DispatchOutcome` remains the one adapter-neutral outcome contract; no
+  production `DeliveryOutcome` track exists.
+- `TransportDeliveryCommandHandoff` is the current handoff contract. In-memory
+  and Redis implementations accept `DeliveryCommandBatch` and return delivery
+  outcomes; full queues return backpressure rather than blocking producer
+  threads.
+- Redis delivery-command offer updates queue, lane catalog, and node-local
+  ready-lane visibility in one producer-side Lua unit.
+- Retryable delivery failures flow through delivery-shaped failure events and
+  are drained by SDK/starter into engine-owned assignment compensation using a
+  neutral `TaskDispatchDeliveryFailure` record.
+- Transport runtime main sources no longer import `TaskDispatchBatchListener`,
+  `TaskDispatchContext`, `TaskDispatchBinding`, `TaskResultIngestFacade`, or
+  `TaskResultCorrelation`.
+- `RuntimeTaskResultIngestChannel` lives in SDK/starter assembly. It may
+  validate result identity against engine result correlation; transport runtime
+  only buffers, queues, or relays result envelopes.
 - `TaskDispatchItem` and `TaskResultReport` are still worker-facing protocol
   payloads under `transport_api`. They are compatibility payloads and cannot be
   deleted before adapter and SDK protocol ownership is deliberately replaced.
@@ -85,10 +95,14 @@ surface easier to reason about.
 - Direct WebSocket and socket dispatch already use selected-worker addressing
   through `sendToSelectedWorker(...)`. Route-only send must stay a raw/manual
   side channel, not assigned task delivery.
-- WebSocket and socket session replacement still searches for an existing
-  endpoint within the current `routeKey`. Assigned delivery is selected-worker
-  delivery, so reconnect replacement must be keyed by `adapterId +
-  selectedWorkerId`, with `routeKey` kept as metadata.
+- WebSocket and socket session replacement now searches by selected worker
+  across routeKey changes inside each adapter. `routeKey` remains endpoint
+  metadata and raw/manual route side-channel input, not selected-task endpoint
+  replacement scope.
+- `WorkerEndpointRegistry` exposes only selected-worker task endpoint delivery.
+  Raw/manual route helpers live on `RawWorkerRouteEndpointRegistry` or
+  adapter-local raw channels, so assigned task delivery callers cannot fallback
+  to `sendToAdapterRoute(...)` through the same interface.
 
 These facts mean the next convergence is not another `routeKey` rename. It is
 a contract and owner split between task assignment/result lifecycle and
@@ -330,6 +344,13 @@ Goal:
 Move task-assignment knowledge to a single engine/assembly boundary that emits
 `DeliveryCommand` values.
 
+Current landed shape:
+
+- `TaskDispatchDeliveryCommandSubmitter` lives in SDK/starter assembly.
+- Engine core remains transport-free; architecture guard covers this.
+- Delivery failures map back to engine-owned compensation through
+  `TaskDispatchDeliveryFailure`, not through transport task-dispatch bindings.
+
 Scope:
 
 - Replace the transport-core dependency on `TaskDispatchContext +
@@ -346,9 +367,14 @@ Scope:
 - Delivery infeasibility becomes a delivery outcome or delivery-failure record
   consumed by engine-owned compensation. Transport does not call retry/release
   lifecycle APIs.
-- `TransportDispatchFailureHandler` is allowed only as a recorded transitional
-  bridge while existing route-targeted callers move. It must not be the contract
-  for the new delivery executor path.
+- `TransportDispatchFailureHandler` was a transitional bridge while existing
+  route-targeted callers moved. It is now removed from transport runtime core
+  and must not be reintroduced as the delivery executor failure contract.
+- Before switching the local adapter listener to delivery commands, define the
+  engine-owned outcome/failure drain. Current engine compensation expects
+  assignment binding truth; the new path must either keep that mapping in
+  starter/integration assembly or add a neutral engine-owned failure record.
+  Do not replace post-adapter compensation with log-only delivery outcomes.
 - `routeKey` resolution, if still required for adapter metadata, happens before
   or inside the translator and is stored only as opaque metadata.
 - The translator must not become a same-module pass-through wrapper. It exists
@@ -370,6 +396,9 @@ Acceptance:
 - The new delivery executor path does not import or call
   `TransportDispatchFailureHandler`; it emits outcome/failure records and lets
   engine-owned code decide compensation.
+- A failed post-adapter delivery has a verified path to engine-owned
+  compensation or an explicitly accepted deferred safety gap; it is not silently
+  dropped by the transport consumer.
 - Existing embedded and distributed dispatch tests still pass.
 
 ## DEX-3: Delivery Executor And Handoff Retarget
@@ -378,6 +407,15 @@ Goal:
 
 Make the handoff and adapter path consume `DeliveryCommand` and emit the
 converged delivery outcome contract.
+
+Current landed shape:
+
+- In-memory and Redis handoff use `DeliveryCommandBatch`.
+- Producer submission is bounded offer; full queues return backpressure
+  outcomes.
+- Redis command offer updates queue, lane catalog, and ready-lane visibility in
+  one Lua unit.
+- Route-targeted handoff/listener classes have been deleted from production.
 
 Scope:
 
@@ -418,8 +456,7 @@ Acceptance:
   equivalent outcome without blocking the producer thread.
 - Dispatch outcome tests assert delivery-outcome semantics rather than
   task-lifecycle compensation semantics.
-- `RouteTargetedTaskDispatchHandoff` is either removed or reduced to a temporary
-  non-mainline migration target with no new callers.
+- `RouteTargetedTaskDispatchHandoff` is removed from production mainline.
 - Process-boundary batch records do not require a top-level shared `routeKey`.
   `routeKey` is present only per command/envelope when needed as opaque
   metadata.
@@ -431,6 +468,14 @@ Acceptance:
 Goal:
 
 Make adapter ingress transport-owned and result lifecycle engine-owned.
+
+Current landed shape:
+
+- `RuntimeTaskResultIngestChannel` moved to SDK/starter assembly.
+- Transport runtime core no longer imports `TaskResultIngestFacade` or
+  `TaskResultCorrelation`.
+- Transport runtime still owns result inbox/buffer mechanics, not result
+  lifecycle validation.
 
 Scope:
 
@@ -459,6 +504,16 @@ Goal:
 
 Narrow adapter responsibilities after the executor boundary is real.
 
+Current landed shape:
+
+- WebSocket and socket selected-worker endpoint replacement is keyed by worker
+  identity inside the adapter, so routeKey changes retire the previous selected
+  endpoint.
+- Raw/manual route-only side channels remain separate and allowed through
+  `RawWorkerRouteEndpointRegistry` or adapter-local `RawWorkerMessageChannel`.
+  Task delivery callers use the selected-worker `WorkerEndpointRegistry`
+  surface and cannot see route-only send helpers through that interface.
+
 Scope:
 
 - WebSocket and socket adapters send command payloads through
@@ -466,7 +521,8 @@ Scope:
   contract.
 - Split assigned-task endpoint dispatch from raw/manual route dispatch. The task
   delivery path should depend on a selected-worker endpoint contract, while
-  route-only helpers remain adapter-local or behind `RawWorkerMessageChannel`.
+  route-only helpers remain behind `RawWorkerRouteEndpointRegistry` or
+  adapter-local `RawWorkerMessageChannel`.
 - After that split, endpoint replacement for assigned task delivery must be
   keyed by `adapterId + selectedWorkerId`. `routeKey` may be stored on the
   endpoint record and used by raw/manual route dispatch, but it must not scope
@@ -498,6 +554,16 @@ Goal:
 
 Delete old route-targeted/task-aware transport runtime residue and prevent
 regression.
+
+Current landed shape:
+
+- Production route-targeted dispatch classes and dispatch-failure bridge
+  classes are removed.
+- Guards cover no transport imports in engine core, no task-dispatch/result
+  lifecycle imports in transport runtime core, no route-only fallback in
+  assigned task dispatch channels, and no nested `taskBatchJson` command codec.
+- Guards also cover that `WorkerEndpointRegistry` does not expose route-only
+  raw send helpers.
 
 Scope:
 
@@ -564,25 +630,25 @@ exist.
 Focused compile:
 
 ```bash
-./mvnw -q -pl transport/transport_api,transport/transport_runtime -am -DskipTests compile
+./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/websocket-adapter,transport/socket-adapter,sdk/xa-mass-embedded-sdk,xa-mass-engine -am -DskipTests compile
 ```
 
 Transport runtime guard and delivery tests:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime test -Dtest=TransportConvergenceArchitectureGuardTest,TransportRuntimeRegistryTest,TransportDeliveryServiceTest,InMemoryTransportDeliveryStoreTest,RedisTransportDeliveryStoreTest,RouteTargetedTaskDispatchSubmitterTest,RouteTargetedTaskDispatchBatchCodecTest,RouteTargetedTaskDispatchHandoffPumpTest,RedisRouteTargetedTaskDispatchHandoffTest
+./mvnw -q -pl transport/transport_runtime -am test -DskipITs -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TransportConvergenceArchitectureGuardTest,TransportRuntimeRegistryTest,TransportRegistrationResolverTest,TransportDeliveryServiceTest,InMemoryTransportDeliveryStoreTest,RedisTransportDeliveryStoreTest,InMemoryTransportDeliveryCommandHandoffTest,TransportDeliveryCommandBatchCodecTest,RedisTransportDeliveryCommandHandoffTest,RedisTransportDeliveryFailureChannelTest
 ```
 
 Adapter protocol tests:
 
 ```bash
-./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=TaskDispatchItemTest,TaskResultReportTest,TransportResultEnvelopeTest,WebSocketTaskDispatchChannelTest,WebSocketInputProcessorTest,SocketTaskDispatchChannelTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest
+./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter -am test -DskipITs -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskDispatchItemTest,TaskResultReportTest,TransportResultEnvelopeTest,WebSocketTaskDispatchChannelTest,WebSocketInputProcessorTest,SocketTaskDispatchChannelTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest,ServerSessionManagerShutdownTest,SocketSessionManagerTest,WebSocketOutputProcessorTest
 ```
 
 SDK embedded/distributed proof:
 
 ```bash
-./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -DskipITs -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Guard scans to add or tighten as slices land:
@@ -591,9 +657,9 @@ Guard scans to add or tighten as slices land:
 rg -n "TaskDispatchContext|TaskDispatchBinding|TaskDispatchBatchListener|TaskResultIngestFacade|TaskResultCorrelation|RouteTargetedTaskDispatch" transport/transport_runtime/src/main/java
 rg -n "TransportDispatchFailureHandler|compensate\\(" transport/transport_runtime/src/main/java
 rg -n "com\\.xa\\.mass\\.transport" xa-mass-engine/src/main/java
-rg -n "sendToAdapterRoute\\(" transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/worker
+rg -n "sendToAdapterRoute\\(" transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketTaskDispatchChannel.java transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/worker
 rg -n "TaskResultIngestFacade|getResultCorrelation|TaskResultCorrelation|projectedAttemptId|leaseToken" transport/transport_runtime/src/main/java
-rg -n "queue\\.put\\(|Thread\\.sleep\\(|LLEN|RPUSH" transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/dispatch
+rg -n "queue\\.put\\(|Thread\\.sleep\\(" transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery
 rg -n "currentOwners\\(" transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime
 ```
 
@@ -605,8 +671,9 @@ target concrete owner leaks such as `TaskResultIngestFacade`,
 lease-token validation, not every occurrence of generic retryable transport
 outcome vocabulary.
 
-The command lists above must be corrected after DEX-0 if class names move or
-old route-targeted tests are replaced by delivery-executor tests.
+`WorkerEndpointRegistry` itself must not expose `sendToAdapterRoute(...)` or
+`isAdapterRouteOnline(...)`; those route-only operations belong to
+`RawWorkerRouteEndpointRegistry` or adapter-local raw channels.
 
 ## Roadmap Completion Criteria
 
@@ -642,18 +709,11 @@ This roadmap can be marked complete only when all are true:
 - Active docs describe the delivery-executor model; archived roadmaps remain
   historical only.
 
-## Open Decisions
-
-- Whether `DeliveryCommand` and `InboundEnvelope` belong in `transport_api` as
-  stable transport contracts or in `transport_runtime` until the external
-  worker protocol is cleaned up.
-- Whether the final outcome type keeps the current `DispatchOutcome` name or is
-  renamed to `DeliveryOutcome` in a single no-dual-track slice.
-- Whether command payload should standardize on `TransportPacket`, raw bytes,
-  JSON text, or a small opaque payload wrapper.
-- Where the engine-to-delivery translator should live so it protects a real
-  owner boundary without becoming a same-module pass-through wrapper.
+## Deferred Decisions
 - Whether `TaskDispatchItem` and `TaskResultReport` remain long-term worker
   protocol DTO names or move under a worker-protocol owner after this roadmap.
 - How much result correlation metadata should remain in opaque transport
   correlation versus engine-owned result application input.
+- Whether `InboundEnvelope` becomes the primary adapter ingress shape in a
+  later worker-protocol cleanup slice or remains a transport contract reserved
+  for the next ingress convergence.

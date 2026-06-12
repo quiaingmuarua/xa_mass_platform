@@ -1,24 +1,15 @@
 package com.xa.mass.transport;
 
 /**
- * Transport-neutral registry for addressing online worker endpoints.
+ * Transport-neutral registry for assigned worker endpoints.
  *
- * <p>The current WebSocket implementation keeps channel/session details behind
- * this interface. Future polling, gRPC, or custom socket adapters should be
- * able to provide the same semantics without leaking protocol-specific types
- * into the scheduler/runtime composition layer.
- *
- * <p>Route-only send is reserved for raw/manual side channels. Task dispatch
- * must use selected-worker addressing so an assigned item cannot silently
- * fallback to an arbitrary route endpoint.
+ * <p>This surface is selected-worker only. Assigned task delivery must address
+ * the engine-selected worker identity and must not fallback to route-only raw
+ * sends.
  */
 public interface WorkerEndpointRegistry {
 
-    boolean sendToAdapterRoute(String adapterId, String routeKey, String message);
-
     boolean sendToSelectedWorker(String adapterId, String selectedWorkerId, String message);
-
-    boolean isAdapterRouteOnline(String adapterId, String routeKey);
 
     int getActiveConnectionCount();
 

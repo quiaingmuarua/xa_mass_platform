@@ -160,18 +160,18 @@ reachability truth, and do not expose engine owner records directly.
 
 Distributed transport v1 splits one engine producer JVM from one or more
 transport consumer JVMs without adding server-owned transport endpoints. Use
-Redis-backed runtime channels for dispatch handoff, result ingest, and
-dispatch-failure compensation. The one-argument
-`redisDistributedChannels(redisUri)` helper wires the route-targeted dispatch
-inbox, result inbox, dispatch-failure inbox, Redis route-owner store, Redis
+Redis-backed runtime channels for delivery-command handoff, result ingest, and
+delivery-failure compensation. The one-argument
+`redisDistributedChannels(redisUri)` helper wires the delivery-command handoff,
+result inbox, delivery-failure inbox, Redis route-owner store, Redis
 delivery store, and transport-node registry under transport-owned component
 namespaces:
 
 | Component | Default namespace |
 | --- | --- |
-| dispatch-route | `xa:mass:transport:dispatch-route:v1` |
+| delivery-command | `xa:mass:transport:delivery-command:v1` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` |
-| dispatch-failure | `xa:mass:transport:dispatch-failure:v1` |
+| delivery-failure | `xa:mass:transport:delivery-failure:v1` |
 | route-owner | `xa:mass:transport:route-owner:v1` |
 | delivery | `xa:mass:transport:delivery:v1` |
 | nodes | `xa:mass:transport:nodes:v1` |
@@ -214,13 +214,14 @@ MassSdkApplication transportConsumer = MassSdk.builder()
         .build();
 ```
 
-The dispatch handoff carries only post-claim `TaskDispatchBatch` values. In
-multi-adapter mode the engine producer reads the shared worker route-owner view,
-selects an ONLINE route whose transport node is ONLINE, and writes the batch to
-that node's Redis inbox. It is not a duplicate of the runtime ready queue, and
-transport consumers must not apply results, retry tasks, or mutate task
-lifecycle directly. Result and retryable dispatch-failure inboxes are drained
-by the engine producer into its local engine ports.
+The handoff carries only post-assignment `DeliveryCommand` values translated in
+SDK/starter assembly from neutral engine binding truth. In multi-adapter mode
+the engine producer resolves delivery feasibility before handoff and writes
+bounded delivery-command batches to the target transport node. It is not a
+duplicate of the runtime ready queue, and transport consumers must not apply
+results, retry tasks, or mutate task lifecycle directly. Result and retryable
+delivery-failure inboxes are drained by the engine producer into local
+engine-owned ports.
 
 For multi-instance realtime assembly, `adapterType` and `adapterId` are not the
 same concept. For example, two bundled WebSocket instances might use adapter ids
@@ -347,17 +348,16 @@ Embedded transport runtime assembly also consumes only
 `WorkerResourceRuntime` worker resource reads instead of reaching through the
 broader worker facade or storage lookup seams.
 Assignment no longer hands dispatch-ready batches straight into a transport
-routing listener. SDK runtime assembly now inserts an explicit
-`RouteTargetedTaskDispatchHandoff` seam between engine and transport; the
-bundled default is an in-memory queue plus pump, while
-`redisDistributedChannels(...)` uses Redis route-targeted inboxes with
+routing listener. SDK runtime assembly now translates assignment truth into
+`DeliveryCommand` and hands it to `TransportDeliveryCommandHandoff`; the bundled
+default is an in-memory bounded queue plus pump, while
+`redisDistributedChannels(...)` uses Redis delivery-command inboxes with
 node-local drain lanes. Engine/starter assembly resolves `routeKey + adapterId`
-and the binding-level selected worker constraint to a current route consumer
-before handoff; transport consumers drain already resolved delivery targets and
-do not reselect workers. The companion result and
-dispatch-failure Redis inboxes are runtime channels back to the engine process;
-they are not server APIs and they do not move task lifecycle ownership into
-transport.
+and the binding-level selected worker constraint before handoff; transport
+consumers drain already resolved delivery targets and do not reselect workers.
+The companion result and delivery-failure Redis inboxes are runtime channels
+back to the engine process; they are not server APIs and they do not move task
+lifecycle ownership into transport.
 
 ## Compatibility Policy
 

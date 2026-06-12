@@ -135,7 +135,7 @@ public final class TransportDeliveryService {
             if (sender == null) {
                 directUnavailableItems.incrementAndGet();
                 adapterCounters.unavailableItems.incrementAndGet();
-                outcomes.add(DispatchOutcome.adapterUnavailable(adapterId, envelope, unavailableReason));
+                outcomes.add(DispatchOutcome.unavailable(adapterId, envelope, unavailableReason));
                 continue;
             }
             try {
@@ -143,11 +143,11 @@ public final class TransportDeliveryService {
                 if (sent) {
                     directSentItems.incrementAndGet();
                     adapterCounters.sentItems.incrementAndGet();
-                    outcomes.add(DispatchOutcome.sent(adapterId, envelope));
+                    outcomes.add(DispatchOutcome.delivered(adapterId, envelope));
                 } else {
                     directOfflineItems.incrementAndGet();
                     adapterCounters.offlineItems.incrementAndGet();
-                    outcomes.add(DispatchOutcome.endpointOffline(adapterId, envelope, "endpoint is unavailable"));
+                    outcomes.add(DispatchOutcome.noEndpoint(adapterId, envelope, "endpoint is unavailable"));
                 }
             } catch (RuntimeException e) {
                 directFailedItems.incrementAndGet();

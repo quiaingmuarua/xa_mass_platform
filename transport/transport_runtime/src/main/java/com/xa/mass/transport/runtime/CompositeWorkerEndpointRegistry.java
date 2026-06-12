@@ -1,5 +1,6 @@
 package com.xa.mass.transport.runtime;
 
+import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
@@ -17,9 +18,11 @@ import java.util.function.Supplier;
  * Runtime-owned endpoint registry that can aggregate multiple adapter-owned
  * endpoint registries under one transport-neutral surface.
  */
-public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegistry, WorkerEndpointInspector {
+public final class CompositeWorkerEndpointRegistry
+        implements WorkerEndpointRegistry, WorkerEndpointInspector, RawWorkerRouteEndpointRegistry {
 
     private final Map<String, WorkerEndpointRegistry> registriesByAdapterId = new LinkedHashMap<>();
+    private final Map<String, RawWorkerRouteEndpointRegistry> rawRouteRegistriesByAdapterId = new LinkedHashMap<>();
     private final Map<String, WorkerEndpointInspector> inspectorsByAdapterId = new LinkedHashMap<>();
 
     public synchronized <T extends WorkerEndpointRegistry> T getOrRegister(String adapterId, Supplier<T> supplier) {
@@ -45,6 +48,9 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
                     + normalizedAdapterId + "'");
         }
         registriesByAdapterId.put(normalizedAdapterId, registry);
+        if (registry instanceof RawWorkerRouteEndpointRegistry rawRouteRegistry) {
+            rawRouteRegistriesByAdapterId.put(normalizedAdapterId, rawRouteRegistry);
+        }
         if (registry instanceof WorkerEndpointInspector inspector) {
             inspectorsByAdapterId.put(normalizedAdapterId, inspector);
         }
@@ -52,7 +58,7 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
 
     @Override
     public synchronized boolean sendToAdapterRoute(String adapterId, String routeKey, String message) {
-        WorkerEndpointRegistry registry = registryForAdapter(adapterId);
+        RawWorkerRouteEndpointRegistry registry = rawRouteRegistryForAdapter(adapterId);
         return registry != null && registry.sendToAdapterRoute(adapterId, routeKey, message);
     }
 
@@ -64,7 +70,7 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
 
     @Override
     public synchronized boolean isAdapterRouteOnline(String adapterId, String routeKey) {
-        WorkerEndpointRegistry registry = registryForAdapter(adapterId);
+        RawWorkerRouteEndpointRegistry registry = rawRouteRegistryForAdapter(adapterId);
         return registry != null && registry.isAdapterRouteOnline(adapterId, routeKey);
     }
 
@@ -83,6 +89,7 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
             registry.shutdown();
         }
         registriesByAdapterId.clear();
+        rawRouteRegistriesByAdapterId.clear();
         inspectorsByAdapterId.clear();
     }
 
@@ -110,6 +117,13 @@ public final class CompositeWorkerEndpointRegistry implements WorkerEndpointRegi
             return null;
         }
         return registriesByAdapterId.get(normalizeAdapterId(adapterId));
+    }
+
+    private RawWorkerRouteEndpointRegistry rawRouteRegistryForAdapter(String adapterId) {
+        if (adapterId == null || adapterId.isBlank()) {
+            return null;
+        }
+        return rawRouteRegistriesByAdapterId.get(normalizeAdapterId(adapterId));
     }
 
     private static String normalizeAdapterId(String adapterId) {

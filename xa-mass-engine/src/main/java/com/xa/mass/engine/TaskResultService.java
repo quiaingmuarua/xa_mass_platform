@@ -3,6 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchDeliveryFailure;
 import com.xa.mass.engine.TaskWorkLifecycleState.AttemptFinalReason;
 import com.xa.mass.engine.TaskWorkLifecycleState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkLifecycleState.MessageFinalReason;
@@ -374,9 +375,27 @@ class TaskResultService {
         if (task == null || dispatchBinding == null) {
             return ResultMutationOutcome.rejected();
         }
+        return compensateDispatchDeliveryFailure(
+                task,
+                new TaskDispatchDeliveryFailure(
+                        task.getTid(),
+                        dispatchBinding.messageId(),
+                        dispatchBinding.attemptId(),
+                        dispatchBinding.attemptNo(),
+                        dispatchBinding.workerId(),
+                        detail
+                )
+        );
+    }
+
+    ResultMutationOutcome compensateDispatchDeliveryFailure(Task task,
+                                                            TaskDispatchDeliveryFailure failure) {
+        if (task == null || failure == null) {
+            return ResultMutationOutcome.rejected();
+        }
 
         String taskId = task.getTid();
-        String messageId = dispatchBinding.messageId();
+        String messageId = failure.messageId();
         ActiveLeaseRecord activeLease = taskManager.getActiveLease(taskId, messageId).orElse(null);
         TaskWorkEnvelope runtimeWork = taskManager.getTaskWork(taskId, messageId).orElse(null);
         if (activeLease == null) {
@@ -399,14 +418,19 @@ class TaskResultService {
         }
         RuntimeWorkSummary workSummary = activeRuntimeView.workSummary();
 
-        RuntimeAttemptView activeAttempt = resolveOrRecoverDispatchAttemptView(workSummary, activeLease, dispatchBinding);
+        RuntimeAttemptView activeAttempt = resolveOrRecoverDispatchAttemptView(
+                workSummary,
+                activeLease,
+                failure.attemptId(),
+                failure.attemptNo()
+        );
         if (activeAttempt == null) {
             logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} has no recoverable attempt view",
                     messageId, taskId);
             return ResultMutationOutcome.rejected();
         }
 
-        String normalizedDetail = normalizeDispatchSubmitFailureDetail(detail);
+        String normalizedDetail = normalizeDispatchSubmitFailureDetail(failure.detail());
         ResultApplyOutcome workOutcome = applyWorkResult(task, taskId, messageId, activeLease.leaseToken(),
                 false, normalizedDetail, DISPATCH_SUBMIT_FAILED_ERROR_CODE, null, true, false);
         if (workOutcome.status() != ResultApplyStatus.RETRY_SCHEDULED) {
@@ -537,6 +561,16 @@ class TaskResultService {
             return null;
         }
         return recoverActiveAttemptView(workSummary, activeLease, dispatchBinding.attemptId(), dispatchBinding.attemptNo());
+    }
+
+    private RuntimeAttemptView resolveOrRecoverDispatchAttemptView(RuntimeWorkSummary workSummary,
+                                                                   ActiveLeaseRecord activeLease,
+                                                                   String attemptId,
+                                                                   int attemptNo) {
+        if (workSummary == null || activeLease == null || attemptId == null || attemptId.isBlank()) {
+            return null;
+        }
+        return recoverActiveAttemptView(workSummary, activeLease, attemptId, attemptNo);
     }
 
     private ResultMutationOutcome handleSuccess(Task task,

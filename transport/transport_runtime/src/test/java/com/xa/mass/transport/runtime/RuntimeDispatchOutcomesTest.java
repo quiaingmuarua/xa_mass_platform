@@ -24,10 +24,10 @@ class RuntimeDispatchOutcomesTest {
         );
 
         assertEquals(2, outcomes.size());
-        assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
+        assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcomes.get(0).getStatus());
         assertEquals("dispatch channel is unavailable", outcomes.get(0).getReason());
         assertTrue(outcomes.get(0).isRetryable());
-        assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcomes.get(1).getStatus());
+        assertEquals(DispatchOutcomeStatus.INVALID, outcomes.get(1).getStatus());
         assertEquals("routeKey must not be blank", outcomes.get(1).getReason());
     }
 

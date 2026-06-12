@@ -1,4 +1,4 @@
-package com.xa.mass.transport.runtime;
+package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import org.slf4j.Logger;
@@ -8,21 +8,21 @@ import java.util.Objects;
 import java.util.concurrent.Future;
 
 /**
- * Drains retryable dispatch failures into the engine-local compensation path.
+ * Drains retryable delivery failures into an engine-owned compensation bridge.
  */
-public final class TransportDispatchFailureInboxPump {
+public final class TransportDeliveryFailureInboxPump {
 
-    private static final Logger logger = LoggerFactory.getLogger(TransportDispatchFailureInboxPump.class);
+    private static final Logger logger = LoggerFactory.getLogger(TransportDeliveryFailureInboxPump.class);
     private static final long POLL_TIMEOUT_MILLIS = 250L;
 
-    private final RedisTransportDispatchFailureChannel inbox;
-    private final TransportDispatchFailureHandler delegate;
+    private final RedisTransportDeliveryFailureChannel inbox;
+    private final TransportDeliveryFailureHandler delegate;
     private final RuntimeTaskExecutor executor;
     private volatile boolean running;
     private Future<?> drainLoop;
 
-    public TransportDispatchFailureInboxPump(RedisTransportDispatchFailureChannel inbox,
-                                             TransportDispatchFailureHandler delegate,
+    public TransportDeliveryFailureInboxPump(RedisTransportDeliveryFailureChannel inbox,
+                                             TransportDeliveryFailureHandler delegate,
                                              RuntimeTaskExecutor executor) {
         this.inbox = Objects.requireNonNull(inbox, "inbox");
         this.delegate = Objects.requireNonNull(delegate, "delegate");
@@ -49,20 +49,20 @@ public final class TransportDispatchFailureInboxPump {
     private void drainLoop() {
         while (running) {
             try {
-                TransportDispatchFailureEvent event = inbox.pollFailure(POLL_TIMEOUT_MILLIS);
+                TransportDeliveryFailureEvent event = inbox.pollFailure(POLL_TIMEOUT_MILLIS);
                 if (event == null) {
                     continue;
                 }
-                boolean compensated = delegate.compensate(event.task(), event.dispatchBindings(), event.detail());
-                if (!compensated) {
-                    logger.error("Dispatch failure inbox event was not compensated: taskId={}, bindings={}",
-                            event.task().taskId(), event.dispatchBindings().size());
+                boolean handled = delegate.handle(event.command(), event.outcome(), event.detail());
+                if (!handled) {
+                    logger.error("Delivery failure inbox event was not handled: deliveryId={}, selectedWorkerId={}",
+                            event.outcome().getDeliveryId(), event.outcome().getSelectedWorkerId());
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
             } catch (RuntimeException e) {
-                logger.error("Dispatch failure inbox item failed; continuing drain loop", e);
+                logger.error("Delivery failure inbox item failed; continuing drain loop", e);
             }
         }
     }

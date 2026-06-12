@@ -4,17 +4,17 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
-import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
-import com.xa.mass.transport.runtime.dispatch.RouteTargetedTaskDispatchHandoff;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 
@@ -52,9 +52,9 @@ public class TransportConfig {
     private List<SocketAdapterConfig> supplementalSocketAdapterConfigs = List.of();
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private Supplier<TransportDeliveryStore> deliveryStoreFactory;
-    private Supplier<RouteTargetedTaskDispatchHandoff> routeTargetedTaskDispatchHandoffFactory;
+    private Supplier<TransportDeliveryCommandHandoff> deliveryCommandHandoffFactory;
     private Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory;
-    private Supplier<RedisTransportDispatchFailureChannel> dispatchFailureInboxFactory;
+    private Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
     private Supplier<TransportNodeRegistry> transportNodeRegistryFactory;
     private TransportAdapterBootstrap primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps = List.of();
@@ -94,9 +94,9 @@ public class TransportConfig {
                 .toList();
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
         this.deliveryStoreFactory = source.deliveryStoreFactory;
-        this.routeTargetedTaskDispatchHandoffFactory = source.routeTargetedTaskDispatchHandoffFactory;
+        this.deliveryCommandHandoffFactory = source.deliveryCommandHandoffFactory;
         this.taskResultInboxFactory = source.taskResultInboxFactory;
-        this.dispatchFailureInboxFactory = source.dispatchFailureInboxFactory;
+        this.deliveryFailureInboxFactory = source.deliveryFailureInboxFactory;
         this.transportNodeRegistryFactory = source.transportNodeRegistryFactory;
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
@@ -270,13 +270,12 @@ public class TransportConfig {
         this.deliveryStoreFactory = deliveryStoreFactory;
     }
 
-    public Supplier<RouteTargetedTaskDispatchHandoff> getRouteTargetedTaskDispatchHandoffFactory() {
-        return routeTargetedTaskDispatchHandoffFactory;
+    public Supplier<TransportDeliveryCommandHandoff> getDeliveryCommandHandoffFactory() {
+        return deliveryCommandHandoffFactory;
     }
 
-    public void setRouteTargetedTaskDispatchHandoffFactory(
-            Supplier<RouteTargetedTaskDispatchHandoff> routeTargetedTaskDispatchHandoffFactory) {
-        this.routeTargetedTaskDispatchHandoffFactory = routeTargetedTaskDispatchHandoffFactory;
+    public void setDeliveryCommandHandoffFactory(Supplier<TransportDeliveryCommandHandoff> deliveryCommandHandoffFactory) {
+        this.deliveryCommandHandoffFactory = deliveryCommandHandoffFactory;
     }
 
     public Supplier<RedisTaskResultIngestChannel> getTaskResultInboxFactory() {
@@ -287,12 +286,12 @@ public class TransportConfig {
         this.taskResultInboxFactory = taskResultInboxFactory;
     }
 
-    public Supplier<RedisTransportDispatchFailureChannel> getDispatchFailureInboxFactory() {
-        return dispatchFailureInboxFactory;
+    public Supplier<RedisTransportDeliveryFailureChannel> getDeliveryFailureInboxFactory() {
+        return deliveryFailureInboxFactory;
     }
 
-    public void setDispatchFailureInboxFactory(Supplier<RedisTransportDispatchFailureChannel> dispatchFailureInboxFactory) {
-        this.dispatchFailureInboxFactory = dispatchFailureInboxFactory;
+    public void setDeliveryFailureInboxFactory(Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory) {
+        this.deliveryFailureInboxFactory = deliveryFailureInboxFactory;
     }
 
     public Supplier<TransportNodeRegistry> getTransportNodeRegistryFactory() {
@@ -416,16 +415,16 @@ public class TransportConfig {
         return deliveryStoreFactory;
     }
 
-    Supplier<RouteTargetedTaskDispatchHandoff> routeTargetedTaskDispatchHandoffFactory() {
-        return routeTargetedTaskDispatchHandoffFactory;
+    Supplier<TransportDeliveryCommandHandoff> deliveryCommandHandoffFactory() {
+        return deliveryCommandHandoffFactory;
     }
 
     Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory() {
         return taskResultInboxFactory;
     }
 
-    Supplier<RedisTransportDispatchFailureChannel> dispatchFailureInboxFactory() {
-        return dispatchFailureInboxFactory;
+    Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory() {
+        return deliveryFailureInboxFactory;
     }
 
     Supplier<TransportNodeRegistry> transportNodeRegistryFactory() {

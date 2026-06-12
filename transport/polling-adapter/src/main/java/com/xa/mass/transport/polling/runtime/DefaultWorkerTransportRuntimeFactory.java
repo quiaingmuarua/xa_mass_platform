@@ -6,14 +6,12 @@ import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
-import com.xa.mass.transport.runtime.TransportRouteKeyResolver;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Default embedded transport runtime: always provide the polling worker binding
@@ -29,10 +27,9 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
                                            WorkerSystemEventChannel systemEventChannel,
                                            TransportRouteOwnerStore routeOwnerStore,
                                            TransportDeliveryService deliveryService,
-                                           TransportRouteKeyResolver routeKeyResolver,
                                            List<TransportBinding> adapterBindings) {
         List<TransportBinding> bindings = new ArrayList<>(1 + (adapterBindings == null ? 0 : adapterBindings.size()));
-        bindings.add(pollingBinding(routeOwnerStore, deliveryService, routeKeyResolver));
+        bindings.add(pollingBinding(routeOwnerStore, deliveryService));
         if (adapterBindings != null && !adapterBindings.isEmpty()) {
             bindings.addAll(adapterBindings);
         }
@@ -49,11 +46,9 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
     }
 
     private static TransportBinding pollingBinding(TransportRouteOwnerStore routeOwnerStore,
-                                                   TransportDeliveryService deliveryService,
-                                                   TransportRouteKeyResolver routeKeyResolver) {
+                                                   TransportDeliveryService deliveryService) {
         PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(routeOwnerStore, deliveryService);
         return TransportBinding.builder(pollingAdapter)
-                .routeKeyResolver(Objects.requireNonNull(routeKeyResolver, "routeKeyResolver"))
                 .taskPullChannel(pollingAdapter)
                 .build();
     }

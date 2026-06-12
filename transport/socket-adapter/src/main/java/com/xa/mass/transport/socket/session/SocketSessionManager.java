@@ -1,5 +1,6 @@
 package com.xa.mass.transport.socket.session;
 
+import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
@@ -18,7 +19,8 @@ import java.util.List;
 /**
  * Adapter-owned endpoint registry for raw TCP socket workers.
  */
-public final class SocketSessionManager implements WorkerEndpointRegistry, WorkerEndpointInspector {
+public final class SocketSessionManager
+        implements WorkerEndpointRegistry, WorkerEndpointInspector, RawWorkerRouteEndpointRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(SocketSessionManager.class);
 
@@ -37,9 +39,9 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
                                         String workerId,
                                         String endpointId,
                                         Socket socket,
-                                        BufferedWriter writer) {
+        BufferedWriter writer) {
         RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> previousForWorker =
-                activeEntryForWorker(routeKey, workerId, endpointId);
+                activeEntryForWorker(workerId, endpointId);
         RouteEndpointIndex.BindResult<String, SocketWorkerEndpoint> result = routeIndex.bind(
                 routeKey,
                 workerId,
@@ -209,14 +211,13 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         return adapterId;
     }
 
-    private RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> activeEntryForWorker(String routeKey,
-                                                                                        String workerId,
+    private RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> activeEntryForWorker(String workerId,
                                                                                         String excludedEndpointId) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null) {
             return null;
         }
-        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
+        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForWorker(normalizedWorkerId)) {
             if (entry.handle().equals(excludedEndpointId) || !normalizedWorkerId.equals(entry.workerId())) {
                 continue;
             }

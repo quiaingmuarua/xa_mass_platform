@@ -71,13 +71,13 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
             case ENQUEUED -> DispatchOutcome.queued(normalizedAdapterId, normalizedEnvelope);
             case INVALID -> DispatchOutcome.invalid(normalizedAdapterId, normalizedEnvelope,
                     result.reason() == null ? "deliveryQueueKey must not be blank" : result.reason());
-            case UNAVAILABLE -> DispatchOutcome.adapterUnavailable(normalizedAdapterId, normalizedEnvelope,
+            case UNAVAILABLE -> DispatchOutcome.unavailable(normalizedAdapterId, normalizedEnvelope,
                     "delivery store is stopped");
             case BACKPRESSURE_REJECTED -> {
                 backpressureRejectedItemsByDeliveryQueue
                         .computeIfAbsent(normalizedDeliveryQueueKey, ignored -> new AtomicLong())
                         .incrementAndGet();
-                yield DispatchOutcome.backpressureRejected(
+                yield DispatchOutcome.backpressure(
                         normalizedAdapterId,
                         normalizedEnvelope,
                         resolveBackpressureReason(result.reason())

@@ -120,6 +120,30 @@ class SocketSessionManagerTest {
     }
 
     @Test
+    void replacingSelectedWorkerWithDifferentRouteRetiresOldEndpoint() throws IOException {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        SocketSessionManager manager = new SocketSessionManager("socket");
+        manager.setRouteOwnerStore(routeOwnerStore);
+        BufferedWriter oldWriter = mock(BufferedWriter.class);
+        BufferedWriter newWriter = mock(BufferedWriter.class);
+        Socket oldSocket = activeSocket();
+        Socket newSocket = activeSocket();
+
+        manager.addSession("route-old", "worker-1", "endpoint-old", oldSocket, oldWriter);
+        manager.addSession("route-new", "worker-1", "endpoint-new", newSocket, newWriter);
+
+        assertEquals(1, manager.getActiveConnectionCount());
+        assertFalse(routeOwnerStore.hasActiveRouteOwner("socket", "route-old"));
+        assertTrue(routeOwnerStore.hasActiveRouteOwner("socket", "route-new"));
+        assertEquals("route-new", routeOwnerStore.getLatestOwnerByWorker("worker-1").getRouteKey());
+        verify(oldSocket).close();
+
+        assertTrue(manager.sendToSelectedWorker("socket", "worker-1", "{\"messageId\":\"msg-new\"}"));
+        verify(oldWriter, never()).write(anyString());
+        verify(newWriter).write("{\"messageId\":\"msg-new\"}");
+    }
+
+    @Test
     void setRouteOwnerStoreReprojectsActiveSocketSessions() {
         InMemoryTransportRouteOwnerStore firstStore = new InMemoryTransportRouteOwnerStore(30_000L, "socket-node-1");
         InMemoryTransportRouteOwnerStore secondStore = new InMemoryTransportRouteOwnerStore(30_000L, "socket-node-2");

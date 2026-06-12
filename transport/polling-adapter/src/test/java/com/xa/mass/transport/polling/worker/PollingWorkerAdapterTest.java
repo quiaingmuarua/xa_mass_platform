@@ -45,7 +45,7 @@ class PollingWorkerAdapterTest {
         List<DispatchOutcome> outcomes = adapter.dispatchEnvelopes(List.of(invalidEnvelope(item("msg-1", null))));
 
         assertEquals(1, outcomes.size());
-        assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcomes.get(0).getStatus());
+        assertEquals(DispatchOutcomeStatus.INVALID, outcomes.get(0).getStatus());
         assertTrue(adapter.pollTaskMessages("worker-1", 10, 0).isEmpty());
         assertEquals(TaskPullStatus.EMPTY, adapter.pollTaskMessagesResult("worker-1", 10, 0).getStatus());
     }
@@ -72,7 +72,7 @@ class PollingWorkerAdapterTest {
         List<DispatchOutcome> outcomes = adapter.dispatchEnvelopes(items);
 
         assertEquals(PollingWorkerAdapter.MAX_INBOX_SIZE + 1, outcomes.size());
-        assertEquals(DispatchOutcomeStatus.BACKPRESSURE_REJECTED,
+        assertEquals(DispatchOutcomeStatus.BACKPRESSURE,
                 outcomes.get(outcomes.size() - 1).getStatus());
         assertTrue(outcomes.get(outcomes.size() - 1).isRetryable());
         assertEquals(PollingWorkerAdapter.MAX_INBOX_SIZE,

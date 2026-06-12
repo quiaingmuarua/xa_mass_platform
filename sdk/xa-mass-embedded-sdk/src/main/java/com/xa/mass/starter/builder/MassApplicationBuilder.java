@@ -26,9 +26,9 @@ import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
-import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
-import com.xa.mass.transport.runtime.dispatch.RedisRouteTargetedTaskDispatchHandoff;
+import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.node.RedisTransportNodeRegistry;
@@ -245,21 +245,21 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder redisRouteTargetedDispatchHandoff(String redisUri) {
-            return redisRouteTargetedDispatchHandoff(
+        public TransportBuilder redisDeliveryCommandHandoff(String redisUri) {
+            return redisDeliveryCommandHandoff(
                     redisUri,
-                    RedisRouteTargetedTaskDispatchHandoff.DEFAULT_NAMESPACE_PREFIX
+                    RedisTransportDeliveryCommandHandoff.DEFAULT_NAMESPACE_PREFIX
             );
         }
 
-        public TransportBuilder redisRouteTargetedDispatchHandoff(String redisUri, String namespacePrefix) {
+        public TransportBuilder redisDeliveryCommandHandoff(String redisUri, String namespacePrefix) {
             String normalizedRedisUri = requireRedisUri(redisUri);
             String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            config.setRouteTargetedTaskDispatchHandoffFactory(() -> new RedisRouteTargetedTaskDispatchHandoff(
+            config.setDeliveryCommandHandoffFactory(() -> new RedisTransportDeliveryCommandHandoff(
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
                     config.getTransportNodeId(),
-                    RedisRouteTargetedTaskDispatchHandoff.DEFAULT_MAX_QUEUED_BATCHES_PER_LANE
+                    RedisTransportDeliveryCommandHandoff.DEFAULT_MAX_QUEUED_BATCHES_PER_LANE
             ));
             return this;
         }
@@ -279,25 +279,25 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder redisDispatchFailureInbox(String redisUri) {
-            return redisDispatchFailureInbox(redisUri, RedisTransportDispatchFailureChannel.DEFAULT_NAMESPACE_PREFIX);
+        public TransportBuilder redisDeliveryFailureInbox(String redisUri) {
+            return redisDeliveryFailureInbox(redisUri, RedisTransportDeliveryFailureChannel.DEFAULT_NAMESPACE_PREFIX);
         }
 
-        public TransportBuilder redisDispatchFailureInbox(String redisUri, String namespacePrefix) {
+        public TransportBuilder redisDeliveryFailureInbox(String redisUri, String namespacePrefix) {
             String normalizedRedisUri = requireRedisUri(redisUri);
             String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            config.setDispatchFailureInboxFactory(() -> new RedisTransportDispatchFailureChannel(
+            config.setDeliveryFailureInboxFactory(() -> new RedisTransportDeliveryFailureChannel(
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
-                    RedisTransportDispatchFailureChannel.DEFAULT_MAX_QUEUED_FAILURES
+                    RedisTransportDeliveryFailureChannel.DEFAULT_MAX_QUEUED_FAILURES
             ));
             return this;
         }
 
         public TransportBuilder redisDistributedChannels(String redisUri) {
-            return redisRouteTargetedDispatchHandoff(redisUri, RedisTransportNamespaces.DISPATCH_ROUTE)
+            return redisDeliveryCommandHandoff(redisUri, RedisTransportNamespaces.DELIVERY_COMMAND)
                     .redisResultInbox(redisUri, RedisTransportNamespaces.RESULT_INBOX)
-                    .redisDispatchFailureInbox(redisUri, RedisTransportNamespaces.DISPATCH_FAILURE)
+                    .redisDeliveryFailureInbox(redisUri, RedisTransportNamespaces.DELIVERY_FAILURE)
                     .redisRouteOwnerStore(redisUri, RedisTransportNamespaces.ROUTE_OWNER)
                     .redisDeliveryStore(redisUri, RedisTransportNamespaces.DELIVERY)
                     .redisTransportNodeRegistry(redisUri, RedisTransportNamespaces.NODES);
@@ -305,9 +305,9 @@ public class MassApplicationBuilder {
 
         public TransportBuilder redisDistributedChannels(String redisUri, String namespacePrefix) {
             String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            return redisRouteTargetedDispatchHandoff(redisUri, normalizedNamespacePrefix + ":dispatch-route")
+            return redisDeliveryCommandHandoff(redisUri, normalizedNamespacePrefix + ":delivery-command")
                     .redisResultInbox(redisUri, normalizedNamespacePrefix + ":result-inbox")
-                    .redisDispatchFailureInbox(redisUri, normalizedNamespacePrefix + ":dispatch-failure")
+                    .redisDeliveryFailureInbox(redisUri, normalizedNamespacePrefix + ":delivery-failure")
                     .redisRouteOwnerStore(redisUri, normalizedNamespacePrefix + ":route-owner")
                     .redisDeliveryStore(redisUri, normalizedNamespacePrefix + ":delivery")
                     .redisTransportNodeRegistry(redisUri, normalizedNamespacePrefix + ":nodes");
