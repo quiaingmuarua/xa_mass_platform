@@ -916,9 +916,12 @@ Acceptance:
    against transport presence ownership.
 7. CES-7 engine hot path retarget - partially landed; dispatch-gate duplicate
    evidence and reachability composition optimization remain.
-8. BCA-0/BCA-1 candidate acquisition contract gate for Redis read shape.
-9. CES-3 mainline performance model and Redis shape evidence.
-10. CES-4 Redis slot lifecycle implementation.
+8. BCA-0/BCA-1 candidate acquisition contract gate for Redis read shape -
+   scheduling candidate acquisition landed as bounded source-batch semantics.
+   BCA-3 node-group maintenance pagination remains in BCA and is not a blocker
+   for CES scheduling candidate work.
+9. CES-3 mainline performance model and Redis lifecycle shape evidence.
+10. CES-4 Redis deadline-aware slot lifecycle implementation.
 11. CES-8 policy-owned attribute indexing.
 12. CES-9 guards, docs, and residue cleanup - candidate row shape,
     group-scoped admission, and current mainline Redis keyshape guards/docs
@@ -952,6 +955,10 @@ rg -n "WorkerAdmissionTarget\.(workerLevel|groupScoped)|new\s+WorkerAdmissionTar
 .\mvnw.cmd -pl xa-mass-engine -am "-Dtest=EngineSchedulingCoreArchitectureGuardTest#workerAdmissionMutationSurfaceStaysGroupScoped+engineSchedulingLifecycleBuildsGroupScopedAdmissionTargets" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl xa-mass-engine -am "-Dtest=EngineSchedulingCoreArchitectureGuardTest#engineAndWorkerRuntimeMainlineDoNotExposeRedisWorkerKeyShape" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl xa-mass-engine -am "-Dtest=EngineSchedulingCoreArchitectureGuardTest#redisWorkerRegistryDoesNotConsumeTransportPresenceKeys" "-Dsurefire.failIfNoSpecifiedTests=false" test
+rg -n "smembers\(bucketKey\)|srandmember\(bucketKey" platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistry.java
+.\mvnw.cmd -pl platform_infra/mass-runtime-memory "-Dtest=InMemoryWorkerRegistryTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+.\mvnw.cmd -pl platform_infra/mass-runtime-redis -am "-Dtest=RedisWorkerRegistryTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+.\mvnw.cmd -pl xa-mass-engine -am "-Dtest=EngineSchedulingCoreArchitectureGuardTest#redisWorkerRegistryCandidateAcquisitionDoesNotMaterializeFullBucket" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl xa-mass-engine -am "-Dtest=TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,RuleBasedTaskWorkerMatchingStrategyTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl xa-mass-testing -am -DskipTests test
 ```
@@ -975,6 +982,10 @@ Notes:
   lifecycle source guard before Stage-2 rejection recording; non-ONLINE
   reachability still produces Stage-2 rejection evidence through the current
   `WorkerReachabilityView` composition path.
+- BCA candidate acquisition now proves the Redis scheduling bucket path uses
+  `SRANDMEMBER(bucketKey, maxCandidateCount)` and the guard rejects
+  `SMEMBERS(bucketKey)` on that path. This is bounded source membership, not
+  deadline-aware slot lifecycle eligibility.
 - Full `EngineSchedulingCoreArchitectureGuardTest` currently has unrelated
   resolved-scheduling-plane guard failures; do not use that full class as the
   current-slice gate until those adjacent guard rows are repaired or split.
