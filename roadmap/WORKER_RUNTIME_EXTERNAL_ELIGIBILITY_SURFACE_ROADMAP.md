@@ -464,7 +464,7 @@ Focused backend and SDK tests:
 ```powershell
 .\mvnw.cmd -pl xa-mass-server -am "-Dtest=WorkerApiControllerTest,CatalogControllerTest,ApiAuthInterceptorTest,ServerMainSourceArchitectureGuardTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl sdk/xa-mass-java-sdk -am "-Dtest=WorkerClientTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest,JavaExternalSdkArchitectureGuardTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
-.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -am "-Dtest=WorkerRuntimeSelectionIntegrationTest,WorkerHeartbeatProjectionListenerTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -am "-Dtest=WorkerRuntimeSelectionIntegrationTest,WorkerRuntimePresenceIngressTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -pl xa-mass-engine -am "-Dtest=TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,RuleBasedTaskWorkerMatchingStrategyTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
@@ -495,7 +495,7 @@ corepack pnpm typecheck
 corepack pnpm build
 cd ..
 .\mvnw.cmd -pl sdk/xa-mass-java-sdk -am "-Dtest=WorkerClientTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest,JavaExternalSdkArchitectureGuardTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
-.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -am "-Dtest=WorkerRuntimeSelectionIntegrationTest,WorkerHeartbeatProjectionListenerTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -am "-Dtest=WorkerRuntimeSelectionIntegrationTest,WorkerRuntimePresenceIngressTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 Results:

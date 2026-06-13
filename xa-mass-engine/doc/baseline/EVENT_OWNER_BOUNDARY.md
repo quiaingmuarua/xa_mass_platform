@@ -1,6 +1,6 @@
 # Event Owner Boundary
 
-Last updated: 2026-05-26
+Last updated: 2026-06-13
 
 Status: current event-like surface and system-event owner baseline.
 
@@ -41,7 +41,7 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | task dispatch handoff | assignment/transport boundary | already-bound task work delivery view | worker matching, allocation, finality |
 | `TaskResultReport` | task result payload | worker task-result input | worker command ack, worker state report |
 | `TransportResultEnvelope` | transport ingress metadata | adapter/route/attempt context around task results | final result classification |
-| `WorkerSystemEventChannel` | transport ingress | current worker presence signals | command lifecycle, state projection, capability truth |
+| `WorkerPresenceIngress` | transport session-presence ingress | worker session connect/heartbeat/disconnect observations projected into worker-runtime reachability, plus connected/heartbeat refresh of registry-owned slot heartbeat freshness | route-owner delivery feasibility, command lifecycle, state projection, capability truth, worker resource status |
 | `WorkerReachabilityView` | worker-runtime read model | dispatchability evidence | transport route-owner leases, device state, load, command status |
 | `WorkerRegistry` / `WorkerSlot` | scheduling resource owner | active/reserved task-work capacity and exclusive execution-lane evidence | reachability, device state, command lifecycle |
 | trace/audit plane | evidence | historical facts | current runtime truth |
@@ -75,16 +75,21 @@ Those fields are descriptive metadata and policy inputs only:
 Visible catalog/API surfaces may expose metadata, but read visibility does not
 authorize a new owner path.
 
-## Current System-Event Boundary
+## Current Presence-Ingress Boundary
 
-`WorkerSystemEventChannel` currently means presence ingress only:
+`WorkerPresenceIngress` currently means session-presence ingress only:
 
-- `publishWorkerOnline(...)`
-- `publishWorkerOffline(...)`
-- optional `publishWorkerHeartbeat(...)`
+- `sessionConnected(...)`
+- `sessionDisconnected(...)`
+- `sessionHeartbeat(...)`
 
-`TracingWorkerSystemEventChannel` may emit canonical presence evidence, but the
-channel itself is not a lifecycle owner.
+`WorkerRuntimePresenceIngress` projects these observations into the
+worker-runtime presence owner and may emit canonical online/offline trace
+evidence when reachability actually changes. The ingress itself is not a worker
+state, command, capability, or route-owner lifecycle owner.
+Connected and heartbeat observations may refresh registry-owned slot heartbeat
+freshness so Stage-1 slot lifecycle eligibility has current evidence, but they
+must not write worker resource status or dispatch gates.
 
 This is current implementation truth, not a claim that `system event` should
 remain a permanent second event family. The active future roadmap treats future
@@ -286,8 +291,9 @@ task result, or scheduling lifecycle truth by itself.
   transport route-owner lease truth or generic health.
 - `WorkerRegistry` stays task-work capacity and exclusive execution-lane
   evidence, not device state.
-- `WorkerSystemEventChannel` must not import engine scheduling packages or
-  mutate engine lifecycle state.
+- `WorkerPresenceIngress` must not import engine scheduling packages, mutate
+  engine lifecycle state, write worker resource status, or derive presence or
+  slot heartbeat from route-owner currentness.
 - A shared runtime envelope remains future-only until concrete owners exist and
   duplicate carrier shape becomes a real problem.
 - Event routing must not become lifecycle ownership merely because a future

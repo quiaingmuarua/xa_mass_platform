@@ -222,20 +222,12 @@ class MassEngineStartRecoveryTest {
     private static WorkerCandidateRow candidateRow(WorkerResourceRecord worker) {
         return new WorkerCandidateRow(
                 worker.workerId(),
-                worker.statusName(),
                 worker.agentVersion(),
-                worker.lastHeartbeat(),
-                worker.supportedProjects(),
-                worker.supportedEventCodes(),
                 worker.workerGroupId(),
                 worker.adapterNodeId(),
                 worker.adapterId(),
                 worker.onlineStrategy(),
-                worker.maxConcurrentWork(),
-                worker.attributes(),
-                worker.createTime(),
-                worker.updateTime(),
-                true
+                worker.attributes()
         );
     }
 

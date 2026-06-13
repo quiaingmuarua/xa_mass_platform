@@ -151,6 +151,15 @@ public class WorkerManager implements WorkerResourceRuntime,
         return updated.isPresent();
     }
 
+    @Override
+    public boolean refreshWorkerHeartbeat(String workerId, long observedAtMillis) {
+        boolean refreshed = resourceOwner.refreshWorkerHeartbeat(workerId, observedAtMillis);
+        if (refreshed) {
+            publishWorkerRegistrySnapshot();
+        }
+        return refreshed;
+    }
+
     public boolean deleteWorker(String workerId) {
         boolean deleted = resourceOwner.deleteWorker(workerId);
         if (deleted) {

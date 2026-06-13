@@ -133,7 +133,8 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eT
                         && List.of("crawler.fetch-page").equals(item.get("supportedEventCodes"))
                         && hasEventBinding(item, "crawler.fetch-page", "crawlerApp")
                         && "polling".equals(item.get("transportHint"))
-                        && Boolean.TRUE.equals(item.get("online"))
+                        && "ONLINE".equals(item.get("reachability"))
+                        && Boolean.TRUE.equals(item.get("reachable"))
         ));
         assertTrue(eventCapabilities.stream().anyMatch(item ->
                 "crawler.fetch-page".equals(item.get("eventCode"))

@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-06-12
+Last updated: 2026-06-13
 
 Status: current transport owner handoff.
 
@@ -51,9 +51,11 @@ entry for `transport/`.
   reconnect may replace the current owner, heartbeat only extends the matching
   owner lease, and release only removes the owner when the caller still holds
   the stored `connectionId` / public `sessionToken`.
-- `WorkerSystemEventChannel` is current worker presence ingress only. It is not
-  the lifecycle owner for future worker command, worker state-report, or
-  capability self-report flows.
+- `WorkerPresenceIngress` is current session-presence ingress only. Adapters may
+  publish connect/heartbeat/disconnect observations, while worker-runtime owns
+  derived reachability and registry slot heartbeat freshness. Route-owner leases
+  remain delivery feasibility evidence and must not become worker lifecycle
+  truth, worker state-report truth, slot heartbeat truth, or capability truth.
 - `DeliveryCommand` is the assigned-item delivery intent. It carries only
   `selectedWorkerId`, minimal task dispatch content, typed execution context,
   and item timing/id facts. Adapter, queue, node, route-owner, connection, and
@@ -155,6 +157,7 @@ Acceptance focus:
 - task dispatch preserves the engine-selected worker through
   `selectedWorkerId` and cannot fallback to route-only delivery
 - polling `poll` and result submission work
-- realtime direct-send and route-owner reachability perception work
+- realtime direct-send, route-owner delivery feasibility, and worker-runtime
+  presence/reachability projection work
 - result lifecycle validation remains outside transport runtime; starter/engine
   assembly applies result correlation before engine mutation

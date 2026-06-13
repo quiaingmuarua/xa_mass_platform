@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-06-12
+Last updated: 2026-06-13
 
 Status: current transport boundary baseline.
 
@@ -26,9 +26,10 @@ Transport owns delivery mechanics for workers:
 - adapter registration and adapter selection by `adapterId`
 - task dispatch delivery, queueing, draining, and dispatch outcomes
 - task result ingress wrapping with transport metadata
-- worker system-event ingress and egress for explicit worker lifecycle events;
-  adapter session connect/disconnect/lease refresh does not decide worker
-  online/offline
+- session-presence ingress for adapter connect/disconnect/heartbeat
+  observations; worker-runtime owns derived reachability and registry slot
+  heartbeat freshness, while route-owner lease refresh does not decide worker
+  lifecycle, state-report, capability, or slot heartbeat truth
 
 Engine remains the owner of task lifecycle:
 
@@ -89,9 +90,11 @@ Transport should stay centered on these concepts only:
   selected worker bindings. Task-dispatch lookup is by `adapterId +
   selectedWorkerId`; route-key reads on this view are bounded diagnostics or
   maintenance helpers, not the dispatch hot path.
-- `WorkerSystemEventChannel`: transport-neutral ingress seam for worker
-  connect/disconnect/heartbeat signals. It is not a worker command, worker
-  state-report, or capability-report lifecycle owner.
+- `WorkerPresenceIngress`: transport-neutral ingress seam for worker session
+  connect/disconnect/heartbeat observations. It is not a route-owner projection,
+  worker command, worker state-report, or capability-report lifecycle owner.
+  Connected and heartbeat observations may refresh worker-runtime slot heartbeat
+  freshness; they must not write worker resource status or dispatch gates.
 - `AdapterNodeRecord`: worker registration endpoint and logical adapter
   deployment identity. It is not `transportNodeId`, not worker capability
   truth, and not a worker load or lease owner.
@@ -102,13 +105,14 @@ Transport should stay centered on these concepts only:
 Avoid adding new transport model names unless they carry a distinct runtime
 behavior that cannot fit one of these concepts.
 
-Worker system events are intentionally narrow in the current baseline. Future
-worker command, worker state-report, or worker capability self-report flows may
-use transport ingress, but they must first define a separate owner that
-validates, stores, projects, repairs, and exposes the resulting state. Transport
-must not route command acknowledgements through task result ingest, treat state
-reports as reachability truth, or mutate worker capability truth directly from
-the system-event channel.
+Worker session-presence ingress is intentionally narrow in the current
+baseline. Future worker command, worker state-report, or worker capability
+self-report flows may use transport ingress, but they must first define a
+separate owner that validates, stores, projects, repairs, and exposes the
+resulting state. Transport must not route command acknowledgements through task
+result ingest, treat state reports as reachability truth, mutate worker
+capability truth directly from presence ingress, or let `TransportRouteOwnerStore`
+claim/refresh/release currentness drive presence or slot heartbeat truth.
 
 The completed worker-control owner-baseline roadmap is archived at
 `../doc/archive/xa-mass-engine/2026-05-18_EVENT_AND_WORKER_CONTROL_ROADMAP.md`. Current
@@ -121,7 +125,7 @@ lifecycle state.
 `transport_api` owns stable contracts used across adapters and runtime:
 
 - adapter SPI
-- transport-neutral dispatch/result/system-event interfaces
+- transport-neutral dispatch/result/session-presence interfaces
 - endpoint registry contracts
 - transport-neutral models that adapters must exchange with runtime
 - canonical worker route-key codec contract for the WRB convergence target

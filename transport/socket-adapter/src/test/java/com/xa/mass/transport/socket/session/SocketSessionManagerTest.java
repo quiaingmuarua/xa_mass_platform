@@ -1,11 +1,15 @@
 package com.xa.mass.transport.socket.session;
 
+import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import org.junit.jupiter.api.Test;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,8 +26,10 @@ class SocketSessionManagerTest {
     @Test
     void connectHeartbeatDisconnectProjectRouteOwnerIntoTransportStore() {
         InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "socket-node-1");
+        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
         SocketSessionManager manager = new SocketSessionManager("socket");
         manager.setRouteOwnerStore(routeOwnerStore);
+        manager.setWorkerPresenceIngress(presenceIngress);
 
         manager.addSession("route-1", "worker-1", "endpoint-1", activeSocket(), mock(BufferedWriter.class));
 
@@ -34,17 +40,28 @@ class SocketSessionManagerTest {
                 .orElseThrow()
                 .transportNodeId());
         assertTrue(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
+        assertEquals(List.of("connected:worker-1:socket:route-1:endpoint-1:socket connected:endpoint-1"),
+                presenceIngress.events);
 
         manager.recordHeartbeat("route-1", "worker-1", "endpoint-1", "socket heartbeat", "trace-1");
 
         assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1")
                 .orElseThrow()
                 .isActive(System.currentTimeMillis()));
+        assertEquals(List.of(
+                "connected:worker-1:socket:route-1:endpoint-1:socket connected:endpoint-1",
+                "heartbeat:worker-1:socket:route-1:endpoint-1:socket heartbeat:trace-1"
+        ), presenceIngress.events);
 
         manager.removeSession("endpoint-1");
 
         assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1").isEmpty());
         assertFalse(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
+        assertEquals(List.of(
+                "connected:worker-1:socket:route-1:endpoint-1:socket connected:endpoint-1",
+                "heartbeat:worker-1:socket:route-1:endpoint-1:socket heartbeat:trace-1",
+                "disconnected:worker-1:socket:route-1:endpoint-1:socket disconnected:endpoint-1"
+        ), presenceIngress.events);
     }
 
     @Test
@@ -77,11 +94,18 @@ class SocketSessionManagerTest {
     @Test
     void staleEndpointHeartbeatAndDisconnectDoNotOverrideReplacementRouteOwner() {
         InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
         SocketSessionManager manager = new SocketSessionManager("socket");
         manager.setRouteOwnerStore(routeOwnerStore);
+        manager.setWorkerPresenceIngress(presenceIngress);
 
         manager.addSession("route-1", "worker-1", "endpoint-old", activeSocket(), mock(BufferedWriter.class));
         manager.addSession("route-1", "worker-1", "endpoint-new", activeSocket(), mock(BufferedWriter.class));
+        assertEquals(List.of(
+                "connected:worker-1:socket:route-1:endpoint-old:socket connected:endpoint-old",
+                "connected:worker-1:socket:route-1:endpoint-new:socket connected:endpoint-new",
+                "disconnected:worker-1:socket:route-1:endpoint-old:socket session replaced:endpoint-old"
+        ), presenceIngress.events);
 
         manager.recordHeartbeat("route-1", "worker-1", "endpoint-old", "stale-heartbeat", "trace-old");
 
@@ -98,11 +122,22 @@ class SocketSessionManagerTest {
         assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1")
                 .orElseThrow()
                 .isActive(System.currentTimeMillis()));
+        assertEquals(List.of(
+                "connected:worker-1:socket:route-1:endpoint-old:socket connected:endpoint-old",
+                "connected:worker-1:socket:route-1:endpoint-new:socket connected:endpoint-new",
+                "disconnected:worker-1:socket:route-1:endpoint-old:socket session replaced:endpoint-old"
+        ), presenceIngress.events);
 
         manager.removeSession("endpoint-new");
 
         assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1").isEmpty());
         assertFalse(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
+        assertEquals(List.of(
+                "connected:worker-1:socket:route-1:endpoint-old:socket connected:endpoint-old",
+                "connected:worker-1:socket:route-1:endpoint-new:socket connected:endpoint-new",
+                "disconnected:worker-1:socket:route-1:endpoint-old:socket session replaced:endpoint-old",
+                "disconnected:worker-1:socket:route-1:endpoint-new:socket disconnected:endpoint-new"
+        ), presenceIngress.events);
     }
 
     @Test
@@ -186,5 +221,33 @@ class SocketSessionManagerTest {
         when(socket.isConnected()).thenReturn(true);
         when(socket.isClosed()).thenReturn(false);
         return socket;
+    }
+
+    private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {
+        private final List<String> events = new ArrayList<>();
+
+        @Override
+        public void sessionConnected(WorkerSessionPresenceEvent event) {
+            events.add("connected:" + describe(event));
+        }
+
+        @Override
+        public void sessionHeartbeat(WorkerSessionPresenceEvent event) {
+            events.add("heartbeat:" + describe(event));
+        }
+
+        @Override
+        public void sessionDisconnected(WorkerSessionPresenceEvent event) {
+            events.add("disconnected:" + describe(event));
+        }
+
+        private static String describe(WorkerSessionPresenceEvent event) {
+            return event.workerId()
+                    + ":" + event.adapterId()
+                    + ":" + event.routeKey()
+                    + ":" + event.sessionToken()
+                    + ":" + event.reason()
+                    + ":" + event.traceId();
+        }
     }
 }

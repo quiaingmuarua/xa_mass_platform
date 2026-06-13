@@ -21,6 +21,7 @@ import java.util.UUID;
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
+                "mass.review.materialization.mode=diagnostic",
                 "mass.runtime.mode=redis",
                 "mass.engine.assignment-retry-delay-millis=100",
                 "mass.engine.lease-watchdog-interval-seconds=1",

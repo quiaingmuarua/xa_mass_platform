@@ -1,7 +1,6 @@
 package com.xa.mass.transport.polling.runtime;
 
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
@@ -24,7 +23,6 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
 
     @Override
     public TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
-                                           WorkerSystemEventChannel systemEventChannel,
                                            TransportRouteOwnerStore routeOwnerStore,
                                            TransportDeliveryService deliveryService,
                                            List<TransportBinding> adapterBindings) {

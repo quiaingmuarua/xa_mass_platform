@@ -67,6 +67,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                         + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
             }
             sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
+            sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
             return sessionManager;
         }
         if (context.getEndpointRegistry() instanceof CompositeWorkerEndpointRegistry composite) {
@@ -75,6 +76,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                     () -> new SocketSessionManager(config.getAdapterId())
             );
             sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
+            sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
             return sessionManager;
         }
         throw new IllegalStateException("Socket transport requires a socket-managed endpoint registry");

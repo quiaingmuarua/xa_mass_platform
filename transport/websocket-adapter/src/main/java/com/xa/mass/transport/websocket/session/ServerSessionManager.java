@@ -4,6 +4,9 @@ import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
+import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
@@ -34,6 +37,7 @@ public class ServerSessionManager
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
     private final ScheduledExecutorService routeOwnerRefreshExecutor;
     private volatile TransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+    private volatile WorkerPresenceIngress workerPresenceIngress = NoopWorkerPresenceIngress.INSTANCE;
     private volatile ScheduledFuture<?> routeOwnerRefreshFuture;
 
     public ServerSessionManager(String adapterId) {
@@ -70,18 +74,25 @@ public class ServerSessionManager
         if (result.previousEntry() == null || result.previousEntry().handle() != channel) {
             activeConnectionCount.incrementAndGet();
         }
-        if (previousForWorker != null) {
-            logger.warn("Existing channel for routeKey={} workerId={} found. Replacing session.",
-                    routeKey, workerId);
-            retireReplacedSession(previousForWorker);
-        }
-
         logger.info("Connected: routeKey={} workerId={} channelId={} totalRoutes={}",
                 routeKey, workerId, channel.id().asShortText(), activeConnectionCount.get());
         if (hasActiveChannel(routeKey)) {
             String channelId = channel.id().asShortText();
             String reason = "websocket connected";
+            workerPresenceIngress.sessionConnected(WorkerSessionPresenceEvent.connected(
+                    workerId,
+                    adapterId,
+                    routeKey,
+                    channelId,
+                    reason,
+                    channelId
+            ));
             routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, channelId, reason);
+        }
+        if (previousForWorker != null) {
+            logger.warn("Existing channel for routeKey={} workerId={} found. Replacing session.",
+                    routeKey, workerId);
+            retireReplacedSession(previousForWorker);
         }
         ensureRouteOwnerRefreshLoop();
     }
@@ -97,12 +108,22 @@ public class ServerSessionManager
             logger.info("Disconnected: routeKey={} workerId={} channelId={}",
                     binding.routeKey(), binding.workerId(), channel.id().asShortText());
             if (result.removedCurrentRoute()) {
+                String reason = "websocket disconnected";
+                String channelId = channel.id().asShortText();
+                workerPresenceIngress.sessionDisconnected(WorkerSessionPresenceEvent.disconnected(
+                        binding.workerId(),
+                        adapterId,
+                        binding.routeKey(),
+                        channelId,
+                        reason,
+                        channelId
+                ));
                 routeOwnerStore.releaseRouteOwner(
                         binding.workerId(),
                         adapterId,
                         binding.routeKey(),
-                        channel.id().asShortText(),
-                        "websocket disconnected"
+                        channelId,
+                        reason
                 );
             }
             if (activeConnectionCount.get() == 0) {
@@ -215,12 +236,22 @@ public class ServerSessionManager
         cancelRouteOwnerRefreshLoop();
         for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
             if (entry.endpoint().isActive()) {
+                String reason = "websocket adapter shutdown";
+                String channelId = entry.handle().id().asShortText();
+                workerPresenceIngress.sessionDisconnected(WorkerSessionPresenceEvent.disconnected(
+                        entry.workerId(),
+                        adapterId,
+                        entry.routeKey(),
+                        channelId,
+                        reason,
+                        channelId
+                ));
                 routeOwnerStore.releaseRouteOwner(
                         entry.workerId(),
                         adapterId,
                         entry.routeKey(),
-                        entry.handle().id().asShortText(),
-                        "websocket adapter shutdown"
+                        channelId,
+                        reason
                 );
             }
             if (entry.endpoint().isActive()) {
@@ -244,6 +275,12 @@ public class ServerSessionManager
                 rescheduleRouteOwnerRefreshLoop();
             }
         }
+    }
+
+    public void setWorkerPresenceIngress(WorkerPresenceIngress workerPresenceIngress) {
+        this.workerPresenceIngress = workerPresenceIngress != null
+                ? workerPresenceIngress
+                : NoopWorkerPresenceIngress.INSTANCE;
     }
 
     public String getAdapterId() {
@@ -326,6 +363,14 @@ public class ServerSessionManager
                 }
                 String channelId = entry.handle().id().asShortText();
                 String reason = "websocket session keepalive";
+                workerPresenceIngress.sessionHeartbeat(WorkerSessionPresenceEvent.heartbeat(
+                        entry.workerId(),
+                        adapterId,
+                        entry.routeKey(),
+                        channelId,
+                        reason,
+                        channelId
+                ));
                 routeOwnerStore.refreshHeartbeat(
                         entry.workerId(),
                         adapterId,
@@ -360,12 +405,22 @@ public class ServerSessionManager
         routeIndex.removeByHandle(previous.handle());
         activeConnectionCount.updateAndGet(current -> Math.max(0, current - 1));
         retiredChannels.add(previous.handle());
+        String channelId = previous.handle().id().asShortText();
+        String reason = "websocket session replaced";
+        workerPresenceIngress.sessionDisconnected(WorkerSessionPresenceEvent.disconnected(
+                previous.workerId(),
+                adapterId,
+                previous.routeKey(),
+                channelId,
+                reason,
+                channelId
+        ));
         routeOwnerStore.releaseRouteOwner(
                 previous.workerId(),
                 adapterId,
                 previous.routeKey(),
-                previous.handle().id().asShortText(),
-                "websocket session replaced"
+                channelId,
+                reason
         );
         WebSocketRouteEndpoint endpoint = previous.endpoint();
         if (endpoint != null && endpoint.isActive()) {

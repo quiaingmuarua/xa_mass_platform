@@ -1,6 +1,7 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.engine.TaskEventListenerRegistrar;
+import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 
 /**
@@ -12,12 +13,15 @@ import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
  */
 public interface EngineRuntimeBridge {
 
-    void start(TaskEventListenerRegistrar eventListeners, WorkerResourceRuntime workerResourceRuntime);
+    void start(TaskEventListenerRegistrar eventListeners,
+               WorkerResourceRuntime workerResourceRuntime,
+               WorkerDispatchGateRuntime workerDispatchGateRuntime);
 
     default void start(TaskEventListenerRegistrar eventListeners,
                        WorkerResourceRuntime workerResourceRuntime,
+                       WorkerDispatchGateRuntime workerDispatchGateRuntime,
                        Runnable dispatchWakeupCallback) {
-        start(eventListeners, workerResourceRuntime);
+        start(eventListeners, workerResourceRuntime, workerDispatchGateRuntime);
     }
 
     void stop();
@@ -33,7 +37,9 @@ public interface EngineRuntimeBridge {
         }
 
         @Override
-        public void start(TaskEventListenerRegistrar eventListeners, WorkerResourceRuntime workerResourceRuntime) {
+        public void start(TaskEventListenerRegistrar eventListeners,
+                          WorkerResourceRuntime workerResourceRuntime,
+                          WorkerDispatchGateRuntime workerDispatchGateRuntime) {
         }
 
         @Override

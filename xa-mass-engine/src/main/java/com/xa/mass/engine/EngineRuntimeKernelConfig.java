@@ -9,6 +9,7 @@ import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAvailabilityWakeupRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
+import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 
@@ -47,6 +48,8 @@ public interface EngineRuntimeKernelConfig {
     WorkerSchedulingViewRuntime getWorkerSchedulingViewRuntime();
 
     WorkerResourceRuntime getWorkerResourceRuntime();
+
+    WorkerDispatchGateRuntime getWorkerDispatchGateRuntime();
 
     WorkerControlRuntime getWorkerControlRuntime();
 

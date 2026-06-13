@@ -102,12 +102,8 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
 
         PullWorkerSession session = app.pullWorker(workerId);
         session.connect();
-        boolean workerOnline = false;
         try {
-            assertFalse(app.isWorkerReachable(workerId), "pull session connect must not own worker lifecycle reachability");
-            app.workerOnline(workerId, session.connectionId(), "pull-worker-online");
-            workerOnline = true;
-            waitUntil(() -> app.isWorkerReachable(workerId), "worker online must surface lifecycle reachability");
+            waitUntil(() -> app.isWorkerReachable(workerId), "pull session connect must surface worker reachability");
             TaskExecutionOptions executionSpec = new TaskExecutionOptions();
             executionSpec.setBatchSize(1);
 
@@ -157,11 +153,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
             assertEquals(200, ((Number) output.get("statusCode")).intValue());
             assertEquals("Example Page", output.get("title"));
         } finally {
-            if (workerOnline) {
-                app.workerOffline(workerId, session.connectionId(), "pull-worker-offline");
-            } else {
-                session.disconnect();
-            }
+            session.disconnect();
         }
 
         waitUntil(() -> !app.isWorkerReachable(workerId), "worker offline must converge lifecycle reachability offline");

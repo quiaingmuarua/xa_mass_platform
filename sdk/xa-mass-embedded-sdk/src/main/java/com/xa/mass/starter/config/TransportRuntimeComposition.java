@@ -19,7 +19,7 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -50,10 +50,10 @@ public class TransportRuntimeComposition {
     private final MessageTransporterFactory.TransporterType transporterType;
     private final MessageQueue<String> inputQueue;
     private final MessageQueue<TransportOutboundMessage> outputQueue;
-    private final WorkerSystemEventChannel customSystemEventChannel;
+    private final WorkerPresenceIngress customWorkerPresenceIngress;
     private final WorkerEndpointRegistry workerEndpointRegistry;
     private final Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
-    private final Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
+    private final Function<WorkerEndpointRegistry, WorkerPresenceIngress> workerPresenceIngressResolver;
     private final Supplier<TransportRouteOwnerStore> routeOwnerStoreFactory;
     private final WebSocketAdapterConfig bundledWebSocketAdapterConfig;
     private final SocketAdapterConfig bundledSocketAdapterConfig;
@@ -85,10 +85,10 @@ public class TransportRuntimeComposition {
         this.transporterType = source.getTransporterType();
         this.inputQueue = source.getInputQueue();
         this.outputQueue = source.getOutputQueue();
-        this.customSystemEventChannel = source.getCustomSystemEventChannel();
+        this.customWorkerPresenceIngress = source.getCustomWorkerPresenceIngress();
         this.workerEndpointRegistry = source.getWorkerEndpointRegistry();
         this.endpointRegistryFactory = source.endpointRegistryFactory();
-        this.systemEventChannelResolver = source.systemEventChannelResolver();
+        this.workerPresenceIngressResolver = source.workerPresenceIngressResolver();
         this.routeOwnerStoreFactory = source.routeOwnerStoreFactory();
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getBundledWebSocketAdapterConfig());
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.getBundledSocketAdapterConfig());
@@ -181,18 +181,18 @@ public class TransportRuntimeComposition {
         return runtimeOwnedEndpointRegistry;
     }
 
-    public WorkerSystemEventChannel resolveSystemEventChannel() {
-        if (customSystemEventChannel != null) {
-            return customSystemEventChannel;
+    public WorkerPresenceIngress resolveWorkerPresenceIngress() {
+        if (customWorkerPresenceIngress != null) {
+            return customWorkerPresenceIngress;
         }
         WorkerEndpointRegistry endpointRegistry = workerEndpointRegistry;
         if (endpointRegistry == null) {
             endpointRegistry = resolveWorkerEndpointRegistry();
         }
-        if (systemEventChannelResolver == null) {
-            throw new IllegalStateException("Transport system-event resolver is not configured");
+        if (workerPresenceIngressResolver == null) {
+            throw new IllegalStateException("Transport worker presence ingress resolver is not configured");
         }
-        return systemEventChannelResolver.apply(endpointRegistry);
+        return workerPresenceIngressResolver.apply(endpointRegistry);
     }
 
     public WorkerTransportRuntimeFactory resolveWorkerTransportRuntimeFactory() {

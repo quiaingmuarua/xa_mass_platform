@@ -8,6 +8,7 @@ import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,9 @@ public final class WorkerRegistrationTestSupport {
         workerManager.bindNodeGroup(binding(adapterNodeId, groupId));
         worker.setWorkerGroupId(groupId);
         worker.setAdapterNodeId(adapterNodeId);
+        if (worker.getLastHeartbeat() == null) {
+            worker.setLastHeartbeat(LocalDateTime.now());
+        }
         workerManager.addWorker(workerResource(worker));
         return worker;
     }

@@ -5,15 +5,19 @@ import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskPullStatus;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -97,46 +101,116 @@ class PullWorkerSessionTest {
 
     @Test
     void connectHeartbeatDisconnectWritePresenceWithCanonicalRouteAndSessionToken() {
-        InMemoryTransportRouteOwnerStore presenceStore = new InMemoryTransportRouteOwnerStore();
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
         PullWorkerSession session = session(mock(TaskPullChannel.class), mock(TaskResultIngestChannel.class),
-                presenceStore);
+                routeOwnerStore, presenceIngress);
 
-        session.connect("connected");
-        assertTrue(presenceStore.activeOwnerForSelectedWorker("polling", "worker-1")
+        assertTrue(session.connectAndClaim("connected"));
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("polling", "worker-1")
                 .orElseThrow()
                 .isActive(System.currentTimeMillis()));
-        assertTrue(presenceStore.hasActiveRouteOwner("polling", routeKey()));
-        assertEquals("conn-1", presenceStore.activeOwnerForSelectedWorker("polling", "worker-1")
+        assertTrue(routeOwnerStore.hasActiveRouteOwner("polling", routeKey()));
+        assertEquals("conn-1", routeOwnerStore.activeOwnerForSelectedWorker("polling", "worker-1")
                 .orElseThrow()
                 .connectionId());
+        assertEquals(List.of("CONNECTED:worker-1:polling:" + routeKey() + ":conn-1:connected:conn-1"),
+                presenceIngress.events);
 
-        presenceStore.releaseRouteOwner("worker-1", "polling", routeKey(), "stale-conn", "stale-disconnect");
-        assertTrue(presenceStore.activeOwnerForSelectedWorker("polling", "worker-1")
+        assertFalse(staleSession("stale-conn", routeOwnerStore, new RecordingWorkerPresenceIngress())
+                .disconnectIfCurrent("stale-disconnect"));
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("polling", "worker-1")
                 .orElseThrow()
                 .isActive(System.currentTimeMillis()));
 
-        session.heartbeat("heartbeat");
-        assertTrue(presenceStore.activeOwnerForSelectedWorker("polling", "worker-1")
+        assertFalse(staleSession("stale-conn", routeOwnerStore, new RecordingWorkerPresenceIngress())
+                .refreshHeartbeatIfCurrent("stale-heartbeat"));
+        assertTrue(session.refreshHeartbeatIfCurrent("heartbeat"));
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("polling", "worker-1")
                 .orElseThrow()
                 .isActive(System.currentTimeMillis()));
+        assertEquals(List.of(
+                        "CONNECTED:worker-1:polling:" + routeKey() + ":conn-1:connected:conn-1",
+                        "HEARTBEAT:worker-1:polling:" + routeKey() + ":conn-1:heartbeat:conn-1"
+                ),
+                presenceIngress.events);
 
-        session.disconnect("disconnect");
-        assertTrue(presenceStore.activeOwnerForSelectedWorker("polling", "worker-1").isEmpty());
+        assertTrue(session.disconnectIfCurrent("disconnect"));
+        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("polling", "worker-1").isEmpty());
+        assertEquals(List.of(
+                        "CONNECTED:worker-1:polling:" + routeKey() + ":conn-1:connected:conn-1",
+                        "HEARTBEAT:worker-1:polling:" + routeKey() + ":conn-1:heartbeat:conn-1",
+                        "DISCONNECTED:worker-1:polling:" + routeKey() + ":conn-1:disconnect:conn-1"
+                ),
+                presenceIngress.events);
     }
 
     private static PullWorkerSession session(TaskPullChannel taskPullChannel,
                                              TaskResultIngestChannel resultIngestChannel,
-                                             InMemoryTransportRouteOwnerStore presenceStore) {
+                                             InMemoryTransportRouteOwnerStore routeOwnerStore) {
+        return session("conn-1", taskPullChannel, resultIngestChannel, routeOwnerStore,
+                new RecordingWorkerPresenceIngress());
+    }
+
+    private static PullWorkerSession staleSession(String connectionId,
+                                                  InMemoryTransportRouteOwnerStore routeOwnerStore,
+                                                  WorkerPresenceIngress presenceIngress) {
+        return session(connectionId, mock(TaskPullChannel.class), mock(TaskResultIngestChannel.class), routeOwnerStore,
+                presenceIngress);
+    }
+
+    private static PullWorkerSession session(TaskPullChannel taskPullChannel,
+                                             TaskResultIngestChannel resultIngestChannel,
+                                             InMemoryTransportRouteOwnerStore routeOwnerStore,
+                                             WorkerPresenceIngress presenceIngress) {
+        return session("conn-1", taskPullChannel, resultIngestChannel, routeOwnerStore, presenceIngress);
+    }
+
+    private static PullWorkerSession session(String connectionId,
+                                             TaskPullChannel taskPullChannel,
+                                             TaskResultIngestChannel resultIngestChannel,
+                                             InMemoryTransportRouteOwnerStore routeOwnerStore,
+                                             WorkerPresenceIngress presenceIngress) {
         return new PullWorkerSession(
                 "worker-1",
                 "group-1",
                 "polling",
-                "conn-1",
+                connectionId,
                 taskPullChannel,
                 resultIngestChannel,
-                presenceStore,
+                routeOwnerStore,
+                presenceIngress,
                 "polling"
         );
+    }
+
+    private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {
+        private final List<String> events = new ArrayList<>();
+
+        @Override
+        public void sessionConnected(WorkerSessionPresenceEvent event) {
+            events.add(describe(event));
+        }
+
+        @Override
+        public void sessionHeartbeat(WorkerSessionPresenceEvent event) {
+            events.add(describe(event));
+        }
+
+        @Override
+        public void sessionDisconnected(WorkerSessionPresenceEvent event) {
+            events.add(describe(event));
+        }
+
+        private String describe(WorkerSessionPresenceEvent event) {
+            return event.eventType().name() + ":"
+                    + event.workerId() + ":"
+                    + event.adapterId() + ":"
+                    + event.routeKey() + ":"
+                    + event.sessionToken() + ":"
+                    + event.reason() + ":"
+                    + event.traceId();
+        }
     }
 
     private static String routeKey() {

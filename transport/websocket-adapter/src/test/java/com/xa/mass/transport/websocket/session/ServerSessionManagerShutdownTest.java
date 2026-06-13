@@ -1,5 +1,7 @@
 package com.xa.mass.transport.websocket.session;
 
+import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import io.netty.channel.Channel;
@@ -9,6 +11,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -70,7 +74,9 @@ class ServerSessionManagerShutdownTest {
     @Test
     void sessionsProjectRouteOwnerIntoTransportOwnedStore() {
         InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "ws-node-1");
+        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
         manager.setRouteOwnerStore(routeOwnerStore);
+        manager.setWorkerPresenceIngress(presenceIngress);
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
@@ -86,11 +92,17 @@ class ServerSessionManagerShutdownTest {
                 .orElseThrow()
                 .transportNodeId());
         assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertEquals(List.of("connected:worker-1:websocket:route-1:worker-1:websocket connected:worker-1"),
+                presenceIngress.events);
 
         manager.removeSession(channel);
 
         assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1").isEmpty());
         assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertEquals(List.of(
+                "connected:worker-1:websocket:route-1:worker-1:websocket connected:worker-1",
+                "disconnected:worker-1:websocket:route-1:worker-1:websocket disconnected:worker-1"
+        ), presenceIngress.events);
     }
 
     @Test
@@ -133,6 +145,8 @@ class ServerSessionManagerShutdownTest {
 
     @Test
     void replacingWorkerChannelKeepsConnectionCountStable() {
+        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
+        manager.setWorkerPresenceIngress(presenceIngress);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
@@ -146,12 +160,28 @@ class ServerSessionManagerShutdownTest {
         assertEquals(1, manager.getWorkerConnectionCount());
         assertEquals(secondChannel, manager.getChannel("worker-1"));
         verify(firstChannel).close();
+        assertEquals(List.of(
+                "connected:worker-1:websocket:worker-1:worker-1-old:websocket connected:worker-1-old",
+                "connected:worker-1:websocket:worker-1:worker-1-new:websocket connected:worker-1-new",
+                "disconnected:worker-1:websocket:worker-1:worker-1-old:websocket session replaced:worker-1-old"
+        ), presenceIngress.events);
 
         manager.removeSession(firstChannel);
         assertEquals(1, manager.getWorkerConnectionCount());
+        assertEquals(List.of(
+                "connected:worker-1:websocket:worker-1:worker-1-old:websocket connected:worker-1-old",
+                "connected:worker-1:websocket:worker-1:worker-1-new:websocket connected:worker-1-new",
+                "disconnected:worker-1:websocket:worker-1:worker-1-old:websocket session replaced:worker-1-old"
+        ), presenceIngress.events);
 
         manager.removeSession(secondChannel);
         assertEquals(0, manager.getWorkerConnectionCount());
+        assertEquals(List.of(
+                "connected:worker-1:websocket:worker-1:worker-1-old:websocket connected:worker-1-old",
+                "connected:worker-1:websocket:worker-1:worker-1-new:websocket connected:worker-1-new",
+                "disconnected:worker-1:websocket:worker-1:worker-1-old:websocket session replaced:worker-1-old",
+                "disconnected:worker-1:websocket:worker-1:worker-1-new:websocket disconnected:worker-1-new"
+        ), presenceIngress.events);
     }
 
     @Test
@@ -314,5 +344,33 @@ class ServerSessionManagerShutdownTest {
         when(ch.id()).thenReturn(chId);
         when(ch.isActive()).thenReturn(true);
         return ch;
+    }
+
+    private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {
+        private final List<String> events = new ArrayList<>();
+
+        @Override
+        public void sessionConnected(WorkerSessionPresenceEvent event) {
+            events.add("connected:" + describe(event));
+        }
+
+        @Override
+        public void sessionHeartbeat(WorkerSessionPresenceEvent event) {
+            events.add("heartbeat:" + describe(event));
+        }
+
+        @Override
+        public void sessionDisconnected(WorkerSessionPresenceEvent event) {
+            events.add("disconnected:" + describe(event));
+        }
+
+        private static String describe(WorkerSessionPresenceEvent event) {
+            return event.workerId()
+                    + ":" + event.adapterId()
+                    + ":" + event.routeKey()
+                    + ":" + event.sessionToken()
+                    + ":" + event.reason()
+                    + ":" + event.traceId();
+        }
     }
 }

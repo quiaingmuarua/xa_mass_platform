@@ -7,6 +7,7 @@ import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -23,7 +24,6 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
     private final EventBusFacade<?> eventBus;
     private Consumer<Task> taskCreatedListener;
     private Consumer<Task> taskAssignedListener;
-    private WorkerHeartbeatProjectionListener workerHeartbeatProjectionListener;
     private TaskEventListenerRegistrar registeredEventListeners;
 
     private RuntimeEventBusEngineBridge(EventBusFacade<?> eventBus) {
@@ -35,13 +35,16 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
     }
 
     @Override
-    public void start(TaskEventListenerRegistrar eventListeners, WorkerResourceRuntime workerResourceRuntime) {
-        start(eventListeners, workerResourceRuntime, null);
+    public void start(TaskEventListenerRegistrar eventListeners,
+                      WorkerResourceRuntime workerResourceRuntime,
+                      WorkerDispatchGateRuntime workerDispatchGateRuntime) {
+        start(eventListeners, workerResourceRuntime, workerDispatchGateRuntime, null);
     }
 
     @Override
     public void start(TaskEventListenerRegistrar eventListeners,
                       WorkerResourceRuntime workerResourceRuntime,
+                      WorkerDispatchGateRuntime workerDispatchGateRuntime,
                       Runnable dispatchWakeupCallback) {
         stop();
         @SuppressWarnings("unchecked")
@@ -51,11 +54,6 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
         this.taskAssignedListener = task -> bus.post(new TaskAssignedEvent(task, null, null));
         registeredEventListeners.addTaskCreatedListener(taskCreatedListener);
         registeredEventListeners.addTaskAssignedListener(taskAssignedListener);
-        this.workerHeartbeatProjectionListener = new WorkerHeartbeatProjectionListener(
-                workerResourceRuntime,
-                dispatchWakeupCallback
-        );
-        eventBus.register(workerHeartbeatProjectionListener);
     }
 
     @Override
@@ -68,16 +66,8 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
                 registeredEventListeners.removeTaskAssignedListener(taskAssignedListener);
             }
         }
-        if (workerHeartbeatProjectionListener != null) {
-            try {
-                eventBus.unregister(workerHeartbeatProjectionListener);
-            } catch (RuntimeException ignored) {
-                // Best-effort cleanup for legacy shell bridge listeners.
-            }
-        }
         taskCreatedListener = null;
         taskAssignedListener = null;
-        workerHeartbeatProjectionListener = null;
         registeredEventListeners = null;
     }
 }

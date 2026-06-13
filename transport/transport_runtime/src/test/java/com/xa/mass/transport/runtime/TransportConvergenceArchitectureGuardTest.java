@@ -36,17 +36,48 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void adaptersDoNotPublishWorkerLifecycleFromSessionState() throws IOException {
+    void oldWorkerLifecycleChannelAndRouteProjectorDoNotReappear() throws IOException {
         assertNoProductionSourceContains(
                 List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
                         repoRoot().resolve("transport/polling-adapter/src/main/java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java"),
                         repoRoot().resolve("transport/websocket-adapter/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter"),
                         repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker")
                 ),
+                "WorkerSystemEventChannel",
+                "NoopWorkerSystemEventChannel",
+                "RuntimeEventBusWorkerSystemEventChannel",
+                "TracingWorkerSystemEventChannel",
+                "TransportRouteLifecycleProjector",
                 "publishWorkerOnline(",
                 "publishWorkerOffline(",
                 "publishWorkerHeartbeat("
+        );
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/NoopWorkerSystemEventChannel.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeEventBusWorkerSystemEventChannel.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TracingWorkerSystemEventChannel.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportRouteLifecycleProjector.java")
+        );
+    }
+
+    @Test
+    void routeOwnerRecordsDoNotBecomePresencePayloadOrProjectionInput() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java"),
+                        repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/presence")
+                ),
+                "TransportRouteOwnerRecord",
+                "TransportRouteOwnerStore",
+                "claimRouteOwner",
+                "refreshHeartbeat",
+                "releaseRouteOwner"
         );
     }
 

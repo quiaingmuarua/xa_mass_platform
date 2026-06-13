@@ -2,7 +2,6 @@ package com.xa.mass.sdk;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.enums.Project;
-import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.UserRef;
@@ -36,6 +35,7 @@ import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
 import com.xa.mass.worker.runtime.report.WorkerStateReport;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
 import com.xa.mass.runtime.api.TaskResultWindow;
@@ -699,24 +699,24 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public void workerOnline(String workerId, String sessionToken, String reason) {
         String normalizedWorkerId = requireWorkerId(workerId);
         String normalizedSessionToken = requireNonBlank(sessionToken, "sessionToken");
-        externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken).connect(reason);
-        delegate.publishWorkerOnline(normalizedWorkerId, reason, normalizedSessionToken);
+        PullWorkerSession session = externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken);
+        session.connectAndClaim(reason);
     }
 
     @Override
     public void workerHeartbeat(String workerId, String sessionToken, String reason) {
         String normalizedWorkerId = requireWorkerId(workerId);
         String normalizedSessionToken = requireNonBlank(sessionToken, "sessionToken");
-        externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken).heartbeat(reason);
-        delegate.publishWorkerHeartbeat(normalizedWorkerId, reason, normalizedSessionToken);
+        PullWorkerSession session = externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken);
+        session.refreshHeartbeatIfCurrent(reason);
     }
 
     @Override
     public void workerOffline(String workerId, String sessionToken, String reason) {
         String normalizedWorkerId = requireWorkerId(workerId);
         String normalizedSessionToken = requireNonBlank(sessionToken, "sessionToken");
-        externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken).disconnect(reason);
-        delegate.publishWorkerOffline(normalizedWorkerId, reason, normalizedSessionToken);
+        PullWorkerSession session = externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken);
+        session.disconnectIfCurrent(reason);
     }
 
     @Override
@@ -1775,22 +1775,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return value == null ? null : value.name();
     }
 
-    private boolean workerStatusAvailable(String statusName) {
-        if (statusName == null || statusName.isBlank()) {
-            return false;
-        }
-        try {
-            return WorkerStatus.valueOf(statusName.trim().toUpperCase(Locale.ROOT)).isAvailable();
-        } catch (IllegalArgumentException ignored) {
-            return false;
-        }
-    }
-
     private boolean isWorkerReachable(WorkerResourceRecord worker) {
         if (worker == null || worker.workerId() == null || worker.workerId().isBlank()) {
             return false;
         }
-        return workerStatusAvailable(worker.statusName());
+        return delegate.getEngine()
+                .getConfig()
+                .getWorkerSchedulingViewRuntime()
+                .getWorkerReachability(worker.workerId()) == WorkerReachabilityState.ONLINE;
     }
 
     private WorkerResourceRecord loadWorker(String workerId) {

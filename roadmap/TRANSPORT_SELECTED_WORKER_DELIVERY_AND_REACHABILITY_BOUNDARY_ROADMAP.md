@@ -52,34 +52,38 @@ Missing route-owner evidence, stale connection evidence, or offline transport
 node evidence is a transport delivery failure. It is not worker offline, worker
 unschedulable, or a second worker selection step.
 
-## Pre-Implementation Code Observations
+## Original Pre-Implementation Code Observations
+
+These observations captured the 2026-06-12 starting point for this roadmap.
+They are retained as historical input, not as current implementation truth after
+`WORKER_RUNTIME_TRANSPORT_SESSION_PRESENCE_INGRESS_ROADMAP.md` landed.
 
 - `TaskDispatchDeliveryCommandSubmitter` is a starter-owned
   `TaskDispatchBatchListener` that translates `TaskDispatchContext +
   TaskDispatchBinding` into `DeliveryCommand`.
-- The same class directly injects `WorkerDispatchRouteOwnerView` and
-  `TransportNodeRegistry`, calls
-  `activeOwnerForSelectedWorker(adapterId, selectedWorkerId)`, filters by node
-  usability, groups commands into `DeliveryCommandBatch`, and calls
+- The same class directly injected `WorkerDispatchRouteOwnerView` and
+  `TransportNodeRegistry`, called
+  `activeOwnerForSelectedWorker(adapterId, selectedWorkerId)`, filtered by node
+  usability, grouped commands into `DeliveryCommandBatch`, and called
   `TransportDeliveryFailureHandler` for retryable outcomes.
-- `DeliveryCommandBatch` currently requires `targetTransportNodeId`; Redis
+- `DeliveryCommandBatch` required `targetTransportNodeId`; Redis
   split-runtime handoff queues are keyed by shared `deliveryQueueKey` and target
-  transport node lane. Therefore, current distributed handoff still needs a
+  transport node lane. Therefore, distributed handoff still needed a
   transport owner resolution step before writing a node-local batch.
-- `MassSdkApplication#isWorkerReachable(...)` currently reads
-  `delegate.getWorkerRouteOwnerView()` and calls
+- `MassSdkApplication#isWorkerReachable(...)` formerly read
+  `delegate.getWorkerRouteOwnerView()` and called
   `activeOwnerForSelectedWorker(adapterId, workerId)`.
-- `MassApplication` currently keeps `workerRouteOwnerView`, requires the
+- `MassApplication` formerly kept `workerRouteOwnerView`, required the
   route-owner store to implement `WorkerDispatchRouteOwnerView`, and exposes
   `getWorkerRouteOwnerView()`.
-- `WorkerHeartbeatProjectionListener` currently refreshes heartbeat timestamps
-  only. Its current tests assert that worker online/heartbeat/offline events do
+- `WorkerHeartbeatProjectionListener` refreshed heartbeat timestamps
+  only. Its tests asserted that worker online/heartbeat/offline events do
   not update worker model status.
-- `WorkerReachabilityView` currently lives under `xa-mass-worker-runtime`, but
+- `WorkerReachabilityView` lived under `xa-mass-worker-runtime`, but
   its javadoc still describes a transport-owned reachability read seam consumed
   by engine matching. That wording and its assembly must be reconciled before
   SDK reachability can safely stop reading route-owner evidence.
-- Redis route-owner state currently includes route consumer hashes, deadline
+- Redis route-owner state included route consumer hashes, deadline
   index, and the derived
   `adapter:<adapterId>:worker:<workerId>:owner` pointer.
 - `doc/PROOF_REGISTRY.md` already forbids `workers`, `owner-shards`,
@@ -90,9 +94,14 @@ unschedulable, or a second worker selection step.
 
 Implemented on 2026-06-12:
 
-- `WorkerHeartbeatProjectionListener` now projects explicit worker
+- `WorkerHeartbeatProjectionListener` projected explicit worker
   online/heartbeat/offline events into worker runtime status/heartbeat
-  evidence. Transport route-owner leases are not used for worker lifecycle.
+  evidence. Transport route-owner leases were not used for worker lifecycle.
+  This interim projection was replaced on 2026-06-13 by
+  `WorkerPresenceIngress` / `WorkerRuntimePresenceIngress`, which writes
+  worker-runtime presence/reachability evidence and registry-owned slot
+  heartbeat freshness without mutating worker resource status or dispatch
+  gates.
 - `MassSdkApplication#isWorkerReachable(...)` and
   `listReachableWorkerIds()` now read worker runtime status only. SDK worker
   inspection no longer calls `WorkerDispatchRouteOwnerView` or
@@ -158,30 +167,21 @@ SDK/starter owns:
 `listReachableWorkerIds()` must not read `WorkerDispatchRouteOwnerView` or call
 `activeOwnerForSelectedWorker(...)`.
 
-If the SDK keeps the name `isWorkerReachable`, this roadmap must first decide
-and implement the worker-runtime reachability/lifecycle projection that backs
-that promise. If the project chooses not to create that projection in this
-slice, the SDK API must be renamed or downgraded to worker-resource
-availability and any E2E expectations must be updated. A direct route-owner
-read is not an acceptable fallback.
+If the SDK keeps the name `isWorkerReachable`, it must be backed by
+worker-runtime reachability/presence evidence. A direct route-owner read is not
+an acceptable fallback.
 
 ### Worker Reachability Owner Must Be Settled Before SDK Cutover
 
-The roadmap cannot remove SDK route-owner lookup while leaving
-`WorkerSystemEventChannel` online/offline events as heartbeat-only observations
-and leaving `WorkerReachabilityView` described as transport-owned reachability.
+This was resolved by
+`WORKER_RUNTIME_TRANSPORT_SESSION_PRESENCE_INGRESS_ROADMAP.md`: the selected
+path is worker-runtime presence/reachability projection through
+`WorkerPresenceIngress` / `WorkerRuntimePresenceIngress`, consumed by SDK
+inspection and engine scheduling. Transport delivery feasibility remains a
+separate route-owner concern.
 
-Before TSDR-2 may change SDK behavior, TSDR-1 must choose one path:
-
-- worker-runtime lifecycle/reachability projection: explicit worker system
-  events update a worker-runtime-owned reachability/lifecycle view consumed by
-  SDK inspection and engine scheduling; or
-- SDK API semantic downgrade: `isWorkerReachable` stops claiming reachability
-  and becomes worker-resource availability, while transport delivery
-  feasibility moves to a separate diagnostics surface.
-
-Both paths require tests and docs. Neither path may use transport route-owner
-lease evidence as worker lifecycle truth.
+Neither the selected path nor any future diagnostic path may use transport
+route-owner lease evidence as worker lifecycle truth.
 
 ### Route-Owner Lookup Belongs Inside Transport Delivery Execution
 
@@ -355,7 +355,7 @@ Scope:
   - `MassApplication#getWorkerRouteOwnerView()`,
   - `MassSdkApplication#isWorkerReachable(...)`,
   - `WorkerReachabilityView`,
-  - `WorkerHeartbeatProjectionListener`,
+  - `WorkerPresenceIngress` / `WorkerRuntimePresenceIngress`,
   - `TransportNodeRegistry` in assignment-to-delivery code,
   - `DeliveryCommandBatch` creation,
   - `TransportDeliveryFailureHandler` emitters.
@@ -399,9 +399,11 @@ Acceptance:
   "transport-owned worker reachability" wording from active code/docs.
 - If worker-runtime projection is chosen:
   - `workerOnline`, `workerHeartbeat`, and `workerOffline` behavior is covered
-    by worker-runtime or starter integration tests,
-  - `WorkerHeartbeatProjectionListenerTest` no longer asserts a contradictory
-    heartbeat-only model for the chosen lifecycle projection,
+    by worker-runtime or starter integration tests, or is retargeted to
+    session-presence ingress through `WorkerPresenceIngress`,
+  - stale `WorkerHeartbeatProjectionListenerTest` references are removed and
+    replaced by `WorkerRuntimePresenceIngressTest` /
+    `WorkerRuntimeSelectionIntegrationTest`,
   - engine scheduling and SDK inspection consume the same worker-runtime-owned
     reachability/lifecycle view.
 - If SDK semantic downgrade is chosen:
@@ -641,7 +643,7 @@ Focused implementation verification:
 ```powershell
 ./mvnw -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk,xa-mass-worker-runtime,xa-mass-engine -am -DskipTests install
 ./mvnw -q -pl transport/transport_runtime test "-Dtest=TransportAssignedDeliverySubmitterTest,TransportDeliveryCommandListenerTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest"
-./mvnw -q -pl sdk/xa-mass-embedded-sdk test "-Dtest=WorkerHeartbeatProjectionListenerTest,MassSdkTest#sdkWorkerReachableReadsWorkerRuntimeStatus+sdkWorkerReachableTreatsUnavailableWorkerRuntimeStatusAsOffline"
+./mvnw -q -pl sdk/xa-mass-embedded-sdk test "-Dtest=WorkerRuntimePresenceIngressTest,WorkerRuntimeSelectionIntegrationTest,MassSdkTest#sdkWorkerReachableReadsWorkerRuntimeStatus+sdkWorkerReachableTreatsUnavailableWorkerRuntimeStatusAsOffline"
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk test "-Dtest=MassApplicationDistributedTransportTest"
 ./mvnw -q -pl xa-mass-testing -am -DskipTests compile
 ```
@@ -661,7 +663,7 @@ Redis proof candidates:
 Residue scan candidates:
 
 ```powershell
-rg -n "activeOwnerForSelectedWorker|WorkerDispatchRouteOwnerView|getWorkerRouteOwnerView|WorkerReachabilityView|WorkerHeartbeatProjectionListener|engine/starter assembly resolves|delivery feasibility before handoff|worker offline|worker reachability" sdk/xa-mass-embedded-sdk/src/main/java xa-mass-worker-runtime/src/main/java sdk/xa-mass-embedded-sdk/README.md transport/TRANSPORT_BOUNDARY_BASELINE.md doc/PROOF_REGISTRY.md
+rg -n "activeOwnerForSelectedWorker|WorkerDispatchRouteOwnerView|getWorkerRouteOwnerView|WorkerReachabilityView|WorkerPresenceIngress|engine/starter assembly resolves|delivery feasibility before handoff|worker offline|worker reachability" sdk/xa-mass-embedded-sdk/src/main/java xa-mass-worker-runtime/src/main/java sdk/xa-mass-embedded-sdk/README.md transport/TRANSPORT_BOUNDARY_BASELINE.md doc/PROOF_REGISTRY.md
 rg -n "WorkerDispatchRouteOwnerView|TransportNodeRegistry" sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/TaskDispatchDeliveryCommandSubmitter.java
 rg -n "xa:mass:transport|worker-route|worker-routes|route-presence|owner-shards|:workers|:routes" transport/transport_runtime/src/main/java sdk/xa-mass-embedded-sdk/src/main/java doc/PROOF_REGISTRY.md transport/TRANSPORT_BOUNDARY_BASELINE.md
 ```
@@ -702,7 +704,7 @@ Run on 2026-06-12:
 ./mvnw -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk,xa-mass-worker-runtime,xa-mass-engine -am -DskipTests compile
 ./mvnw -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk -am -DskipTests install
 ./mvnw -q -pl transport/transport_runtime test "-Dtest=TransportAssignedDeliverySubmitterTest,TransportDeliveryCommandListenerTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest"
-./mvnw -q -pl sdk/xa-mass-embedded-sdk test "-Dtest=WorkerHeartbeatProjectionListenerTest,MassSdkTest#sdkWorkerReachableReadsWorkerRuntimeStatus+sdkWorkerReachableTreatsUnavailableWorkerRuntimeStatusAsOffline"
+./mvnw -q -pl sdk/xa-mass-embedded-sdk test "-Dtest=WorkerRuntimePresenceIngressTest,WorkerRuntimeSelectionIntegrationTest,MassSdkTest#sdkWorkerReachableReadsWorkerRuntimeStatus+sdkWorkerReachableTreatsUnavailableWorkerRuntimeStatusAsOffline"
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk test "-Dtest=MassApplicationDistributedTransportTest"
 ./mvnw -q -pl transport/transport_runtime test "-Dtest=RedisTransportRouteOwnerStoreTest,RedisTransportDeliveryStoreTest,RedisTransportDeliveryCommandHandoffTest,RedisTransportDeliveryFailureChannelTest,TransportNodeRegistryTest"
 ./mvnw -q -pl xa-mass-testing -am -DskipTests compile

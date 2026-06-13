@@ -4,8 +4,6 @@ import com.xa.mass.engine.InMemoryWorkerDeclarationRuntimeStore;
 
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.worker.runtime.command.WorkerCommandAcknowledgement;
 import com.xa.mass.engine.command.WorkerCommandDeliveryCoordinator;
@@ -13,13 +11,10 @@ import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryResult;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.worker.runtime.command.WorkerCommandRequest;
 import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
-import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
-import com.xa.mass.engine.strategy.WorkerTaskSelectorFactory;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 import com.xa.mass.worker.runtime.report.WorkerStateProjection;
 import com.xa.mass.worker.runtime.report.WorkerStateReport;
@@ -43,7 +38,8 @@ public class WorkerControlServiceTest {
 
     @Test
     void appliesOwnerBackedCommandCapabilityAndStateEntriesWithReadViews() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
+        InMemoryWorkerRegistry workerRegistry = new InMemoryWorkerRegistry();
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), workerRegistry);
         Worker worker = new Worker();
         worker.setWorkerId("worker-1");
         worker.setWorkerGroupId("group-1");
@@ -91,7 +87,9 @@ public class WorkerControlServiceTest {
         assertEquals(1, service.workerCommandsForWorker("worker-1").size());
         assertEquals("DEGRADED", service.workerStateProjection("worker-1").orElseThrow().state());
         assertEquals(1, service.workerStateProjections().size());
-        assertEquals("us", candidateRow(workerManager, "group-1", "crawler.fetch")
+        assertEquals("us", workerRegistry.slotByWorkerId("worker-1")
+                .orElseThrow()
+                .meta()
                 .attributes()
                 .get("country"));
         sink.assertHasEvent(ExecutionEventType.WORKER_COMMAND_STATUS_TRANSITION, "commandId", "cmd-1");
@@ -458,17 +456,4 @@ public class WorkerControlServiceTest {
                 traceEventLogger);
     }
 
-    private static WorkerCandidateRow candidateRow(WorkerManager workerManager, String groupId, String eventCode) {
-        Task task = new Task();
-        task.setTid("task-" + eventCode);
-        task.setProject("demoApp");
-        task.setSharedConfig(Map.of(
-                TaskSharedConfig.WORKER_GROUP_ID, groupId,
-                TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, eventCode)
-        ));
-        return workerManager.findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromPolicy(
-                        new DefaultSchedulingPlaneResolver().resolve(task).workerSchedulingPolicy()), 512)
-                .candidates()
-                .getFirst();
-    }
 }

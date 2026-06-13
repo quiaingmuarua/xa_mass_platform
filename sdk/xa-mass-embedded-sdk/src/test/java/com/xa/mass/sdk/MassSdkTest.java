@@ -94,9 +94,11 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
+import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
-import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
@@ -122,8 +124,9 @@ import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.PulledTaskDispatch;
 import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -334,15 +337,15 @@ class MassSdkTest {
     }
 
     @Test
-    void bundledWebSocketSystemEventChannelSharesRuntimeOwnedEndpointRegistry() {
+    void defaultWorkerPresenceIngressIsNoopUntilEngineAssemblyProvidesRuntimeOwner() {
         TransportConfig config = new TransportConfig();
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         WorkerEndpointRegistry endpointRegistry = runtimeComposition.resolveWorkerEndpointRegistry();
-        WorkerSystemEventChannel systemEventChannel = runtimeComposition.resolveSystemEventChannel();
+        WorkerPresenceIngress presenceIngress = runtimeComposition.resolveWorkerPresenceIngress();
 
         assertInstanceOf(CompositeWorkerEndpointRegistry.class, endpointRegistry);
-        assertInstanceOf(RuntimeEventBusWorkerSystemEventChannel.class, systemEventChannel);
+        assertSame(NoopWorkerPresenceIngress.INSTANCE, presenceIngress);
     }
 
     @Test
@@ -423,10 +426,9 @@ class MassSdkTest {
 
         WorkerEndpointRegistry overriddenRegistry = mock(WorkerEndpointRegistry.class);
         config.setWorkerEndpointRegistry(overriddenRegistry);
-        WorkerSystemEventChannel customSystemEventChannel = mock(WorkerSystemEventChannel.class);
-        config.setCustomSystemEventChannel(customSystemEventChannel);
+        WorkerPresenceIngress customPresenceIngress = mock(WorkerPresenceIngress.class);
+        config.setCustomWorkerPresenceIngress(customPresenceIngress);
         WorkerTransportRuntimeFactory customFactory = (taskResultIngestChannel,
-                                                     systemEventChannel,
                                                      routeOwnerStore,
                                                      deliveryService,
                                                      adapterBindings) -> mock(TransportRuntimeRegistry.class);
@@ -435,8 +437,61 @@ class MassSdkTest {
         TransportRuntimeComposition customizedRuntimeComposition = config.snapshotRuntimeComposition();
 
         assertSame(overriddenRegistry, customizedRuntimeComposition.resolveWorkerEndpointRegistry());
-        assertSame(customSystemEventChannel, customizedRuntimeComposition.resolveSystemEventChannel());
+        assertSame(customPresenceIngress, customizedRuntimeComposition.resolveWorkerPresenceIngress());
         assertSame(customFactory, customizedRuntimeComposition.resolveWorkerTransportRuntimeFactory());
+    }
+
+    @Test
+    void workerLifecycleFacadePublishesPresenceOnceThroughPullWorkerSession() {
+        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
+        MassApplication delegate = MassApplicationBuilder.create()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false))
+                        .socketAdapter(socket -> socket.enabled(false).serverEnabled(false))
+                        .workerPresenceIngress(presenceIngress))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        try {
+            app.start();
+            app.registerEventDefinition(EventDefinition.builder()
+                    .code("crawler.fetch-page")
+                    .name("Fetch Page")
+                    .payloadTypes(List.of(PayloadType.JSON))
+                    .taskModes(List.of(TaskMode.SINGLE_RUN))
+                    .build());
+            app.registerProject(ProjectDefinition.builder()
+                    .code("crawlerApp")
+                    .name("Crawler App")
+                    .eventCodes(List.of("crawler.fetch-page"))
+                    .build());
+            declareSdkTestGroup(app, "polling-workers", List.of(WorkerEventBinding.builder()
+                    .eventCode("crawler.fetch-page")
+                    .projectCodes(List.of("crawlerApp"))
+                    .build()));
+            bindSdkTestNode(app, "polling-workers");
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("worker-1")
+                    .workerGroupId("polling-workers")
+                    .adapterNodeId("sdk-test-node")
+                    .transportHint(WorkerTransportHints.POLLING)
+                    .build());
+
+            app.workerOnline("worker-1", "session-1", "online");
+            app.workerHeartbeat("worker-1", "session-1", "heartbeat");
+            app.workerOffline("worker-1", "session-1", "offline");
+
+            String routeKey = CanonicalWorkerGroupRouteKeyCodec.encode("polling-workers");
+            assertEquals(List.of(
+                            "CONNECTED:worker-1:polling:" + routeKey + ":session-1:online:session-1",
+                            "HEARTBEAT:worker-1:polling:" + routeKey + ":session-1:heartbeat:session-1",
+                            "DISCONNECTED:worker-1:polling:" + routeKey + ":session-1:offline:session-1"
+                    ),
+                    presenceIngress.events);
+        } finally {
+            app.stop();
+        }
     }
 
     @Test
@@ -542,7 +597,7 @@ class MassSdkTest {
             bootstrapContext = new TransportAdapterBootstrapContext(
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
-                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
                     runtimeTaskExecutor
@@ -571,7 +626,7 @@ class MassSdkTest {
             bootstrapContext = new TransportAdapterBootstrapContext(
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
-                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
                     runtimeTaskExecutor
@@ -602,7 +657,7 @@ class MassSdkTest {
             bootstrapContext = new TransportAdapterBootstrapContext(
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
-                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
                     runtimeTaskExecutor
@@ -635,7 +690,7 @@ class MassSdkTest {
             bootstrapContext = new TransportAdapterBootstrapContext(
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
-                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportRouteOwnerStore(),
                     deliveryService(),
                     runtimeTaskExecutor
@@ -668,7 +723,7 @@ class MassSdkTest {
                             new TransportAdapterBootstrapContext(
                                     endpointRegistry,
                                     null,
-                                    runtimeComposition.resolveSystemEventChannel(),
+                                    runtimeComposition.resolveWorkerPresenceIngress(),
                                     new InMemoryTransportRouteOwnerStore(),
                                     deliveryService(),
                                     runtimeTaskExecutor
@@ -698,7 +753,7 @@ class MassSdkTest {
                             new TransportAdapterBootstrapContext(
                                     new ServerSessionManager("websocket"),
                                     mock(TaskResultIngestChannel.class),
-                                    new RuntimeEventBusWorkerSystemEventChannel(),
+                                    NoopWorkerPresenceIngress.INSTANCE,
                                     new InMemoryTransportRouteOwnerStore(),
                                     deliveryService(),
                                     runtimeTaskExecutor
@@ -729,7 +784,7 @@ class MassSdkTest {
                             new TransportAdapterBootstrapContext(
                                     new com.xa.mass.transport.socket.session.SocketSessionManager("socket"),
                                     mock(TaskResultIngestChannel.class),
-                                    new RuntimeEventBusWorkerSystemEventChannel(),
+                                    NoopWorkerPresenceIngress.INSTANCE,
                                     new InMemoryTransportRouteOwnerStore(),
                                     deliveryService(),
                                     runtimeTaskExecutor
@@ -792,7 +847,6 @@ class MassSdkTest {
         config.getBundledWebSocketAdapterConfig().setEnabled(false);
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         config.setWorkerTransportRuntimeFactory((taskResultIngestChannel,
-                                                systemEventChannel,
                                                 routeOwnerStore,
                                                 deliveryService,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
@@ -815,7 +869,6 @@ class MassSdkTest {
     void transportRuntimeCompositionUsesBootstrapDescriptorEvenWithCustomRuntimeFactory() {
         TransportConfig config = new TransportConfig();
         config.setWorkerTransportRuntimeFactory((taskResultIngestChannel,
-                                                systemEventChannel,
                                                 routeOwnerStore,
                                                 deliveryService,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
@@ -842,7 +895,6 @@ class MassSdkTest {
         config.setWorkerTransportRuntimeFactory(new WorkerTransportRuntimeFactory() {
             @Override
             public TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
-                                                   WorkerSystemEventChannel systemEventChannel,
                                                    com.xa.mass.transport.route.TransportRouteOwnerStore routeOwnerStore,
                                                    TransportDeliveryService deliveryService,
                                                    List<TransportBinding> adapterBindings) {
@@ -1092,16 +1144,19 @@ class MassSdkTest {
     }
 
     @Test
-    void sdkWorkerReachableReadsWorkerRuntimeStatus() {
+    void sdkWorkerReachableReadsWorkerRuntimeReachability() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = mock(EngineConfig.class);
         WorkerResourceRuntime workerRuntime = mock(WorkerResourceRuntime.class);
+        WorkerSchedulingViewRuntime schedulingViewRuntime = mock(WorkerSchedulingViewRuntime.class);
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getWorkerResourceRuntime()).thenReturn(workerRuntime);
+        when(config.getWorkerSchedulingViewRuntime()).thenReturn(schedulingViewRuntime);
         when(workerRuntime.worker("worker-1")).thenReturn(java.util.Optional.of(workerResource("worker-1", "group-1")));
+        when(schedulingViewRuntime.getWorkerReachability("worker-1")).thenReturn(WorkerReachabilityState.ONLINE);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -1109,17 +1164,20 @@ class MassSdkTest {
     }
 
     @Test
-    void sdkWorkerReachableTreatsUnavailableWorkerRuntimeStatusAsOffline() {
+    void sdkWorkerReachableTreatsUnavailableRuntimeReachabilityAsOffline() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = mock(EngineConfig.class);
         WorkerResourceRuntime workerRuntime = mock(WorkerResourceRuntime.class);
+        WorkerSchedulingViewRuntime schedulingViewRuntime = mock(WorkerSchedulingViewRuntime.class);
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getWorkerResourceRuntime()).thenReturn(workerRuntime);
+        when(config.getWorkerSchedulingViewRuntime()).thenReturn(schedulingViewRuntime);
         when(workerRuntime.worker("worker-stale")).thenReturn(java.util.Optional.of(
-                workerResource("worker-stale", "group-1", WorkerStatus.OFFLINE.name())));
+                workerResource("worker-stale", "group-1")));
+        when(schedulingViewRuntime.getWorkerReachability("worker-stale")).thenReturn(WorkerReachabilityState.OFFLINE);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -2671,7 +2729,6 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2709,7 +2766,6 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2750,7 +2806,6 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2790,7 +2845,6 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2886,7 +2940,6 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2945,7 +2998,6 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2989,7 +3041,6 @@ class MassSdkTest {
                 WorkerTransportHints.POLLING
         );
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         systemEventChannel,
                                                          routeOwnerStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -3069,7 +3120,7 @@ class MassSdkTest {
                     .build());
 
             PullWorkerSession session = app.pullWorker("polling-worker-1");
-            app.workerOnline("polling-worker-1", session.connectionId(), "polling-worker-online");
+            session.connect("polling-worker-online");
 
             TaskDetailSnapshot task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("crawler-agent")
@@ -3252,19 +3303,19 @@ class MassSdkTest {
         assertMissingMethod(TransportConfig.class, "getTransportServerFactory");
         assertMissingMethod(TransportConfig.class, "setTransportServerFactory", TransportServerFactory.class);
         assertMissingMethod(TransportConfig.class, "createMessageTransporter");
-        assertMissingMethod(
-                TransportConfig.class,
-                "createDispatcherContext",
-                com.xa.mass.base.channel.tranporter.MessageTransporter.class,
-                WorkerEndpointRegistry.class,
-                TaskResultIngestChannel.class,
-                WorkerSystemEventChannel.class
-        );
         assertMissingMethod(TransportConfig.class, "resolveWorkerEndpointRegistry");
         assertMissingMethod(TransportConfig.class, "resolveSystemEventChannel");
         assertMissingMethod(TransportConfig.class, "resolveWorkerTransportRuntimeFactory");
         assertMissingMethod(TransportConfig.class, "resolveTransportAdapterBootstrap");
         assertMissingMethod(TransportConfig.class, "resolveSocketTransportAdapterBootstrap");
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.channel.WorkerSystemEventChannel"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.channel.NoopWorkerSystemEventChannel"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.runtime.TracingWorkerSystemEventChannel"));
         Assertions.assertThrows(ClassNotFoundException.class,
                 () -> Class.forName("com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext"));
         Assertions.assertThrows(ClassNotFoundException.class,
@@ -3691,6 +3742,35 @@ class MassSdkTest {
 
         @Override
         public void contribute(TransportAdapterBootstrapContext context) {
+        }
+    }
+
+    private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {
+        private final List<String> events = new ArrayList<>();
+
+        @Override
+        public void sessionConnected(WorkerSessionPresenceEvent event) {
+            events.add(describe(event));
+        }
+
+        @Override
+        public void sessionHeartbeat(WorkerSessionPresenceEvent event) {
+            events.add(describe(event));
+        }
+
+        @Override
+        public void sessionDisconnected(WorkerSessionPresenceEvent event) {
+            events.add(describe(event));
+        }
+
+        private String describe(WorkerSessionPresenceEvent event) {
+            return event.eventType().name() + ":"
+                    + event.workerId() + ":"
+                    + event.adapterId() + ":"
+                    + event.routeKey() + ":"
+                    + event.sessionToken() + ":"
+                    + event.reason() + ":"
+                    + event.traceId();
         }
     }
 

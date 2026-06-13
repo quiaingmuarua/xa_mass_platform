@@ -4,7 +4,7 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
@@ -18,7 +18,7 @@ public final class TransportAdapterBootstrapContext {
 
     private final WorkerEndpointRegistry endpointRegistry;
     private final TaskResultIngestChannel taskResultIngestChannel;
-    private final WorkerSystemEventChannel systemEventChannel;
+    private final WorkerPresenceIngress workerPresenceIngress;
     private final TransportRouteOwnerStore routeOwnerStore;
     private final TransportDeliveryService deliveryService;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
@@ -29,13 +29,13 @@ public final class TransportAdapterBootstrapContext {
 
     public TransportAdapterBootstrapContext(WorkerEndpointRegistry endpointRegistry,
                                             TaskResultIngestChannel taskResultIngestChannel,
-                                            WorkerSystemEventChannel systemEventChannel,
+                                            WorkerPresenceIngress workerPresenceIngress,
                                             TransportRouteOwnerStore routeOwnerStore,
                                             TransportDeliveryService deliveryService,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.taskResultIngestChannel = taskResultIngestChannel;
-        this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
+        this.workerPresenceIngress = Objects.requireNonNull(workerPresenceIngress, "workerPresenceIngress");
         this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
@@ -49,8 +49,8 @@ public final class TransportAdapterBootstrapContext {
         return taskResultIngestChannel;
     }
 
-    public WorkerSystemEventChannel getSystemEventChannel() {
-        return systemEventChannel;
+    public WorkerPresenceIngress getWorkerPresenceIngress() {
+        return workerPresenceIngress;
     }
 
     public TransportRouteOwnerStore getRouteOwnerStore() {

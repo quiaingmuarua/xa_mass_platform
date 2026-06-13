@@ -25,7 +25,6 @@ import com.xa.mass.transport.runtime.ManagedTransportAdapter;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
-import com.xa.mass.transport.runtime.TracingWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
@@ -50,8 +49,10 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
@@ -106,7 +107,7 @@ public class MassApplication {
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
     private RuntimeTaskExecutor eventRuntimeTaskExecutor;
     private BufferedTaskResultIngestChannel bufferedResultIngestChannel;
-    private WorkerSystemEventChannel workerSystemEventChannel;
+    private WorkerPresenceIngress workerPresenceIngress;
 
     public MassApplication(MassEngine engine,
                            TransportConfig transportConfig,
@@ -269,11 +270,8 @@ public class MassApplication {
                 logger.info("No shared message transporter configured; continuing with adapter-native transport runtime");
             }
 
-            WorkerSystemEventChannel systemEventChannel = new TracingWorkerSystemEventChannel(
-                    transportRuntimeComposition.resolveSystemEventChannel(),
-                    engineConfig.getExecutionEventSink()
-            );
-            workerSystemEventChannel = systemEventChannel;
+            WorkerPresenceIngress presenceIngress = resolveWorkerPresenceIngress();
+            workerPresenceIngress = presenceIngress;
             routeOwnerStore = transportRuntimeComposition.resolveTransportRouteOwnerStore();
             workerRouteOwnerView = requireWorkerRouteOwnerView(routeOwnerStore);
             transportNodeRegistry = transportRuntimeComposition.resolveTransportNodeRegistry();
@@ -328,7 +326,7 @@ public class MassApplication {
                     TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
                             endpointRegistry,
                             taskResultIngestChannel,
-                            systemEventChannel,
+                            presenceIngress,
                             routeOwnerStore,
                             deliveryService,
                             transportRuntimeTaskExecutor
@@ -341,7 +339,6 @@ public class MassApplication {
             if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
                 transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
                         taskResultIngestChannel,
-                        systemEventChannel,
                         routeOwnerStore,
                         deliveryService,
                         adapterBindings
@@ -679,7 +676,7 @@ public class MassApplication {
     }
 
     private void stopEventRuntimeTaskExecutor() throws Exception {
-        workerSystemEventChannel = null;
+        workerPresenceIngress = null;
         RuntimeTaskExecutor executor = eventRuntimeTaskExecutor;
         eventRuntimeTaskExecutor = null;
         if (executor == null) {
@@ -696,6 +693,21 @@ public class MassApplication {
             return inMemoryRuntime;
         }
         return new BoundedMassEventRuntime(inMemoryRuntime, () -> eventRuntimeTaskExecutor, timeoutMillis);
+    }
+
+    private WorkerPresenceIngress resolveWorkerPresenceIngress() {
+        WorkerPresenceIngress configuredIngress = transportRuntimeComposition.resolveWorkerPresenceIngress();
+        if (configuredIngress != null && configuredIngress != NoopWorkerPresenceIngress.INSTANCE) {
+            return configuredIngress;
+        }
+        if (!engineConfig.isEnabled()) {
+            return NoopWorkerPresenceIngress.INSTANCE;
+        }
+        return new WorkerRuntimePresenceIngress(
+                engineConfig.getWorkerPresenceRuntime(),
+                engineConfig.getWorkerResourceRuntime(),
+                engineConfig.getExecutionEventSink()
+        );
     }
 
     private void registerManagedTransportAdapter(ManagedTransportAdapter managedTransportAdapter) {
@@ -762,40 +774,65 @@ public class MassApplication {
                 resolved.getTaskPullChannel(),
                 resolved.getTaskResultIngestChannel(),
                 resolved.getRouteOwnerStore(),
+                requireWorkerPresenceIngress(),
                 resolved.getTransportHint()
         );
     }
 
-    public void publishWorkerOnline(String workerId, String reason, String traceId) {
-        requireWorkerSystemEventChannel().publishWorkerOnline(
+    public void publishWorkerSessionConnected(String workerId,
+                                              String adapterId,
+                                              String routeKey,
+                                              String sessionToken,
+                                              String reason,
+                                              String traceId) {
+        requireWorkerPresenceIngress().sessionConnected(WorkerSessionPresenceEvent.connected(
                 requireText(workerId, "workerId"),
+                requireText(adapterId, "adapterId"),
+                routeKey,
+                requireText(sessionToken, "sessionToken"),
                 normalizeNullableReason(reason),
                 traceId
-        );
+        ));
     }
 
-    public void publishWorkerHeartbeat(String workerId, String reason, String traceId) {
-        requireWorkerSystemEventChannel().publishWorkerHeartbeat(
+    public void publishWorkerSessionHeartbeat(String workerId,
+                                              String adapterId,
+                                              String routeKey,
+                                              String sessionToken,
+                                              String reason,
+                                              String traceId) {
+        requireWorkerPresenceIngress().sessionHeartbeat(WorkerSessionPresenceEvent.heartbeat(
                 requireText(workerId, "workerId"),
+                requireText(adapterId, "adapterId"),
+                routeKey,
+                requireText(sessionToken, "sessionToken"),
                 normalizeNullableReason(reason),
                 traceId
-        );
+        ));
     }
 
-    public void publishWorkerOffline(String workerId, String reason, String traceId) {
-        requireWorkerSystemEventChannel().publishWorkerOffline(
+    public void publishWorkerSessionDisconnected(String workerId,
+                                                 String adapterId,
+                                                 String routeKey,
+                                                 String sessionToken,
+                                                 String reason,
+                                                 String traceId) {
+        requireWorkerPresenceIngress().sessionDisconnected(WorkerSessionPresenceEvent.disconnected(
                 requireText(workerId, "workerId"),
+                requireText(adapterId, "adapterId"),
+                routeKey,
+                requireText(sessionToken, "sessionToken"),
                 normalizeNullableReason(reason),
                 traceId
-        );
+        ));
     }
 
-    private WorkerSystemEventChannel requireWorkerSystemEventChannel() {
-        WorkerSystemEventChannel channel = workerSystemEventChannel;
-        if (channel == null) {
-            throw new IllegalStateException("Worker system event channel is unavailable before transport runtime start");
+    private WorkerPresenceIngress requireWorkerPresenceIngress() {
+        WorkerPresenceIngress ingress = workerPresenceIngress;
+        if (ingress == null) {
+            throw new IllegalStateException("Worker presence ingress is unavailable before transport runtime start");
         }
-        return channel;
+        return ingress;
     }
 
     private static String normalizeNullableReason(String reason) {

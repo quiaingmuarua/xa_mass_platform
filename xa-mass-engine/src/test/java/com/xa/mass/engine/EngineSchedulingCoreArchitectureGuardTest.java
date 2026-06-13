@@ -478,8 +478,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "com/xa/mass/engine/assignment/DefaultWorkerBudgetPolicy.java");
         Path allocationPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/assignment/DefaultAssignmentAllocationPolicy.java");
-        String budgetSource = Files.readString(budgetPath, StandardCharsets.UTF_8);
-        String allocationSource = Files.readString(allocationPath, StandardCharsets.UTF_8);
+        String budgetSource = readSource(budgetPath);
+        String allocationSource = readSource(allocationPath);
 
         assertFalse(budgetSource.contains("getExecutionSpec().getWorkloadClass()"),
                 "DefaultWorkerBudgetPolicy must consume ResolvedTaskSchedulingPolicy.workloadClass(), "
@@ -600,7 +600,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path resultServicePath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskResultService.java");
         Path taskManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskManager.java");
         Path lifecyclePath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskLifecycleService.java");
-        String binderSource = Files.readString(binderPath, StandardCharsets.UTF_8);
+        String binderSource = readSource(binderPath);
         String assignWorkerSource = Files.readString(assignWorkerPath, StandardCharsets.UTF_8);
         String resultServiceSource = Files.readString(resultServicePath, StandardCharsets.UTF_8);
         String taskManagerSource = Files.readString(taskManagerPath, StandardCharsets.UTF_8);
@@ -675,7 +675,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     @Test
     void engineRuntimeKernelWiresResolvedSchedulingPlaneThroughRuntimeOwners() throws IOException {
         Path kernelPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernel.java");
-        String source = Files.readString(kernelPath, StandardCharsets.UTF_8);
+        String source = readSource(kernelPath);
 
         List<String> violations = new ArrayList<>();
         if (!source.contains("new DefaultWorkerDispatchResourcePolicy(schedulingPlaneResolver)")) {
@@ -3075,8 +3075,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         new GuardedSourceArea(
                                 List.of(
                                         repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker"),
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeEventBusWorkerSystemEventChannel.java")
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerPresenceIngress.java"),
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSessionPresenceEvent.java"),
+                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
                                 ),
                                 Pattern.compile("\\bTargetScope\\b|\\.getTargetScope\\s*\\("))),
                 Map.entry("worker command/state report -> task result owner",
@@ -3160,7 +3161,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "\\bWorkerManager\\b",
                 "\\bWorkerReachabilityView\\b",
                 "\\bWorkerLoadView\\b",
-                "\\bWorkerSystemEventChannel\\b",
+                "\\bWorkerPresenceIngress\\b",
                 "\\bWorkerCommand(?:Ack|Status)?\\b",
                 "\\bWorkerStateReport\\b",
                 "\\bWorkerCapabilityReport\\b",
@@ -3184,32 +3185,32 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerSystemEventChannelStaysTransportIngressNotLifecycleOwner() throws IOException {
+    void workerPresenceIngressStaysTransportIngressNotLifecycleOwner() throws IOException {
         Path repo = repositoryRoot();
         Map<String, GuardedSourceArea> guardedAreas = Map.ofEntries(
-                Map.entry("system event channel -> engine dependency",
+                Map.entry("presence ingress -> engine dependency",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java"),
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/NoopWorkerSystemEventChannel.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeEventBusWorkerSystemEventChannel.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TracingWorkerSystemEventChannel.java")
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerPresenceIngress.java"),
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/NoopWorkerPresenceIngress.java"),
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSessionPresenceEvent.java"),
+                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
                                 ),
                                 Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.engine\\."))),
-                Map.entry("system event channel -> task result payload",
+                Map.entry("presence ingress -> task result payload",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeEventBusWorkerSystemEventChannel.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TracingWorkerSystemEventChannel.java")
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerPresenceIngress.java"),
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSessionPresenceEvent.java"),
+                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
                                 ),
                                 Pattern.compile("\\bTaskResultReport\\b|\\bTaskResultRuntime\\b"))),
-                Map.entry("system event channel -> command/state owner",
+                Map.entry("presence ingress -> command/state owner",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeEventBusWorkerSystemEventChannel.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TracingWorkerSystemEventChannel.java")
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerPresenceIngress.java"),
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSessionPresenceEvent.java"),
+                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
                                 ),
                                 Pattern.compile("\\bWorkerCommand(?:Ack|Status)?\\b|\\bWorkerStateReport\\b")))
         );
@@ -3219,14 +3220,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
             for (Path path : guardedArea.getValue().sourceFiles()) {
                 String source = Files.readString(path, StandardCharsets.UTF_8);
                 if (guardedArea.getValue().forbiddenPattern().matcher(source).find()) {
-                    violations.add(path + " leaks worker system event channel into owner path: "
+                    violations.add(path + " leaks worker presence ingress into owner path: "
                             + guardedArea.getKey());
                 }
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerSystemEventChannel is a transport ingress seam for presence signals. "
+                "WorkerPresenceIngress is a transport session-presence ingress seam. "
                         + "It must not become a lifecycle owner or import engine scheduling/result paths:\n"
                         + String.join("\n", violations));
     }
@@ -3296,7 +3297,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "\\bTaskWorkRuntime\\b",
                 "\\bTaskAssignWorker\\b",
                 "\\bTaskDispatchBinder\\b",
-                "\\bWorkerSystemEventChannel\\b",
+                "\\bWorkerPresenceIngress\\b",
                 "\\bWorkerReachabilityView\\b",
                 "\\bWorkerLoadView\\b",
                 "\\bimport\\s+com\\.xa\\.mass\\.transport\\.",
@@ -3420,12 +3421,12 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path repo = repositoryRoot();
         Pattern capabilityReport = Pattern.compile("\\bWorkerCapabilityReport\\b|\\bCapabilitySelfReport\\b");
         Map<String, GuardedSourceArea> guardedAreas = Map.ofEntries(
-                Map.entry("system event channel",
+                Map.entry("session presence ingress",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeEventBusWorkerSystemEventChannel.java"),
-                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TracingWorkerSystemEventChannel.java")
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerPresenceIngress.java"),
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSessionPresenceEvent.java"),
+                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
                                 ),
                                 capabilityReport)),
                 Map.entry("matching/acquisition path",
@@ -3458,7 +3459,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "Future worker capability self-report must flow through a worker capability/report owner "
                         + "that refreshes WorkerManager / WorkerRegistrySnapshot / WorkerCandidateIndex truth. "
-                        + "It must not bypass that owner through system-event, matching, or result paths:\n"
+                        + "It must not bypass that owner through session presence ingress, matching, or result paths:\n"
                         + String.join("\n", violations));
     }
 
@@ -3469,7 +3470,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         String source = Files.readString(handlerPath, StandardCharsets.UTF_8);
 
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
-                Map.entry("transport system event channel", Pattern.compile("\\bWorkerSystemEventChannel\\b")),
+                Map.entry("transport session presence ingress", Pattern.compile("\\bWorkerPresenceIngress\\b")),
                 Map.entry("task result owner", Pattern.compile("\\bTaskResult(?:Service|Runtime|Report)\\b")),
                 Map.entry("task work runtime", Pattern.compile("\\bTaskWorkRuntime\\b")),
                 Map.entry("matching/ranking owner", Pattern.compile("\\bRuleBasedTaskWorkerMatchingStrategy\\b|\\bWorkerCandidateRanker\\b")),
@@ -3585,6 +3586,12 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         return methods;
+    }
+
+    private static String readSource(Path sourcePath) throws IOException {
+        return Files.readString(sourcePath, StandardCharsets.UTF_8)
+                .replace("\r\n", "\n")
+                .replace('\r', '\n');
     }
 
     private static String sourceMethod(String source, String methodPrefix) {

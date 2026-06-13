@@ -4,6 +4,9 @@ import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
+import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
@@ -15,6 +18,7 @@ import java.io.IOException;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Adapter-owned endpoint registry for raw TCP socket workers.
@@ -27,6 +31,7 @@ public final class SocketSessionManager
     private final String adapterId;
     private final RouteEndpointIndex<String, SocketWorkerEndpoint> routeIndex = new RouteEndpointIndex<>();
     private volatile TransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+    private volatile WorkerPresenceIngress workerPresenceIngress = NoopWorkerPresenceIngress.INSTANCE;
 
     public SocketSessionManager(String adapterId) {
         if (adapterId == null || adapterId.isBlank()) {
@@ -39,7 +44,7 @@ public final class SocketSessionManager
                                         String workerId,
                                         String endpointId,
                                         Socket socket,
-        BufferedWriter writer) {
+                                        BufferedWriter writer) {
         RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> previousForWorker =
                 activeEntryForWorker(workerId, endpointId);
         RouteEndpointIndex.BindResult<String, SocketWorkerEndpoint> result = routeIndex.bind(
@@ -56,21 +61,32 @@ public final class SocketSessionManager
         if (previous != null && !previous.handle().equals(endpointId)) {
             closeQuietly(previous.endpoint());
         }
-        if (previousForWorker != null) {
-            logger.warn("Existing socket endpoint for routeKey={} workerId={} found. Replacing session.",
-                    routeKey, workerId);
-            removeSession(previousForWorker.handle());
-        }
-
         logger.info("Connected: routeKey={} workerId={} endpointId={} totalRoutes={}",
                 routeKey, workerId, endpointId, routeIndex.routeCount());
         if (result.currentEntry().endpoint().isActive()) {
             String reason = "socket connected";
+            workerPresenceIngress.sessionConnected(WorkerSessionPresenceEvent.connected(
+                    workerId,
+                    adapterId,
+                    routeKey,
+                    endpointId,
+                    reason,
+                    endpointId
+            ));
             routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, endpointId, reason);
+        }
+        if (previousForWorker != null) {
+            logger.warn("Existing socket endpoint for routeKey={} workerId={} found. Replacing session.",
+                    routeKey, workerId);
+            removeSession(previousForWorker.handle(), true, "socket session replaced");
         }
     }
 
     public synchronized void removeSession(String endpointId) {
+        removeSession(endpointId, true, "socket disconnected");
+    }
+
+    private synchronized void removeSession(String endpointId, boolean publishPresence, String reason) {
         RouteEndpointIndex.RemoveResult<String, SocketWorkerEndpoint> result = routeIndex.removeByHandle(endpointId);
         RouteEndpointIndex.Binding binding = result.binding();
         if (binding == null) {
@@ -83,7 +99,23 @@ public final class SocketSessionManager
         logger.info("Disconnected: routeKey={} workerId={} endpointId={}",
                 binding.routeKey(), binding.workerId(), endpointId);
         if (result.removedCurrentRoute()) {
-            routeOwnerStore.releaseRouteOwner(binding.workerId(), adapterId, binding.routeKey(), endpointId, "socket disconnected");
+            if (publishPresence) {
+                workerPresenceIngress.sessionDisconnected(WorkerSessionPresenceEvent.disconnected(
+                        binding.workerId(),
+                        adapterId,
+                        binding.routeKey(),
+                        endpointId,
+                        reason,
+                        endpointId
+                ));
+            }
+            routeOwnerStore.releaseRouteOwner(
+                    binding.workerId(),
+                    adapterId,
+                    binding.routeKey(),
+                    endpointId,
+                    reason
+            );
         }
     }
 
@@ -176,12 +208,21 @@ public final class SocketSessionManager
                 .toList();
         for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : entries) {
             if (entry.endpoint().isActive()) {
+                String reason = "socket adapter shutdown";
+                workerPresenceIngress.sessionDisconnected(WorkerSessionPresenceEvent.disconnected(
+                        entry.workerId(),
+                        adapterId,
+                        entry.routeKey(),
+                        entry.handle(),
+                        reason,
+                        entry.handle()
+                ));
                 routeOwnerStore.releaseRouteOwner(
                         entry.workerId(),
                         adapterId,
                         entry.routeKey(),
                         entry.handle(),
-                        "socket adapter shutdown"
+                        reason
                 );
             }
         }
@@ -239,8 +280,28 @@ public final class SocketSessionManager
         }
     }
 
+    public void setWorkerPresenceIngress(WorkerPresenceIngress workerPresenceIngress) {
+        this.workerPresenceIngress = workerPresenceIngress != null
+                ? workerPresenceIngress
+                : NoopWorkerPresenceIngress.INSTANCE;
+    }
+
     public void recordHeartbeat(String routeKey, String workerId, String endpointId, String reason, String traceId) {
-        routeOwnerStore.refreshHeartbeat(workerId, adapterId, routeKey, endpointId, reason);
+        RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> current = currentEntryForHandle(endpointId);
+        if (current == null
+                || !Objects.equals(normalizeNullable(routeKey), current.routeKey())
+                || !Objects.equals(normalizeNullable(workerId), current.workerId())) {
+            return;
+        }
+        workerPresenceIngress.sessionHeartbeat(WorkerSessionPresenceEvent.heartbeat(
+                current.workerId(),
+                adapterId,
+                current.routeKey(),
+                endpointId,
+                reason,
+                traceId
+        ));
+        routeOwnerStore.refreshHeartbeat(current.workerId(), adapterId, current.routeKey(), endpointId, reason);
     }
 
     private boolean matchesAdapter(String adapterId) {
@@ -249,6 +310,23 @@ public final class SocketSessionManager
 
     private static String normalizeNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> currentEntryForHandle(String endpointId) {
+        RouteEndpointIndex.Binding binding = routeIndex.bindingForHandle(endpointId);
+        if (binding == null) {
+            return null;
+        }
+        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForRoute(binding.routeKey())) {
+            if (!entry.handle().equals(endpointId)) {
+                continue;
+            }
+            SocketWorkerEndpoint endpoint = entry.endpoint();
+            if (endpoint != null && endpoint.isActive()) {
+                return entry;
+            }
+        }
+        return null;
     }
 
     private void projectActiveSessionsToRouteOwner(String reason) {

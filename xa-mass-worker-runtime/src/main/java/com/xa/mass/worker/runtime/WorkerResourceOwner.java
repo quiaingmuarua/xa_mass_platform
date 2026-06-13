@@ -69,6 +69,33 @@ public final class WorkerResourceOwner {
         return Optional.empty();
     }
 
+    public boolean refreshWorkerHeartbeat(String workerId, long observedAtMillis) {
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedWorkerId == null) {
+            return false;
+        }
+        Optional<WorkerDeclarationRecord> declaration = workerStorage.getWorker(normalizedWorkerId);
+        if (declaration.isEmpty()) {
+            return false;
+        }
+        long heartbeatMillis = observedAtMillis > 0L ? observedAtMillis : System.currentTimeMillis();
+        synchronized (lock) {
+            String diagnosticStatus = workerRegistry.workerMeta(normalizedWorkerId)
+                    .map(WorkerMeta::diagnosticStatus)
+                    .orElse(null);
+            WorkerMeta meta = workerMeta(declaration.get(), heartbeatMillis, diagnosticStatus);
+            if (meta == null) {
+                return false;
+            }
+            workerRegistry.upsertSlot(
+                    meta,
+                    declaration.get().maxConcurrentWork(),
+                    groupOwner.eventBindingCeilingFor(meta.groupId())
+            );
+            return true;
+        }
+    }
+
     public boolean deleteWorker(String workerId) {
         Worker existing = getWorker(workerId).orElse(null);
         boolean deleted = workerStorage.deleteWorker(workerId);
@@ -127,6 +154,26 @@ public final class WorkerResourceOwner {
                 null,
                 lastHeartbeatMillis,
                 worker.getStatus() == null ? null : worker.getStatus().name()
+        );
+    }
+
+    private WorkerMeta workerMeta(WorkerDeclarationRecord declaration,
+                                  long lastHeartbeatMillis,
+                                  String diagnosticStatus) {
+        if (declaration == null || declaration.workerId() == null || declaration.workerGroupId() == null) {
+            return null;
+        }
+        return new WorkerMeta(
+                declaration.workerId(),
+                declaration.workerGroupId(),
+                declaration.adapterNodeId(),
+                declaration.adapterId(),
+                declaration.onlineStrategy(),
+                declaration.attributes(),
+                declaration.agentVersion(),
+                null,
+                lastHeartbeatMillis,
+                diagnosticStatus
         );
     }
 

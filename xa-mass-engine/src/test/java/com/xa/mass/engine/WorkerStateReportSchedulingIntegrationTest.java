@@ -1,10 +1,8 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.worker.runtime.command.WorkerCommandAcknowledgement;
 import com.xa.mass.worker.runtime.command.WorkerCommandRequest;
@@ -35,8 +33,7 @@ class WorkerStateReportSchedulingIntegrationTest {
         assertEquals("worker-backup", firstLeases.getFirst().workerId());
         assertEquals(0, harness.successfulMessageAssignments(firstTask.getTid(), "worker-draining"));
         assertFalse(hasDispatchBinding(harness, firstTask.getTid(), "worker-draining"));
-        assertRejected(harness, firstTask.getTid(), "worker-draining",
-                AssignmentResult.RESOURCE_UNAVAILABLE, "worker unavailable");
+        assertTrue(harness.workerRecords(firstTask.getTid(), "worker-draining").isEmpty());
 
         harness.applyWorkerStateReport("worker-draining", 2, "AVAILABLE", "resumed");
 
@@ -71,18 +68,7 @@ class WorkerStateReportSchedulingIntegrationTest {
         assertEquals("worker-backup", leases.getFirst().workerId());
         assertEquals(0, harness.successfulMessageAssignments(task.getTid(), "worker-command-drained"));
         assertFalse(hasDispatchBinding(harness, task.getTid(), "worker-command-drained"));
-        assertRejected(harness, task.getTid(), "worker-command-drained",
-                AssignmentResult.RESOURCE_UNAVAILABLE, "worker unavailable");
-    }
-
-    private static void assertRejected(TaskSchedulingTestHarness harness,
-                                       String taskId,
-                                       String workerId,
-                                       AssignmentResult expectedResult,
-                                       String expectedReason) {
-        AssignmentRecord record = harness.record(taskId, workerId);
-        assertEquals(expectedResult, record.getResult());
-        assertEquals(expectedReason, record.getReason());
+        assertTrue(harness.workerRecords(task.getTid(), "worker-command-drained").isEmpty());
     }
 
     private static boolean hasDispatchBinding(TaskSchedulingTestHarness harness, String taskId, String workerId) {

@@ -15,6 +15,7 @@ import org.springframework.test.context.DynamicPropertySource;
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
+                "mass.review.materialization.mode=diagnostic",
                 "mass.runtime.mode=memory",
                 "mass.engine.assignment-retry-delay-millis=100",
                 "mass.engine.lease-watchdog-interval-seconds=1",

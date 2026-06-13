@@ -14,15 +14,12 @@ import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 import com.xa.mass.starter.EngineRuntimeBridge;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
-import com.xa.mass.starter.RuntimeEventBusEngineBridge;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
-import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
-import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
@@ -34,7 +31,7 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.node.RedisTransportNodeRegistry;
 import com.xa.mass.transport.runtime.route.RedisTransportRouteOwnerStore;
 import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import org.slf4j.Logger;
@@ -78,7 +75,6 @@ public class MassApplicationBuilder {
     public MassApplication build() {
         TransportConfig transportSnapshot = new TransportConfig(transportConfig);
         EngineConfig engineSnapshot = new EngineConfig(engineConfig);
-        autoWireRuntimeEventBusBridge(transportSnapshot, engineSnapshot);
         logger.info("Building MassApplication with configuration: adapters={}, transport={}, engine={}",
                 describeAdapterSummary(transportSnapshot),
                 transportSnapshot.isEnabled(),
@@ -100,24 +96,6 @@ public class MassApplicationBuilder {
                 transportSnapshot,
                 engineSnapshot
         );
-    }
-
-    private static void autoWireRuntimeEventBusBridge(TransportConfig transportSnapshot, EngineConfig engineSnapshot) {
-        if (!engineSnapshot.isEnabled()) {
-            return;
-        }
-        if (transportSnapshot.getRuntimeRole() == TransportRuntimeRole.TRANSPORT_CONSUMER) {
-            return;
-        }
-        if (engineSnapshot.getRuntimeBridge() != EngineRuntimeBridge.noop()) {
-            return;
-        }
-
-        TransportRuntimeComposition transportRuntimeComposition = transportSnapshot.snapshotRuntimeComposition();
-        WorkerSystemEventChannel systemEventChannel = transportRuntimeComposition.resolveSystemEventChannel();
-        if (systemEventChannel instanceof RuntimeEventBusWorkerSystemEventChannel) {
-            engineSnapshot.setRuntimeBridge(RuntimeEventBusEngineBridge.runtimeBus());
-        }
     }
 
     private static String describeAdapterSummary(TransportConfig transportConfig) {
@@ -433,11 +411,11 @@ public class MassApplicationBuilder {
         }
 
         /**
-         * Overrides the default worker system-event channel. Useful for custom
-         * transport adapters or testing with a mock channel.
+         * Overrides the default worker presence ingress. Useful for custom
+         * transport adapters or testing with a mock ingress.
          */
-        public TransportBuilder systemEventChannel(WorkerSystemEventChannel channel) {
-            config.setCustomSystemEventChannel(channel);
+        public TransportBuilder workerPresenceIngress(WorkerPresenceIngress ingress) {
+            config.setCustomWorkerPresenceIngress(ingress);
             return this;
         }
     }

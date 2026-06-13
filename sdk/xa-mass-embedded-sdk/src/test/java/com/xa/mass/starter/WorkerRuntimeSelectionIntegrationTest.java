@@ -65,6 +65,14 @@ class WorkerRuntimeSelectionIntegrationTest {
                 .projectCodes(Set.of("demoApp"))
                 .build());
         workerResources.addWorker(workerResource("wrx-worker-1", "wrx-selection-workers"));
+        config.getWorkerPresenceRuntime().sessionConnected(
+                "wrx-worker-1",
+                "polling",
+                "wrx-selection-workers",
+                "wrx-session-1",
+                System.currentTimeMillis(),
+                "test worker session connected"
+        );
 
         CountDownLatch dispatchLatch = new CountDownLatch(1);
         AtomicReference<String> taskIdRef = new AtomicReference<>();

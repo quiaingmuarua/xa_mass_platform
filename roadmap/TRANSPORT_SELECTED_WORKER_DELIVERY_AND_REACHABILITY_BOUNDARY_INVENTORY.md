@@ -7,8 +7,8 @@ Status: current implementation inventory for
 
 | Symbol | Current owner | Allowed use | Boundary rule |
 | --- | --- | --- | --- |
-| `WorkerHeartbeatProjectionListener` | SDK/starter runtime bridge into worker runtime | Project explicit worker online/heartbeat/offline events into worker runtime status and heartbeat evidence | Must not consume transport route-owner lease evidence |
-| `MassSdkApplication#isWorkerReachable` / `listReachableWorkerIds` | SDK worker inspection | Read worker runtime status through `WorkerResourceRuntime` | Must not read `WorkerDispatchRouteOwnerView` or `activeOwnerForSelectedWorker(...)` |
+| `WorkerPresenceIngress` / `WorkerRuntimePresenceIngress` | transport-neutral session presence ingress wired by SDK/starter | Project session connect/heartbeat/disconnect evidence into worker-runtime presence/reachability and refresh registry-owned slot heartbeat on connect/heartbeat | Must not consume transport route-owner lease evidence or write worker resource status / dispatch gates |
+| `MassSdkApplication#isWorkerReachable` / `listReachableWorkerIds` | SDK worker inspection | Read worker-runtime reachability through `WorkerSchedulingViewRuntime` | Must not read `WorkerDispatchRouteOwnerView` or `activeOwnerForSelectedWorker(...)` |
 | `WorkerReachabilityView` | worker runtime scheduling evidence seam | Engine scheduling read of worker-runtime reachability evidence | Must not be documented as transport route-owner truth |
 | `TaskDispatchDeliveryCommandSubmitter` | SDK/starter assignment translator | Convert `TaskDispatchContext + TaskDispatchBinding` into `DeliveryCommand` records carrying `selectedWorkerId` | Must not resolve route-owner leases or transport-node liveness |
 | `TransportAssignedDeliverySubmitter` | transport runtime delivery | Resolve `adapterId + selectedWorkerId` through route-owner evidence, verify transport-node owner, group by physical lane, offer delivery-command batches, emit retryable delivery failures | Must not select another worker or mutate worker lifecycle |

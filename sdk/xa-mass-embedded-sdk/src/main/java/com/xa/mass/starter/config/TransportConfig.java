@@ -2,9 +2,10 @@ package com.xa.mass.starter.config;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
+import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
-import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
@@ -12,7 +13,6 @@ import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChann
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -41,10 +41,10 @@ public class TransportConfig {
     private String outputApiUrl;
     private String apiKey;
 
-    private WorkerSystemEventChannel customSystemEventChannel;
+    private WorkerPresenceIngress customWorkerPresenceIngress;
     private WorkerEndpointRegistry workerEndpointRegistry;
     private Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
-    private Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
+    private Function<WorkerEndpointRegistry, WorkerPresenceIngress> workerPresenceIngressResolver;
     private Supplier<TransportRouteOwnerStore> routeOwnerStoreFactory;
     private WebSocketAdapterConfig bundledWebSocketAdapterConfig = new WebSocketAdapterConfig();
     private SocketAdapterConfig bundledSocketAdapterConfig = new SocketAdapterConfig();
@@ -69,7 +69,7 @@ public class TransportConfig {
 
     public TransportConfig() {
         this.endpointRegistryFactory = CompositeWorkerEndpointRegistry::new;
-        this.systemEventChannelResolver = ignored -> new RuntimeEventBusWorkerSystemEventChannel();
+        this.workerPresenceIngressResolver = ignored -> NoopWorkerPresenceIngress.INSTANCE;
     }
 
     public TransportConfig(TransportConfig source) {
@@ -79,10 +79,10 @@ public class TransportConfig {
         this.inputApiUrl = source.inputApiUrl;
         this.outputApiUrl = source.outputApiUrl;
         this.apiKey = source.apiKey;
-        this.customSystemEventChannel = source.customSystemEventChannel;
+        this.customWorkerPresenceIngress = source.customWorkerPresenceIngress;
         this.workerEndpointRegistry = source.workerEndpointRegistry;
         this.endpointRegistryFactory = source.endpointRegistryFactory;
-        this.systemEventChannelResolver = source.systemEventChannelResolver;
+        this.workerPresenceIngressResolver = source.workerPresenceIngressResolver;
         this.routeOwnerStoreFactory = source.routeOwnerStoreFactory;
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.bundledWebSocketAdapterConfig);
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.bundledSocketAdapterConfig);
@@ -169,12 +169,12 @@ public class TransportConfig {
         this.apiKey = apiKey;
     }
 
-    public WorkerSystemEventChannel getCustomSystemEventChannel() {
-        return customSystemEventChannel;
+    public WorkerPresenceIngress getCustomWorkerPresenceIngress() {
+        return customWorkerPresenceIngress;
     }
 
-    public void setCustomSystemEventChannel(WorkerSystemEventChannel customSystemEventChannel) {
-        this.customSystemEventChannel = customSystemEventChannel;
+    public void setCustomWorkerPresenceIngress(WorkerPresenceIngress customWorkerPresenceIngress) {
+        this.customWorkerPresenceIngress = customWorkerPresenceIngress;
     }
 
     public WorkerEndpointRegistry getWorkerEndpointRegistry() {
@@ -431,8 +431,8 @@ public class TransportConfig {
         return transportNodeRegistryFactory;
     }
 
-    Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver() {
-        return systemEventChannelResolver;
+    Function<WorkerEndpointRegistry, WorkerPresenceIngress> workerPresenceIngressResolver() {
+        return workerPresenceIngressResolver;
     }
 
     public TransportRuntimeComposition snapshotRuntimeComposition() {

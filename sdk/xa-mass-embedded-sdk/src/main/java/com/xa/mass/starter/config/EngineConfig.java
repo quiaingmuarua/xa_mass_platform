@@ -23,6 +23,8 @@ import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
+import com.xa.mass.worker.runtime.presence.InMemoryWorkerPresenceRuntime;
+import com.xa.mass.worker.runtime.presence.WorkerPresenceRuntime;
 import com.xa.mass.engine.stage.TaskStageEvidenceOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;
 import com.xa.mass.engine.rules.MatchingRuleEvaluator;
@@ -97,7 +99,8 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
-    private WorkerReachabilityView workerReachabilityView = WorkerReachabilityView.permissive();
+    private WorkerPresenceRuntime workerPresenceRuntime = new InMemoryWorkerPresenceRuntime();
+    private WorkerReachabilityView workerReachabilityView = workerPresenceRuntime;
     private WorkerDeclarationStore workerDeclarationStore = new InMemoryWorkerDeclarationStore();
     private WorkerRegistry workerRegistry;
     private final WorkerCandidateBucketPolicy workerCandidateBucketPolicy = WorkerCandidateBucketPolicies.defaultPolicy();
@@ -150,7 +153,10 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         this.taskWorkRuntime = source.taskWorkRuntime;
         this.taskResultRuntime = source.taskResultRuntime;
         this.matchingStrategy = source.matchingStrategy;
-        this.workerReachabilityView = source.workerReachabilityView;
+        this.workerPresenceRuntime = source.workerPresenceRuntime;
+        this.workerReachabilityView = source.workerReachabilityView == source.workerPresenceRuntime
+                ? this.workerPresenceRuntime
+                : source.workerReachabilityView;
         this.workerDeclarationStore = source.workerDeclarationStore;
         this.workerRegistry = source.workerRegistry;
         this.workerManager = null;
@@ -390,7 +396,23 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     public void setWorkerReachabilityView(WorkerReachabilityView workerReachabilityView) {
         this.workerReachabilityView = workerReachabilityView != null
                 ? workerReachabilityView
-                : WorkerReachabilityView.permissive();
+                : workerPresenceRuntime;
+        this.workerManager = null;
+        this.workerControlRuntime = null;
+    }
+
+    public WorkerPresenceRuntime getWorkerPresenceRuntime() {
+        return workerPresenceRuntime;
+    }
+
+    public void setWorkerPresenceRuntime(WorkerPresenceRuntime workerPresenceRuntime) {
+        WorkerReachabilityView previousDefault = this.workerPresenceRuntime;
+        this.workerPresenceRuntime = workerPresenceRuntime != null
+                ? workerPresenceRuntime
+                : new InMemoryWorkerPresenceRuntime();
+        if (this.workerReachabilityView == null || this.workerReachabilityView == previousDefault) {
+            this.workerReachabilityView = this.workerPresenceRuntime;
+        }
         this.workerManager = null;
         this.workerControlRuntime = null;
     }
