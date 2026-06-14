@@ -36,6 +36,34 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
+    void transportAdaptersDoNotDependOnEngineOrWorkerRuntime() throws IOException {
+        assertNoTextFilesContain(
+                List.of(
+                        repoRoot().resolve("transport/polling-adapter/pom.xml"),
+                        repoRoot().resolve("transport/socket-adapter/pom.xml"),
+                        repoRoot().resolve("transport/websocket-adapter/pom.xml")
+                ),
+                "<artifactId>xa-mass-engine</artifactId>",
+                "<artifactId>xa-mass-worker-runtime</artifactId>"
+        );
+    }
+
+    @Test
+    void transportProductionSourceDoesNotImportEngineOrWorkerRuntime() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java")
+                ),
+                "com.xa.mass.engine",
+                "com.xa.mass.worker.runtime"
+        );
+    }
+
+    @Test
     void oldWorkerLifecycleChannelAndRouteProjectorDoNotReappear() throws IOException {
         assertNoProductionSourceContains(
                 List.of(
