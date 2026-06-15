@@ -278,6 +278,7 @@ function appendWorkerIdentity(url, subjectWorkerId, groupId) {
   const separator = url.includes("?") ? "&" : "?";
   const routeKey = canonicalRouteKey(groupId, subjectWorkerId);
   const params = new URLSearchParams({ workerId: subjectWorkerId });
+  params.set("workerGroupId", groupId);
   params.set("routeKey", routeKey);
   return `${url}${separator}${params.toString()}`;
 }

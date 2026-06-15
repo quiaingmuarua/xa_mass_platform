@@ -91,9 +91,10 @@ public final class ChaosSupport {
         }
     }
 
-    public static URI appendWorkerIdentity(URI serverUri, String workerId, String routeKey) {
+    public static URI appendWorkerIdentity(URI serverUri, String workerId, String workerGroupId, String routeKey) {
         String existingQuery = serverUri.getRawQuery();
-        String workerQuery = "workerId=" + workerId.trim();
+        String workerQuery = "workerId=" + workerId.trim()
+                + "&workerGroupId=" + workerGroupId.trim();
         if (routeKey != null && !routeKey.isBlank()) {
             workerQuery += "&routeKey=" + routeKey.trim();
         }

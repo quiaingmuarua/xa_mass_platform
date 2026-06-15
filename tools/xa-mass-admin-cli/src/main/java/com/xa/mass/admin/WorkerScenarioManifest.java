@@ -1,5 +1,6 @@
 package com.xa.mass.admin;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -13,11 +14,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 record WorkerScenarioSpec(String workerId,
                           String workerKey,
                           String workerGroupId,
                           String adapterNodeId,
                           String adapterId,
+                          String adapterType,
                           String transportHint,
                           String startMode,
                           Map<String, String> attributes,

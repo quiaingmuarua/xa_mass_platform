@@ -403,7 +403,7 @@ class MassSdkTest {
                          new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
                 String routeKey = CanonicalWorkerGroupRouteKeyCodec.encode("sdk-socket-workers");
                 writer.write("{\"type\":\"hello\",\"workerId\":\"sdk-socket-worker\","
-                        + "\"deliveryBucketId\":\"sdk-socket-workers\",\"routeKey\":\"" + routeKey + "\"}");
+                        + "\"workerGroupId\":\"sdk-socket-workers\",\"routeKey\":\"" + routeKey + "\"}");
                 writer.newLine();
                 writer.flush();
 

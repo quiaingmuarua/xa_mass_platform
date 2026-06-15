@@ -139,7 +139,7 @@ function shutdown(exitCode) {
 socket = net.createConnection({ host: socketHost, port: socketPort }, () => {
   log(`connected to tcp://${socketHost}:${socketPort}`);
   const routeKey = canonicalRouteKey(workerGroupId, workerId);
-  sendFrame({ type: "hello", workerId, routeKey });
+  sendFrame({ type: "hello", workerId, workerGroupId, routeKey });
 });
 
 const lineReader = readline.createInterface({

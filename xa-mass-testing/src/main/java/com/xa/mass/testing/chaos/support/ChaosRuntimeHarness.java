@@ -487,6 +487,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         return ChaosSupport.appendWorkerIdentity(
                 URI.create("ws://127.0.0.1:" + transportPort + endpointPath),
                 workerId,
+                workerGroupId,
                 routeKey
         );
     }

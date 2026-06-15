@@ -4,7 +4,7 @@
     "workerKey": "confidence-worker-001-key",
     "workerGroupId": "sample-websocket-crawler",
     "adapterNodeId": "sample-websocket-node",
-    "adapterId": "polling",
+    "adapterType": "polling",
     "transportHint": "polling",
     "startMode": "api-online",
     "attributes": {

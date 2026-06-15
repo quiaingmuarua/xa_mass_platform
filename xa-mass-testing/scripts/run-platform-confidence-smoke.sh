@@ -28,7 +28,10 @@ if [[ ! -f "${PROFILE_ALLOWLIST_FILE}" ]]; then
   echo "profile allowlist not found: ${PROFILE_ALLOWLIST_FILE}" >&2
   exit 2
 fi
-mapfile -t SUPPORTED_PROFILES < <(sed 's/#.*//' "${PROFILE_ALLOWLIST_FILE}" | sed '/^[[:space:]]*$/d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+SUPPORTED_PROFILES=()
+while IFS= read -r supported_profile; do
+  SUPPORTED_PROFILES+=("${supported_profile}")
+done < <(sed 's/#.*//' "${PROFILE_ALLOWLIST_FILE}" | sed '/^[[:space:]]*$/d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 PROFILE_SUPPORTED=false
 for supported_profile in "${SUPPORTED_PROFILES[@]}"; do
   if [[ "${PROFILE}" == "${supported_profile}" ]]; then
@@ -106,7 +109,27 @@ ADMIN_ENV_INIT_ELAPSED_MS="null"
 json_scalar() {
   local field="$1"
   local file="$2"
-  sed -n "s/.*\"${field}\":\\(\"[^\"]*\"\\|true\\|false\\|null\\|[0-9][0-9]*\\).*/\\1/p" "${file}" | tail -n 1
+  python3 - "$field" "$file" <<'PY'
+import json
+import sys
+
+field = sys.argv[1]
+path = sys.argv[2]
+try:
+    with open(path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+except Exception:
+    sys.exit(0)
+value = payload.get(field)
+if isinstance(value, str):
+    print(json.dumps(value))
+elif isinstance(value, bool):
+    print("true" if value else "false")
+elif value is None:
+    print("null")
+else:
+    print(value)
+PY
 }
 
 json_string() {

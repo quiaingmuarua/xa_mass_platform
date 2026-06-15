@@ -1091,9 +1091,10 @@ public final class SdkTransportLoadRunner {
         }
     }
 
-    private static URI appendWorkerIdentity(URI serverUri, String workerId, String routeKey) {
+    private static URI appendWorkerIdentity(URI serverUri, String workerId, String workerGroupId, String routeKey) {
         String existingQuery = serverUri.getRawQuery();
-        String workerQuery = "workerId=" + workerId.trim();
+        String workerQuery = "workerId=" + workerId.trim()
+                + "&workerGroupId=" + workerGroupId.trim();
         if (routeKey != null && !routeKey.isBlank()) {
             workerQuery += "&routeKey=" + routeKey.trim();
         }
@@ -1130,6 +1131,7 @@ public final class SdkTransportLoadRunner {
             return appendWorkerIdentity(
                     URI.create("ws://127.0.0.1:" + transportPort + endpointPath),
                     workerId,
+                    WORKER_GROUP_ID,
                     canonicalRouteKey(workerId)
             );
         }
