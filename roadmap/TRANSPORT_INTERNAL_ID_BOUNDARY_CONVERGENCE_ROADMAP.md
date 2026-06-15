@@ -147,45 +147,48 @@ Engine/starter assigned delivery still exposes only:
 ```text
 deliveryBucketId
 selectedWorkerId
-TaskDispatchContent
-TaskDispatchExecutionContext
+opaque worker payload
+opaque delivery correlation
 command id / timing
 ```
 
-Producer-side transport code may resolve a narrow locality hint, but it must
-not receive endpoint address, session handle, lease expiry, or driver details.
+Producer-side transport code derives only the bucket queue address. It must not
+receive endpoint address, session handle, lease expiry, runtime node, or driver
+details.
 
 Target shape:
 
 ```java
-record SelectedWorkerRuntimeTarget(
+record AssignedDeliveryIntent(
     String deliveryBucketId,
     String selectedWorkerId,
-    String runtimeNodeId
+    String payload,
+    String correlationRef
 ) {}
 ```
 
 The current `SelectedWorkerDeliveryTarget` should be renamed in place or
-replaced and deleted in the same slice. The producer-side target must not carry
-endpoint lease identity. Endpoint lease validation belongs to the consumer
-listener/final-hop boundary after handoff.
+replaced and deleted in the same slice if it still models producer-visible
+runtime-node targeting. The producer-side target must not carry endpoint lease
+identity or runtime-node identity. Endpoint lease validation belongs to the
+consumer/final-hop boundary after queue claim.
 
 ### Runtime Handoff Boundary
 
-`DeliveryCommandBatch` should describe one runtime handoff lane:
+`DeliveryCommandBatch` should describe one consumer-local handoff materialization:
 
 ```java
 DeliveryCommandBatch {
-  deliveryBucketId
-  handoffLaneKey
-  targetRuntimeNodeId
+  deliveryQueueKey
+  List<DeliveryCommandReference> references
   List<DeliveryCommand> items
 }
 ```
 
-The batch may target a runtime node. It must not carry endpoint address,
-session handle, endpoint lease id, lease expiry, or driver payload. Do not add a
-batch-local endpoint lease shortcut in this roadmap; listener-side re-resolution
+The batch is local to the queue consumer that claimed it. It must not carry
+producer-visible runtime-node targeting, endpoint address, session handle,
+endpoint lease id, lease expiry, or driver payload. Do not add a batch-local
+endpoint lease shortcut in this roadmap; consumer/final-hop endpoint resolution
 is the ownership boundary that keeps stale endpoint evidence out of producer
 handoff.
 
@@ -242,7 +245,7 @@ binding used by the local runtime for final-hop dispatch.
 
 ```text
 deliveryQueueKey -> storePartitionKey
-deliveryLaneKey  -> handoffLaneKey
+deliveryLaneKey  -> handoffConsumerKey
 ```
 
 Polling delivery still preserves selected-worker correctness with:
@@ -349,7 +352,7 @@ Acceptance:
 - The locked target names are:
   `workerTransportMode`, `workerGatewayId`, `gatewayEndpointRef`,
   `runtimeNodeId`, `endpointLeaseId`, `endpointDriverId`, `endpointAddress`,
-  `sessionHandle`, `storePartitionKey`, and `handoffLaneKey`.
+  `sessionHandle`, `storePartitionKey`, and `handoffConsumerKey`.
 - The roadmap states which current names are allowed to remain temporarily in
   adapter-local raw side-channels.
 - The inventory records which existing types will be renamed in place, merged,
@@ -476,16 +479,17 @@ Acceptance:
 - Tests cover multiple drivers on one runtime node and one selected worker
   reconnecting through a different driver under the same bucket.
 
-## Phase TID-4: Handoff And Store Key Naming
+## Phase TID-4: Handoff Consumer And Store Key Naming
 
-Goal: separate runtime-node handoff lanes from polling/store partitions.
+Goal: separate handoff consumer locality from polling/store partitions.
 
 Scope:
 
-- Rename `targetTransportNodeId` to `targetRuntimeNodeId` or `runtimeNodeId`
-  where it means process locality.
-- Rename `deliveryLaneKey` to `handoffLaneKey` where it means command handoff
-  queue lane.
+- Remove producer-visible `targetTransportNodeId` / `targetRuntimeNodeId`
+  handoff targeting. Runtime-node locality may exist only inside
+  handoff-private queue-consumer context or endpoint lease evidence.
+- Rename any remaining `deliveryLaneKey` to `handoffConsumerKey` where it means
+  a command handoff queue consumer, not a producer lane target.
 - Rename `deliveryQueueKey` to `storePartitionKey` where it means polling
   delivery store partition.
 - Remove `adapterId` parameters from delivery store APIs unless they are truly
@@ -494,10 +498,11 @@ Scope:
 
 Acceptance:
 
-- Handoff batch shape uses `targetRuntimeNodeId` and `handoffLaneKey`.
+- Handoff batch shape uses `deliveryQueueKey` plus handoff-owned command
+  references/items only; runtime-node locality stays in queue-consumer context.
 - Polling delivery store APIs use `storePartitionKey + selectedWorkerId`.
 - No code or docs describe queue/store partition as a delivery target.
-- Redis key manifest uses runtime-node, handoff-lane, and store-partition
+- Redis key manifest uses queue-consumer and store-partition
   wording consistently.
 
 ## Phase TID-5: Docs, Guards, And Archive
@@ -518,9 +523,10 @@ Acceptance:
 
 - Active docs have one vocabulary table and no competing `adapterId` /
   `routeKey` explanation for assigned delivery.
-- Guards fail if `DeliveryCommand`, `TaskDispatchContent`, or
-  `TaskDispatchExecutionContext` regain endpoint lease, driver, runtime-node,
-  route/address, session, or store partition fields.
+- Guards fail if `DeliveryCommand`, opaque payload/correlation carrier, or any
+  interim `TaskDispatchContent` / `TaskDispatchExecutionContext` residue regains
+  endpoint lease, driver, runtime-node, route/address, session, or store
+  partition fields.
 - Guards fail if public worker APIs expose endpoint lease or driver ids.
 - Guards fail if worker session/connect/poll APIs expose `adapterNodeId` or
   `workerGatewayId`.

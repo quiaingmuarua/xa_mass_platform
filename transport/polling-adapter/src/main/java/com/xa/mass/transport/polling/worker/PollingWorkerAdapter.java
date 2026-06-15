@@ -8,7 +8,11 @@ import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.route.TransportRouteOwnerClaim;
+import com.xa.mass.transport.route.TransportRouteOwnerRecord;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollStatus;
@@ -35,11 +39,27 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
 
     private final TransportRouteOwnerStore routeOwnerStore;
     private final TransportDeliveryService deliveryService;
+    private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
+    private final String deliveryCommandConsumerKey;
 
     public PollingWorkerAdapter(TransportRouteOwnerStore routeOwnerStore,
                                 TransportDeliveryService deliveryService) {
+        this(routeOwnerStore,
+                deliveryService,
+                NoopDeliveryCommandConsumerRegistry.INSTANCE,
+                PROTOCOL);
+    }
+
+    public PollingWorkerAdapter(TransportRouteOwnerStore routeOwnerStore,
+                                TransportDeliveryService deliveryService,
+                                DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
+                                String deliveryCommandConsumerKey) {
         this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
+        this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
+                ? deliveryCommandConsumerRegistry
+                : NoopDeliveryCommandConsumerRegistry.INSTANCE;
+        this.deliveryCommandConsumerKey = requireText(deliveryCommandConsumerKey, "deliveryCommandConsumerKey");
     }
 
     @Override
@@ -82,7 +102,8 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
                                      String routeKey,
                                      String connectionId,
                                      String reason) {
-        routeOwnerStore.claimRouteOwner(routeOwnerClaim(workerId, deliveryBucketId, routeKey, connectionId, reason));
+        TransportRouteOwnerClaim claim = routeOwnerClaim(workerId, deliveryBucketId, routeKey, connectionId, reason);
+        claimDeliveryConsumerIfCurrent(routeOwnerStore.claimRouteOwner(claim), claim);
     }
 
     public void announceWorkerOffline(String workerId,
@@ -90,7 +111,9 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
                                       String routeKey,
                                       String connectionId,
                                       String reason) {
-        routeOwnerStore.releaseRouteOwner(routeOwnerClaim(workerId, deliveryBucketId, routeKey, connectionId, reason));
+        TransportRouteOwnerClaim claim = routeOwnerClaim(workerId, deliveryBucketId, routeKey, connectionId, reason);
+        routeOwnerStore.releaseRouteOwner(claim);
+        releaseDeliveryConsumer(claim);
     }
 
     public void refreshRouteOwnerHeartbeat(String workerId,
@@ -98,7 +121,13 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
                                            String routeKey,
                                            String connectionId,
                                            String reason) {
-        routeOwnerStore.refreshHeartbeat(routeOwnerClaim(workerId, deliveryBucketId, routeKey, connectionId, reason));
+        TransportRouteOwnerClaim claim = routeOwnerClaim(workerId, deliveryBucketId, routeKey, connectionId, reason);
+        TransportRouteOwnerRecord record = routeOwnerStore.refreshHeartbeat(claim);
+        if (isCurrentOwner(record, claim)) {
+            claimDeliveryConsumer(record);
+        } else {
+            releaseDeliveryConsumer(claim);
+        }
     }
 
     private static TaskPullStatus mapStatus(TransportDeliveryPollStatus status) {
@@ -123,12 +152,57 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
                 .toList();
     }
 
+    private void claimDeliveryConsumerIfCurrent(TransportRouteOwnerRecord record, TransportRouteOwnerClaim claim) {
+        if (isCurrentOwner(record, claim)) {
+            claimDeliveryConsumer(record);
+        }
+    }
+
+    private void claimDeliveryConsumer(TransportRouteOwnerRecord record) {
+        deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
+                record.getDeliveryBucketId(),
+                record.getWorkerId(),
+                deliveryCommandConsumerKey,
+                record.getConnectionId(),
+                record.getAdapterId(),
+                record.getLeaseExpireAtEpochMillis()
+        ));
+    }
+
+    private void releaseDeliveryConsumer(TransportRouteOwnerClaim claim) {
+        deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
+                claim.deliveryBucketId(),
+                claim.workerId(),
+                deliveryCommandConsumerKey,
+                claim.connectionId(),
+                claim.adapterId(),
+                0L
+        ));
+    }
+
+    private static boolean isCurrentOwner(TransportRouteOwnerRecord owner, TransportRouteOwnerClaim claim) {
+        return owner != null
+                && claim != null
+                && claim.workerId().equals(owner.getWorkerId())
+                && claim.deliveryBucketId().equals(owner.getDeliveryBucketId())
+                && claim.adapterId().equals(owner.getAdapterId())
+                && claim.routeKey().equals(owner.getRouteKey())
+                && claim.connectionId().equals(owner.getConnectionId());
+    }
+
     private static TransportRouteOwnerClaim routeOwnerClaim(String workerId,
                                                            String deliveryBucketId,
                                                            String routeKey,
                                                            String connectionId,
                                                            String reason) {
         return new TransportRouteOwnerClaim(workerId, deliveryBucketId, PROTOCOL, routeKey, connectionId, reason);
+    }
+
+    private static String requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 
 }

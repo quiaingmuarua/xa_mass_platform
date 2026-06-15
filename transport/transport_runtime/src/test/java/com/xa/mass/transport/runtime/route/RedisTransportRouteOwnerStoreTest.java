@@ -68,7 +68,7 @@ class RedisTransportRouteOwnerStoreTest {
     }
 
     @Test
-    void heartbeatRoundTripUsesRouteConsumerHashAndBucketWorkerPointer() {
+    void heartbeatRoundTripUsesRouteConsumerHashAndDeadlineIndexOnly() {
         store.claimRouteOwner(claim(" worker-1 ", " bucket-a ", " websocket ", " route-1 ", " conn-1 ", "connected"));
 
         var endpoint = store.endpointForSelectedWorker("bucket-a", "worker-1").orElseThrow();
@@ -80,7 +80,7 @@ class RedisTransportRouteOwnerStoreTest {
         assertFalse(observerCommands.exists(namespacePrefix + ":routes") > 0L);
         assertFalse(observerCommands.exists(workerRouteKey("worker-1")) > 0L);
         assertNull(observerCommands.get(legacyAdapterWorkerKey("websocket", "worker-1")));
-        assertNotNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-1")));
+        assertNull(observerCommands.get(oldBucketWorkerPointerKey("bucket-a", "worker-1")));
         assertEquals(1, store.currentOwners("route-1").size());
 
         store.refreshHeartbeat(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1", "heartbeat"));
@@ -93,7 +93,7 @@ class RedisTransportRouteOwnerStoreTest {
         assertTrue(store.endpointForSelectedWorker("bucket-a", "worker-1").isEmpty());
         assertTrue(store.currentOwners("route-1").isEmpty());
         assertFalse(observerCommands.exists(workerRouteKey("worker-1")) > 0L);
-        assertNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-1")));
+        assertNull(observerCommands.get(oldBucketWorkerPointerKey("bucket-a", "worker-1")));
         assertFalse(store.hasActiveRouteOwner("websocket", "route-1"));
     }
 
@@ -111,16 +111,16 @@ class RedisTransportRouteOwnerStoreTest {
         assertFalse(store.hasActiveRouteOwner("websocket", "route-shared"));
         assertTrue(store.hasActiveRouteOwner("socket", "route-shared"));
         assertEquals(1, store.currentOwners("route-shared").size());
-        assertNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-1")));
-        assertNotNull(observerCommands.get(bucketWorkerKey("bucket-b", "worker-2")));
+        assertNull(observerCommands.get(oldBucketWorkerPointerKey("bucket-a", "worker-1")));
+        assertNull(observerCommands.get(oldBucketWorkerPointerKey("bucket-b", "worker-2")));
     }
 
     @Test
-    void bucketWorkerLookupUsesCurrentConsumerUnderSharedRoute() {
+    void selectedWorkerInspectionLookupScansCurrentRouteConsumerEvidence() {
         store.claimRouteOwner(claim("worker-1", "bucket-a", "websocket", "route-shared", "conn-1", "connected"));
         store.claimRouteOwner(claim("worker-2", "bucket-a", "websocket", "route-shared", "conn-2", "connected"));
 
-        assertNotNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-2")));
+        assertNull(observerCommands.get(oldBucketWorkerPointerKey("bucket-a", "worker-2")));
         assertNull(observerCommands.get(legacyAdapterWorkerKey("websocket", "worker-2")));
         assertEquals("conn-2", store.endpointForSelectedWorker("bucket-a", "worker-2")
                 .orElseThrow()
@@ -131,12 +131,12 @@ class RedisTransportRouteOwnerStoreTest {
 
         store.releaseRouteOwner(claim("worker-2", "bucket-a", "websocket", "route-shared", "conn-2", "disconnect"));
 
-        assertNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-2")));
+        assertNull(observerCommands.get(oldBucketWorkerPointerKey("bucket-a", "worker-2")));
         assertTrue(store.targetForSelectedWorker("bucket-a", "worker-2").isEmpty());
     }
 
     @Test
-    void staleHeartbeatDoesNotMoveBucketWorkerPointerBackToOldConsumer() {
+    void staleHeartbeatDoesNotMoveSelectedWorkerInspectionBackToOldConsumer() {
         store.claimRouteOwner(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-old", "connected"));
         store.claimRouteOwner(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-new", "reconnected"));
 
@@ -168,7 +168,7 @@ class RedisTransportRouteOwnerStoreTest {
             assertFalse(shortLeaseStore.hasActiveRouteOwner("socket", "route-2"));
             assertEquals(1, shortLeaseStore.pruneExpired());
             assertTrue(shortLeaseStore.currentOwners("route-2").isEmpty());
-            assertNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-2")));
+            assertNull(observerCommands.get(oldBucketWorkerPointerKey("bucket-a", "worker-2")));
         }
     }
 
@@ -213,7 +213,7 @@ class RedisTransportRouteOwnerStoreTest {
                 + ":owner";
     }
 
-    private String bucketWorkerKey(String deliveryBucketId, String workerId) {
+    private String oldBucketWorkerPointerKey(String deliveryBucketId, String workerId) {
         return namespacePrefix
                 + ":bucket:" + encode(deliveryBucketId)
                 + ":worker:" + encode(workerId)

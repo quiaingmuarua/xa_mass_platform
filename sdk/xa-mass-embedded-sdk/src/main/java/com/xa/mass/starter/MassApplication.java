@@ -34,8 +34,8 @@ import com.xa.mass.transport.runtime.TaskResultIngestInboxPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoffPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandListener;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerProjectingRouteOwnerStore;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
@@ -282,10 +282,13 @@ public class MassApplication {
                     transportRuntimeComposition.getTransportRuntimeMaxPendingTasks()
             );
             TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
+            DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry = NoopDeliveryCommandConsumerRegistry.INSTANCE;
             if (requiresTaskDispatchHandoff(runtimeRole)) {
                 transportDeliveryCommandHandoff =
                         transportRuntimeComposition.resolveTransportDeliveryCommandHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
-                routeOwnerStore = attachDeliveryCommandConsumerRegistry(routeOwnerStore, transportDeliveryCommandHandoff);
+                if (transportDeliveryCommandHandoff instanceof DeliveryCommandConsumerRegistry registry) {
+                    deliveryCommandConsumerRegistry = registry;
+                }
             }
             TaskDispatchBatchListener taskDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
@@ -333,6 +336,8 @@ public class MassApplication {
                             presenceIngress,
                             routeOwnerStore,
                             deliveryService,
+                            deliveryCommandConsumerRegistry,
+                            transportRuntimeComposition.getTransportNodeId(),
                             transportRuntimeTaskExecutor
                     );
                     transportAdapterBootstrap.contribute(bootstrapContext);
@@ -345,6 +350,8 @@ public class MassApplication {
                         taskResultIngestChannel,
                         routeOwnerStore,
                         deliveryService,
+                        deliveryCommandConsumerRegistry,
+                        transportRuntimeComposition.getTransportNodeId(),
                         adapterBindings
                 );
                 configureRealtimeWorkerCommandDelivery();
@@ -430,15 +437,6 @@ public class MassApplication {
     private boolean requiresTaskDispatchHandoff(TransportRuntimeRole runtimeRole) {
         return runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER
                 || (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER);
-    }
-
-    private TransportRouteOwnerStore attachDeliveryCommandConsumerRegistry(TransportRouteOwnerStore store,
-                                                                          TransportDeliveryCommandHandoff handoff) {
-        if (handoff instanceof DeliveryCommandConsumerRegistry registry
-                && !(store instanceof DeliveryCommandConsumerProjectingRouteOwnerStore)) {
-            return new DeliveryCommandConsumerProjectingRouteOwnerStore(store, registry);
-        }
-        return store;
     }
 
     private TaskDispatchDeliveryFailure toDeliveryFailure(TransportDeliveryFailureEvent event) {
@@ -774,6 +772,8 @@ public class MassApplication {
                 resolved.getTaskPullChannel(),
                 resolved.getTaskResultIngestChannel(),
                 resolved.getRouteOwnerStore(),
+                resolved.getDeliveryCommandConsumerRegistry(),
+                resolved.getDeliveryCommandConsumerKey(),
                 requireWorkerPresenceIngress(),
                 resolved.getTransportHint()
         );

@@ -13,6 +13,10 @@ entry for `transport/`.
 - `transport_api` owns transport-neutral contracts.
 - `transport_runtime` owns shared runtime assembly and delivery semantics.
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
+- `transport` is a pure delivery executor. It owns correct assigned-worker
+  delivery, queue claim/ack consistency, endpoint/session evidence, and delivery
+  outcomes; it does not own retry, reassign, compensation, worker lifecycle,
+  worker scheduling, or task payload schema.
 - `adapterId` is concrete transport runtime truth, not an external worker API,
   SDK worker-session, or engine/starter delivery contract. `transportHint` is
   only a coarse family.
@@ -57,23 +61,24 @@ entry for `transport/`.
   concrete active route for a worker, but once resolved they must dispatch via
   the serving adapter identity instead of reviving route-only shared semantics.
 - worker route-owner heartbeat evidence lives in a transport-owned route-owner
-  plane and is projected into handoff-private selected-worker consumer
-  evidence. Adapters write `TransportRouteOwnerStore`; assigned-delivery
-  producer/listener code must not re-own transport route evidence through
-  worker heartbeat folding or route-owner lookup. Route-owner writes are
-  connection-aware: each claim carries an explicit `deliveryBucketId`, a new
-  claim replaces the current consumer for `(deliveryBucketId,
-  selectedWorkerId)`, heartbeat only extends the matching owner lease, and
-  release only removes the owner when the caller still holds the stored
-  `connectionId` / public `sessionToken`.
+  plane. Adapters/session ingress also writes handoff-private selected-worker
+  consumer evidence for assigned delivery. Assigned-delivery producer/listener
+  code must not re-own transport route evidence through worker heartbeat
+  folding or route-owner lookup. Route-owner writes are connection-aware: each
+  claim carries an explicit `deliveryBucketId`, heartbeat only extends the
+  matching route consumer lease, and release only removes the route consumer
+  when the caller still holds the stored `connectionId` / public
+  `sessionToken`.
 - `WorkerPresenceIngress` is current session-presence ingress only. Adapters may
   publish connect/heartbeat/disconnect observations, while worker-runtime owns
   derived reachability and registry slot heartbeat freshness. Route-owner leases
   remain delivery feasibility evidence and must not become worker lifecycle
   truth, worker state-report truth, slot heartbeat truth, or capability truth.
 - `DeliveryCommand` is the assigned-item delivery intent. It carries only
-  `deliveryBucketId`, `selectedWorkerId`, minimal task dispatch content, typed
-  attempt context, and item timing/id facts. Task shell metadata such as
+  `deliveryBucketId`, `selectedWorkerId`, an opaque worker payload, opaque
+  delivery correlation, and item timing/id facts. Current
+  `TaskDispatchContent` / `TaskDispatchExecutionContext` fields are convergence
+  residue, not protected transport owner concepts. Task shell metadata such as
   `taskName`, `project`, and `userId`, plus adapter, queue, node, route-owner,
   connection, and session facts are not command fields.
 - `DeliveryCommandBatch` is consumer-local handoff materialization:
@@ -84,11 +89,14 @@ entry for `transport/`.
   the final-hop adapter from handoff-private consumer context. It does not
   call route-owner endpoint lookup for assigned delivery. `AdapterDispatchRequest`
   is the final-hop adapter request and sends by selected worker.
-- `PulledTaskDispatch` is the polling worker pull DTO. Task-dispatch
-  `TransportPacket` is a final-hop/wire projection assembled after endpoint
-  evidence is known. Neither is the delivery-command handoff payload.
-- `QueuedPulledDispatch` is the polling queue value. It carries only the typed
-  pull DTO source facts and selected worker sub-lane identity; packet, route,
+- `PulledTaskDispatch` is the current polling worker pull DTO. A task-shaped
+  pull projection belongs at the SDK/server public worker boundary, not in
+  transport core. Task-dispatch `TransportPacket` is a final-hop/wire
+  projection assembled after endpoint evidence is known. Neither is the
+  delivery-command handoff payload.
+- `QueuedPulledDispatch` is the current polling queue value. The target
+  transport-core shape is an opaque pulled delivery message carrying only
+  delivery id, selected worker, payload, correlation, and timing; packet, route,
   endpoint, taskName/project/userId, and deliveryQueueKey are not serialized in
   the Redis queue value.
 - Queue mechanics may live under `platform_infra`; transport still owns
@@ -96,9 +104,11 @@ entry for `transport/`.
   `QueuedPulledDispatch`, `TransportDeliveryStore`, and `DispatchOutcome`.
   `DispatchOutcome` is the single delivery-failure fact owner; failure inbox
   events wrap the outcome instead of maintaining group/item snapshot copies.
-  `DispatchOutcome` reports only stable delivery identity, selected worker,
-  attempt/task/message identity, status, retryability, reason, and time; it
-  must not expose adapter, lane, route, node, connection, or endpoint evidence.
+  `DispatchOutcome` reports only delivery identity, selected worker, opaque
+  correlation, status, retryability, reason, and time in the target boundary;
+  current task/message/attempt fields are convergence residue until the opaque
+  payload slice lands. It must not expose adapter, lane, route, node,
+  connection, or endpoint evidence.
 - Embedded runtime composition currently defaults to the in-memory delivery
   store, but SDK/starter wiring may swap in a Redis-backed
   `TransportDeliveryStore` without changing transport-facing contracts.
@@ -145,6 +155,9 @@ Document layering inside `transport/`:
   lifecycle state directly.
 - Do not add transport hot-path scans or model-coupled observability fields
   when logs, traces, counters, or indexed lookups can answer the question.
+- Do not protect `TaskDispatchContent`, `TaskDispatchExecutionContext`,
+  `TaskPullResult`, or `PulledTaskDispatch` placement in `transport_api` as a
+  stable architecture merely because the current code still has them.
 - Do not turn route-owner/presence evidence into a post-assignment routing
   engine. Missing selected-worker delivery evidence is infeasible delivery,
   not permission for transport to choose another worker.

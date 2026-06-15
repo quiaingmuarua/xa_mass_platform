@@ -11,6 +11,7 @@ import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.Comparator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -26,7 +27,6 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
     private final String transportInstanceId;
     private final ConcurrentMap<String, ConcurrentMap<String, TransportRouteOwnerRecord>> ownersByRouteKey =
             new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, TransportRouteOwnerRecord> currentOwnerByBucketWorker = new ConcurrentHashMap<>();
 
     public InMemoryTransportRouteOwnerStore() {
         this(DEFAULT_LEASE_MILLIS);
@@ -47,7 +47,7 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
     @Override
     public TransportRouteOwnerRecord claimRouteOwner(TransportRouteOwnerClaim claim) {
         Objects.requireNonNull(claim, "claim");
-        long now = System.currentTimeMillis();
+        long now = nextUpdatedAt(claim.deliveryBucketId(), claim.workerId());
         String normalizedConnectionId = normalizeNullable(claim.connectionId());
         String consumerId = normalizedConnectionId != null ? normalizedConnectionId : UUID.randomUUID().toString();
         TransportRouteOwnerRecord next = new TransportRouteOwnerRecord(
@@ -76,10 +76,10 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
         TransportRouteOwnerRecord current = routeConsumers != null ? routeConsumers.get(normalizedConnectionId) : null;
         if (current == null
                 || !sameClaimConsumer(current, claim)
-                || !isCurrentBucketWorkerConsumer(current)) {
+                || !isLatestSelectedWorkerConsumer(current)) {
             return current;
         }
-        long now = System.currentTimeMillis();
+        long now = nextUpdatedAt(current.getDeliveryBucketId(), current.getWorkerId());
         TransportRouteOwnerRecord next = new TransportRouteOwnerRecord(
                 current.getWorkerId(),
                 current.getDeliveryBucketId(),
@@ -156,18 +156,20 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
     }
 
     private RouteConsumerEndpoint currentEndpoint(String deliveryBucketId, String selectedWorkerId) {
-        String key = bucketWorkerKey(deliveryBucketId, selectedWorkerId);
-        if (key == null) {
+        String normalizedBucketId = normalizeNullable(deliveryBucketId);
+        String normalizedWorkerId = normalizeNullable(selectedWorkerId);
+        if (normalizedBucketId == null || normalizedWorkerId == null) {
             return null;
         }
-        TransportRouteOwnerRecord owner = currentOwnerByBucketWorker.get(key);
-        if (owner == null || !owner.isLeaseActive(System.currentTimeMillis())) {
-            if (owner != null) {
-                currentOwnerByBucketWorker.remove(key, owner);
-            }
-            return null;
-        }
-        return endpointFromRecord(owner);
+        long now = System.currentTimeMillis();
+        return ownersByRouteKey.values().stream()
+                .flatMap(routeConsumers -> routeConsumers.values().stream())
+                .filter(owner -> normalizedBucketId.equals(owner.getDeliveryBucketId()))
+                .filter(owner -> normalizedWorkerId.equals(owner.getWorkerId()))
+                .filter(owner -> owner.isLeaseActive(now))
+                .max(Comparator.comparingLong(TransportRouteOwnerRecord::getUpdatedAtEpochMillis))
+                .map(InMemoryTransportRouteOwnerStore::endpointFromRecord)
+                .orElse(null);
     }
 
     @Override
@@ -199,25 +201,7 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
         ownersByRouteKey
                 .computeIfAbsent(next.getRouteKey(), ignored -> new ConcurrentHashMap<>())
                 .put(next.getConnectionId(), next);
-        updateBucketWorkerPointer(next, replaceAdapterWorkerPointer);
         return next;
-    }
-
-    private void updateBucketWorkerPointer(TransportRouteOwnerRecord next, boolean replaceCurrentConsumer) {
-        String key = bucketWorkerKey(next.getDeliveryBucketId(), next.getWorkerId());
-        if (key == null) {
-            return;
-        }
-        if (replaceCurrentConsumer) {
-            currentOwnerByBucketWorker.put(key, next);
-            return;
-        }
-        currentOwnerByBucketWorker.compute(key, (ignored, current) -> {
-            if (current == null || sameConsumer(current, next)) {
-                return next;
-            }
-            return current;
-        });
     }
 
     private void removeOwner(TransportRouteOwnerRecord owner) {
@@ -227,10 +211,6 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
             if (routeConsumers.isEmpty()) {
                 ownersByRouteKey.remove(owner.getRouteKey(), routeConsumers);
             }
-        }
-        String bucketWorkerKey = bucketWorkerKey(owner.getDeliveryBucketId(), owner.getWorkerId());
-        if (bucketWorkerKey != null) {
-            currentOwnerByBucketWorker.remove(bucketWorkerKey, owner);
         }
     }
 
@@ -249,22 +229,6 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
         return value.trim();
     }
 
-    private static String bucketWorkerKey(String deliveryBucketId, String workerId) {
-        String normalizedBucketId = normalizeNullable(deliveryBucketId);
-        String normalizedWorkerId = normalizeNullable(workerId);
-        if (normalizedBucketId == null || normalizedWorkerId == null) {
-            return null;
-        }
-        return normalizedBucketId + "\n" + normalizedWorkerId;
-    }
-
-    private static boolean sameConsumer(TransportRouteOwnerRecord left, TransportRouteOwnerRecord right) {
-        return left != null
-                && right != null
-                && left.getRouteKey().equals(right.getRouteKey())
-                && left.getConnectionId().equals(right.getConnectionId());
-    }
-
     private static boolean sameClaimConsumer(TransportRouteOwnerRecord owner, TransportRouteOwnerClaim claim) {
         return owner != null
                 && claim != null
@@ -275,9 +239,33 @@ public final class InMemoryTransportRouteOwnerStore implements TransportRouteOwn
                 && owner.getConnectionId().equals(claim.connectionId());
     }
 
-    private boolean isCurrentBucketWorkerConsumer(TransportRouteOwnerRecord owner) {
-        String key = bucketWorkerKey(owner.getDeliveryBucketId(), owner.getWorkerId());
-        return key != null && sameConsumer(currentOwnerByBucketWorker.get(key), owner);
+    private boolean isLatestSelectedWorkerConsumer(TransportRouteOwnerRecord candidate) {
+        if (candidate == null) {
+            return false;
+        }
+        long candidateUpdatedAt = candidate.getUpdatedAtEpochMillis();
+        for (ConcurrentMap<String, TransportRouteOwnerRecord> routeConsumers : ownersByRouteKey.values()) {
+            for (TransportRouteOwnerRecord owner : routeConsumers.values()) {
+                if (candidate.getDeliveryBucketId().equals(owner.getDeliveryBucketId())
+                        && candidate.getWorkerId().equals(owner.getWorkerId())
+                        && owner.getUpdatedAtEpochMillis() > candidateUpdatedAt) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private long nextUpdatedAt(String deliveryBucketId, String workerId) {
+        long now = System.currentTimeMillis();
+        long max = ownersByRouteKey.values().stream()
+                .flatMap(routeConsumers -> routeConsumers.values().stream())
+                .filter(owner -> Objects.equals(deliveryBucketId, owner.getDeliveryBucketId()))
+                .filter(owner -> Objects.equals(workerId, owner.getWorkerId()))
+                .mapToLong(TransportRouteOwnerRecord::getUpdatedAtEpochMillis)
+                .max()
+                .orElse(0L);
+        return Math.max(now, max + 1L);
     }
 
     private static RouteConsumerEndpoint endpointFromRecord(TransportRouteOwnerRecord owner) {

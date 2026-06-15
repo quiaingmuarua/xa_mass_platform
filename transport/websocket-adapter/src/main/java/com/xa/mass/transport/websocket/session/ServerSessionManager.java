@@ -8,8 +8,12 @@ import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.route.TransportRouteOwnerClaim;
+import com.xa.mass.transport.route.TransportRouteOwnerRecord;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -39,6 +43,9 @@ public class ServerSessionManager
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
     private final ScheduledExecutorService routeOwnerRefreshExecutor;
     private volatile TransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+    private volatile DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry =
+            NoopDeliveryCommandConsumerRegistry.INSTANCE;
+    private volatile String deliveryCommandConsumerKey;
     private volatile WorkerPresenceIngress workerPresenceIngress = NoopWorkerPresenceIngress.INSTANCE;
     private volatile ScheduledFuture<?> routeOwnerRefreshFuture;
 
@@ -95,13 +102,14 @@ public class ServerSessionManager
                     reason,
                     channelId
             ));
-            routeOwnerStore.claimRouteOwner(routeOwnerClaim(
+            TransportRouteOwnerClaim claim = routeOwnerClaim(
                     workerId,
                     normalizedDeliveryBucketId,
                     routeKey,
                     channelId,
                     reason
-            ));
+            );
+            claimDeliveryConsumerIfCurrent(routeOwnerStore.claimRouteOwner(claim), claim);
         }
         if (previousForWorker != null) {
             logger.warn("Existing channel for routeKey={} workerId={} found. Replacing session.",
@@ -133,9 +141,10 @@ public class ServerSessionManager
                         reason,
                         channelId
                 ));
-                routeOwnerStore.releaseRouteOwner(
-                        routeOwnerClaim(binding.workerId(), deliveryBucketId, binding.routeKey(), channelId, reason)
-                );
+                TransportRouteOwnerClaim claim =
+                        routeOwnerClaim(binding.workerId(), deliveryBucketId, binding.routeKey(), channelId, reason);
+                routeOwnerStore.releaseRouteOwner(claim);
+                releaseDeliveryConsumer(claim);
             }
             if (activeConnectionCount.get() == 0) {
                 cancelRouteOwnerRefreshLoop();
@@ -261,15 +270,16 @@ public class ServerSessionManager
                         reason,
                         channelId
                 ));
-                routeOwnerStore.releaseRouteOwner(
+                TransportRouteOwnerClaim claim =
                         routeOwnerClaim(
                                 entry.workerId(),
                                 deliveryBucketByChannel.get(entry.handle()),
                                 entry.routeKey(),
                                 channelId,
                                 reason
-                        )
-                );
+                        );
+                routeOwnerStore.releaseRouteOwner(claim);
+                releaseDeliveryConsumer(claim);
             }
             if (entry.endpoint().isActive()) {
                 entry.endpoint().channel().close();
@@ -292,6 +302,17 @@ public class ServerSessionManager
                 projectActiveSessionsToRouteOwner("websocket route-owner store replaced");
                 rescheduleRouteOwnerRefreshLoop();
             }
+        }
+    }
+
+    public void setDeliveryCommandConsumerRegistry(DeliveryCommandConsumerRegistry registry,
+                                                   String queueConsumerKey) {
+        synchronized (this) {
+            this.deliveryCommandConsumerRegistry = registry != null
+                    ? registry
+                    : NoopDeliveryCommandConsumerRegistry.INSTANCE;
+            this.deliveryCommandConsumerKey = requireText(queueConsumerKey, "queueConsumerKey");
+            projectActiveSessionsToRouteOwner("websocket delivery consumer registry replaced");
         }
     }
 
@@ -389,15 +410,19 @@ public class ServerSessionManager
                         reason,
                         channelId
                 ));
-                routeOwnerStore.refreshHeartbeat(
-                        routeOwnerClaim(
+                TransportRouteOwnerClaim claim = routeOwnerClaim(
                                 entry.workerId(),
                                 deliveryBucketByChannel.get(entry.handle()),
                                 entry.routeKey(),
                                 channelId,
                                 reason
-                        )
                 );
+                TransportRouteOwnerRecord record = routeOwnerStore.refreshHeartbeat(claim);
+                if (isCurrentOwner(record, claim)) {
+                    claimDeliveryConsumer(record);
+                } else {
+                    releaseDeliveryConsumer(claim);
+                }
             }
         }
     }
@@ -408,15 +433,14 @@ public class ServerSessionManager
             if (endpoint == null || !endpoint.isActive()) {
                 continue;
             }
-            routeOwnerStore.claimRouteOwner(
-                    routeOwnerClaim(
+            TransportRouteOwnerClaim claim = routeOwnerClaim(
                             entry.workerId(),
                             deliveryBucketByChannel.get(entry.handle()),
                             entry.routeKey(),
                             entry.handle().id().asShortText(),
                             reason
-                    )
             );
+            claimDeliveryConsumerIfCurrent(routeOwnerStore.claimRouteOwner(claim), claim);
         }
     }
 
@@ -438,9 +462,10 @@ public class ServerSessionManager
                 reason,
                 channelId
         ));
-        routeOwnerStore.releaseRouteOwner(
-                routeOwnerClaim(previous.workerId(), deliveryBucketId, previous.routeKey(), channelId, reason)
-        );
+        TransportRouteOwnerClaim claim =
+                routeOwnerClaim(previous.workerId(), deliveryBucketId, previous.routeKey(), channelId, reason);
+        routeOwnerStore.releaseRouteOwner(claim);
+        releaseDeliveryConsumer(claim);
         WebSocketRouteEndpoint endpoint = previous.endpoint();
         if (endpoint != null && endpoint.isActive()) {
             endpoint.channel().close();
@@ -472,6 +497,49 @@ public class ServerSessionManager
                 channelId,
                 reason
         );
+    }
+
+    private void claimDeliveryConsumerIfCurrent(TransportRouteOwnerRecord record, TransportRouteOwnerClaim claim) {
+        if (isCurrentOwner(record, claim)) {
+            claimDeliveryConsumer(record);
+        }
+    }
+
+    private void claimDeliveryConsumer(TransportRouteOwnerRecord record) {
+        deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
+                record.getDeliveryBucketId(),
+                record.getWorkerId(),
+                deliveryCommandConsumerKey(),
+                record.getConnectionId(),
+                record.getAdapterId(),
+                record.getLeaseExpireAtEpochMillis()
+        ));
+    }
+
+    private void releaseDeliveryConsumer(TransportRouteOwnerClaim claim) {
+        deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
+                claim.deliveryBucketId(),
+                claim.workerId(),
+                deliveryCommandConsumerKey(),
+                claim.connectionId(),
+                claim.adapterId(),
+                0L
+        ));
+    }
+
+    private String deliveryCommandConsumerKey() {
+        String current = deliveryCommandConsumerKey;
+        return current != null ? current : adapterId;
+    }
+
+    private static boolean isCurrentOwner(TransportRouteOwnerRecord owner, TransportRouteOwnerClaim claim) {
+        return owner != null
+                && claim != null
+                && claim.workerId().equals(owner.getWorkerId())
+                && claim.deliveryBucketId().equals(owner.getDeliveryBucketId())
+                && claim.adapterId().equals(owner.getAdapterId())
+                && claim.routeKey().equals(owner.getRouteKey())
+                && claim.connectionId().equals(owner.getConnectionId());
     }
 
     @Override

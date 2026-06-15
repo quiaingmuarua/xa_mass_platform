@@ -5,13 +5,12 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Read-only route-owner view consumed by dispatch routing.
+ * Read-only route-owner inspection view.
  *
- * <p>Dispatch calls this view only after engine selection has produced a
- * concrete worker binding. The selected worker is a delivery constraint, not a
- * scheduling or lifecycle fact. Route-key reads remain available for bounded
- * diagnostics and maintenance, while task-dispatch producer lookup uses only a
- * bucket-worker target hint.</p>
+ * <p>Route-key reads remain available for bounded diagnostics, raw-route
+ * side-channels, and maintenance. Assigned task delivery must use
+ * handoff-private selected-worker consumer evidence instead of this route-owner
+ * view.</p>
  */
 public interface WorkerDispatchRouteOwnerView {
 

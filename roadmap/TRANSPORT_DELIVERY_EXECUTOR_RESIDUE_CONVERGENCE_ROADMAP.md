@@ -1,10 +1,10 @@
 # Transport Delivery Executor Residue Convergence Roadmap
 
-Status: proposed direction document.
+Status: active successor roadmap for DQK residual phases.
 
 Depends on:
 
-- `TRANSPORT_BUCKET_WORKER_DELIVERY_QUEUE_KEY_CONVERGENCE_ROADMAP.md`
+- `doc/archive/transport/2026-06-15_TRANSPORT_BUCKET_WORKER_DELIVERY_QUEUE_KEY_CONVERGENCE_ROADMAP.md`
 
 ## Summary
 
@@ -19,7 +19,7 @@ engine/starter assignment facts
   -> adapter-local session send
 ```
 
-`TRANSPORT_BUCKET_WORKER_DELIVERY_QUEUE_KEY_CONVERGENCE_ROADMAP.md` owns the
+`doc/archive/transport/2026-06-15_TRANSPORT_BUCKET_WORKER_DELIVERY_QUEUE_KEY_CONVERGENCE_ROADMAP.md` owns the
 first boundary cut: assigned delivery must not route through
 `routeKey + connectionId`, and producer-side handoff should address commands by
 a bucket-derived queue key plus `selectedWorkerId`.
@@ -29,6 +29,13 @@ removes the remaining task-dispatch hot-path leaks where route-owner endpoint
 facts, adapter endpoint DTOs, and polling-store vocabulary still make transport
 look like a hidden routing runtime instead of a delivery executor.
 
+This roadmap originally blocked archival of
+`doc/archive/transport/2026-06-15_TRANSPORT_BUCKET_WORKER_DELIVERY_QUEUE_KEY_CONVERGENCE_ROADMAP.md` while
+route-owner still wrote the bucket-worker owner pointer and
+`DeliveryCommandConsumerProjectingRouteOwnerStore` remained in production
+assembly. That DQK archival blocker has been removed; this roadmap now tracks
+the remaining delivery-executor DTO and service-shape residue.
+
 Target shape:
 
 ```text
@@ -36,8 +43,8 @@ DeliveryCommand
   commandId
   deliveryBucketId
   selectedWorkerId
-  TaskDispatchContent
-  TaskDispatchExecutionContext
+  opaque worker payload
+  opaque delivery correlation
 
 Delivery command handoff
   deliveryQueueKey
@@ -47,8 +54,8 @@ Delivery command handoff
 Final-hop adapter request
   deliveryId
   selectedWorkerId
-  TaskDispatchContent
-  TaskDispatchExecutionContext
+  opaque worker payload
+  opaque delivery correlation
   createdAtEpochMillis
 
 Adapter/session manager
@@ -61,25 +68,31 @@ records. Those facts may remain inside route-owner/raw-route/session internals,
 but not in the assigned task delivery command, handoff, listener, or adapter
 task request.
 
+Payload opacity is owned by
+`TRANSPORT_OPAQUE_DELIVERY_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md`. If that
+roadmap has not landed yet, existing `TaskDispatchContent` and
+`TaskDispatchExecutionContext` are interim command-shape residue only; they
+must not be used to justify retaining route-owner endpoint or consumer evidence
+inside assigned delivery.
+
 ## Current Code Observations
 
 These observations are from the current work tree and must be rechecked before
-implementation because the DQK roadmap is still active.
+implementation.
 
 - `TransportAssignedDeliverySubmitter` is already moving in the right direction:
   it groups commands by `AssignedDeliveryCommandQueueKey.queueKeyFor(...)` and
   offers `DeliveryQueueOffer(deliveryQueueKey, commands)`.
-- `TransportDeliveryCommandListener` still depends on
-  `WorkerDispatchRouteOwnerView` and calls
-  `endpointForSelectedWorker(deliveryBucketId, selectedWorkerId)` before final
-  hop dispatch.
-- `TransportDeliveryCommandListener` converts route-owner endpoint evidence
-  into `AdapterEndpoint(routeKey, transportNodeId, connectionId, leaseExpireAt)`
-  and attaches it to `AdapterDispatchRequest`.
-- `DeliveryCommandConsumerProjectingRouteOwnerStore` projects route-owner claims
-  into delivery command consumer claims. This is useful as a migration bridge,
-  but it keeps assigned delivery consumer registration coupled to route-owner
-  heartbeat.
+- `TransportDeliveryCommandListener` no longer depends on
+  `WorkerDispatchRouteOwnerView` or route-owner endpoint records for assigned
+  delivery.
+- Selected-worker consumer evidence is written by adapter/session ingress into
+  the delivery-command handoff registry. The projection bridge
+  `DeliveryCommandConsumerProjectingRouteOwnerStore` has been deleted.
+- `RedisTransportRouteOwnerStore` no longer writes the
+  `bucket:<encodedDeliveryBucketId>:worker:<encodedWorkerId>:owner` key family.
+  `endpointForSelectedWorker(...)` is retained only as a diagnostic scan over
+  live route consumer records.
 - `AdapterDispatchRequest` still carries `adapterId` and `AdapterEndpoint`,
   even though websocket/socket assigned task dispatch sends by
   `selectedWorkerId`.
@@ -92,9 +105,7 @@ implementation because the DQK roadmap is still active.
 - `InMemoryTransportDeliveryCommandHandoff` is still a simple blocking queue:
   `poll()` removes a batch, and there is no matching claim/ack/requeue behavior.
 - `RedisTransportRouteOwnerStore` still exposes selected-worker endpoint lookup
-  and writes a derived `bucket + worker -> routeKey + connectionId` pointer.
-  That pointer should leave assigned delivery once delivery consumer claims own
-  selected-worker delivery feasibility.
+  for bounded diagnostics. It must not re-enter assigned delivery.
 
 ## Owner Review
 
@@ -551,4 +562,3 @@ This roadmap is complete only when:
 - Route-owner Redis no longer stores assigned-delivery selected-worker
   projection keys.
 - Current docs and proof registry match the implemented boundary.
-

@@ -3,15 +3,15 @@ package com.xa.mass.transport.route;
 /**
  * Shared transport-owned route-owner heartbeat write surface.
  *
- * <p>For assigned worker delivery, {@code deliveryBucketId + workerId}
- * identifies the current consumer projection. Route and connection facts are
- * endpoint evidence owned by transport. Claim, heartbeat refresh, and release
- * are consumer-checked writes: heartbeat/release only mutate the current
- * consumer when the route/connection evidence still matches.</p>
+ * <p>Route and connection facts are endpoint evidence owned by transport.
+ * Claim, heartbeat refresh, and release are consumer-checked writes:
+ * heartbeat/release only mutate matching route/connection evidence and must
+ * not write worker lifecycle or assigned-delivery routing truth.</p>
  *
- * <p>This write surface deliberately does not expose worker-id inspection.
- * Assigned delivery routing should depend on {@link WorkerDispatchRouteOwnerView};
- * worker-id read models belong to worker runtime/resource views.</p>
+ * <p>This write surface deliberately does not expose worker lifecycle or
+ * scheduling read models. Assigned delivery uses handoff-private
+ * selected-worker consumer evidence; route-owner read views are diagnostics and
+ * raw-route maintenance only.</p>
  */
 public interface TransportRouteOwnerStore {
 

@@ -7,7 +7,9 @@ import java.util.Objects;
  *
  * <p>The command carries item-level assignment facts only. Adapter, lane,
  * route-owner, node, and session evidence live in transport-owned target
- * resolution, batches, endpoint evidence, and final-hop envelopes.</p>
+ * resolution, batches, endpoint evidence, and final-hop envelopes. The deadline
+ * field is delivery observation metadata; retry, reassign, compensation, and
+ * final recovery remain engine-owned.</p>
  */
 public final class DeliveryCommand {
 

@@ -6,6 +6,8 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.Objects;
@@ -21,6 +23,8 @@ public final class TransportAdapterBootstrapContext {
     private final WorkerPresenceIngress workerPresenceIngress;
     private final TransportRouteOwnerStore routeOwnerStore;
     private final TransportDeliveryService deliveryService;
+    private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
+    private final String deliveryCommandConsumerKey;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
     private TransportBinding transportBinding;
     private ManagedTransportAdapter managedTransportAdapter;
@@ -33,11 +37,33 @@ public final class TransportAdapterBootstrapContext {
                                             TransportRouteOwnerStore routeOwnerStore,
                                             TransportDeliveryService deliveryService,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
+        this(endpointRegistry,
+                taskResultIngestChannel,
+                workerPresenceIngress,
+                routeOwnerStore,
+                deliveryService,
+                NoopDeliveryCommandConsumerRegistry.INSTANCE,
+                "local",
+                runtimeTaskExecutor);
+    }
+
+    public TransportAdapterBootstrapContext(WorkerEndpointRegistry endpointRegistry,
+                                            TaskResultIngestChannel taskResultIngestChannel,
+                                            WorkerPresenceIngress workerPresenceIngress,
+                                            TransportRouteOwnerStore routeOwnerStore,
+                                            TransportDeliveryService deliveryService,
+                                            DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
+                                            String deliveryCommandConsumerKey,
+                                            RuntimeTaskExecutor runtimeTaskExecutor) {
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.workerPresenceIngress = Objects.requireNonNull(workerPresenceIngress, "workerPresenceIngress");
         this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
+        this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
+                ? deliveryCommandConsumerRegistry
+                : NoopDeliveryCommandConsumerRegistry.INSTANCE;
+        this.deliveryCommandConsumerKey = requireText(deliveryCommandConsumerKey, "deliveryCommandConsumerKey");
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
     }
 
@@ -59,6 +85,14 @@ public final class TransportAdapterBootstrapContext {
 
     public TransportDeliveryService getDeliveryService() {
         return deliveryService;
+    }
+
+    public DeliveryCommandConsumerRegistry getDeliveryCommandConsumerRegistry() {
+        return deliveryCommandConsumerRegistry;
+    }
+
+    public String getDeliveryCommandConsumerKey() {
+        return deliveryCommandConsumerKey;
     }
 
     public RuntimeTaskExecutor getRuntimeTaskExecutor() {
@@ -95,5 +129,12 @@ public final class TransportAdapterBootstrapContext {
 
     public RawWorkerMessageChannel getRawWorkerMessageChannel() {
         return rawWorkerMessageChannel;
+    }
+
+    private static String requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 }

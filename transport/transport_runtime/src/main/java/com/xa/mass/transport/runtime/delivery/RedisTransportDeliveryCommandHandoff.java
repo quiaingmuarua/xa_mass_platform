@@ -31,12 +31,12 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     private static final long DEFAULT_VISIBILITY_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30L);
     private static final long POLL_SLEEP_MILLIS = 50L;
     private static final String MEMBER_SEPARATOR = "\u001f";
-    private static final String CONSUMER_EVIDENCE_VERSION = "v1";
+    private static final String CONSUMER_EVIDENCE_VERSION = "v2";
     private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder TOKEN_DECODER = Base64.getUrlDecoder();
     private static final String OFFER_COMMAND_SCRIPT = """
             local commandStoreKey = KEYS[1]
-            local commandDeadlineKey = KEYS[2]
+            local commandRetentionDeadlineKey = KEYS[2]
             local readyCommandsKey = KEYS[3]
             local queueConsumersKey = KEYS[4]
             local queueConsumerKey = KEYS[5]
@@ -44,7 +44,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
             local maxQueuedItems = tonumber(ARGV[1])
             local commandId = ARGV[2]
             local value = ARGV[3]
-            local commandDeadlineMillis = tonumber(ARGV[4])
+            local commandRetentionDeadlineMillis = tonumber(ARGV[4])
             local deliveryQueueKey = ARGV[5]
             local queueConsumerKeyValue = ARGV[6]
             local nowMillis = ARGV[7]
@@ -58,13 +58,24 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
             end
             if redis.call('HEXISTS', commandStoreKey, commandId) == 0 then
               redis.call('HSET', commandStoreKey, commandId, value)
-              redis.call('ZADD', commandDeadlineKey, commandDeadlineMillis, commandId)
+              redis.call('ZADD', commandRetentionDeadlineKey, commandRetentionDeadlineMillis, commandId)
             end
             redis.call('RPUSH', readyCommandsKey, referenceValue)
             redis.call('SADD', queueConsumersKey, queueConsumerKeyValue)
             redis.call('HSET', queueConsumerKey, 'deliveryQueueKey', deliveryQueueKey, 'updatedAtEpochMillis', nowMillis)
             redis.call('SADD', queuesKey, deliveryQueueKey)
             return {'QUEUED', ''}
+            """;
+    private static final String CLAIM_READY_REFERENCE_SCRIPT = """
+            local readyCommandsKey = KEYS[1]
+            local inflightCommandsKey = KEYS[2]
+            local visibilityDeadlineMillis = tonumber(ARGV[1])
+            local referenceValue = redis.call('LPOP', readyCommandsKey)
+            if not referenceValue then
+              return nil
+            end
+            redis.call('ZADD', inflightCommandsKey, visibilityDeadlineMillis, referenceValue)
+            return referenceValue
             """;
 
     private final RedisClient redisClient;
@@ -146,7 +157,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         }
         List<DispatchOutcome> outcomes = new ArrayList<>(commandsToOffer.size());
         long now = System.currentTimeMillis();
-        long commandDeadline = now + DEFAULT_COMMAND_RETENTION_MILLIS;
+        long commandRetentionDeadline = now + DEFAULT_COMMAND_RETENTION_MILLIS;
         for (DeliveryCommand command : commandsToOffer) {
             ConsumerEvidence evidence = currentConsumerEvidence(
                     deliveryQueueKey,
@@ -173,7 +184,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                     ScriptOutputType.MULTI,
                     new String[]{
                             commandStoreKey(deliveryQueueKey),
-                            commandDeadlineKey(deliveryQueueKey),
+                            commandRetentionDeadlineKey(deliveryQueueKey),
                             readyCommandsKey(evidence.queueConsumerKey()),
                             queueConsumersKey(deliveryQueueKey),
                             queueConsumerKey(evidence.queueConsumerKey()),
@@ -182,7 +193,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                     Integer.toString(maxQueuedCommandsPerQueue),
                     command.getCommandId(),
                     codec.encode(new DeliveryCommandBatch(deliveryQueueKey, List.of(command))),
-                    Long.toString(commandDeadline),
+                    Long.toString(commandRetentionDeadline),
                     deliveryQueueKey,
                     evidence.queueConsumerKey(),
                     Long.toString(now),
@@ -210,15 +221,16 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
         do {
             reclaimExpiredInflight(localConsumerKey);
-            String encodedReference = commands.lpop(readyCommandsKey(localConsumerKey));
+            String encodedReference = claimReadyReference(localConsumerKey);
             if (encodedReference != null && !encodedReference.isBlank()) {
                 DeliveryCommandReference reference = decodeReference(encodedReference);
                 if (reference == null) {
+                    removeInflightClaim(localConsumerKey, encodedReference);
                     continue;
                 }
                 String json = commands.hget(commandStoreKey(reference.deliveryQueueKey()), reference.commandId());
                 if (json == null || json.isBlank()) {
-                    commands.zrem(inflightCommandsKey(localConsumerKey), encodedReference);
+                    removeInflightClaim(localConsumerKey, encodedReference);
                     continue;
                 }
                 DeliveryCommandBatch stored = codec.decode(json);
@@ -229,7 +241,16 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                         System.currentTimeMillis()
                 );
                 if (currentConsumer != null && !localConsumerKey.equals(currentConsumer.queueConsumerKey())) {
-                    commands.rpush(readyCommandsKey(currentConsumer.queueConsumerKey()), encodedReference);
+                    removeInflightClaim(localConsumerKey, encodedReference);
+                    commands.rpush(
+                            readyCommandsKey(currentConsumer.queueConsumerKey()),
+                            encodeReference(new DeliveryCommandReference(
+                                    reference.deliveryQueueKey(),
+                                    reference.commandId(),
+                                    currentConsumer.queueConsumerKey(),
+                                    currentConsumer.adapterId()
+                            ))
+                    );
                     continue;
                 }
                 DeliveryCommandReference materializedReference = currentConsumer == null
@@ -239,11 +260,6 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                         reference.commandId(),
                         currentConsumer.queueConsumerKey(),
                         currentConsumer.adapterId()
-                );
-                commands.zadd(
-                        inflightCommandsKey(localConsumerKey),
-                        System.currentTimeMillis() + DEFAULT_VISIBILITY_TIMEOUT_MILLIS,
-                        encodedReference
                 );
                 return new DeliveryCommandBatch(
                         reference.deliveryQueueKey(),
@@ -272,7 +288,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
             String encodedReference = encodeReference(reference);
             commands.zrem(inflightCommandsKey(reference.queueConsumerKey()), encodedReference);
             commands.hdel(commandStoreKey(reference.deliveryQueueKey()), reference.commandId());
-            commands.zrem(commandDeadlineKey(reference.deliveryQueueKey()), reference.commandId());
+            commands.zrem(commandRetentionDeadlineKey(reference.deliveryQueueKey()), reference.commandId());
         }
     }
 
@@ -296,7 +312,9 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         String deliveryQueueKey = AssignedDeliveryCommandQueueKey.queueKeyFor(claim.deliveryBucketId());
         String selectedWorkerId = normalizeRequired(claim.selectedWorkerId(), "selectedWorkerId");
         ConsumerEvidence current = currentConsumerEvidence(deliveryQueueKey, selectedWorkerId, System.currentTimeMillis());
-        if (current == null || !claim.queueConsumerKey().equals(current.queueConsumerKey())) {
+        if (current == null
+                || !claim.queueConsumerKey().equals(current.queueConsumerKey())
+                || !claim.consumerEvidenceId().equals(current.consumerEvidenceId())) {
             return;
         }
         commands.hdel(selectedWorkerConsumersKey(deliveryQueueKey), selectedWorkerId);
@@ -323,6 +341,35 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         return Math.toIntExact(commands.hlen(commandStoreKey(deliveryQueueKey)));
     }
 
+    long readyReferencesForTest(String queueConsumerKey) {
+        return commands.llen(readyCommandsKey(queueConsumerKey));
+    }
+
+    long inflightReferencesForTest(String queueConsumerKey) {
+        return commands.zcard(inflightCommandsKey(queueConsumerKey));
+    }
+
+    void expireInflightForTest(String queueConsumerKey) {
+        String inflightKey = inflightCommandsKey(queueConsumerKey);
+        long expiredAt = System.currentTimeMillis() - 1L;
+        for (String encodedReference : commands.zrange(inflightKey, 0, -1)) {
+            commands.zadd(inflightKey, expiredAt, encodedReference);
+        }
+    }
+
+    void deleteCommandPayloadForTest(String deliveryQueueKey, String commandId) {
+        commands.hdel(commandStoreKey(deliveryQueueKey), commandId);
+        commands.zrem(commandRetentionDeadlineKey(deliveryQueueKey), commandId);
+    }
+
+    void pushReadyReferenceForTest(String queueConsumerKey, String encodedReference) {
+        commands.rpush(readyCommandsKey(queueConsumerKey), encodedReference);
+    }
+
+    String encodeReferenceForTest(DeliveryCommandReference reference) {
+        return encodeReference(reference);
+    }
+
     void clearForTest(String deliveryQueueKey) {
         String normalizedQueueKey = normalizeRequired(deliveryQueueKey, "deliveryQueueKey");
         for (String queueConsumerKey : commands.smembers(queueConsumersKey(normalizedQueueKey))) {
@@ -331,7 +378,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
             commands.del(queueConsumerKey(queueConsumerKey));
         }
         commands.del(commandStoreKey(normalizedQueueKey));
-        commands.del(commandDeadlineKey(normalizedQueueKey));
+        commands.del(commandRetentionDeadlineKey(normalizedQueueKey));
         commands.del(queueConsumersKey(normalizedQueueKey));
         commands.del(selectedWorkerConsumersKey(normalizedQueueKey));
         commands.del(selectedWorkerConsumerDeadlinesKey(normalizedQueueKey));
@@ -343,9 +390,27 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                 deliveryBucketId,
                 selectedWorkerId,
                 queueConsumerKey,
+                queueConsumerKey,
                 "websocket",
                 System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5L)
         ));
+    }
+
+    private String claimReadyReference(String queueConsumerKey) {
+        Object raw = commands.eval(
+                CLAIM_READY_REFERENCE_SCRIPT,
+                ScriptOutputType.VALUE,
+                new String[]{
+                        readyCommandsKey(queueConsumerKey),
+                        inflightCommandsKey(queueConsumerKey)
+                },
+                Long.toString(System.currentTimeMillis() + DEFAULT_VISIBILITY_TIMEOUT_MILLIS)
+        );
+        return raw instanceof String value ? value : null;
+    }
+
+    private void removeInflightClaim(String queueConsumerKey, String encodedReference) {
+        commands.zrem(inflightCommandsKey(queueConsumerKey), encodedReference);
     }
 
     private void reclaimExpiredInflight(String queueConsumerKey) {
@@ -390,10 +455,10 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                 + ":commands";
     }
 
-    private String commandDeadlineKey(String deliveryQueueKey) {
+    private String commandRetentionDeadlineKey(String deliveryQueueKey) {
         return namespacePrefix
                 + ":q:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"))
-                + ":command-deadlines";
+                + ":command-retention-deadlines";
     }
 
     private String readyCommandsKey(String queueConsumerKey) {
@@ -469,6 +534,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                 CONSUMER_EVIDENCE_VERSION,
                 encodeToken(claim.selectedWorkerId()),
                 encodeToken(claim.queueConsumerKey()),
+                encodeToken(claim.consumerEvidenceId()),
                 encodeToken(claim.adapterId()),
                 Long.toString(claim.leaseExpireAtEpochMillis())
         );
@@ -479,14 +545,15 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
             return null;
         }
         String[] parts = encoded.split("\\|", -1);
-        if (parts.length != 5 || !CONSUMER_EVIDENCE_VERSION.equals(parts[0])) {
+        if (parts.length != 6 || !CONSUMER_EVIDENCE_VERSION.equals(parts[0])) {
             return null;
         }
         return new ConsumerEvidence(
                 decodeToken(parts[1]),
                 decodeToken(parts[2]),
                 decodeToken(parts[3]),
-                parseLong(parts[4])
+                decodeToken(parts[4]),
+                parseLong(parts[5])
         );
     }
 
@@ -514,6 +581,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
 
     private record ConsumerEvidence(String selectedWorkerId,
                                     String queueConsumerKey,
+                                    String consumerEvidenceId,
                                     String adapterId,
                                     long leaseExpireAtEpochMillis) {
     }

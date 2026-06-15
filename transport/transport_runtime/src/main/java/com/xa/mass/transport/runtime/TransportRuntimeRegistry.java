@@ -2,6 +2,8 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.worker.WorkerAdapter;
 
 import java.util.LinkedHashMap;
@@ -25,6 +27,8 @@ public final class TransportRuntimeRegistry {
 
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final TransportRouteOwnerStore routeOwnerStore;
+    private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
+    private final String deliveryCommandConsumerKey;
     private final List<TransportBinding> bindings;
     private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
@@ -32,8 +36,24 @@ public final class TransportRuntimeRegistry {
     public TransportRuntimeRegistry(TaskResultIngestChannel taskResultIngestChannel,
                                     TransportRouteOwnerStore routeOwnerStore,
                                     List<TransportBinding> bindings) {
+        this(taskResultIngestChannel,
+                routeOwnerStore,
+                NoopDeliveryCommandConsumerRegistry.INSTANCE,
+                "local",
+                bindings);
+    }
+
+    public TransportRuntimeRegistry(TaskResultIngestChannel taskResultIngestChannel,
+                                    TransportRouteOwnerStore routeOwnerStore,
+                                    DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
+                                    String deliveryCommandConsumerKey,
+                                    List<TransportBinding> bindings) {
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
+        this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
+                ? deliveryCommandConsumerRegistry
+                : NoopDeliveryCommandConsumerRegistry.INSTANCE;
+        this.deliveryCommandConsumerKey = requireText(deliveryCommandConsumerKey, "deliveryCommandConsumerKey");
         this.bindings = List.copyOf(bindings);
         if (this.bindings.isEmpty()) {
             throw new IllegalArgumentException("At least one transport binding is required");
@@ -99,7 +119,9 @@ public final class TransportRuntimeRegistry {
                 binding.getTransportHint(),
                 binding.getTaskPullChannel(),
                 taskResultIngestChannel,
-                routeOwnerStore
+                routeOwnerStore,
+                deliveryCommandConsumerRegistry,
+                deliveryCommandConsumerKey
         );
     }
 
@@ -145,5 +167,12 @@ public final class TransportRuntimeRegistry {
             return null;
         }
         return adapterId.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static String requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 }

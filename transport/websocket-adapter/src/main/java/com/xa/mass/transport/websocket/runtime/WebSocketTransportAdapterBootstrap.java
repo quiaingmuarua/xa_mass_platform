@@ -66,6 +66,10 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                         + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
             }
             sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
+            sessionManager.setDeliveryCommandConsumerRegistry(
+                    context.getDeliveryCommandConsumerRegistry(),
+                    context.getDeliveryCommandConsumerKey()
+            );
             sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
             return sessionManager;
         }
@@ -76,6 +80,10 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                             () -> new ServerSessionManager(config.getAdapterId())
             );
             sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
+            sessionManager.setDeliveryCommandConsumerRegistry(
+                    context.getDeliveryCommandConsumerRegistry(),
+                    context.getDeliveryCommandConsumerKey()
+            );
             sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
             return sessionManager;
         }

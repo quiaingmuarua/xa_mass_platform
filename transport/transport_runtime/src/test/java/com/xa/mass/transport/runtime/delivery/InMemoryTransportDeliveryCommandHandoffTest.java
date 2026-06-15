@@ -7,6 +7,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class InMemoryTransportDeliveryCommandHandoffTest {
@@ -54,6 +55,43 @@ class InMemoryTransportDeliveryCommandHandoffTest {
     }
 
     @Test
+    void uncompletedClaimReturnsToReadyAfterVisibilityTimeout() throws Exception {
+        InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(2, 30_000L);
+        claim(handoff, "worker-1", "node-1", "websocket");
+        handoff.offer(DeliveryCommandFixtures.offer(
+                DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+        ));
+
+        DeliveryCommandBatch first = handoff.poll(100L);
+        assertNotNull(first);
+        assertEquals(1L, handoff.inflightClaimsForTest());
+        assertNull(handoff.poll(0L));
+
+        handoff.expireInflightForTest();
+        DeliveryCommandBatch redelivered = handoff.poll(100L);
+
+        assertNotNull(redelivered);
+        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(redelivered));
+        assertEquals(1L, handoff.inflightClaimsForTest());
+    }
+
+    @Test
+    void completeAcknowledgesClaimedCommand() throws Exception {
+        InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(2, 30_000L);
+        claim(handoff, "worker-1", "node-1", "websocket");
+        handoff.offer(DeliveryCommandFixtures.offer(
+                DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+        ));
+        DeliveryCommandBatch batch = handoff.poll(100L);
+
+        assertNotNull(batch);
+        handoff.complete(batch, List.of());
+
+        assertEquals(0L, handoff.inflightClaimsForTest());
+        assertNull(handoff.poll(0L));
+    }
+
+    @Test
     void missingConsumerEvidenceReturnsNoEndpoint() {
         InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(1);
 
@@ -65,14 +103,46 @@ class InMemoryTransportDeliveryCommandHandoffTest {
         );
     }
 
+    @Test
+    void staleReleaseDoesNotRemoveNewConsumerEvidenceOnSameQueueConsumer() {
+        InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(2);
+        claim(handoff, "worker-1", "node-1", "conn-old", "websocket");
+        claim(handoff, "worker-1", "node-1", "conn-new", "websocket");
+
+        handoff.releaseConsumer(new DeliveryCommandConsumerClaim(
+                "bucket-1",
+                "worker-1",
+                "node-1",
+                "conn-old",
+                "websocket",
+                0L
+        ));
+
+        assertEquals(
+                List.of(DispatchOutcomeStatus.QUEUED),
+                handoff.offer(DeliveryCommandFixtures.offer(
+                        DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+                )).stream().map(outcome -> outcome.getStatus()).toList()
+        );
+    }
+
     private static void claim(InMemoryTransportDeliveryCommandHandoff handoff,
                               String workerId,
                               String queueConsumerKey,
+                              String adapterId) {
+        claim(handoff, workerId, queueConsumerKey, queueConsumerKey, adapterId);
+    }
+
+    private static void claim(InMemoryTransportDeliveryCommandHandoff handoff,
+                              String workerId,
+                              String queueConsumerKey,
+                              String consumerEvidenceId,
                               String adapterId) {
         handoff.claimConsumer(new DeliveryCommandConsumerClaim(
                 "bucket-1",
                 workerId,
                 queueConsumerKey,
+                consumerEvidenceId,
                 adapterId,
                 System.currentTimeMillis() + 30_000L
         ));

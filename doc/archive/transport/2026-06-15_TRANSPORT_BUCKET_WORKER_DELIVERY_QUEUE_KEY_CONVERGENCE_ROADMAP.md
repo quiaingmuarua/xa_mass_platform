@@ -1,6 +1,18 @@
 # Transport Bucket Worker Delivery Queue Key Convergence Roadmap
 
-Status: proposed direction document.
+Status: complete; archived after residue scan.
+
+Archive note: the previous archive gate was route-owner owning the
+selected-worker assigned-delivery projection. That blocker has been removed:
+
+- Redis route-owner no longer writes
+  `bucket:<encodedDeliveryBucketId>:worker:<encodedWorkerId>:owner`.
+- `DeliveryCommandConsumerProjectingRouteOwnerStore` has been deleted.
+- `TRANSPORT_BOUNDARY_BASELINE.md` and `TransportRedisKeyspaceGuardTest` no
+  longer list the bucket-worker owner pointer as current Redis keyspace truth.
+
+The successor owner for non-DQK delivery executor residue is
+`TRANSPORT_DELIVERY_EXECUTOR_RESIDUE_CONVERGENCE_ROADMAP.md`.
 
 ## Summary
 
@@ -50,7 +62,7 @@ selectedWorkerId -> delivery constraint
 queue push / drain / final-hop execution
 ```
 
-This roadmap replaces the current route-owner pointer model:
+Full completion of this roadmap replaced the former route-owner pointer model:
 
 ```text
 bucket + worker -> routeKey + connectionId -> route consumer record
@@ -62,6 +74,9 @@ with a direct bucket queue rule:
 bucket -> deliveryQueueKey
 ```
 
+Current code uses the direct bucket queue rule; route-owner no longer provides
+the selected-worker assigned-delivery pointer or consumer-evidence bridge.
+
 The current `TransportDeliveryCommandHandoff` shape also needs to be narrowed.
 It currently forces submitters to know `deliveryLaneKey` and
 `targetTransportNodeId`, which leaks transport internals into a task-delivery
@@ -72,7 +87,7 @@ This roadmap does not rename adapter identities. Existing transport-internal
 engine/starter, and public worker contracts must not use it as a delivery
 target.
 
-## Current Code Observations
+## Before Convergence Observations
 
 - `RedisTransportRouteOwnerStore.endpointForSelectedWorker(...)` reads a
   per-worker top-level string key:
@@ -248,8 +263,8 @@ Delivery command handoff:
 xa:mass:transport:delivery-command:v1:q:<encodedDeliveryQueueKey>:commands
   HASH commandId -> encoded DeliveryCommand
 
-xa:mass:transport:delivery-command:v1:q:<encodedDeliveryQueueKey>:command-deadlines
-  ZSET commandId -> cleanup deadline
+xa:mass:transport:delivery-command:v1:q:<encodedDeliveryQueueKey>:command-retention-deadlines
+  ZSET commandId -> retention cleanup deadline
 
 xa:mass:transport:delivery-command:v1:consumer:<encodedQueueConsumerKey>:ready-commands
   LIST of command refs owned by that consumer
@@ -296,25 +311,20 @@ The selected-worker consumer evidence is endpoint/wakeup evidence. It is not a
 producer-visible queue-key directory, worker owner index, owner shard, or
 selected-worker-to-queue-key mapping.
 
-Command lifecycle is part of the handoff contract:
+Minimal delivery-executor consistency is part of the handoff contract:
 
 - `offer` atomically writes the command payload and the consumer ready
   reference.
 - `claim` atomically moves one ready reference into the consumer inflight set
   with a visibility timeout before the listener materializes the command.
-- the listener acknowledges the inflight reference and deletes the command
-  payload only after final-hop success is observed or a retryable
-  delivery-failure event has been durably accepted.
-- durable failure means `TransportDeliveryFailureHandler.handle(...)` returned
-  true, or an equivalent failure-channel write was acknowledged by the concrete
-  implementation.
-- if final-hop dispatch fails before durable failure emission, the reference
-  remains inflight until the visibility timeout and is then requeued or marked
-  retryable according to the same failure path.
-- stale ready references do not acknowledge or delete the command payload until
-  a retryable failure outcome is recorded.
-- command deadlines bound orphan cleanup if a consumer crashes between command
-  storage and final observation.
+- `complete` acknowledges the inflight reference and deletes the command
+  payload after the listener has produced delivery outcome/failure evidence.
+- if final-hop dispatch or failure emission throws before `complete`, the
+  reference remains inflight until the visibility timeout and is requeued.
+- stale ready references are not delivered to the wrong consumer; the claimed
+  ref is removed from the old inflight set before it is forwarded or discarded.
+- retention deadlines are cleanup metadata only. They are not task attempt
+  timeout, retry, reassign, compensation, or final recovery truth.
 
 The first slice explicitly forbids implementing `q:<deliveryQueueKey>` as a
 single shared FIFO list. Bucket-level command storage is allowed only when the
@@ -363,10 +373,11 @@ queue key such as:
 bucket:<encodedDeliveryBucketId>
 ```
 
-Producer/starter code passes `deliveryBucketId + selectedWorkerId + payload`.
-It does not call a worker queue lookup, does not receive `deliveryQueueKey`
-from route-owner state, and must not include `queueConsumerKey`, route key,
-connection/session facts, adapter id, or transport node id.
+Producer/starter code passes `deliveryBucketId + selectedWorkerId + opaque
+payload + opaque correlation`. It does not call a worker queue lookup, does not
+receive `deliveryQueueKey` from route-owner state, and must not include
+`queueConsumerKey`, route key, connection/session facts, adapter id, or
+transport node id.
 
 `DeliveryCommand` keeps both correctness facts:
 
@@ -374,14 +385,17 @@ connection/session facts, adapter id, or transport node id.
 record DeliveryCommand(
     String deliveryBucketId,
     String selectedWorkerId,
-    TaskDispatchPayload payload,
-    TaskDispatchExecutionContext executionContext
+    String payload,
+    String correlationRef
 ) {}
 ```
 
 `deliveryBucketId` chooses the handoff queue. `selectedWorkerId` prevents
 wrong-worker delivery inside that queue. These two facts must not be collapsed
-into one minted worker queue id.
+into one minted worker queue id. Payload and correlation ownership is defined
+by `TRANSPORT_OPAQUE_DELIVERY_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md`; the
+queue-key roadmap must not preserve task-shaped payload/context fields as a
+handoff requirement.
 
 Add a handoff-internal consumer context:
 
@@ -559,8 +573,9 @@ Acceptance:
 - Decision records the selected-worker-safe storage model: command store plus
   per-consumer ready references. A single shared bucket FIFO is explicitly
   rejected for DQK-1.
-- Decision records command claim/inflight/visibility-timeout/ack/requeue rules
-  and orphan cleanup deadlines.
+- Decision records minimal delivery-executor claim/inflight/visibility-timeout
+  and ack rules. Retry, reassign, compensation, attempt timeout, final recovery,
+  and broad orphan cleanup remain engine or later-phase concerns.
 - Decision records the queue-consumer context shape and confirms it is opaque
   to engine/starter.
 - Inventory names tests that currently assert old `routeKey + connectionId`
@@ -585,7 +600,7 @@ compile-safe sub-slices:
     `deliveryLaneKey`, or `targetTransportNodeId`.
 - DQK-1B Redis command-store state machine:
   - implement Redis command store, ready refs, inflight refs, visibility
-    timeout, ack, requeue, failure-durable ack, and cleanup;
+    timeout, ack, and stale-owner forwarding;
   - prove Redis key shape and no lane/node/owner-shard residue.
 
 Scope:
@@ -619,10 +634,10 @@ Scope:
 - Implement selected-worker-safe queue consumption with command storage plus
   per-consumer ready references. Do not implement DQK-1 as a single shared
   bucket FIFO, poll-and-discard queue, or scan queue.
-- Implement bounded command lifecycle cleanup: command payloads are removed
-  after final-hop success or durable retryable failure emission. Redis
-  implementation uses inflight refs with visibility timeout; orphan command
-  payloads are pruned by deadline.
+- Implement minimal delivery-executor consistency: accepted commands are not
+  destructively claimed by the wrong consumer, claimed refs enter inflight
+  before materialization, `complete` acks and deletes payloads, and unacked refs
+  return to ready through visibility timeout.
 - Keep route-owner/session evidence only for consumer/final-hop endpoint
   feasibility and stale-session protection.
 
@@ -657,15 +672,14 @@ Acceptance:
   evidence before final-hop dispatch. If ownership moved, the ref is forwarded
   to the current consumer; if no live evidence remains, it is reported through
   the retryable endpoint-unavailable path, not delivered to another worker.
-- Command payload is deleted only after final-hop success or after retryable
-  delivery failure has been durably accepted by the failure channel; if failure
-  emission fails, the command stays visible for retry/cleanup.
-- Durable failure acceptance is explicit: for the current
-  `TransportDeliveryFailureHandler` shape, `handle(...) == true` is the durable
-  acceptance signal. `false` keeps the ref inflight until timeout/requeue.
-- Redis cleanup uses `q:<deliveryQueueKey>:command-deadlines` and
-  `selected-worker-consumer-deadlines:<deliveryQueueKey>` plus inflight
-  visibility deadlines; no cleanup path scans all workers in a bucket hash.
+- Command payload is deleted by `complete` only after the listener returns
+  delivery outcomes. If listener or failure emission throws, the pump does not
+  call `complete`; the ref remains inflight until visibility timeout.
+- Redis retention metadata uses
+  `q:<deliveryQueueKey>:command-retention-deadlines`. It is cleanup metadata
+  only, not task attempt timeout or retry ownership.
+- Retry, reassign, compensation, failure policy, final recovery, broad orphan
+  cleanup, and consumer-deadline sweep are not DQK-1 completion gates.
 - Handoff tests prove two workers in one bucket share the same derived
   delivery queue key but cannot cross-consume commands.
 - Reconnect for the same bucket/worker does not change the derived queue key.
@@ -787,6 +801,10 @@ Acceptance:
 
 Goal: make Redis keyspace match the new owner model.
 
+Current state: complete. Selected-worker consumer evidence ownership has moved
+into adapter/session registration, and route-owner no longer writes the
+bucket-worker pointer.
+
 Scope:
 
 - Update `transport/TRANSPORT_BOUNDARY_BASELINE.md`.
@@ -801,7 +819,7 @@ Acceptance:
 
   ```text
   delivery-command:q:<encodedDeliveryQueueKey>:commands
-  delivery-command:q:<encodedDeliveryQueueKey>:command-deadlines
+  delivery-command:q:<encodedDeliveryQueueKey>:command-retention-deadlines
   delivery-command:consumer:<encodedQueueConsumerKey>:ready-commands
   delivery-command:consumer:<encodedQueueConsumerKey>:inflight-commands
   delivery-command:queue-consumers:<encodedDeliveryQueueKey>
@@ -845,6 +863,14 @@ Acceptance:
   module-wide `adapterId` configuration residue is tracked outside
   assigned-delivery producer contracts.
 
+Archive gate result:
+
+- `RedisTransportRouteOwnerStore` no longer contains `bucketWorkerKey(...)`.
+- `TransportRedisKeyspaceGuardTest` / `TRANSPORT_BOUNDARY_BASELINE.md` no
+  longer require `bucket:<encodedDeliveryBucketId>:worker:<encodedWorkerId>:owner`.
+- `DeliveryCommandConsumerProjectingRouteOwnerStore` no longer exists in
+  production assembly.
+
 ## Verification Candidates
 
 Focused compile:
@@ -866,13 +892,14 @@ DQK-1 direct Redis proof after the new test lands:
 ```
 
 This test must assert that assigned delivery writes `q:*:commands`,
-`q:*:command-deadlines`, `consumer:*:ready-commands`,
+`q:*:command-retention-deadlines`, `consumer:*:ready-commands`,
 `consumer:*:inflight-commands`, `selected-worker-consumers:*`, and
 `selected-worker-consumer-deadlines:*`; it must also assert that assigned
 delivery does not write `lane:*`, `ready-lanes`,
 `bucket:<bucket>:owner-shard:*`, or `bucket + worker -> deliveryQueueKey`
-indexes. It must cover success ack, durable failure ack, failure handler
-returning false, inflight visibility timeout, and stale consumer rejection.
+indexes. It must cover atomic ready claim, ack, inflight visibility timeout,
+stale consumer forwarding, missing payload cleanup, and invalid reference
+cleanup.
 
 Adapter selected-worker tests:
 
@@ -887,6 +914,10 @@ SDK/server representative proof:
 ```
 
 ## Roadmap Completion Criteria
+
+These criteria are roadmap-level gates, not proof that the current worktree has
+satisfied every item. The roadmap may remain `mainline unblocked` while these
+residue gates are still open.
 
 - Assigned delivery producer queue selection is
   `AssignedDeliveryCommandQueueKey.queueKeyFor(deliveryBucketId)`.
@@ -911,9 +942,12 @@ SDK/server representative proof:
   one bucket queue cannot cross-consume commands.
 - Redis handoff does not use a single shared bucket FIFO list, poll-and-discard
   queue, or scan queue for assigned delivery.
-- Command payload lifecycle is explicit: ready claim, inflight visibility
-  timeout, success ack, durable failure ack, false failure-handler requeue, and
-  deadline-based orphan cleanup.
+- Minimal delivery-executor consistency is explicit: atomic ready claim,
+  inflight visibility timeout, ack on `complete`, stale-owner forwarding, and
+  no wrong-consumer destructive pop.
+- Retry policy, reassign, compensation, attempt timeout, final recovery, broad
+  orphan cleanup, and consumer-deadline sweep remain engine-owned or Phase 2
+  follow-up concerns, not DQK-1 completion gates.
 - Disconnect/reconnect with unchanged binding inputs advances private session
   generation but does not change the bucket-derived producer-visible queue key.
 - No `bucket + worker -> deliveryQueueKey` Redis/index mapping exists.
@@ -924,4 +958,10 @@ SDK/server representative proof:
 - Route/session lease tokens remain private to route-owner mutation.
 - Redis key manifest, proof registry, and guards match the implemented key
   model.
+- Route-owner Redis no longer retains
+  `bucket:<encodedDeliveryBucketId>:worker:<encodedWorkerId>:owner` as assigned
+  delivery truth.
+- `DeliveryCommandConsumerProjectingRouteOwnerStore` no longer exists in
+  production assembly; adapter/session registration owns selected-worker
+  delivery consumer evidence directly.
 - Focused compile and route-owner/handoff/adapter selected-worker proof pass.

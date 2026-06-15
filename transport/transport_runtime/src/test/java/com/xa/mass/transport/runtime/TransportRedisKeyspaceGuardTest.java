@@ -32,10 +32,9 @@ class TransportRedisKeyspaceGuardTest {
 
         for (String keyFamily : List.of(
                 "route:<encodedRouteKey>:consumers",
-                "bucket:<encodedDeliveryBucketId>:worker:<encodedWorkerId>:owner",
                 "q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>",
                 "q:<encodedDeliveryQueueKey>:commands",
-                "q:<encodedDeliveryQueueKey>:command-deadlines",
+                "q:<encodedDeliveryQueueKey>:command-retention-deadlines",
                 "consumer:<encodedQueueConsumerKey>:ready-commands",
                 "consumer:<encodedQueueConsumerKey>:inflight-commands",
                 "queue-consumers:<encodedDeliveryQueueKey>",

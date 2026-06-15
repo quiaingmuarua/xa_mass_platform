@@ -8,6 +8,8 @@ import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchContent;
 import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import org.junit.jupiter.api.Test;
@@ -113,6 +115,28 @@ class PollingWorkerAdapterTest {
         assertTrue(routeOwnerStore.currentOwners("route-1").isEmpty());
     }
 
+    @Test
+    void routeOwnerAnnouncementsClaimAndReleaseSelectedWorkerConsumerEvidence() {
+        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "poll-node-1");
+        RecordingConsumerRegistry registry = new RecordingConsumerRegistry();
+        PollingWorkerAdapter adapter = new PollingWorkerAdapter(
+                routeOwnerStore,
+                deliveryService(),
+                registry,
+                "poll-node-1"
+        );
+
+        adapter.announceWorkerOnline("worker-1", "bucket-1", "route-1", "conn-1", "poll connected");
+        adapter.announceWorkerOffline("worker-1", "bucket-1", "route-1", "conn-1", "poll disconnect");
+
+        assertEquals("bucket-1", registry.claimed.deliveryBucketId());
+        assertEquals("worker-1", registry.claimed.selectedWorkerId());
+        assertEquals("poll-node-1", registry.claimed.queueConsumerKey());
+        assertEquals("conn-1", registry.claimed.consumerEvidenceId());
+        assertEquals(PollingWorkerAdapter.PROTOCOL, registry.claimed.adapterId());
+        assertEquals("conn-1", registry.released.consumerEvidenceId());
+    }
+
     private PollingWorkerAdapter adapter() {
         return adapter(new InMemoryTransportRouteOwnerStore());
     }
@@ -120,11 +144,15 @@ class PollingWorkerAdapterTest {
     private PollingWorkerAdapter adapter(InMemoryTransportRouteOwnerStore routeOwnerStore) {
         return new PollingWorkerAdapter(
                 routeOwnerStore,
-                new TransportDeliveryService(
-                        new InMemoryTransportDeliveryStore(
-                                InMemoryTransportDeliveryStore.DEFAULT_MAX_QUEUED_ITEMS,
-                                PollingWorkerAdapter.MAX_INBOX_SIZE
-                        )
+                deliveryService()
+        );
+    }
+
+    private TransportDeliveryService deliveryService() {
+        return new TransportDeliveryService(
+                new InMemoryTransportDeliveryStore(
+                        InMemoryTransportDeliveryStore.DEFAULT_MAX_QUEUED_ITEMS,
+                        PollingWorkerAdapter.MAX_INBOX_SIZE
                 )
         );
     }
@@ -148,6 +176,22 @@ class PollingWorkerAdapterTest {
                 new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1"),
                 1L
         );
+    }
+
+    private static final class RecordingConsumerRegistry implements DeliveryCommandConsumerRegistry {
+
+        private DeliveryCommandConsumerClaim claimed;
+        private DeliveryCommandConsumerClaim released;
+
+        @Override
+        public void claimConsumer(DeliveryCommandConsumerClaim claim) {
+            this.claimed = claim;
+        }
+
+        @Override
+        public void releaseConsumer(DeliveryCommandConsumerClaim claim) {
+            this.released = claim;
+        }
     }
 }
 

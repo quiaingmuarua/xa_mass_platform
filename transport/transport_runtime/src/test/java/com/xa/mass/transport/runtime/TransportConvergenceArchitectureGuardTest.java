@@ -248,9 +248,24 @@ class TransportConvergenceArchitectureGuardTest {
                 "\":route:\"",
                 "ready-routes",
                 "routeQueueKey(",
+                "commands.lpop(",
                 "ready-lanes",
                 "targetTransportNodeId",
                 "\":lane:\""
+        );
+    }
+
+    @Test
+    void routeOwnerStoreDoesNotProjectBucketWorkerOwnerPointers() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/route")),
+                "bucketWorkerKey",
+                "\":bucket:\"",
+                "\":worker:\"",
+                "\":owner\""
+        );
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DeliveryCommandConsumerProjectingRouteOwnerStore.java")
         );
     }
 

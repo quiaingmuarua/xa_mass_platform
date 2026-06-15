@@ -13,6 +13,9 @@ import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.route.TransportRouteOwnerClaim;
 import com.xa.mass.transport.route.TransportRouteOwnerRecord;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 
 import java.util.List;
 import java.util.Map;
@@ -32,6 +35,8 @@ public class PullWorkerSession {
     private final TaskPullChannel taskPullChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final TransportRouteOwnerStore routeOwnerStore;
+    private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
+    private final String deliveryCommandConsumerKey;
     private final WorkerPresenceIngress workerPresenceIngress;
     private final String transportHint;
 
@@ -42,6 +47,30 @@ public class PullWorkerSession {
                              TaskPullChannel taskPullChannel,
                              TaskResultIngestChannel taskResultIngestChannel,
                              TransportRouteOwnerStore routeOwnerStore,
+                             WorkerPresenceIngress workerPresenceIngress,
+                             String transportHint) {
+        this(workerId,
+                workerGroupId,
+                adapterId,
+                connectionId,
+                taskPullChannel,
+                taskResultIngestChannel,
+                routeOwnerStore,
+                NoopDeliveryCommandConsumerRegistry.INSTANCE,
+                "local",
+                workerPresenceIngress,
+                transportHint);
+    }
+
+    public PullWorkerSession(String workerId,
+                             String workerGroupId,
+                             String adapterId,
+                             String connectionId,
+                             TaskPullChannel taskPullChannel,
+                             TaskResultIngestChannel taskResultIngestChannel,
+                             TransportRouteOwnerStore routeOwnerStore,
+                             DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
+                             String deliveryCommandConsumerKey,
                              WorkerPresenceIngress workerPresenceIngress,
                              String transportHint) {
         if (workerId == null || workerId.isBlank()) {
@@ -55,6 +84,10 @@ public class PullWorkerSession {
         this.taskPullChannel = Objects.requireNonNull(taskPullChannel, "taskPullChannel");
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
+        this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
+                ? deliveryCommandConsumerRegistry
+                : NoopDeliveryCommandConsumerRegistry.INSTANCE;
+        this.deliveryCommandConsumerKey = requireText(deliveryCommandConsumerKey, "deliveryCommandConsumerKey");
         this.workerPresenceIngress = workerPresenceIngress != null
                 ? workerPresenceIngress
                 : NoopWorkerPresenceIngress.INSTANCE;
@@ -91,7 +124,12 @@ public class PullWorkerSession {
                 normalizedReason,
                 connectionId
         ));
-        return isCurrentOwner(routeOwnerStore.claimRouteOwner(routeOwnerClaim(normalizedReason)));
+        TransportRouteOwnerRecord owner = routeOwnerStore.claimRouteOwner(routeOwnerClaim(normalizedReason));
+        if (isCurrentOwner(owner)) {
+            claimDeliveryConsumer(owner);
+            return true;
+        }
+        return false;
     }
 
     public void disconnect() {
@@ -112,7 +150,9 @@ public class PullWorkerSession {
                 normalizedReason,
                 connectionId
         ));
-        return isCurrentOwner(routeOwnerStore.releaseRouteOwner(routeOwnerClaim(normalizedReason)));
+        boolean releasedCurrent = isCurrentOwner(routeOwnerStore.releaseRouteOwner(routeOwnerClaim(normalizedReason)));
+        releaseDeliveryConsumer();
+        return releasedCurrent;
     }
 
     public void heartbeat() {
@@ -133,7 +173,13 @@ public class PullWorkerSession {
                 normalizedReason,
                 connectionId
         ));
-        return isCurrentOwner(routeOwnerStore.refreshHeartbeat(routeOwnerClaim(normalizedReason)));
+        TransportRouteOwnerRecord owner = routeOwnerStore.refreshHeartbeat(routeOwnerClaim(normalizedReason));
+        if (isCurrentOwner(owner)) {
+            claimDeliveryConsumer(owner);
+            return true;
+        }
+        releaseDeliveryConsumer();
+        return false;
     }
 
     public List<PulledTaskDispatch> poll(int maxMessages) {
@@ -221,6 +267,28 @@ public class PullWorkerSession {
                 && adapterId.equals(owner.getAdapterId())
                 && routeKey.equals(owner.getRouteKey())
                 && connectionId.equals(owner.getConnectionId());
+    }
+
+    private void claimDeliveryConsumer(TransportRouteOwnerRecord owner) {
+        deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
+                owner.getDeliveryBucketId(),
+                owner.getWorkerId(),
+                deliveryCommandConsumerKey,
+                owner.getConnectionId(),
+                owner.getAdapterId(),
+                owner.getLeaseExpireAtEpochMillis()
+        ));
+    }
+
+    private void releaseDeliveryConsumer() {
+        deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
+                workerGroupId,
+                workerId,
+                deliveryCommandConsumerKey,
+                connectionId,
+                adapterId,
+                0L
+        ));
     }
 
     private TransportRouteOwnerClaim routeOwnerClaim(String reason) {

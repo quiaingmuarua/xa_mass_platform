@@ -15,6 +15,7 @@ import io.lettuce.core.api.sync.RedisCommands;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -22,9 +23,9 @@ import java.util.Optional;
 /**
  * Redis-backed transport route-consumer heartbeat store.
  *
- * <p>The runtime owner is a routeKey-partitioned consumer hash plus a derived
- * bucket-worker current-consumer pointer validated against the live consumer
- * lease.</p>
+ * <p>The runtime owner is a routeKey-partitioned consumer hash plus a lease
+ * deadline index. Selected-worker lookup is retained only as an inspection view
+ * over live route evidence, not as an assigned-delivery routing pointer.</p>
  */
 public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerStore,
         WorkerDispatchRouteOwnerView,
@@ -114,7 +115,7 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
     @Override
     public TransportRouteOwnerRecord claimRouteOwner(TransportRouteOwnerClaim claim) {
         Objects.requireNonNull(claim, "claim");
-        long now = System.currentTimeMillis();
+        long now = nextUpdatedAt(claim.deliveryBucketId(), claim.workerId());
         String normalizedConnectionId = normalizeNullable(claim.connectionId());
         TransportRouteOwnerRecord next = new TransportRouteOwnerRecord(
                 claim.workerId(),
@@ -142,10 +143,10 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
         TransportRouteOwnerRecord previous = readOwnerRecord(normalizedRouteKey, normalizedConnectionId);
         if (previous == null
                 || !sameClaimConsumer(previous, claim)
-                || !isCurrentBucketWorkerConsumer(previous)) {
+                || !isLatestSelectedWorkerConsumer(previous)) {
             return previous;
         }
-        long now = System.currentTimeMillis();
+        long now = nextUpdatedAt(previous.getDeliveryBucketId(), previous.getWorkerId());
         TransportRouteOwnerRecord next = new TransportRouteOwnerRecord(
                 previous.getWorkerId(),
                 previous.getDeliveryBucketId(),
@@ -211,21 +212,13 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
         if (normalizedBucketId == null || normalizedWorkerId == null) {
             return Optional.empty();
         }
-        String indexKey = bucketWorkerKey(normalizedBucketId, normalizedWorkerId);
-        RouteConsumerMember member = decodeRouteConsumerMember(commands.get(indexKey));
-        if (member == null) {
-            return Optional.empty();
-        }
-        TransportRouteOwnerRecord owner = readOwnerRecord(member.routeKey(), member.connectionId());
         long now = System.currentTimeMillis();
-        if (owner == null
-                || !owner.isLeaseActive(now)
-                || !normalizedBucketId.equals(owner.getDeliveryBucketId())
-                || !normalizedWorkerId.equals(owner.getWorkerId())) {
-            commands.del(indexKey);
-            return Optional.empty();
-        }
-        return Optional.of(endpointFromRecord(owner));
+        return readAllOwnerRecords().stream()
+                .filter(owner -> normalizedBucketId.equals(owner.getDeliveryBucketId()))
+                .filter(owner -> normalizedWorkerId.equals(owner.getWorkerId()))
+                .filter(owner -> owner.isLeaseActive(now))
+                .max(Comparator.comparingLong(TransportRouteOwnerRecord::getUpdatedAtEpochMillis))
+                .map(RedisTransportRouteOwnerStore::endpointFromRecord);
     }
 
     @Override
@@ -300,25 +293,18 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
                 .toList();
     }
 
-    private void persistOwner(TransportRouteOwnerRecord owner, boolean replaceCurrentConsumer) {
-        commands.hset(routeConsumersKey(owner.getRouteKey()), owner.getConnectionId(), encodeOwnerRecord(owner));
-        updateBucketWorkerPointer(owner, replaceCurrentConsumer);
-        commands.zadd(deadlineKey(), owner.getLeaseExpireAtEpochMillis(), routeConsumerMember(owner));
+    private List<TransportRouteOwnerRecord> readAllOwnerRecords() {
+        return commands.zrange(deadlineKey(), 0, -1).stream()
+                .map(RedisTransportRouteOwnerStore::decodeRouteConsumerMember)
+                .filter(Objects::nonNull)
+                .map(member -> readOwnerRecord(member.routeKey(), member.connectionId()))
+                .filter(Objects::nonNull)
+                .toList();
     }
 
-    private void updateBucketWorkerPointer(TransportRouteOwnerRecord owner, boolean replaceCurrentConsumer) {
-        String key = bucketWorkerKey(owner.getDeliveryBucketId(), owner.getWorkerId());
-        String ownerMember = routeConsumerMember(owner);
-        if (replaceCurrentConsumer) {
-            commands.set(key, ownerMember);
-            return;
-        }
-        RouteConsumerMember current = decodeRouteConsumerMember(commands.get(key));
-        if (current == null
-                || (owner.getRouteKey().equals(current.routeKey())
-                && owner.getConnectionId().equals(current.connectionId()))) {
-            commands.set(key, ownerMember);
-        }
+    private void persistOwner(TransportRouteOwnerRecord owner, boolean replaceCurrentConsumer) {
+        commands.hset(routeConsumersKey(owner.getRouteKey()), owner.getConnectionId(), encodeOwnerRecord(owner));
+        commands.zadd(deadlineKey(), owner.getLeaseExpireAtEpochMillis(), routeConsumerMember(owner));
     }
 
     private void removeOwner(TransportRouteOwnerRecord owner) {
@@ -328,20 +314,6 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
         commands.zrem(deadlineKey(), routeConsumerMember(routeKey, connectionId));
         if (commands.hlen(routeConsumersKey(routeKey)) == 0L) {
             commands.del(routeConsumersKey(routeKey));
-        }
-        clearBucketWorkerProjection(owner);
-    }
-
-    private void clearBucketWorkerProjection(TransportRouteOwnerRecord owner) {
-        if (owner == null || owner.getWorkerId() == null || owner.getDeliveryBucketId() == null) {
-            return;
-        }
-        String key = bucketWorkerKey(owner.getDeliveryBucketId(), owner.getWorkerId());
-        RouteConsumerMember current = decodeRouteConsumerMember(commands.get(key));
-        if (current != null
-                && owner.getRouteKey().equals(current.routeKey())
-                && owner.getConnectionId().equals(current.connectionId())) {
-            commands.del(key);
         }
     }
 
@@ -353,25 +325,6 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
         return namespacePrefix + ":deadline";
     }
 
-    private String bucketWorkerKey(String deliveryBucketId, String workerId) {
-        return namespacePrefix
-                + ":bucket:" + encodeKeyToken(deliveryBucketId)
-                + ":worker:" + encodeKeyToken(workerId)
-                + ":owner";
-    }
-
-    private boolean isCurrentBucketWorkerConsumer(TransportRouteOwnerRecord owner) {
-        if (owner == null || owner.getDeliveryBucketId() == null || owner.getWorkerId() == null) {
-            return false;
-        }
-        RouteConsumerMember current = decodeRouteConsumerMember(
-                commands.get(bucketWorkerKey(owner.getDeliveryBucketId(), owner.getWorkerId()))
-        );
-        return current != null
-                && owner.getRouteKey().equals(current.routeKey())
-                && owner.getConnectionId().equals(current.connectionId());
-    }
-
     private static boolean sameClaimConsumer(TransportRouteOwnerRecord owner, TransportRouteOwnerClaim claim) {
         return owner != null
                 && claim != null
@@ -380,6 +333,28 @@ public final class RedisTransportRouteOwnerStore implements TransportRouteOwnerS
                 && owner.getAdapterId().equals(claim.adapterId())
                 && owner.getRouteKey().equals(claim.routeKey())
                 && owner.getConnectionId().equals(claim.connectionId());
+    }
+
+    private boolean isLatestSelectedWorkerConsumer(TransportRouteOwnerRecord candidate) {
+        if (candidate == null) {
+            return false;
+        }
+        long candidateUpdatedAt = candidate.getUpdatedAtEpochMillis();
+        return readAllOwnerRecords().stream()
+                .filter(owner -> candidate.getDeliveryBucketId().equals(owner.getDeliveryBucketId()))
+                .filter(owner -> candidate.getWorkerId().equals(owner.getWorkerId()))
+                .noneMatch(owner -> owner.getUpdatedAtEpochMillis() > candidateUpdatedAt);
+    }
+
+    private long nextUpdatedAt(String deliveryBucketId, String workerId) {
+        long now = System.currentTimeMillis();
+        long max = readAllOwnerRecords().stream()
+                .filter(owner -> Objects.equals(deliveryBucketId, owner.getDeliveryBucketId()))
+                .filter(owner -> Objects.equals(workerId, owner.getWorkerId()))
+                .mapToLong(TransportRouteOwnerRecord::getUpdatedAtEpochMillis)
+                .max()
+                .orElse(0L);
+        return Math.max(now, max + 1L);
     }
 
     private static RouteConsumerEndpoint endpointFromRecord(TransportRouteOwnerRecord owner) {

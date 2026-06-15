@@ -113,7 +113,7 @@ class RedisTransportDeliveryCommandHandoffTest {
         List<String> keys = producerConnection.sync().keys(namespacePrefix + ":*");
 
         assertTrue(keys.stream().anyMatch(key -> key.contains(":q:") && key.endsWith(":commands")));
-        assertTrue(keys.stream().anyMatch(key -> key.endsWith(":command-deadlines")));
+        assertTrue(keys.stream().anyMatch(key -> key.endsWith(":command-retention-deadlines")));
         assertTrue(keys.stream().anyMatch(key -> key.endsWith(":queues")));
         assertTrue(keys.stream().anyMatch(key -> key.contains(":consumer:") && key.endsWith(":ready-commands")));
         assertTrue(keys.stream().anyMatch(key -> key.contains(":queue-consumers:")));
@@ -177,9 +177,127 @@ class RedisTransportDeliveryCommandHandoffTest {
         DeliveryCommandBatch batch = nodeOneConsumer.poll(500L);
 
         assertNotNull(batch);
+        assertEquals(1L, producer.inflightReferencesForTest("node-1"));
         nodeOneConsumer.complete(batch, List.of());
 
         assertEquals(0, producer.queuedBatches(DeliveryCommandFixtures.queueKey()));
+        assertEquals(0L, producer.inflightReferencesForTest("node-1"));
         assertNull(nodeOneConsumer.poll(50L));
+    }
+
+    @Test
+    void pollAtomicallyClaimsReadyReferenceIntoInflightBeforeMaterializing() throws Exception {
+        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        producer.offer(DeliveryCommandFixtures.offer(
+                DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+        ));
+
+        assertEquals(1L, producer.readyReferencesForTest("node-1"));
+        DeliveryCommandBatch batch = nodeOneConsumer.poll(500L);
+
+        assertNotNull(batch);
+        assertEquals(0L, producer.readyReferencesForTest("node-1"));
+        assertEquals(1L, producer.inflightReferencesForTest("node-1"));
+        assertEquals(1, producer.queuedBatches(DeliveryCommandFixtures.queueKey()));
+        nodeOneConsumer.complete(batch, List.of());
+    }
+
+    @Test
+    void uncompletedClaimReturnsToReadyAfterVisibilityTimeout() throws Exception {
+        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        producer.offer(DeliveryCommandFixtures.offer(
+                DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+        ));
+        DeliveryCommandBatch first = nodeOneConsumer.poll(500L);
+
+        assertNotNull(first);
+        assertEquals(1L, producer.inflightReferencesForTest("node-1"));
+        producer.expireInflightForTest("node-1");
+        DeliveryCommandBatch redelivered = nodeOneConsumer.poll(500L);
+
+        assertNotNull(redelivered);
+        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(redelivered));
+        assertEquals(1L, producer.inflightReferencesForTest("node-1"));
+        nodeOneConsumer.complete(redelivered, List.of());
+    }
+
+    @Test
+    void movedOwnerRemovesOldInflightAndForwardsToCurrentConsumer() throws Exception {
+        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        producer.offer(DeliveryCommandFixtures.offer(
+                DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+        ));
+        producer.claimConsumerForTest("bucket-1", "worker-1", "node-2");
+
+        assertNull(nodeOneConsumer.poll(50L));
+        assertEquals(0L, producer.inflightReferencesForTest("node-1"));
+        assertEquals(1L, producer.readyReferencesForTest("node-2"));
+        DeliveryCommandBatch nodeTwo = nodeTwoConsumer.poll(500L);
+
+        assertNotNull(nodeTwo);
+        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(nodeTwo));
+        assertEquals(1L, producer.inflightReferencesForTest("node-2"));
+        nodeTwoConsumer.complete(nodeTwo, List.of());
+    }
+
+    @Test
+    void missingPayloadDoesNotLeaveInflightClaimStuck() throws Exception {
+        DeliveryCommandBatch commandBatch = DeliveryCommandFixtures.batch(
+                "node-1",
+                DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+        );
+        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        producer.offer(new DeliveryQueueOffer(DeliveryCommandFixtures.queueKey(), commandBatch.items()));
+        producer.deleteCommandPayloadForTest(
+                DeliveryCommandFixtures.queueKey(),
+                commandBatch.items().getFirst().getCommandId()
+        );
+
+        assertNull(nodeOneConsumer.poll(50L));
+        assertEquals(0L, producer.inflightReferencesForTest("node-1"));
+        assertEquals(0L, producer.readyReferencesForTest("node-1"));
+    }
+
+    @Test
+    void invalidReadyReferenceDoesNotLeaveInflightClaimStuck() throws Exception {
+        producer.pushReadyReferenceForTest("node-1", "not-a-valid-reference");
+
+        assertNull(nodeOneConsumer.poll(50L));
+        assertEquals(0L, producer.inflightReferencesForTest("node-1"));
+        assertEquals(0L, producer.readyReferencesForTest("node-1"));
+    }
+
+    @Test
+    void staleReleaseDoesNotRemoveNewConsumerEvidenceOnSameQueueConsumer() {
+        producer.claimConsumer(new DeliveryCommandConsumerClaim(
+                "bucket-1",
+                "worker-1",
+                "node-1",
+                "conn-old",
+                "websocket",
+                System.currentTimeMillis() + 30_000L
+        ));
+        producer.claimConsumer(new DeliveryCommandConsumerClaim(
+                "bucket-1",
+                "worker-1",
+                "node-1",
+                "conn-new",
+                "websocket",
+                System.currentTimeMillis() + 30_000L
+        ));
+
+        producer.releaseConsumer(new DeliveryCommandConsumerClaim(
+                "bucket-1",
+                "worker-1",
+                "node-1",
+                "conn-old",
+                "websocket",
+                0L
+        ));
+
+        assertEquals(List.of(DispatchOutcomeStatus.QUEUED),
+                producer.offer(DeliveryCommandFixtures.offer(
+                        DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+                )).stream().map(outcome -> outcome.getStatus()).toList());
     }
 }

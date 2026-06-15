@@ -67,6 +67,10 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                         + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
             }
             sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
+            sessionManager.setDeliveryCommandConsumerRegistry(
+                    context.getDeliveryCommandConsumerRegistry(),
+                    context.getDeliveryCommandConsumerKey()
+            );
             sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
             return sessionManager;
         }
@@ -76,6 +80,10 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                     () -> new SocketSessionManager(config.getAdapterId())
             );
             sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
+            sessionManager.setDeliveryCommandConsumerRegistry(
+                    context.getDeliveryCommandConsumerRegistry(),
+                    context.getDeliveryCommandConsumerKey()
+            );
             sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
             return sessionManager;
         }
