@@ -402,7 +402,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 work.batchId(),
                 schedulingView.workerGroupId(),
                 schedulingView.adapterNodeId(),
-                schedulingView.adapterId(),
                 schedulingView.onlineStrategy(),
                 eventBindingKey,
                 workerCandidateSource
@@ -416,7 +415,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         if (schedulingView != null) {
             evidence.put("workerGroupId", schedulingView.workerGroupId());
             evidence.put("adapterNodeId", schedulingView.adapterNodeId());
-            evidence.put("adapterId", schedulingView.adapterId());
             evidence.put("onlineStrategy", schedulingView.onlineStrategy());
         }
         evidence.put("eventBindingKey", eventBindingKey);

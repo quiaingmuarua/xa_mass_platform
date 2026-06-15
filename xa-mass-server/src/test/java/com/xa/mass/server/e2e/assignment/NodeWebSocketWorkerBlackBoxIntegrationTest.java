@@ -75,7 +75,6 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
                 "workerId", WORKER_ID,
                 "adapterNodeId", ADAPTER_NODE_ID,
                 "workerGroupId", "node-websocket-crawler",
-                "adapterId", "websocket",
                 "transportHint", "realtime",
                 "attributes", Map.of(
                         "lang", "node",
@@ -88,7 +87,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
         assertApiOk(registerResponse);
         WorkerSnapshot registeredWorker = app.getWorker(WORKER_ID);
         assertNotNull(registeredWorker);
-        assertEquals("websocket", responseData(registerResponse).get("adapterId"));
+        assertFalse(responseData(registerResponse).containsKey("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertFalse(app.isWorkerReachable(WORKER_ID), "control-plane registration must not create realtime transport presence");
 
@@ -164,7 +163,6 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
                 "workerId", STOCK_WORKER_ID,
                 "adapterNodeId", STOCK_ADAPTER_NODE_ID,
                 "workerGroupId", "node-websocket-stock",
-                "adapterId", "websocket",
                 "transportHint", "realtime",
                 "attributes", Map.of(
                         "lang", "node",
@@ -179,7 +177,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
         assertApiOk(registerResponse);
         WorkerSnapshot registeredWorker = app.getWorker(STOCK_WORKER_ID);
         assertNotNull(registeredWorker);
-        assertEquals("websocket", responseData(registerResponse).get("adapterId"));
+        assertFalse(responseData(registerResponse).containsKey("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertFalse(app.isWorkerReachable(STOCK_WORKER_ID), "control-plane registration must not create realtime transport presence");
 

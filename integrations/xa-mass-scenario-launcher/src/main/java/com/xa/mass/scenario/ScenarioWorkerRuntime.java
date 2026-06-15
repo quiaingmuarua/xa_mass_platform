@@ -183,15 +183,15 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
     private static boolean isPollingLaunchSpec(WorkerScenarioSpec spec) {
         return "api-online".equals(spec.startMode())
                 || "polling".equals(spec.transportHint())
-                || "polling".equals(spec.adapterId());
+                || "polling".equals(spec.adapterType());
     }
 
     private static boolean isWebSocketLaunchSpec(WorkerScenarioSpec spec) {
-        boolean adapterIsWebSocket = "websocket".equals(spec.adapterId());
+        boolean adapterIsWebSocket = "websocket".equals(spec.adapterType());
         return "websocket".equals(spec.startMode())
                 || adapterIsWebSocket
                 || ("realtime".equals(spec.transportHint())
-                && (spec.adapterId() == null || spec.adapterId().isBlank() || adapterIsWebSocket));
+                && (spec.adapterType() == null || spec.adapterType().isBlank() || adapterIsWebSocket));
     }
 
     private static String integrationProbe(WorkerScenarioSpec spec) {

@@ -74,12 +74,11 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
                 "workerId", SOCKET_WORKER_ID,
                 "adapterNodeId", SOCKET_ADAPTER_NODE_ID,
                 "workerGroupId", "node-socket-crawler",
-                "adapterId", "socket",
                 "transportHint", "realtime",
                 "attributes", Map.of("lang", "node", "runtime", "node-socket-worker")
         ), workerHeaders);
         assertApiOk(registerResponse);
-        assertEquals("socket", responseData(registerResponse).get("adapterId"));
+        assertFalse(responseData(registerResponse).containsKey("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertFalse(app.isWorkerReachable(SOCKET_WORKER_ID), "control-plane registration must not create socket transport presence");
 
@@ -160,7 +159,6 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
                 "workerId", WEBSOCKET_WORKER_ID,
                 "adapterNodeId", WEBSOCKET_ADAPTER_NODE_ID,
                 "workerGroupId", "node-websocket-demo",
-                "adapterId", "websocket",
                 "transportHint", "realtime",
                 "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker")
         ), websocketHeaders));
@@ -169,7 +167,6 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
                 "workerId", SOCKET_WORKER_ID,
                 "adapterNodeId", SOCKET_ADAPTER_NODE_ID,
                 "workerGroupId", "node-socket-crawler",
-                "adapterId", "socket",
                 "transportHint", "realtime",
                 "attributes", Map.of("lang", "node", "runtime", "node-socket-worker")
         ), socketHeaders));

@@ -4,7 +4,7 @@
     "workerKey": "node-worker-realtime-key",
     "workerGroupId": "sample-websocket-crawler",
     "adapterNodeId": "sample-websocket-node",
-    "adapterId": "websocket",
+    "adapterType": "websocket",
     "transportHint": "realtime",
     "attributes": {
       "lang": "node",
@@ -25,7 +25,7 @@
     "workerKey": "stock-ws-worker-key",
     "workerGroupId": "sample-websocket-stock",
     "adapterNodeId": "sample-websocket-node",
-    "adapterId": "websocket",
+    "adapterType": "websocket",
     "transportHint": "realtime",
     "attributes": {
       "lang": "node",
@@ -47,7 +47,7 @@
     "workerKey": "phone-device-probe-poll-sg-${PAD3}-key",
     "workerGroupId": "phone-device-probe",
     "adapterNodeId": "sample-polling-phone-node",
-    "adapterId": "polling",
+    "adapterType": "polling",
     "transportHint": "polling",
     "startMode": "api-online",
     "attributes": {

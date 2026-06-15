@@ -204,7 +204,6 @@ class MassApplicationDistributedTransportTest {
                 "batch-1",
                 "demo-workers",
                 null,
-                "websocket",
                 WorkerTransportHints.REALTIME,
                 null,
                 "test-fixture"

@@ -1,5 +1,6 @@
 package com.xa.mass.scenario;
 
+import com.xa.mass.client.http.exception.MassClientException;
 import com.xa.mass.client.http.exception.MassHttpException;
 
 final class ScenarioFailureDiagnostics {
@@ -42,6 +43,29 @@ final class ScenarioFailureDiagnostics {
                     + localInitializerCommand();
         }
         return failure.getMessage();
+    }
+
+    static String diagnoseClientFailure(ScenarioLauncherOptions options, MassClientException failure) {
+        if (failure instanceof MassHttpException httpFailure) {
+            return diagnoseHttpFailure(options, httpFailure);
+        }
+        return "Scenario launcher could not reach the XA Mass server at " + options.baseUrl() + ". "
+                + "The failing SDK call was: " + failure.getMessage() + ". "
+                + "Verify the server is running and listening at that base URL, for example GET "
+                + options.baseUrl() + "/actuator/health, or pass the intended server with --base-url / MASS_BASE_URL. "
+                + "Cause: " + causeSummary(failure);
+    }
+
+    private static String causeSummary(Throwable failure) {
+        Throwable cursor = failure;
+        while (cursor.getCause() != null) {
+            cursor = cursor.getCause();
+        }
+        String message = cursor.getMessage();
+        if (message == null || message.isBlank()) {
+            return cursor.getClass().getSimpleName();
+        }
+        return cursor.getClass().getSimpleName() + ": " + message;
     }
 
     private static String normalizedScenarioDir(ScenarioLauncherOptions options) {

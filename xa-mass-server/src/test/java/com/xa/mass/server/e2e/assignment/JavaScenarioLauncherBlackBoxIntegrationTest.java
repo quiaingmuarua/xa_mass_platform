@@ -346,7 +346,7 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                     "workerKey": "ijs-worker-key",
                     "workerGroupId": "ijs-scenario-group",
                     "adapterNodeId": "ijs-scenario-polling-node",
-                    "adapterId": "polling",
+                    "adapterType": "polling",
                     "transportHint": "polling",
                     "startMode": "api-online",
                     "attributes": {
@@ -465,7 +465,7 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                     "workerKey": "ijs-ws-worker-key",
                     "workerGroupId": "ijs-scenario-ws-group",
                     "adapterNodeId": "ijs-scenario-websocket-node",
-                    "adapterId": "websocket",
+                    "adapterType": "websocket",
                     "transportHint": "realtime",
                     "startMode": "websocket",
                     "attributes": {

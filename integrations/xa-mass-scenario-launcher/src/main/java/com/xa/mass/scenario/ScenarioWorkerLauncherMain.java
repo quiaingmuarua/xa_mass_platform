@@ -1,7 +1,7 @@
 package com.xa.mass.scenario;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.xa.mass.client.http.exception.MassHttpException;
+import com.xa.mass.client.http.exception.MassClientException;
 
 public final class ScenarioWorkerLauncherMain {
     private ScenarioWorkerLauncherMain() {
@@ -47,8 +47,8 @@ public final class ScenarioWorkerLauncherMain {
                 System.out.printf("[java-scenario-worker-launcher] running workerSessions=%d%n", startedWorkers);
                 workerRuntime.awaitShutdown();
             }
-        } catch (MassHttpException e) {
-            throw new IllegalStateException(ScenarioFailureDiagnostics.diagnoseHttpFailure(options, e), e);
+        } catch (MassClientException e) {
+            throw new IllegalStateException(ScenarioFailureDiagnostics.diagnoseClientFailure(options, e), e);
         }
     }
 }

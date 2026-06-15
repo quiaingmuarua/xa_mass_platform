@@ -50,7 +50,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     private MassSdkApplication app;
 
     @Test
-    void externalWorkerRegisterApiRequiresExplicitAdapterIdForRealtimeFamily() {
+    void externalWorkerRegisterApiDerivesRealtimeAdapterFromAdapterNode() {
         registerExternalWorkerCredential(
                 "realtime-worker",
                 "realtime-worker-key",
@@ -79,9 +79,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 "workerGroupId", "realtime-crawler",
                 "transportHint", "realtime"
         ), realtimeHeaders);
-        assertApiError(realtimeRegisterResponse, 400);
-        assertTrue(apiMsg(realtimeRegisterResponse).contains(
-                "worker adapterId must be set when transportHint 'realtime' is used"));
+        assertApiOk(realtimeRegisterResponse);
+        assertFalse(responseData(realtimeRegisterResponse).containsKey("adapterId"));
 
         Map<String, Object> aliasRegisterResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", "realtime-worker-002",
@@ -596,13 +595,24 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     private void bindAdapterNode(String adapterNodeId, String workerGroupId, HttpHeaders workerHeaders) {
         assertApiOk(exchange("/worker-api/v1/adapter-nodes", HttpMethod.POST, Map.of(
                 "adapterNodeId", adapterNodeId,
-                "adapterType", "polling",
+                "adapterType", adapterTypeForNode(adapterNodeId),
                 "endpointId", adapterNodeId
         ), workerHeaders));
         assertApiOk(exchange("/worker-api/v1/node-group-bindings", HttpMethod.POST, Map.of(
                 "adapterNodeId", adapterNodeId,
                 "workerGroupId", workerGroupId
         ), workerHeaders));
+    }
+
+    private String adapterTypeForNode(String adapterNodeId) {
+        String normalized = adapterNodeId == null ? "" : adapterNodeId.toLowerCase();
+        if (normalized.contains("realtime") || normalized.contains("websocket")) {
+            return "websocket";
+        }
+        if (normalized.contains("socket")) {
+            return "socket";
+        }
+        return "polling";
     }
 
     private String createReadyCrawlerTask(HttpHeaders taskApiKeyHeaders) {

@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorkerScenarioRegistrarTest {
@@ -44,6 +45,47 @@ class WorkerScenarioRegistrarTest {
             assertEquals(2, countPath(requests, "/worker-api/v1/workers"));
             assertTrue(requests.stream().allMatch(request ->
                     "override-worker-key".equals(request.headers().get("X-mass-api-key"))));
+            List<String> workerBodies = requests.stream()
+                    .filter(request -> request.path().equals("/worker-api/v1/workers"))
+                    .map(RecordedRequest::body)
+                    .toList();
+            assertTrue(workerBodies.stream().allMatch(body -> body.contains("\"adapterNodeId\":\"sample-node\"")));
+            assertTrue(workerBodies.stream().allMatch(body -> body.contains("\"transportHint\":\"polling\"")));
+            assertFalse(workerBodies.stream().anyMatch(body -> body.contains("\"adapterId\"")));
+        }
+    }
+
+    @Test
+    void defaultsPollingTransportHintFromAdapterType() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        List<RecordedRequest> requests = new ArrayList<>();
+        try (RecordingServer server = RecordingServer.start(requests)) {
+            ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
+                    "--base-url", server.baseUrl(),
+                    "--worker-api-key", "override-worker-key"
+            });
+            WorkerScenarioRegistrar registrar = new WorkerScenarioRegistrar(options,
+                    new ScenarioClientFactory(server.baseUrl(), Duration.ofSeconds(5), Duration.ofSeconds(30), objectMapper));
+
+            registrar.register(List.of(new WorkerScenarioSpec(
+                    "worker-001",
+                    "worker-key",
+                    "sample-group",
+                    "sample-node",
+                    "polling",
+                    null,
+                    null,
+                    Map.of("region", "sg"),
+                    List.of(WorkerEventBindingSpec.of("probe.phone.metadata", List.of("deviceProbe")))
+            )));
+
+            String workerBody = requests.stream()
+                    .filter(request -> request.path().equals("/worker-api/v1/workers"))
+                    .map(RecordedRequest::body)
+                    .findFirst()
+                    .orElseThrow();
+            assertTrue(workerBody.contains("\"transportHint\":\"polling\""));
+            assertFalse(workerBody.contains("\"adapterId\""));
         }
     }
 

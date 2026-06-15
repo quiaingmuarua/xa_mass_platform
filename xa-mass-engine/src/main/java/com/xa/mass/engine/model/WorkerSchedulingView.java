@@ -25,7 +25,6 @@ public final class WorkerSchedulingView {
     private final String workerId;
     private final String workerGroupId;
     private final String adapterNodeId;
-    private final String adapterId;
     private final String onlineStrategy;
     private final String agentVersion;
     private final List<String> supportedProjects;
@@ -50,7 +49,6 @@ public final class WorkerSchedulingView {
         this.workerId = candidateRow.workerId();
         this.workerGroupId = candidateRow.workerGroupId();
         this.adapterNodeId = candidateRow.adapterNodeId();
-        this.adapterId = candidateRow.adapterId();
         this.onlineStrategy = candidateRow.onlineStrategy();
         this.agentVersion = candidateRow.agentVersion();
         this.supportedProjects = workerGroup == null ? List.of() : List.copyOf(workerGroup.projectCodes());
@@ -113,10 +111,6 @@ public final class WorkerSchedulingView {
 
     public String adapterNodeId() {
         return adapterNodeId;
-    }
-
-    public String adapterId() {
-        return adapterId;
     }
 
     public String onlineStrategy() {

@@ -18,7 +18,7 @@ class ScenarioExpanderTest {
                 "workerId", "worker-${PAD3}",
                 "workerKey", "worker-${PAD3}-key",
                 "workerGroupId", "group",
-                "adapterId", "polling",
+                "adapterType", "polling",
                 "attributes", Map.of(
                         "region", "${REGION}",
                         "fingerprintProfile", "${FINGERPRINT}"

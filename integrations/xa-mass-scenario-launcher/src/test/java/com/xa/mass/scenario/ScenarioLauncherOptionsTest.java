@@ -1,9 +1,11 @@
 package com.xa.mass.scenario;
 
+import com.xa.mass.client.http.exception.MassClientException;
 import com.xa.mass.client.http.exception.MassHttpException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -187,6 +189,25 @@ class ScenarioLauncherOptionsTest {
         assertTrue(message.contains("workerId-bound credentials"));
         assertTrue(message.contains("xa-mass-admin env init"));
         assertTrue(message.contains("MASS_WORKER_API_KEY"));
+    }
+
+    @Test
+    void diagnosesServerConnectionFailure() {
+        ScenarioLauncherOptions options = ScenarioLauncherOptions.parseWorker(new String[]{
+                "--base-url", "http://127.0.0.1:19090",
+                "--scenario-dir", "integrations/samples/dev/scenario"
+        });
+
+        String message = ScenarioFailureDiagnostics.diagnoseClientFailure(options, new MassClientException(
+                "I/O failure while calling POST /worker-api/v1/worker-groups",
+                new ConnectException("Connection refused: connect")
+        ));
+
+        assertTrue(message.contains("could not reach the XA Mass server"));
+        assertTrue(message.contains("http://127.0.0.1:19090"));
+        assertTrue(message.contains("/actuator/health"));
+        assertTrue(message.contains("--base-url"));
+        assertTrue(message.contains("ConnectException"));
     }
 
     private static String expectedDefaultTaskApiKey() {

@@ -225,7 +225,7 @@ Notes:
 - `supportedEventCodes` remains a flat compatibility/read convenience derived
   from WorkerGroup capability declarations; do not treat it as a separate
   worker-row matching owner
-- `adapterId` is the concrete runtime adapter identity
+- concrete adapter identity is transport-owned and not part of this worker capability row
 - `transportHint` is the coarse transport family
 - `runtimeStatus` is a display/runtime status label, not scheduling truth
 - `reachability` / `reachable` are worker-runtime reachability observations,
@@ -753,8 +753,8 @@ Current meaning:
 
 - `activeConnections` counts addressable transport endpoints
 - `workerCount` counts distinct workers represented in the endpoint snapshot set
-- `activeConnectionsByAdapter` breaks active endpoints down by concrete
-  `adapterId`
+- adapter-level breakdown is intentionally omitted from the public runtime
+  stats shape; concrete adapter identity remains a transport diagnostic
 
 ### 5.5 Global Project Config
 
@@ -906,7 +906,8 @@ Request notes:
 - `eventBindings` is optional compatibility input; WorkerGroup declaration is
   the capability owner
 - `transportHint` defaults to `polling`
-- `adapterId` is optional for polling and required for realtime
+- `adapterNodeId` is optional for polling and required for realtime; the server
+  derives internal adapter identity from the registered adapter node
 - caller must authenticate with a worker credential that includes `worker:poll`
   and binds the same `workerId`
 

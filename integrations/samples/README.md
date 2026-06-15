@@ -20,7 +20,7 @@ Rules:
 
 ## Current Mainline
 
-| Sample path | Language | adapterId | transportHint | Entry | Verified black-box test |
+| Sample path | Language | adapterType | transportHint | Entry | Verified black-box test |
 | --- | --- | --- | --- | --- | --- |
 | `worker-polling/node` | Node.js | `polling` | `polling` | `node integrations/samples/node/worker-polling/worker.mjs` | `NodePollingWorkerBlackBoxIntegrationTest` |
 | `worker-websocket/node` | Node.js | `websocket` | `realtime` | `node integrations/samples/node/worker-websocket/worker.mjs` | `NodeWebSocketWorkerBlackBoxIntegrationTest` |
@@ -121,7 +121,7 @@ Every sample should remain provable through an external-process black-box test:
 - task result reaches `TERMINAL` through normal result ingest
 - output identifies the executing sample through `integrationProbe` and/or `workerProfile`
 - worker returns to offline after disconnect or shutdown
-- when multiple realtime adapters coexist, routing stays pinned to `adapterId`
+- when multiple realtime adapters coexist, routing stays pinned to the registered adapter node
 
 ## Reading Order
 
@@ -134,5 +134,5 @@ Every sample should remain provable through an external-process black-box test:
 ## Addition Rule
 
 - add new languages only when they increase cross-language contract value
-- keep new samples aligned with `adapterId + transportHint` semantics
+- keep new samples aligned with `adapterType + transportHint` scenario input semantics
 - do not add samples that depend on embedded mock clients or deprecated seams

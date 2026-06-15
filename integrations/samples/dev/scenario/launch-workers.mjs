@@ -109,7 +109,7 @@ function startWorker(spec) {
 
 async function registerWorker(spec) {
   const adapterNodeId = adapterNodeIdFor(spec);
-  const adapterType = spec.adapterId ?? "websocket";
+  const adapterType = spec.adapterType ?? "websocket";
 
   if (!declaredWorkerGroups.has(spec.workerGroupId)) {
     const groupResponse = await post("/worker-api/v1/worker-groups", spec.workerKey, {
@@ -151,7 +151,6 @@ async function registerWorker(spec) {
     workerId: spec.workerId,
     adapterNodeId,
     workerGroupId: spec.workerGroupId,
-    adapterId: adapterType,
     transportHint: spec.transportHint ?? "realtime",
     attributes: spec.attributes,
   });
@@ -183,10 +182,10 @@ function adapterNodeIdFor(spec) {
   if (typeof spec.adapterNodeId === "string" && spec.adapterNodeId.trim().length > 0) {
     return spec.adapterNodeId.trim();
   }
-  const adapterId = typeof spec.adapterId === "string" && spec.adapterId.trim().length > 0
-    ? spec.adapterId.trim()
+  const adapterType = typeof spec.adapterType === "string" && spec.adapterType.trim().length > 0
+    ? spec.adapterType.trim()
     : "websocket";
-  return `sample-${adapterId}-node`;
+  return `sample-${adapterType}-node`;
 }
 
 async function seedTasks(taskSpecs) {

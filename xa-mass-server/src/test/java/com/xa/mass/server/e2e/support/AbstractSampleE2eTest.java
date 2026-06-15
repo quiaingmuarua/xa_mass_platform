@@ -149,13 +149,27 @@ public abstract class AbstractSampleE2eTest {
     protected void bindExternalAdapterNode(String adapterNodeId, String workerGroupId, HttpHeaders headers) {
         assertApiOk(exchange("/worker-api/v1/adapter-nodes", HttpMethod.POST, Map.of(
                 "adapterNodeId", adapterNodeId,
-                "adapterType", "external",
+                "adapterType", adapterTypeForNode(adapterNodeId),
                 "endpointId", adapterNodeId
         ), headers));
         assertApiOk(exchange("/worker-api/v1/node-group-bindings", HttpMethod.POST, Map.of(
                 "adapterNodeId", adapterNodeId,
                 "workerGroupId", workerGroupId
         ), headers));
+    }
+
+    private String adapterTypeForNode(String adapterNodeId) {
+        String normalized = adapterNodeId == null ? "" : adapterNodeId.toLowerCase();
+        if (normalized.contains("websocket")) {
+            return "websocket";
+        }
+        if (normalized.contains("socket")) {
+            return "socket";
+        }
+        if (normalized.contains("polling")) {
+            return "polling";
+        }
+        return "websocket";
     }
 
     @SuppressWarnings("unchecked")

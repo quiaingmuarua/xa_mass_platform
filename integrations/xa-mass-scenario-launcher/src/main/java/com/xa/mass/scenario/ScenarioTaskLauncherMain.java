@@ -1,7 +1,7 @@
 package com.xa.mass.scenario;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.xa.mass.client.http.exception.MassHttpException;
+import com.xa.mass.client.http.exception.MassClientException;
 
 import java.util.List;
 
@@ -32,8 +32,8 @@ public final class ScenarioTaskLauncherMain {
                 new ScenarioTaskResultVerifier(clientFactory, options).waitForVisibleSuccess(seededTasks);
             }
             System.out.printf("[java-scenario-task-launcher] complete tasks=%d%n", seededTasks.size());
-        } catch (MassHttpException e) {
-            throw new IllegalStateException(ScenarioFailureDiagnostics.diagnoseHttpFailure(options, e), e);
+        } catch (MassClientException e) {
+            throw new IllegalStateException(ScenarioFailureDiagnostics.diagnoseClientFailure(options, e), e);
         }
     }
 }

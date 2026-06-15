@@ -93,7 +93,7 @@ Task item dispatch boundary:
 task item
   -> TaskWorkRuntime claim / lease
   -> Scheduling Plane selects concrete worker
-  -> engine binds TaskDispatchBinding(workerId, workerGroupId, adapterId, ...)
+  -> engine binds TaskDispatchBinding(workerId, workerGroupId, adapterNodeId, ...)
   -> transport handoff carries delivery metadata
   -> adapter delivers only to selectedWorkerId
 ```

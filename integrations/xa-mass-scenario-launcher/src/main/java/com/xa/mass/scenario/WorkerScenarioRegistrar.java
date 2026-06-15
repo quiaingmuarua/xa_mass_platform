@@ -99,10 +99,7 @@ final class WorkerScenarioRegistrar {
                 .workerId(workerId)
                 .adapterNodeId(adapterNodeId)
                 .workerGroupId(workerGroupId)
-                .adapterId(adapterType)
-                .transportHint(spec.transportHint() == null || spec.transportHint().isBlank()
-                        ? "realtime"
-                        : spec.transportHint())
+                .transportHint(transportHintFor(spec, adapterType))
                 .attributes(spec.attributes())
                 .build());
         System.out.printf("[java-scenario-launcher] registered worker %s%n", workerId);
@@ -158,10 +155,20 @@ final class WorkerScenarioRegistrar {
     }
 
     static String adapterTypeFor(WorkerScenarioSpec spec) {
-        if (spec.adapterId() != null && !spec.adapterId().isBlank()) {
-            return spec.adapterId().trim();
+        if (spec.adapterType() != null && !spec.adapterType().isBlank()) {
+            return spec.adapterType().trim();
         }
         return "websocket";
+    }
+
+    static String transportHintFor(WorkerScenarioSpec spec, String adapterType) {
+        if (spec.transportHint() != null && !spec.transportHint().isBlank()) {
+            return spec.transportHint().trim();
+        }
+        if ("polling".equals(adapterType)) {
+            return "polling";
+        }
+        return "realtime";
     }
 
     private static String requireNonBlank(String value, String fieldName) {

@@ -20,7 +20,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
@@ -39,16 +39,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Tag("secondary-proof")
 class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2eTest {
 
-    /**
-     * Support-only adapter-ambiguity guard coverage.
-     *
-     * <p>This protects a public-route validation edge, but it is not a mainline
-     * parity or scheduling proof.
-     */
-
     private static final int WEBSOCKET_PORT = findFreePort();
-    private static final String WORKER_ID = "realtime-worker-missing-adapter";
-    private static final String WORKER_KEY = "realtime-worker-missing-adapter-key";
+    private static final String WORKER_ID = "realtime-worker-websocket";
+    private static final String WORKER_KEY = "realtime-worker-websocket-key";
 
     @Autowired
     private MassSdkApplication app;
@@ -60,9 +53,9 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
     }
 
     @Test
-    void registerWorkerFailsFastWhenRealtimeFamilyMatchesMultipleAdapters() {
+    void registerWorkerResolvesRealtimeAdapterFromAdapterNodeEvidence() {
         app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
-                .principalId("realtime-worker-principal")
+                .principalId("realtime-worker-websocket-principal")
                 .credential(WORKER_KEY)
                 .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
                 .projectScopes(List.of("crawlerApp"))
@@ -71,7 +64,15 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
                 .build());
         HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
         declareExternalWorkerGroup("realtime-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
-        bindExternalAdapterNode("realtime-node", "realtime-crawler", workerHeaders);
+        assertApiOk(exchange("/worker-api/v1/adapter-nodes", HttpMethod.POST, Map.of(
+                "adapterNodeId", "realtime-node",
+                "adapterType", "websocket",
+                "endpointId", "realtime-node"
+        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/node-group-bindings", HttpMethod.POST, Map.of(
+                "adapterNodeId", "realtime-node",
+                "workerGroupId", "realtime-crawler"
+        ), workerHeaders));
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
@@ -80,10 +81,11 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
                 "transportHint", "realtime"
         ), workerHeaders);
 
-        assertApiError(registerResponse, 400);
-        assertTrue(apiMsg(registerResponse).contains(
-                "worker adapterId must be set when transportHint 'realtime' is used"));
-        assertFalse(app.getAllWorkers().stream().anyMatch(worker -> WORKER_ID.equals(worker.getWorkerId())));
+        assertApiOk(registerResponse);
+        assertEquals("realtime", responseData(registerResponse).get("transportHint"));
+        assertTrue(!responseData(registerResponse).containsKey("adapterId"));
+        assertEquals("websocket", app.getWorkerAdapterId(WORKER_ID));
+        assertEquals("realtime", app.getWorkerTransportHint(WORKER_ID));
     }
 
     private HttpHeaders credentialHeaders(String credential) {

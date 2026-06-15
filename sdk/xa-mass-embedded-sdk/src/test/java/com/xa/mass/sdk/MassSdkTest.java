@@ -2844,6 +2844,64 @@ class MassSdkTest {
     }
 
     @Test
+    void registerWorkerResolvesRealtimeAdapterIdFromRegisteredAdapterNode() {
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
+        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
+                                                         routeOwnerStore,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                taskResultIngestChannel,
+                routeOwnerStore,
+                List.of(
+                        canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
+                        canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
+                )
+        );
+
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
+                        .inputQueue(inputQueue)
+                        .outputQueue(outputQueue)
+                        .workerTransportRuntimeFactory(transportFactory))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            registerExampleTaskCatalog(app);
+            app.start();
+            app.registerAdapterNode(AdapterNodeRegistration.builder()
+                    .adapterNodeId("websocket-node")
+                    .adapterType("websocket")
+                    .endpointId("websocket-node")
+                    .build());
+            app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                    .groupId("realtime-workers")
+                    .eventBindings(List.of(WorkerEventBinding.builder()
+                            .eventCode("crawler.fetch-page")
+                            .projectCodes(List.of("demoApp"))
+                            .build()))
+                    .build());
+            app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                    .adapterNodeId("websocket-node")
+                    .workerGroupId("realtime-workers")
+                    .build());
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("realtime-worker-websocket-node")
+                    .adapterNodeId("websocket-node")
+                    .workerGroupId("realtime-workers")
+                    .transportHint("realtime")
+                    .build());
+
+            assertEquals("websocket", app.getWorkerAdapterId("realtime-worker-websocket-node"));
+            assertEquals(WorkerTransportHints.REALTIME, app.getWorkerTransportHint("realtime-worker-websocket-node"));
+            assertEquals("websocket-node", app.getWorker("realtime-worker-websocket-node").getAdapterNodeId());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
     void getWorkerTransportHintFallsBackToRegistryBindingInsteadOfNormalizingAdapterId() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);

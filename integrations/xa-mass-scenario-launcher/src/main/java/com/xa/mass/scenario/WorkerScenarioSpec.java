@@ -12,7 +12,7 @@ record WorkerScenarioSpec(
         String workerKey,
         String workerGroupId,
         String adapterNodeId,
-        String adapterId,
+        String adapterType,
         String transportHint,
         String startMode,
         Map<String, String> attributes,

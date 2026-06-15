@@ -139,14 +139,13 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
 
     private void registerRealtimeWorker(ExternalWorkerCase spec) {
         HttpHeaders workerHeaders = credentialHeaders(spec.workerKey());
-        String adapterNodeId = spec.adapterId() + "-node";
+        String adapterNodeId = spec.adapterType() + "-node";
         declareExternalWorkerGroup(spec.workerGroupId(), "crawlerApp", "crawler.fetch-page", workerHeaders);
         bindExternalAdapterNode(adapterNodeId, spec.workerGroupId(), workerHeaders);
         Map<String, Object> response = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", spec.workerId(),
                 "adapterNodeId", adapterNodeId,
                 "workerGroupId", spec.workerGroupId(),
-                "adapterId", spec.adapterId(),
                 "transportHint", "realtime",
                 "attributes", Map.of(
                         "lang", spec.language(),
@@ -154,7 +153,7 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
                 )
         ), workerHeaders);
         assertApiOk(response);
-        assertEquals(spec.adapterId(), responseData(response).get("adapterId"));
+        assertFalse(responseData(response).containsKey("adapterId"));
     }
 
     private AutoCloseable startWorker(ExternalWorkerCase spec) throws Exception {
@@ -220,7 +219,7 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
                                       String sourceRef,
                                       String workerId,
                                       String workerKey,
-                                      String adapterId,
+                                      String adapterType,
                                       String runtimeLabel,
                                       String workerGroupId,
                                       String language,

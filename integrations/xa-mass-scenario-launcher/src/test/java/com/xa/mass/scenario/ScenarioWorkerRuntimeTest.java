@@ -74,13 +74,13 @@ class ScenarioWorkerRuntimeTest {
         assertFalse(tracker.isIdleFor(600));
     }
 
-    private static WorkerScenarioSpec worker(String workerId, String adapterId, String transportHint, String startMode) {
+    private static WorkerScenarioSpec worker(String workerId, String adapterType, String transportHint, String startMode) {
         return new WorkerScenarioSpec(
                 workerId,
                 workerId + "-key",
                 "sample-group",
                 "sample-node",
-                adapterId,
+                adapterType,
                 transportHint,
                 startMode,
                 Map.of("region", "sg"),

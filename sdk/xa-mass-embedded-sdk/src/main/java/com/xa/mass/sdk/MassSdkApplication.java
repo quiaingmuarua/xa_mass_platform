@@ -1413,12 +1413,16 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         Objects.requireNonNull(registration, "registration");
         String normalizedTransportHint =
                 WorkerTransportHints.normalize(requireNonBlank(registration.getTransportHint(), "transportHint"));
-        String resolvedAdapterId = resolveRegistrationAdapterId(registration.getAdapterId(), normalizedTransportHint);
         String workerGroupId = blankToNull(registration.getWorkerGroupId());
         String adapterNodeId = blankToNull(registration.getAdapterNodeId());
         if (workerGroupId != null && adapterNodeId == null) {
             throw new IllegalArgumentException("adapterNodeId must not be blank when workerGroupId is provided");
         }
+        String requestedAdapterId = firstNonBlank(
+                registration.getAdapterId(),
+                supportedAdapterTypeForAdapterNode(adapterNodeId)
+        );
+        String resolvedAdapterId = resolveRegistrationAdapterId(requestedAdapterId, normalizedTransportHint);
 
         return WorkerRegistration.builder()
                 .workerId(registration.getWorkerId())
@@ -1429,6 +1433,33 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .maxConcurrentWork(registration.getMaxConcurrentWork())
                 .attributes(registration.getAttributes())
                 .build();
+    }
+
+    private String supportedAdapterTypeForAdapterNode(String adapterNodeId) {
+        if (adapterNodeId == null || adapterNodeId.isBlank()) {
+            return null;
+        }
+        String normalizedAdapterNodeId = adapterNodeId.trim();
+        return delegate.getEngine().getConfig().getWorkerResourceRuntime().adapterNodes().stream()
+                .filter(Objects::nonNull)
+                .filter(node -> normalizedAdapterNodeId.equals(node.adapterNodeId()))
+                .map(AdapterNodeRecord::adapterType)
+                .map(this::supportedRegistrationAdapterIdOrNull)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String supportedRegistrationAdapterIdOrNull(String adapterId) {
+        String normalizedAdapterId = blankToNull(adapterId);
+        if (normalizedAdapterId == null) {
+            return null;
+        }
+        try {
+            return resolveRegistrationAdapterId(normalizedAdapterId, null);
+        } catch (IllegalArgumentException | IllegalStateException ignored) {
+            return null;
+        }
     }
 
     private String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
