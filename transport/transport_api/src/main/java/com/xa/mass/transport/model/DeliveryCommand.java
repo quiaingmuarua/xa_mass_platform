@@ -1,7 +1,5 @@
 package com.xa.mass.transport.model;
 
-import java.util.Objects;
-
 /**
  * Assigned-worker delivery intent accepted by the transport executor.
  *
@@ -16,23 +14,23 @@ public final class DeliveryCommand {
     private final String commandId;
     private final String deliveryBucketId;
     private final String selectedWorkerId;
-    private final TaskDispatchContent content;
-    private final TaskDispatchExecutionContext executionContext;
+    private final String payload;
+    private final String correlationRef;
     private final long deadlineEpochMillis;
     private final long createdAtEpochMillis;
 
     public DeliveryCommand(String commandId,
                            String deliveryBucketId,
                            String selectedWorkerId,
-                           TaskDispatchContent content,
-                           TaskDispatchExecutionContext executionContext,
+                           String payload,
+                           String correlationRef,
                            long deadlineEpochMillis,
                            long createdAtEpochMillis) {
         this.commandId = requireText(commandId, "commandId");
         this.deliveryBucketId = requireText(deliveryBucketId, "deliveryBucketId");
         this.selectedWorkerId = requireText(selectedWorkerId, "selectedWorkerId");
-        this.content = Objects.requireNonNull(content, "content");
-        this.executionContext = Objects.requireNonNull(executionContext, "executionContext");
+        this.payload = requireText(payload, "payload");
+        this.correlationRef = requireText(correlationRef, "correlationRef");
         this.deadlineEpochMillis = Math.max(0L, deadlineEpochMillis);
         this.createdAtEpochMillis = Math.max(0L, createdAtEpochMillis);
     }
@@ -49,12 +47,12 @@ public final class DeliveryCommand {
         return selectedWorkerId;
     }
 
-    public TaskDispatchContent getContent() {
-        return content;
+    public String getPayload() {
+        return payload;
     }
 
-    public TaskDispatchExecutionContext getExecutionContext() {
-        return executionContext;
+    public String getCorrelationRef() {
+        return correlationRef;
     }
 
     public long getDeadlineEpochMillis() {

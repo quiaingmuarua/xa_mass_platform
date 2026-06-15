@@ -1,30 +1,25 @@
 package com.xa.mass.transport.model;
 
-import java.util.Objects;
-
 /**
  * Final-hop adapter request for one assigned task dispatch.
  */
 public final class AdapterDispatchRequest {
 
     private final String deliveryId;
-    private final String adapterId;
     private final String selectedWorkerId;
-    private final TaskDispatchContent content;
-    private final TaskDispatchExecutionContext executionContext;
+    private final String payload;
+    private final String correlationRef;
     private final long createdAtEpochMillis;
 
     public AdapterDispatchRequest(String deliveryId,
-                                  String adapterId,
                                   String selectedWorkerId,
-                                  TaskDispatchContent content,
-                                  TaskDispatchExecutionContext executionContext,
+                                  String payload,
+                                  String correlationRef,
                                   long createdAtEpochMillis) {
         this.deliveryId = requireText(deliveryId, "deliveryId");
-        this.adapterId = requireAdapterId(adapterId);
         this.selectedWorkerId = requireText(selectedWorkerId, "selectedWorkerId");
-        this.content = Objects.requireNonNull(content, "content");
-        this.executionContext = Objects.requireNonNull(executionContext, "executionContext");
+        this.payload = requireText(payload, "payload");
+        this.correlationRef = requireText(correlationRef, "correlationRef");
         this.createdAtEpochMillis = Math.max(0L, createdAtEpochMillis);
     }
 
@@ -32,32 +27,20 @@ public final class AdapterDispatchRequest {
         return deliveryId;
     }
 
-    public String adapterId() {
-        return adapterId;
-    }
-
     public String selectedWorkerId() {
         return selectedWorkerId;
     }
 
-    public TaskDispatchContent content() {
-        return content;
+    public String payload() {
+        return payload;
     }
 
-    public TaskDispatchExecutionContext executionContext() {
-        return executionContext;
+    public String correlationRef() {
+        return correlationRef;
     }
 
     public long createdAtEpochMillis() {
         return createdAtEpochMillis;
-    }
-
-    private static String requireAdapterId(String value) {
-        String normalized = TransportDeliveryAddressing.normalizeAdapterId(value);
-        if (normalized == null) {
-            throw new IllegalArgumentException("adapterId must not be blank");
-        }
-        return normalized;
     }
 
     private static String requireText(String value, String fieldName) {

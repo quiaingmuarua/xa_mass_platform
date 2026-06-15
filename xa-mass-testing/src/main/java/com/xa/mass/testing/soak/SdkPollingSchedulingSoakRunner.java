@@ -34,7 +34,7 @@ import com.xa.mass.trace.operator.TraceValidateResponse;
 import com.xa.mass.trace.operator.TraceOperatorService;
 import com.xa.mass.trace.sink.JsonlExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.channel.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.PulledTaskDispatch;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

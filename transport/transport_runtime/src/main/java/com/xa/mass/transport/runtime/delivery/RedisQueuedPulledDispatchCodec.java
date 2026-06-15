@@ -3,11 +3,9 @@ package com.xa.mass.transport.runtime.delivery;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.runtime.queue.KeyedQueueEntry;
-import com.xa.mass.transport.model.TaskDispatchContent;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.Map;
 import java.util.Objects;
 
 final class RedisQueuedPulledDispatchCodec {
@@ -50,11 +48,8 @@ final class RedisQueuedPulledDispatchCodec {
         RedisQueuedPulledDispatchRecord record = new RedisQueuedPulledDispatchRecord(
                 item.deliveryId(),
                 item.selectedWorkerId(),
-                toContentRecord(item.content()),
-                item.attemptId(),
-                item.attemptNo(),
-                item.retryCount(),
-                item.batchId(),
+                item.payload(),
+                item.correlationRef(),
                 item.createdAtEpochMillis()
         );
         return gson.toJson(record).getBytes(StandardCharsets.UTF_8);
@@ -71,40 +66,18 @@ final class RedisQueuedPulledDispatchCodec {
         if (record == null
                 || record.deliveryId == null
                 || record.selectedWorkerId == null
-                || record.content == null) {
+                || record.payload == null
+                || record.correlationRef == null) {
             throw new IllegalArgumentException("encoded queued dispatch record is incomplete");
         }
         QueuedPulledDispatch item = new QueuedPulledDispatch(
                 record.deliveryId,
                 record.selectedWorkerId,
-                fromContentRecord(record.content),
-                record.attemptId,
-                record.attemptNo,
-                record.retryCount,
-                record.batchId,
+                record.payload,
+                record.correlationRef,
                 record.createdAtEpochMillis
         );
         return new KeyedQueueEntry<>(item, item.createdAtEpochMillis());
-    }
-
-    private TaskDispatchContentRecord toContentRecord(TaskDispatchContent content) {
-        return new TaskDispatchContentRecord(
-                content.taskId(),
-                content.messageId(),
-                content.eventCode(),
-                content.input(),
-                content.sharedConfig()
-        );
-    }
-
-    private TaskDispatchContent fromContentRecord(DecodedTaskDispatchContentRecord record) {
-        return new TaskDispatchContent(
-                record.taskId,
-                record.messageId,
-                record.eventCode,
-                record.input,
-                record.sharedConfig
-        );
     }
 
     private static String encodeKeyToken(String value) {
@@ -123,37 +96,16 @@ final class RedisQueuedPulledDispatchCodec {
 
     private record RedisQueuedPulledDispatchRecord(String deliveryId,
                                                    String selectedWorkerId,
-                                                   TaskDispatchContentRecord content,
-                                                   String attemptId,
-                                                   int attemptNo,
-                                                   int retryCount,
-                                                   String batchId,
+                                                   String payload,
+                                                   String correlationRef,
                                                    long createdAtEpochMillis) {
-    }
-
-    private record TaskDispatchContentRecord(String taskId,
-                                             String messageId,
-                                             String eventCode,
-                                             Map<String, Object> input,
-                                             Map<String, Object> sharedConfig) {
     }
 
     private static final class DecodedRedisQueuedPulledDispatchRecord {
         private String deliveryId;
         private String selectedWorkerId;
-        private DecodedTaskDispatchContentRecord content;
-        private String attemptId;
-        private int attemptNo;
-        private int retryCount;
-        private String batchId;
+        private String payload;
+        private String correlationRef;
         private long createdAtEpochMillis;
-    }
-
-    private static final class DecodedTaskDispatchContentRecord {
-        private String taskId;
-        private String messageId;
-        private String eventCode;
-        private Map<String, Object> input;
-        private Map<String, Object> sharedConfig;
     }
 }

@@ -23,7 +23,7 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.model.WorkerStateReportRequest;
 import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.channel.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.PulledTaskDispatch;
 import com.xa.mass.transport.model.TaskResultReport;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

@@ -1,11 +1,8 @@
 package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DeliveryCommand;
-import com.xa.mass.transport.model.TaskDispatchContent;
-import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 
 import java.util.List;
-import java.util.Map;
 
 final class DeliveryCommandFixtures {
 
@@ -24,19 +21,8 @@ final class DeliveryCommandFixtures {
                 "cmd-" + messageId,
                 "bucket-1",
                 selectedWorkerId,
-                new TaskDispatchContent(
-                        "task-1",
-                        messageId,
-                        "event-1",
-                        Map.of("input", messageId),
-                        Map.of()
-                ),
-                new TaskDispatchExecutionContext(
-                        "attempt-" + messageId,
-                        1,
-                        0,
-                        "batch-1"
-                ),
+                payload(messageId),
+                correlation(messageId),
                 0L,
                 10L
         );
@@ -56,7 +42,19 @@ final class DeliveryCommandFixtures {
 
     static List<String> messages(DeliveryCommandBatch batch) {
         return batch.commands().stream()
-                .map(command -> command.getContent().messageId())
+                .map(command -> messageId(command.getPayload()))
                 .toList();
+    }
+
+    static String payload(String messageId) {
+        return "{\"messageId\":\"" + messageId + "\"}";
+    }
+
+    static String correlation(String messageId) {
+        return "corr-" + messageId;
+    }
+
+    static String messageId(String payload) {
+        return payload.replace("{\"messageId\":\"", "").replace("\"}", "");
     }
 }

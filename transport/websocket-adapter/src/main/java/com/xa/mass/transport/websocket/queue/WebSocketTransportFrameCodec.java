@@ -7,8 +7,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
-import com.xa.mass.transport.model.TaskDispatchContent;
-import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.packet.TransportPacket;
@@ -94,20 +92,10 @@ public final class WebSocketTransportFrameCodec {
     }
 
     public String encodeCanonicalTaskDispatch(AdapterDispatchRequest request) {
-        TaskDispatchContent content = request.content();
-        TaskDispatchExecutionContext context = request.executionContext();
-        JsonObject frame = new JsonObject();
-        frame.addProperty(MESSAGE_ID_FIELD, content.messageId());
-        put(frame, WORKER_ID_FIELD, request.selectedWorkerId());
-        if (content.eventCode() != null) {
-            frame.addProperty(EVENT_CODE_FIELD, content.eventCode());
+        if (request == null) {
+            throw new IllegalArgumentException("request must not be null");
         }
-        frame.addProperty("taskId", content.taskId());
-        frame.addProperty(TransportPacket.PAYLOAD_RETRY_COUNT, context.retryCount());
-        put(frame, TransportPacket.PAYLOAD_BATCH_ID, context.batchId());
-        frame.add(TransportPacket.PAYLOAD_INPUT, gson.toJsonTree(content.input()));
-        frame.add(TransportPacket.PAYLOAD_SHARED_CONFIG, gson.toJsonTree(content.sharedConfig()));
-        return gson.toJson(frame);
+        return request.payload();
     }
 
     public TaskResultReport decodeCanonicalTaskResult(JsonObject frame) {

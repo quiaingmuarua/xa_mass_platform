@@ -29,12 +29,14 @@ class TransportDeliveryFailureEventCodecTest {
 
         assertFalse(json.contains("commandBatchJson"), json);
         assertFalse(json.contains("\"payload\""), json);
-        assertFalse(json.contains("\"correlation\""), json);
+        assertFalse(json.contains("\"taskId\""), json);
+        assertFalse(json.contains("\"messageId\""), json);
+        assertFalse(json.contains("\"attemptId\""), json);
         assertFalse(json.contains("groupContext"), json);
         assertFalse(json.contains("itemSnapshot"), json);
         assertEquals(command.getCommandId(), decoded.outcome().getDeliveryId());
         assertEquals("worker-1", decoded.outcome().getSelectedWorkerId());
-        assertEquals("msg-no-owner", decoded.outcome().getMessageId());
+        assertEquals(command.getCorrelationRef(), decoded.outcome().getCorrelationRef());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, decoded.outcome().getStatus());
         assertFalse(json.contains("transportNodeId"), json);
         assertFalse(json.contains("connectionId"), json);

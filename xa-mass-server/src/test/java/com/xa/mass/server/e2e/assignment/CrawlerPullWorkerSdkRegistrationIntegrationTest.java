@@ -17,7 +17,7 @@ import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.channel.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.PulledTaskDispatch;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

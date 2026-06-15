@@ -68,12 +68,12 @@ records. Those facts may remain inside route-owner/raw-route/session internals,
 but not in the assigned task delivery command, handoff, listener, or adapter
 task request.
 
-Payload opacity is owned by
-`TRANSPORT_OPAQUE_DELIVERY_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md`. If that
-roadmap has not landed yet, existing `TaskDispatchContent` and
-`TaskDispatchExecutionContext` are interim command-shape residue only; they
-must not be used to justify retaining route-owner endpoint or consumer evidence
-inside assigned delivery.
+Payload opacity is already completed by
+`doc/archive/transport/2026-06-15_TRANSPORT_OPAQUE_DELIVERY_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md`.
+That roadmap removed `TaskDispatchContent` and
+`TaskDispatchExecutionContext` from transport API; this residue roadmap must
+not reintroduce task-shaped command payloads while removing remaining
+route-owner endpoint or consumer evidence from assigned delivery.
 
 ## Current Code Observations
 
@@ -303,8 +303,8 @@ Target request shape:
 record AdapterDispatchRequest(
     String deliveryId,
     String selectedWorkerId,
-    TaskDispatchContent content,
-    TaskDispatchExecutionContext executionContext,
+    String payload,
+    String correlationRef,
     long createdAtEpochMillis
 ) {}
 ```

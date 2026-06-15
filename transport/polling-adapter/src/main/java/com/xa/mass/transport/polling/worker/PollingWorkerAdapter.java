@@ -1,10 +1,10 @@
 package com.xa.mass.transport.polling.worker;
 
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.channel.PulledTaskDispatch;
-import com.xa.mass.transport.channel.TaskPullResult;
-import com.xa.mass.transport.channel.TaskPullStatus;
-import com.xa.mass.transport.channel.TaskPullChannel;
+import com.xa.mass.transport.channel.DeliveryPullChannel;
+import com.xa.mass.transport.channel.DeliveryPullResult;
+import com.xa.mass.transport.channel.DeliveryPullStatus;
+import com.xa.mass.transport.channel.PulledDeliveryMessage;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.route.TransportRouteOwnerClaim;
@@ -28,7 +28,7 @@ import java.util.Objects;
  * Pull-based worker adapter for crawlers, queue consumers, and other workers
  * that do not maintain a server-push transport.
  */
-public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
+public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel {
 
     private static final Logger logger = LoggerFactory.getLogger(PollingWorkerAdapter.class);
 
@@ -75,8 +75,8 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         List<DispatchOutcome> outcomes = deliveryService.enqueue(PROTOCOL, requests);
         for (DispatchOutcome outcome : outcomes) {
             if (outcome.isRetryable()) {
-                logger.warn("Polling delivery rejected: selectedWorkerId={}, deliveryId={}, attemptId={}, status={}, reason={}",
-                        outcome.getSelectedWorkerId(), outcome.getDeliveryId(), outcome.getAttemptId(),
+                logger.warn("Polling delivery rejected: selectedWorkerId={}, deliveryId={}, status={}, reason={}",
+                        outcome.getSelectedWorkerId(), outcome.getDeliveryId(),
                         outcome.getStatus(), outcome.getReason());
             }
         }
@@ -84,9 +84,9 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     }
 
     @Override
-    public TaskPullResult pollTaskMessagesResult(String selectedWorkerId, int maxMessages, long timeoutMillis) {
+    public DeliveryPullResult pollDeliveryMessagesResult(String selectedWorkerId, int maxMessages, long timeoutMillis) {
         if (selectedWorkerId == null || selectedWorkerId.isBlank() || maxMessages <= 0) {
-            return TaskPullResult.invalidRequest();
+            return DeliveryPullResult.invalidRequest();
         }
         TransportDeliveryPollResult result = deliveryService.pollItemResult(
                 PROTOCOL,
@@ -94,7 +94,7 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
                 maxMessages,
                 timeoutMillis
         );
-        return TaskPullResult.of(mapStatus(result.getStatus()), toPulledItems(result.getItems()));
+        return DeliveryPullResult.of(mapStatus(result.getStatus()), toPulledItems(result.getItems()));
     }
 
     public void announceWorkerOnline(String workerId,
@@ -130,25 +130,25 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         }
     }
 
-    private static TaskPullStatus mapStatus(TransportDeliveryPollStatus status) {
+    private static DeliveryPullStatus mapStatus(TransportDeliveryPollStatus status) {
         if (status == null) {
-            return TaskPullStatus.UNAVAILABLE;
+            return DeliveryPullStatus.UNAVAILABLE;
         }
         return switch (status) {
-            case DELIVERED -> TaskPullStatus.DELIVERED;
-            case EMPTY -> TaskPullStatus.EMPTY;
-            case INVALID_REQUEST -> TaskPullStatus.INVALID_REQUEST;
-            case UNAVAILABLE -> TaskPullStatus.UNAVAILABLE;
-            case SHUTDOWN -> TaskPullStatus.SHUTDOWN;
+            case DELIVERED -> DeliveryPullStatus.DELIVERED;
+            case EMPTY -> DeliveryPullStatus.EMPTY;
+            case INVALID_REQUEST -> DeliveryPullStatus.INVALID_REQUEST;
+            case UNAVAILABLE -> DeliveryPullStatus.UNAVAILABLE;
+            case SHUTDOWN -> DeliveryPullStatus.SHUTDOWN;
         };
     }
 
-    private static List<PulledTaskDispatch> toPulledItems(List<QueuedPulledDispatch> items) {
+    private static List<PulledDeliveryMessage> toPulledItems(List<QueuedPulledDispatch> items) {
         if (items == null || items.isEmpty()) {
             return List.of();
         }
         return items.stream()
-                .map(QueuedPulledDispatch::toPulledTaskDispatch)
+                .map(QueuedPulledDispatch::toPulledDeliveryMessage)
                 .toList();
     }
 

@@ -12,7 +12,7 @@ import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
-import com.xa.mass.transport.channel.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.PulledTaskDispatch;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;

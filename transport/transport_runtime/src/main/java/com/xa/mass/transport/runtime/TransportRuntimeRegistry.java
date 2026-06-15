@@ -107,7 +107,7 @@ public final class TransportRuntimeRegistry {
         String normalizedWorkerId = requireWorkerId(workerId);
         String normalizedWorkerGroupId = requireWorkerGroupId(workerGroupId, normalizedWorkerId);
         TransportBinding binding = resolveBinding(requestedAdapterId, transportHint);
-        if (binding.getTaskPullChannel() == null) {
+        if (binding.getDeliveryPullChannel() == null) {
             throw new IllegalStateException("Worker adapter '" + binding.getAdapterId()
                     + "' under transport '" + binding.getTransportHint()
                     + "' is not pull-capable for worker " + normalizedWorkerId);
@@ -117,7 +117,7 @@ public final class TransportRuntimeRegistry {
                 normalizedWorkerGroupId,
                 binding.getAdapterId(),
                 binding.getTransportHint(),
-                binding.getTaskPullChannel(),
+                binding.getDeliveryPullChannel(),
                 taskResultIngestChannel,
                 routeOwnerStore,
                 deliveryCommandConsumerRegistry,

@@ -1,4 +1,4 @@
-package com.xa.mass.transport.channel;
+package com.xa.mass.sdk.worker;
 
 import com.xa.mass.transport.payload.TransportJsonValueNormalizer;
 
@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Worker-facing dispatch item returned by polling pull channels.
+ * SDK/server public worker polling DTO.
  */
 public final class PulledTaskDispatch {
 
@@ -77,11 +77,11 @@ public final class PulledTaskDispatch {
     }
 
     private static String requireText(String value, String fieldName) {
-        Objects.requireNonNull(value, fieldName);
-        if (value.isBlank()) {
+        String normalized = optionalText(value);
+        if (normalized == null) {
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
-        return value.trim();
+        return normalized;
     }
 
     private static String optionalText(String value) {

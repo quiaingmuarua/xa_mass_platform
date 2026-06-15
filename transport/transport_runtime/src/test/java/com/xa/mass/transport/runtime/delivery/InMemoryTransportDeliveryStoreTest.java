@@ -2,7 +2,6 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchContent;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -228,7 +227,7 @@ class InMemoryTransportDeliveryStoreTest {
         assertEquals(List.of("msg-1", "msg-2"),
                 List.of(firstPoller.get(1, TimeUnit.SECONDS), secondPoller.get(1, TimeUnit.SECONDS)).stream()
                         .flatMap(List::stream)
-                        .map(item -> item.content().messageId())
+                        .map(item -> messageId(item.payload()))
                         .sorted()
                         .toList());
     }
@@ -365,11 +364,8 @@ class InMemoryTransportDeliveryStoreTest {
         return new QueuedPulledDispatch(
                 deliveryId,
                 item.workerId(),
-                content(item),
-                attemptId(item),
-                1,
-                0,
-                "batch-1",
+                payload(item),
+                correlation(item),
                 createdAtEpochMillis
         );
     }
@@ -378,18 +374,12 @@ class InMemoryTransportDeliveryStoreTest {
         return null;
     }
 
-    private TaskDispatchContent content(DispatchFixture item) {
-        return new TaskDispatchContent(
-                "task-1",
-                item.messageId(),
-                "crawler.fetch-page",
-                Map.of("target", "target-1"),
-                Map.of()
-        );
+    private String payload(DispatchFixture item) {
+        return "{\"messageId\":\"" + item.messageId() + "\"}";
     }
 
-    private String attemptId(DispatchFixture item) {
-        return "attempt-" + item.messageId();
+    private String correlation(DispatchFixture item) {
+        return "corr-" + item.messageId();
     }
 
     private CompletableFuture<List<QueuedPulledDispatch>> pollAsync(InMemoryTransportDeliveryStore store, String workerId) {
@@ -410,8 +400,12 @@ class InMemoryTransportDeliveryStoreTest {
 
     private List<String> messageIds(List<QueuedPulledDispatch> items) {
         return items.stream()
-                .map(item -> item.content().messageId())
+                .map(item -> messageId(item.payload()))
                 .toList();
+    }
+
+    private String messageId(String payload) {
+        return payload.replace("{\"messageId\":\"", "").replace("\"}", "");
     }
 
     private void assertQueueBreakdownConsistent(TransportDeliveryStoreStats stats) {

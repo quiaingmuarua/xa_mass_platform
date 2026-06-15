@@ -17,6 +17,8 @@ import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.TaskDispatchDeliveryCorrelation;
+import com.xa.mass.sdk.worker.TaskDispatchDeliveryCorrelationCodec;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
@@ -405,17 +407,21 @@ public class MassApplication {
     }
 
     private TransportDeliveryFailureHandler createTransportDeliveryFailureHandler() {
+        TaskDispatchDeliveryCorrelationCodec correlationCodec = new TaskDispatchDeliveryCorrelationCodec();
         return event -> {
             if (event == null || event.outcome() == null) {
                 return false;
             }
             DispatchOutcome outcome = event.outcome();
-            String taskId = outcome.getTaskId();
-            if (taskId == null) {
-                logger.error("Cannot compensate delivery failure because task id is missing: deliveryId={}",
-                        outcome.getDeliveryId());
+            TaskDispatchDeliveryCorrelation correlation;
+            try {
+                correlation = correlationCodec.decode(outcome.getCorrelationRef());
+            } catch (RuntimeException e) {
+                logger.error("Cannot compensate delivery failure because correlation is incomplete: deliveryId={}, reason={}",
+                        outcome.getDeliveryId(), e.getMessage());
                 return false;
             }
+            String taskId = correlation.taskId();
             Task storedTask = engineConfig.getTaskShellStore().getTask(taskId).orElse(null);
             if (storedTask == null) {
                 logger.error("Cannot compensate delivery failure because task {} is missing", taskId);
@@ -441,11 +447,13 @@ public class MassApplication {
 
     private TaskDispatchDeliveryFailure toDeliveryFailure(TransportDeliveryFailureEvent event) {
         DispatchOutcome outcome = event.outcome();
+        TaskDispatchDeliveryCorrelation correlation =
+                new TaskDispatchDeliveryCorrelationCodec().decode(outcome.getCorrelationRef());
         return new TaskDispatchDeliveryFailure(
-                outcome.getTaskId(),
-                outcome.getMessageId(),
-                outcome.getAttemptId(),
-                outcome.getAttemptNo(),
+                correlation.taskId(),
+                correlation.messageId(),
+                correlation.attemptId(),
+                correlation.attemptNo(),
                 outcome.getSelectedWorkerId(),
                 firstNonBlank(event.detail(), outcome.getReason())
         );
@@ -769,7 +777,7 @@ public class MassApplication {
                 resolved.getWorkerGroupId(),
                 resolved.getAdapterId(),
                 requireText(sessionToken, "sessionToken"),
-                resolved.getTaskPullChannel(),
+                resolved.getDeliveryPullChannel(),
                 resolved.getTaskResultIngestChannel(),
                 resolved.getRouteOwnerStore(),
                 resolved.getDeliveryCommandConsumerRegistry(),

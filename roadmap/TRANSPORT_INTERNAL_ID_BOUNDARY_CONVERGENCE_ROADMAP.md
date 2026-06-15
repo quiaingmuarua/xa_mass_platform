@@ -305,8 +305,8 @@ owner boundaries.
 Start with caller inventory and public/producers guards. Then rename the
 smallest contract surface at each layer while preserving compile-safe slices.
 
-Do not put endpoint lease facts back into `DeliveryCommand`,
-`TaskDispatchContent`, or `TaskDispatchExecutionContext`.
+Do not put endpoint lease facts back into `DeliveryCommand` or recreate
+task-shaped transport command models as compatibility aliases.
 
 Do not start by mechanically renaming every `adapterNodeId` to
 `workerGatewayId`. First separate topology owners from worker/session callers.
@@ -524,9 +524,8 @@ Acceptance:
 - Active docs have one vocabulary table and no competing `adapterId` /
   `routeKey` explanation for assigned delivery.
 - Guards fail if `DeliveryCommand`, opaque payload/correlation carrier, or any
-  interim `TaskDispatchContent` / `TaskDispatchExecutionContext` residue regains
-  endpoint lease, driver, runtime-node, route/address, session, or store
-  partition fields.
+  recreated task-shaped transport command model regains endpoint lease, driver,
+  runtime-node, route/address, session, or store partition fields.
 - Guards fail if public worker APIs expose endpoint lease or driver ids.
 - Guards fail if worker session/connect/poll APIs expose `adapterNodeId` or
   `workerGatewayId`.
@@ -571,7 +570,7 @@ Residue scans:
 ```powershell
 rg -n "getWorkerAdapterId|getWorkerTransportHint|adapterNodeId|transportHint|adapterId\\(|routeKey\\(|connectionId\\(|transportNodeId\\(|deliveryQueueKey\\(" sdk/xa-mass-java-sdk/src/main/java xa-mass-server/src/main/java/com/xa/mass/api/model/worker -g "*.java"
 rg -n "adapterNodeId|workerGatewayId" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/session integrations/xa-mass-worker-pack/src/main/java -g "*.java"
-rg -n "adapterId|routeKey|connectionId|transportNodeId|deliveryQueueKey|endpointDriverId|endpointAddress|sessionHandle|endpointLeaseId" transport/transport_api/src/main/java/com/xa/mass/transport/model/DeliveryCommand.java transport/transport_api/src/main/java/com/xa/mass/transport/model/TaskDispatchExecutionContext.java
+rg -n "adapterId|routeKey|connectionId|transportNodeId|deliveryQueueKey|endpointDriverId|endpointAddress|sessionHandle|endpointLeaseId|TaskDispatchContent|TaskDispatchExecutionContext" transport/transport_api/src/main/java/com/xa/mass/transport/model/DeliveryCommand.java transport/transport_api/src/main/java/com/xa/mass/transport/model transport/transport_api/src/main/java/com/xa/mass/transport/channel
 rg -n "adapterId \\+ selectedWorkerId|activeOwnerForSelectedWorker|adapterWorkerKey|DeliveryCommandGroup" transport sdk xa-mass-server roadmap -g "*.java" -g "*.md"
 ```
 

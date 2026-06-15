@@ -1,4 +1,4 @@
-package com.xa.mass.transport.channel;
+package com.xa.mass.sdk.worker;
 
 import org.junit.jupiter.api.Test;
 
@@ -6,6 +6,7 @@ import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -14,10 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class PulledTaskDispatchTest {
 
     @Test
-    void exposesOnlyWorkerPullFields() {
+    void exposesOnlySdkWorkerPullFields() {
         Set<String> fields = Arrays.stream(PulledTaskDispatch.class.getDeclaredFields())
                 .map(Field::getName)
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
 
         assertEquals(Set.of(
                 "taskId",
@@ -32,6 +33,7 @@ class PulledTaskDispatchTest {
         ), fields);
         assertFalse(fields.contains("routeKey"));
         assertFalse(fields.contains("transportPayload"));
+        assertFalse(fields.contains("TransportPacket"));
         assertFalse(fields.contains("workerId"));
     }
 

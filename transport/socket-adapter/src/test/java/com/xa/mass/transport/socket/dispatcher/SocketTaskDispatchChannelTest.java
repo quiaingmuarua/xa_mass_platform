@@ -3,8 +3,6 @@ package com.xa.mass.transport.socket.dispatcher;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchContent;
-import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -12,7 +10,6 @@ import com.xa.mass.transport.socket.session.SocketSessionManager;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -72,16 +69,9 @@ class SocketTaskDispatchChannelTest {
     private AdapterDispatchRequest request(String messageId, String workerId) {
         return new AdapterDispatchRequest(
                 "delivery-" + messageId,
-                "socket",
                 workerId,
-                new TaskDispatchContent(
-                        "task-1",
-                        messageId,
-                        "crawler.fetch-page",
-                        Map.of("target", "target-1"),
-                        Map.of()
-                ),
-                new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1"),
+                "{\"messageId\":\"" + messageId + "\"}",
+                "corr-" + messageId,
                 1L
         );
     }

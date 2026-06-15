@@ -46,10 +46,7 @@ final class TransportDeliveryFailureEventCodec {
         return new DispatchOutcomeRecord(
                 outcome.getDeliveryId(),
                 outcome.getSelectedWorkerId(),
-                outcome.getAttemptId(),
-                outcome.getTaskId(),
-                outcome.getMessageId(),
-                outcome.getAttemptNo(),
+                outcome.getCorrelationRef(),
                 outcome.getStatus(),
                 outcome.isRetryable(),
                 outcome.getReason(),
@@ -61,10 +58,7 @@ final class TransportDeliveryFailureEventCodec {
         return new DispatchOutcome(
                 record.deliveryId,
                 record.selectedWorkerId,
-                record.attemptId,
-                record.taskId,
-                record.messageId,
-                record.attemptNo,
+                record.correlationRef,
                 record.status,
                 record.retryable,
                 record.reason,
@@ -78,10 +72,7 @@ final class TransportDeliveryFailureEventCodec {
 
     private record DispatchOutcomeRecord(String deliveryId,
                                          String selectedWorkerId,
-                                         String attemptId,
-                                         String taskId,
-                                         String messageId,
-                                         int attemptNo,
+                                         String correlationRef,
                                          DispatchOutcomeStatus status,
                                          boolean retryable,
                                          String reason,
@@ -96,10 +87,7 @@ final class TransportDeliveryFailureEventCodec {
     private static final class DecodedDispatchOutcomeRecord {
         private String deliveryId;
         private String selectedWorkerId;
-        private String attemptId;
-        private String taskId;
-        private String messageId;
-        private int attemptNo;
+        private String correlationRef;
         private DispatchOutcomeStatus status;
         private boolean retryable;
         private String reason;

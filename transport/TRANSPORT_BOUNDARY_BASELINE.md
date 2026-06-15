@@ -48,31 +48,27 @@ Transport should stay centered on these concepts only:
 - `DispatchOutcome`: adapter-neutral delivery result, never task-lifecycle truth
   and the single retryable delivery-failure fact owner. It carries stable
   delivery identity, selected worker, opaque delivery correlation, status,
-  retryability, reason, and time in the target boundary. Current
-  attempt/task/message fields are convergence residue until the opaque payload
-  slice lands. It must not expose adapter id, delivery queue key, route key,
-  transport node id, connection id, endpoint lease, or route-owner evidence.
+  retryability, reason, and time. It must not expose adapter id, delivery queue
+  key, route key, transport node id, connection id, endpoint lease,
+  route-owner evidence, or task-shaped message/attempt fields.
 - `DeliveryCommand`: assigned-item delivery intent. It carries item identity,
   `deliveryBucketId`, `selectedWorkerId`, an opaque worker payload, opaque
-  delivery correlation, deadline, and creation timestamp in the target
-  boundary. Current `TaskDispatchContent` and
-  `TaskDispatchExecutionContext` fields are convergence residue, not stable
-  transport owner concepts. Task shell metadata, adapter, lane, target node,
-  route-owner, connection, session, packet, and structured task payload facts
-  are not command fields.
+  delivery correlation, deadline, and creation timestamp. Task shell metadata,
+  adapter, lane, target node, route-owner, connection, session, packet, and
+  structured task payload facts are not command fields.
 - `DeliveryCommandBatch`: consumer-local handoff record for one assigned
   delivery queue. It carries the bucket-derived `deliveryQueueKey`,
   handoff-owned command references when the backing store needs ack, and
   minimal `DeliveryCommand` items. It does not carry delivery bucket, lane,
   target node, route, connection, or lease facts.
 - `AdapterDispatchRequest`: runtime-owned final-hop dispatch request. It is
-  created after handoff reference claim and carries one selected-worker command
-  plus a transport-internal adapter selector. WebSocket/socket final-hop sends
-  by selected worker; connection handles stay inside adapter session managers.
-- `QueuedPulledDispatch`: current polling queue value and pull DTO source. The
-  target transport-core shape is an opaque pulled delivery message carrying
-  delivery id, selected worker, payload, correlation, and timing only; it does
-  not serialize packets, routeKey, endpoint evidence, deliveryQueueKey,
+  created after handoff reference claim and carries one selected-worker command:
+  delivery id, selected worker, opaque payload, opaque correlation, and timing.
+  WebSocket/socket final-hop sends by selected worker; adapter selection and
+  connection handles stay inside adapter runtime/session managers.
+- `QueuedPulledDispatch`: current polling queue value and pull DTO source. It
+  carries delivery id, selected worker, payload, correlation, and timing only;
+  it does not serialize packets, routeKey, endpoint evidence, deliveryQueueKey,
   taskName, project, userId, or task payload fields as transport-owned facts.
 - `TransportDeliveryStore`: runtime-owned queueing/drain/poll seam for transport
   delivery. Assigned polling delivery is addressed by shared
@@ -87,12 +83,12 @@ Transport should stay centered on these concepts only:
   derived only from the assigned delivery bucket. Handoff implementations own
   selected-worker consumer evidence, ready references, inflight references,
   ack/requeue, and queue-consumer adapter context.
-- `TaskPullResult`: current explicit pull-path status plus delivered
-  `PulledTaskDispatch` items. This task-shaped public worker projection is a
-  convergence residue in `transport_api`; the target transport-core pull shape
-  is status plus opaque pulled delivery messages. Empty queue, invalid request,
-  temporary unavailability, and shutdown must not be flattened into one fake
-  "no work" result on the transport mainline
+- `DeliveryPullResult`: explicit transport pull-path status plus delivered
+  `PulledDeliveryMessage` items. Task-shaped `TaskPullResult` and
+  `PulledTaskDispatch` live at the SDK/server public worker boundary, not in
+  transport core. Empty queue, invalid request, temporary unavailability, and
+  shutdown must not be flattened into one fake "no work" result on the
+  transport mainline.
 - `TransportRouteOwnerStore`: transport adapter write surface for typed
   route-owner claims, heartbeat refresh, and owner release. Claims carry
   `deliveryBucketId` explicitly; the store must not infer a bucket from
@@ -416,12 +412,9 @@ envelope. Its stable target fields are command id, delivery bucket id, selected
 worker id, opaque worker payload, opaque delivery correlation, item deadline,
 and creation timestamp.
 
-Current `TaskDispatchContent` and `TaskDispatchExecutionContext` fields are
-only convergence residue on the way to the opaque payload boundary. They must
-not grow task shell metadata such as task name, project, or user id, and they
-must not grow route, adapter, lane, node, endpoint, connection, session,
-capacity, lifecycle, scheduling, or observability fields. New transport work
-must not treat those classes as protected APIs.
+`TaskDispatchContent` and `TaskDispatchExecutionContext` have been removed
+from the transport API. Do not recreate them as compatibility aliases, wrapper
+payloads, or protected transport models.
 
 `TaskDispatchContext` is no longer a transport runtime handoff object.
 SDK/starter assembly consumes the task-level dispatch snapshot plus concrete
@@ -429,17 +422,14 @@ SDK/starter assembly consumes the task-level dispatch snapshot plus concrete
 `DeliveryCommand` items carrying `deliveryBucketId + selectedWorkerId`.
 Transport runtime consumes delivery commands and resolved batches only.
 
-`PulledTaskDispatch` is the polling worker pull DTO, not the internal
-delivery-command handoff payload and not a transport metadata carrier. Its
-current task-shaped placement in `transport_api` is convergence residue; the
-target transport-core pull value is an opaque delivery message, while SDK/server
-public worker APIs may decode payloads into task-shaped DTOs outside transport
-core. Worker identity comes from the poll session/path, and
-route/session/endpoint facts stay inside transport delivery. WebSocket/socket
-worker frames are final-hop wire projections assembled from the opaque payload
-and selected-worker endpoint evidence at final hop. Task shell metadata such as
-task name, project, and user id must not be copied into `DeliveryCommand`,
-`TaskPullResult`, or handoff codecs as parallel truth.
+`PulledDeliveryMessage` is the transport-core pull value. `PulledTaskDispatch`
+is the SDK/server public worker DTO, not the internal delivery-command handoff
+payload and not a transport metadata carrier. Worker identity comes from the
+poll session/path, and route/session/endpoint facts stay inside transport
+delivery. WebSocket/socket worker frames are final-hop wire projections from
+the opaque payload and selected-worker endpoint evidence. Task shell metadata
+such as task name, project, and user id must not be copied into
+`DeliveryCommand`, transport pull results, or handoff codecs as parallel truth.
 
 `TransportPacket` remains the internal flat transport envelope for result and
 worker-system-event shapes, while task-dispatch wire frames are assembled at
@@ -636,10 +626,11 @@ are assembled above the store boundary by
 `TransportDeliveryServiceStats`. Poll semantics must stay explicit enough to
 distinguish delivered, empty, invalid-request, unavailable, and shutdown
 results without forcing callers to treat every non-delivery outcome as an empty
-queue. `TaskPullChannel.pollTaskMessagesResult(...)` is the transport mainline
-for that statusful view and receives the polling worker's registered worker id
-as `selectedWorkerId`; list-only pull helpers are convenience wrappers above
-it. `DELIVERED` status must always carry one or more pulled items/envelopes;
+queue. `DeliveryPullChannel.pollDeliveryMessagesResult(...)` is the transport
+mainline for that statusful view and receives the polling worker's registered
+worker id as `selectedWorkerId`; SDK task-shaped pull helpers are convenience
+wrappers above it. `DELIVERED` status must always carry one or more pulled
+items/envelopes;
 empty payload sets are `EMPTY`, not a second encoding of delivery. Thread interruption is not a store result contract; store
 implementations should throw interruption and let callers handle it above the
 store boundary. Store shutdown is

@@ -78,7 +78,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
                 deliveryCommandConsumerKey
         );
         return TransportBinding.builder(pollingAdapter)
-                .taskPullChannel(pollingAdapter)
+                .deliveryPullChannel(pollingAdapter)
                 .build();
     }
 }

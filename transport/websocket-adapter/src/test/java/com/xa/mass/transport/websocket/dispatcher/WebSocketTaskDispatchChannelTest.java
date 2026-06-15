@@ -1,17 +1,12 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchContent;
-import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
@@ -132,48 +127,27 @@ class WebSocketTaskDispatchChannelTest {
         assertTrue(outcomes.get(0).isRetryable());
     }
 
-    private Task task() {
-        Task task = new Task();
-        task.setTid("task-1");
-        task.setTaskName("task-name");
-        task.setProject("demoApp");
-        task.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
-        task.setSharedConfig(java.util.Map.of(
-                "textContent", "hello",
-                "_sdk", java.util.Map.of("eventCode", "crawler.fetch-page")
-        ));
-        return task;
-    }
-
-    private TaskDispatchBinding binding() {
-        return new TaskDispatchBinding(
-                "task-1",
-                "msg-1",
-                "crawler.fetch-page",
-                java.util.Map.of("target", "target-1"),
-                null,
-                0,
-                "attempt-1",
-                1,
-                null,
-                "worker-1",
-                "batch-0"
-        );
-    }
-
     private TransportDeliveryService deliveryService() {
         return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
     }
 
     private AdapterDispatchRequest request() {
-        TaskDispatchBinding binding = binding();
-        TaskDispatchContext context = TaskDispatchContext.from(task());
         return new AdapterDispatchRequest(
-                "delivery-" + binding.messageId(),
-                "websocket",
-                binding.workerId(),
-                TaskDispatchContent.from(context, binding),
-                TaskDispatchExecutionContext.from(binding),
+                "delivery-msg-1",
+                "worker-1",
+                """
+                {
+                  "messageId": "msg-1",
+                  "workerId": "worker-1",
+                  "taskId": "task-1",
+                  "eventCode": "crawler.fetch-page",
+                  "batchId": "batch-0",
+                  "retryCount": 0,
+                  "input": {"target": "target-1"},
+                  "sharedConfig": {"textContent": "hello"}
+                }
+                """,
+                "corr-msg-1",
                 1L
         );
     }

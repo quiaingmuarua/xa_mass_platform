@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.transport.channel.TaskPullChannel;
+import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.worker.WorkerAdapter;
 
 import java.util.Objects;
@@ -12,11 +12,11 @@ import java.util.Objects;
 public final class TransportBinding {
 
     private final WorkerAdapter workerAdapter;
-    private final TaskPullChannel taskPullChannel;
+    private final DeliveryPullChannel deliveryPullChannel;
 
     private TransportBinding(Builder builder) {
         this.workerAdapter = Objects.requireNonNull(builder.workerAdapter, "workerAdapter");
-        this.taskPullChannel = builder.taskPullChannel;
+        this.deliveryPullChannel = builder.deliveryPullChannel;
     }
 
     public static Builder builder(WorkerAdapter workerAdapter) {
@@ -35,20 +35,20 @@ public final class TransportBinding {
         return workerAdapter.transportHint();
     }
 
-    public TaskPullChannel getTaskPullChannel() {
-        return taskPullChannel;
+    public DeliveryPullChannel getDeliveryPullChannel() {
+        return deliveryPullChannel;
     }
 
     public static final class Builder {
         private final WorkerAdapter workerAdapter;
-        private TaskPullChannel taskPullChannel;
+        private DeliveryPullChannel deliveryPullChannel;
 
         private Builder(WorkerAdapter workerAdapter) {
             this.workerAdapter = workerAdapter;
         }
 
-        public Builder taskPullChannel(TaskPullChannel taskPullChannel) {
-            this.taskPullChannel = taskPullChannel;
+        public Builder deliveryPullChannel(DeliveryPullChannel deliveryPullChannel) {
+            this.deliveryPullChannel = deliveryPullChannel;
             return this;
         }
 

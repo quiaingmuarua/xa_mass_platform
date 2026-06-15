@@ -144,8 +144,9 @@ selectedWorkerId` to transport; the current SDK/starter default derives the
 bucket from worker-group context. Polling worker responses expose
 `PulledTaskDispatch` without worker or route metadata because worker identity
 comes from the session/path context. Transport-owned delivery submitters
-partition the already assigned item to that worker's current bucket-worker
-route consumer node. Worker runtime capacity, lifecycle, and multi-binding
+offer the already assigned item to the bucket-derived delivery queue;
+selected-worker consumer evidence prevents wrong-worker delivery at
+drain/final-hop time. Worker runtime capacity, lifecycle, and multi-binding
 behavior remain owned by worker-runtime scheduling/admission, not by transport
 route ownership.
 

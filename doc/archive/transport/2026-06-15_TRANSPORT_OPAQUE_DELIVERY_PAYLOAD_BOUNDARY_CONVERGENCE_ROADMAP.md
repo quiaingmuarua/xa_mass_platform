@@ -1,8 +1,19 @@
 # Transport Opaque Delivery Payload Boundary Convergence Roadmap
 
-Status: proposed direction document.
+Status: complete and archived.
 
 Date: 2026-06-15
+
+Archived completion:
+
+- `DeliveryCommand`, `AdapterDispatchRequest`, `DispatchOutcome`,
+  `QueuedPulledDispatch`, and transport delivery codecs now carry opaque
+  payload/correlation instead of task-shaped content/context fields.
+- Transport pull contracts are `DeliveryPullChannel`, `DeliveryPullResult`, and
+  `PulledDeliveryMessage`; task-shaped `TaskPullResult` /
+  `PulledTaskDispatch` live in SDK/server public worker ownership.
+- Owner facts moved into `transport/AGENTS.md`,
+  `transport/TRANSPORT_BOUNDARY_BASELINE.md`, and `doc/PROOF_REGISTRY.md`.
 
 Depends on:
 

@@ -139,10 +139,9 @@ public final class TransportDeliveryCommandListener {
                                              DeliveryCommand command) {
         return new AdapterDispatchRequest(
                 command.getCommandId(),
-                adapterId,
                 command.getSelectedWorkerId(),
-                command.getContent(),
-                command.getExecutionContext(),
+                command.getPayload(),
+                command.getCorrelationRef(),
                 command.getCreatedAtEpochMillis()
         );
     }
@@ -236,14 +235,14 @@ public final class TransportDeliveryCommandListener {
             }
             if (outcome.getStatus() == DispatchOutcomeStatus.DELIVERED
                     || outcome.getStatus() == DispatchOutcomeStatus.QUEUED) {
-                logger.debug("Transport delivery outcome: adapterId={}, deliveryQueueKey={}, deliveryId={}, attemptId={}, selectedWorkerId={}, status={}",
+                logger.debug("Transport delivery outcome: adapterId={}, deliveryQueueKey={}, deliveryId={}, selectedWorkerId={}, status={}",
                         adapterId(adapter), deliveryQueueKey, outcome.getDeliveryId(),
-                        outcome.getAttemptId(), outcome.getSelectedWorkerId(), outcome.getStatus());
+                        outcome.getSelectedWorkerId(), outcome.getStatus());
                 continue;
             }
-            logger.warn("Transport delivery outcome: adapterId={}, deliveryQueueKey={}, deliveryId={}, attemptId={}, selectedWorkerId={}, status={}, retryable={}, reason={}, routedAdapter={}",
+            logger.warn("Transport delivery outcome: adapterId={}, deliveryQueueKey={}, deliveryId={}, selectedWorkerId={}, status={}, retryable={}, reason={}, routedAdapter={}",
                     adapterId(adapter), deliveryQueueKey, outcome.getDeliveryId(),
-                    outcome.getAttemptId(), outcome.getSelectedWorkerId(), outcome.getStatus(), outcome.isRetryable(),
+                    outcome.getSelectedWorkerId(), outcome.getStatus(), outcome.isRetryable(),
                     outcome.getReason(), adapter != null ? adapter.adapterId() : null);
         }
     }

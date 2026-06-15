@@ -4,6 +4,8 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.sdk.worker.TaskDispatchDeliveryCorrelationCodec;
+import com.xa.mass.sdk.worker.TaskDispatchPayloadCodec;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
@@ -13,8 +15,6 @@ import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchContent;
-import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.route.RouteConsumerEndpoint;
 import com.xa.mass.transport.route.SelectedWorkerDeliveryTarget;
 import com.xa.mass.transport.route.TransportRouteOwnerClaim;
@@ -225,8 +225,8 @@ class MassApplicationDistributedTransportTest {
                 commandId,
                 "demo-workers",
                 workerId,
-                TaskDispatchContent.from(context(), binding),
-                TaskDispatchExecutionContext.from(binding),
+                new TaskDispatchPayloadCodec().encode(context(), binding, workerId),
+                new TaskDispatchDeliveryCorrelationCodec().encode(context(), binding),
                 0L,
                 System.currentTimeMillis()
         );
@@ -244,7 +244,8 @@ class MassApplicationDistributedTransportTest {
         return batch == null
                 ? List.of()
                 : batch.commands().stream()
-                .map(command -> command.getContent().messageId())
+                .map(command -> new TaskDispatchPayloadCodec().decode(command.getPayload(), command.getCorrelationRef())
+                        .getMessageId())
                 .toList();
     }
 
@@ -411,9 +412,10 @@ class MassApplicationDistributedTransportTest {
 
         @Override
         public List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests) {
+            TaskDispatchPayloadCodec codec = new TaskDispatchPayloadCodec();
             List<DispatchOutcome> outcomes = new ArrayList<>();
             for (AdapterDispatchRequest request : requests) {
-                dispatchedMessageIds.add(request.content().messageId());
+                dispatchedMessageIds.add(codec.decode(request.payload(), request.correlationRef()).getMessageId());
                 dispatchedWorkerIds.add(request.selectedWorkerId());
                 outcomes.add(DispatchOutcome.delivered(request));
                 dispatchLatch.countDown();

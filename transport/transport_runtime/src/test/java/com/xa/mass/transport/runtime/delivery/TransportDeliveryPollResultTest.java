@@ -1,10 +1,8 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.TaskDispatchContent;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -37,17 +35,8 @@ class TransportDeliveryPollResultTest {
         return new QueuedPulledDispatch(
                 deliveryId,
                 workerId,
-                new TaskDispatchContent(
-                        "task-1",
-                        messageId,
-                        "crawler.fetch-page",
-                        Map.of("target", "target-1"),
-                        Map.of()
-                ),
-                "attempt-" + messageId,
-                1,
-                0,
-                "batch-1",
+                "{\"messageId\":\"" + messageId + "\"}",
+                "corr-" + messageId,
                 1L
         );
     }

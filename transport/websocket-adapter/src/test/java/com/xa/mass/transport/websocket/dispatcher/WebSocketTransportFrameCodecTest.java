@@ -3,14 +3,10 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
-import com.xa.mass.transport.model.TaskDispatchContent;
-import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -32,21 +28,18 @@ class WebSocketTransportFrameCodecTest {
     void encodesCanonicalTaskDispatch() {
         AdapterDispatchRequest request = new AdapterDispatchRequest(
                 "delivery-1",
-                "websocket",
                 "worker-1",
-                new TaskDispatchContent(
-                        "task-1",
-                        "msg-1",
-                        "crawler.fetch-page",
-                        Map.of("target", "https://example.test"),
-                        Map.of("textContent", "hello")
-                ),
-                new TaskDispatchExecutionContext(
-                        "attempt-1",
-                        1,
-                        2,
-                        "batch-1"
-                ),
+                """
+                {
+                  "messageId": "msg-1",
+                  "workerId": "worker-1",
+                  "taskId": "task-1",
+                  "eventCode": "crawler.fetch-page",
+                  "input": {"target": "https://example.test"},
+                  "sharedConfig": {"textContent": "hello"}
+                }
+                """,
+                "corr-1",
                 1L
         );
 

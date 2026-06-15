@@ -46,10 +46,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
             return DispatchOutcome.invalid(
                     item != null ? item.deliveryId() : null,
                     normalizedSelectedWorkerId,
-                    item != null ? item.attemptId() : null,
-                    item != null ? item.content().taskId() : null,
-                    item != null ? item.content().messageId() : null,
-                    item != null ? item.attemptNo() : 0,
+                    item != null ? item.correlationRef() : null,
                     "deliveryQueueKey must not be blank"
             );
         }
@@ -58,10 +55,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
             return DispatchOutcome.invalid(
                     item.deliveryId(),
                     null,
-                    item.attemptId(),
-                    item.content().taskId(),
-                    item.content().messageId(),
-                    item.attemptNo(),
+                    item.correlationRef(),
                     "selectedWorkerId must not be blank"
             );
         }
@@ -77,27 +71,18 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
             case ENQUEUED -> DispatchOutcome.queued(
                     normalizedItem.deliveryId(),
                     normalizedItem.selectedWorkerId(),
-                    normalizedItem.attemptId(),
-                    normalizedItem.content().taskId(),
-                    normalizedItem.content().messageId(),
-                    normalizedItem.attemptNo()
+                    normalizedItem.correlationRef()
             );
             case INVALID -> DispatchOutcome.invalid(
                     normalizedItem.deliveryId(),
                     normalizedItem.selectedWorkerId(),
-                    normalizedItem.attemptId(),
-                    normalizedItem.content().taskId(),
-                    normalizedItem.content().messageId(),
-                    normalizedItem.attemptNo(),
+                    normalizedItem.correlationRef(),
                     result.reason() == null ? "deliveryQueueKey must not be blank" : result.reason()
             );
             case UNAVAILABLE -> new DispatchOutcome(
                     normalizedItem.deliveryId(),
                     normalizedItem.selectedWorkerId(),
-                    normalizedItem.attemptId(),
-                    normalizedItem.content().taskId(),
-                    normalizedItem.content().messageId(),
-                    normalizedItem.attemptNo(),
+                    normalizedItem.correlationRef(),
                     com.xa.mass.transport.model.DispatchOutcomeStatus.UNAVAILABLE,
                     true,
                     "delivery store is stopped",
@@ -110,10 +95,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
                 yield DispatchOutcome.backpressure(
                         normalizedItem.deliveryId(),
                         normalizedItem.selectedWorkerId(),
-                        normalizedItem.attemptId(),
-                        normalizedItem.content().taskId(),
-                        normalizedItem.content().messageId(),
-                        normalizedItem.attemptNo(),
+                        normalizedItem.correlationRef(),
                         resolveBackpressureReason(result.reason())
                 );
             }
@@ -233,11 +215,8 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         return new QueuedPulledDispatch(
                 item.deliveryId(),
                 normalizedSelectedWorkerId,
-                item.content(),
-                item.attemptId(),
-                item.attemptNo(),
-                item.retryCount(),
-                item.batchId(),
+                item.payload(),
+                item.correlationRef(),
                 item.createdAtEpochMillis()
         );
     }

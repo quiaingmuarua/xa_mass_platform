@@ -47,9 +47,6 @@ public final class TransportDeliveryService {
                         null,
                         null,
                         null,
-                        null,
-                        null,
-                        0,
                         "request must not be null"
                 ));
                 continue;

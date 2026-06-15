@@ -56,8 +56,8 @@ import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.channel.PulledTaskDispatch;
-import com.xa.mass.transport.channel.TaskPullResult;
+import com.xa.mass.sdk.worker.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.TaskPullResult;
 import com.xa.mass.transport.model.TaskResultReport;
 
 import java.io.IOException;

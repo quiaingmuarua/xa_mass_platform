@@ -3,8 +3,6 @@ package com.xa.mass.transport.runtime.delivery;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchContent;
-import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -126,7 +124,7 @@ class TransportDeliveryServiceTest {
         service.enqueue("polling", List.of(request("msg-1", "worker-1")));
 
         assertEquals(List.of("msg-1"), service.pollItems("polling", "worker-1", 10, 0).stream()
-                .map(item -> item.content().messageId())
+                .map(item -> messageId(item.payload()))
                 .toList());
     }
 
@@ -136,7 +134,7 @@ class TransportDeliveryServiceTest {
         service.enqueue("polling", List.of(request("delivery-msg-1", " Polling ", "msg-1", " worker-1 ")));
 
         assertEquals(List.of("msg-1"), service.pollItems("polling", "worker-1", 10, 0).stream()
-                .map(item -> item.content().messageId())
+                .map(item -> messageId(item.payload()))
                 .toList());
     }
 
@@ -147,7 +145,7 @@ class TransportDeliveryServiceTest {
 
         assertTrue(service.pollItems("polling", "worker-1", 10, 0).isEmpty());
         assertEquals(List.of("msg-1"), service.pollItems("polling", "worker-2", 10, 0).stream()
-                .map(item -> item.content().messageId())
+                .map(item -> messageId(item.payload()))
                 .toList());
     }
 
@@ -247,18 +245,15 @@ class TransportDeliveryServiceTest {
                                            String workerId) {
         return new AdapterDispatchRequest(
                 deliveryId,
-                adapterId,
                 workerId,
-                new TaskDispatchContent(
-                        "task-1",
-                        messageId,
-                        "crawler.fetch-page",
-                        Map.of("target", "target-1"),
-                        Map.of()
-                ),
-                new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1"),
+                "{\"messageId\":\"" + messageId + "\"}",
+                "corr-" + messageId,
                 1L
         );
+    }
+
+    private String messageId(String payload) {
+        return payload.replace("{\"messageId\":\"", "").replace("\"}", "");
     }
 }
 

@@ -1,8 +1,8 @@
 package com.xa.mass.sdk.worker;
 
-import com.xa.mass.transport.channel.PulledTaskDispatch;
-import com.xa.mass.transport.channel.TaskPullChannel;
-import com.xa.mass.transport.channel.TaskPullResult;
+import com.xa.mass.transport.channel.DeliveryPullChannel;
+import com.xa.mass.transport.channel.DeliveryPullResult;
+import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
@@ -32,7 +32,8 @@ public class PullWorkerSession {
     private final String adapterId;
     private final String routeKey;
     private final String connectionId;
-    private final TaskPullChannel taskPullChannel;
+    private final DeliveryPullChannel deliveryPullChannel;
+    private final TaskDispatchPayloadCodec payloadCodec;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final TransportRouteOwnerStore routeOwnerStore;
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
@@ -44,7 +45,7 @@ public class PullWorkerSession {
                              String workerGroupId,
                              String adapterId,
                              String connectionId,
-                             TaskPullChannel taskPullChannel,
+                             DeliveryPullChannel deliveryPullChannel,
                              TaskResultIngestChannel taskResultIngestChannel,
                              TransportRouteOwnerStore routeOwnerStore,
                              WorkerPresenceIngress workerPresenceIngress,
@@ -53,7 +54,7 @@ public class PullWorkerSession {
                 workerGroupId,
                 adapterId,
                 connectionId,
-                taskPullChannel,
+                deliveryPullChannel,
                 taskResultIngestChannel,
                 routeOwnerStore,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
@@ -66,7 +67,7 @@ public class PullWorkerSession {
                              String workerGroupId,
                              String adapterId,
                              String connectionId,
-                             TaskPullChannel taskPullChannel,
+                             DeliveryPullChannel deliveryPullChannel,
                              TaskResultIngestChannel taskResultIngestChannel,
                              TransportRouteOwnerStore routeOwnerStore,
                              DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
@@ -81,7 +82,8 @@ public class PullWorkerSession {
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
         this.routeKey = CanonicalWorkerGroupRouteKeyCodec.encode(this.workerGroupId);
         this.connectionId = requireText(connectionId, "connectionId");
-        this.taskPullChannel = Objects.requireNonNull(taskPullChannel, "taskPullChannel");
+        this.deliveryPullChannel = Objects.requireNonNull(deliveryPullChannel, "deliveryPullChannel");
+        this.payloadCodec = new TaskDispatchPayloadCodec();
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
         this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
@@ -195,7 +197,10 @@ public class PullWorkerSession {
     }
 
     public TaskPullResult pollResult(int maxMessages, long timeoutMillis) {
-        return taskPullChannel.pollTaskMessagesResult(workerId, maxMessages, timeoutMillis);
+        DeliveryPullResult result = deliveryPullChannel.pollDeliveryMessagesResult(workerId, maxMessages, timeoutMillis);
+        return TaskPullResult.of(mapStatus(result.getStatus()), result.getItems().stream()
+                .map(payloadCodec::decode)
+                .toList());
     }
 
     public boolean submitResult(PulledTaskDispatch item, boolean success, String detail) {
@@ -307,5 +312,18 @@ public class PullWorkerSession {
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return value.trim();
+    }
+
+    private static TaskPullStatus mapStatus(DeliveryPullStatus status) {
+        if (status == null) {
+            return TaskPullStatus.UNAVAILABLE;
+        }
+        return switch (status) {
+            case DELIVERED -> TaskPullStatus.DELIVERED;
+            case EMPTY -> TaskPullStatus.EMPTY;
+            case INVALID_REQUEST -> TaskPullStatus.INVALID_REQUEST;
+            case UNAVAILABLE -> TaskPullStatus.UNAVAILABLE;
+            case SHUTDOWN -> TaskPullStatus.SHUTDOWN;
+        };
     }
 }

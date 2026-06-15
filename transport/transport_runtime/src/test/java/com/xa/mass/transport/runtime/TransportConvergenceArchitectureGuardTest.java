@@ -280,28 +280,15 @@ class TransportConvergenceArchitectureGuardTest {
                 "routeKey",
                 "TransportPacket",
                 "TaskDispatchItem",
-                "correlation",
                 "Map<String, String>"
         );
     }
 
     @Test
-    void taskDispatchExecutionContextDoesNotCarryTransportRouteOrSessionFacts() throws IOException {
-        assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TaskDispatchExecutionContext.java")),
-                "workerId",
-                "routeKey",
-                "adapterId",
-                "deliveryQueueKey",
-                "targetTransportNodeId",
-                "connectionId",
-                "connectionToken",
-                "session",
-                "endpoint",
-                "TaskDispatchContext",
-                "taskName",
-                "project",
-                "userId"
+    void taskDispatchContentAndExecutionContextModelsDoNotReappear() {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TaskDispatchContent.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TaskDispatchExecutionContext.java")
         );
     }
 
@@ -315,8 +302,7 @@ class TransportConvergenceArchitectureGuardTest {
                 "deliveryQueueKey",
                 "targetTransportNodeId",
                 "connectionToken",
-                "\"unknown\"",
-                "correlation"
+                "\"unknown\""
         );
     }
 
@@ -341,8 +327,6 @@ class TransportConvergenceArchitectureGuardTest {
                 "TransportPacket",
                 "TaskDispatchItem",
                 "connectionToken",
-                "correlation",
-                "\"payload\"",
                 "taskName",
                 "project",
                 "userId"
@@ -350,7 +334,7 @@ class TransportConvergenceArchitectureGuardTest {
         assertSourceSliceDoesNotContain(
                 codec,
                 "private record DeliveryCommandRecord",
-                "private record TaskDispatchContentRecord",
+                "private static final class DecodedDeliveryCommandBatchRecord",
                 "adapterId",
                 "deliveryQueueKey",
                 "targetTransportNodeId",
@@ -388,7 +372,7 @@ class TransportConvergenceArchitectureGuardTest {
         assertSourceSliceDoesNotContain(
                 codec,
                 "private record RedisQueuedPulledDispatchRecord",
-                "private record TaskDispatchContentRecord",
+                "private static final class DecodedRedisQueuedPulledDispatchRecord",
                 "routeKey",
                 "\"workerId\"",
                 "taskName",
@@ -417,7 +401,6 @@ class TransportConvergenceArchitectureGuardTest {
                 "groupContext",
                 "itemSnapshot",
                 "connectionToken",
-                "correlation",
                 "adapterId",
                 "deliveryQueueKey",
                 "routeKey",
@@ -493,32 +476,21 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void taskPullResultUsesPulledTaskItems() throws IOException {
-        assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/TaskPullResult.java")),
-                "TaskDispatchItem",
-                "dispatchViews",
-                "getDispatchViews"
+    void transportApiDoesNotExposeTaskShapedPullContracts() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/TaskPullChannel.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/TaskPullResult.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/TaskPullStatus.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/PulledTaskDispatch.java")
         );
-    }
-
-    @Test
-    void pulledTaskDispatchDoesNotCarryTransportOrWorkerIdentityFacts() throws IOException {
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/PulledTaskDispatch.java")),
-                "routeKey",
-                "transportPayload",
-                "TransportPacket",
-                "workerId",
-                "taskName",
-                "project",
-                "userId",
-                "adapterId",
-                "deliveryQueueKey",
-                "targetTransportNodeId",
-                "connectionId",
-                "session",
-                "endpoint"
+                List.of(repoRoot().resolve("transport/transport_api/src/main/java")),
+                "TaskPullChannel",
+                "TaskPullResult",
+                "TaskPullStatus",
+                "PulledTaskDispatch",
+                "TaskDispatchContent",
+                "TaskDispatchExecutionContext"
         );
     }
 

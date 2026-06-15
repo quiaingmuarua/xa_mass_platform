@@ -31,7 +31,7 @@ import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.transport.channel.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.PulledTaskDispatch;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 

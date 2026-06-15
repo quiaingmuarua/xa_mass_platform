@@ -3,7 +3,6 @@ package com.xa.mass.transport.model;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -15,17 +14,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DispatchOutcomeTest {
 
     @Test
-    void deliveredCopiesOnlyStableDeliveryIdentity() {
+    void deliveredCopiesOnlyStableDeliveryIdentityAndCorrelation() {
         AdapterDispatchRequest request = request();
 
         DispatchOutcome outcome = DispatchOutcome.delivered(request);
 
         assertEquals("delivery-1", outcome.getDeliveryId());
         assertEquals("worker-1", outcome.getSelectedWorkerId());
-        assertEquals("attempt-1", outcome.getAttemptId());
-        assertEquals("task-1", outcome.getTaskId());
-        assertEquals("msg-1", outcome.getMessageId());
-        assertEquals(1, outcome.getAttemptNo());
+        assertEquals("corr-1", outcome.getCorrelationRef());
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcome.getStatus());
         assertFalse(outcome.isRetryable());
         assertNull(outcome.getReason());
@@ -36,9 +32,9 @@ class DispatchOutcomeTest {
     void factoryMethodsSetRetryabilityDefaults() {
         AdapterDispatchRequest request = request();
 
-        assertFalse(DispatchOutcome.queued("delivery-1", "worker-1", "attempt-1", "task-1", "msg-1", 1).isRetryable());
+        assertFalse(DispatchOutcome.queued("delivery-1", "worker-1", "corr-1").isRetryable());
         assertTrue(DispatchOutcome.noEndpoint(request, "offline").isRetryable());
-        assertTrue(DispatchOutcome.backpressure("delivery-1", "worker-1", "attempt-1", "task-1", "msg-1", 1, "full").isRetryable());
+        assertTrue(DispatchOutcome.backpressure("delivery-1", "worker-1", "corr-1", "full").isRetryable());
         assertFalse(DispatchOutcome.invalid(request, "bad").isRetryable());
         assertTrue(DispatchOutcome.unavailable(request, "missing").isRetryable());
         assertFalse(DispatchOutcome.failed(request, "bad frame", false).isRetryable());
@@ -46,25 +42,23 @@ class DispatchOutcomeTest {
     }
 
     @Test
-    void queuedOutcomeCarriesNoLaneOrEndpointFacts() {
-        DispatchOutcome outcome = DispatchOutcome.queued("delivery-1", "worker-1", "attempt-1", "task-1", "msg-1", 1);
+    void queuedOutcomeCarriesNoLaneEndpointOrTaskFacts() {
+        DispatchOutcome outcome = DispatchOutcome.queued("delivery-1", "worker-1", "corr-1");
 
         assertEquals("delivery-1", outcome.getDeliveryId());
         assertEquals("worker-1", outcome.getSelectedWorkerId());
-        assertEquals("task-1", outcome.getTaskId());
-        assertEquals("msg-1", outcome.getMessageId());
-        assertEquals(1, outcome.getAttemptNo());
+        assertEquals("corr-1", outcome.getCorrelationRef());
         assertEquals(DispatchOutcomeStatus.QUEUED, outcome.getStatus());
         assertFalse(outcome.isRetryable());
     }
 
     @Test
     void invalidOutcomeToleratesNullEnvelope() {
-        DispatchOutcome outcome = DispatchOutcome.invalid(null, null, null, null, null, 0, "missing item");
+        DispatchOutcome outcome = DispatchOutcome.invalid(null, null, null, "missing item");
 
         assertNull(outcome.getDeliveryId());
         assertNull(outcome.getSelectedWorkerId());
-        assertNull(outcome.getAttemptId());
+        assertNull(outcome.getCorrelationRef());
         assertEquals(DispatchOutcomeStatus.INVALID, outcome.getStatus());
         assertEquals("missing item", outcome.getReason());
     }
@@ -74,10 +68,7 @@ class DispatchOutcomeTest {
         DispatchOutcome outcome = new DispatchOutcome(
                 " delivery-2 ",
                 " worker-2 ",
-                " attempt-2 ",
-                " task-2 ",
-                " msg-2 ",
-                2,
+                " corr-2 ",
                 DispatchOutcomeStatus.NO_ENDPOINT,
                 true,
                 "missing endpoint",
@@ -86,10 +77,7 @@ class DispatchOutcomeTest {
 
         assertEquals("delivery-2", outcome.getDeliveryId());
         assertEquals("worker-2", outcome.getSelectedWorkerId());
-        assertEquals("attempt-2", outcome.getAttemptId());
-        assertEquals("task-2", outcome.getTaskId());
-        assertEquals("msg-2", outcome.getMessageId());
-        assertEquals(2, outcome.getAttemptNo());
+        assertEquals("corr-2", outcome.getCorrelationRef());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcome.getStatus());
         assertTrue(outcome.isRetryable());
         assertEquals("missing endpoint", outcome.getReason());
@@ -97,7 +85,7 @@ class DispatchOutcomeTest {
     }
 
     @Test
-    void contractDoesNotExposeTransportOwnerIds() {
+    void contractDoesNotExposeTransportOwnerOrTaskIds() {
         Set<String> methods = Arrays.stream(DispatchOutcome.class.getMethods())
                 .map(method -> method.getName())
                 .collect(Collectors.toSet());
@@ -107,21 +95,18 @@ class DispatchOutcomeTest {
         assertFalse(methods.contains("getRouteKey"));
         assertFalse(methods.contains("getTransportNodeId"));
         assertFalse(methods.contains("getConnectionId"));
+        assertFalse(methods.contains("getTaskId"));
+        assertFalse(methods.contains("getMessageId"));
+        assertFalse(methods.contains("getAttemptId"));
+        assertFalse(methods.contains("getAttemptNo"));
     }
 
     private AdapterDispatchRequest request() {
         return new AdapterDispatchRequest(
                 "delivery-1",
-                "polling",
                 "worker-1",
-                new TaskDispatchContent(
-                        "task-1",
-                        "msg-1",
-                        "crawler.fetch-page",
-                        Map.of("target", "target-1"),
-                        Map.of()
-                ),
-                new TaskDispatchExecutionContext("attempt-1", 1, 0, "batch-1"),
+                "{\"messageId\":\"msg-1\"}",
+                "corr-1",
                 10L
         );
     }

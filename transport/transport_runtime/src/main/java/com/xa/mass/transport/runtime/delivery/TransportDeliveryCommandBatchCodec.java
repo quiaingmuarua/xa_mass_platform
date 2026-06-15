@@ -3,11 +3,8 @@ package com.xa.mass.transport.runtime.delivery;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.transport.model.DeliveryCommand;
-import com.xa.mass.transport.model.TaskDispatchContent;
-import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 final class TransportDeliveryCommandBatchCodec {
@@ -52,63 +49,25 @@ final class TransportDeliveryCommandBatchCodec {
                 command.getCommandId(),
                 command.getDeliveryBucketId(),
                 command.getSelectedWorkerId(),
-                toContentRecord(command.getContent()),
-                toExecutionContextRecord(command.getExecutionContext()),
+                command.getPayload(),
+                command.getCorrelationRef(),
                 command.getDeadlineEpochMillis(),
                 command.getCreatedAtEpochMillis()
         );
     }
 
-    private TaskDispatchContentRecord toContentRecord(TaskDispatchContent content) {
-        return new TaskDispatchContentRecord(
-                content.taskId(),
-                content.messageId(),
-                content.eventCode(),
-                content.input(),
-                content.sharedConfig()
-        );
-    }
-
-    private TaskDispatchExecutionContextRecord toExecutionContextRecord(TaskDispatchExecutionContext context) {
-        return new TaskDispatchExecutionContextRecord(
-                context.attemptId(),
-                context.attemptNo(),
-                context.retryCount(),
-                context.batchId()
-        );
-    }
-
     private DeliveryCommand fromCommandRecord(DecodedDeliveryCommandRecord record) {
-        if (record == null || record.content == null || record.executionContext == null) {
+        if (record == null || record.payload == null || record.correlationRef == null) {
             throw new IllegalArgumentException("encoded delivery command is incomplete");
         }
         return new DeliveryCommand(
                 record.commandId,
                 record.deliveryBucketId,
                 record.selectedWorkerId,
-                fromContentRecord(record.content),
-                fromExecutionContextRecord(record.executionContext),
+                record.payload,
+                record.correlationRef,
                 record.deadlineEpochMillis,
                 record.createdAtEpochMillis
-        );
-    }
-
-    private TaskDispatchContent fromContentRecord(DecodedTaskDispatchContentRecord record) {
-        return new TaskDispatchContent(
-                record.taskId,
-                record.messageId,
-                record.eventCode,
-                record.input,
-                record.sharedConfig
-        );
-    }
-
-    private TaskDispatchExecutionContext fromExecutionContextRecord(DecodedTaskDispatchExecutionContextRecord record) {
-        return new TaskDispatchExecutionContext(
-                record.attemptId,
-                record.attemptNo,
-                record.retryCount,
-                record.batchId
         );
     }
 
@@ -119,23 +78,10 @@ final class TransportDeliveryCommandBatchCodec {
     private record DeliveryCommandRecord(String commandId,
                                          String deliveryBucketId,
                                          String selectedWorkerId,
-                                         TaskDispatchContentRecord content,
-                                         TaskDispatchExecutionContextRecord executionContext,
+                                         String payload,
+                                         String correlationRef,
                                          long deadlineEpochMillis,
                                          long createdAtEpochMillis) {
-    }
-
-    private record TaskDispatchContentRecord(String taskId,
-                                             String messageId,
-                                             String eventCode,
-                                             Map<String, Object> input,
-                                             Map<String, Object> sharedConfig) {
-    }
-
-    private record TaskDispatchExecutionContextRecord(String attemptId,
-                                                      int attemptNo,
-                                                      int retryCount,
-                                                      String batchId) {
     }
 
     private static final class DecodedDeliveryCommandBatchRecord {
@@ -147,25 +93,10 @@ final class TransportDeliveryCommandBatchCodec {
         private String commandId;
         private String deliveryBucketId;
         private String selectedWorkerId;
-        private DecodedTaskDispatchContentRecord content;
-        private DecodedTaskDispatchExecutionContextRecord executionContext;
+        private String payload;
+        private String correlationRef;
         private long deadlineEpochMillis;
         private long createdAtEpochMillis;
-    }
-
-    private static final class DecodedTaskDispatchContentRecord {
-        private String taskId;
-        private String messageId;
-        private String eventCode;
-        private Map<String, Object> input;
-        private Map<String, Object> sharedConfig;
-    }
-
-    private static final class DecodedTaskDispatchExecutionContextRecord {
-        private String attemptId;
-        private int attemptNo;
-        private int retryCount;
-        private String batchId;
     }
 
 }

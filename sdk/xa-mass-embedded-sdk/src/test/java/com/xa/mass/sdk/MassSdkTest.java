@@ -120,11 +120,11 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.channel.TaskPullChannel;
-import com.xa.mass.transport.channel.PulledTaskDispatch;
-import com.xa.mass.transport.channel.TaskPullResult;
+import com.xa.mass.transport.channel.DeliveryPullChannel;
+import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
+import com.xa.mass.sdk.worker.PulledTaskDispatch;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import org.junit.jupiter.api.Assertions;
@@ -3551,9 +3551,9 @@ class MassSdkTest {
                 .build();
     }
 
-    private static TransportBinding canonicalRouteBinding(WorkerAdapter adapter, TaskPullChannel taskPullChannel) {
+    private static TransportBinding canonicalRouteBinding(WorkerAdapter adapter, DeliveryPullChannel deliveryPullChannel) {
         return TransportBinding.builder(adapter)
-                .taskPullChannel(taskPullChannel)
+                .deliveryPullChannel(deliveryPullChannel)
                 .build();
     }
 
@@ -3710,7 +3710,7 @@ class MassSdkTest {
         }
     }
 
-    private static final class StubPullCapableAdapter implements WorkerAdapter, TaskPullChannel {
+    private static final class StubPullCapableAdapter implements WorkerAdapter, DeliveryPullChannel {
         private final String protocol;
         private final String transportHint;
 
@@ -3742,8 +3742,8 @@ class MassSdkTest {
         }
 
         @Override
-        public TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages, long timeoutMillis) {
-            return TaskPullResult.empty();
+        public DeliveryPullResult pollDeliveryMessagesResult(String workerId, int maxMessages, long timeoutMillis) {
+            return DeliveryPullResult.empty();
         }
     }
 
@@ -3846,10 +3846,7 @@ class MassSdkTest {
             return com.xa.mass.transport.model.DispatchOutcome.queued(
                     item != null ? item.deliveryId() : null,
                     item != null ? item.selectedWorkerId() : null,
-                    item != null ? item.attemptId() : null,
-                    item != null ? item.content().taskId() : null,
-                    item != null ? item.content().messageId() : null,
-                    item != null ? item.attemptNo() : 0
+                    item != null ? item.correlationRef() : null
             );
         }
 

@@ -2,7 +2,6 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchContent;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -12,7 +11,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -145,11 +143,8 @@ class RedisTransportDeliveryStoreTest {
         return new QueuedPulledDispatch(
                 deliveryId,
                 item.workerId(),
-                content(item),
-                attemptId(item),
-                1,
-                0,
-                "batch-1",
+                payload(item),
+                correlation(item),
                 1L
         );
     }
@@ -158,24 +153,22 @@ class RedisTransportDeliveryStoreTest {
         return null;
     }
 
-    private TaskDispatchContent content(DispatchFixture item) {
-        return new TaskDispatchContent(
-                "task-1",
-                item.messageId(),
-                "crawler.fetch-page",
-                Map.of("target", "target-1"),
-                Map.of()
-        );
+    private String payload(DispatchFixture item) {
+        return "{\"messageId\":\"" + item.messageId() + "\"}";
     }
 
-    private String attemptId(DispatchFixture item) {
-        return "attempt-" + item.messageId();
+    private String correlation(DispatchFixture item) {
+        return "corr-" + item.messageId();
     }
 
     private List<String> messageIds(List<QueuedPulledDispatch> items) {
         return items.stream()
-                .map(item -> item.content().messageId())
+                .map(item -> messageId(item.payload()))
                 .toList();
+    }
+
+    private String messageId(String payload) {
+        return payload.replace("{\"messageId\":\"", "").replace("\"}", "");
     }
 
     private boolean isDeliveryKeyFamily(String key) {

@@ -9,10 +9,7 @@ public final class DispatchOutcome {
 
     private final String deliveryId;
     private final String selectedWorkerId;
-    private final String attemptId;
-    private final String taskId;
-    private final String messageId;
-    private final int attemptNo;
+    private final String correlationRef;
     private final DispatchOutcomeStatus status;
     private final boolean retryable;
     private final String reason;
@@ -20,20 +17,14 @@ public final class DispatchOutcome {
 
     public DispatchOutcome(String deliveryId,
                            String selectedWorkerId,
-                           String attemptId,
-                           String taskId,
-                           String messageId,
-                           int attemptNo,
+                           String correlationRef,
                            DispatchOutcomeStatus status,
                            boolean retryable,
                            String reason,
                            long occurredAtEpochMillis) {
         this.deliveryId = normalizeText(deliveryId);
         this.selectedWorkerId = normalizeText(selectedWorkerId);
-        this.attemptId = normalizeText(attemptId);
-        this.taskId = normalizeText(taskId);
-        this.messageId = normalizeText(messageId);
-        this.attemptNo = Math.max(0, attemptNo);
+        this.correlationRef = normalizeText(correlationRef);
         this.status = Objects.requireNonNull(status, "status");
         this.retryable = retryable;
         this.reason = reason;
@@ -46,17 +37,11 @@ public final class DispatchOutcome {
 
     public static DispatchOutcome queued(String deliveryId,
                                          String selectedWorkerId,
-                                         String attemptId,
-                                         String taskId,
-                                         String messageId,
-                                         int attemptNo) {
+                                         String correlationRef) {
         return basic(
                 deliveryId,
                 selectedWorkerId,
-                attemptId,
-                taskId,
-                messageId,
-                attemptNo,
+                correlationRef,
                 DispatchOutcomeStatus.QUEUED,
                 false,
                 null
@@ -69,18 +54,12 @@ public final class DispatchOutcome {
 
     public static DispatchOutcome backpressure(String deliveryId,
                                                String selectedWorkerId,
-                                               String attemptId,
-                                               String taskId,
-                                               String messageId,
-                                               int attemptNo,
+                                               String correlationRef,
                                                String reason) {
         return basic(
                 deliveryId,
                 selectedWorkerId,
-                attemptId,
-                taskId,
-                messageId,
-                attemptNo,
+                correlationRef,
                 DispatchOutcomeStatus.BACKPRESSURE,
                 true,
                 reason
@@ -89,18 +68,12 @@ public final class DispatchOutcome {
 
     public static DispatchOutcome invalid(String deliveryId,
                                           String selectedWorkerId,
-                                          String attemptId,
-                                          String taskId,
-                                          String messageId,
-                                          int attemptNo,
+                                          String correlationRef,
                                           String reason) {
         return basic(
                 deliveryId,
                 selectedWorkerId,
-                attemptId,
-                taskId,
-                messageId,
-                attemptNo,
+                correlationRef,
                 DispatchOutcomeStatus.INVALID,
                 false,
                 reason
@@ -120,15 +93,10 @@ public final class DispatchOutcome {
                                               boolean retryable,
                                               String reason) {
         Objects.requireNonNull(command, "command");
-        TaskDispatchContent content = command.getContent();
-        TaskDispatchExecutionContext executionContext = command.getExecutionContext();
         return new DispatchOutcome(
                 command.getCommandId(),
                 command.getSelectedWorkerId(),
-                executionContext.attemptId(),
-                content.taskId(),
-                content.messageId(),
-                executionContext.attemptNo(),
+                command.getCorrelationRef(),
                 status,
                 retryable,
                 reason,
@@ -153,10 +121,7 @@ public final class DispatchOutcome {
         return new DispatchOutcome(
                 request != null ? request.deliveryId() : null,
                 request != null ? request.selectedWorkerId() : null,
-                request != null ? request.executionContext().attemptId() : null,
-                request != null ? request.content().taskId() : null,
-                request != null ? request.content().messageId() : null,
-                request != null ? request.executionContext().attemptNo() : 0,
+                request != null ? request.correlationRef() : null,
                 status,
                 retryable,
                 reason,
@@ -166,20 +131,14 @@ public final class DispatchOutcome {
 
     private static DispatchOutcome basic(String deliveryId,
                                          String selectedWorkerId,
-                                         String attemptId,
-                                         String taskId,
-                                         String messageId,
-                                         int attemptNo,
+                                         String correlationRef,
                                          DispatchOutcomeStatus status,
                                          boolean retryable,
                                          String reason) {
         return new DispatchOutcome(
                 deliveryId,
                 selectedWorkerId,
-                attemptId,
-                taskId,
-                messageId,
-                attemptNo,
+                correlationRef,
                 status,
                 retryable,
                 reason,
@@ -195,20 +154,8 @@ public final class DispatchOutcome {
         return selectedWorkerId;
     }
 
-    public String getAttemptId() {
-        return attemptId;
-    }
-
-    public String getTaskId() {
-        return taskId;
-    }
-
-    public String getMessageId() {
-        return messageId;
-    }
-
-    public int getAttemptNo() {
-        return attemptNo;
+    public String getCorrelationRef() {
+        return correlationRef;
     }
 
     public DispatchOutcomeStatus getStatus() {

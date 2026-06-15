@@ -1,11 +1,9 @@
 package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.runtime.queue.KeyedQueueEntry;
-import com.xa.mass.transport.model.TaskDispatchContent;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -30,17 +28,8 @@ class RedisQueuedPulledDispatchCodecTest {
         QueuedPulledDispatch item = new QueuedPulledDispatch(
                 "delivery-1",
                 "worker-1",
-                new TaskDispatchContent(
-                        "task-1",
-                        "msg-1",
-                        "crawler.fetch-page",
-                        Map.of("target", "https://example.test"),
-                        Map.of("debug", true)
-                ),
-                "attempt-1",
-                2,
-                1,
-                "batch-1",
+                "{\"messageId\":\"msg-1\",\"input\":{\"target\":\"https://example.test\"}}",
+                "corr-1",
                 1_234L
         );
 
@@ -59,12 +48,8 @@ class RedisQueuedPulledDispatchCodecTest {
         assertEquals("delivery-1", decoded.value().deliveryId());
         assertEquals("worker-1", decoded.value().selectedWorkerId());
         assertEquals(1_234L, decoded.createdAtEpochMillis());
-        assertEquals("task-1", decoded.value().content().taskId());
-        assertEquals("msg-1", decoded.value().content().messageId());
-        assertEquals("attempt-1", decoded.value().attemptId());
-        assertEquals(2, decoded.value().attemptNo());
-        assertEquals(1, decoded.value().retryCount());
-        assertEquals("batch-1", decoded.value().batchId());
-        assertEquals(Map.of("target", "https://example.test"), decoded.value().content().input());
+        assertEquals("{\"messageId\":\"msg-1\",\"input\":{\"target\":\"https://example.test\"}}",
+                decoded.value().payload());
+        assertEquals("corr-1", decoded.value().correlationRef());
     }
 }

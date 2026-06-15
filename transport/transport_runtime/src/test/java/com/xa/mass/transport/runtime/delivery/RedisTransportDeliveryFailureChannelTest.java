@@ -85,7 +85,7 @@ class RedisTransportDeliveryFailureChannelTest {
 
         assertNotNull(event);
         assertEquals(first.getCommandId(), event.outcome().getDeliveryId());
-        assertEquals("msg-1", event.outcome().getMessageId());
+        assertEquals(first.getCorrelationRef(), event.outcome().getCorrelationRef());
     }
 
     @Test

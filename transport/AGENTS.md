@@ -76,9 +76,7 @@ entry for `transport/`.
   truth, worker state-report truth, slot heartbeat truth, or capability truth.
 - `DeliveryCommand` is the assigned-item delivery intent. It carries only
   `deliveryBucketId`, `selectedWorkerId`, an opaque worker payload, opaque
-  delivery correlation, and item timing/id facts. Current
-  `TaskDispatchContent` / `TaskDispatchExecutionContext` fields are convergence
-  residue, not protected transport owner concepts. Task shell metadata such as
+  delivery correlation, and item timing/id facts. Task shell metadata such as
   `taskName`, `project`, and `userId`, plus adapter, queue, node, route-owner,
   connection, and session facts are not command fields.
 - `DeliveryCommandBatch` is consumer-local handoff materialization:
@@ -89,13 +87,11 @@ entry for `transport/`.
   the final-hop adapter from handoff-private consumer context. It does not
   call route-owner endpoint lookup for assigned delivery. `AdapterDispatchRequest`
   is the final-hop adapter request and sends by selected worker.
-- `PulledTaskDispatch` is the current polling worker pull DTO. A task-shaped
-  pull projection belongs at the SDK/server public worker boundary, not in
-  transport core. Task-dispatch `TransportPacket` is a final-hop/wire
-  projection assembled after endpoint evidence is known. Neither is the
-  delivery-command handoff payload.
-- `QueuedPulledDispatch` is the current polling queue value. The target
-  transport-core shape is an opaque pulled delivery message carrying only
+- `DeliveryPullResult` / `PulledDeliveryMessage` are the transport-core pull
+  shapes. They carry status plus opaque delivery messages only. Task-shaped
+  `PulledTaskDispatch` / `TaskPullResult` live at the SDK/server public worker
+  boundary, where the SDK-owned payload and correlation codecs decode them.
+- `QueuedPulledDispatch` is the current polling queue value. It carries only
   delivery id, selected worker, payload, correlation, and timing; packet, route,
   endpoint, taskName/project/userId, and deliveryQueueKey are not serialized in
   the Redis queue value.
@@ -105,10 +101,9 @@ entry for `transport/`.
   `DispatchOutcome` is the single delivery-failure fact owner; failure inbox
   events wrap the outcome instead of maintaining group/item snapshot copies.
   `DispatchOutcome` reports only delivery identity, selected worker, opaque
-  correlation, status, retryability, reason, and time in the target boundary;
-  current task/message/attempt fields are convergence residue until the opaque
-  payload slice lands. It must not expose adapter, lane, route, node,
-  connection, or endpoint evidence.
+  correlation, status, retryability, reason, and time. It must not expose
+  adapter, lane, route, node, connection, endpoint evidence, or task-shaped
+  message/attempt fields.
 - Embedded runtime composition currently defaults to the in-memory delivery
   store, but SDK/starter wiring may swap in a Redis-backed
   `TransportDeliveryStore` without changing transport-facing contracts.
@@ -155,9 +150,9 @@ Document layering inside `transport/`:
   lifecycle state directly.
 - Do not add transport hot-path scans or model-coupled observability fields
   when logs, traces, counters, or indexed lookups can answer the question.
-- Do not protect `TaskDispatchContent`, `TaskDispatchExecutionContext`,
-  `TaskPullResult`, or `PulledTaskDispatch` placement in `transport_api` as a
-  stable architecture merely because the current code still has them.
+- Do not reintroduce `TaskDispatchContent`, `TaskDispatchExecutionContext`,
+  task-shaped `TaskPullResult`, or task-shaped `PulledTaskDispatch` into
+  `transport_api`.
 - Do not turn route-owner/presence evidence into a post-assignment routing
   engine. Missing selected-worker delivery evidence is infeasible delivery,
   not permission for transport to choose another worker.

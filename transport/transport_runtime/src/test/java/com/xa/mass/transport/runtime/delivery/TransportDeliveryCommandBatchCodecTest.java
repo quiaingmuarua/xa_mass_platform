@@ -20,8 +20,10 @@ class TransportDeliveryCommandBatchCodecTest {
         DeliveryCommandBatch decoded = codec.decode(json);
 
         assertFalse(json.contains("taskBatchJson"), json);
-        assertFalse(json.contains("\"payload\""), json);
-        assertFalse(json.contains("\"correlation\""), json);
+        assertFalse(json.contains("TaskDispatchContentRecord"), json);
+        assertFalse(json.contains("TaskDispatchExecutionContextRecord"), json);
+        assertEquals(2, occurrences(json, "\"payload\""));
+        assertEquals(2, occurrences(json, "\"correlationRef\""));
         assertFalse(json.contains("\"connectionToken\""), json);
         assertFalse(json.contains("\"routeKey\""), json);
         assertFalse(json.contains("\"connectionId\""), json);
@@ -32,10 +34,12 @@ class TransportDeliveryCommandBatchCodecTest {
         assertEquals(0, occurrences(json, "\"deliveryLaneKey\""));
         assertEquals(0, occurrences(json, "\"targetTransportNodeId\""));
         assertEquals(DeliveryCommandFixtures.queueKey(), decoded.deliveryQueueKey());
-        assertEquals("msg-1", decoded.commands().get(0).getContent().messageId());
-        assertEquals("msg-2", decoded.commands().get(1).getContent().messageId());
+        assertEquals("msg-1", DeliveryCommandFixtures.messageId(decoded.commands().get(0).getPayload()));
+        assertEquals("msg-2", DeliveryCommandFixtures.messageId(decoded.commands().get(1).getPayload()));
         assertEquals("worker-1", decoded.commands().get(0).getSelectedWorkerId());
         assertEquals("worker-2", decoded.commands().get(1).getSelectedWorkerId());
+        assertEquals("corr-msg-1", decoded.commands().get(0).getCorrelationRef());
+        assertEquals("corr-msg-2", decoded.commands().get(1).getCorrelationRef());
     }
 
     private static int occurrences(String value, String token) {

@@ -1,4 +1,4 @@
-package com.xa.mass.transport.channel;
+package com.xa.mass.sdk.worker;
 
 import java.util.List;
 import java.util.Objects;

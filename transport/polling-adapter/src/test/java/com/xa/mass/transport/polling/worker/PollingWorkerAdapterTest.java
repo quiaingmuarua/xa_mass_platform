@@ -1,12 +1,10 @@
 package com.xa.mass.transport.polling.worker;
 
-import com.xa.mass.transport.channel.PulledTaskDispatch;
-import com.xa.mass.transport.channel.TaskPullStatus;
+import com.xa.mass.transport.channel.DeliveryPullStatus;
+import com.xa.mass.transport.channel.PulledDeliveryMessage;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchContent;
-import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
@@ -16,7 +14,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,10 +28,11 @@ class PollingWorkerAdapterTest {
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.QUEUED, outcomes.get(0).getStatus());
-        assertEquals(TaskPullStatus.DELIVERED, adapter.pollTaskMessagesResult("worker-1", 1, 0).getStatus());
+        assertEquals(DeliveryPullStatus.DELIVERED, adapter.pollDeliveryMessagesResult("worker-1", 1, 0).getStatus());
         adapter.dispatch(List.of(request("msg-2", "worker-1")));
-        assertEquals(List.of("msg-2"), adapter.pollTaskMessages("worker-1", 10, 0).stream()
-                .map(PulledTaskDispatch::getMessageId)
+        assertEquals(List.of("msg-2"), adapter.pollDeliveryMessages("worker-1", 10, 0).stream()
+                .map(PulledDeliveryMessage::getPayload)
+                .map(this::messageId)
                 .toList());
     }
 
@@ -46,8 +44,8 @@ class PollingWorkerAdapterTest {
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.INVALID, outcomes.get(0).getStatus());
-        assertTrue(adapter.pollTaskMessages("worker-1", 10, 0).isEmpty());
-        assertEquals(TaskPullStatus.EMPTY, adapter.pollTaskMessagesResult("worker-1", 10, 0).getStatus());
+        assertTrue(adapter.pollDeliveryMessages("worker-1", 10, 0).isEmpty());
+        assertEquals(DeliveryPullStatus.EMPTY, adapter.pollDeliveryMessagesResult("worker-1", 10, 0).getStatus());
     }
 
     @Test
@@ -55,9 +53,10 @@ class PollingWorkerAdapterTest {
         PollingWorkerAdapter adapter = adapter();
         adapter.dispatch(List.of(request("msg-2", "worker-2")));
 
-        assertEquals(TaskPullStatus.EMPTY, adapter.pollTaskMessagesResult("worker-1", 10, 0).getStatus());
-        assertEquals(List.of("msg-2"), adapter.pollTaskMessages("worker-2", 10, 0).stream()
-                .map(PulledTaskDispatch::getMessageId)
+        assertEquals(DeliveryPullStatus.EMPTY, adapter.pollDeliveryMessagesResult("worker-1", 10, 0).getStatus());
+        assertEquals(List.of("msg-2"), adapter.pollDeliveryMessages("worker-2", 10, 0).stream()
+                .map(PulledDeliveryMessage::getPayload)
+                .map(this::messageId)
                 .toList());
     }
 
@@ -76,7 +75,7 @@ class PollingWorkerAdapterTest {
                 outcomes.get(outcomes.size() - 1).getStatus());
         assertTrue(outcomes.get(outcomes.size() - 1).isRetryable());
         assertEquals(PollingWorkerAdapter.MAX_INBOX_SIZE,
-                adapter.pollTaskMessages("worker-1", PollingWorkerAdapter.MAX_INBOX_SIZE + 10, 0).size());
+                adapter.pollDeliveryMessages("worker-1", PollingWorkerAdapter.MAX_INBOX_SIZE + 10, 0).size());
     }
 
     @Test
@@ -84,9 +83,9 @@ class PollingWorkerAdapterTest {
         PollingWorkerAdapter adapter = adapter();
         adapter.dispatch(List.of(request("msg-1", "worker-1")));
 
-        assertEquals(TaskPullStatus.DELIVERED, adapter.pollTaskMessagesResult("worker-1", 1, 0).getStatus());
-        assertEquals(TaskPullStatus.INVALID_REQUEST, adapter.pollTaskMessagesResult(" ", 10, 0).getStatus());
-        assertEquals(TaskPullStatus.INVALID_REQUEST, adapter.pollTaskMessagesResult("worker-1", 0, 0).getStatus());
+        assertEquals(DeliveryPullStatus.DELIVERED, adapter.pollDeliveryMessagesResult("worker-1", 1, 0).getStatus());
+        assertEquals(DeliveryPullStatus.INVALID_REQUEST, adapter.pollDeliveryMessagesResult(" ", 10, 0).getStatus());
+        assertEquals(DeliveryPullStatus.INVALID_REQUEST, adapter.pollDeliveryMessagesResult("worker-1", 0, 0).getStatus());
     }
 
     @Test
@@ -164,18 +163,19 @@ class PollingWorkerAdapterTest {
     private AdapterDispatchRequest request(String deliveryId, String messageId, String workerId) {
         return new AdapterDispatchRequest(
                 deliveryId,
-                PollingWorkerAdapter.PROTOCOL,
                 workerId,
-                new TaskDispatchContent(
-                        "task-1",
-                        messageId,
-                        "crawler.fetch-page",
-                        Map.of("target", "target-1"),
-                        Map.of()
-                ),
-                new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1"),
+                payload(messageId),
+                "corr-" + messageId,
                 1L
         );
+    }
+
+    private String payload(String messageId) {
+        return "{\"messageId\":\"" + messageId + "\"}";
+    }
+
+    private String messageId(String payload) {
+        return payload.replace("{\"messageId\":\"", "").replace("\"}", "");
     }
 
     private static final class RecordingConsumerRegistry implements DeliveryCommandConsumerRegistry {

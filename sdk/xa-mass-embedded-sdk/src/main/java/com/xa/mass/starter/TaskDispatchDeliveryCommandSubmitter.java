@@ -6,11 +6,11 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskDispatchContent;
-import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
+import com.xa.mass.sdk.worker.TaskDispatchDeliveryCorrelationCodec;
+import com.xa.mass.sdk.worker.TaskDispatchPayloadCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +29,8 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
 
     private final TransportAssignedDeliverySubmitter assignedDeliverySubmitter;
     private final TransportDeliveryFailureHandler failureHandler;
+    private final TaskDispatchPayloadCodec payloadCodec = new TaskDispatchPayloadCodec();
+    private final TaskDispatchDeliveryCorrelationCodec correlationCodec = new TaskDispatchDeliveryCorrelationCodec();
 
     TaskDispatchDeliveryCommandSubmitter(TransportAssignedDeliverySubmitter assignedDeliverySubmitter,
                                          TransportDeliveryFailureHandler failureHandler) {
@@ -71,8 +73,8 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
                 UUID.randomUUID().toString(),
                 deliveryBucketId,
                 selectedWorkerId,
-                TaskDispatchContent.from(task, binding),
-                TaskDispatchExecutionContext.from(binding),
+                payloadCodec.encode(task, binding, selectedWorkerId),
+                correlationCodec.encode(task, binding),
                 0L,
                 System.currentTimeMillis()
         );
@@ -90,15 +92,10 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
         for (TaskDispatchBinding binding : bindings) {
             String selectedWorkerId = normalize(binding.workerId());
             String deliveryId = UUID.randomUUID().toString();
-            TaskDispatchContent content = TaskDispatchContent.from(task, binding);
-            TaskDispatchExecutionContext executionContext = TaskDispatchExecutionContext.from(binding);
             DispatchOutcome outcome = new DispatchOutcome(
                     deliveryId,
                     selectedWorkerId,
-                    executionContext.attemptId(),
-                    content.taskId(),
-                    content.messageId(),
-                    executionContext.attemptNo(),
+                    correlationCodec.encode(task, binding),
                     DispatchOutcomeStatus.UNAVAILABLE,
                     true,
                     detail,
