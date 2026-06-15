@@ -12,7 +12,17 @@ Related roadmaps:
 
 - `TRANSPORT_DELIVERY_EXECUTOR_RESIDUE_CONVERGENCE_ROADMAP.md`
 - `TRANSPORT_INTERNAL_ID_BOUNDARY_CONVERGENCE_ROADMAP.md`
-- `TRANSPORT_WORKER_PULL_DISPATCH_VIEW_CONVERGENCE_ROADMAP.md`
+
+Removed stale predecessor:
+
+- The previous active `Transport Worker Pull Dispatch View Convergence
+  Roadmap` treated `PulledTaskDispatch`, `TaskPullResult`, and
+  `TaskPullChannel` as the transport/API polling contract. That target is
+  obsolete: public polling DTOs belong to SDK/server public worker API
+  ownership, while transport pull contracts, if retained, are opaque delivery
+  executor contracts. The stale active roadmap was removed instead of kept as a
+  parallel superseded file so active docs do not preserve two incompatible pull
+  contracts.
 
 ## Summary
 
@@ -97,8 +107,9 @@ implementation:
   into `PulledTaskDispatch`.
 - Redis codecs serialize nested `TaskDispatchContentRecord` and
   `TaskDispatchExecutionContextRecord`.
-- `TaskPullChannel`, `TaskPullResult`, and `PulledTaskDispatch` live in
-  `transport_api` while still exposing task-shaped polling views.
+- `TaskPullChannel`, `TaskPullResult`, `TaskPullStatus`, and
+  `PulledTaskDispatch` live in `transport_api` while still exposing
+  task-shaped polling views.
 
 The core gap: transport is still doing worker task payload projection instead
 of delivering a payload prepared by the assignment/SDK boundary.
@@ -316,7 +327,15 @@ Actions:
   - `AdapterDispatchRequest`
   - `DispatchOutcome`
   - `PulledTaskDispatch`
+  - `TaskPullResult`
+  - `TaskPullStatus`
+  - `TaskPullChannel`
   - `QueuedPulledDispatch`
+  - `PullWorkerSession` constructors and factories
+  - `TransportBinding`
+  - `ResolvedPullWorkerTransport`
+  - `TransportRuntimeRegistry.resolvePullWorkerTransport(...)`
+  - `WorkerTransportRuntimeFactory`
   - `TransportDeliveryCommandBatchCodec`
   - `RedisQueuedPulledDispatchCodec`
   - WebSocket/socket task frame codecs
@@ -341,49 +360,80 @@ Verification:
 
 ```bash
 ./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/socket-adapter,transport/websocket-adapter,sdk/xa-mass-embedded-sdk,xa-mass-server -am -DskipTests test-compile
-rg -n "TaskDispatchContent|TaskDispatchExecutionContext|PulledTaskDispatch|DispatchOutcome|AdapterDispatchRequest" transport sdk xa-mass-server -g "*.java"
+rg -n "TaskDispatchContent|TaskDispatchExecutionContext|PulledTaskDispatch|TaskPullResult|TaskPullStatus|TaskPullChannel|DispatchOutcome|AdapterDispatchRequest" transport sdk xa-mass-server -g "*.java"
 ```
 
 ## Phase 1 - Lock Payload, Correlation, And Public Poll Decisions
 
-Goal: make the owner decisions explicit before any production model change.
+Goal: make the owner decisions and public polling surface explicit before any
+production transport model change.
 
-Decisions:
+Decisions and pre-slice changes:
 
 - Use `String payload` for the first implementation slice. It is an opaque
   UTF-8 worker dispatch frame. Do not introduce `DeliveryPayload`,
   `contentType`, schema ids, or a binary wrapper in this roadmap.
-- Starter owns a worker dispatch payload encoder. For the current protocols,
-  the encoded payload is the adapter-ready canonical task-dispatch JSON frame:
-  it contains any worker-needed `eventCode`, task/item ids, input, shared
-  config, retry count, and batch id inside the opaque string. Transport copies
-  and sends that string; it does not rebuild it.
-- Starter owns a correlation ref codec. `correlationRef` is an opaque string to
-  transport and is sufficient for starter/engine failure handling to recover
+- Starter / public worker API owns a named worker dispatch payload codec, for
+  example `TaskDispatchPayloadCodec`. For the current protocols, the encoded
+  payload is the adapter-ready canonical task-dispatch JSON frame: it contains
+  any worker-needed `eventCode`, task/item ids, input, shared config, retry
+  count, and batch id inside the opaque string. Transport copies and sends that
+  string; it does not rebuild it. The same owner provides the decoder used by
+  SDK/server polling projection; transport runtime/adapters must not implement
+  ad hoc task JSON parsing.
+- Starter owns a named correlation ref codec/resolver, for example
+  `TaskDispatchDeliveryCorrelationCodec`. `correlationRef` is an opaque string
+  to transport and is sufficient for starter/engine failure handling to recover
   the task id, message id, attempt id, and attempt number needed for
   compensation.
 - Keep `DispatchOutcome` as the class name for this roadmap and migrate it in
   place. Do not add a parallel `DeliveryOutcome`.
 - Keep external HTTP/Java SDK polling responses task-shaped for now, but move
-  that projection out of transport core. Transport API/runtime should expose
-  opaque pulled delivery messages; SDK/server projection decodes payloads into
-  public task-shaped DTOs.
+  that projection out of transport core. Introduce SDK/public-contract owned
+  polling DTOs first, then migrate:
+  - `WorkerClientOperations`
+  - `MassSdkApplication.pollTasks(...)`
+  - `PullWorkerSession` public constructors and factories
+  - `PullWorkerSession.poll(...)` / `pollResult(...)`
+  - `PullWorkerSession.submitResult(...)`
+  - `MassApplication.openPullWorkerSession(...)`
+  - `ExternalWorkerApiController`
+  - `TransportBinding`
+  - `ResolvedPullWorkerTransport`
+  - `TransportRuntimeRegistry.resolvePullWorkerTransport(...)`
+  - `WorkerTransportRuntimeFactory` / adapter bootstrap registration paths
+
+  After this pre-slice, no public SDK/server worker method should expose
+  `transport_api` task-shaped `PulledTaskDispatch`, `TaskPullResult`,
+  `TaskPullStatus`, or `TaskPullChannel`. Runtime binding objects may carry an
+  internal opaque pull channel only if that type is not a public SDK/server
+  constructor or method contract. Transport API/runtime can then switch to
+  opaque pulled delivery messages without breaking the public worker API
+  surface.
 
 Acceptance:
 
 - The first code slice has no production period where old task-shaped
   `TaskDispatchContent` / `TaskDispatchExecutionContext` and new payload fields
   are both live command paths.
+- `TaskDispatchPayloadCodec` has equivalence tests proving its encoded output
+  matches the current websocket/socket canonical worker task frame shape before
+  adapters are changed to pass payload through, and its decoder is the only
+  SDK/server projection path from opaque payload to public polling DTO.
 - The failure inbox consumer has a starter/engine-owned resolver for
   `correlationRef` before task id/message id/attempt fields are removed from
   transport outcomes.
-- `TaskPullChannel`, `TaskPullResult`, and `PulledTaskDispatch` ownership is
-  decided before polling store changes start.
+- SDK/server public polling DTOs and constructors no longer import or return
+  transport-owned `TaskPullChannel`, `TaskPullResult`, `TaskPullStatus`, or
+  `PulledTaskDispatch`.
+- Temporary internal adaptation from the old transport pull DTO to the new
+  public DTO is allowed only inside SDK/server until Phase 2 removes the old
+  transport pull DTOs. Do not expose both DTO families as public API.
 
-## Phase 2 - Atomic Opaque Delivery Contract Pivot
+## Phase 2 - Atomic Opaque Delivery And Polling Contract Pivot
 
-Goal: replace the task-shaped assigned-delivery contract in one compile-safe
-behavior slice.
+Goal: replace the task-shaped assigned-delivery and polling transport contracts
+in one compile-safe behavior slice.
 
 Actions:
 
@@ -427,10 +477,34 @@ Actions:
   `TransportDeliveryCommandListener`, `TransportAssignedDeliverySubmitter`,
   `TransportDeliveryFailureEventCodec`, in-memory handoff, and Redis handoff
   together so no old command/request/outcome path remains.
+- Introduce transport-owned opaque pull models in the same slice, for example:
+
+  ```text
+  PulledDeliveryMessage(deliveryId, selectedWorkerId, payload, correlationRef, createdAt)
+  DeliveryPullStatus
+  DeliveryPullResult(status, items)
+  DeliveryPullChannel
+  ```
+
+- Change `TransportDeliveryService`, transport polling store APIs,
+  `QueuedPulledDispatch`, `RedisQueuedPulledDispatchCodec`, and polling adapter
+  internals to store and return opaque delivery messages only. This must happen
+  in the same slice as `AdapterDispatchRequest` changes because the current
+  polling store path directly builds `QueuedPulledDispatch.from(request)`.
+- Remove or replace transport-internal use of task-shaped `TaskPullChannel`,
+  `TaskPullResult`, `TaskPullStatus`, and `PulledTaskDispatch`. If a transport
+  pull interface is still needed, it must be the opaque delivery pull
+  interface.
+- SDK/server public polling projection decodes the opaque payload into the
+  public task-shaped DTO introduced in Phase 1. The projection owner is
+  SDK/server/public worker API code, not transport runtime/adapters, and it
+  must use the named `TaskDispatchPayloadCodec` rather than local JSON parsing.
 - Update WebSocket/socket assigned dispatch channels to send
   `AdapterDispatchRequest.payload()` as-is to the selected worker. Adapter
   final-hop code must not call `request.content()`,
   `request.executionContext()`, or rebuild canonical task JSON.
+- Update polling worker pull flow so the worker-facing public DTO is produced
+  outside transport core from the opaque pulled delivery payload.
 - Keep adapter-local result decode unchanged unless a separate result-ingress
   roadmap approves changing it.
 
@@ -442,47 +516,25 @@ Acceptance:
   `TaskDispatchExecutionContext.from(...)`.
 - Redis and in-memory handoff codecs round-trip opaque `payload` and
   `correlationRef` without task-field reconstruction.
-- Transport failure events cannot be used as task lifecycle read models, but
-  starter/engine compensation still works through `correlationRef`.
-- WebSocket/socket selected-worker delivery and DQK wrong-worker prevention
-  tests still pass.
-
-## Phase 3 - Polling Opaque Delivery And Public Projection Split
-
-Goal: remove task-shaped polling DTOs from transport core while preserving the
-chosen public worker API shape.
-
-Actions:
-
-- Introduce transport-owned opaque pull models, for example:
-
-  ```text
-  PulledDeliveryMessage(deliveryId, selectedWorkerId, payload, correlationRef, createdAt)
-  DeliveryPullResult(status, items)
-  DeliveryPullChannel
-  ```
-
-- Change transport polling store, polling adapter internals,
-  `QueuedPulledDispatch`, and `RedisQueuedPulledDispatchCodec` to store and
-  return opaque delivery messages only.
-- Move task-shaped `PulledTaskDispatch` projection to SDK/server/public worker
-  API code. If the public Java SDK keeps the same DTO name, that DTO must live
-  outside transport core and be decoded from the opaque payload by SDK/server
-  code.
-- Remove `TaskPullChannel`, `TaskPullResult`, and `PulledTaskDispatch` from
-  `transport_api` if they remain task-shaped. If a transport pull interface is
-  still needed, it must be the opaque delivery pull interface.
-
-Acceptance:
-
-- `QueuedPulledDispatch` contains no task fields, attempt fields, or
-  `TaskDispatchContent`.
+- `TransportDeliveryService`, `QueuedPulledDispatch`, and
+  `RedisQueuedPulledDispatchCodec` contain no task fields, attempt fields,
+  `TaskDispatchContent`, or `TaskDispatchExecutionContext`.
 - Transport runtime/adapters do not decode worker task payloads to produce
   public DTOs.
+- Transport failure events cannot be used as task lifecycle read models, but
+  starter/engine compensation still works through `correlationRef`.
+- Redis failure channel carries only delivery outcome facts plus
+  `correlationRef`; `MassApplication` or the starter-owned resolver converts
+  the correlation back into `TaskDispatchDeliveryFailure` for engine
+  compensation. Missing endpoint, backpressure, adapter unavailable, and
+  failure-emission retry paths must each prove compensation still receives task
+  id, message id, attempt id, and attempt number through the resolver.
+- WebSocket/socket selected-worker delivery and DQK wrong-worker prevention
+  tests still pass.
 - Server/SDK tests prove external polling still returns the chosen public
   response shape.
 
-## Phase 4 - Delete Residue, Guards, And Owner Docs
+## Phase 3 - Delete Residue, Guards, And Owner Docs
 
 Goal: make the new boundary difficult to regress.
 
@@ -490,6 +542,9 @@ Actions:
 
 - Delete `TaskDispatchContent` and `TaskDispatchExecutionContext` from
   `transport_api`.
+- Delete task-shaped `TaskPullChannel`, `TaskPullResult`, `TaskPullStatus`, and
+  `PulledTaskDispatch` from `transport_api` once SDK/server public DTOs and
+  opaque transport pull contracts are in place.
 - Remove task-shaped records from Redis/in-memory delivery codecs.
 - Update:
   - `transport/AGENTS.md`
@@ -506,6 +561,10 @@ Actions:
   - assigned-delivery models must not add `contentType` or `DeliveryPayload`
     unless a later binary protocol decision explicitly replaces the plain
     payload field
+  - guard scans for `DeliveryPayload` / `contentType` are exact-file scans over
+    assigned delivery command/request/outcome/handoff/polling codec files, not
+    broad scans over result ingest, public SDK/server DTOs, or unrelated
+    transport model packages.
 
 Acceptance:
 
@@ -516,9 +575,9 @@ Acceptance:
   `retryCount`, or `batchId` fields. Result-ingest models and public
   SDK/server worker DTOs are outside this guard.
 - Assigned-delivery command/request/outcome models have no `contentType` field.
-- `TaskPullChannel`, `TaskPullResult`, and `PulledTaskDispatch` are removed
-  from `transport_api` unless they are replaced with opaque delivery pull
-  contracts.
+- `TaskPullChannel`, `TaskPullResult`, `TaskPullStatus`, and
+  `PulledTaskDispatch` are removed from `transport_api` unless they are
+  replaced with opaque delivery pull contracts.
 - Owner docs describe transport as opaque delivery executor, not task payload
   projection owner.
 
@@ -534,17 +593,29 @@ Compile:
 Focused tests:
 
 ```bash
-./mvnw -q -pl transport/transport_api,transport/transport_runtime -am test -Dtest=DeliveryCommandTest,DispatchOutcomeTest,TransportDeliveryCommandBatchCodecTest,TransportDeliveryServiceTest,TransportDeliveryPollResultTest,InMemoryTransportDeliveryCommandHandoffTest,RedisTransportDeliveryCommandHandoffTest,TransportDeliveryFailureEventCodecTest,TransportConvergenceArchitectureGuardTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=TaskDispatchPayloadCodecTest,TaskDispatchDeliveryCorrelationCodecTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl transport/transport_api,transport/transport_runtime -am test -Dtest=DeliveryCommandTest,DispatchOutcomeTest,TransportDeliveryCommandBatchCodecTest,TransportDeliveryServiceTest,TransportDeliveryPollResultTest,QueuedPulledDispatchTest,RedisQueuedPulledDispatchCodecTest,InMemoryTransportDeliveryCommandHandoffTest,RedisTransportDeliveryCommandHandoffTest,TransportDeliveryFailureEventCodecTest,TransportConvergenceArchitectureGuardTest -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw -q -pl transport/polling-adapter,transport/socket-adapter,transport/websocket-adapter -am test -Dtest=PollingWorkerAdapterTest,SocketTaskDispatchChannelTest,SocketTransportFrameCodecTest,WebSocketTaskDispatchChannelTest,WebSocketTransportFrameCodecTest -Dsurefire.failIfNoSpecifiedTests=false
-./mvnw -q -pl sdk/xa-mass-embedded-sdk,xa-mass-server -am test -Dtest=MassSdkTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest,ExternalWorkerApiControllerTest,ExternalWorkerPollingApiIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl sdk/xa-mass-embedded-sdk,xa-mass-server -am test -Dtest=MassSdkTest,WorkerClientOperationsTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest,ExternalWorkerApiControllerTest,ExternalWorkerPollingApiIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
+
+Mandatory new-test guard:
+
+```powershell
+Test-Path sdk/xa-mass-embedded-sdk/src/test/java/com/xa/mass/starter/TaskDispatchPayloadCodecTest.java
+Test-Path sdk/xa-mass-embedded-sdk/src/test/java/com/xa/mass/starter/TaskDispatchDeliveryCorrelationCodecTest.java
+```
+
+These guards must return `True` before the focused command using
+`-Dsurefire.failIfNoSpecifiedTests=false` is accepted as proof. The flag is only
+allowed to avoid reactor `-am` upstream-module false failures; it is not allowed
+to hide missing mandatory tests in the owning module.
 
 Residue scans:
 
 ```powershell
 rg -n "TaskDispatchContent|TaskDispatchExecutionContext" transport sdk xa-mass-server -g "*.java"
-rg -n "DeliveryPayload|contentType" transport/transport_api/src/main/java/com/xa/mass/transport/model transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery -g "*.java"
-rg -n "TaskPullChannel|TaskPullResult|PulledTaskDispatch" transport/transport_api/src/main/java -g "*.java"
+rg -n "TaskPullChannel|TaskPullResult|TaskPullStatus|PulledTaskDispatch" transport/transport_api/src/main/java -g "*.java"
 rg -n "taskId|messageId|eventCode|sharedConfig|attemptNo|retryCount|batchId" `
   transport/transport_api/src/main/java/com/xa/mass/transport/model/DeliveryCommand.java `
   transport/transport_api/src/main/java/com/xa/mass/transport/model/AdapterDispatchRequest.java `
@@ -552,6 +623,14 @@ rg -n "taskId|messageId|eventCode|sharedConfig|attemptNo|retryCount|batchId" `
   transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandBatchCodec.java `
   transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/QueuedPulledDispatch.java `
   transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisQueuedPulledDispatchCodec.java
+rg -n "DeliveryPayload|contentType" `
+  transport/transport_api/src/main/java/com/xa/mass/transport/model/DeliveryCommand.java `
+  transport/transport_api/src/main/java/com/xa/mass/transport/model/AdapterDispatchRequest.java `
+  transport/transport_api/src/main/java/com/xa/mass/transport/model/DispatchOutcome.java `
+  transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandBatchCodec.java `
+  transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/QueuedPulledDispatch.java `
+  transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisQueuedPulledDispatchCodec.java `
+  transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryFailureEventCodec.java
 rg -n "TaskDispatchBinding|TaskDispatchContext" transport/transport_api/src/main/java -g "*.java"
 rg -n "request\\.content\\(|getContent\\(|executionContext\\(|getExecutionContext\\(" transport/websocket-adapter transport/socket-adapter transport/polling-adapter -g "*.java"
 ```
@@ -565,6 +644,8 @@ rg -n "request\\.content\\(|getContent\\(|executionContext\\(|getExecutionContex
 - Transport delivery models do not introduce content-type semantics or a
   `DeliveryPayload` wrapper by default.
 - Worker task payload assembly is owned outside transport core.
+- Transport polling store and transport pull interfaces are opaque delivery
+  message carriers, not task-shaped worker DTO projection owners.
 - Public polling/API shape is either intentionally preserved by SDK/server
   projection or intentionally replaced with opaque payload delivery.
 - Failure compensation still works through opaque correlation.
