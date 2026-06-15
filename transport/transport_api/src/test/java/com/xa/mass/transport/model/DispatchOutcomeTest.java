@@ -122,7 +122,6 @@ class DispatchOutcomeTest {
                         Map.of()
                 ),
                 new TaskDispatchExecutionContext("attempt-1", 1, 0, "batch-1"),
-                new AdapterEndpoint("group-route-1", "node-1", "conn-1", 10_000L),
                 10L
         );
     }

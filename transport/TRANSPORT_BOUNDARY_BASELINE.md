@@ -57,14 +57,15 @@ Transport should stay centered on these concepts only:
   timestamp. Task shell metadata, adapter, lane, target node, route-owner,
   connection, session, packet, and generic correlation facts are not command
   fields.
-- `DeliveryCommandBatch`: process-boundary handoff record for one resolved
-  delivery lane. It carries `deliveryBucketId`, `deliveryLaneKey`,
-  `targetTransportNodeId`, and minimal `DeliveryCommand` items. The target node
-  is a handoff hint; adapterId, routeKey, connection id, and lease expiry are
-  re-resolved by the target-node listener before final-hop adapter dispatch.
+- `DeliveryCommandBatch`: consumer-local handoff record for one assigned
+  delivery queue. It carries the bucket-derived `deliveryQueueKey`,
+  handoff-owned command references when the backing store needs ack, and
+  minimal `DeliveryCommand` items. It does not carry delivery bucket, lane,
+  target node, route, connection, or lease facts.
 - `AdapterDispatchRequest`: runtime-owned final-hop dispatch request. It is
-  created after endpoint re-resolution and carries one selected-worker command
-  plus `AdapterEndpoint` evidence for the concrete adapter send.
+  created after handoff reference claim and carries one selected-worker command
+  plus a transport-internal adapter selector. WebSocket/socket final-hop sends
+  by selected worker; connection handles stay inside adapter session managers.
 - `QueuedPulledDispatch`: polling queue value and pull DTO source. It carries
   delivery id, selected worker, task dispatch content, and typed attempt
   context only; it does not serialize packets, routeKey, endpoint evidence,
@@ -77,10 +78,11 @@ Transport should stay centered on these concepts only:
   result lifecycle validation
 - `TransportResultEnvelope`: transport metadata around `TaskResultReport`, not a second worker protocol
 - `TransportDeliveryCommandHandoff`: post-claim delivery queue between
-  engine/starter assembly and transport. It carries resolved
-  `DeliveryCommandBatch` values grouped by delivery bucket/lane and target
-  transport node. Adapter id, route key, and connection id are endpoint
-  evidence resolved by the target-node listener, not batch or command truth.
+  engine/starter assembly and transport. Producers offer
+  `DeliveryQueueOffer(deliveryQueueKey, commands)` where the queue key is
+  derived only from the assigned delivery bucket. Handoff implementations own
+  selected-worker consumer evidence, ready references, inflight references,
+  ack/requeue, and queue-consumer adapter context.
 - `TaskPullResult`: explicit pull-path status plus delivered
   `PulledTaskDispatch` items; empty queue, invalid request, temporary
   unavailability, and shutdown must not be flattened into one fake "no work"
@@ -89,12 +91,9 @@ Transport should stay centered on these concepts only:
   route-owner claims, heartbeat refresh, and owner release. Claims carry
   `deliveryBucketId` explicitly; the store must not infer a bucket from
   adapterId, routeKey, or workerId.
-- `WorkerDispatchRouteOwnerView`: narrow read-only route-owner view used by
-  engine/starter-side dispatch assembly after worker matching has already
-  selected worker bindings. Producer lookup returns only a node target from
-  `deliveryBucketId + selectedWorkerId`; target-node listener lookup returns
-  endpoint evidence from the same pair. Route-key reads on this view are
-  bounded diagnostics or maintenance helpers, not the dispatch hot path.
+- `WorkerDispatchRouteOwnerView`: narrow read-only route-owner view retained
+  for bounded diagnostics, maintenance, and route/session inspection. Assigned
+  delivery producer queue selection and listener dispatch do not call it.
 - `WorkerPresenceIngress`: transport-neutral ingress seam for worker session
   connect/disconnect/heartbeat observations. It is not a route-owner projection,
   worker command, worker state-report, or capability-report lifecycle owner.
@@ -152,18 +151,18 @@ lifecycle state.
 - engine-to-transport delivery-command handoff queue/store ownership after
   assignment; current embedded default wiring is an in-memory
   `TransportDeliveryCommandHandoff`, while split runtimes use Redis
-  delivery-command inboxes awakened by `transportNodeId`
+  delivery-command command stores with selected-worker consumer ready refs
 - producer-side starter assembly translates immutable `TaskDispatchContext +
   TaskDispatchBinding` assignment facts into minimal `DeliveryCommand` values.
   The binding-level worker-group context becomes `deliveryBucketId`, and
   binding-level `workerId` becomes `selectedWorkerId`, the engine-selected
   execution constraint. Starter does not write adapter, queue, node, route,
   connection, session, or packet facts into command items. Transport-owned
-  delivery submitters use `deliveryBucketId + selectedWorkerId` to resolve a
-  narrow target transport node, then create `DeliveryCommandBatch` values with
-  bucket/lane/node facts only. Transport consumers drain resolved delivery
-  batches, re-resolve endpoint evidence locally, and do not reselect workers or
-  decode route-key minting rules.
+  delivery submitters derive only the bucket queue key from
+  `deliveryBucketId`. Handoff implementations use selected-worker consumer
+  evidence to wake a local queue consumer. Transport consumers drain referenced
+  commands, dispatch by selected worker, and do not reselect workers or decode
+  route-key minting rules.
 - worker transport-binding resolution from registered worker truth before
   dispatch handoff; transport consumers do not call worker-resource runtime for
   second-stage selection
@@ -179,9 +178,10 @@ Concrete adapters own protocol I/O only:
 - calls into runtime delivery and result-ingest contracts
 - accept/read/write loops submitted through the runtime executor context when they block
 
-Transport-owned final-hop delivery submitters may read a route-owner target
-hint after worker selection has already produced concrete bindings. Transport
-owns only route-owner heartbeat evidence, not worker online/offline lifecycle.
+Transport-owned final-hop delivery submitters do not read route-owner target
+hints after worker selection has already produced concrete bindings. Transport
+owns only route/session heartbeat evidence and handoff consumer evidence, not
+worker online/offline lifecycle.
 Heartbeat expiry is a transport lease rule, not an engine selector heuristic.
 Expired owner evidence is not dispatchable; missing or stale owner evidence is
 a retryable delivery-failure input, not permission to reselect workers or mark
@@ -265,14 +265,15 @@ The split runtime uses three transport/runtime channels:
 
 - dispatch handoff: engine/starter assembly submits delivery-command batches
   after claim, attempt creation, lease, and worker binding have already
-  happened; transport drains only this small assigned window. Multi-process
-  adapter mode uses `TransportDeliveryCommandHandoff` queues keyed by shared
-  delivery bucket/lane and target transport node with node-local ready-lane indexes
-  so each transport JVM is awakened only for work it can currently serve.
-  `DeliveryCommandBatch` carries bucket, lane, and node facts once; adapter id,
-  route key, connection id, and lease expiry are re-resolved by the target-node
-  listener before adapter dispatch.
-  Redis dispatch queue ownership is not routeKey cardinality.
+  happened; transport drains only this small assigned window. Producer-side
+  assigned delivery derives one opaque handoff queue address from the assigned
+  `deliveryBucketId` and submits `DeliveryQueueOffer(deliveryQueueKey,
+  commands)`. Multi-process adapter mode stores commands under that bucket
+  queue and wakes only the queue consumer that currently has selected-worker
+  endpoint evidence. `DeliveryCommandBatch` at the consumer boundary carries a
+  queue key, optional handoff references, and materialized commands; it does
+  not carry lane or target-node facts. Redis dispatch queue ownership is not
+  routeKey cardinality.
 - delivery inbox: polling transport routes `QueuedPulledDispatch` values into
   `TransportDeliveryStore` by runtime `deliveryQueueKey` plus the
   engine-selected `selectedWorkerId`. The `deliveryQueueKey` is supplied by
@@ -291,11 +292,11 @@ durable task lifecycle truth. `TaskWorkRuntime` remains the only owner of ready
 membership, delayed visibility, active lease, retry timing, result application,
 and terminal convergence.
 
-`DeliveryCommandBatch` is the process-boundary payload for dispatch handoff. It
-contains only minimal delivery commands for one delivery bucket/lane and target
-transport node, and must stay JSON-safe. The Redis/process-boundary codec
-serializes batch facts once; per-command records must not repeat `adapterId`,
-`deliveryBucketId`, `deliveryLaneKey`, `targetTransportNodeId`, `routeKey`,
+`DeliveryCommandBatch` is a consumer-local handoff payload. It contains only
+the assigned-delivery queue key, handoff-owned command references when the
+backing store needs ack, and minimal delivery commands. The Redis/process-
+boundary codec serializes queue facts once; per-command records must not repeat
+`adapterId`, `deliveryQueueKey`, `targetTransportNodeId`, `routeKey`,
 `connectionId`, or `connectionToken`, and must not wrap another encoded
 task-dispatch batch string such as `taskBatchJson`. Large item bodies continue
 to use `payloadRef` when needed; the handoff queue is not a copy of a
@@ -311,13 +312,12 @@ deliveryBucketId, optional workerId, leaseExpireAt, updatedAt
 
 Engine matching still selects a worker from control-plane registration,
 capability, rule, lock, admission, and worker-runtime evidence. Only after
-assignment has produced concrete bindings does transport-owned final-hop
-submission find an active route consumer target by `deliveryBucketId +
-selectedWorkerId`. It writes delivery-command batches with explicit target
-transport-node facts to node-local drain lanes, while endpoint route metadata
-stays in route-owner evidence until target-node re-resolution. Missing or
-expired route owners, or offline transport nodes, go through engine-owned
-compensation/retry; transport does not re-schedule or mutate task lifecycle.
+assignment has produced concrete bindings does producer-side transport submit
+commands to the bucket-derived delivery-command queue. Queue-consumer wakeup is
+owned by the handoff through selected-worker consumer evidence; adapter/session
+connection handles stay inside adapter-owned endpoint registries. Missing
+or expired consumer evidence goes through engine-owned compensation/retry;
+transport does not re-schedule or mutate task lifecycle.
 
 SDK/starter assembly exposes three runtime roles:
 
@@ -345,10 +345,12 @@ Route-owner semantics are also part of the transport contract:
 - `workerId` is execution metadata attached to a route consumer; after engine
   assignment the same value is carried as `selectedWorkerId`, the delivery
   constraint used with `deliveryBucketId` for feasibility lookup
-- `targetForSelectedWorker(deliveryBucketId, selectedWorkerId)` is the
-  producer-side lookup and returns only a transport-node target hint
-- `endpointForSelectedWorker(deliveryBucketId, selectedWorkerId)` is the
-  target-node listener lookup and returns final-hop endpoint evidence
+- producer-side assigned delivery must not call route-owner lookup to choose a
+  queue, node, adapter, route, or connection; it derives the queue key from
+  `deliveryBucketId`
+- `endpointForSelectedWorker(deliveryBucketId, selectedWorkerId)` is retained
+  for bounded diagnostics and route/session inspection; assigned-delivery
+  listener dispatch does not call it
 - `currentOwners(routeKey)` is a bounded read for maintenance, diagnostics, and
   raw side-channels, not the assigned-delivery hot path
 - `connectionId` identifies one live consumer connection for that route
@@ -375,7 +377,7 @@ default component namespaces are:
 | route-owner | `xa:mass:transport:route-owner:v1` | `route:<encodedRouteKey>:consumers`, `deadline`, `bucket:<encodedDeliveryBucketId>:worker:<encodedWorkerId>:owner` |
 | delivery | `xa:mass:transport:delivery:v1` | `q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `meta:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `queues`, `stats` |
 | nodes | `xa:mass:transport:nodes:v1` | transport-node owner/heartbeat records and deadlines |
-| delivery-command | `xa:mass:transport:delivery-command:v1` | `lane:<encodedDeliveryLaneKey+targetTransportNodeId>:q`, `lanes`, `node:<transportNodeId>:ready-lanes` |
+| delivery-command | `xa:mass:transport:delivery-command:v1` | `q:<encodedDeliveryQueueKey>:commands`, `q:<encodedDeliveryQueueKey>:command-deadlines`, `consumer:<encodedQueueConsumerKey>:ready-commands`, `consumer:<encodedQueueConsumerKey>:inflight-commands`, `queue-consumers:<encodedDeliveryQueueKey>`, `queue-consumer:<encodedQueueConsumerKey>`, `selected-worker-consumers:<encodedDeliveryQueueKey>`, `selected-worker-consumer-deadlines:<encodedDeliveryQueueKey>`, `queues` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
 
@@ -519,8 +521,10 @@ Current runtime rules:
   contract. Route-only raw/manual sends are separated behind
   `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`; assigned task
   delivery callers must not receive those helpers through the same interface.
-- blank `routeKey` is invalid for direct-send delivery and route-owner evidence.
-  Queued polling delivery must not rely on routeKey as the only isolation key.
+- blank `routeKey` is invalid for route-owner evidence. Direct-send delivery
+  must not require routeKey when selected-worker session addressing is
+  available. Queued polling delivery must not rely on routeKey as the only
+  isolation key.
 - assigned polling queues are addressed by
   `deliveryQueueKey + selectedWorkerId`. `deliveryQueueKey` may be shared by
   many workers; selected-worker isolation must be a direct sub-lane/index or an
@@ -593,12 +597,12 @@ attempts. Storage implementations should provide bounded lookups for:
 ```
 
 Dispatch is also a hot path. Delivery-command handoff queues store
-`DeliveryCommandBatch` values: batch-level bucket/lane/node facts and minimal
-per-item commands only. They must not deep-copy worker pull DTOs, endpoint
-leases, or generic task-dispatch `TransportPacket` payloads as the handoff
-item shape. Adapter delivery receives `AdapterDispatchRequest` after
-target-node endpoint re-resolution; polling queue delivery stores
-`QueuedPulledDispatch`. Retryable dispatch outcomes must carry explicit
+bucket-scoped command payloads plus handoff-owned command references. They
+must not deep-copy worker pull DTOs, endpoint leases, or generic task-dispatch
+`TransportPacket` payloads as the handoff item shape. Adapter delivery receives
+`AdapterDispatchRequest` with selected-worker command content and an
+adapter-private selector; polling queue delivery stores `QueuedPulledDispatch`.
+Retryable dispatch outcomes must carry explicit
 `taskId`, `messageId`, `attemptId`, `attemptNo`, and `selectedWorkerId`;
 transport trace ids are diagnostics and must not double as compensation keys.
 

@@ -69,9 +69,8 @@ public final class WebSocketTaskDispatchChannel implements WorkerAdapter {
                             rawJson
                     );
                     if (!sent) {
-                        logger.warn("WebSocket outbound skipped because endpoint is unavailable: routeKey={}, traceId={}",
-                                request.endpoint().routeKey(),
-                                null);
+                        logger.warn("WebSocket outbound skipped because endpoint is unavailable: selectedWorkerId={}, traceId={}",
+                                request.selectedWorkerId(), null);
                     }
                     return sent;
                 },

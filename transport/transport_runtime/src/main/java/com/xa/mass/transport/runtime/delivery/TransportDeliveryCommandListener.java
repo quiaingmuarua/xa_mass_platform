@@ -2,12 +2,9 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
-import com.xa.mass.transport.model.AdapterEndpoint;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.route.RouteConsumerEndpoint;
-import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import org.slf4j.Logger;
@@ -31,19 +28,13 @@ public final class TransportDeliveryCommandListener {
     private static final Logger logger = LoggerFactory.getLogger(TransportDeliveryCommandListener.class);
 
     private final TransportRuntimeRegistry transportRuntimeRegistry;
-    private final WorkerDispatchRouteOwnerView routeOwnerView;
-    private final String localTransportNodeId;
     private final TransportDeliveryFailureHandler failureHandler;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
 
     public TransportDeliveryCommandListener(TransportRuntimeRegistry transportRuntimeRegistry,
-                                            WorkerDispatchRouteOwnerView routeOwnerView,
-                                            String localTransportNodeId,
                                             TransportDeliveryFailureHandler failureHandler,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
         this.transportRuntimeRegistry = Objects.requireNonNull(transportRuntimeRegistry, "transportRuntimeRegistry");
-        this.routeOwnerView = Objects.requireNonNull(routeOwnerView, "routeOwnerView");
-        this.localTransportNodeId = normalizeText(localTransportNodeId);
         this.failureHandler = failureHandler;
         this.runtimeTaskExecutor = runtimeTaskExecutor;
     }
@@ -55,11 +46,23 @@ public final class TransportDeliveryCommandListener {
 
         Map<WorkerAdapter, List<AdapterDispatchRequest>> groupedByAdapter = new LinkedHashMap<>();
         Map<String, ResolvedDispatchCommand> itemByDeliveryId = new LinkedHashMap<>();
+        Map<String, DeliveryCommandReference> referencesByCommandId = referencesByCommandId(batch);
         List<DispatchOutcome> immediateOutcomes = new ArrayList<>();
         for (DeliveryCommand command : batch.items()) {
             try {
-                RouteConsumerEndpoint routeEndpoint = resolveEndpoint(batch, command);
-                WorkerAdapter adapter = resolveAdapter(routeEndpoint.adapterId());
+                DeliveryCommandReference reference = referencesByCommandId.get(command.getCommandId());
+                if (reference == null) {
+                    DispatchOutcome outcome = DispatchOutcome.fromCommand(
+                            command,
+                            DispatchOutcomeStatus.INVALID,
+                            false,
+                            "delivery command batch is missing handoff reference"
+                    );
+                    immediateOutcomes.add(outcome);
+                    continue;
+                }
+                String adapterId = reference.adapterId();
+                WorkerAdapter adapter = resolveAdapter(adapterId);
                 if (adapter == null) {
                     DispatchOutcome outcome = DispatchOutcome.fromCommand(
                             command,
@@ -71,19 +74,9 @@ public final class TransportDeliveryCommandListener {
                     handleRetryableFailure(outcome);
                     continue;
                 }
-                AdapterEndpoint endpoint = toAdapterEndpoint(routeEndpoint);
-                AdapterDispatchRequest request = toRequest(routeEndpoint, command, endpoint);
-                itemByDeliveryId.put(request.deliveryId(), new ResolvedDispatchCommand(command, routeEndpoint));
+                AdapterDispatchRequest request = toRequest(adapterId, command);
+                itemByDeliveryId.put(request.deliveryId(), new ResolvedDispatchCommand(command));
                 groupedByAdapter.computeIfAbsent(adapter, ignored -> new ArrayList<>()).add(request);
-            } catch (EndpointResolutionException e) {
-                DispatchOutcome outcome = DispatchOutcome.fromCommand(
-                        command,
-                        DispatchOutcomeStatus.NO_ENDPOINT,
-                        true,
-                        e.getMessage()
-                );
-                immediateOutcomes.add(outcome);
-                handleRetryableFailure(outcome);
             } catch (RuntimeException e) {
                 DispatchOutcome outcome = DispatchOutcome.fromCommand(
                         command,
@@ -99,7 +92,7 @@ public final class TransportDeliveryCommandListener {
         List<AdapterDispatchGroup> groups = new ArrayList<>(groupedByAdapter.size());
         for (Map.Entry<WorkerAdapter, List<AdapterDispatchRequest>> entry : groupedByAdapter.entrySet()) {
             groups.add(new AdapterDispatchGroup(
-                    batch.deliveryLaneKey(),
+                    batch.deliveryQueueKey(),
                     entry.getKey(),
                     Collections.unmodifiableList(entry.getValue())
             ));
@@ -107,7 +100,7 @@ public final class TransportDeliveryCommandListener {
 
         List<DispatchOutcome> outcomes = new ArrayList<>(immediateOutcomes);
         for (DispatchGroupResult dispatchResult : dispatchGroups(groups)) {
-            logDispatchOutcomes(batch.deliveryLaneKey(), dispatchResult.adapter(), dispatchResult.outcomes());
+            logDispatchOutcomes(batch.deliveryQueueKey(), dispatchResult.adapter(), dispatchResult.outcomes());
             for (DispatchOutcome outcome : dispatchResult.outcomes()) {
                 outcomes.add(outcome);
                 if (outcome == null || !outcome.isRetryable()) {
@@ -131,41 +124,25 @@ public final class TransportDeliveryCommandListener {
         }
     }
 
-    private RouteConsumerEndpoint resolveEndpoint(DeliveryCommandBatch batch, DeliveryCommand command) {
-        if (localTransportNodeId != null && !localTransportNodeId.equals(batch.targetTransportNodeId())) {
-            throw new EndpointResolutionException("delivery command batch is not targeted to local transport node", null);
+    private static Map<String, DeliveryCommandReference> referencesByCommandId(DeliveryCommandBatch batch) {
+        if (batch == null || batch.references().isEmpty()) {
+            return Map.of();
         }
-        RouteConsumerEndpoint endpoint = routeOwnerView
-                .endpointForSelectedWorker(batch.deliveryBucketId(), command.getSelectedWorkerId())
-                .orElseThrow(() -> new EndpointResolutionException("transport endpoint owner disappeared after handoff", null));
-        if (!batch.targetTransportNodeId().equals(endpoint.transportNodeId())) {
-            throw new EndpointResolutionException("transport endpoint owner moved after handoff", endpoint);
+        Map<String, DeliveryCommandReference> references = new LinkedHashMap<>();
+        for (DeliveryCommandReference reference : batch.references()) {
+            references.put(reference.commandId(), reference);
         }
-        if (localTransportNodeId != null && !localTransportNodeId.equals(endpoint.transportNodeId())) {
-            throw new EndpointResolutionException("transport endpoint owner is not local", endpoint);
-        }
-        return endpoint;
+        return references;
     }
 
-    private static AdapterEndpoint toAdapterEndpoint(RouteConsumerEndpoint endpoint) {
-        return new AdapterEndpoint(
-                endpoint.routeKey(),
-                endpoint.transportNodeId(),
-                endpoint.connectionId(),
-                endpoint.leaseExpireAtEpochMillis()
-        );
-    }
-
-    private AdapterDispatchRequest toRequest(RouteConsumerEndpoint routeEndpoint,
-                                             DeliveryCommand command,
-                                             AdapterEndpoint endpoint) {
+    private AdapterDispatchRequest toRequest(String adapterId,
+                                             DeliveryCommand command) {
         return new AdapterDispatchRequest(
                 command.getCommandId(),
-                routeEndpoint.adapterId(),
+                adapterId,
                 command.getSelectedWorkerId(),
                 command.getContent(),
                 command.getExecutionContext(),
-                endpoint,
                 command.getCreatedAtEpochMillis()
         );
     }
@@ -249,7 +226,7 @@ public final class TransportDeliveryCommandListener {
         return Collections.unmodifiableList(outcomes);
     }
 
-    private void logDispatchOutcomes(String deliveryLaneKey, WorkerAdapter adapter, List<DispatchOutcome> outcomes) {
+    private void logDispatchOutcomes(String deliveryQueueKey, WorkerAdapter adapter, List<DispatchOutcome> outcomes) {
         if (outcomes == null || outcomes.isEmpty()) {
             return;
         }
@@ -260,12 +237,12 @@ public final class TransportDeliveryCommandListener {
             if (outcome.getStatus() == DispatchOutcomeStatus.DELIVERED
                     || outcome.getStatus() == DispatchOutcomeStatus.QUEUED) {
                 logger.debug("Transport delivery outcome: adapterId={}, deliveryQueueKey={}, deliveryId={}, attemptId={}, selectedWorkerId={}, status={}",
-                        adapterId(adapter), deliveryLaneKey, outcome.getDeliveryId(),
+                        adapterId(adapter), deliveryQueueKey, outcome.getDeliveryId(),
                         outcome.getAttemptId(), outcome.getSelectedWorkerId(), outcome.getStatus());
                 continue;
             }
             logger.warn("Transport delivery outcome: adapterId={}, deliveryQueueKey={}, deliveryId={}, attemptId={}, selectedWorkerId={}, status={}, retryable={}, reason={}, routedAdapter={}",
-                    adapterId(adapter), deliveryLaneKey, outcome.getDeliveryId(),
+                    adapterId(adapter), deliveryQueueKey, outcome.getDeliveryId(),
                     outcome.getAttemptId(), outcome.getSelectedWorkerId(), outcome.getStatus(), outcome.isRetryable(),
                     outcome.getReason(), adapter != null ? adapter.adapterId() : null);
         }
@@ -278,12 +255,13 @@ public final class TransportDeliveryCommandListener {
         if (failureHandler == null) {
             logger.warn("Delivery failure has no failure handler: deliveryId={}, selectedWorkerId={}, status={}, reason={}",
                     outcome.getDeliveryId(), outcome.getSelectedWorkerId(), outcome.getStatus(), outcome.getReason());
-            return;
+            throw new DeliveryFailureEmissionException("delivery failure has no failure handler");
         }
         boolean handled = failureHandler.handle(new TransportDeliveryFailureEvent(outcome, outcome.getReason()));
         if (!handled) {
             logger.error("Delivery failure was not handled: deliveryId={}, selectedWorkerId={}, status={}, reason={}",
                     outcome.getDeliveryId(), outcome.getSelectedWorkerId(), outcome.getStatus(), outcome.getReason());
+            throw new DeliveryFailureEmissionException("delivery failure was not handled");
         }
     }
 
@@ -291,28 +269,17 @@ public final class TransportDeliveryCommandListener {
         return adapter != null ? adapter.adapterId() : null;
     }
 
-    private static String normalizeText(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private record AdapterDispatchGroup(String deliveryLaneKey,
+    private record AdapterDispatchGroup(String deliveryQueueKey,
                                         WorkerAdapter adapter,
                                         List<AdapterDispatchRequest> requests) {
     }
 
-    private record ResolvedDispatchCommand(DeliveryCommand command, RouteConsumerEndpoint endpoint) {
+    private record ResolvedDispatchCommand(DeliveryCommand command) {
     }
 
-    private static final class EndpointResolutionException extends RuntimeException {
-        private final RouteConsumerEndpoint endpoint;
-
-        private EndpointResolutionException(String message, RouteConsumerEndpoint endpoint) {
+    private static final class DeliveryFailureEmissionException extends RuntimeException {
+        private DeliveryFailureEmissionException(String message) {
             super(message);
-            this.endpoint = endpoint;
-        }
-
-        private RouteConsumerEndpoint endpoint() {
-            return endpoint;
         }
     }
 

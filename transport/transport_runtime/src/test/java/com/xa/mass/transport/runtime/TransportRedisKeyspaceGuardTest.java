@@ -34,8 +34,14 @@ class TransportRedisKeyspaceGuardTest {
                 "route:<encodedRouteKey>:consumers",
                 "bucket:<encodedDeliveryBucketId>:worker:<encodedWorkerId>:owner",
                 "q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>",
-                "lane:<encodedDeliveryLaneKey+targetTransportNodeId>:q",
-                "node:<transportNodeId>:ready-lanes"
+                "q:<encodedDeliveryQueueKey>:commands",
+                "q:<encodedDeliveryQueueKey>:command-deadlines",
+                "consumer:<encodedQueueConsumerKey>:ready-commands",
+                "consumer:<encodedQueueConsumerKey>:inflight-commands",
+                "queue-consumers:<encodedDeliveryQueueKey>",
+                "queue-consumer:<encodedQueueConsumerKey>",
+                "selected-worker-consumers:<encodedDeliveryQueueKey>",
+                "selected-worker-consumer-deadlines:<encodedDeliveryQueueKey>"
         )) {
             assertTrue(content.contains(keyFamily), () -> "missing transport Redis key family manifest entry: " + keyFamily);
         }
@@ -93,8 +99,8 @@ class TransportRedisKeyspaceGuardTest {
 
         assertTrue(!content.contains("q:<routeKey>"),
                 "transport boundary baseline must not document routeKey-only delivery queues");
-        assertTrue(content.contains("worker-index:<selectedWorkerId>"),
-                "transport boundary baseline must document selected-worker delivery queue selector");
+        assertTrue(content.contains("selected-worker-consumers:<encodedDeliveryQueueKey>"),
+                "transport boundary baseline must document selected-worker delivery consumer evidence");
     }
 
     private static Stream<Path> scanTextFiles(Path path) throws IOException {

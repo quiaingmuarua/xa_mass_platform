@@ -12,13 +12,13 @@ final class DeliveryCommandFixtures {
     private DeliveryCommandFixtures() {
     }
 
-    static DeliveryCommand command(String messageId, String selectedWorkerId, String targetTransportNodeId) {
-        return command(messageId, selectedWorkerId, targetTransportNodeId, "route-" + messageId);
+    static DeliveryCommand command(String messageId, String selectedWorkerId, String unusedConsumerKey) {
+        return command(messageId, selectedWorkerId, unusedConsumerKey, "route-" + messageId);
     }
 
     static DeliveryCommand command(String messageId,
                                    String selectedWorkerId,
-                                   String targetTransportNodeId,
+                                   String unusedConsumerKey,
                                    String routeKey) {
         return new DeliveryCommand(
                 "cmd-" + messageId,
@@ -42,8 +42,16 @@ final class DeliveryCommandFixtures {
         );
     }
 
-    static DeliveryCommandBatch batch(String targetTransportNodeId, DeliveryCommand... commands) {
-        return new DeliveryCommandBatch("bucket-1", "bucket-1", targetTransportNodeId, List.of(commands));
+    static DeliveryCommandBatch batch(String unusedConsumerKey, DeliveryCommand... commands) {
+        return new DeliveryCommandBatch(queueKey(), List.of(commands));
+    }
+
+    static DeliveryQueueOffer offer(DeliveryCommand... commands) {
+        return new DeliveryQueueOffer(queueKey(), List.of(commands));
+    }
+
+    static String queueKey() {
+        return AssignedDeliveryCommandQueueKey.queueKeyFor("bucket-1");
     }
 
     static List<String> messages(DeliveryCommandBatch batch) {

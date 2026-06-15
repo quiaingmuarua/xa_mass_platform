@@ -3,7 +3,6 @@ package com.xa.mass.transport.polling.worker;
 import com.xa.mass.transport.channel.PulledTaskDispatch;
 import com.xa.mass.transport.channel.TaskPullStatus;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
-import com.xa.mass.transport.model.AdapterEndpoint;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchContent;
@@ -131,10 +130,10 @@ class PollingWorkerAdapterTest {
     }
 
     private AdapterDispatchRequest request(String messageId, String workerId) {
-        return request("delivery-" + messageId, "group-route-1", messageId, workerId);
+        return request("delivery-" + messageId, messageId, workerId);
     }
 
-    private AdapterDispatchRequest request(String deliveryId, String routeKey, String messageId, String workerId) {
+    private AdapterDispatchRequest request(String deliveryId, String messageId, String workerId) {
         return new AdapterDispatchRequest(
                 deliveryId,
                 PollingWorkerAdapter.PROTOCOL,
@@ -147,7 +146,6 @@ class PollingWorkerAdapterTest {
                         Map.of()
                 ),
                 new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1"),
-                new AdapterEndpoint(routeKey, "node-1", "conn-" + workerId, 10_000L),
                 1L
         );
     }

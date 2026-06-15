@@ -19,38 +19,62 @@ class InMemoryTransportDeliveryCommandHandoffTest {
     @Test
     void offerAndPollRoundTrip() throws Exception {
         InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(2);
-        DeliveryCommandBatch batch = DeliveryCommandFixtures.batch(
-                "node-1",
+        claim(handoff, "worker-1", "node-1", "websocket");
+        DeliveryQueueOffer offer = DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         );
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
-                handoff.offer(batch).stream().map(outcome -> outcome.getStatus()).toList()
+                handoff.offer(offer).stream().map(outcome -> outcome.getStatus()).toList()
         );
 
         DeliveryCommandBatch polled = handoff.poll(100L);
         assertNotNull(polled);
-        assertEquals("bucket-1", polled.deliveryBucketId());
-        assertEquals("bucket-1", polled.deliveryLaneKey());
-        assertEquals("node-1", polled.targetTransportNodeId());
+        assertEquals(DeliveryCommandFixtures.queueKey(), polled.deliveryQueueKey());
+        assertEquals("websocket", polled.references().getFirst().adapterId());
         assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(polled));
     }
 
     @Test
     void fullQueueReturnsBackpressureWithoutBlockingProducer() {
         InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(1);
-        handoff.offer(DeliveryCommandFixtures.batch(
-                "node-1",
+        claim(handoff, "worker-1", "node-1", "websocket");
+        claim(handoff, "worker-2", "node-1", "websocket");
+        handoff.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.BACKPRESSURE),
-                handoff.offer(DeliveryCommandFixtures.batch(
-                        "node-1",
+                handoff.offer(DeliveryCommandFixtures.offer(
                         DeliveryCommandFixtures.command("msg-2", "worker-2", "node-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
+    }
+
+    @Test
+    void missingConsumerEvidenceReturnsNoEndpoint() {
+        InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(1);
+
+        assertEquals(
+                List.of(DispatchOutcomeStatus.NO_ENDPOINT),
+                handoff.offer(DeliveryCommandFixtures.offer(
+                        DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+                )).stream().map(outcome -> outcome.getStatus()).toList()
+        );
+    }
+
+    private static void claim(InMemoryTransportDeliveryCommandHandoff handoff,
+                              String workerId,
+                              String queueConsumerKey,
+                              String adapterId) {
+        handoff.claimConsumer(new DeliveryCommandConsumerClaim(
+                "bucket-1",
+                workerId,
+                queueConsumerKey,
+                adapterId,
+                System.currentTimeMillis() + 30_000L
+        ));
     }
 }

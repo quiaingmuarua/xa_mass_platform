@@ -1,7 +1,6 @@
 package com.xa.mass.transport.socket.dispatcher;
 
 import com.xa.mass.transport.model.AdapterDispatchRequest;
-import com.xa.mass.transport.model.AdapterEndpoint;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchContent;
@@ -83,7 +82,6 @@ class SocketTaskDispatchChannelTest {
                         Map.of()
                 ),
                 new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1"),
-                new AdapterEndpoint("group-route-1", "node-1", "conn-" + workerId, 10_000L),
                 1L
         );
     }

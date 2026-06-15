@@ -34,6 +34,8 @@ import com.xa.mass.transport.runtime.TaskResultIngestInboxPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoffPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandListener;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerProjectingRouteOwnerStore;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
@@ -53,7 +55,6 @@ import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
-import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import org.slf4j.Logger;
@@ -94,7 +95,6 @@ public class MassApplication {
     private WorkerEndpointRegistry endpointRegistry;
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportRouteOwnerStore routeOwnerStore;
-    private WorkerDispatchRouteOwnerView workerRouteOwnerView;
     private TransportDeliveryService transportDeliveryService;
     private TransportDeliveryCommandHandoff transportDeliveryCommandHandoff;
     private TransportDeliveryCommandHandoffPump transportDeliveryCommandHandoffPump;
@@ -273,7 +273,6 @@ public class MassApplication {
             WorkerPresenceIngress presenceIngress = resolveWorkerPresenceIngress();
             workerPresenceIngress = presenceIngress;
             routeOwnerStore = transportRuntimeComposition.resolveTransportRouteOwnerStore();
-            workerRouteOwnerView = requireWorkerRouteOwnerView(routeOwnerStore);
             transportNodeRegistry = transportRuntimeComposition.resolveTransportNodeRegistry();
             TransportDeliveryStore deliveryStore = transportRuntimeComposition.resolveTransportDeliveryStore();
             TransportDeliveryService deliveryService = new TransportDeliveryService(deliveryStore);
@@ -283,6 +282,11 @@ public class MassApplication {
                     transportRuntimeComposition.getTransportRuntimeMaxPendingTasks()
             );
             TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
+            if (requiresTaskDispatchHandoff(runtimeRole)) {
+                transportDeliveryCommandHandoff =
+                        transportRuntimeComposition.resolveTransportDeliveryCommandHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
+                routeOwnerStore = attachDeliveryCommandConsumerRegistry(routeOwnerStore, transportDeliveryCommandHandoff);
+            }
             TaskDispatchBatchListener taskDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
             List<TransportBinding> adapterBindings = new ArrayList<>();
@@ -349,13 +353,9 @@ public class MassApplication {
                 startTransportNodeHeartbeat(adapterBindings);
             }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                transportDeliveryCommandHandoff =
-                        transportRuntimeComposition.resolveTransportDeliveryCommandHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 if (runtimeRole == TransportRuntimeRole.EMBEDDED) {
                     TransportDeliveryCommandListener batchListener = new TransportDeliveryCommandListener(
                             transportRuntimeRegistry,
-                            workerRouteOwnerView,
-                            transportRuntimeComposition.getTransportNodeId(),
                             createTransportDeliveryFailureHandler(),
                             transportRuntimeTaskExecutor
                     );
@@ -368,13 +368,9 @@ public class MassApplication {
                 }
                 taskDispatchListener = createDispatchSubmitter(transportDeliveryCommandHandoff);
             } else if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                transportDeliveryCommandHandoff =
-                        transportRuntimeComposition.resolveTransportDeliveryCommandHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 deliveryFailureInbox = transportRuntimeComposition.resolveDeliveryFailureInbox();
                 TransportDeliveryCommandListener batchListener = new TransportDeliveryCommandListener(
                         transportRuntimeRegistry,
-                        workerRouteOwnerView,
-                        transportRuntimeComposition.getTransportNodeId(),
                         deliveryFailureInbox,
                         transportRuntimeTaskExecutor
                 );
@@ -431,6 +427,20 @@ public class MassApplication {
         };
     }
 
+    private boolean requiresTaskDispatchHandoff(TransportRuntimeRole runtimeRole) {
+        return runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER
+                || (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER);
+    }
+
+    private TransportRouteOwnerStore attachDeliveryCommandConsumerRegistry(TransportRouteOwnerStore store,
+                                                                          TransportDeliveryCommandHandoff handoff) {
+        if (handoff instanceof DeliveryCommandConsumerRegistry registry
+                && !(store instanceof DeliveryCommandConsumerProjectingRouteOwnerStore)) {
+            return new DeliveryCommandConsumerProjectingRouteOwnerStore(store, registry);
+        }
+        return store;
+    }
+
     private TaskDispatchDeliveryFailure toDeliveryFailure(TransportDeliveryFailureEvent event) {
         DispatchOutcome outcome = event.outcome();
         return new TaskDispatchDeliveryFailure(
@@ -446,8 +456,6 @@ public class MassApplication {
     private TaskDispatchBatchListener createDispatchSubmitter(TransportDeliveryCommandHandoff handoff) {
         TransportAssignedDeliverySubmitter assignedDeliverySubmitter = new TransportAssignedDeliverySubmitter(
                 handoff,
-                workerRouteOwnerView,
-                transportNodeRegistry,
                 createTransportDeliveryFailureHandler()
         );
         return new TaskDispatchDeliveryCommandSubmitter(
@@ -582,17 +590,9 @@ public class MassApplication {
     private void stopRouteOwnerStore() throws Exception {
         TransportRouteOwnerStore store = routeOwnerStore;
         routeOwnerStore = null;
-        workerRouteOwnerView = null;
         if (store instanceof AutoCloseable closeable) {
             closeable.close();
         }
-    }
-
-    private static WorkerDispatchRouteOwnerView requireWorkerRouteOwnerView(TransportRouteOwnerStore store) {
-        if (store instanceof WorkerDispatchRouteOwnerView routeOwnerView) {
-            return routeOwnerView;
-        }
-        throw new IllegalStateException("TransportRouteOwnerStore must also implement WorkerDispatchRouteOwnerView");
     }
 
     private void stopTaskDispatchHandoff() {

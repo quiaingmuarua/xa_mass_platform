@@ -12,7 +12,6 @@ public final class AdapterDispatchRequest {
     private final String selectedWorkerId;
     private final TaskDispatchContent content;
     private final TaskDispatchExecutionContext executionContext;
-    private final AdapterEndpoint endpoint;
     private final long createdAtEpochMillis;
 
     public AdapterDispatchRequest(String deliveryId,
@@ -20,14 +19,12 @@ public final class AdapterDispatchRequest {
                                   String selectedWorkerId,
                                   TaskDispatchContent content,
                                   TaskDispatchExecutionContext executionContext,
-                                  AdapterEndpoint endpoint,
                                   long createdAtEpochMillis) {
         this.deliveryId = requireText(deliveryId, "deliveryId");
         this.adapterId = requireAdapterId(adapterId);
         this.selectedWorkerId = requireText(selectedWorkerId, "selectedWorkerId");
         this.content = Objects.requireNonNull(content, "content");
         this.executionContext = Objects.requireNonNull(executionContext, "executionContext");
-        this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
         this.createdAtEpochMillis = Math.max(0L, createdAtEpochMillis);
     }
 
@@ -49,10 +46,6 @@ public final class AdapterDispatchRequest {
 
     public TaskDispatchExecutionContext executionContext() {
         return executionContext;
-    }
-
-    public AdapterEndpoint endpoint() {
-        return endpoint;
     }
 
     public long createdAtEpochMillis() {

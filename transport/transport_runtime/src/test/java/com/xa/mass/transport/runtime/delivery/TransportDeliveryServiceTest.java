@@ -1,7 +1,6 @@
 package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.AdapterDispatchRequest;
-import com.xa.mass.transport.model.AdapterEndpoint;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchContent;
@@ -132,9 +131,9 @@ class TransportDeliveryServiceTest {
     }
 
     @Test
-    void pollUsesCanonicalAdapterAndRouteKeys() {
+    void pollUsesCanonicalAdapterAndWorkerKeys() {
         TransportDeliveryService service = service();
-        service.enqueue("polling", List.of(request("delivery-msg-1", " Polling ", " group-route-1 ", "msg-1", " worker-1 ")));
+        service.enqueue("polling", List.of(request("delivery-msg-1", " Polling ", "msg-1", " worker-1 ")));
 
         assertEquals(List.of("msg-1"), service.pollItems("polling", "worker-1", 10, 0).stream()
                 .map(item -> item.content().messageId())
@@ -144,7 +143,7 @@ class TransportDeliveryServiceTest {
     @Test
     void selectedWorkerPollDoesNotDrainAnotherWorkerSharingRouteKey() {
         TransportDeliveryService service = service();
-        service.enqueue("polling", List.of(request("delivery-msg-1", "polling", "group-route-1", "msg-1", "worker-2")));
+        service.enqueue("polling", List.of(request("delivery-msg-1", "polling", "msg-1", "worker-2")));
 
         assertTrue(service.pollItems("polling", "worker-1", 10, 0).isEmpty());
         assertEquals(List.of("msg-1"), service.pollItems("polling", "worker-2", 10, 0).stream()
@@ -239,12 +238,11 @@ class TransportDeliveryServiceTest {
     }
 
     private AdapterDispatchRequest request(String messageId, String workerId) {
-        return request("delivery-" + messageId, "polling", "group-route-1", messageId, workerId);
+        return request("delivery-" + messageId, "polling", messageId, workerId);
     }
 
     private AdapterDispatchRequest request(String deliveryId,
                                            String adapterId,
-                                           String routeKey,
                                            String messageId,
                                            String workerId) {
         return new AdapterDispatchRequest(
@@ -259,7 +257,6 @@ class TransportDeliveryServiceTest {
                         Map.of()
                 ),
                 new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1"),
-                new AdapterEndpoint(routeKey, "node-1", "conn-" + workerId, 10_000L),
                 1L
         );
     }

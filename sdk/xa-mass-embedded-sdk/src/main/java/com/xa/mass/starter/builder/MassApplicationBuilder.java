@@ -237,7 +237,7 @@ public class MassApplicationBuilder {
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
                     config.getTransportNodeId(),
-                    RedisTransportDeliveryCommandHandoff.DEFAULT_MAX_QUEUED_BATCHES_PER_LANE
+                    RedisTransportDeliveryCommandHandoff.DEFAULT_MAX_QUEUED_COMMANDS_PER_QUEUE
             ));
             return this;
         }

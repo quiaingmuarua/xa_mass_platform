@@ -118,16 +118,12 @@ target.
   node:<transportNodeId>:ready-lanes
   ```
 
-- `TransportDeliveryCommandListener` re-resolves endpoint evidence through
-  `endpointForSelectedWorker(...)`, copies route/connection facts into
-  `AdapterEndpoint`, then adapters still dispatch by `selectedWorkerId`.
-  WebSocket and socket final-hop delivery do not need `connectionId`; session
-  managers already index active in-memory sessions by selected worker.
-
-- `TransportDeliveryCommandListener` currently reads
-  `RouteConsumerEndpoint.adapterId()` to choose the final-hop adapter. That
-  adapter selector may remain transport-internal, but it must not be visible to
-  producer-side assignment, handoff submission, or public worker registration.
+- Before convergence, `TransportDeliveryCommandListener` re-resolved endpoint
+  evidence through `endpointForSelectedWorker(...)`, copied route/connection
+  facts into `AdapterEndpoint`, and read `RouteConsumerEndpoint.adapterId()` to
+  choose the final-hop adapter. The target shape moves adapter selection into
+  handoff-private selected-worker consumer evidence; WebSocket and socket
+  final-hop delivery dispatch by selected worker.
 
 - `TransportDeliveryService` and `TransportDeliveryStore` already have a
   polling-store `deliveryQueueKey`, currently derived from `adapterId`. That is
@@ -269,7 +265,7 @@ xa:mass:transport:delivery-command:v1:queue-consumer:<encodedQueueConsumerKey>
     fields = opaque queue-consumer context
 
 xa:mass:transport:delivery-command:v1:selected-worker-consumers:<encodedDeliveryQueueKey>
-  HASH selectedWorkerId -> queueConsumerKey + evidenceGeneration + leaseDeadline
+  HASH selectedWorkerId -> queueConsumerKey + adapterId + leaseDeadline
 
 xa:mass:transport:delivery-command:v1:selected-worker-consumer-deadlines:<encodedDeliveryQueueKey>
   ZSET selectedWorkerId -> lease deadline
@@ -408,29 +404,23 @@ record SelectedWorkerQueueConsumerEvidence(
     String deliveryQueueKey,
     String selectedWorkerId,
     String queueConsumerKey,
-    String evidenceGeneration,
+    String adapterId,
     long leaseDeadlineEpochMillis
 ) {}
 ```
 
 Adapter/session managers must register, refresh, and release this evidence
 record when selected-worker endpoint evidence changes. Release and heartbeat
-must be generation checked so a stale disconnect cannot remove newer endpoint
-evidence.
+must be current-consumer checked so a stale disconnect cannot remove newer
+endpoint evidence.
 
 Replace handoff offer shape:
 
 ```java
-List<DispatchOutcome> offer(DeliveryCommandBatch batch);
+List<DispatchOutcome> offer(DeliveryQueueOffer offer);
 ```
 
-with:
-
-```java
-List<DispatchOutcome> offer(String deliveryQueueKey, List<DeliveryCommand> commands);
-```
-
-or a minimal object:
+Where `DeliveryQueueOffer` is the minimal producer-facing object:
 
 ```java
 record DeliveryQueueOffer(
@@ -445,8 +435,7 @@ The ready path should use command references, not a shared bucket FIFO:
 record DeliveryCommandReference(
     String deliveryQueueKey,
     String commandId,
-    String selectedWorkerId,
-    String evidenceGeneration
+    String queueConsumerKey
 ) {}
 ```
 
@@ -565,8 +554,8 @@ Acceptance:
   Redis owner-shard decisions.
 - Decision records the selected-worker consumer evidence write contract:
   adapter/session managers register, refresh, and release
-  `deliveryQueueKey + selectedWorkerId -> queueConsumerKey +
-  evidenceGeneration`.
+  `deliveryQueueKey + selectedWorkerId -> queueConsumerKey + adapterId +
+  leaseDeadline`.
 - Decision records the selected-worker-safe storage model: command store plus
   per-consumer ready references. A single shared bucket FIFO is explicitly
   rejected for DQK-1.
@@ -625,8 +614,8 @@ Scope:
   queueConsumerKey set` plus `queueConsumerKey -> adapterId/context`.
 - Add a selected-worker consumer evidence write path from adapter/session managers:
   claim, heartbeat, release, and prune
-  `deliveryQueueKey + selectedWorkerId -> queueConsumerKey +
-  evidenceGeneration`.
+  `deliveryQueueKey + selectedWorkerId -> queueConsumerKey + adapterId +
+  leaseDeadline`.
 - Implement selected-worker-safe queue consumption with command storage plus
   per-consumer ready references. Do not implement DQK-1 as a single shared
   bucket FIFO, poll-and-discard queue, or scan queue.
@@ -664,9 +653,10 @@ Acceptance:
   `selected-worker-consumers:<encodedDeliveryQueueKey>` has no live consumer
   evidence for the command's `selectedWorkerId`; it must not ask the producer
   for node/consumer facts.
-- Stale ready refs are rejected by evidenceGeneration check before final-hop
-  dispatch and are reported as retryable endpoint unavailable, not delivered to
-  another worker.
+- Stale ready refs are checked against current selected-worker consumer
+  evidence before final-hop dispatch. If ownership moved, the ref is forwarded
+  to the current consumer; if no live evidence remains, it is reported through
+  the retryable endpoint-unavailable path, not delivered to another worker.
 - Command payload is deleted only after final-hop success or after retryable
   delivery failure has been durably accepted by the failure channel; if failure
   emission fails, the command stays visible for retry/cleanup.
@@ -731,8 +721,8 @@ Scope:
   local queue consumer's ready list.
 - Listener resolves local adapter/session context from
   `DeliveryQueueConsumerContext`, not from route-owner endpoint records.
-- Listener validates the command reference evidenceGeneration against current
-  selected-worker consumer evidence before final-hop dispatch.
+- The handoff validates command references against current selected-worker
+  consumer evidence before materializing a listener batch.
 - WebSocket/socket final-hop remains `sendToSelectedWorker(...)`.
 - Polling final-hop remains selected-worker sub-lane delivery.
 - Existing `TransportDeliveryService` / `TransportDeliveryStore`
@@ -747,8 +737,8 @@ Acceptance:
   delivery.
 - Assigned delivery to an old queue after a worker reconnect does not reselect
   another worker; it fails as no endpoint/unavailable and feeds compensation.
-- A stale command reference for a previous evidenceGeneration is not dispatched
-  and is not acknowledged as successful delivery.
+- A stale command reference for a previous consumer is not dispatched by the
+  wrong consumer and is not acknowledged as successful delivery.
 - `AdapterDispatchRequest` does not expose connection/session/lease token.
 - Push and polling selected-worker tests still prove wrong-worker prevention.
 - Tests or guards distinguish handoff `deliveryQueueKey` from polling-store
@@ -882,8 +872,7 @@ This test must assert that assigned delivery writes `q:*:commands`,
 delivery does not write `lane:*`, `ready-lanes`,
 `bucket:<bucket>:owner-shard:*`, or `bucket + worker -> deliveryQueueKey`
 indexes. It must cover success ack, durable failure ack, failure handler
-returning false, inflight visibility timeout, and stale evidenceGeneration
-rejection.
+returning false, inflight visibility timeout, and stale consumer rejection.
 
 Adapter selected-worker tests:
 
@@ -911,8 +900,8 @@ SDK/server representative proof:
 - Queue-consumer registry tracks `deliveryQueueKey -> queueConsumerKey set` and
   `queueConsumerKey -> adapterId/context`; producers do not see either value.
 - Selected-worker consumer evidence tracks
-  `deliveryQueueKey + selectedWorkerId -> queueConsumerKey +
-  evidenceGeneration`; producers do not see it.
+  `deliveryQueueKey + selectedWorkerId -> queueConsumerKey + adapterId +
+  leaseDeadline`; producers do not see it.
 - Assigned delivery listener does not re-route through
   `routeKey + connectionId`.
 - Assigned-delivery producer-facing code and public APIs do not expose

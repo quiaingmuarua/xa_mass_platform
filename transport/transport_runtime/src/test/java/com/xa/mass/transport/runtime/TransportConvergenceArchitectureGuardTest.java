@@ -242,12 +242,15 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void redisDeliveryCommandHandoffUsesDeliveryLanes() throws IOException {
+    void redisDeliveryCommandHandoffDoesNotUseRouteOrLaneQueues() throws IOException {
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDeliveryCommandHandoff.java")),
                 "\":route:\"",
                 "ready-routes",
-                "routeQueueKey("
+                "routeQueueKey(",
+                "ready-lanes",
+                "targetTransportNodeId",
+                "\":lane:\""
         );
     }
 
@@ -299,6 +302,19 @@ class TransportConvergenceArchitectureGuardTest {
                 "connectionToken",
                 "\"unknown\"",
                 "correlation"
+        );
+    }
+
+    @Test
+    void deliveryCommandListenerDoesNotResolveRouteOwnerEndpointForAssignedDelivery() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandListener.java")),
+                "WorkerDispatchRouteOwnerView",
+                "endpointForSelectedWorker",
+                "RouteConsumerEndpoint",
+                "AdapterEndpoint",
+                "targetTransportNodeId",
+                "connectionId"
         );
     }
 

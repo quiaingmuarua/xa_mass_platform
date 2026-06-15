@@ -8,7 +8,6 @@ import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
-import com.xa.mass.transport.model.AdapterEndpoint;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchContent;
@@ -175,7 +174,6 @@ class WebSocketTaskDispatchChannelTest {
                 binding.workerId(),
                 TaskDispatchContent.from(context, binding),
                 TaskDispatchExecutionContext.from(binding),
-                new AdapterEndpoint("group-route-1", "node-1", "conn-" + binding.workerId(), 10_000L),
                 1L
         );
     }

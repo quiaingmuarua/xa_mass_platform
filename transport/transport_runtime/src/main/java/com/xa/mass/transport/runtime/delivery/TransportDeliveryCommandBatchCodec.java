@@ -28,9 +28,7 @@ final class TransportDeliveryCommandBatchCodec {
                 .map(this::toCommandRecord)
                 .toList();
         return gson.toJson(new DeliveryCommandBatchRecord(
-                batch.deliveryBucketId(),
-                batch.deliveryLaneKey(),
-                batch.targetTransportNodeId(),
+                batch.deliveryQueueKey(),
                 items
         ));
     }
@@ -40,20 +38,19 @@ final class TransportDeliveryCommandBatchCodec {
             throw new IllegalArgumentException("json must not be blank");
         }
         DecodedDeliveryCommandBatchRecord record = gson.fromJson(json, DecodedDeliveryCommandBatchRecord.class);
-        if (record == null || record.deliveryBucketId == null || record.deliveryLaneKey == null
-                || record.targetTransportNodeId == null
-                || record.items == null || record.items.isEmpty()) {
+        if (record == null || record.deliveryQueueKey == null || record.items == null || record.items.isEmpty()) {
             throw new IllegalArgumentException("encoded delivery command batch is incomplete");
         }
         List<DeliveryCommand> items = record.items.stream()
-                .map(item -> fromCommandRecord(record.deliveryBucketId, item))
+                .map(this::fromCommandRecord)
                 .toList();
-        return new DeliveryCommandBatch(record.deliveryBucketId, record.deliveryLaneKey, record.targetTransportNodeId, items);
+        return new DeliveryCommandBatch(record.deliveryQueueKey, items);
     }
 
     private DeliveryCommandRecord toCommandRecord(DeliveryCommand command) {
         return new DeliveryCommandRecord(
                 command.getCommandId(),
+                command.getDeliveryBucketId(),
                 command.getSelectedWorkerId(),
                 toContentRecord(command.getContent()),
                 toExecutionContextRecord(command.getExecutionContext()),
@@ -81,13 +78,13 @@ final class TransportDeliveryCommandBatchCodec {
         );
     }
 
-    private DeliveryCommand fromCommandRecord(String deliveryBucketId, DecodedDeliveryCommandRecord record) {
+    private DeliveryCommand fromCommandRecord(DecodedDeliveryCommandRecord record) {
         if (record == null || record.content == null || record.executionContext == null) {
             throw new IllegalArgumentException("encoded delivery command is incomplete");
         }
         return new DeliveryCommand(
                 record.commandId,
-                deliveryBucketId,
+                record.deliveryBucketId,
                 record.selectedWorkerId,
                 fromContentRecord(record.content),
                 fromExecutionContextRecord(record.executionContext),
@@ -115,13 +112,12 @@ final class TransportDeliveryCommandBatchCodec {
         );
     }
 
-    private record DeliveryCommandBatchRecord(String deliveryBucketId,
-                                              String deliveryLaneKey,
-                                              String targetTransportNodeId,
+    private record DeliveryCommandBatchRecord(String deliveryQueueKey,
                                               List<DeliveryCommandRecord> items) {
     }
 
     private record DeliveryCommandRecord(String commandId,
+                                         String deliveryBucketId,
                                          String selectedWorkerId,
                                          TaskDispatchContentRecord content,
                                          TaskDispatchExecutionContextRecord executionContext,
@@ -143,14 +139,13 @@ final class TransportDeliveryCommandBatchCodec {
     }
 
     private static final class DecodedDeliveryCommandBatchRecord {
-        private String deliveryBucketId;
-        private String deliveryLaneKey;
-        private String targetTransportNodeId;
+        private String deliveryQueueKey;
         private List<DecodedDeliveryCommandRecord> items;
     }
 
     private static final class DecodedDeliveryCommandRecord {
         private String commandId;
+        private String deliveryBucketId;
         private String selectedWorkerId;
         private DecodedTaskDispatchContentRecord content;
         private DecodedTaskDispatchExecutionContextRecord executionContext;

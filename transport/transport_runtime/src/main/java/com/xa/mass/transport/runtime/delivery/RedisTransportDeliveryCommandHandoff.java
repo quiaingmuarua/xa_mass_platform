@@ -2,13 +2,16 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
+import io.lettuce.core.Range;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
@@ -18,29 +21,49 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Redis-backed non-blocking delivery command handoff.
  */
-public final class RedisTransportDeliveryCommandHandoff implements TransportDeliveryCommandHandoff, AutoCloseable {
+public final class RedisTransportDeliveryCommandHandoff implements TransportDeliveryCommandHandoff,
+        DeliveryCommandConsumerRegistry,
+        AutoCloseable {
 
     public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.DELIVERY_COMMAND;
-    public static final int DEFAULT_MAX_QUEUED_BATCHES_PER_LANE = 100_000;
+    public static final int DEFAULT_MAX_QUEUED_COMMANDS_PER_QUEUE = 100_000;
+    private static final long DEFAULT_COMMAND_RETENTION_MILLIS = TimeUnit.MINUTES.toMillis(10L);
+    private static final long DEFAULT_VISIBILITY_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30L);
     private static final long POLL_SLEEP_MILLIS = 50L;
+    private static final String MEMBER_SEPARATOR = "\u001f";
+    private static final String CONSUMER_EVIDENCE_VERSION = "v1";
     private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
-    private static final String OFFER_SCRIPT = """
-            local queueKey = KEYS[1]
-            local lanesKey = KEYS[2]
-            local readyLanesKey = KEYS[3]
+    private static final Base64.Decoder TOKEN_DECODER = Base64.getUrlDecoder();
+    private static final String OFFER_COMMAND_SCRIPT = """
+            local commandStoreKey = KEYS[1]
+            local commandDeadlineKey = KEYS[2]
+            local readyCommandsKey = KEYS[3]
+            local queueConsumersKey = KEYS[4]
+            local queueConsumerKey = KEYS[5]
+            local queuesKey = KEYS[6]
             local maxQueuedItems = tonumber(ARGV[1])
-            local laneKey = ARGV[2]
+            local commandId = ARGV[2]
             local value = ARGV[3]
+            local commandDeadlineMillis = tonumber(ARGV[4])
+            local deliveryQueueKey = ARGV[5]
+            local queueConsumerKeyValue = ARGV[6]
+            local nowMillis = ARGV[7]
+            local referenceValue = ARGV[8]
             if maxQueuedItems <= 0 then
               return {'BACKPRESSURE', 'queue capacity is exhausted'}
             end
-            local queuedItems = redis.call('LLEN', queueKey)
+            local queuedItems = redis.call('HLEN', commandStoreKey)
             if queuedItems >= maxQueuedItems then
-              return {'BACKPRESSURE', 'delivery command lane backlog is full'}
+              return {'BACKPRESSURE', 'delivery command queue backlog is full'}
             end
-            redis.call('RPUSH', queueKey, value)
-            redis.call('SADD', lanesKey, laneKey)
-            redis.call('SADD', readyLanesKey, laneKey)
+            if redis.call('HEXISTS', commandStoreKey, commandId) == 0 then
+              redis.call('HSET', commandStoreKey, commandId, value)
+              redis.call('ZADD', commandDeadlineKey, commandDeadlineMillis, commandId)
+            end
+            redis.call('RPUSH', readyCommandsKey, referenceValue)
+            redis.call('SADD', queueConsumersKey, queueConsumerKeyValue)
+            redis.call('HSET', queueConsumerKey, 'deliveryQueueKey', deliveryQueueKey, 'updatedAtEpochMillis', nowMillis)
+            redis.call('SADD', queuesKey, deliveryQueueKey)
             return {'QUEUED', ''}
             """;
 
@@ -49,7 +72,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     private final RedisCommands<String, String> commands;
     private final String namespacePrefix;
     private final String localTransportNodeId;
-    private final int maxQueuedBatchesPerLane;
+    private final int maxQueuedCommandsPerQueue;
     private final boolean ownsClient;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final TransportDeliveryCommandBatchCodec codec = new TransportDeliveryCommandBatchCodec();
@@ -57,12 +80,12 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     public RedisTransportDeliveryCommandHandoff(String redisUri,
                                                 String namespacePrefix,
                                                 String localTransportNodeId,
-                                                int maxQueuedBatchesPerLane) {
+                                                int maxQueuedCommandsPerQueue) {
         this(
                 RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 namespacePrefix,
                 localTransportNodeId,
-                maxQueuedBatchesPerLane,
+                maxQueuedCommandsPerQueue,
                 true
         );
     }
@@ -70,14 +93,14 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     RedisTransportDeliveryCommandHandoff(RedisClient redisClient,
                                          String namespacePrefix,
                                          String localTransportNodeId,
-                                         int maxQueuedBatchesPerLane,
+                                         int maxQueuedCommandsPerQueue,
                                          boolean ownsClient) {
         this(
                 redisClient,
                 Objects.requireNonNull(redisClient, "redisClient").connect(),
                 namespacePrefix,
                 localTransportNodeId,
-                maxQueuedBatchesPerLane,
+                maxQueuedCommandsPerQueue,
                 ownsClient
         );
     }
@@ -85,33 +108,35 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     RedisTransportDeliveryCommandHandoff(StatefulRedisConnection<String, String> connection,
                                          String namespacePrefix,
                                          String localTransportNodeId,
-                                         int maxQueuedBatchesPerLane) {
-        this(null, connection, namespacePrefix, localTransportNodeId, maxQueuedBatchesPerLane, false);
+                                         int maxQueuedCommandsPerQueue) {
+        this(null, connection, namespacePrefix, localTransportNodeId, maxQueuedCommandsPerQueue, false);
     }
 
     private RedisTransportDeliveryCommandHandoff(RedisClient redisClient,
                                                  StatefulRedisConnection<String, String> connection,
                                                  String namespacePrefix,
                                                  String localTransportNodeId,
-                                                 int maxQueuedBatchesPerLane,
+                                                 int maxQueuedCommandsPerQueue,
                                                  boolean ownsClient) {
-        if (maxQueuedBatchesPerLane <= 0) {
-            throw new IllegalArgumentException("maxQueuedBatchesPerLane must be positive");
+        if (maxQueuedCommandsPerQueue <= 0) {
+            throw new IllegalArgumentException("maxQueuedCommandsPerQueue must be positive");
         }
         this.redisClient = redisClient;
         this.connection = Objects.requireNonNull(connection, "connection");
         this.commands = connection.sync();
         this.namespacePrefix = normalizeRequired(namespacePrefix, "namespacePrefix");
         this.localTransportNodeId = normalizeNullable(localTransportNodeId);
-        this.maxQueuedBatchesPerLane = maxQueuedBatchesPerLane;
+        this.maxQueuedCommandsPerQueue = maxQueuedCommandsPerQueue;
         this.ownsClient = ownsClient;
     }
 
     @Override
-    public List<DispatchOutcome> offer(DeliveryCommandBatch batch) {
-        Objects.requireNonNull(batch, "batch");
+    public List<DispatchOutcome> offer(DeliveryQueueOffer offer) {
+        Objects.requireNonNull(offer, "offer");
+        String deliveryQueueKey = normalizeRequired(offer.deliveryQueueKey(), "deliveryQueueKey");
+        List<DeliveryCommand> commandsToOffer = offer.commands();
         if (!running.get()) {
-            return batch.items().stream()
+            return commandsToOffer.stream()
                     .map(item -> DispatchOutcome.fromCommand(
                             item,
                             DispatchOutcomeStatus.SHUTDOWN,
@@ -119,56 +144,112 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                             "delivery command handoff is stopped"))
                     .toList();
         }
-        String laneKey = physicalLaneKey(batch.deliveryLaneKey(), batch.targetTransportNodeId());
-        Object raw = commands.eval(
-                OFFER_SCRIPT,
-                ScriptOutputType.MULTI,
-                new String[]{
-                        laneQueueKey(laneKey),
-                        lanesKey(),
-                        readyLanesKey(batch.targetTransportNodeId())
-                },
-                Integer.toString(maxQueuedBatchesPerLane),
-                laneKey,
-                codec.encode(batch)
-        );
-        List<?> values = raw instanceof List<?> list ? list : List.of();
-        String status = values.isEmpty() ? "BACKPRESSURE" : String.valueOf(values.getFirst());
-        String reason = values.size() > 1 ? String.valueOf(values.get(1)) : "delivery command offer failed";
-        if ("QUEUED".equals(status)) {
-            return batch.items().stream()
-                    .map(item -> DispatchOutcome.fromCommand(
-                            item,
-                            DispatchOutcomeStatus.QUEUED,
-                            false,
-                            null))
-                    .toList();
-        }
-        return batch.items().stream()
-                .map(item -> DispatchOutcome.fromCommand(
-                        item,
-                        DispatchOutcomeStatus.BACKPRESSURE,
+        List<DispatchOutcome> outcomes = new ArrayList<>(commandsToOffer.size());
+        long now = System.currentTimeMillis();
+        long commandDeadline = now + DEFAULT_COMMAND_RETENTION_MILLIS;
+        for (DeliveryCommand command : commandsToOffer) {
+            ConsumerEvidence evidence = currentConsumerEvidence(
+                    deliveryQueueKey,
+                    command.getSelectedWorkerId(),
+                    now
+            );
+            if (evidence == null) {
+                outcomes.add(DispatchOutcome.fromCommand(
+                        command,
+                        DispatchOutcomeStatus.NO_ENDPOINT,
                         true,
-                        reason))
-                .toList();
+                        "selected worker has no assigned-delivery consumer"
+                ));
+                continue;
+            }
+            DeliveryCommandReference reference = new DeliveryCommandReference(
+                    deliveryQueueKey,
+                    command.getCommandId(),
+                    evidence.queueConsumerKey(),
+                    evidence.adapterId()
+            );
+            Object raw = commands.eval(
+                    OFFER_COMMAND_SCRIPT,
+                    ScriptOutputType.MULTI,
+                    new String[]{
+                            commandStoreKey(deliveryQueueKey),
+                            commandDeadlineKey(deliveryQueueKey),
+                            readyCommandsKey(evidence.queueConsumerKey()),
+                            queueConsumersKey(deliveryQueueKey),
+                            queueConsumerKey(evidence.queueConsumerKey()),
+                            queuesKey()
+                    },
+                    Integer.toString(maxQueuedCommandsPerQueue),
+                    command.getCommandId(),
+                    codec.encode(new DeliveryCommandBatch(deliveryQueueKey, List.of(command))),
+                    Long.toString(commandDeadline),
+                    deliveryQueueKey,
+                    evidence.queueConsumerKey(),
+                    Long.toString(now),
+                    encodeReference(reference)
+            );
+            List<?> values = raw instanceof List<?> list ? list : List.of();
+            String status = values.isEmpty() ? "BACKPRESSURE" : String.valueOf(values.getFirst());
+            String reason = values.size() > 1 ? String.valueOf(values.get(1)) : "delivery command offer failed";
+            outcomes.add(DispatchOutcome.fromCommand(
+                    command,
+                    "QUEUED".equals(status) ? DispatchOutcomeStatus.QUEUED : DispatchOutcomeStatus.BACKPRESSURE,
+                    !"QUEUED".equals(status),
+                    "QUEUED".equals(status) ? null : reason
+            ));
+        }
+        return List.copyOf(outcomes);
     }
 
     @Override
     public DeliveryCommandBatch poll(long timeoutMillis) throws InterruptedException {
-        if (!running.get() || localTransportNodeId == null) {
+        String localConsumerKey = localTransportNodeId;
+        if (!running.get() || localConsumerKey == null) {
             return null;
         }
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
         do {
-            String laneKey = commands.spop(readyLanesKey(localTransportNodeId));
-            if (laneKey != null && !laneKey.isBlank()) {
-                String json = commands.lpop(laneQueueKey(laneKey));
-                if (json != null) {
-                    if (commands.llen(laneQueueKey(laneKey)) > 0L) {
-                        commands.sadd(readyLanesKey(localTransportNodeId), laneKey);
-                    }
-                    return codec.decode(json);
+            reclaimExpiredInflight(localConsumerKey);
+            String encodedReference = commands.lpop(readyCommandsKey(localConsumerKey));
+            if (encodedReference != null && !encodedReference.isBlank()) {
+                DeliveryCommandReference reference = decodeReference(encodedReference);
+                if (reference == null) {
+                    continue;
                 }
+                String json = commands.hget(commandStoreKey(reference.deliveryQueueKey()), reference.commandId());
+                if (json == null || json.isBlank()) {
+                    commands.zrem(inflightCommandsKey(localConsumerKey), encodedReference);
+                    continue;
+                }
+                DeliveryCommandBatch stored = codec.decode(json);
+                DeliveryCommand command = stored.items().getFirst();
+                ConsumerEvidence currentConsumer = currentConsumerEvidence(
+                        reference.deliveryQueueKey(),
+                        command.getSelectedWorkerId(),
+                        System.currentTimeMillis()
+                );
+                if (currentConsumer != null && !localConsumerKey.equals(currentConsumer.queueConsumerKey())) {
+                    commands.rpush(readyCommandsKey(currentConsumer.queueConsumerKey()), encodedReference);
+                    continue;
+                }
+                DeliveryCommandReference materializedReference = currentConsumer == null
+                        ? reference
+                        : new DeliveryCommandReference(
+                        reference.deliveryQueueKey(),
+                        reference.commandId(),
+                        currentConsumer.queueConsumerKey(),
+                        currentConsumer.adapterId()
+                );
+                commands.zadd(
+                        inflightCommandsKey(localConsumerKey),
+                        System.currentTimeMillis() + DEFAULT_VISIBILITY_TIMEOUT_MILLIS,
+                        encodedReference
+                );
+                return new DeliveryCommandBatch(
+                        reference.deliveryQueueKey(),
+                        List.of(materializedReference),
+                        List.of(command)
+                );
             }
             if (timeoutMillis <= 0L) {
                 return null;
@@ -180,6 +261,46 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
             Thread.sleep(Math.min(POLL_SLEEP_MILLIS, Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos))));
         } while (running.get());
         return null;
+    }
+
+    @Override
+    public void complete(DeliveryCommandBatch batch, List<DispatchOutcome> outcomes) {
+        if (batch == null || batch.references().isEmpty()) {
+            return;
+        }
+        for (DeliveryCommandReference reference : batch.references()) {
+            String encodedReference = encodeReference(reference);
+            commands.zrem(inflightCommandsKey(reference.queueConsumerKey()), encodedReference);
+            commands.hdel(commandStoreKey(reference.deliveryQueueKey()), reference.commandId());
+            commands.zrem(commandDeadlineKey(reference.deliveryQueueKey()), reference.commandId());
+        }
+    }
+
+    @Override
+    public void claimConsumer(DeliveryCommandConsumerClaim claim) {
+        Objects.requireNonNull(claim, "claim");
+        String deliveryQueueKey = AssignedDeliveryCommandQueueKey.queueKeyFor(claim.deliveryBucketId());
+        String selectedWorkerId = normalizeRequired(claim.selectedWorkerId(), "selectedWorkerId");
+        String queueConsumerKey = normalizeRequired(claim.queueConsumerKey(), "queueConsumerKey");
+        commands.hset(selectedWorkerConsumersKey(deliveryQueueKey), selectedWorkerId, encodeConsumerEvidence(claim));
+        commands.zadd(selectedWorkerConsumerDeadlinesKey(deliveryQueueKey), claim.leaseExpireAtEpochMillis(), selectedWorkerId);
+        commands.sadd(queueConsumersKey(deliveryQueueKey), queueConsumerKey);
+        commands.hset(queueConsumerKey(queueConsumerKey), "deliveryQueueKey", deliveryQueueKey);
+        commands.hset(queueConsumerKey(queueConsumerKey), "adapterId", claim.adapterId());
+        commands.sadd(queuesKey(), deliveryQueueKey);
+    }
+
+    @Override
+    public void releaseConsumer(DeliveryCommandConsumerClaim claim) {
+        Objects.requireNonNull(claim, "claim");
+        String deliveryQueueKey = AssignedDeliveryCommandQueueKey.queueKeyFor(claim.deliveryBucketId());
+        String selectedWorkerId = normalizeRequired(claim.selectedWorkerId(), "selectedWorkerId");
+        ConsumerEvidence current = currentConsumerEvidence(deliveryQueueKey, selectedWorkerId, System.currentTimeMillis());
+        if (current == null || !claim.queueConsumerKey().equals(current.queueConsumerKey())) {
+            return;
+        }
+        commands.hdel(selectedWorkerConsumersKey(deliveryQueueKey), selectedWorkerId);
+        commands.zrem(selectedWorkerConsumerDeadlinesKey(deliveryQueueKey), selectedWorkerId);
     }
 
     @Override
@@ -198,41 +319,182 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         }
     }
 
-    int queuedBatches(String deliveryLaneKey, String targetTransportNodeId) {
-        return Math.toIntExact(commands.llen(laneQueueKey(physicalLaneKey(deliveryLaneKey, targetTransportNodeId))));
+    int queuedBatches(String deliveryQueueKey) {
+        return Math.toIntExact(commands.hlen(commandStoreKey(deliveryQueueKey)));
     }
 
-    void clearForTest(String deliveryLaneKey, String targetTransportNodeId) {
-        String laneKey = physicalLaneKey(deliveryLaneKey, targetTransportNodeId);
-        if (localTransportNodeId != null) {
-            commands.del(laneQueueKey(laneKey));
-            commands.srem(readyLanesKey(localTransportNodeId), laneKey);
+    void clearForTest(String deliveryQueueKey) {
+        String normalizedQueueKey = normalizeRequired(deliveryQueueKey, "deliveryQueueKey");
+        for (String queueConsumerKey : commands.smembers(queueConsumersKey(normalizedQueueKey))) {
+            commands.del(readyCommandsKey(queueConsumerKey));
+            commands.del(inflightCommandsKey(queueConsumerKey));
+            commands.del(queueConsumerKey(queueConsumerKey));
         }
-        commands.srem(lanesKey(), laneKey);
+        commands.del(commandStoreKey(normalizedQueueKey));
+        commands.del(commandDeadlineKey(normalizedQueueKey));
+        commands.del(queueConsumersKey(normalizedQueueKey));
+        commands.del(selectedWorkerConsumersKey(normalizedQueueKey));
+        commands.del(selectedWorkerConsumerDeadlinesKey(normalizedQueueKey));
+        commands.srem(queuesKey(), normalizedQueueKey);
     }
 
-    private String laneQueueKey(String laneKey) {
+    void claimConsumerForTest(String deliveryBucketId, String selectedWorkerId, String queueConsumerKey) {
+        claimConsumer(new DeliveryCommandConsumerClaim(
+                deliveryBucketId,
+                selectedWorkerId,
+                queueConsumerKey,
+                "websocket",
+                System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5L)
+        ));
+    }
+
+    private void reclaimExpiredInflight(String queueConsumerKey) {
+        long now = System.currentTimeMillis();
+        List<String> expired = commands.zrangebyscore(
+                inflightCommandsKey(queueConsumerKey),
+                Range.create(Double.NEGATIVE_INFINITY, (double) now)
+        );
+        for (String encodedReference : expired) {
+            if (commands.zrem(inflightCommandsKey(queueConsumerKey), encodedReference) > 0L) {
+                DeliveryCommandReference reference = decodeReference(encodedReference);
+                if (reference != null && commands.hexists(commandStoreKey(reference.deliveryQueueKey()), reference.commandId())) {
+                    commands.rpush(readyCommandsKey(queueConsumerKey), encodedReference);
+                }
+            }
+        }
+    }
+
+    private ConsumerEvidence currentConsumerEvidence(String deliveryQueueKey, String selectedWorkerId, long nowEpochMillis) {
+        String normalizedWorkerId = normalizeNullable(selectedWorkerId);
+        if (normalizedWorkerId == null) {
+            return null;
+        }
+        ConsumerEvidence evidence = decodeConsumerEvidence(
+                commands.hget(selectedWorkerConsumersKey(deliveryQueueKey), normalizedWorkerId)
+        );
+        if (evidence == null) {
+            commands.zrem(selectedWorkerConsumerDeadlinesKey(deliveryQueueKey), normalizedWorkerId);
+            return null;
+        }
+        if (evidence.leaseExpireAtEpochMillis() <= nowEpochMillis) {
+            commands.hdel(selectedWorkerConsumersKey(deliveryQueueKey), normalizedWorkerId);
+            commands.zrem(selectedWorkerConsumerDeadlinesKey(deliveryQueueKey), normalizedWorkerId);
+            return null;
+        }
+        return evidence;
+    }
+
+    private String commandStoreKey(String deliveryQueueKey) {
         return namespacePrefix
-                + ":lane:" + encodeToken(normalizeRequired(laneKey, "laneKey"))
-                + ":q";
+                + ":q:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"))
+                + ":commands";
     }
 
-    private String lanesKey() {
-        return namespacePrefix + ":lanes";
+    private String commandDeadlineKey(String deliveryQueueKey) {
+        return namespacePrefix
+                + ":q:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"))
+                + ":command-deadlines";
     }
 
-    private String readyLanesKey(String transportNodeId) {
-        return namespacePrefix + ":node:" + normalizeRequired(transportNodeId, "transportNodeId") + ":ready-lanes";
+    private String readyCommandsKey(String queueConsumerKey) {
+        return namespacePrefix
+                + ":consumer:" + encodeToken(normalizeRequired(queueConsumerKey, "queueConsumerKey"))
+                + ":ready-commands";
     }
 
-    private static String physicalLaneKey(String deliveryLaneKey, String targetTransportNodeId) {
-        return normalizeRequired(deliveryLaneKey, "deliveryLaneKey")
-                + "\n"
-                + normalizeRequired(targetTransportNodeId, "targetTransportNodeId");
+    private String inflightCommandsKey(String queueConsumerKey) {
+        return namespacePrefix
+                + ":consumer:" + encodeToken(normalizeRequired(queueConsumerKey, "queueConsumerKey"))
+                + ":inflight-commands";
+    }
+
+    private String queueConsumersKey(String deliveryQueueKey) {
+        return namespacePrefix
+                + ":queue-consumers:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"));
+    }
+
+    private String queueConsumerKey(String queueConsumerKey) {
+        return namespacePrefix
+                + ":queue-consumer:" + encodeToken(normalizeRequired(queueConsumerKey, "queueConsumerKey"));
+    }
+
+    private String selectedWorkerConsumersKey(String deliveryQueueKey) {
+        return namespacePrefix
+                + ":selected-worker-consumers:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"));
+    }
+
+    private String selectedWorkerConsumerDeadlinesKey(String deliveryQueueKey) {
+        return namespacePrefix
+                + ":selected-worker-consumer-deadlines:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"));
+    }
+
+    private String queuesKey() {
+        return namespacePrefix + ":queues";
     }
 
     private static String encodeToken(String value) {
         return TOKEN_ENCODER.encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String decodeToken(String value) {
+        return new String(TOKEN_DECODER.decode(value), StandardCharsets.UTF_8);
+    }
+
+    private static String encodeReference(DeliveryCommandReference reference) {
+        return encodeToken(reference.deliveryQueueKey())
+                + MEMBER_SEPARATOR
+                + encodeToken(reference.commandId())
+                + MEMBER_SEPARATOR
+                + encodeToken(reference.queueConsumerKey());
+    }
+
+    private static DeliveryCommandReference decodeReference(String encoded) {
+        if (encoded == null || encoded.isBlank()) {
+            return null;
+        }
+        String[] parts = encoded.split(MEMBER_SEPARATOR, -1);
+        if (parts.length != 3) {
+            return null;
+        }
+        return new DeliveryCommandReference(
+                decodeToken(parts[0]),
+                decodeToken(parts[1]),
+                decodeToken(parts[2]),
+                "unknown"
+        );
+    }
+
+    private static String encodeConsumerEvidence(DeliveryCommandConsumerClaim claim) {
+        return String.join("|",
+                CONSUMER_EVIDENCE_VERSION,
+                encodeToken(claim.selectedWorkerId()),
+                encodeToken(claim.queueConsumerKey()),
+                encodeToken(claim.adapterId()),
+                Long.toString(claim.leaseExpireAtEpochMillis())
+        );
+    }
+
+    private static ConsumerEvidence decodeConsumerEvidence(String encoded) {
+        if (encoded == null || encoded.isBlank()) {
+            return null;
+        }
+        String[] parts = encoded.split("\\|", -1);
+        if (parts.length != 5 || !CONSUMER_EVIDENCE_VERSION.equals(parts[0])) {
+            return null;
+        }
+        return new ConsumerEvidence(
+                decodeToken(parts[1]),
+                decodeToken(parts[2]),
+                decodeToken(parts[3]),
+                parseLong(parts[4])
+        );
+    }
+
+    private static long parseLong(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return 0L;
+        }
+        return Long.parseLong(raw);
     }
 
     private static String normalizeRequired(String value, String fieldName) {
@@ -248,5 +510,11 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
             return null;
         }
         return value.trim();
+    }
+
+    private record ConsumerEvidence(String selectedWorkerId,
+                                    String queueConsumerKey,
+                                    String adapterId,
+                                    long leaseExpireAtEpochMillis) {
     }
 }

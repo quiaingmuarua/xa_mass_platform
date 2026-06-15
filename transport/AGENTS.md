@@ -28,8 +28,10 @@ entry for `transport/`.
   transport as a delivery constraint. Transport may filter sessions or selected
   worker sub-lanes with it, but must not use it to schedule, rank, admit,
   mutate lifecycle, or mint route keys.
-- `deliveryQueueKey` is only a queue/storage/batching partition. It may be
-  shared by many workers; it must not express worker selection.
+- Assigned-delivery `deliveryQueueKey` is a queue/storage/batching address
+  derived from `deliveryBucketId` by transport. It may be shared by many
+  workers; it must not express worker selection. Polling-store queue keys are
+  a separate adapter-local queue concept until that residue is renamed.
 - external worker/session APIs must not expose route-owner internals such as
   `routeKey`, `connectionId`, `transportNodeId`, `deliveryQueueKey`, or
   adapter runtime ids. Managed workers declare `adapterNodeId` plus
@@ -45,23 +47,25 @@ entry for `transport/`.
   importing or resolving that rule.
 - route-only endpoint helpers may exist inside one concrete adapter for
   raw/manual side channels. Task dispatch must use selected-worker addressing:
-  producer feasibility lookup goes through `deliveryBucketId +
-  selectedWorkerId`, and push adapters dispatch through
-  `sendToSelectedWorker(...)` rather than a route-only fallback.
+  producer queue selection derives only from `deliveryBucketId`, handoff
+  readiness is selected-worker consumer evidence, and push adapters dispatch
+  through `sendToSelectedWorker(...)` rather than a route-only fallback.
 - `WorkerEndpointRegistry` is selected-worker only. Raw/manual route delivery
   uses `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`, not the
   assigned-task endpoint interface.
 - raw/debug worker side-channels are also adapter-scoped. They may resolve one
   concrete active route for a worker, but once resolved they must dispatch via
   the serving adapter identity instead of reviving route-only shared semantics.
-- worker route-owner heartbeat evidence now lives in a transport-owned
-  route-owner plane. Adapters write `TransportRouteOwnerStore`; engine consumes
-  `WorkerDispatchRouteOwnerView` and must not re-own transport route evidence
-  through worker heartbeat folding. Route-owner writes are connection-aware:
-  each claim carries an explicit `deliveryBucketId`, a new claim replaces the
-  current consumer for `(deliveryBucketId, selectedWorkerId)`, heartbeat only
-  extends the matching owner lease, and release only removes the owner when the
-  caller still holds the stored `connectionId` / public `sessionToken`.
+- worker route-owner heartbeat evidence lives in a transport-owned route-owner
+  plane and is projected into handoff-private selected-worker consumer
+  evidence. Adapters write `TransportRouteOwnerStore`; assigned-delivery
+  producer/listener code must not re-own transport route evidence through
+  worker heartbeat folding or route-owner lookup. Route-owner writes are
+  connection-aware: each claim carries an explicit `deliveryBucketId`, a new
+  claim replaces the current consumer for `(deliveryBucketId,
+  selectedWorkerId)`, heartbeat only extends the matching owner lease, and
+  release only removes the owner when the caller still holds the stored
+  `connectionId` / public `sessionToken`.
 - `WorkerPresenceIngress` is current session-presence ingress only. Adapters may
   publish connect/heartbeat/disconnect observations, while worker-runtime owns
   derived reachability and registry slot heartbeat freshness. Route-owner leases
@@ -72,13 +76,14 @@ entry for `transport/`.
   attempt context, and item timing/id facts. Task shell metadata such as
   `taskName`, `project`, and `userId`, plus adapter, queue, node, route-owner,
   connection, and session facts are not command fields.
-- `DeliveryCommandBatch` owns the process-boundary lane:
-  `deliveryBucketId`, `deliveryLaneKey`, `targetTransportNodeId`, and command
-  items only. It carries a node hint, not adapterId, routeKey, connectionId, or
-  endpoint leases.
-- `TransportDeliveryCommandListener` re-resolves endpoint evidence on the
-  target transport node before calling an adapter. `AdapterDispatchRequest` is
-  the final-hop adapter request.
+- `DeliveryCommandBatch` is consumer-local handoff materialization:
+  `deliveryQueueKey`, handoff-owned command references, and command items only.
+  It does not carry bucket, lane, target node, adapter route, connection, or
+  endpoint lease facts.
+- `TransportDeliveryCommandListener` consumes handoff references and resolves
+  the final-hop adapter from handoff-private consumer context. It does not
+  call route-owner endpoint lookup for assigned delivery. `AdapterDispatchRequest`
+  is the final-hop adapter request and sends by selected worker.
 - `PulledTaskDispatch` is the polling worker pull DTO. Task-dispatch
   `TransportPacket` is a final-hop/wire projection assembled after endpoint
   evidence is known. Neither is the delivery-command handoff payload.

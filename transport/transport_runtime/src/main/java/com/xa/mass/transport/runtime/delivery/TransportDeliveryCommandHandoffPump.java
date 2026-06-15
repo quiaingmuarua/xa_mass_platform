@@ -53,7 +53,7 @@ public final class TransportDeliveryCommandHandoffPump {
                 if (batch == null) {
                     continue;
                 }
-                listener.onDeliveryCommandBatch(batch);
+                handoff.complete(batch, listener.onDeliveryCommandBatch(batch));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;

@@ -118,10 +118,10 @@ public final class TransportDeliveryService {
         List<DispatchOutcome> outcomes = new ArrayList<>(requests.size());
         for (AdapterDispatchRequest request : requests) {
             DirectDeliveryCounters adapterCounters = directCounters(adapterId);
-            if (missingRoute(request)) {
+            if (request == null) {
                 directInvalidItems.incrementAndGet();
                 adapterCounters.invalidItems.incrementAndGet();
-                outcomes.add(DispatchOutcome.invalid(request, "routeKey must not be blank"));
+                outcomes.add(DispatchOutcome.invalid(null, "request must not be null"));
                 continue;
             }
             if (sender == null) {
@@ -161,12 +161,6 @@ public final class TransportDeliveryService {
 
     private static String resolveDeliveryQueueKey(String adapterId) {
         return TransportDeliveryAddressing.normalizeAdapterId(adapterId);
-    }
-
-    private static boolean missingRoute(AdapterDispatchRequest request) {
-        return request == null
-                || request.endpoint() == null
-                || !TransportDeliveryAddressing.hasRouteKey(request.endpoint().routeKey());
     }
 
     private static final class DirectDeliveryCounters {

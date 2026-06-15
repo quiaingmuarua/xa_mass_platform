@@ -27,13 +27,11 @@ class TransportDeliveryCommandBatchCodecTest {
         assertFalse(json.contains("\"connectionId\""), json);
         assertFalse(json.contains("\"leaseExpireAtEpochMillis\""), json);
         assertEquals(0, occurrences(json, "\"adapterId\""));
-        assertEquals(0, occurrences(json, "\"deliveryQueueKey\""));
-        assertEquals(1, occurrences(json, "\"deliveryBucketId\""));
-        assertEquals(1, occurrences(json, "\"deliveryLaneKey\""));
-        assertEquals(1, occurrences(json, "\"targetTransportNodeId\""));
-        assertEquals("bucket-1", decoded.deliveryBucketId());
-        assertEquals("bucket-1", decoded.deliveryLaneKey());
-        assertEquals("node-1", decoded.targetTransportNodeId());
+        assertEquals(1, occurrences(json, "\"deliveryQueueKey\""));
+        assertEquals(2, occurrences(json, "\"deliveryBucketId\""));
+        assertEquals(0, occurrences(json, "\"deliveryLaneKey\""));
+        assertEquals(0, occurrences(json, "\"targetTransportNodeId\""));
+        assertEquals(DeliveryCommandFixtures.queueKey(), decoded.deliveryQueueKey());
         assertEquals("msg-1", decoded.commands().get(0).getContent().messageId());
         assertEquals("msg-2", decoded.commands().get(1).getContent().messageId());
         assertEquals("worker-1", decoded.commands().get(0).getSelectedWorkerId());

@@ -3,7 +3,6 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
-import com.xa.mass.transport.model.AdapterEndpoint;
 import com.xa.mass.transport.model.TaskDispatchContent;
 import com.xa.mass.transport.model.TaskDispatchExecutionContext;
 import com.xa.mass.transport.packet.TransportPacket;
@@ -48,7 +47,6 @@ class WebSocketTransportFrameCodecTest {
                         2,
                         "batch-1"
                 ),
-                new AdapterEndpoint("route-1", "node-1", "conn-1", 10_000L),
                 1L
         );
 

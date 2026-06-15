@@ -9,9 +9,12 @@ import java.util.List;
  */
 public interface TransportDeliveryCommandHandoff {
 
-    List<DispatchOutcome> offer(DeliveryCommandBatch batch);
+    List<DispatchOutcome> offer(DeliveryQueueOffer offer);
 
     DeliveryCommandBatch poll(long timeoutMillis) throws InterruptedException;
+
+    default void complete(DeliveryCommandBatch batch, List<DispatchOutcome> outcomes) {
+    }
 
     void shutdown();
 }

@@ -68,8 +68,8 @@ public final class SocketTaskDispatchChannel implements WorkerAdapter {
                             rawJson
                     );
                     if (!sent) {
-                        logger.warn("Socket outbound skipped because endpoint is unavailable: routeKey={}, traceId={}",
-                                request.endpoint().routeKey(), null);
+                        logger.warn("Socket outbound skipped because endpoint is unavailable: selectedWorkerId={}, traceId={}",
+                                request.selectedWorkerId(), null);
                     }
                     return sent;
                 },

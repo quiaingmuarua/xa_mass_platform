@@ -66,31 +66,30 @@ class RedisTransportDeliveryCommandHandoffTest {
     }
 
     @Test
-    void offerWakesOnlyReadyTransportNodes() throws Exception {
-        DeliveryCommandBatch batch = DeliveryCommandFixtures.batch(
-                "node-1",
+    void offerAndPollRoundTripsByBucketDerivedQueueKey() throws Exception {
+        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        DeliveryQueueOffer offer = DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         );
 
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED),
-                producer.offer(batch).stream().map(outcome -> outcome.getStatus()).toList());
+                producer.offer(offer).stream().map(outcome -> outcome.getStatus()).toList());
 
         DeliveryCommandBatch nodeOne = nodeOneConsumer.poll(500L);
-        DeliveryCommandBatch nodeTwo = nodeTwoConsumer.poll(0L);
 
         assertNotNull(nodeOne);
+        assertEquals(DeliveryCommandFixtures.queueKey(), nodeOne.deliveryQueueKey());
         assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(nodeOne));
-        assertNull(nodeTwo);
     }
 
     @Test
-    void sharedDeliveryQueueKeyIsPartitionedByTargetTransportNode() throws Exception {
-        producer.offer(DeliveryCommandFixtures.batch(
-                "node-2",
+    void sharedDeliveryQueueKeyPreservesSelectedWorkerCommands() throws Exception {
+        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        producer.claimConsumerForTest("bucket-1", "worker-2", "node-2");
+        producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-2", "worker-2", "node-2")
         ));
-        producer.offer(DeliveryCommandFixtures.batch(
-                "node-1",
+        producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
 
@@ -99,39 +98,88 @@ class RedisTransportDeliveryCommandHandoffTest {
 
         assertNotNull(nodeOne);
         assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(nodeOne));
+        assertEquals("worker-1", nodeOne.items().getFirst().getSelectedWorkerId());
         assertNotNull(nodeTwo);
         assertEquals(List.of("msg-2"), DeliveryCommandFixtures.messages(nodeTwo));
+        assertEquals("worker-2", nodeTwo.items().getFirst().getSelectedWorkerId());
     }
 
     @Test
-    void boundedOfferUpdatesQueueCatalogAndReadyLaneAtomically() {
-        producer.offer(DeliveryCommandFixtures.batch(
-                "node-1",
+    void boundedOfferUpdatesQueueCatalogWithoutLaneOrNodeKeys() {
+        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
         List<String> keys = producerConnection.sync().keys(namespacePrefix + ":*");
 
-        assertTrue(keys.stream().anyMatch(key -> key.contains(":lane:")));
-        assertTrue(keys.stream().anyMatch(key -> key.endsWith(":ready-lanes")));
+        assertTrue(keys.stream().anyMatch(key -> key.contains(":q:") && key.endsWith(":commands")));
+        assertTrue(keys.stream().anyMatch(key -> key.endsWith(":command-deadlines")));
+        assertTrue(keys.stream().anyMatch(key -> key.endsWith(":queues")));
+        assertTrue(keys.stream().anyMatch(key -> key.contains(":consumer:") && key.endsWith(":ready-commands")));
+        assertTrue(keys.stream().anyMatch(key -> key.contains(":queue-consumers:")));
+        assertTrue(keys.stream().anyMatch(key -> key.contains(":selected-worker-consumers:")));
+        assertFalse(keys.stream().anyMatch(key -> key.contains(":lane:")));
+        assertFalse(keys.stream().anyMatch(key -> key.endsWith(":ready-lanes")));
         assertFalse(keys.stream().anyMatch(key -> key.contains(":route:")));
         assertFalse(keys.stream().anyMatch(key -> key.endsWith(":ready-routes")));
+        assertFalse(keys.stream().anyMatch(key -> key.contains(":owner-shard:")));
     }
 
     @Test
     void fullLaneReturnsBackpressureWithoutSleepingProducer() {
-        producer.offer(DeliveryCommandFixtures.batch(
-                "node-1",
+        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        producer.claimConsumerForTest("bucket-1", "worker-2", "node-1");
+        producer.claimConsumerForTest("bucket-1", "worker-3", "node-1");
+        producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
-        producer.offer(DeliveryCommandFixtures.batch(
-                "node-1",
+        producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-2", "worker-2", "node-1")
         ));
 
         assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE),
-                producer.offer(DeliveryCommandFixtures.batch(
-                        "node-1",
+                producer.offer(DeliveryCommandFixtures.offer(
                         DeliveryCommandFixtures.command("msg-3", "worker-3", "node-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList());
+    }
+
+    @Test
+    void missingSelectedWorkerConsumerReturnsNoEndpointWithoutQueueing() throws Exception {
+        assertEquals(List.of(DispatchOutcomeStatus.NO_ENDPOINT),
+                producer.offer(DeliveryCommandFixtures.offer(
+                        DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+                )).stream().map(outcome -> outcome.getStatus()).toList());
+
+        assertNull(nodeOneConsumer.poll(50L));
+        assertEquals(0, producer.queuedBatches(DeliveryCommandFixtures.queueKey()));
+    }
+
+    @Test
+    void nonOwningConsumerCannotDestructivelyClaimSelectedWorkerCommand() throws Exception {
+        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        producer.offer(DeliveryCommandFixtures.offer(
+                DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+        ));
+
+        assertNull(nodeTwoConsumer.poll(50L));
+        DeliveryCommandBatch nodeOne = nodeOneConsumer.poll(500L);
+
+        assertNotNull(nodeOne);
+        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(nodeOne));
+    }
+
+    @Test
+    void completeAcknowledgesClaimedCommand() throws Exception {
+        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        producer.offer(DeliveryCommandFixtures.offer(
+                DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+        ));
+        DeliveryCommandBatch batch = nodeOneConsumer.poll(500L);
+
+        assertNotNull(batch);
+        nodeOneConsumer.complete(batch, List.of());
+
+        assertEquals(0, producer.queuedBatches(DeliveryCommandFixtures.queueKey()));
+        assertNull(nodeOneConsumer.poll(50L));
     }
 }

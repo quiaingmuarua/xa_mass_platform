@@ -5,20 +5,28 @@ import com.xa.mass.transport.model.DeliveryCommand;
 import java.util.List;
 
 /**
- * Process-boundary batch for commands sharing one physical delivery lane.
+ * Local-consumer batch for commands claimed from one assigned-delivery queue.
  */
-public record DeliveryCommandBatch(String deliveryBucketId,
-                                   String deliveryLaneKey,
-                                   String targetTransportNodeId,
+public record DeliveryCommandBatch(String deliveryQueueKey,
+                                   List<DeliveryCommandReference> references,
                                    List<DeliveryCommand> items) {
 
+    public DeliveryCommandBatch(String deliveryQueueKey,
+                                List<DeliveryCommand> items) {
+        this(deliveryQueueKey, List.of(), items);
+    }
+
     public DeliveryCommandBatch {
-        deliveryBucketId = requireText(deliveryBucketId, "deliveryBucketId");
-        deliveryLaneKey = requireText(deliveryLaneKey, "deliveryLaneKey");
-        targetTransportNodeId = requireText(targetTransportNodeId, "targetTransportNodeId");
+        deliveryQueueKey = requireText(deliveryQueueKey, "deliveryQueueKey");
+        references = references == null ? List.of() : List.copyOf(references);
         items = items == null ? List.of() : List.copyOf(items);
         if (items.isEmpty()) {
             throw new IllegalArgumentException("items must not be empty");
+        }
+        for (DeliveryCommandReference reference : references) {
+            if (reference == null) {
+                throw new IllegalArgumentException("references must not contain null");
+            }
         }
         for (DeliveryCommand item : items) {
             if (item == null) {

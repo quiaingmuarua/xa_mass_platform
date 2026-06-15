@@ -27,6 +27,8 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandReference;
+import com.xa.mass.transport.runtime.delivery.DeliveryQueueOffer;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
@@ -93,15 +95,12 @@ class MassApplicationDistributedTransportTest {
                     binding("msg-2", "worker-2")
             ));
 
-            assertEquals(2, handoff.submitted.size());
+            assertEquals(1, handoff.submitted.size());
             DeliveryCommandBatch firstBatch = handoff.submitted.get(0);
-            assertEquals(List.of("msg-1"), messages(firstBatch));
-            assertEquals("node-1", firstBatch.targetTransportNodeId());
+            assertEquals(deliveryQueueKey(), firstBatch.deliveryQueueKey());
+            assertEquals(List.of("msg-1", "msg-2"), messages(firstBatch));
             assertEquals("worker-1", firstBatch.commands().getFirst().getSelectedWorkerId());
-            DeliveryCommandBatch secondBatch = handoff.submitted.get(1);
-            assertEquals(List.of("msg-2"), messages(secondBatch));
-            assertEquals("node-2", secondBatch.targetTransportNodeId());
-            assertEquals("worker-2", secondBatch.commands().getFirst().getSelectedWorkerId());
+            assertEquals("worker-2", firstBatch.commands().get(1).getSelectedWorkerId());
         } finally {
             app.stop();
         }
@@ -113,8 +112,8 @@ class MassApplicationDistributedTransportTest {
         engine.setEnabled(false);
 
         LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff("node-1");
-        handoff.offer(deliveryBatch("msg-node-2", "worker-2", "node-2"));
-        handoff.offer(deliveryBatch("msg-node-1", "worker-1", "node-1"));
+        handoff.enqueue(deliveryBatch("msg-node-2", "worker-2", "node-2"));
+        handoff.enqueue(deliveryBatch("msg-node-1", "worker-1", "node-1"));
         InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-1");
         routeOwnerStore.claimRouteOwner(claim("worker-1", "demo-workers", "websocket", routeKey(), "conn-worker-1", "test-fixture"));
 
@@ -132,7 +131,7 @@ class MassApplicationDistributedTransportTest {
         try {
             assertTrue(adapter.awaitDispatch(2, TimeUnit.SECONDS), "transport consumer should drain locally ready route inbox");
             assertEquals(List.of("msg-node-1"), adapter.dispatchedMessageIds());
-            assertEquals(List.of(routeKey()), adapter.dispatchedRouteKeys());
+            assertEquals(List.of("worker-1"), adapter.dispatchedWorkerIds());
             assertEquals(List.of("msg-node-2"), messages(handoff.pollForNode("node-2")));
         } finally {
             app.stop();
@@ -213,9 +212,8 @@ class MassApplicationDistributedTransportTest {
     private static DeliveryCommandBatch deliveryBatch(String messageId, String workerId, String transportNodeId) {
         DeliveryCommand command = deliveryCommand(messageId, workerId, transportNodeId);
         return new DeliveryCommandBatch(
-                "demo-workers",
-                "demo-workers",
-                transportNodeId,
+                deliveryQueueKey(),
+                List.of(new DeliveryCommandReference(deliveryQueueKey(), command.getCommandId(), transportNodeId, "websocket")),
                 List.of(command)
         );
     }
@@ -236,6 +234,10 @@ class MassApplicationDistributedTransportTest {
 
     private static String routeKey() {
         return CanonicalWorkerGroupRouteKeyCodec.encode("demo-workers");
+    }
+
+    private static String deliveryQueueKey() {
+        return "bucket:ZGVtby13b3JrZXJz";
     }
 
     private static List<String> messages(DeliveryCommandBatch batch) {
@@ -297,7 +299,8 @@ class MassApplicationDistributedTransportTest {
         private final List<DeliveryCommandBatch> submitted = new ArrayList<>();
 
         @Override
-        public List<DispatchOutcome> offer(DeliveryCommandBatch batch) {
+        public List<DispatchOutcome> offer(DeliveryQueueOffer offer) {
+            DeliveryCommandBatch batch = new DeliveryCommandBatch(offer.deliveryQueueKey(), offer.commands());
             submitted.add(batch);
             return batch.items().stream()
                     .map(item -> outcome(batch, item, DispatchOutcomeStatus.QUEUED, false, null))
@@ -323,8 +326,13 @@ class MassApplicationDistributedTransportTest {
             this.localTransportNodeId = localTransportNodeId;
         }
 
+        private void enqueue(DeliveryCommandBatch batch) {
+            batches.add(batch);
+        }
+
         @Override
-        public List<DispatchOutcome> offer(DeliveryCommandBatch batch) {
+        public List<DispatchOutcome> offer(DeliveryQueueOffer offer) {
+            DeliveryCommandBatch batch = new DeliveryCommandBatch(offer.deliveryQueueKey(), offer.commands());
             if (!running) {
                 return batch.items().stream()
                         .map(item -> outcome(batch, item, DispatchOutcomeStatus.SHUTDOWN, true, "handoff is stopped"))
@@ -351,7 +359,8 @@ class MassApplicationDistributedTransportTest {
 
         private DeliveryCommandBatch pollForNode(String transportNodeId) {
             for (DeliveryCommandBatch batch : List.copyOf(batches)) {
-                if (batch.targetTransportNodeId().equals(transportNodeId)
+                if (!batch.references().isEmpty()
+                        && batch.references().getFirst().queueConsumerKey().equals(transportNodeId)
                         && batches.remove(batch)) {
                     return batch;
                 }
@@ -383,7 +392,7 @@ class MassApplicationDistributedTransportTest {
         private final String adapterId;
         private final CountDownLatch dispatchLatch;
         private final List<String> dispatchedMessageIds = Collections.synchronizedList(new ArrayList<>());
-        private final List<String> dispatchedRouteKeys = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> dispatchedWorkerIds = Collections.synchronizedList(new ArrayList<>());
 
         private RecordingAdapter(String adapterId, int expectedDispatches) {
             this.adapterId = adapterId;
@@ -405,7 +414,7 @@ class MassApplicationDistributedTransportTest {
             List<DispatchOutcome> outcomes = new ArrayList<>();
             for (AdapterDispatchRequest request : requests) {
                 dispatchedMessageIds.add(request.content().messageId());
-                dispatchedRouteKeys.add(request.endpoint().routeKey());
+                dispatchedWorkerIds.add(request.selectedWorkerId());
                 outcomes.add(DispatchOutcome.delivered(request));
                 dispatchLatch.countDown();
             }
@@ -422,9 +431,9 @@ class MassApplicationDistributedTransportTest {
             }
         }
 
-        private List<String> dispatchedRouteKeys() {
-            synchronized (dispatchedRouteKeys) {
-                return List.copyOf(dispatchedRouteKeys);
+        private List<String> dispatchedWorkerIds() {
+            synchronized (dispatchedWorkerIds) {
+                return List.copyOf(dispatchedWorkerIds);
             }
         }
     }
