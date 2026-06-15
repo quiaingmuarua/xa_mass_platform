@@ -5,6 +5,7 @@ import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.route.TransportRouteOwnerClaim;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
@@ -26,7 +27,14 @@ class TransportDeliveryCommandListenerTest {
                 routeOwnerStore,
                 List.of(TransportBinding.builder(new NoopWorkerAdapter("socket")).build())
         );
-        routeOwnerStore.claimRouteOwner("worker-1", "websocket", "route-1", "conn-1", "test");
+        routeOwnerStore.claimRouteOwner(new TransportRouteOwnerClaim(
+                "worker-1",
+                "bucket-1",
+                "websocket",
+                "route-1",
+                "conn-1",
+                "test"
+        ));
         RecordingFailureHandler failures = new RecordingFailureHandler();
         TransportDeliveryCommandListener listener = new TransportDeliveryCommandListener(
                 registry,

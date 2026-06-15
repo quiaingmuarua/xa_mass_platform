@@ -82,7 +82,7 @@ class SocketTaskDispatchChannelTest {
                         Map.of("target", "target-1"),
                         Map.of()
                 ),
-                new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1", null, null, null),
+                new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1"),
                 new AdapterEndpoint("group-route-1", "node-1", "conn-" + workerId, 10_000L),
                 1L
         );

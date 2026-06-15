@@ -120,7 +120,7 @@ abstract class RuntimeLateReplayE2eScenario extends ReviewReadModelSampleE2eTest
             super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(
                     serverUri,
                     canonicalWorkerRouteKey(workerGroupId, workerId)
-            ), workerId);
+            ), workerId, workerGroupId);
         }
 
         @Override
@@ -147,7 +147,7 @@ abstract class RuntimeLateReplayE2eScenario extends ReviewReadModelSampleE2eTest
             super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(
                     serverUri,
                     canonicalWorkerRouteKey(workerGroupId, workerId)
-            ), workerId);
+            ), workerId, workerGroupId);
         }
 
         private void awaitSilence(long timeout, TimeUnit unit) throws InterruptedException {

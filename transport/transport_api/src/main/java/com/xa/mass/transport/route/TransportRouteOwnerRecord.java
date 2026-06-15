@@ -6,6 +6,7 @@ package com.xa.mass.transport.route;
 public final class TransportRouteOwnerRecord {
 
     private final String workerId;
+    private final String deliveryBucketId;
     private final String adapterId;
     private final String routeKey;
     private final long lastHeartbeatEpochMillis;
@@ -15,14 +16,16 @@ public final class TransportRouteOwnerRecord {
     private final long updatedAtEpochMillis;
 
     public TransportRouteOwnerRecord(String workerId,
-                          String adapterId,
-                          String routeKey,
-                          long lastHeartbeatEpochMillis,
-                          long leaseExpireAtEpochMillis,
-                          String transportInstanceId,
-                          String connectionId,
-                          long updatedAtEpochMillis) {
+                                     String deliveryBucketId,
+                                     String adapterId,
+                                     String routeKey,
+                                     long lastHeartbeatEpochMillis,
+                                     long leaseExpireAtEpochMillis,
+                                     String transportInstanceId,
+                                     String connectionId,
+                                     long updatedAtEpochMillis) {
         this.workerId = requireNullableText(workerId);
+        this.deliveryBucketId = requireNullableText(deliveryBucketId);
         this.adapterId = requireNullableText(adapterId);
         this.routeKey = requireNullableText(routeKey);
         this.lastHeartbeatEpochMillis = lastHeartbeatEpochMillis;
@@ -34,6 +37,10 @@ public final class TransportRouteOwnerRecord {
 
     public String getWorkerId() {
         return workerId;
+    }
+
+    public String getDeliveryBucketId() {
+        return deliveryBucketId;
     }
 
     public String getAdapterId() {

@@ -30,6 +30,7 @@ public final class WebSocketTransportFrameCodec {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketTransportFrameCodec.class);
     private static final String MESSAGE_ID_FIELD = "messageId";
     private static final String WORKER_ID_FIELD = TransportPacket.PAYLOAD_WORKER_ID;
+    private static final String WORKER_GROUP_ID_FIELD = "workerGroupId";
     private static final String ROUTE_KEY_FIELD = "routeKey";
     private static final String PROJECT_FIELD = TransportPacket.PAYLOAD_PROJECT;
     private static final String EVENT_CODE_FIELD = "eventCode";
@@ -58,6 +59,10 @@ public final class WebSocketTransportFrameCodec {
 
     public String extractWorkerId(JsonObject frame) {
         return readString(frame, WORKER_ID_FIELD);
+    }
+
+    public String extractWorkerGroupId(JsonObject frame) {
+        return readString(frame, WORKER_GROUP_ID_FIELD);
     }
 
     public String extractRouteKey(JsonObject frame) {
@@ -94,13 +99,10 @@ public final class WebSocketTransportFrameCodec {
         JsonObject frame = new JsonObject();
         frame.addProperty(MESSAGE_ID_FIELD, content.messageId());
         put(frame, WORKER_ID_FIELD, request.selectedWorkerId());
-        put(frame, PROJECT_FIELD, context.project());
         if (content.eventCode() != null) {
             frame.addProperty(EVENT_CODE_FIELD, content.eventCode());
         }
         frame.addProperty("taskId", content.taskId());
-        put(frame, TransportPacket.PAYLOAD_TASK_NAME, context.taskName());
-        put(frame, TransportPacket.PAYLOAD_USER_ID, context.userId());
         frame.addProperty(TransportPacket.PAYLOAD_RETRY_COUNT, context.retryCount());
         put(frame, TransportPacket.PAYLOAD_BATCH_ID, context.batchId());
         frame.add(TransportPacket.PAYLOAD_INPUT, gson.toJsonTree(content.input()));

@@ -38,7 +38,7 @@ class PullWorkerSessionTest {
         TaskPullResult result = session.pollResult(5, 250L);
 
         assertEquals(TaskPullStatus.DELIVERED, result.getStatus());
-        assertEquals(routeKey(), session.routeKey());
+        assertEquals("group-1", session.workerGroupId());
         assertEquals(List.of("msg-1"), result.getItems().stream().map(PulledTaskDispatch::getMessageId).toList());
     }
 
@@ -107,11 +107,11 @@ class PullWorkerSessionTest {
                 routeOwnerStore, presenceIngress);
 
         assertTrue(session.connectAndClaim("connected"));
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("polling", "worker-1")
+        assertTrue(routeOwnerStore.endpointForSelectedWorker("group-1", "worker-1")
                 .orElseThrow()
                 .isActive(System.currentTimeMillis()));
         assertTrue(routeOwnerStore.hasActiveRouteOwner("polling", routeKey()));
-        assertEquals("conn-1", routeOwnerStore.activeOwnerForSelectedWorker("polling", "worker-1")
+        assertEquals("conn-1", routeOwnerStore.endpointForSelectedWorker("group-1", "worker-1")
                 .orElseThrow()
                 .connectionId());
         assertEquals(List.of("CONNECTED:worker-1:polling:" + routeKey() + ":conn-1:connected:conn-1"),
@@ -119,14 +119,14 @@ class PullWorkerSessionTest {
 
         assertFalse(staleSession("stale-conn", routeOwnerStore, new RecordingWorkerPresenceIngress())
                 .disconnectIfCurrent("stale-disconnect"));
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("polling", "worker-1")
+        assertTrue(routeOwnerStore.endpointForSelectedWorker("group-1", "worker-1")
                 .orElseThrow()
                 .isActive(System.currentTimeMillis()));
 
         assertFalse(staleSession("stale-conn", routeOwnerStore, new RecordingWorkerPresenceIngress())
                 .refreshHeartbeatIfCurrent("stale-heartbeat"));
         assertTrue(session.refreshHeartbeatIfCurrent("heartbeat"));
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("polling", "worker-1")
+        assertTrue(routeOwnerStore.endpointForSelectedWorker("group-1", "worker-1")
                 .orElseThrow()
                 .isActive(System.currentTimeMillis()));
         assertEquals(List.of(
@@ -136,7 +136,7 @@ class PullWorkerSessionTest {
                 presenceIngress.events);
 
         assertTrue(session.disconnectIfCurrent("disconnect"));
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("polling", "worker-1").isEmpty());
+        assertTrue(routeOwnerStore.endpointForSelectedWorker("group-1", "worker-1").isEmpty());
         assertEquals(List.of(
                         "CONNECTED:worker-1:polling:" + routeKey() + ":conn-1:connected:conn-1",
                         "HEARTBEAT:worker-1:polling:" + routeKey() + ":conn-1:heartbeat:conn-1",

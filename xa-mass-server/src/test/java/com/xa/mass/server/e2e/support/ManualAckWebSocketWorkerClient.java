@@ -24,7 +24,7 @@ public class ManualAckWebSocketWorkerClient extends SampleWorkerWebSocketClient 
         super(AbstractSampleE2eTest.withWorkerRouteKey(
                 serverUri,
                 CanonicalWorkerGroupRouteKeyCodec.encode(workerGroupId)
-        ), workerId);
+        ), workerId, workerGroupId);
     }
 
     @Override

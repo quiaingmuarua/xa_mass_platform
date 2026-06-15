@@ -159,7 +159,6 @@ public class CatalogController {
                     item.put("supportedEventCodes", groupEventCodes(group));
                     item.put("maxConcurrentWork", worker.getMaxConcurrentWork());
                     item.put("eventBindings", groupEventBindings(group));
-                    item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
                     boolean reachable = reachableWorkerIds.contains(worker.getWorkerId());

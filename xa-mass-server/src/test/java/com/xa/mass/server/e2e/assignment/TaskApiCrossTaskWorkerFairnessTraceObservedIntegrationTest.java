@@ -74,7 +74,8 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
                         Map.of("routingTags", "shared,us")
                 );
                 ManualAckWebSocketClient client =
-                        new ManualAckWebSocketClient(wsUri, workerId, canonicalWorkerRouteKey(WORKER_GROUP_ID, workerId));
+                        new ManualAckWebSocketClient(wsUri, WORKER_GROUP_ID, workerId,
+                                canonicalWorkerRouteKey(WORKER_GROUP_ID, workerId));
                 clients.add(client);
                 assertClientConnects(client, "fairness worker client failed to connect: " + workerId);
             }
@@ -228,8 +229,10 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
     private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
-        private ManualAckWebSocketClient(URI serverUri, String workerId, String routeKey) {
-            super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(serverUri, routeKey), workerId);
+        private ManualAckWebSocketClient(URI serverUri, String workerGroupId, String workerId, String routeKey) {
+            super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(serverUri, routeKey),
+                    workerId,
+                    workerGroupId);
         }
 
         @Override

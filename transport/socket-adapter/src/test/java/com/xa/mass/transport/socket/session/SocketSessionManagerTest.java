@@ -2,6 +2,8 @@ package com.xa.mass.transport.socket.session;
 
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
+import com.xa.mass.transport.route.RouteConsumerEndpoint;
+import com.xa.mass.transport.route.TransportRouteOwnerClaim;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +25,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 
 class SocketSessionManagerTest {
 
+    private static final String DELIVERY_BUCKET_ID = "bucket-1";
+
     @Test
     void connectHeartbeatDisconnectProjectRouteOwnerIntoTransportStore() {
         InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "socket-node-1");
@@ -31,23 +35,18 @@ class SocketSessionManagerTest {
         manager.setRouteOwnerStore(routeOwnerStore);
         manager.setWorkerPresenceIngress(presenceIngress);
 
-        manager.addSession("route-1", "worker-1", "endpoint-1", activeSocket(), mock(BufferedWriter.class));
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
+                activeSocket(), mock(BufferedWriter.class));
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
-        assertEquals("socket-node-1", routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1")
-                .orElseThrow()
-                .transportNodeId());
+        assertTrue(endpoint(routeOwnerStore, "worker-1").isActive(System.currentTimeMillis()));
+        assertEquals("socket-node-1", endpoint(routeOwnerStore, "worker-1").transportNodeId());
         assertTrue(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
         assertEquals(List.of("connected:worker-1:socket:route-1:endpoint-1:socket connected:endpoint-1"),
                 presenceIngress.events);
 
         manager.recordHeartbeat("route-1", "worker-1", "endpoint-1", "socket heartbeat", "trace-1");
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
+        assertTrue(endpoint(routeOwnerStore, "worker-1").isActive(System.currentTimeMillis()));
         assertEquals(List.of(
                 "connected:worker-1:socket:route-1:endpoint-1:socket connected:endpoint-1",
                 "heartbeat:worker-1:socket:route-1:endpoint-1:socket heartbeat:trace-1"
@@ -55,7 +54,7 @@ class SocketSessionManagerTest {
 
         manager.removeSession("endpoint-1");
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1").isEmpty());
+        assertFalse(hasEndpoint(routeOwnerStore, "worker-1"));
         assertFalse(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
         assertEquals(List.of(
                 "connected:worker-1:socket:route-1:endpoint-1:socket connected:endpoint-1",
@@ -68,7 +67,8 @@ class SocketSessionManagerTest {
     void adapterScopedRouteLookupUsesConfiguredAdapterId() {
         SocketSessionManager manager = new SocketSessionManager("socket-edge");
 
-        manager.addSession("route-1", "worker-1", "endpoint-1", activeSocket(), mock(BufferedWriter.class));
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
+                activeSocket(), mock(BufferedWriter.class));
 
         assertTrue(manager.isAdapterRouteOnline("socket-edge", "route-1"));
         assertFalse(manager.isAdapterRouteOnline("socket", "route-1"));
@@ -82,8 +82,8 @@ class SocketSessionManagerTest {
         BufferedWriter firstWriter = mock(BufferedWriter.class);
         BufferedWriter secondWriter = mock(BufferedWriter.class);
 
-        manager.addSession("group-route", "worker-1", "endpoint-1", activeSocket(), firstWriter);
-        manager.addSession("group-route", "worker-2", "endpoint-2", activeSocket(), secondWriter);
+        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-1", "endpoint-1", activeSocket(), firstWriter);
+        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-2", "endpoint-2", activeSocket(), secondWriter);
 
         assertTrue(manager.sendToSelectedWorker("socket", "worker-2", "{\"messageId\":\"msg-2\"}"));
 
@@ -99,8 +99,10 @@ class SocketSessionManagerTest {
         manager.setRouteOwnerStore(routeOwnerStore);
         manager.setWorkerPresenceIngress(presenceIngress);
 
-        manager.addSession("route-1", "worker-1", "endpoint-old", activeSocket(), mock(BufferedWriter.class));
-        manager.addSession("route-1", "worker-1", "endpoint-new", activeSocket(), mock(BufferedWriter.class));
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-old",
+                activeSocket(), mock(BufferedWriter.class));
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-new",
+                activeSocket(), mock(BufferedWriter.class));
         assertEquals(List.of(
                 "connected:worker-1:socket:route-1:endpoint-old:socket connected:endpoint-old",
                 "connected:worker-1:socket:route-1:endpoint-new:socket connected:endpoint-new",
@@ -109,19 +111,13 @@ class SocketSessionManagerTest {
 
         manager.recordHeartbeat("route-1", "worker-1", "endpoint-old", "stale-heartbeat", "trace-old");
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
-        assertEquals("endpoint-new", routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1")
-                .orElseThrow()
-                .connectionId());
+        assertTrue(endpoint(routeOwnerStore, "worker-1").isActive(System.currentTimeMillis()));
+        assertEquals("endpoint-new", endpoint(routeOwnerStore, "worker-1").connectionId());
 
         manager.removeSession("endpoint-old");
 
         assertTrue(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
+        assertTrue(endpoint(routeOwnerStore, "worker-1").isActive(System.currentTimeMillis()));
         assertEquals(List.of(
                 "connected:worker-1:socket:route-1:endpoint-old:socket connected:endpoint-old",
                 "connected:worker-1:socket:route-1:endpoint-new:socket connected:endpoint-new",
@@ -130,7 +126,7 @@ class SocketSessionManagerTest {
 
         manager.removeSession("endpoint-new");
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1").isEmpty());
+        assertFalse(hasEndpoint(routeOwnerStore, "worker-1"));
         assertFalse(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
         assertEquals(List.of(
                 "connected:worker-1:socket:route-1:endpoint-old:socket connected:endpoint-old",
@@ -144,7 +140,14 @@ class SocketSessionManagerTest {
     void blankConnectionIdOnRouteOwnerClaimGeneratesOwnedConnectionId() {
         InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
 
-        var owner = routeOwnerStore.claimRouteOwner("worker-1", "socket", "route-1", " ", "connected");
+        var owner = routeOwnerStore.claimRouteOwner(new TransportRouteOwnerClaim(
+                "worker-1",
+                DELIVERY_BUCKET_ID,
+                "socket",
+                "route-1",
+                " ",
+                "connected"
+        ));
 
         assertNotNull(owner);
         assertNotNull(owner.getConnectionId());
@@ -157,11 +160,12 @@ class SocketSessionManagerTest {
         SocketSessionManager manager = new SocketSessionManager("socket");
         manager.setRouteOwnerStore(routeOwnerStore);
 
-        manager.addSession("route-1", "worker-1", "endpoint-1", activeSocket(), mock(BufferedWriter.class));
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
+                activeSocket(), mock(BufferedWriter.class));
 
         manager.shutdown();
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1").isEmpty());
+        assertFalse(hasEndpoint(routeOwnerStore, "worker-1"));
         assertFalse(routeOwnerStore.hasActiveRouteOwner("socket", "route-1"));
     }
 
@@ -175,15 +179,13 @@ class SocketSessionManagerTest {
         Socket oldSocket = activeSocket();
         Socket newSocket = activeSocket();
 
-        manager.addSession("route-old", "worker-1", "endpoint-old", oldSocket, oldWriter);
-        manager.addSession("route-new", "worker-1", "endpoint-new", newSocket, newWriter);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-old", "worker-1", "endpoint-old", oldSocket, oldWriter);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-new", "worker-1", "endpoint-new", newSocket, newWriter);
 
         assertEquals(1, manager.getActiveConnectionCount());
         assertFalse(routeOwnerStore.hasActiveRouteOwner("socket", "route-old"));
         assertTrue(routeOwnerStore.hasActiveRouteOwner("socket", "route-new"));
-        assertEquals("route-new", routeOwnerStore.activeOwnerForSelectedWorker("socket", "worker-1")
-                .orElseThrow()
-                .routeKey());
+        assertEquals("route-new", endpoint(routeOwnerStore, "worker-1").routeKey());
         verify(oldSocket).close();
 
         assertTrue(manager.sendToSelectedWorker("socket", "worker-1", "{\"messageId\":\"msg-new\"}"));
@@ -198,22 +200,23 @@ class SocketSessionManagerTest {
         SocketSessionManager manager = new SocketSessionManager("socket");
         manager.setRouteOwnerStore(firstStore);
 
-        manager.addSession("route-1", "worker-1", "endpoint-1", activeSocket(), mock(BufferedWriter.class));
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
+                activeSocket(), mock(BufferedWriter.class));
         manager.setRouteOwnerStore(secondStore);
 
-        assertTrue(secondStore.activeOwnerForSelectedWorker("socket", "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
-        assertEquals("route-1", secondStore.activeOwnerForSelectedWorker("socket", "worker-1")
-                .orElseThrow()
-                .routeKey());
-        assertEquals("endpoint-1", secondStore.activeOwnerForSelectedWorker("socket", "worker-1")
-                .orElseThrow()
-                .connectionId());
-        assertEquals("socket-node-2", secondStore.activeOwnerForSelectedWorker("socket", "worker-1")
-                .orElseThrow()
-                .transportNodeId());
+        assertTrue(endpoint(secondStore, "worker-1").isActive(System.currentTimeMillis()));
+        assertEquals("route-1", endpoint(secondStore, "worker-1").routeKey());
+        assertEquals("endpoint-1", endpoint(secondStore, "worker-1").connectionId());
+        assertEquals("socket-node-2", endpoint(secondStore, "worker-1").transportNodeId());
         assertTrue(secondStore.hasActiveRouteOwner("socket", "route-1"));
+    }
+
+    private static RouteConsumerEndpoint endpoint(InMemoryTransportRouteOwnerStore store, String workerId) {
+        return store.endpointForSelectedWorker(DELIVERY_BUCKET_ID, workerId).orElseThrow();
+    }
+
+    private static boolean hasEndpoint(InMemoryTransportRouteOwnerStore store, String workerId) {
+        return store.endpointForSelectedWorker(DELIVERY_BUCKET_ID, workerId).isPresent();
     }
 
     private Socket activeSocket() {

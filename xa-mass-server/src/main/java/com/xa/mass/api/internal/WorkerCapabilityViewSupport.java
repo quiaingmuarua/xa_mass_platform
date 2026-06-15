@@ -31,7 +31,6 @@ final class WorkerCapabilityViewSupport {
             Map.entry("reachable", "workerRuntimeReachability"),
             Map.entry("connections", "transportSessionEvidence"),
             Map.entry("hasActiveEndpoint", "transportSessionEvidence"),
-            Map.entry("adapterId", "declarationOrTransport"),
             Map.entry("supportedProjects", "compatibilityProjection"),
             Map.entry("supportedEventCodes", "compatibilityProjection"),
             Map.entry("eventBindings", "compatibilityProjection")
@@ -52,7 +51,6 @@ final class WorkerCapabilityViewSupport {
             Map.entry("reachable", "workerRuntimeReachability"),
             Map.entry("connections", "transportSessionEvidence"),
             Map.entry("hasActiveEndpoint", "transportSessionEvidence"),
-            Map.entry("adapterId", "declarationOrTransport"),
             Map.entry("supportedProjects", "workerGroupCapability"),
             Map.entry("supportedEventCodes", "workerGroupCapability"),
             Map.entry("eventBindings", "workerGroupCapability")
@@ -144,23 +142,6 @@ final class WorkerCapabilityViewSupport {
         return WorkerTransportHints.normalize(onlineStrategy);
     }
 
-    static String resolveAdapterId(String workerAdapterId, List<Map<String, Object>> connections) {
-        workerAdapterId = readTrimmed(workerAdapterId);
-        if (workerAdapterId != null) {
-            return workerAdapterId;
-        }
-        if (connections == null || connections.isEmpty()) {
-            return null;
-        }
-        for (Map<String, Object> connection : connections) {
-            String connectionAdapterId = readTrimmed(connection == null ? null : connection.get("adapterId"));
-            if (connectionAdapterId != null) {
-                return connectionAdapterId.toLowerCase(java.util.Locale.ROOT);
-            }
-        }
-        return null;
-    }
-
     private static List<String> resolveBindingProjects(EventDefinition definition) {
         if (definition == null) {
             return List.of();
@@ -181,8 +162,6 @@ final class WorkerCapabilityViewSupport {
             Map<String, Object> normalized = new LinkedHashMap<>();
             normalized.put("active", Boolean.TRUE.equals(map.get("active")));
             normalized.put("endpointId", readTrimmed(map.get("endpointId")));
-            normalized.put("routeKey", readTrimmed(map.get("routeKey")));
-            normalized.put("adapterId", readTrimmed(map.get("adapterId")));
             connections.add(normalized);
         }
         return connections.isEmpty() ? List.of() : List.copyOf(connections);

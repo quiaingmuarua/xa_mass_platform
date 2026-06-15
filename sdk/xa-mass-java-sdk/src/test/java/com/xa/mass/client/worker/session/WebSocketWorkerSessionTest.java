@@ -6,7 +6,6 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.handler.WorkerResult;
-import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -80,10 +79,10 @@ class WebSocketWorkerSessionTest {
             if ("/worker-api/v1/workers".equals(path)) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
                 assertEquals("ws-worker-001", request.get("workerId").asText());
-                assertEquals("websocket", request.get("adapterId").asText());
+                assertFalse(request.has("adapterId"));
                 assertEquals("realtime", request.get("transportHint").asText());
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"ws-worker-001","adapterNodeId":"ws-node-sg-1","workerGroupId":"realtime-probe","adapterId":"websocket","transportHint":"realtime"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"ws-worker-001","adapterNodeId":"ws-node-sg-1","workerGroupId":"realtime-probe","transportHint":"realtime"}}
                         """);
                 return;
             }
@@ -110,9 +109,7 @@ class WebSocketWorkerSessionTest {
                 })
                 .start()) {
             assertTrue(session.isRunning());
-            assertEquals("workerId=ws-worker-001&routeKey="
-                            + CanonicalWorkerGroupRouteKeyCodec.encode("realtime-probe"),
-                    connectedUri.get().getRawQuery());
+            assertEquals("workerId=ws-worker-001&workerGroupId=realtime-probe", connectedUri.get().getRawQuery());
 
             listenerRef.get().onText(webSocket, """
                     {"messageId":"msg-1","taskId":"task-1","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{"title":"hello"},"sharedConfig":{"routingCode":"sg"}}
@@ -631,7 +628,7 @@ class WebSocketWorkerSessionTest {
             }
             if ("/worker-api/v1/workers".equals(path)) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"ws-worker-001","adapterNodeId":"ws-node-sg-1","workerGroupId":"realtime-probe","adapterId":"websocket","transportHint":"realtime"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"ws-worker-001","adapterNodeId":"ws-node-sg-1","workerGroupId":"realtime-probe","transportHint":"realtime"}}
                         """);
                 return;
             }

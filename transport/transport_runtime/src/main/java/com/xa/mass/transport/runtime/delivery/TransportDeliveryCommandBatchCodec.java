@@ -28,8 +28,8 @@ final class TransportDeliveryCommandBatchCodec {
                 .map(this::toCommandRecord)
                 .toList();
         return gson.toJson(new DeliveryCommandBatchRecord(
-                batch.adapterId(),
-                batch.deliveryQueueKey(),
+                batch.deliveryBucketId(),
+                batch.deliveryLaneKey(),
                 batch.targetTransportNodeId(),
                 items
         ));
@@ -40,14 +40,15 @@ final class TransportDeliveryCommandBatchCodec {
             throw new IllegalArgumentException("json must not be blank");
         }
         DecodedDeliveryCommandBatchRecord record = gson.fromJson(json, DecodedDeliveryCommandBatchRecord.class);
-        if (record == null || record.adapterId == null || record.deliveryQueueKey == null || record.targetTransportNodeId == null
+        if (record == null || record.deliveryBucketId == null || record.deliveryLaneKey == null
+                || record.targetTransportNodeId == null
                 || record.items == null || record.items.isEmpty()) {
             throw new IllegalArgumentException("encoded delivery command batch is incomplete");
         }
         List<DeliveryCommand> items = record.items.stream()
-                .map(this::fromCommandRecord)
+                .map(item -> fromCommandRecord(record.deliveryBucketId, item))
                 .toList();
-        return new DeliveryCommandBatch(record.adapterId, record.deliveryQueueKey, record.targetTransportNodeId, items);
+        return new DeliveryCommandBatch(record.deliveryBucketId, record.deliveryLaneKey, record.targetTransportNodeId, items);
     }
 
     private DeliveryCommandRecord toCommandRecord(DeliveryCommand command) {
@@ -76,19 +77,17 @@ final class TransportDeliveryCommandBatchCodec {
                 context.attemptId(),
                 context.attemptNo(),
                 context.retryCount(),
-                context.batchId(),
-                context.taskName(),
-                context.project(),
-                context.userId()
+                context.batchId()
         );
     }
 
-    private DeliveryCommand fromCommandRecord(DecodedDeliveryCommandRecord record) {
+    private DeliveryCommand fromCommandRecord(String deliveryBucketId, DecodedDeliveryCommandRecord record) {
         if (record == null || record.content == null || record.executionContext == null) {
             throw new IllegalArgumentException("encoded delivery command is incomplete");
         }
         return new DeliveryCommand(
                 record.commandId,
+                deliveryBucketId,
                 record.selectedWorkerId,
                 fromContentRecord(record.content),
                 fromExecutionContextRecord(record.executionContext),
@@ -112,15 +111,12 @@ final class TransportDeliveryCommandBatchCodec {
                 record.attemptId,
                 record.attemptNo,
                 record.retryCount,
-                record.batchId,
-                record.taskName,
-                record.project,
-                record.userId
+                record.batchId
         );
     }
 
-    private record DeliveryCommandBatchRecord(String adapterId,
-                                              String deliveryQueueKey,
+    private record DeliveryCommandBatchRecord(String deliveryBucketId,
+                                              String deliveryLaneKey,
                                               String targetTransportNodeId,
                                               List<DeliveryCommandRecord> items) {
     }
@@ -143,15 +139,12 @@ final class TransportDeliveryCommandBatchCodec {
     private record TaskDispatchExecutionContextRecord(String attemptId,
                                                       int attemptNo,
                                                       int retryCount,
-                                                      String batchId,
-                                                      String taskName,
-                                                      String project,
-                                                      String userId) {
+                                                      String batchId) {
     }
 
     private static final class DecodedDeliveryCommandBatchRecord {
-        private String adapterId;
-        private String deliveryQueueKey;
+        private String deliveryBucketId;
+        private String deliveryLaneKey;
         private String targetTransportNodeId;
         private List<DecodedDeliveryCommandRecord> items;
     }
@@ -178,9 +171,6 @@ final class TransportDeliveryCommandBatchCodec {
         private int attemptNo;
         private int retryCount;
         private String batchId;
-        private String taskName;
-        private String project;
-        private String userId;
     }
 
 }

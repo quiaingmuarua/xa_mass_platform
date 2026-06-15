@@ -93,24 +93,24 @@ class PollingWorkerAdapterTest {
         InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "poll-node-1");
         PollingWorkerAdapter adapter = adapter(routeOwnerStore);
 
-        adapter.announceWorkerOnline("worker-1", "route-1", "conn-1", "poll connected");
+        adapter.announceWorkerOnline("worker-1", "bucket-1", "route-1", "conn-1", "poll connected");
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(PollingWorkerAdapter.PROTOCOL, "worker-1")
+        assertTrue(routeOwnerStore.endpointForSelectedWorker("bucket-1", "worker-1")
                 .orElseThrow()
                 .isActive(System.currentTimeMillis()));
-        assertEquals("poll-node-1", routeOwnerStore.activeOwnerForSelectedWorker(PollingWorkerAdapter.PROTOCOL, "worker-1")
+        assertEquals("poll-node-1", routeOwnerStore.targetForSelectedWorker("bucket-1", "worker-1")
                 .orElseThrow()
-                .transportNodeId());
+                .targetTransportNodeId());
         assertTrue(routeOwnerStore.hasActiveRouteOwner(PollingWorkerAdapter.PROTOCOL, "route-1"));
 
-        adapter.refreshRouteOwnerHeartbeat("worker-1", "route-1", "conn-1", "poll heartbeat");
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(PollingWorkerAdapter.PROTOCOL, "worker-1")
+        adapter.refreshRouteOwnerHeartbeat("worker-1", "bucket-1", "route-1", "conn-1", "poll heartbeat");
+        assertTrue(routeOwnerStore.endpointForSelectedWorker("bucket-1", "worker-1")
                 .orElseThrow()
                 .isActive(System.currentTimeMillis()));
 
-        adapter.announceWorkerOffline("worker-1", "route-1", "conn-1", "poll disconnect");
+        adapter.announceWorkerOffline("worker-1", "bucket-1", "route-1", "conn-1", "poll disconnect");
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(PollingWorkerAdapter.PROTOCOL, "worker-1").isEmpty());
+        assertTrue(routeOwnerStore.endpointForSelectedWorker("bucket-1", "worker-1").isEmpty());
         assertTrue(routeOwnerStore.currentOwners("route-1").isEmpty());
     }
 
@@ -146,7 +146,7 @@ class PollingWorkerAdapterTest {
                         Map.of("target", "target-1"),
                         Map.of()
                 ),
-                new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1", null, null, null),
+                new TaskDispatchExecutionContext("attempt-" + messageId, 1, 0, "batch-1"),
                 new AdapterEndpoint(routeKey, "node-1", "conn-" + workerId, 10_000L),
                 1L
         );

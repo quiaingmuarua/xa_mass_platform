@@ -10,14 +10,16 @@ import java.util.List;
  * <p>Dispatch calls this view only after engine selection has produced a
  * concrete worker binding. The selected worker is a delivery constraint, not a
  * scheduling or lifecycle fact. Route-key reads remain available for bounded
- * diagnostics and maintenance, while task-dispatch producer lookup should use
- * {@link #activeOwnerForSelectedWorker(String, String)}.</p>
+ * diagnostics and maintenance, while task-dispatch producer lookup uses only a
+ * bucket-worker target hint.</p>
  */
 public interface WorkerDispatchRouteOwnerView {
 
     List<WorkerDispatchRouteOwner> currentOwners(String routeKey);
 
-    Optional<WorkerDispatchRouteOwner> activeOwnerForSelectedWorker(String adapterId, String selectedWorkerId);
+    Optional<SelectedWorkerDeliveryTarget> targetForSelectedWorker(String deliveryBucketId, String selectedWorkerId);
+
+    Optional<RouteConsumerEndpoint> endpointForSelectedWorker(String deliveryBucketId, String selectedWorkerId);
 
     default Optional<WorkerDispatchRouteOwner> currentOwner(String routeKey) {
         long now = System.currentTimeMillis();

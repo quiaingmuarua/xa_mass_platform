@@ -279,7 +279,11 @@ class TransportConvergenceArchitectureGuardTest {
                 "connectionId",
                 "connectionToken",
                 "session",
-                "endpoint"
+                "endpoint",
+                "TaskDispatchContext",
+                "taskName",
+                "project",
+                "userId"
         );
     }
 
@@ -307,7 +311,10 @@ class TransportConvergenceArchitectureGuardTest {
                 "TaskDispatchItem",
                 "connectionToken",
                 "correlation",
-                "\"payload\""
+                "\"payload\"",
+                "taskName",
+                "project",
+                "userId"
         );
         assertSourceSliceDoesNotContain(
                 codec,
@@ -380,7 +387,60 @@ class TransportConvergenceArchitectureGuardTest {
                 "itemSnapshot",
                 "connectionToken",
                 "correlation",
+                "adapterId",
+                "deliveryQueueKey",
+                "routeKey",
+                "transportNodeId",
+                "connectionId",
                 "\"payload\""
+        );
+    }
+
+    @Test
+    void publicWorkerAndOutcomeSurfacesDoNotExposeTransportOwnerIds() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/DispatchOutcome.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerRegistrationResult.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerPresenceResult.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerSpec.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerDispatchItem.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/session/WebSocketWorkerSession.java"),
+                        repoRoot().resolve("xa-mass-server/src/main/java/com/xa/mass/api/model/worker/ExternalWorkerRegisterApiRequest.java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/DefaultRuntimeDiagnosticsOperations.java")
+                ),
+                "adapterId",
+                "deliveryQueueKey",
+                "routeKey",
+                "transportNodeId",
+                "connectionId"
+        );
+    }
+
+    @Test
+    void sdkFacingPullWorkerSessionDoesNotExposeTransportOwnerIdGetters() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/PullWorkerSession.java")),
+                "public String routeKey(",
+                "public String connectionId(",
+                "public String adapterId("
+        );
+    }
+
+    @Test
+    void publicWorkerWireUsesWorkerGroupIdNotDeliveryBucketId() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/session/WebSocketWorkerSession.java"),
+                        repoRoot().resolve("integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/client/SampleWorkerWebSocketClient.java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/queue/WebSocketTransportFrameCodec.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/protocol/SocketTransportFrameCodec.java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/server/DispatcherInboundHandler.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/server/SocketTransportServer.java")
+                ),
+                "deliveryBucketId",
+                "DELIVERY_BUCKET_ID_FIELD",
+                "workerId/deliveryBucketId"
         );
     }
 

@@ -184,7 +184,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends ReviewReadModelSampleE2eT
             super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(
                     serverUri,
                     canonicalWorkerRouteKey(workerGroupId, workerId)
-            ), workerId);
+            ), workerId, workerGroupId);
         }
 
         @Override

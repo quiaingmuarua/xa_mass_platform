@@ -113,17 +113,13 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         if (!running.get()) {
             return batch.items().stream()
                     .map(item -> DispatchOutcome.fromCommand(
-                            batch.adapterId(),
-                            batch.deliveryQueueKey(),
-                            batch.targetTransportNodeId(),
                             item,
-                            null,
                             DispatchOutcomeStatus.SHUTDOWN,
                             true,
                             "delivery command handoff is stopped"))
                     .toList();
         }
-        String laneKey = physicalLaneKey(batch.deliveryQueueKey(), batch.targetTransportNodeId());
+        String laneKey = physicalLaneKey(batch.deliveryLaneKey(), batch.targetTransportNodeId());
         Object raw = commands.eval(
                 OFFER_SCRIPT,
                 ScriptOutputType.MULTI,
@@ -142,11 +138,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         if ("QUEUED".equals(status)) {
             return batch.items().stream()
                     .map(item -> DispatchOutcome.fromCommand(
-                            batch.adapterId(),
-                            batch.deliveryQueueKey(),
-                            batch.targetTransportNodeId(),
                             item,
-                            null,
                             DispatchOutcomeStatus.QUEUED,
                             false,
                             null))
@@ -154,11 +146,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         }
         return batch.items().stream()
                 .map(item -> DispatchOutcome.fromCommand(
-                        batch.adapterId(),
-                        batch.deliveryQueueKey(),
-                        batch.targetTransportNodeId(),
                         item,
-                        null,
                         DispatchOutcomeStatus.BACKPRESSURE,
                         true,
                         reason))
@@ -210,12 +198,12 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         }
     }
 
-    int queuedBatches(String deliveryQueueKey, String targetTransportNodeId) {
-        return Math.toIntExact(commands.llen(laneQueueKey(physicalLaneKey(deliveryQueueKey, targetTransportNodeId))));
+    int queuedBatches(String deliveryLaneKey, String targetTransportNodeId) {
+        return Math.toIntExact(commands.llen(laneQueueKey(physicalLaneKey(deliveryLaneKey, targetTransportNodeId))));
     }
 
-    void clearForTest(String deliveryQueueKey, String targetTransportNodeId) {
-        String laneKey = physicalLaneKey(deliveryQueueKey, targetTransportNodeId);
+    void clearForTest(String deliveryLaneKey, String targetTransportNodeId) {
+        String laneKey = physicalLaneKey(deliveryLaneKey, targetTransportNodeId);
         if (localTransportNodeId != null) {
             commands.del(laneQueueKey(laneKey));
             commands.srem(readyLanesKey(localTransportNodeId), laneKey);
@@ -237,8 +225,8 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         return namespacePrefix + ":node:" + normalizeRequired(transportNodeId, "transportNodeId") + ":ready-lanes";
     }
 
-    private static String physicalLaneKey(String deliveryQueueKey, String targetTransportNodeId) {
-        return normalizeRequired(deliveryQueueKey, "deliveryQueueKey")
+    private static String physicalLaneKey(String deliveryLaneKey, String targetTransportNodeId) {
+        return normalizeRequired(deliveryLaneKey, "deliveryLaneKey")
                 + "\n"
                 + normalizeRequired(targetTransportNodeId, "targetTransportNodeId");
     }

@@ -74,20 +74,20 @@ class WebSocketClientStarterTest {
     }
 
     @Test
-    void websocketClientFilterUsesConcreteAdapterIdInsteadOfTransportFamily() {
+    void websocketClientFilterUsesAdapterNodeIdentityInsteadOfTransportFamily() {
         TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of());
 
-        assertTrue(starter.isWebSocketClientWorker(worker("worker-ws", "websocket", "realtime")));
-        assertFalse(starter.isWebSocketClientWorker(worker("worker-socket", "socket", "realtime")));
-        assertFalse(starter.isWebSocketClientWorker(worker("worker-polling", "polling", "polling")));
-        assertFalse(starter.isWebSocketClientWorker(worker("worker-missing", null, "realtime")));
+        assertTrue(starter.isWebSocketClientWorker(worker("worker-ws", "websocket", "legacy-adapter", "realtime")));
+        assertFalse(starter.isWebSocketClientWorker(worker("worker-socket", "socket", "legacy-adapter", "realtime")));
+        assertFalse(starter.isWebSocketClientWorker(worker("worker-polling", "polling", "legacy-adapter", "polling")));
+        assertFalse(starter.isWebSocketClientWorker(worker("worker-missing", null, "legacy-adapter", "realtime")));
     }
 
     private static WorkerSnapshot worker(String workerId) {
-        return worker(workerId, null, null);
+        return worker(workerId, null, null, null);
     }
 
-    private static WorkerSnapshot worker(String workerId, String adapterId, String onlineStrategy) {
+    private static WorkerSnapshot worker(String workerId, String adapterNodeId, String adapterId, String onlineStrategy) {
         return new WorkerSnapshot(
                 workerId,
                 null,
@@ -97,6 +97,7 @@ class WebSocketClientStarterTest {
                 List.of(),
                 List.of(),
                 null,
+                adapterNodeId,
                 adapterId,
                 onlineStrategy,
                 1,

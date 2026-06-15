@@ -1,5 +1,6 @@
 package com.xa.mass.transport.runtime.route;
 
+import com.xa.mass.transport.route.TransportRouteOwnerClaim;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -8,6 +9,8 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RedisTransportRouteOwnerStoreTest {
+
+    private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
 
     private RedisClient redisClient;
     private StatefulRedisConnection<String, String> connection;
@@ -63,85 +68,89 @@ class RedisTransportRouteOwnerStoreTest {
     }
 
     @Test
-    void heartbeatRoundTripUsesRouteConsumerHash() {
-        store.claimRouteOwner(" worker-1 ", " websocket ", " route-1 ", " conn-1 ", "connected");
+    void heartbeatRoundTripUsesRouteConsumerHashAndBucketWorkerPointer() {
+        store.claimRouteOwner(claim(" worker-1 ", " bucket-a ", " websocket ", " route-1 ", " conn-1 ", "connected"));
 
-        var online = store.activeOwnerForSelectedWorker("websocket", "worker-1").orElseThrow();
-        assertTrue(online.isActive(System.currentTimeMillis()));
-        assertEquals("websocket", online.adapterId());
-        assertEquals("route-1", online.routeKey());
+        var endpoint = store.endpointForSelectedWorker("bucket-a", "worker-1").orElseThrow();
+        assertTrue(endpoint.isActive(System.currentTimeMillis()));
+        assertEquals("websocket", endpoint.adapterId());
+        assertEquals("route-1", endpoint.routeKey());
         assertTrue(store.hasActiveRouteOwner("websocket", "route-1"));
         assertEquals("worker-1", store.currentOwner("route-1").orElseThrow().workerId());
         assertFalse(observerCommands.exists(namespacePrefix + ":routes") > 0L);
         assertFalse(observerCommands.exists(workerRouteKey("worker-1")) > 0L);
+        assertNull(observerCommands.get(legacyAdapterWorkerKey("websocket", "worker-1")));
+        assertNotNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-1")));
         assertEquals(1, store.currentOwners("route-1").size());
 
-        store.refreshHeartbeat("worker-1", "websocket", "route-1", "conn-1", "heartbeat");
-        assertTrue(store.activeOwnerForSelectedWorker("websocket", "worker-1")
+        store.refreshHeartbeat(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1", "heartbeat"));
+        assertTrue(store.endpointForSelectedWorker("bucket-a", "worker-1")
                 .orElseThrow()
                 .isActive(System.currentTimeMillis()));
 
-        store.releaseRouteOwner("worker-1", "websocket", "route-1", "conn-1", "disconnect");
+        store.releaseRouteOwner(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1", "disconnect"));
 
-        assertTrue(store.activeOwnerForSelectedWorker("websocket", "worker-1").isEmpty());
+        assertTrue(store.endpointForSelectedWorker("bucket-a", "worker-1").isEmpty());
         assertTrue(store.currentOwners("route-1").isEmpty());
         assertFalse(observerCommands.exists(workerRouteKey("worker-1")) > 0L);
+        assertNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-1")));
         assertFalse(store.hasActiveRouteOwner("websocket", "route-1"));
     }
 
     @Test
-    void sameRouteKeyCanHaveMultipleActiveConsumers() {
-        store.claimRouteOwner("worker-1", "websocket", "route-shared", "conn-1", "connected");
-        store.claimRouteOwner("worker-2", "socket", "route-shared", "conn-2", "connected");
+    void sameRouteKeyCanHaveMultipleActiveConsumersAcrossBuckets() {
+        store.claimRouteOwner(claim("worker-1", "bucket-a", "websocket", "route-shared", "conn-1", "connected"));
+        store.claimRouteOwner(claim("worker-2", "bucket-b", "socket", "route-shared", "conn-2", "connected"));
 
         assertTrue(store.hasActiveRouteOwner("websocket", "route-shared"));
         assertTrue(store.hasActiveRouteOwner("socket", "route-shared"));
         assertEquals(2, store.currentOwners("route-shared").size());
 
-        store.releaseRouteOwner("worker-1", "websocket", "route-shared", "conn-1", "disconnect");
+        store.releaseRouteOwner(claim("worker-1", "bucket-a", "websocket", "route-shared", "conn-1", "disconnect"));
 
         assertFalse(store.hasActiveRouteOwner("websocket", "route-shared"));
         assertTrue(store.hasActiveRouteOwner("socket", "route-shared"));
         assertEquals(1, store.currentOwners("route-shared").size());
-        assertFalse(observerCommands.exists(workerRouteKey("worker-1")) > 0L);
-        assertFalse(observerCommands.exists(workerRouteKey("worker-2")) > 0L);
+        assertNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-1")));
+        assertNotNull(observerCommands.get(bucketWorkerKey("bucket-b", "worker-2")));
     }
 
     @Test
-    void selectedWorkerLookupUsesAdapterWorkerIndexUnderSharedRoute() {
-        store.claimRouteOwner("worker-1", "websocket", "route-shared", "conn-1", "connected");
-        store.claimRouteOwner("worker-2", "websocket", "route-shared", "conn-2", "connected");
+    void bucketWorkerLookupUsesCurrentConsumerUnderSharedRoute() {
+        store.claimRouteOwner(claim("worker-1", "bucket-a", "websocket", "route-shared", "conn-1", "connected"));
+        store.claimRouteOwner(claim("worker-2", "bucket-a", "websocket", "route-shared", "conn-2", "connected"));
 
-        assertNotNull(observerCommands.get(adapterWorkerKey("websocket", "worker-2")));
-        assertEquals("conn-2", store.activeOwnerForSelectedWorker("websocket", "worker-2")
+        assertNotNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-2")));
+        assertNull(observerCommands.get(legacyAdapterWorkerKey("websocket", "worker-2")));
+        assertEquals("conn-2", store.endpointForSelectedWorker("bucket-a", "worker-2")
                 .orElseThrow()
                 .connectionId());
-        assertEquals("runtime-a", store.activeOwnerForSelectedWorker("websocket", "worker-2")
+        assertEquals("runtime-a", store.targetForSelectedWorker("bucket-a", "worker-2")
                 .orElseThrow()
-                .transportNodeId());
+                .targetTransportNodeId());
 
-        store.releaseRouteOwner("worker-2", "websocket", "route-shared", "conn-2", "disconnect");
+        store.releaseRouteOwner(claim("worker-2", "bucket-a", "websocket", "route-shared", "conn-2", "disconnect"));
 
-        assertNull(observerCommands.get(adapterWorkerKey("websocket", "worker-2")));
-        assertTrue(store.activeOwnerForSelectedWorker("websocket", "worker-2").isEmpty());
+        assertNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-2")));
+        assertTrue(store.targetForSelectedWorker("bucket-a", "worker-2").isEmpty());
     }
 
     @Test
-    void staleHeartbeatDoesNotMoveSelectedWorkerPointerBackToOldConsumer() {
-        store.claimRouteOwner("worker-1", "websocket", "route-1", "conn-old", "connected");
-        store.claimRouteOwner("worker-1", "websocket", "route-1", "conn-new", "reconnected");
+    void staleHeartbeatDoesNotMoveBucketWorkerPointerBackToOldConsumer() {
+        store.claimRouteOwner(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-old", "connected"));
+        store.claimRouteOwner(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-new", "reconnected"));
 
-        assertEquals("conn-new", store.activeOwnerForSelectedWorker("websocket", "worker-1")
+        assertEquals("conn-new", store.endpointForSelectedWorker("bucket-a", "worker-1")
                 .orElseThrow()
                 .connectionId());
 
-        store.refreshHeartbeat("worker-1", "websocket", "route-1", "conn-old", "late-heartbeat");
+        store.refreshHeartbeat(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-old", "late-heartbeat"));
 
-        assertEquals("conn-new", store.activeOwnerForSelectedWorker("websocket", "worker-1")
+        assertEquals("conn-new", store.endpointForSelectedWorker("bucket-a", "worker-1")
                 .orElseThrow()
                 .connectionId());
-        store.releaseRouteOwner("worker-1", "websocket", "route-1", "conn-old", "old-disconnect");
-        assertEquals("conn-new", store.activeOwnerForSelectedWorker("websocket", "worker-1")
+        store.releaseRouteOwner(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-old", "old-disconnect"));
+        assertEquals("conn-new", store.endpointForSelectedWorker("bucket-a", "worker-1")
                 .orElseThrow()
                 .connectionId());
     }
@@ -150,50 +159,68 @@ class RedisTransportRouteOwnerStoreTest {
     void expiredConsumerEvidencePrunesDeadlineIndex() throws Exception {
         try (RedisTransportRouteOwnerStore shortLeaseStore =
                      new RedisTransportRouteOwnerStore(redisClient, namespacePrefix, 250L, "runtime-a", false)) {
-            shortLeaseStore.claimRouteOwner("worker-2", "socket", "route-2", "conn-2", "connected");
+            shortLeaseStore.claimRouteOwner(claim("worker-2", "bucket-a", "socket", "route-2", "conn-2", "connected"));
 
             assertTrue(shortLeaseStore.hasActiveRouteOwner("socket", "route-2"));
             Thread.sleep(300L);
 
-            assertTrue(shortLeaseStore.activeOwnerForSelectedWorker("socket", "worker-2").isEmpty());
+            assertTrue(shortLeaseStore.targetForSelectedWorker("bucket-a", "worker-2").isEmpty());
             assertFalse(shortLeaseStore.hasActiveRouteOwner("socket", "route-2"));
             assertEquals(1, shortLeaseStore.pruneExpired());
             assertTrue(shortLeaseStore.currentOwners("route-2").isEmpty());
-            assertFalse(observerCommands.exists(workerRouteKey("worker-2")) > 0L);
+            assertNull(observerCommands.get(bucketWorkerKey("bucket-a", "worker-2")));
         }
     }
 
     @Test
     void sharedNamespaceAllowsAnotherTransportInstanceToReadRouteConsumerTruth() {
         try (StatefulRedisConnection<String, String> secondaryConnection = redisClient.connect();
-            RedisTransportRouteOwnerStore secondary =
+             RedisTransportRouteOwnerStore secondary =
                      new RedisTransportRouteOwnerStore(secondaryConnection, namespacePrefix, 1_000L, "runtime-b")) {
-            store.claimRouteOwner("worker-4", "websocket", "route-4", "conn-4", "connected");
+            store.claimRouteOwner(claim("worker-4", "bucket-a", "websocket", "route-4", "conn-4", "connected"));
 
-            var mirrored = secondary.activeOwnerForSelectedWorker("websocket", "worker-4").orElseThrow();
+            var mirrored = secondary.endpointForSelectedWorker("bucket-a", "worker-4").orElseThrow();
             assertTrue(mirrored.isActive(System.currentTimeMillis()));
             assertEquals("websocket", mirrored.adapterId());
             assertEquals("route-4", mirrored.routeKey());
             assertTrue(secondary.hasActiveRouteOwner("websocket", "route-4"));
             assertEquals(1, secondary.currentOwners("route-4").size());
 
-            secondary.releaseRouteOwner("worker-4", "websocket", "route-4", "conn-4", "disconnect");
+            secondary.releaseRouteOwner(claim("worker-4", "bucket-a", "websocket", "route-4", "conn-4", "disconnect"));
 
-            assertTrue(store.activeOwnerForSelectedWorker("websocket", "worker-4").isEmpty());
+            assertTrue(store.endpointForSelectedWorker("bucket-a", "worker-4").isEmpty());
             assertFalse(store.hasActiveRouteOwner("websocket", "route-4"));
         }
+    }
+
+    private static TransportRouteOwnerClaim claim(String workerId,
+                                                  String deliveryBucketId,
+                                                  String adapterId,
+                                                  String routeKey,
+                                                  String connectionId,
+                                                  String reason) {
+        return new TransportRouteOwnerClaim(workerId, deliveryBucketId, adapterId, routeKey, connectionId, reason);
     }
 
     private String workerRouteKey(String workerId) {
         return namespacePrefix + ":worker-route:" + workerId;
     }
 
-    private String adapterWorkerKey(String adapterId, String workerId) {
+    private String legacyAdapterWorkerKey(String adapterId, String workerId) {
         return namespacePrefix
-                + ":adapter:" + java.util.Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(adapterId.getBytes(java.nio.charset.StandardCharsets.UTF_8))
-                + ":worker:" + java.util.Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(workerId.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                + ":adapter:" + encode(adapterId)
+                + ":worker:" + encode(workerId)
                 + ":owner";
+    }
+
+    private String bucketWorkerKey(String deliveryBucketId, String workerId) {
+        return namespacePrefix
+                + ":bucket:" + encode(deliveryBucketId)
+                + ":worker:" + encode(workerId)
+                + ":owner";
+    }
+
+    private static String encode(String value) {
+        return TOKEN_ENCODER.encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 }

@@ -42,8 +42,7 @@ class InMemoryTransportDeliveryStoreTest {
 
         DispatchOutcome outcome = store.enqueue(" Polling ", " Polling ", queued(" Polling ", item("msg-1", " worker-1 ")));
 
-        assertEquals("polling", outcome.getAdapterId());
-        assertEquals("polling", outcome.getDeliveryQueueKey());
+        assertEquals("worker-1", outcome.getSelectedWorkerId());
         assertEquals(List.of("msg-1"), messageIds(store.drain(" Polling ", " worker-1 ", 10)));
         assertTrue(store.drain("polling", "worker-1", 10).isEmpty());
     }

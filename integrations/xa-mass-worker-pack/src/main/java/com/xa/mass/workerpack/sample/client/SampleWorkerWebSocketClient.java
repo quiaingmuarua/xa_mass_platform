@@ -30,23 +30,21 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
     private final ScheduledExecutorService taskResponseScheduler;
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private final String workerId;
+    private final String workerGroupId;
     private final SampleWorkerTaskFrameHandler taskFrameHandler = new SampleWorkerTaskFrameHandler();
     private final SampleWorkerCommandFrameHandler commandFrameHandler = new SampleWorkerCommandFrameHandler();
     private final String taskResultStatus;
 
     private boolean intentionalClose = false;
 
-    public SampleWorkerWebSocketClient(URI serverUri, String workerId) {
-        this(serverUri, workerId, "SUCCESS");
+    public SampleWorkerWebSocketClient(URI serverUri, String workerId, String workerGroupId) {
+        this(serverUri, workerId, workerGroupId, "SUCCESS");
     }
 
-    public SampleWorkerWebSocketClient(URI serverUri, String workerId, String taskResultStatus) {
-        this(serverUri, workerId, null, taskResultStatus);
-    }
-
-    public SampleWorkerWebSocketClient(URI serverUri, String workerId, String routeKey, String taskResultStatus) {
-        super(withWorkerIdentity(serverUri, workerId, routeKey));
+    public SampleWorkerWebSocketClient(URI serverUri, String workerId, String workerGroupId, String taskResultStatus) {
+        super(withWorkerIdentity(serverUri, workerId, workerGroupId));
         this.workerId = workerId;
+        this.workerGroupId = requireText(workerGroupId, "workerGroupId");
         this.taskResultStatus = normalizeConfiguredTaskResultStatus(taskResultStatus);
         this.reconnectScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "websocket-reconnect-scheduler-" + workerId);
@@ -62,7 +60,7 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
     }
 
     public SampleWorkerWebSocketClient(String workerId) {
-        this(URI.create("ws://localhost:18088/ws"), workerId, "SUCCESS");
+        this(URI.create("ws://localhost:18088/ws"), workerId, "sample-websocket-workers", "SUCCESS");
     }
 
     @Override
@@ -369,18 +367,15 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
         return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
     }
 
-    private static URI withWorkerIdentity(URI serverUri, String workerId, String routeKey) {
+    private static URI withWorkerIdentity(URI serverUri, String workerId, String workerGroupId) {
         if (serverUri == null) {
             throw new IllegalArgumentException("serverUri must not be null");
         }
-        if (workerId == null || workerId.isBlank()) {
-            throw new IllegalArgumentException("workerId must not be blank");
-        }
+        String normalizedWorkerId = requireText(workerId, "workerId");
+        String normalizedWorkerGroupId = requireText(workerGroupId, "workerGroupId");
         String existingQuery = serverUri.getRawQuery();
-        String workerQuery = "workerId=" + workerId.trim();
-        if (routeKey != null && !routeKey.isBlank()) {
-            workerQuery += "&routeKey=" + routeKey.trim();
-        }
+        String workerQuery = "workerId=" + normalizedWorkerId
+                + "&workerGroupId=" + normalizedWorkerGroupId;
         String mergedQuery = (existingQuery == null || existingQuery.isBlank())
                 ? workerQuery
                 : existingQuery + "&" + workerQuery;
@@ -395,5 +390,12 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
         } catch (Exception ex) {
             throw new IllegalArgumentException("Failed to append worker identity to serverUri", ex);
         }
+    }
+
+    private static String requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 }

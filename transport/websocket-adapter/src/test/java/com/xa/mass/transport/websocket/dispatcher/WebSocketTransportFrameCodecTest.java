@@ -46,10 +46,7 @@ class WebSocketTransportFrameCodecTest {
                         "attempt-1",
                         1,
                         2,
-                        "batch-1",
-                        "task-name",
-                        "demoApp",
-                        "user-a"
+                        "batch-1"
                 ),
                 new AdapterEndpoint("route-1", "node-1", "conn-1", 10_000L),
                 1L
@@ -64,6 +61,9 @@ class WebSocketTransportFrameCodecTest {
         assertEquals("crawler.fetch-page", frame.get("eventCode").getAsString());
         assertEquals("https://example.test",
                 frame.getAsJsonObject(TransportPacket.PAYLOAD_INPUT).get("target").getAsString());
+        assertFalse(frame.has(TransportPacket.PAYLOAD_PROJECT));
+        assertFalse(frame.has(TransportPacket.PAYLOAD_TASK_NAME));
+        assertFalse(frame.has(TransportPacket.PAYLOAD_USER_ID));
     }
 
     @Test

@@ -24,6 +24,7 @@ public final class SocketTransportFrameCodec {
 
     private static final Logger logger = LoggerFactory.getLogger(SocketTransportFrameCodec.class);
     private static final String TYPE_FIELD = "type";
+    private static final String WORKER_GROUP_ID_FIELD = "workerGroupId";
     private static final String ROUTE_KEY_FIELD = "routeKey";
     private static final String TRACE_ID_FIELD = "traceId";
     private static final String TASK_ID_FIELD = "taskId";
@@ -65,6 +66,10 @@ public final class SocketTransportFrameCodec {
         return readString(frame, TransportPacket.PAYLOAD_WORKER_ID);
     }
 
+    public String extractWorkerGroupId(JsonObject frame) {
+        return readString(frame, WORKER_GROUP_ID_FIELD);
+    }
+
     public String extractRouteKey(JsonObject frame) {
         return readString(frame, ROUTE_KEY_FIELD);
     }
@@ -95,13 +100,10 @@ public final class SocketTransportFrameCodec {
         JsonObject frame = new JsonObject();
         frame.addProperty(MESSAGE_ID_FIELD, content.messageId());
         put(frame, TransportPacket.PAYLOAD_WORKER_ID, request.selectedWorkerId());
-        put(frame, TransportPacket.PAYLOAD_PROJECT, context.project());
         if (content.eventCode() != null) {
             frame.addProperty(EVENT_CODE_FIELD, content.eventCode());
         }
         frame.addProperty(TASK_ID_FIELD, content.taskId());
-        put(frame, TransportPacket.PAYLOAD_TASK_NAME, context.taskName());
-        put(frame, TransportPacket.PAYLOAD_USER_ID, context.userId());
         frame.addProperty(TransportPacket.PAYLOAD_RETRY_COUNT, context.retryCount());
         put(frame, TransportPacket.PAYLOAD_BATCH_ID, context.batchId());
         frame.add(TransportPacket.PAYLOAD_INPUT, gson.toJsonTree(content.input()));

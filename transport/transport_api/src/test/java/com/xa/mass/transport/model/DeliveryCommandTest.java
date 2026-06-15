@@ -17,6 +17,7 @@ class DeliveryCommandTest {
 
         DeliveryCommand command = new DeliveryCommand(
                 " command-1 ",
+                " bucket-1 ",
                 " worker-1 ",
                 content,
                 executionContext,
@@ -25,6 +26,7 @@ class DeliveryCommandTest {
         );
 
         assertEquals("command-1", command.getCommandId());
+        assertEquals("bucket-1", command.getDeliveryBucketId());
         assertEquals("worker-1", command.getSelectedWorkerId());
         assertSame(content, command.getContent());
         assertSame(executionContext, command.getExecutionContext());
@@ -39,6 +41,7 @@ class DeliveryCommandTest {
 
         assertThrows(IllegalArgumentException.class, () -> new DeliveryCommand(
                 " ",
+                "bucket-1",
                 "worker-1",
                 content,
                 executionContext,
@@ -48,6 +51,16 @@ class DeliveryCommandTest {
         assertThrows(IllegalArgumentException.class, () -> new DeliveryCommand(
                 "command-1",
                 " ",
+                "worker-1",
+                content,
+                executionContext,
+                0L,
+                0L
+        ));
+        assertThrows(IllegalArgumentException.class, () -> new DeliveryCommand(
+                "command-1",
+                "bucket-1",
+                " ",
                 content,
                 executionContext,
                 0L,
@@ -55,6 +68,7 @@ class DeliveryCommandTest {
         ));
         assertThrows(NullPointerException.class, () -> new DeliveryCommand(
                 "command-1",
+                "bucket-1",
                 "worker-1",
                 null,
                 executionContext,
@@ -63,6 +77,7 @@ class DeliveryCommandTest {
         ));
         assertThrows(NullPointerException.class, () -> new DeliveryCommand(
                 "command-1",
+                "bucket-1",
                 "worker-1",
                 content,
                 null,
@@ -89,24 +104,18 @@ class DeliveryCommandTest {
     }
 
     @Test
-    void executionContextCarriesTypedCorrelationNotRouteFacts() {
+    void executionContextCarriesAttemptCorrelationNotTaskOrRouteFacts() {
         TaskDispatchExecutionContext context = new TaskDispatchExecutionContext(
                 " attempt-1 ",
                 2,
                 1,
-                " batch-1 ",
-                " task-name ",
-                " demoApp ",
-                " agent "
+                " batch-1 "
         );
 
         assertEquals("attempt-1", context.attemptId());
         assertEquals(2, context.attemptNo());
         assertEquals(1, context.retryCount());
         assertEquals("batch-1", context.batchId());
-        assertEquals("task-name", context.taskName());
-        assertEquals("demoApp", context.project());
-        assertEquals("agent", context.userId());
     }
 
     private static TaskDispatchContent content() {
@@ -124,10 +133,7 @@ class DeliveryCommandTest {
                 "attempt-1",
                 1,
                 0,
-                "batch-1",
-                "task-name",
-                "demoApp",
-                "agent"
+                "batch-1"
         );
     }
 }

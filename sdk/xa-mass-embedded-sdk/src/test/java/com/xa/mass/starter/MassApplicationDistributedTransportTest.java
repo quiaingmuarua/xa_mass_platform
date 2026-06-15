@@ -15,6 +15,9 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchContent;
 import com.xa.mass.transport.model.TaskDispatchExecutionContext;
+import com.xa.mass.transport.route.RouteConsumerEndpoint;
+import com.xa.mass.transport.route.SelectedWorkerDeliveryTarget;
+import com.xa.mass.transport.route.TransportRouteOwnerClaim;
 import com.xa.mass.transport.route.TransportRouteOwnerRecord;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
@@ -59,8 +62,8 @@ class MassApplicationDistributedTransportTest {
 
         InMemoryTransportRouteOwnerStore nodeOneRouteOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-1");
         InMemoryTransportRouteOwnerStore nodeTwoRouteOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-2");
-        nodeOneRouteOwnerStore.claimRouteOwner("worker-1", "websocket", routeKey(), "conn-1", "connected");
-        nodeTwoRouteOwnerStore.claimRouteOwner("worker-2", "websocket", routeKey(), "conn-2", "connected");
+        nodeOneRouteOwnerStore.claimRouteOwner(claim("worker-1", "demo-workers", "websocket", routeKey(), "conn-1", "connected"));
+        nodeTwoRouteOwnerStore.claimRouteOwner(claim("worker-2", "demo-workers", "websocket", routeKey(), "conn-2", "connected"));
         CombinedRouteOwnerStore routeOwnerStore = new CombinedRouteOwnerStore(
                 List.of(nodeOneRouteOwnerStore, nodeTwoRouteOwnerStore)
         );
@@ -113,7 +116,7 @@ class MassApplicationDistributedTransportTest {
         handoff.offer(deliveryBatch("msg-node-2", "worker-2", "node-2"));
         handoff.offer(deliveryBatch("msg-node-1", "worker-1", "node-1"));
         InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-1");
-        routeOwnerStore.claimRouteOwner("worker-1", "websocket", routeKey(), "conn-worker-1", "test-fixture");
+        routeOwnerStore.claimRouteOwner(claim("worker-1", "demo-workers", "websocket", routeKey(), "conn-worker-1", "test-fixture"));
 
         RecordingAdapter adapter = new RecordingAdapter("websocket", 1);
         TransportConfig transport = disabledTransportConsumerTransport("node-1");
@@ -211,8 +214,8 @@ class MassApplicationDistributedTransportTest {
     private static DeliveryCommandBatch deliveryBatch(String messageId, String workerId, String transportNodeId) {
         DeliveryCommand command = deliveryCommand(messageId, workerId, transportNodeId);
         return new DeliveryCommandBatch(
-                "websocket",
-                "websocket",
+                "demo-workers",
+                "demo-workers",
                 transportNodeId,
                 List.of(command)
         );
@@ -223,9 +226,10 @@ class MassApplicationDistributedTransportTest {
         String commandId = "cmd-" + messageId;
         return new DeliveryCommand(
                 commandId,
+                "demo-workers",
                 workerId,
                 TaskDispatchContent.from(context(), binding),
-                TaskDispatchExecutionContext.from(context(), binding),
+                TaskDispatchExecutionContext.from(binding),
                 0L,
                 System.currentTimeMillis()
         );
@@ -249,15 +253,20 @@ class MassApplicationDistributedTransportTest {
                                            boolean retryable,
                                            String reason) {
         return DispatchOutcome.fromCommand(
-                batch.adapterId(),
-                batch.deliveryQueueKey(),
-                batch.targetTransportNodeId(),
                 item,
-                null,
                 status,
                 retryable,
                 reason
         );
+    }
+
+    private static TransportRouteOwnerClaim claim(String workerId,
+                                                  String deliveryBucketId,
+                                                  String adapterId,
+                                                  String routeKey,
+                                                  String connectionId,
+                                                  String reason) {
+        return new TransportRouteOwnerClaim(workerId, deliveryBucketId, adapterId, routeKey, connectionId, reason);
     }
 
     private static final class CapturingMassEngine extends MassEngine {
@@ -398,7 +407,7 @@ class MassApplicationDistributedTransportTest {
             for (AdapterDispatchRequest request : requests) {
                 dispatchedMessageIds.add(request.content().messageId());
                 dispatchedRouteKeys.add(request.endpoint().routeKey());
-                outcomes.add(DispatchOutcome.delivered(adapterId, request));
+                outcomes.add(DispatchOutcome.delivered(request));
                 dispatchLatch.countDown();
             }
             return List.copyOf(outcomes);
@@ -430,30 +439,18 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public TransportRouteOwnerRecord claimRouteOwner(String workerId,
-                                                         String adapterId,
-                                                         String routeKey,
-                                                         String connectionId,
-                                                         String reason) {
-            return stores.getFirst().claimRouteOwner(workerId, adapterId, routeKey, connectionId, reason);
+        public TransportRouteOwnerRecord claimRouteOwner(TransportRouteOwnerClaim claim) {
+            return stores.getFirst().claimRouteOwner(claim);
         }
 
         @Override
-        public TransportRouteOwnerRecord refreshHeartbeat(String workerId,
-                                                          String adapterId,
-                                                          String routeKey,
-                                                          String connectionId,
-                                                          String reason) {
-            return stores.getFirst().refreshHeartbeat(workerId, adapterId, routeKey, connectionId, reason);
+        public TransportRouteOwnerRecord refreshHeartbeat(TransportRouteOwnerClaim claim) {
+            return stores.getFirst().refreshHeartbeat(claim);
         }
 
         @Override
-        public TransportRouteOwnerRecord releaseRouteOwner(String workerId,
-                                                           String adapterId,
-                                                           String routeKey,
-                                                           String connectionId,
-                                                           String reason) {
-            return stores.getFirst().releaseRouteOwner(workerId, adapterId, routeKey, connectionId, reason);
+        public TransportRouteOwnerRecord releaseRouteOwner(TransportRouteOwnerClaim claim) {
+            return stores.getFirst().releaseRouteOwner(claim);
         }
 
         @Override
@@ -466,13 +463,26 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public java.util.Optional<WorkerDispatchRouteOwner> activeOwnerForSelectedWorker(String adapterId,
-                                                                                        String selectedWorkerId) {
+        public java.util.Optional<SelectedWorkerDeliveryTarget> targetForSelectedWorker(String deliveryBucketId,
+                                                                                       String selectedWorkerId) {
             for (InMemoryTransportRouteOwnerStore store : stores) {
-                java.util.Optional<WorkerDispatchRouteOwner> owner =
-                        store.activeOwnerForSelectedWorker(adapterId, selectedWorkerId);
-                if (owner.isPresent()) {
-                    return owner;
+                java.util.Optional<SelectedWorkerDeliveryTarget> target =
+                        store.targetForSelectedWorker(deliveryBucketId, selectedWorkerId);
+                if (target.isPresent()) {
+                    return target;
+                }
+            }
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public java.util.Optional<RouteConsumerEndpoint> endpointForSelectedWorker(String deliveryBucketId,
+                                                                                  String selectedWorkerId) {
+            for (InMemoryTransportRouteOwnerStore store : stores) {
+                java.util.Optional<RouteConsumerEndpoint> endpoint =
+                        store.endpointForSelectedWorker(deliveryBucketId, selectedWorkerId);
+                if (endpoint.isPresent()) {
+                    return endpoint;
                 }
             }
             return java.util.Optional.empty();

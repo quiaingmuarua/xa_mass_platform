@@ -4,7 +4,6 @@ public record WorkerRegistrationResult(
         String workerId,
         String adapterNodeId,
         String workerGroupId,
-        String adapterId,
         String transportHint
 ) {
 }

@@ -44,8 +44,6 @@ public final class TransportDeliveryService {
         for (AdapterDispatchRequest request : requests) {
             if (request == null) {
                 outcomes.add(DispatchOutcome.invalid(
-                        adapterId,
-                        deliveryQueueKey,
                         null,
                         null,
                         null,
@@ -123,13 +121,13 @@ public final class TransportDeliveryService {
             if (missingRoute(request)) {
                 directInvalidItems.incrementAndGet();
                 adapterCounters.invalidItems.incrementAndGet();
-                outcomes.add(DispatchOutcome.invalid(adapterId, request, "routeKey must not be blank"));
+                outcomes.add(DispatchOutcome.invalid(request, "routeKey must not be blank"));
                 continue;
             }
             if (sender == null) {
                 directUnavailableItems.incrementAndGet();
                 adapterCounters.unavailableItems.incrementAndGet();
-                outcomes.add(DispatchOutcome.unavailable(adapterId, request, unavailableReason));
+                outcomes.add(DispatchOutcome.unavailable(request, unavailableReason));
                 continue;
             }
             try {
@@ -137,16 +135,16 @@ public final class TransportDeliveryService {
                 if (sent) {
                     directSentItems.incrementAndGet();
                     adapterCounters.sentItems.incrementAndGet();
-                    outcomes.add(DispatchOutcome.delivered(adapterId, request));
+                    outcomes.add(DispatchOutcome.delivered(request));
                 } else {
                     directOfflineItems.incrementAndGet();
                     adapterCounters.offlineItems.incrementAndGet();
-                    outcomes.add(DispatchOutcome.noEndpoint(adapterId, request, "endpoint is unavailable"));
+                    outcomes.add(DispatchOutcome.noEndpoint(request, "endpoint is unavailable"));
                 }
             } catch (RuntimeException e) {
                 directFailedItems.incrementAndGet();
                 adapterCounters.failedItems.incrementAndGet();
-                outcomes.add(DispatchOutcome.failed(adapterId, request, e.getMessage(), true));
+                outcomes.add(DispatchOutcome.failed(request, e.getMessage(), true));
             }
         }
         return Collections.unmodifiableList(outcomes);

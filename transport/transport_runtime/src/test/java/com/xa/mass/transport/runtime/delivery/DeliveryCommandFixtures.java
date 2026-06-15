@@ -22,6 +22,7 @@ final class DeliveryCommandFixtures {
                                    String routeKey) {
         return new DeliveryCommand(
                 "cmd-" + messageId,
+                "bucket-1",
                 selectedWorkerId,
                 new TaskDispatchContent(
                         "task-1",
@@ -34,10 +35,7 @@ final class DeliveryCommandFixtures {
                         "attempt-" + messageId,
                         1,
                         0,
-                        "batch-1",
-                        "task-name",
-                        "demoApp",
-                        "agent"
+                        "batch-1"
                 ),
                 0L,
                 10L
@@ -45,11 +43,7 @@ final class DeliveryCommandFixtures {
     }
 
     static DeliveryCommandBatch batch(String targetTransportNodeId, DeliveryCommand... commands) {
-        return new DeliveryCommandBatch("websocket", "websocket", targetTransportNodeId, List.of(commands));
-    }
-
-    static DeliveryCommandGroup group(DeliveryCommand... commands) {
-        return new DeliveryCommandGroup("websocket", List.of(commands));
+        return new DeliveryCommandBatch("bucket-1", "bucket-1", targetTransportNodeId, List.of(commands));
     }
 
     static List<String> messages(DeliveryCommandBatch batch) {

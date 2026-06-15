@@ -10,6 +10,7 @@ import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.transport.route.TransportRouteOwnerClaim;
 import com.xa.mass.transport.route.TransportRouteOwnerRecord;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 
@@ -68,18 +69,6 @@ public class PullWorkerSession {
         return workerGroupId;
     }
 
-    public String routeKey() {
-        return routeKey;
-    }
-
-    public String connectionId() {
-        return connectionId;
-    }
-
-    public String adapterId() {
-        return adapterId;
-    }
-
     public String transportHint() {
         return transportHint;
     }
@@ -102,7 +91,7 @@ public class PullWorkerSession {
                 normalizedReason,
                 connectionId
         ));
-        return isCurrentOwner(routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, connectionId, normalizedReason));
+        return isCurrentOwner(routeOwnerStore.claimRouteOwner(routeOwnerClaim(normalizedReason)));
     }
 
     public void disconnect() {
@@ -123,7 +112,7 @@ public class PullWorkerSession {
                 normalizedReason,
                 connectionId
         ));
-        return isCurrentOwner(routeOwnerStore.releaseRouteOwner(workerId, adapterId, routeKey, connectionId, normalizedReason));
+        return isCurrentOwner(routeOwnerStore.releaseRouteOwner(routeOwnerClaim(normalizedReason)));
     }
 
     public void heartbeat() {
@@ -144,7 +133,7 @@ public class PullWorkerSession {
                 normalizedReason,
                 connectionId
         ));
-        return isCurrentOwner(routeOwnerStore.refreshHeartbeat(workerId, adapterId, routeKey, connectionId, normalizedReason));
+        return isCurrentOwner(routeOwnerStore.refreshHeartbeat(routeOwnerClaim(normalizedReason)));
     }
 
     public List<PulledTaskDispatch> poll(int maxMessages) {
@@ -228,9 +217,21 @@ public class PullWorkerSession {
     private boolean isCurrentOwner(TransportRouteOwnerRecord owner) {
         return owner != null
                 && workerId.equals(owner.getWorkerId())
+                && workerGroupId.equals(owner.getDeliveryBucketId())
                 && adapterId.equals(owner.getAdapterId())
                 && routeKey.equals(owner.getRouteKey())
                 && connectionId.equals(owner.getConnectionId());
+    }
+
+    private TransportRouteOwnerClaim routeOwnerClaim(String reason) {
+        return new TransportRouteOwnerClaim(
+                workerId,
+                workerGroupId,
+                adapterId,
+                routeKey,
+                connectionId,
+                reason
+        );
     }
 
     private static String requireText(String value, String fieldName) {

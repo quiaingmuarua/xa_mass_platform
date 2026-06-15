@@ -7,6 +7,7 @@ import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
+import com.xa.mass.transport.route.TransportRouteOwnerClaim;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
@@ -33,6 +34,7 @@ public class ServerSessionManager
 
     private final String adapterId;
     private final RouteEndpointIndex<Channel, WebSocketRouteEndpoint> routeIndex = new RouteEndpointIndex<>();
+    private final java.util.concurrent.ConcurrentMap<Channel, String> deliveryBucketByChannel = new ConcurrentHashMap<>();
     private final Set<Channel> retiredChannels = ConcurrentHashMap.newKeySet();
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
     private final ScheduledExecutorService routeOwnerRefreshExecutor;
@@ -52,7 +54,12 @@ public class ServerSessionManager
         });
     }
 
-    public synchronized void addSession(String routeKey, String workerId, Channel channel, ChannelHandlerContext ctx) {
+    public synchronized void addSession(String deliveryBucketId,
+                                        String routeKey,
+                                        String workerId,
+                                        Channel channel,
+                                        ChannelHandlerContext ctx) {
+        String normalizedDeliveryBucketId = requireText(deliveryBucketId, "deliveryBucketId");
         if (retiredChannels.contains(channel)) {
             logger.debug("Ignoring retired WebSocket channel for routeKey={} channelId={}",
                     routeKey, channel.id().asShortText());
@@ -71,6 +78,7 @@ public class ServerSessionManager
             logger.debug("Session for routeKey={} already exists and is active. Skipping add.", routeKey);
             return;
         }
+        deliveryBucketByChannel.put(channel, normalizedDeliveryBucketId);
         if (result.previousEntry() == null || result.previousEntry().handle() != channel) {
             activeConnectionCount.incrementAndGet();
         }
@@ -87,7 +95,13 @@ public class ServerSessionManager
                     reason,
                     channelId
             ));
-            routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, channelId, reason);
+            routeOwnerStore.claimRouteOwner(routeOwnerClaim(
+                    workerId,
+                    normalizedDeliveryBucketId,
+                    routeKey,
+                    channelId,
+                    reason
+            ));
         }
         if (previousForWorker != null) {
             logger.warn("Existing channel for routeKey={} workerId={} found. Replacing session.",
@@ -101,6 +115,7 @@ public class ServerSessionManager
         RouteEndpointIndex.RemoveResult<Channel, WebSocketRouteEndpoint> result = routeIndex.removeByHandle(channel);
         RouteEndpointIndex.Binding binding = result.binding();
         if (binding != null) {
+            String deliveryBucketId = deliveryBucketByChannel.remove(channel);
             if (result.removedCurrentRoute()) {
                 activeConnectionCount.updateAndGet(current -> Math.max(0, current - 1));
             }
@@ -119,11 +134,7 @@ public class ServerSessionManager
                         channelId
                 ));
                 routeOwnerStore.releaseRouteOwner(
-                        binding.workerId(),
-                        adapterId,
-                        binding.routeKey(),
-                        channelId,
-                        reason
+                        routeOwnerClaim(binding.workerId(), deliveryBucketId, binding.routeKey(), channelId, reason)
                 );
             }
             if (activeConnectionCount.get() == 0) {
@@ -210,6 +221,10 @@ public class ServerSessionManager
         return binding != null ? binding.routeKey() : null;
     }
 
+    public String getDeliveryBucketId(Channel channel) {
+        return deliveryBucketByChannel.get(channel);
+    }
+
     public Channel getChannel(String routeKey) {
         for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
             WebSocketRouteEndpoint endpoint = entry.endpoint();
@@ -247,11 +262,13 @@ public class ServerSessionManager
                         channelId
                 ));
                 routeOwnerStore.releaseRouteOwner(
-                        entry.workerId(),
-                        adapterId,
-                        entry.routeKey(),
-                        channelId,
-                        reason
+                        routeOwnerClaim(
+                                entry.workerId(),
+                                deliveryBucketByChannel.get(entry.handle()),
+                                entry.routeKey(),
+                                channelId,
+                                reason
+                        )
                 );
             }
             if (entry.endpoint().isActive()) {
@@ -259,6 +276,7 @@ public class ServerSessionManager
             }
         }
         routeIndex.clear();
+        deliveryBucketByChannel.clear();
         activeConnectionCount.set(0);
         routeOwnerRefreshExecutor.shutdownNow();
         logger.info("Session manager shutdown complete.");
@@ -372,11 +390,13 @@ public class ServerSessionManager
                         channelId
                 ));
                 routeOwnerStore.refreshHeartbeat(
-                        entry.workerId(),
-                        adapterId,
-                        entry.routeKey(),
-                        channelId,
-                        reason
+                        routeOwnerClaim(
+                                entry.workerId(),
+                                deliveryBucketByChannel.get(entry.handle()),
+                                entry.routeKey(),
+                                channelId,
+                                reason
+                        )
                 );
             }
         }
@@ -389,11 +409,13 @@ public class ServerSessionManager
                 continue;
             }
             routeOwnerStore.claimRouteOwner(
-                    entry.workerId(),
-                    adapterId,
-                    entry.routeKey(),
-                    entry.handle().id().asShortText(),
-                    reason
+                    routeOwnerClaim(
+                            entry.workerId(),
+                            deliveryBucketByChannel.get(entry.handle()),
+                            entry.routeKey(),
+                            entry.handle().id().asShortText(),
+                            reason
+                    )
             );
         }
     }
@@ -403,6 +425,7 @@ public class ServerSessionManager
             return;
         }
         routeIndex.removeByHandle(previous.handle());
+        String deliveryBucketId = deliveryBucketByChannel.remove(previous.handle());
         activeConnectionCount.updateAndGet(current -> Math.max(0, current - 1));
         retiredChannels.add(previous.handle());
         String channelId = previous.handle().id().asShortText();
@@ -416,11 +439,7 @@ public class ServerSessionManager
                 channelId
         ));
         routeOwnerStore.releaseRouteOwner(
-                previous.workerId(),
-                adapterId,
-                previous.routeKey(),
-                channelId,
-                reason
+                routeOwnerClaim(previous.workerId(), deliveryBucketId, previous.routeKey(), channelId, reason)
         );
         WebSocketRouteEndpoint endpoint = previous.endpoint();
         if (endpoint != null && endpoint.isActive()) {
@@ -430,6 +449,29 @@ public class ServerSessionManager
 
     private static String normalizeNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String requireText(String value, String fieldName) {
+        String normalized = normalizeNullable(value);
+        if (normalized == null) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return normalized;
+    }
+
+    private TransportRouteOwnerClaim routeOwnerClaim(String workerId,
+                                                    String deliveryBucketId,
+                                                    String routeKey,
+                                                    String channelId,
+                                                    String reason) {
+        return new TransportRouteOwnerClaim(
+                workerId,
+                requireText(deliveryBucketId, "deliveryBucketId"),
+                adapterId,
+                routeKey,
+                channelId,
+                reason
+        );
     }
 
     @Override

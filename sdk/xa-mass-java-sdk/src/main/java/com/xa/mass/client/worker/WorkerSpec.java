@@ -6,7 +6,6 @@ public record WorkerSpec(
         String workerId,
         String adapterNodeId,
         String workerGroupId,
-        String adapterId,
         String transportHint,
         Map<String, String> attributes
 ) {
@@ -22,7 +21,6 @@ public record WorkerSpec(
         private String workerId;
         private String adapterNodeId;
         private String workerGroupId;
-        private String adapterId;
         private String transportHint;
         private Map<String, String> attributes = WorkerRequestSupport.mutableMap();
 
@@ -41,11 +39,6 @@ public record WorkerSpec(
 
         public Builder workerGroupId(String workerGroupId) {
             this.workerGroupId = workerGroupId;
-            return this;
-        }
-
-        public Builder adapterId(String adapterId) {
-            this.adapterId = adapterId;
             return this;
         }
 
@@ -75,8 +68,7 @@ public record WorkerSpec(
         }
 
         public WorkerSpec build() {
-            return new WorkerSpec(workerId, adapterNodeId, workerGroupId, adapterId,
-                    transportHint, attributes);
+            return new WorkerSpec(workerId, adapterNodeId, workerGroupId, transportHint, attributes);
         }
     }
 }

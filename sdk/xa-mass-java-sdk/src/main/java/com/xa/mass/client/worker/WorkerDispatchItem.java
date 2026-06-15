@@ -10,7 +10,6 @@ public record WorkerDispatchItem(
         String project,
         String userId,
         int retryCount,
-        String routeKey,
         String workerId,
         String batchId,
         Map<String, Object> input,

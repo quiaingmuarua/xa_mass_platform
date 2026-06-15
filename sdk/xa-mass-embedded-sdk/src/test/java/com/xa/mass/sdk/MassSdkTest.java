@@ -402,7 +402,8 @@ class MassSdkTest {
                  BufferedReader ignoredReader = new BufferedReader(
                          new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
                 String routeKey = CanonicalWorkerGroupRouteKeyCodec.encode("sdk-socket-workers");
-                writer.write("{\"type\":\"hello\",\"workerId\":\"sdk-socket-worker\",\"routeKey\":\"" + routeKey + "\"}");
+                writer.write("{\"type\":\"hello\",\"workerId\":\"sdk-socket-worker\","
+                        + "\"deliveryBucketId\":\"sdk-socket-workers\",\"routeKey\":\"" + routeKey + "\"}");
                 writer.newLine();
                 writer.flush();
 
@@ -1136,7 +1137,7 @@ class MassSdkTest {
                 .get("available"));
         assertEquals(0, sessionStats.get("activeConnections"));
         assertEquals(0L, sessionStats.get("workerCount"));
-        assertEquals(Map.of(), sessionStats.get("activeConnectionsByAdapter"));
+        assertFalse(sessionStats.containsKey("activeConnectionsByAdapter"));
         assertEquals(true, enqueueResult.get("success"));
         verify(delegate).getTransportQueueDetail();
         verify(delegate, atLeastOnce()).getEndpointRegistry();
@@ -1185,7 +1186,7 @@ class MassSdkTest {
     }
 
     @Test
-    void sessionDiagnosticsExposeAdapterIdAndRouteKey() {
+    void sessionDiagnosticsHideTransportInternalIds() {
         MassApplication delegate = mock(MassApplication.class);
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class,
                 withSettings().extraInterfaces(com.xa.mass.transport.WorkerEndpointInspector.class));
@@ -1219,11 +1220,13 @@ class MassSdkTest {
         assertEquals(1, sessions.size());
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> connections = (List<Map<String, Object>>) sessions.get(0).get("connections");
-        assertEquals("route-public", connections.get(0).get("routeKey"));
-        assertEquals("ws-public", connections.get(0).get("adapterId"));
+        assertEquals(true, connections.get(0).get("active"));
+        assertEquals("endpoint-1", connections.get(0).get("endpointId"));
+        assertFalse(connections.get(0).containsKey("routeKey"));
+        assertFalse(connections.get(0).containsKey("adapterId"));
         assertEquals(2, sessionStats.get("activeConnections"));
         assertEquals(1L, sessionStats.get("workerCount"));
-        assertEquals(Map.of("ws-public", 1L, "ws-internal", 1L), sessionStats.get("activeConnectionsByAdapter"));
+        assertFalse(sessionStats.containsKey("activeConnectionsByAdapter"));
     }
 
     @Test
@@ -3644,7 +3647,7 @@ class MassSdkTest {
         public List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
                 List<com.xa.mass.transport.model.AdapterDispatchRequest> requests) {
             return requests == null ? List.of() : requests.stream()
-                    .map(request -> com.xa.mass.transport.model.DispatchOutcome.delivered(adapterId(), request))
+                    .map(com.xa.mass.transport.model.DispatchOutcome::delivered)
                     .toList();
         }
     }
@@ -3676,7 +3679,7 @@ class MassSdkTest {
         public List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
                 List<com.xa.mass.transport.model.AdapterDispatchRequest> requests) {
             return requests == null ? List.of() : requests.stream()
-                    .map(request -> com.xa.mass.transport.model.DispatchOutcome.delivered(adapterId(), request))
+                    .map(com.xa.mass.transport.model.DispatchOutcome::delivered)
                     .toList();
         }
 
@@ -3722,7 +3725,7 @@ class MassSdkTest {
                 return false;
             }
             return Boolean.TRUE.equals(connectionInfo.get("active"))
-                    && Objects.equals("socket", connectionInfo.get("adapterId"));
+                    && connectionInfo.get("endpointId") != null;
         });
     }
 
@@ -3783,8 +3786,6 @@ class MassSdkTest {
                 String deliveryQueueKey,
                 com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch item) {
             return com.xa.mass.transport.model.DispatchOutcome.queued(
-                    adapterId,
-                    deliveryQueueKey,
                     item != null ? item.deliveryId() : null,
                     item != null ? item.selectedWorkerId() : null,
                     item != null ? item.attemptId() : null,
@@ -3830,30 +3831,21 @@ class MassSdkTest {
         private final InMemoryTransportRouteOwnerStore delegate = new InMemoryTransportRouteOwnerStore();
 
         @Override
-        public com.xa.mass.transport.route.TransportRouteOwnerRecord claimRouteOwner(String workerId,
-                                                                        String adapterId,
-                                                                        String routeKey,
-                                                                        String connectionId,
-                                                                        String reason) {
-            return delegate.claimRouteOwner(workerId, adapterId, routeKey, connectionId, reason);
+        public com.xa.mass.transport.route.TransportRouteOwnerRecord claimRouteOwner(
+                com.xa.mass.transport.route.TransportRouteOwnerClaim claim) {
+            return delegate.claimRouteOwner(claim);
         }
 
         @Override
-        public com.xa.mass.transport.route.TransportRouteOwnerRecord refreshHeartbeat(String workerId,
-                                                                              String adapterId,
-                                                                              String routeKey,
-                                                                              String connectionId,
-                                                                              String reason) {
-            return delegate.refreshHeartbeat(workerId, adapterId, routeKey, connectionId, reason);
+        public com.xa.mass.transport.route.TransportRouteOwnerRecord refreshHeartbeat(
+                com.xa.mass.transport.route.TransportRouteOwnerClaim claim) {
+            return delegate.refreshHeartbeat(claim);
         }
 
         @Override
-        public com.xa.mass.transport.route.TransportRouteOwnerRecord releaseRouteOwner(String workerId,
-                                                                         String adapterId,
-                                                                         String routeKey,
-                                                                         String connectionId,
-                                                                         String reason) {
-            return delegate.releaseRouteOwner(workerId, adapterId, routeKey, connectionId, reason);
+        public com.xa.mass.transport.route.TransportRouteOwnerRecord releaseRouteOwner(
+                com.xa.mass.transport.route.TransportRouteOwnerClaim claim) {
+            return delegate.releaseRouteOwner(claim);
         }
 
         @Override
@@ -3867,10 +3859,17 @@ class MassSdkTest {
         }
 
         @Override
-        public java.util.Optional<com.xa.mass.transport.route.WorkerDispatchRouteOwner> activeOwnerForSelectedWorker(
-                String adapterId,
+        public java.util.Optional<com.xa.mass.transport.route.SelectedWorkerDeliveryTarget> targetForSelectedWorker(
+                String deliveryBucketId,
                 String selectedWorkerId) {
-            return delegate.activeOwnerForSelectedWorker(adapterId, selectedWorkerId);
+            return delegate.targetForSelectedWorker(deliveryBucketId, selectedWorkerId);
+        }
+
+        @Override
+        public java.util.Optional<com.xa.mass.transport.route.RouteConsumerEndpoint> endpointForSelectedWorker(
+                String deliveryBucketId,
+                String selectedWorkerId) {
+            return delegate.endpointForSelectedWorker(deliveryBucketId, selectedWorkerId);
         }
 
         @Override

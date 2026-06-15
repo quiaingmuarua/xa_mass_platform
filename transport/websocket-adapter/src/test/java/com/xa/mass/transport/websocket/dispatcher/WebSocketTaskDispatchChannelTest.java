@@ -22,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -75,8 +76,9 @@ class WebSocketTaskDispatchChannelTest {
         assertNotNull(input);
         assertNotNull(sharedConfig);
         assertEquals("target-1", input.get("target").getAsString());
-        assertEquals("demoApp", message.get(TransportPacket.PAYLOAD_PROJECT).getAsString());
-        assertEquals("agent-1", message.get(TransportPacket.PAYLOAD_USER_ID).getAsString());
+        assertFalse(message.has(TransportPacket.PAYLOAD_PROJECT));
+        assertFalse(message.has(TransportPacket.PAYLOAD_TASK_NAME));
+        assertFalse(message.has(TransportPacket.PAYLOAD_USER_ID));
         assertEquals("hello", sharedConfig.get("textContent").getAsString());
     }
 
@@ -172,7 +174,7 @@ class WebSocketTaskDispatchChannelTest {
                 "websocket",
                 binding.workerId(),
                 TaskDispatchContent.from(context, binding),
-                TaskDispatchExecutionContext.from(context, binding),
+                TaskDispatchExecutionContext.from(binding),
                 new AdapterEndpoint("group-route-1", "node-1", "conn-" + binding.workerId(), 10_000L),
                 1L
         );

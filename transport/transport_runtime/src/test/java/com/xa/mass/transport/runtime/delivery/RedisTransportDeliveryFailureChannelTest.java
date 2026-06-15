@@ -3,7 +3,6 @@ package com.xa.mass.transport.runtime.delivery;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.AdapterEndpoint;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import org.junit.jupiter.api.AfterEach;
@@ -16,7 +15,6 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RedisTransportDeliveryFailureChannelTest {
@@ -106,27 +104,15 @@ class RedisTransportDeliveryFailureChannelTest {
         assertNotNull(event);
         assertEquals(command.getCommandId(), event.outcome().getDeliveryId());
         assertEquals("worker-1", event.outcome().getSelectedWorkerId());
-        assertNull(event.outcome().getTransportNodeId());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, event.outcome().getStatus());
-        assertNull(event.outcome().getTransportNodeId());
     }
 
     private static TransportDeliveryFailureEvent failureEvent(DeliveryCommand command,
                                                               String targetTransportNodeId,
                                                               String routeKey,
                                                               String reason) {
-        AdapterEndpoint endpoint = targetTransportNodeId == null ? null : new AdapterEndpoint(
-                routeKey,
-                targetTransportNodeId,
-                "conn-" + command.getSelectedWorkerId(),
-                System.currentTimeMillis() + 30_000L
-        );
         DispatchOutcome outcome = DispatchOutcome.fromCommand(
-                "websocket",
-                "websocket",
-                targetTransportNodeId,
                 command,
-                endpoint,
                 DispatchOutcomeStatus.NO_ENDPOINT,
                 true,
                 reason

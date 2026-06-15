@@ -113,7 +113,6 @@ public final class PollingWorkerSession implements AutoCloseable {
                     .workerId(workerId)
                     .adapterNodeId(adapterNodeId)
                     .workerGroupId(workerGroupId)
-                    .adapterId(adapterType)
                     .polling()
                     .attributes(attributes)
                     .build());

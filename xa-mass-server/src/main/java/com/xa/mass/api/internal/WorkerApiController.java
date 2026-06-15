@@ -107,7 +107,6 @@ public class WorkerApiController {
                     item.put("maxConcurrentWork", worker.getMaxConcurrentWork());
                     item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(
                             worker.getEventBindings(), worker.getSupportedEventCodes(), catalog));
-                    item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
                     item.put("lastHeartbeat", formatDateTime(worker.getLastHeartbeat()));

@@ -8,7 +8,7 @@ residue scans on 2026-06-12. Current facts were moved into
 Related records:
 
 - `transport/TRANSPORT_BOUNDARY_BASELINE.md`
-- `roadmap/TRANSPORT_SELECTED_WORKER_DELIVERY_AND_REACHABILITY_BOUNDARY_ROADMAP.md`
+- `doc/archive/transport/2026-06-15_TRANSPORT_SELECTED_WORKER_DELIVERY_AND_REACHABILITY_BOUNDARY_ROADMAP.md`
 - `doc/PROOF_REGISTRY.md`
 
 ## Purpose

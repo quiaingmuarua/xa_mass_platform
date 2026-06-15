@@ -32,9 +32,9 @@ class TransportRedisKeyspaceGuardTest {
 
         for (String keyFamily : List.of(
                 "route:<encodedRouteKey>:consumers",
-                "adapter:<encodedAdapterId>:worker:<encodedWorkerId>:owner",
+                "bucket:<encodedDeliveryBucketId>:worker:<encodedWorkerId>:owner",
                 "q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>",
-                "lane:<encodedDeliveryQueueKey+targetTransportNodeId>:q",
+                "lane:<encodedDeliveryLaneKey+targetTransportNodeId>:q",
                 "node:<transportNodeId>:ready-lanes"
         )) {
             assertTrue(content.contains(keyFamily), () -> "missing transport Redis key family manifest entry: " + keyFamily);

@@ -8,7 +8,6 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchContent;
 import com.xa.mass.transport.model.TaskDispatchExecutionContext;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandGroup;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
@@ -16,9 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -44,40 +41,38 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
         if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
             return;
         }
-        Map<String, List<DeliveryCommand>> commandsByAdapter = new LinkedHashMap<>();
+        List<DeliveryCommand> commands = new ArrayList<>();
         List<TaskDispatchBinding> invalidBindings = new ArrayList<>();
         for (TaskDispatchBinding binding : dispatchBindings) {
             if (binding == null) {
                 continue;
             }
-            String adapterId = normalize(binding.adapterId());
+            String deliveryBucketId = normalize(binding.workerGroupId());
             String selectedWorkerId = normalize(binding.workerId());
-            if (adapterId == null || selectedWorkerId == null) {
+            if (deliveryBucketId == null || selectedWorkerId == null) {
                 invalidBindings.add(binding);
                 continue;
             }
-            commandsByAdapter.computeIfAbsent(adapterId, ignored -> new ArrayList<>())
-                    .add(toCommand(task, binding, selectedWorkerId));
+            commands.add(toCommand(task, binding, deliveryBucketId, selectedWorkerId));
         }
 
         compensateInvalidBindings(task, invalidBindings, "delivery command translation failed before transport handoff");
-        if (commandsByAdapter.isEmpty()) {
+        if (commands.isEmpty()) {
             return;
         }
-        List<DeliveryCommandGroup> groups = commandsByAdapter.entrySet().stream()
-                .map(entry -> new DeliveryCommandGroup(entry.getKey(), entry.getValue()))
-                .toList();
-        assignedDeliverySubmitter.submit(groups);
+        assignedDeliverySubmitter.submit(commands);
     }
 
     private DeliveryCommand toCommand(TaskDispatchContext task,
                                       TaskDispatchBinding binding,
+                                      String deliveryBucketId,
                                       String selectedWorkerId) {
         return new DeliveryCommand(
                 UUID.randomUUID().toString(),
+                deliveryBucketId,
                 selectedWorkerId,
                 TaskDispatchContent.from(task, binding),
-                TaskDispatchExecutionContext.from(task, binding),
+                TaskDispatchExecutionContext.from(binding),
                 0L,
                 System.currentTimeMillis()
         );
@@ -93,17 +88,13 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
             return;
         }
         for (TaskDispatchBinding binding : bindings) {
-            String adapterId = normalize(binding.adapterId());
             String selectedWorkerId = normalize(binding.workerId());
             String deliveryId = UUID.randomUUID().toString();
             TaskDispatchContent content = TaskDispatchContent.from(task, binding);
-            TaskDispatchExecutionContext executionContext = TaskDispatchExecutionContext.from(task, binding);
+            TaskDispatchExecutionContext executionContext = TaskDispatchExecutionContext.from(binding);
             DispatchOutcome outcome = new DispatchOutcome(
                     deliveryId,
-                    adapterId,
                     selectedWorkerId,
-                    adapterId,
-                    null,
                     executionContext.attemptId(),
                     content.taskId(),
                     content.messageId(),
@@ -111,8 +102,6 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
                     DispatchOutcomeStatus.UNAVAILABLE,
                     true,
                     detail,
-                    null,
-                    null,
                     System.currentTimeMillis()
             );
             boolean handled = failureHandler.handle(new TransportDeliveryFailureEvent(outcome, detail));

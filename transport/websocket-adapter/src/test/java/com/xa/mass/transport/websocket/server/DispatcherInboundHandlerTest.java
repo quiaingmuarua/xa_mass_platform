@@ -92,7 +92,7 @@ class DispatcherInboundHandlerTest {
     @Test
     void handshakeWithWorkerIdAndRouteKeyRegistersSessionBeforeTextFramesArrive() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
-                "/ws?workerId=worker-1&routeKey=ws-route-1",
+                "/ws?workerId=worker-1&workerGroupId=bucket-1&routeKey=ws-route-1",
                 new DefaultHttpHeaders(),
                 null
         ));
@@ -104,7 +104,7 @@ class DispatcherInboundHandlerTest {
     @Test
     void messageWithoutInlineWorkerIdUsesHandshakeRegisteredWorkerId() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
-                "/ws?workerId=worker-1&routeKey=ws-route-1",
+                "/ws?workerId=worker-1&workerGroupId=bucket-1&routeKey=ws-route-1",
                 new DefaultHttpHeaders(),
                 null
         ));
@@ -135,7 +135,7 @@ class DispatcherInboundHandlerTest {
     @Test
     void messageWithoutInlineRouteKeyUsesHandshakeRegisteredRouteKey() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
-                "/ws?workerId=worker-1&routeKey=ws-route-11",
+                "/ws?workerId=worker-1&workerGroupId=bucket-1&routeKey=ws-route-11",
                 new DefaultHttpHeaders(),
                 null
         ));
@@ -163,7 +163,7 @@ class DispatcherInboundHandlerTest {
     @Test
     void handshakeRouteKeyOverridesWorkerIdAsSessionAddress() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
-                "/ws?workerId=worker-1&routeKey=ws-route-9",
+                "/ws?workerId=worker-1&workerGroupId=bucket-1&routeKey=ws-route-9",
                 new DefaultHttpHeaders(),
                 null
         ));
@@ -178,7 +178,7 @@ class DispatcherInboundHandlerTest {
     @Test
     void eventFirstControlFrameWithoutMsgTypeStillEnqueuesRawJson() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
-                "/ws?workerId=worker-1&routeKey=ws-route-1",
+                "/ws?workerId=worker-1&workerGroupId=bucket-1&routeKey=ws-route-1",
                 new DefaultHttpHeaders(),
                 null
         ));
@@ -216,7 +216,7 @@ class DispatcherInboundHandlerTest {
     @Test
     void controlFrameWithoutMessageIdStillEnqueuesRawJson() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
-                "/ws?workerId=worker-1&routeKey=ws-route-1",
+                "/ws?workerId=worker-1&workerGroupId=bucket-1&routeKey=ws-route-1",
                 new DefaultHttpHeaders(),
                 null
         ));
@@ -284,7 +284,7 @@ class WebSocketServerImplDisconnectTest {
         when(ctx.fireChannelActive()).thenReturn(ctx);
         when(ctx.fireChannelInactive()).thenReturn(ctx);
 
-        sessionManager.addSession("worker-1", "worker-1", channel, ctx);
+        sessionManager.addSession("bucket-1", "worker-1", "worker-1", channel, ctx);
 
         ChannelInboundHandlerAdapter handler = newConnectionStatsHandler(server);
         handler.channelActive(ctx);

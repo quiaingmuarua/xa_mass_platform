@@ -1,6 +1,7 @@
 # Transport Dispatch Envelope / Endpoint / Outcome Convergence Roadmap
 
-Status: implemented mainline; keep active until archive/residue handoff
+Status: archived historical roadmap; implemented mainline was superseded by
+the bucket-worker assigned-delivery boundary and current transport baseline.
 Owner: transport runtime + transport adapters + SDK/starter assembly
 Created: 2026-06-12
 

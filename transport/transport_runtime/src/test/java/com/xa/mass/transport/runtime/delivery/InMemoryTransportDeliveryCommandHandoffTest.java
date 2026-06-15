@@ -31,7 +31,8 @@ class InMemoryTransportDeliveryCommandHandoffTest {
 
         DeliveryCommandBatch polled = handoff.poll(100L);
         assertNotNull(polled);
-        assertEquals("websocket", polled.deliveryQueueKey());
+        assertEquals("bucket-1", polled.deliveryBucketId());
+        assertEquals("bucket-1", polled.deliveryLaneKey());
         assertEquals("node-1", polled.targetTransportNodeId());
         assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(polled));
     }

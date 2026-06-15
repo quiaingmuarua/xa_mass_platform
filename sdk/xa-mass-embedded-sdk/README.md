@@ -124,7 +124,13 @@ removed from the SDK mainline. New SDK integration should start from
 `WorkerGroupDeclaration`, `WorkerRegistration`, transport identity, and
 external worker client flows.
 
-`transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. Realtime workers must always register with explicit `adapterId + transportHint`; only polling keeps the implicit family default to `polling`. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Adapter-id aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not accepted as runtime identities; use canonical adapter ids such as `websocket`, `polling`, or `socket`. `transportHint` aliases such as `websocket`, `ws`, `push`, `pull`, or `queue` are also not accepted; use canonical coarse families such as `realtime` or `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
+`transportHint` is required for worker registration. External worker/session
+callers declare `adapterNodeId + transportHint`; they do not pass concrete
+transport runtime ids such as `adapterId`, `routeKey`, `transportNodeId`, or
+`connectionId`. Transport assembly resolves adapter/runtime evidence from the
+registered adapter-node and runtime configuration. `transportHint` aliases
+such as `websocket`, `ws`, `push`, `pull`, or `queue` are not accepted; use
+canonical coarse families such as `realtime` or `polling`.
 
 When distributed final-hop delivery needs cross-instance connection evidence,
 configure shared transport route ownership through
@@ -132,15 +138,16 @@ configure shared transport route ownership through
 `routeOwnerStoreFactory(...)`. Adapters still own local
 session/connect/heartbeat ingress, but shared route-owner evidence belongs to
 transport runtime as delivery feasibility, not SDK worker inspection or worker
-lifecycle truth. `routeKey` locates the transport delivery universe, such as a
-worker-group lane or a future adapter/group lane minted outside transport.
-Delivery commands carry the engine-selected worker as `selectedWorkerId`;
-polling worker responses expose `PulledTaskDispatch` without worker or route
-metadata because worker identity comes from the session/path context.
-Transport-owned delivery submitters partition the already assigned item to that
-worker's current route consumer node. Worker runtime capacity, lifecycle, and
-multi-binding behavior remain owned by worker-runtime scheduling/admission, not
-by transport route ownership.
+lifecycle truth. `routeKey` remains opaque connection/domain metadata minted
+outside transport. Assigned delivery commands expose `deliveryBucketId +
+selectedWorkerId` to transport; the current SDK/starter default derives the
+bucket from worker-group context. Polling worker responses expose
+`PulledTaskDispatch` without worker or route metadata because worker identity
+comes from the session/path context. Transport-owned delivery submitters
+partition the already assigned item to that worker's current bucket-worker
+route consumer node. Worker runtime capacity, lifecycle, and multi-binding
+behavior remain owned by worker-runtime scheduling/admission, not by transport
+route ownership.
 
 Task result reads are exposed through `TaskResultQueryOperations`, separate
 from task aggregate query. `readTaskResults(...)` and archive streaming read
@@ -355,11 +362,12 @@ routing listener. SDK runtime assembly now translates assignment truth into
 `DeliveryCommand` and hands it to a transport-owned selected-worker delivery
 submitter; the bundled default is an in-memory bounded queue plus pump, while
 `redisDistributedChannels(...)` uses Redis delivery-command inboxes with
-node-local drain lanes. Starter assembly records `routeKey + adapterId` and
-carries the binding-level selected worker constraint; transport delivery
-resolves the current transport node for that selected worker before handoff.
-Transport consumers drain already resolved delivery targets and do not reselect
-workers.
+node-local drain lanes. Starter assembly records only `deliveryBucketId +
+selectedWorkerId` plus typed payload/context; adapter, route, connection, and
+endpoint facts remain transport-owned evidence. Transport delivery resolves the
+current transport node for that bucket-worker pair before handoff. Transport
+consumers drain already resolved delivery targets, re-resolve endpoint evidence
+locally, and do not reselect workers.
 The companion result and delivery-failure Redis inboxes are runtime channels
 back to the engine process; they are not server APIs and they do not move task
 lifecycle ownership into transport.
@@ -465,7 +473,12 @@ remain interrupt-aware and use bounded I/O.
 Runtime executor diagnostics for transport and optional event-handler execution
 are surfaced through the explicit operator/runtime `app.runtimeDiagnostics().getQueueDetail()`
 view and the Boot-shell `/api/v1/runtime/queues` response. That HTTP route is
-operator/console diagnostics, not an external public SDK contract. Delivery-store diagnostics also expose
+operator/console diagnostics, not an external public SDK contract. Default
+worker/session inspection and public worker APIs must not expose transport
+internal ids such as `adapterId`, `routeKey`, `transportNodeId`,
+`connectionId`, or `deliveryQueueKey` as delivery targets. If a future
+operator-only detail endpoint needs raw transport ids, it must be a bounded
+diagnostic surface and explicitly documented as non-contractual. Delivery-store diagnostics also expose
 `app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is a legacy
 queue-path breakdown name rather than queue ownership truth. RouteKey-owned stores may aggregate this
 diagnostic under a route-owner bucket instead of preserving adapter-specific queue identity.

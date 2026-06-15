@@ -147,6 +147,7 @@ public final class SocketTransportServer implements TransportServer {
     private void handleClient(Socket client) {
         String endpointId = UUID.randomUUID().toString();
         String boundWorkerId = null;
+        String boundWorkerGroupId = null;
         String boundRouteKey = null;
         try (Socket socket = client;
              BufferedReader reader = new BufferedReader(
@@ -161,12 +162,14 @@ public final class SocketTransportServer implements TransportServer {
                 }
                 if (frameCodec.isHelloFrame(frame)) {
                     boundWorkerId = frameCodec.extractWorkerId(frame);
+                    boundWorkerGroupId = frameCodec.extractWorkerGroupId(frame);
                     boundRouteKey = frameCodec.extractRouteKey(frame);
-                    if (boundWorkerId == null || boundRouteKey == null) {
-                        logger.warn("Ignoring socket hello without workerId/routeKey: endpointId={}", endpointId);
+                    if (boundWorkerId == null || boundWorkerGroupId == null || boundRouteKey == null) {
+                        logger.warn("Ignoring socket hello without workerId/workerGroupId/routeKey: endpointId={}",
+                                endpointId);
                         continue;
                     }
-                    sessionManager.addSession(boundRouteKey, boundWorkerId, endpointId, socket, writer);
+                    sessionManager.addSession(boundWorkerGroupId, boundRouteKey, boundWorkerId, endpointId, socket, writer);
                     continue;
                 }
                 if (boundWorkerId == null) {

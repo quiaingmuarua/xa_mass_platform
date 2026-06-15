@@ -256,7 +256,7 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.workerId").value("node-worker-1"))
                 .andExpect(jsonPath("$.data.adapterNodeId").value("node-a"))
                 .andExpect(jsonPath("$.data.workerGroupId").value("node-runtime"))
-                .andExpect(jsonPath("$.data.adapterId").value(WorkerTransportHints.POLLING))
+                .andExpect(jsonPath("$.data.adapterId").doesNotExist())
                 .andExpect(jsonPath("$.data.transportHint").value(WorkerTransportHints.POLLING))
                 .andExpect(jsonPath("$.data.eventBindings").doesNotExist());
 

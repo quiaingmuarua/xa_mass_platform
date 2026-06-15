@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 class TransportDeliveryFailureEventCodecTest {
 
@@ -15,11 +14,7 @@ class TransportDeliveryFailureEventCodecTest {
     void encodesFailureSnapshotWithoutFullCommandOrPacketPayload() {
         DeliveryCommand command = DeliveryCommandFixtures.command("msg-no-owner", "worker-1", null);
         DispatchOutcome outcome = DispatchOutcome.fromCommand(
-                "websocket",
-                "websocket",
-                null,
                 command,
-                null,
                 DispatchOutcomeStatus.NO_ENDPOINT,
                 true,
                 "transport endpoint is unavailable after assignment"
@@ -41,6 +36,10 @@ class TransportDeliveryFailureEventCodecTest {
         assertEquals("worker-1", decoded.outcome().getSelectedWorkerId());
         assertEquals("msg-no-owner", decoded.outcome().getMessageId());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, decoded.outcome().getStatus());
-        assertNull(decoded.outcome().getTransportNodeId());
+        assertFalse(json.contains("transportNodeId"), json);
+        assertFalse(json.contains("connectionId"), json);
+        assertFalse(json.contains("routeKey"), json);
+        assertFalse(json.contains("adapterId"), json);
+        assertFalse(json.contains("deliveryQueueKey"), json);
     }
 }

@@ -76,17 +76,17 @@ class PollingWorkerSessionTest {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
                 assertEquals("phone-worker-sg-001", request.get("workerId").asText());
                 assertEquals("phone-device-probe", request.get("workerGroupId").asText());
-                assertEquals("polling", request.get("adapterId").asText());
+                assertFalse(request.has("adapterId"));
                 assertEquals("polling", request.get("transportHint").asText());
                 assertEquals("fp-android-13-sg", request.get("attributes").get("fingerprint").asText());
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","adapterNodeId":"phone-node-sg-1","workerGroupId":"phone-device-probe","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","adapterNodeId":"phone-node-sg-1","workerGroupId":"phone-device-probe","transportHint":"polling"}}
                         """);
                 return;
             }
             if ("/worker-api/v1/workers/phone-worker-sg-001:online".equals(path)) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"online","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"online","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -109,7 +109,7 @@ class PollingWorkerSessionTest {
             if ("/worker-api/v1/workers/phone-worker-sg-001:heartbeat".equals(path)) {
                 heartbeatSeen.countDown();
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"heartbeat","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"heartbeat","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -139,7 +139,7 @@ class PollingWorkerSessionTest {
             if ("/worker-api/v1/workers/phone-worker-sg-001:offline".equals(path)) {
                 offlineSeen.countDown();
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"offline","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"offline","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -243,7 +243,7 @@ class PollingWorkerSessionTest {
             }
             if ("/worker-api/v1/workers".equals(path)) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","adapterNodeId":"node-1","workerGroupId":"group-1","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","adapterNodeId":"node-1","workerGroupId":"group-1","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -321,13 +321,13 @@ class PollingWorkerSessionTest {
             }
             if ("/worker-api/v1/workers".equals(path)) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","adapterNodeId":"node-1","workerGroupId":"group-1","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","adapterNodeId":"node-1","workerGroupId":"group-1","transportHint":"polling"}}
                         """);
                 return;
             }
             if (path.endsWith(":online") || path.endsWith(":heartbeat") || path.endsWith(":offline")) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","action":"accepted","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","action":"accepted","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -405,13 +405,13 @@ class PollingWorkerSessionTest {
             }
             if ("/worker-api/v1/workers".equals(path)) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","adapterNodeId":"node-1","workerGroupId":"group-1","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","adapterNodeId":"node-1","workerGroupId":"group-1","transportHint":"polling"}}
                         """);
                 return;
             }
             if (path.endsWith(":online")) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","action":"online","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","action":"online","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -429,7 +429,7 @@ class PollingWorkerSessionTest {
             }
             if (path.endsWith(":heartbeat")) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","action":"heartbeat","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","action":"heartbeat","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -458,7 +458,7 @@ class PollingWorkerSessionTest {
             }
             if (path.endsWith(":offline")) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","action":"offline","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","action":"offline","transportHint":"polling"}}
                         """);
                 return;
             }

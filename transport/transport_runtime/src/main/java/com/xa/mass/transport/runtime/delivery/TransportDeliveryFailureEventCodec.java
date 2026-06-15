@@ -45,10 +45,7 @@ final class TransportDeliveryFailureEventCodec {
     private static DispatchOutcomeRecord toRecord(DispatchOutcome outcome) {
         return new DispatchOutcomeRecord(
                 outcome.getDeliveryId(),
-                outcome.getAdapterId(),
                 outcome.getSelectedWorkerId(),
-                outcome.getDeliveryQueueKey(),
-                outcome.getRouteKey(),
                 outcome.getAttemptId(),
                 outcome.getTaskId(),
                 outcome.getMessageId(),
@@ -56,8 +53,6 @@ final class TransportDeliveryFailureEventCodec {
                 outcome.getStatus(),
                 outcome.isRetryable(),
                 outcome.getReason(),
-                outcome.getTransportNodeId(),
-                outcome.getConnectionId(),
                 outcome.getOccurredAtEpochMillis()
         );
     }
@@ -65,10 +60,7 @@ final class TransportDeliveryFailureEventCodec {
     private static DispatchOutcome fromRecord(DecodedDispatchOutcomeRecord record) {
         return new DispatchOutcome(
                 record.deliveryId,
-                record.adapterId,
                 record.selectedWorkerId,
-                record.deliveryQueueKey,
-                record.routeKey,
                 record.attemptId,
                 record.taskId,
                 record.messageId,
@@ -76,8 +68,6 @@ final class TransportDeliveryFailureEventCodec {
                 record.status,
                 record.retryable,
                 record.reason,
-                record.transportNodeId,
-                record.connectionId,
                 record.occurredAtEpochMillis
         );
     }
@@ -87,10 +77,7 @@ final class TransportDeliveryFailureEventCodec {
     }
 
     private record DispatchOutcomeRecord(String deliveryId,
-                                         String adapterId,
                                          String selectedWorkerId,
-                                         String deliveryQueueKey,
-                                         String routeKey,
                                          String attemptId,
                                          String taskId,
                                          String messageId,
@@ -98,8 +85,6 @@ final class TransportDeliveryFailureEventCodec {
                                          DispatchOutcomeStatus status,
                                          boolean retryable,
                                          String reason,
-                                         String transportNodeId,
-                                         String connectionId,
                                          long occurredAtEpochMillis) {
     }
 
@@ -110,10 +95,7 @@ final class TransportDeliveryFailureEventCodec {
 
     private static final class DecodedDispatchOutcomeRecord {
         private String deliveryId;
-        private String adapterId;
         private String selectedWorkerId;
-        private String deliveryQueueKey;
-        private String routeKey;
         private String attemptId;
         private String taskId;
         private String messageId;
@@ -121,8 +103,6 @@ final class TransportDeliveryFailureEventCodec {
         private DispatchOutcomeStatus status;
         private boolean retryable;
         private String reason;
-        private String transportNodeId;
-        private String connectionId;
         private long occurredAtEpochMillis;
     }
 }

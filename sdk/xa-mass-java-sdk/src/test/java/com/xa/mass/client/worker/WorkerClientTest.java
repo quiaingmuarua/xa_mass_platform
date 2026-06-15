@@ -77,7 +77,7 @@ class WorkerClientTest {
                 assertEquals("fp-android-13-sg", request.get("attributes").get("fingerprint").asText());
                 assertFalse(request.has("eventBindings"), "worker registration must stay group-first");
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","adapterNodeId":"phone-poll-node-sg-1","workerGroupId":"phone-device-probe","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","adapterNodeId":"phone-poll-node-sg-1","workerGroupId":"phone-device-probe","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -140,7 +140,7 @@ class WorkerClientTest {
                 assertEquals(sessionToken, request.get("sessionToken").asText());
                 assertEquals("startup", request.get("reason").asText());
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"online","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"online","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -149,7 +149,7 @@ class WorkerClientTest {
                 assertEquals(sessionToken, request.get("sessionToken").asText());
                 assertFalse(request.has("reason"));
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"heartbeat","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"heartbeat","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -192,7 +192,7 @@ class WorkerClientTest {
                 assertEquals(sessionToken, request.get("sessionToken").asText());
                 assertEquals("shutdown", request.get("reason").asText());
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"offline","adapterId":"polling","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","action":"offline","transportHint":"polling"}}
                         """);
                 return;
             }

@@ -105,7 +105,7 @@ public abstract class AbstractSampleWorkerClientStarter {
      * Discovers dev sample clients from SDK-registered worker resources.
      *
      * <p>Resource creation belongs to the SDK runtime. Concrete starters only
-     * open transport clients for workers whose concrete adapter identity matches
+     * open transport clients for workers whose declared transport hint matches
      * this starter.
      */
     protected List<WorkerSnapshot> loadWorkers() {
@@ -122,8 +122,8 @@ public abstract class AbstractSampleWorkerClientStarter {
         if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
             return false;
         }
-        String workerAdapterId = worker.getAdapterId();
-        return workerAdapterId != null && adapterId().equalsIgnoreCase(workerAdapterId.trim());
+        String adapterNodeId = worker.getAdapterNodeId();
+        return adapterNodeId != null && adapterId().equalsIgnoreCase(adapterNodeId.trim());
     }
 
     protected void establishConnections(List<WorkerSnapshot> workers, String baseUri) throws InterruptedException {

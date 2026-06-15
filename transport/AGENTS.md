@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-06-13
+Last updated: 2026-06-15
 
 Status: current transport owner handoff.
 
@@ -13,7 +13,13 @@ entry for `transport/`.
 - `transport_api` owns transport-neutral contracts.
 - `transport_runtime` owns shared runtime assembly and delivery semantics.
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
-- `adapterId` is concrete runtime truth. `transportHint` is only a coarse family.
+- `adapterId` is concrete transport runtime truth, not an external worker API,
+  SDK worker-session, or engine/starter delivery contract. `transportHint` is
+  only a coarse family.
+- `deliveryBucketId` is the engine/starter to transport assigned-delivery
+  bucket. At the current boundary it is derived from worker-group context, but
+  transport treats it as an opaque delivery-domain id, not as worker scheduling,
+  capability, lifecycle, or adapter identity.
 - `routeKey` is opaque connection/domain metadata. Transport runtime and
   adapters must not know whether it was minted from worker group, adapter lane,
   or another owner-level rule, and must not depend on routeKey cardinality for
@@ -24,6 +30,10 @@ entry for `transport/`.
   mutate lifecycle, or mint route keys.
 - `deliveryQueueKey` is only a queue/storage/batching partition. It may be
   shared by many workers; it must not express worker selection.
+- external worker/session APIs must not expose route-owner internals such as
+  `routeKey`, `connectionId`, `transportNodeId`, `deliveryQueueKey`, or
+  adapter runtime ids. Managed workers declare `adapterNodeId` plus
+  `transportHint`; transport resolves internal adapter/runtime evidence.
 - Polling task delivery is selected-worker delivery: the poll request carries
   the registered worker id as `selectedWorkerId`, while the runtime resolves a
   shared `deliveryQueueKey` such as adapter id internally. Two polling workers
@@ -35,9 +45,9 @@ entry for `transport/`.
   importing or resolving that rule.
 - route-only endpoint helpers may exist inside one concrete adapter for
   raw/manual side channels. Task dispatch must use selected-worker addressing:
-  producer feasibility lookup goes through `adapterId + selectedWorkerId`, and
-  push adapters dispatch through `sendToSelectedWorker(...)` rather than a
-  route-only fallback.
+  producer feasibility lookup goes through `deliveryBucketId +
+  selectedWorkerId`, and push adapters dispatch through
+  `sendToSelectedWorker(...)` rather than a route-only fallback.
 - `WorkerEndpointRegistry` is selected-worker only. Raw/manual route delivery
   uses `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`, not the
   assigned-task endpoint interface.
@@ -48,22 +58,24 @@ entry for `transport/`.
   route-owner plane. Adapters write `TransportRouteOwnerStore`; engine consumes
   `WorkerDispatchRouteOwnerView` and must not re-own transport route evidence
   through worker heartbeat folding. Route-owner writes are connection-aware:
-  reconnect may replace the current owner, heartbeat only extends the matching
-  owner lease, and release only removes the owner when the caller still holds
-  the stored `connectionId` / public `sessionToken`.
+  each claim carries an explicit `deliveryBucketId`, a new claim replaces the
+  current consumer for `(deliveryBucketId, selectedWorkerId)`, heartbeat only
+  extends the matching owner lease, and release only removes the owner when the
+  caller still holds the stored `connectionId` / public `sessionToken`.
 - `WorkerPresenceIngress` is current session-presence ingress only. Adapters may
   publish connect/heartbeat/disconnect observations, while worker-runtime owns
   derived reachability and registry slot heartbeat freshness. Route-owner leases
   remain delivery feasibility evidence and must not become worker lifecycle
   truth, worker state-report truth, slot heartbeat truth, or capability truth.
 - `DeliveryCommand` is the assigned-item delivery intent. It carries only
-  `selectedWorkerId`, minimal task dispatch content, typed execution context,
-  and item timing/id facts. Adapter, queue, node, route-owner, connection, and
-  session facts are not command fields.
-- `DeliveryCommandGroup` owns producer-side `adapterId`. `DeliveryCommandBatch`
-  owns the process-boundary lane: `adapterId`, `deliveryQueueKey`,
-  `targetTransportNodeId`, and command items only. It carries a node hint, not
-  routeKey, connectionId, or endpoint leases.
+  `deliveryBucketId`, `selectedWorkerId`, minimal task dispatch content, typed
+  attempt context, and item timing/id facts. Task shell metadata such as
+  `taskName`, `project`, and `userId`, plus adapter, queue, node, route-owner,
+  connection, and session facts are not command fields.
+- `DeliveryCommandBatch` owns the process-boundary lane:
+  `deliveryBucketId`, `deliveryLaneKey`, `targetTransportNodeId`, and command
+  items only. It carries a node hint, not adapterId, routeKey, connectionId, or
+  endpoint leases.
 - `TransportDeliveryCommandListener` re-resolves endpoint evidence on the
   target transport node before calling an adapter. `AdapterDispatchRequest` is
   the final-hop adapter request.
@@ -79,6 +91,9 @@ entry for `transport/`.
   `QueuedPulledDispatch`, `TransportDeliveryStore`, and `DispatchOutcome`.
   `DispatchOutcome` is the single delivery-failure fact owner; failure inbox
   events wrap the outcome instead of maintaining group/item snapshot copies.
+  `DispatchOutcome` reports only stable delivery identity, selected worker,
+  attempt/task/message identity, status, retryability, reason, and time; it
+  must not expose adapter, lane, route, node, connection, or endpoint evidence.
 - Embedded runtime composition currently defaults to the in-memory delivery
   store, but SDK/starter wiring may swap in a Redis-backed
   `TransportDeliveryStore` without changing transport-facing contracts.
@@ -153,7 +168,7 @@ Prefer these after transport changes:
 
 Acceptance focus:
 
-- dispatch hits the correct adapter by `adapterId`
+- dispatch hits the correct internal adapter after transport resolution
 - task dispatch preserves the engine-selected worker through
   `selectedWorkerId` and cannot fallback to route-only delivery
 - polling `poll` and result submission work

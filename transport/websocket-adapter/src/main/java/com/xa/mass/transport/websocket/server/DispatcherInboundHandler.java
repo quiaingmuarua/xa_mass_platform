@@ -46,9 +46,14 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             }
 
             String workerId = resolveWorkerId(frame, ctx);
-            String routeKey = resolveRouteKey(frame, workerId, ctx);
-            if (workerId == null || routeKey == null) {
-                sendError(ctx, "MISSING_FIELDS", "workerId/routeKey are required");
+            String workerGroupId = resolveWorkerGroupId(frame, ctx);
+            String routeKey = resolveRouteKey(frame, workerGroupId, ctx);
+            if (workerId == null) {
+                sendError(ctx, "MISSING_FIELDS", "workerId is required");
+                return;
+            }
+            if (workerGroupId == null) {
+                sendError(ctx, "MISSING_FIELDS", "workerGroupId is required");
                 return;
             }
             org.slf4j.MDC.put("event", "channelRead0");
@@ -73,7 +78,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             } finally {
                 org.slf4j.MDC.clear();
             }
-            registerSessionIfNeeded(routeKey, workerId, ctx);
+            registerSessionIfNeeded(workerGroupId, routeKey, workerId, ctx);
             inboundMessageSink.accept(WebSocketInboundMessage.of(
                     raw,
                     workerId,
@@ -91,11 +96,17 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
         if (evt instanceof WebSocketServerProtocolHandler.HandshakeComplete handshakeComplete) {
             String workerId = extractWorkerIdFromRequestUri(handshakeComplete.requestUri());
+            String workerGroupId = extractWorkerGroupIdFromRequestUri(handshakeComplete.requestUri());
             String routeKey = extractRouteKeyFromRequestUri(handshakeComplete.requestUri());
-            if (workerId == null || routeKey == null) {
-                logger.warn("WebSocket handshake completed without workerId/routeKey query parameter");
+            if (workerId == null || workerGroupId == null) {
+                logger.warn("WebSocket handshake completed without workerId/workerGroupId query parameter");
             } else {
-                registerSessionIfNeeded(routeKey, workerId, ctx);
+                registerSessionIfNeeded(
+                        workerGroupId,
+                        WebSocketStringValues.firstNonBlank(routeKey, routeKeyForWorkerGroup(workerGroupId)),
+                        workerId,
+                        ctx
+                );
             }
         }
         super.userEventTriggered(ctx, evt);
@@ -117,18 +128,25 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         }
     }
 
-    private void registerSessionIfNeeded(String routeKey, String workerId, ChannelHandlerContext ctx) {
-        if (routeKey == null || routeKey.isBlank() || workerId == null || workerId.isBlank()) {
+    private void registerSessionIfNeeded(String workerGroupId,
+                                         String routeKey,
+                                         String workerId,
+                                         ChannelHandlerContext ctx) {
+        if (workerGroupId == null || workerGroupId.isBlank()
+                || routeKey == null || routeKey.isBlank()
+                || workerId == null || workerId.isBlank()) {
             return;
         }
+        String existingWorkerGroupId = sessionManager.getDeliveryBucketId(ctx.channel());
         String existingWorkerId = sessionManager.getWorkerId(ctx.channel());
         String existingRouteKey = sessionManager.getRouteKey(ctx.channel());
-        if (workerId.equals(existingWorkerId)
+        if (workerGroupId.equals(existingWorkerGroupId)
+                && workerId.equals(existingWorkerId)
                 && routeKey.equals(existingRouteKey)
                 && sessionManager.getChannelContext(routeKey) != null) {
             return;
         }
-        sessionManager.addSession(routeKey, workerId, ctx.channel(), ctx);
+        sessionManager.addSession(workerGroupId, routeKey, workerId, ctx.channel(), ctx);
     }
 
     private String extractWorkerIdFromRequestUri(String requestUri) {
@@ -147,6 +165,14 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         return firstQueryValue(decoder, "routeKey");
     }
 
+    private String extractWorkerGroupIdFromRequestUri(String requestUri) {
+        if (requestUri == null || requestUri.isBlank()) {
+            return null;
+        }
+        QueryStringDecoder decoder = new QueryStringDecoder(requestUri);
+        return firstQueryValue(decoder, "workerGroupId");
+    }
+
     private String resolveWorkerId(JsonObject frame, ChannelHandlerContext ctx) {
         return WebSocketStringValues.firstNonBlank(
                 frameCodec.extractWorkerId(frame),
@@ -154,11 +180,24 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         );
     }
 
-    private String resolveRouteKey(JsonObject frame, String workerId, ChannelHandlerContext ctx) {
+    private String resolveRouteKey(JsonObject frame, String workerGroupId, ChannelHandlerContext ctx) {
         return WebSocketStringValues.firstNonBlank(
                 frameCodec.extractRouteKey(frame),
-                sessionManager.getRouteKey(ctx.channel())
+                sessionManager.getRouteKey(ctx.channel()),
+                routeKeyForWorkerGroup(workerGroupId)
         );
+    }
+
+    private String resolveWorkerGroupId(JsonObject frame, ChannelHandlerContext ctx) {
+        return WebSocketStringValues.firstNonBlank(
+                frameCodec.extractWorkerGroupId(frame),
+                sessionManager.getDeliveryBucketId(ctx.channel())
+        );
+    }
+
+    private String routeKeyForWorkerGroup(String workerGroupId) {
+        String normalizedWorkerGroupId = WebSocketStringValues.firstNonBlank(workerGroupId);
+        return normalizedWorkerGroupId == null ? null : "bucket:" + normalizedWorkerGroupId;
     }
 
     private String firstQueryValue(QueryStringDecoder decoder, String key) {

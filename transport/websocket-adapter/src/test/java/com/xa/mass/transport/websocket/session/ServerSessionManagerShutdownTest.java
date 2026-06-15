@@ -2,6 +2,7 @@ package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
+import com.xa.mass.transport.route.RouteConsumerEndpoint;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import io.netty.channel.Channel;
@@ -24,6 +25,8 @@ import static org.mockito.Mockito.*;
 
 class ServerSessionManagerShutdownTest {
 
+    private static final String DELIVERY_BUCKET_ID = "bucket-1";
+
     private ServerSessionManager manager;
 
     @BeforeEach
@@ -38,8 +41,8 @@ class ServerSessionManagerShutdownTest {
         ChannelHandlerContext ctx1 = mock(ChannelHandlerContext.class);
         ChannelHandlerContext ctx2 = mock(ChannelHandlerContext.class);
 
-        manager.addSession("worker-1", "worker-1", ch1, ctx1);
-        manager.addSession("worker-2", "worker-2", ch2, ctx2);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "worker-1", ch1, ctx1);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-2", "worker-2", ch2, ctx2);
 
         assertEquals(2, manager.getWorkerConnectionCount());
 
@@ -63,7 +66,7 @@ class ServerSessionManagerShutdownTest {
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("route-1", "worker-1", channel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
 
         assertTrue(manager.isAdapterRouteOnline("ws-public", "route-1"));
         assertFalse(manager.isAdapterRouteOnline("websocket", "route-1"));
@@ -80,24 +83,18 @@ class ServerSessionManagerShutdownTest {
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("route-1", "worker-1", channel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
-        assertEquals("route-1", routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                .orElseThrow()
-                .routeKey());
-        assertEquals("ws-node-1", routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                .orElseThrow()
-                .transportNodeId());
+        assertTrue(endpoint(routeOwnerStore, "worker-1").isActive(System.currentTimeMillis()));
+        assertEquals("route-1", endpoint(routeOwnerStore, "worker-1").routeKey());
+        assertEquals("ws-node-1", endpoint(routeOwnerStore, "worker-1").transportNodeId());
         assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
         assertEquals(List.of("connected:worker-1:websocket:route-1:worker-1:websocket connected:worker-1"),
                 presenceIngress.events);
 
         manager.removeSession(channel);
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1").isEmpty());
+        assertFalse(hasEndpoint(routeOwnerStore, "worker-1"));
         assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
         assertEquals(List.of(
                 "connected:worker-1:websocket:route-1:worker-1:websocket connected:worker-1",
@@ -113,17 +110,15 @@ class ServerSessionManagerShutdownTest {
         Channel secondChannel = mockActiveChannel("worker-2");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("group-route", "worker-1", firstChannel, ctx);
-        manager.addSession("group-route", "worker-2", secondChannel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-1", firstChannel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-2", secondChannel, ctx);
 
         assertEquals(2, routeOwnerStore.currentOwners("group-route").size());
 
         manager.removeSession(firstChannel);
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1").isEmpty());
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-2")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
+        assertFalse(hasEndpoint(routeOwnerStore, "worker-1"));
+        assertTrue(endpoint(routeOwnerStore, "worker-2").isActive(System.currentTimeMillis()));
         assertEquals(1, routeOwnerStore.currentOwners("group-route").size());
         assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "group-route"));
     }
@@ -134,8 +129,8 @@ class ServerSessionManagerShutdownTest {
         Channel secondChannel = mockActiveChannel("worker-2-channel");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("group-route", "worker-1", firstChannel, ctx);
-        manager.addSession("group-route", "worker-2", secondChannel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-1", firstChannel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-2", secondChannel, ctx);
 
         assertTrue(manager.sendToSelectedWorker(manager.getAdapterId(), "worker-2", "{\"messageId\":\"msg-2\"}"));
 
@@ -152,10 +147,10 @@ class ServerSessionManagerShutdownTest {
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
         ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("worker-1", "worker-1", firstChannel, firstCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "worker-1", firstChannel, firstCtx);
         assertEquals(1, manager.getWorkerConnectionCount());
 
-        manager.addSession("worker-1", "worker-1", secondChannel, secondCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "worker-1", secondChannel, secondCtx);
 
         assertEquals(1, manager.getWorkerConnectionCount());
         assertEquals(secondChannel, manager.getChannel("worker-1"));
@@ -193,17 +188,15 @@ class ServerSessionManagerShutdownTest {
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
         ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("route-old", "worker-1", firstChannel, firstCtx);
-        manager.addSession("route-new", "worker-1", secondChannel, secondCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-old", "worker-1", firstChannel, firstCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-new", "worker-1", secondChannel, secondCtx);
 
         assertEquals(1, manager.getWorkerConnectionCount());
         assertNull(manager.getChannel("route-old"));
         assertEquals(secondChannel, manager.getChannel("route-new"));
         assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-old"));
         assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-new"));
-        assertEquals("route-new", routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                .orElseThrow()
-                .routeKey());
+        assertEquals("route-new", endpoint(routeOwnerStore, "worker-1").routeKey());
         verify(firstChannel).close();
 
         assertTrue(manager.sendToSelectedWorker(manager.getAdapterId(), "worker-1", "{\"messageId\":\"msg-new\"}"));
@@ -220,15 +213,13 @@ class ServerSessionManagerShutdownTest {
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
         ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("route-1", "worker-1", firstChannel, firstCtx);
-        manager.addSession("route-1", "worker-1", secondChannel, secondCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", firstChannel, firstCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", secondChannel, secondCtx);
 
-        manager.addSession("route-1", "worker-1", firstChannel, firstCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", firstChannel, firstCtx);
 
         assertEquals(secondChannel, manager.getChannel("route-1"));
-        assertEquals("worker-1-new", routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                .orElseThrow()
-                .connectionId());
+        assertEquals("worker-1-new", endpoint(routeOwnerStore, "worker-1").connectionId());
         verify(firstChannel).close();
     }
 
@@ -241,22 +232,18 @@ class ServerSessionManagerShutdownTest {
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
         ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("route-1", "worker-1", firstChannel, firstCtx);
-        manager.addSession("route-1", "worker-1", secondChannel, secondCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", firstChannel, firstCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", secondChannel, secondCtx);
 
         manager.removeSession(firstChannel);
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
-        assertEquals("worker-1-new", routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                .orElseThrow()
-                .connectionId());
+        assertTrue(endpoint(routeOwnerStore, "worker-1").isActive(System.currentTimeMillis()));
+        assertEquals("worker-1-new", endpoint(routeOwnerStore, "worker-1").connectionId());
         assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
 
         manager.removeSession(secondChannel);
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1").isEmpty());
+        assertFalse(hasEndpoint(routeOwnerStore, "worker-1"));
         assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
@@ -270,8 +257,8 @@ class ServerSessionManagerShutdownTest {
         when(inactiveId.asShortText()).thenReturn("inactive");
 
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
-        manager.addSession("worker-a", "worker-a", active, ctx);
-        manager.addSession("worker-b", "worker-b", inactive, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-a", "worker-a", active, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-b", "worker-b", inactive, ctx);
 
         manager.shutdown();
 
@@ -286,11 +273,11 @@ class ServerSessionManagerShutdownTest {
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("route-1", "worker-1", channel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
 
         manager.shutdown();
 
-        assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1").isEmpty());
+        assertFalse(hasEndpoint(routeOwnerStore, "worker-1"));
         assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
     }
 
@@ -301,13 +288,11 @@ class ServerSessionManagerShutdownTest {
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("route-1", "worker-1", channel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
 
         assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
             Thread.sleep(2_200L);
-            assertTrue(routeOwnerStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                    .orElseThrow()
-                    .isActive(System.currentTimeMillis()));
+            assertTrue(endpoint(routeOwnerStore, "worker-1").isActive(System.currentTimeMillis()));
         });
     }
 
@@ -319,22 +304,22 @@ class ServerSessionManagerShutdownTest {
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("route-1", "worker-1", channel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
         manager.setRouteOwnerStore(secondStore);
 
-        assertTrue(secondStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
-        assertEquals("route-1", secondStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                .orElseThrow()
-                .routeKey());
-        assertEquals("worker-1", secondStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                .orElseThrow()
-                .connectionId());
-        assertEquals("ws-node-2", secondStore.activeOwnerForSelectedWorker(manager.getAdapterId(), "worker-1")
-                .orElseThrow()
-                .transportNodeId());
+        assertTrue(endpoint(secondStore, "worker-1").isActive(System.currentTimeMillis()));
+        assertEquals("route-1", endpoint(secondStore, "worker-1").routeKey());
+        assertEquals("worker-1", endpoint(secondStore, "worker-1").connectionId());
+        assertEquals("ws-node-2", endpoint(secondStore, "worker-1").transportNodeId());
         assertTrue(secondStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+    }
+
+    private static RouteConsumerEndpoint endpoint(InMemoryTransportRouteOwnerStore store, String workerId) {
+        return store.endpointForSelectedWorker(DELIVERY_BUCKET_ID, workerId).orElseThrow();
+    }
+
+    private static boolean hasEndpoint(InMemoryTransportRouteOwnerStore store, String workerId) {
+        return store.endpointForSelectedWorker(DELIVERY_BUCKET_ID, workerId).isPresent();
     }
 
     private Channel mockActiveChannel(String idText) {

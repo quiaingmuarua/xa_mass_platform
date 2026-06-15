@@ -16,7 +16,6 @@ import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
 import com.xa.mass.client.worker.handler.WorkerEventHandlers;
 import com.xa.mass.client.worker.handler.WorkerEventInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
-import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -58,7 +57,6 @@ public final class WebSocketWorkerSession implements AutoCloseable {
     private final String deploymentVersion;
     private final Map<String, String> attributes;
     private final URI endpoint;
-    private final String routeKey;
     private final Duration connectTimeout;
     private final Duration reconnectBackoff;
     private final Duration maxReconnectBackoff;
@@ -91,7 +89,6 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         this.deploymentVersion = builder.deploymentVersion;
         this.attributes = Map.copyOf(builder.attributes);
         this.endpoint = Objects.requireNonNull(builder.endpoint, "endpoint is required");
-        this.routeKey = CanonicalWorkerGroupRouteKeyCodec.encode(workerGroupId);
         this.connectTimeout = builder.connectTimeout;
         this.reconnectBackoff = builder.reconnectBackoff;
         this.maxReconnectBackoff = builder.maxReconnectBackoff;
@@ -139,7 +136,6 @@ public final class WebSocketWorkerSession implements AutoCloseable {
                     .workerId(workerId)
                     .adapterNodeId(adapterNodeId)
                     .workerGroupId(workerGroupId)
-                    .adapterId(adapterType)
                     .realtime()
                     .attributes(attributes)
                     .build());
@@ -368,7 +364,6 @@ public final class WebSocketWorkerSession implements AutoCloseable {
                 text(root, "project"),
                 text(root, "userId"),
                 root.path("retryCount").asInt(0),
-                text(root, "routeKey"),
                 firstNonBlank(text(root, "workerId"), workerId),
                 text(root, "batchId"),
                 objectMap(root.get("input")),
@@ -380,7 +375,6 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         Map<String, Object> frame = new LinkedHashMap<>();
         frame.put("messageId", dispatch.messageId());
         frame.put("taskId", dispatch.taskId());
-        frame.put("routeKey", firstNonBlank(dispatch.rawItem().routeKey(), routeKey));
         frame.put("success", result.success());
         frame.put("detail", result.detail());
         frame.put("errorCode", result.errorCode());
@@ -391,8 +385,10 @@ public final class WebSocketWorkerSession implements AutoCloseable {
     private URI connectUri() {
         String raw = endpoint.toString();
         String separator = endpoint.getRawQuery() == null ? "?" : "&";
-        return URI.create(raw + separator + "workerId=" + encodeQuery(workerId)
-                + "&routeKey=" + encodeQuery(routeKey));
+        return URI.create(raw
+                + separator
+                + "workerId=" + encodeQuery(workerId)
+                + "&workerGroupId=" + encodeQuery(workerGroupId));
     }
 
     Duration connectionBackoff(int consecutiveFailures) {

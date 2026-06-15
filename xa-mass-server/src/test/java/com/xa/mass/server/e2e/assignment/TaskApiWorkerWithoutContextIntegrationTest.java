@@ -50,7 +50,7 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractSampleE2eTest {
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ManualAckWebSocketClient client =
-                new ManualAckWebSocketClient(uri, "stateless-worker", canonicalWorkerRouteKey("us", "stateless-worker"));
+                new ManualAckWebSocketClient(uri, "us", "stateless-worker", canonicalWorkerRouteKey("us", "stateless-worker"));
         try {
             assertClientConnects(client, "stateless worker client failed to connect");
 
@@ -86,8 +86,10 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractSampleE2eTest {
     private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
-        private ManualAckWebSocketClient(URI serverUri, String workerId, String routeKey) {
-            super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(serverUri, routeKey), workerId);
+        private ManualAckWebSocketClient(URI serverUri, String workerGroupId, String workerId, String routeKey) {
+            super(com.xa.mass.server.e2e.support.AbstractSampleE2eTest.withWorkerRouteKey(serverUri, routeKey),
+                    workerId,
+                    workerGroupId);
         }
 
         @Override

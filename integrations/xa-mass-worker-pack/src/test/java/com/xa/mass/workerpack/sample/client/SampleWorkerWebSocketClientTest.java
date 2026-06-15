@@ -67,7 +67,7 @@ class SampleWorkerWebSocketClientTest {
         assertTrue(payload.has("execution"));
         assertTrue(payload.has("workerProfile"));
         JsonObject execution = payload.getAsJsonObject("execution");
-        assertEquals("websocket", execution.get("adapterId").getAsString());
+        assertFalse(execution.has("adapterId"));
         assertEquals("realtime", execution.get("transportHint").getAsString());
         assertEquals("task-1", execution.get("taskId").getAsString());
         assertEquals("msg-1", execution.get("messageId").getAsString());
@@ -86,7 +86,8 @@ class SampleWorkerWebSocketClientTest {
     void defaultConstructorUsesDefaultWebSocketPort() {
         SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient("worker-test");
 
-        assertEquals("ws://localhost:18088/ws?workerId=worker-test", client.getURI().toString());
+        assertEquals("ws://localhost:18088/ws?workerId=worker-test&workerGroupId=sample-websocket-workers",
+                client.getURI().toString());
     }
 
     @Test
@@ -602,7 +603,10 @@ class SampleWorkerWebSocketClientTest {
         }
 
         private CapturingSampleWorkerClient(String workerId, String taskResultStatus) {
-            super(URI.create("ws://127.0.0.1:65535/ws"), workerId, taskResultStatus);
+            super(URI.create("ws://127.0.0.1:65535/ws"),
+                    workerId,
+                    "sample-websocket-workers",
+                    taskResultStatus);
         }
 
         @Override

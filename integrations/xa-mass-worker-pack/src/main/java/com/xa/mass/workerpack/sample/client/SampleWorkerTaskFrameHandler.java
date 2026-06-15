@@ -371,7 +371,6 @@ final class SampleWorkerTaskFrameHandler {
                                                        long finishedAtEpochMillis,
                                                        String taskStatus) {
         Map<String, Object> execution = new LinkedHashMap<>();
-        execution.put("adapterId", adapterId);
         execution.put("transportHint", transportHint);
         execution.put("startedAtEpochMs", startedAtEpochMillis);
         execution.put("finishedAtEpochMs", finishedAtEpochMillis);

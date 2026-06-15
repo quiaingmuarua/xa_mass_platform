@@ -3,7 +3,7 @@ package com.xa.mass.transport.runtime.delivery;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
+import com.xa.mass.transport.route.SelectedWorkerDeliveryTarget;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import org.slf4j.Logger;
@@ -42,42 +42,24 @@ public final class TransportAssignedDeliverySubmitter {
         this.failureHandler = failureHandler;
     }
 
-    public List<DispatchOutcome> submit(DeliveryCommandGroup group) {
-        if (group == null) {
-            return List.of();
-        }
-        return submit(List.of(group));
-    }
-
-    public List<DispatchOutcome> submit(List<DeliveryCommandGroup> commandGroups) {
-        if (commandGroups == null || commandGroups.isEmpty()) {
+    public List<DispatchOutcome> submit(List<DeliveryCommand> commands) {
+        Objects.requireNonNull(commands, "commands");
+        if (commands.isEmpty()) {
             return List.of();
         }
         List<DispatchOutcome> outcomes = new ArrayList<>();
-        for (DeliveryCommandGroup commandGroup : commandGroups) {
-            if (commandGroup != null) {
-                outcomes.addAll(submitGroup(commandGroup));
-            }
-        }
-        return Collections.unmodifiableList(outcomes);
-    }
+        Map<String, DeliveryBatchBuilder> batches = new LinkedHashMap<>();
 
-    private List<DispatchOutcome> submitGroup(DeliveryCommandGroup commandGroup) {
-        String adapterId = commandGroup.adapterId();
-        String deliveryQueueKey = deliveryQueueKey(adapterId);
-        Map<String, CommandGroup> groups = new LinkedHashMap<>();
-        List<DispatchOutcome> outcomes = new ArrayList<>();
-
-        for (DeliveryCommand command : commandGroup.commands()) {
-            Optional<WorkerDispatchRouteOwner> selectedOwner =
-                    routeOwnerView.activeOwnerForSelectedWorker(adapterId, command.getSelectedWorkerId());
-            if (selectedOwner.isEmpty()) {
+        for (DeliveryCommand command : commands) {
+            DeliveryCommand normalizedCommand = Objects.requireNonNull(command, "command");
+            Optional<SelectedWorkerDeliveryTarget> selectedTarget =
+                    routeOwnerView.targetForSelectedWorker(
+                            normalizedCommand.getDeliveryBucketId(),
+                            normalizedCommand.getSelectedWorkerId()
+                    );
+            if (selectedTarget.isEmpty()) {
                 DispatchOutcome outcome = DispatchOutcome.fromCommand(
-                        adapterId,
-                        deliveryQueueKey,
-                        null,
-                        command,
-                        null,
+                        normalizedCommand,
                         DispatchOutcomeStatus.NO_ENDPOINT,
                         true,
                         MISSING_OWNER_REASON
@@ -86,13 +68,9 @@ public final class TransportAssignedDeliverySubmitter {
                 continue;
             }
 
-            if (!isNodeUsable(selectedOwner.get())) {
+            if (!isNodeUsable(selectedTarget.get())) {
                 DispatchOutcome outcome = DispatchOutcome.fromCommand(
-                        adapterId,
-                        deliveryQueueKey,
-                        selectedOwner.get().transportNodeId(),
-                        command,
-                        null,
+                        normalizedCommand,
                         DispatchOutcomeStatus.NO_ENDPOINT,
                         true,
                         UNAVAILABLE_NODE_REASON
@@ -101,54 +79,76 @@ public final class TransportAssignedDeliverySubmitter {
                 continue;
             }
 
-            String groupKey = deliveryQueueKey + "\n" + selectedOwner.get().transportNodeId();
-            CommandGroup group = groups.computeIfAbsent(
+            String deliveryLaneKey = deliveryLaneKey(normalizedCommand.getDeliveryBucketId());
+            String groupKey = deliveryLaneKey + "\n" + selectedTarget.get().targetTransportNodeId();
+            DeliveryBatchBuilder batch = batches.computeIfAbsent(
                     groupKey,
-                    ignored -> new CommandGroup(adapterId, deliveryQueueKey, selectedOwner.get().transportNodeId())
+                    ignored -> new DeliveryBatchBuilder(
+                            normalizedCommand.getDeliveryBucketId(),
+                            deliveryLaneKey,
+                            selectedTarget.get().targetTransportNodeId()
+                    )
             );
-            group.items.add(command);
+            batch.items.add(normalizedCommand);
         }
 
-        for (CommandGroup group : groups.values()) {
-            DeliveryCommandBatch batch = new DeliveryCommandBatch(
-                    group.adapterId,
-                    group.deliveryQueueKey,
-                    group.targetTransportNodeId,
-                    group.items
-            );
-            Map<String, DeliveryCommand> itemById = new LinkedHashMap<>();
-            for (DeliveryCommand item : group.items) {
-                itemById.put(item.getCommandId(), item);
-            }
-            for (DispatchOutcome outcome : handoff.offer(batch)) {
-                if (outcome == null) {
-                    continue;
-                }
-                outcomes.add(outcome);
-                if (!outcome.isRetryable()) {
-                    continue;
-                }
-                DeliveryCommand item = itemById.get(outcome.getDeliveryId());
-                if (item != null) {
-                    handleRetryableFailure(outcome, outcome.getReason());
-                }
-            }
+        for (DeliveryBatchBuilder builder : batches.values()) {
+            DeliveryCommandBatch batch = builder.toBatch();
+            List<DispatchOutcome> offeredOutcomes = offerBatch(batch);
+            outcomes.addAll(offeredOutcomes);
+            handleRetryableFailures(offeredOutcomes);
         }
-        return outcomes;
+        return Collections.unmodifiableList(outcomes);
     }
 
-    private boolean isNodeUsable(WorkerDispatchRouteOwner owner) {
-        if (owner == null || owner.transportNodeId() == null || owner.transportNodeId().isBlank()) {
+    private List<DispatchOutcome> offerBatch(DeliveryCommandBatch batch) {
+        try {
+            List<DispatchOutcome> offered = handoff.offer(batch);
+            if (offered == null || offered.isEmpty()) {
+                return List.of();
+            }
+            return offered.stream()
+                    .filter(Objects::nonNull)
+                    .toList();
+        } catch (RuntimeException e) {
+            logger.warn("Delivery command handoff offer failed: deliveryBucketId={}, deliveryLaneKey={}, targetTransportNodeId={}, items={}, reason={}",
+                    batch.deliveryBucketId(), batch.deliveryLaneKey(), batch.targetTransportNodeId(),
+                    batch.items().size(), e.getMessage());
+            String reason = e.getMessage() == null || e.getMessage().isBlank()
+                    ? "delivery command handoff offer failed"
+                    : "delivery command handoff offer failed: " + e.getMessage();
+            return batch.items().stream()
+                    .map(item -> DispatchOutcome.fromCommand(
+                            item,
+                            DispatchOutcomeStatus.UNAVAILABLE,
+                            true,
+                            reason))
+                    .toList();
+        }
+    }
+
+    private void handleRetryableFailures(List<DispatchOutcome> outcomes) {
+        for (DispatchOutcome outcome : outcomes) {
+            if (outcome != null && outcome.isRetryable()) {
+                handleRetryableFailure(outcome, outcome.getReason());
+            }
+        }
+    }
+
+    private boolean isNodeUsable(SelectedWorkerDeliveryTarget target) {
+        if (target == null
+                || target.targetTransportNodeId() == null
+                || target.targetTransportNodeId().isBlank()) {
             return false;
         }
         if (transportNodeRegistry == null) {
             return true;
         }
         try {
-            return transportNodeRegistry.isNodeOnline(owner.transportNodeId());
+            return transportNodeRegistry.isNodeOnline(target.targetTransportNodeId());
         } catch (RuntimeException e) {
             logger.warn("Cannot verify transport node owner: transportNodeId={}, reason={}",
-                    owner.transportNodeId(), e.getMessage());
+                    target.targetTransportNodeId(), e.getMessage());
             return false;
         }
     }
@@ -171,20 +171,24 @@ public final class TransportAssignedDeliverySubmitter {
         return outcome;
     }
 
-    private static String deliveryQueueKey(String adapterId) {
-        return adapterId;
+    private static String deliveryLaneKey(String deliveryBucketId) {
+        return deliveryBucketId;
     }
 
-    private static final class CommandGroup {
-        private final String adapterId;
-        private final String deliveryQueueKey;
+    private static final class DeliveryBatchBuilder {
+        private final String deliveryBucketId;
+        private final String deliveryLaneKey;
         private final String targetTransportNodeId;
         private final List<DeliveryCommand> items = new ArrayList<>();
 
-        private CommandGroup(String adapterId, String deliveryQueueKey, String targetTransportNodeId) {
-            this.adapterId = adapterId;
-            this.deliveryQueueKey = deliveryQueueKey;
+        private DeliveryBatchBuilder(String deliveryBucketId, String deliveryLaneKey, String targetTransportNodeId) {
+            this.deliveryBucketId = deliveryBucketId;
+            this.deliveryLaneKey = deliveryLaneKey;
             this.targetTransportNodeId = targetTransportNodeId;
+        }
+
+        private DeliveryCommandBatch toBatch() {
+            return new DeliveryCommandBatch(deliveryBucketId, deliveryLaneKey, targetTransportNodeId, items);
         }
     }
 }

@@ -20,7 +20,12 @@ ownership is summarized in `../../integrations/README.md`.
   `POST /worker-api/v1/worker-groups`, then register Worker identity through
   `POST /worker-api/v1/workers`.
 - Realtime adapters (`websocket`, `socket`) are active cross-language validation paths, but their wire shapes are adapter-local compatibility seams, not the stable public worker protocol commitment.
-- `adapterId` is concrete routing truth. `transportHint` is only the coarse family hint.
+- External worker/session callers declare `adapterNodeId + transportHint`.
+  Concrete transport runtime ids such as `adapterId`, `routeKey`,
+  `transportNodeId`, `connectionId`, and `deliveryQueueKey` are transport
+  internals, not stable Java SDK worker contracts. Worker sessions declare
+  `workerGroupId`; any internal assigned-delivery bucket is derived by
+  SDK/server transport assembly and is not a caller-configured Java SDK id.
 - `eventCode` is the global capability identity.
 - Task shell creation enters through `POST /api/v1/tasks`, then work items are appended through `POST /api/v1/tasks/{taskId}/items`.
 - Task list/detail reads may return composite task rows. Java `TaskView`
@@ -164,7 +169,7 @@ Example dispatch payload:
 Realtime worker samples are still important because the runtime supports them
 today and Boot-shell E2E proves them:
 
-| Path | adapterId | transportHint | Role |
+| Path | adapter node / fixture | transportHint | Role |
 | --- | --- | --- | --- |
 | `integrations/samples/node/worker-polling` | `polling` | `polling` | polling protocol validation fixture |
 | `integrations/samples/node/worker-websocket` | `websocket` | `realtime` | adapter validation fixture |
@@ -279,5 +284,6 @@ These prove:
 - registration and online presence are separate
 - external workers execute by `eventCode`
 - engine mainline still owns dispatch and result convergence
-- realtime adapters do not cross-route when `adapterId` differs
+- realtime adapters do not cross selected-worker delivery boundaries when
+  transport internals such as adapter runtime id or route-owner address differ
 - sample output identifies the actual worker process that handled the task

@@ -48,8 +48,8 @@ class SessionControllerTest {
                 .andExpect(jsonPath("$.data[0].workerId").value("worker-1"))
                 .andExpect(jsonPath("$.data[0].connections[0].active").value(true))
                 .andExpect(jsonPath("$.data[0].connections[0].endpointId").value("endpoint-1"))
-                .andExpect(jsonPath("$.data[0].connections[0].routeKey").value("route-1"))
-                .andExpect(jsonPath("$.data[0].connections[0].adapterId").value("ws-public"));
+                .andExpect(jsonPath("$.data[0].connections[0].routeKey").doesNotExist())
+                .andExpect(jsonPath("$.data[0].connections[0].adapterId").doesNotExist());
     }
 
     @Test
@@ -85,7 +85,6 @@ class SessionControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.activeConnections").value(2))
                 .andExpect(jsonPath("$.data.workerCount").value(2))
-                .andExpect(jsonPath("$.data.activeConnectionsByAdapter.ws-public").value(1))
-                .andExpect(jsonPath("$.data.activeConnectionsByAdapter.socket-edge").value(1));
+                .andExpect(jsonPath("$.data.activeConnectionsByAdapter").doesNotExist());
     }
 }

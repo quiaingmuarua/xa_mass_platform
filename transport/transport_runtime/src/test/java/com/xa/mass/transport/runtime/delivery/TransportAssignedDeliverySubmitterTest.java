@@ -3,6 +3,8 @@ package com.xa.mass.transport.runtime.delivery;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.route.RouteConsumerEndpoint;
+import com.xa.mass.transport.route.SelectedWorkerDeliveryTarget;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.runtime.node.TransportNodePresence;
@@ -33,7 +35,7 @@ class TransportAssignedDeliverySubmitterTest {
                 failures
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(DeliveryCommandFixtures.group(command("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = submitter.submit(List.of(command("msg-1", "worker-1")));
 
         assertEquals(List.of(DispatchOutcomeStatus.NO_ENDPOINT), statuses(outcomes));
         assertEquals(1, failures.events.size());
@@ -54,11 +56,11 @@ class TransportAssignedDeliverySubmitterTest {
                 failures
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(DeliveryCommandFixtures.group(command("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = submitter.submit(List.of(command("msg-1", "worker-1")));
 
         assertEquals(List.of(DispatchOutcomeStatus.NO_ENDPOINT), statuses(outcomes));
         assertEquals(1, failures.events.size());
-        assertEquals("node-offline", failures.events.get(0).outcome().getTransportNodeId());
+        assertEquals("worker-1", failures.events.get(0).outcome().getSelectedWorkerId());
         assertEquals(0, handoff.offered.size());
     }
 
@@ -76,11 +78,32 @@ class TransportAssignedDeliverySubmitterTest {
                 failures
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(DeliveryCommandFixtures.group(command("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = submitter.submit(List.of(command("msg-1", "worker-1")));
 
         assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE), statuses(outcomes));
         assertEquals(1, failures.events.size());
-        assertEquals("node-1", failures.events.get(0).outcome().getTransportNodeId());
+        assertEquals("worker-1", failures.events.get(0).outcome().getSelectedWorkerId());
+    }
+
+    @Test
+    void handoffFailureIsConvertedToRetryableOutcome() {
+        FakeRouteOwnerView owners = new FakeRouteOwnerView();
+        owners.put(owner("worker-1", "node-1"));
+        FakeHandoff handoff = new FakeHandoff();
+        handoff.failure = new IllegalStateException("redis unavailable");
+        RecordingFailureHandler failures = new RecordingFailureHandler();
+        TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(
+                handoff,
+                owners,
+                FakeNodeRegistry.online("node-1"),
+                failures
+        );
+
+        List<DispatchOutcome> outcomes = submitter.submit(List.of(command("msg-1", "worker-1")));
+
+        assertEquals(List.of(DispatchOutcomeStatus.UNAVAILABLE), statuses(outcomes));
+        assertEquals(1, failures.events.size());
+        assertEquals("worker-1", failures.events.get(0).outcome().getSelectedWorkerId());
     }
 
     @Test
@@ -97,7 +120,7 @@ class TransportAssignedDeliverySubmitterTest {
                 new RecordingFailureHandler()
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(DeliveryCommandFixtures.group(
+        List<DispatchOutcome> outcomes = submitter.submit(List.of(
                 command("msg-1", "worker-1"),
                 command("msg-2", "worker-2"),
                 command("msg-3", "worker-3")
@@ -129,7 +152,7 @@ class TransportAssignedDeliverySubmitterTest {
 
         DeliveryCommand command = command("msg-1", "worker-selected");
 
-        submitter.submit(DeliveryCommandFixtures.group(command));
+        submitter.submit(List.of(command));
 
         DeliveryCommand offered = handoff.offered.get(0).items().get(0);
         assertEquals("worker-selected", offered.getSelectedWorkerId());
@@ -140,16 +163,11 @@ class TransportAssignedDeliverySubmitterTest {
         return DeliveryCommandFixtures.command(messageId, selectedWorkerId, null, "route-" + selectedWorkerId);
     }
 
-    private static WorkerDispatchRouteOwner owner(String workerId, String transportNodeId) {
-        long now = System.currentTimeMillis();
-        return new WorkerDispatchRouteOwner(
+    private static SelectedWorkerDeliveryTarget owner(String workerId, String transportNodeId) {
+        return new SelectedWorkerDeliveryTarget(
+                "bucket-1",
                 workerId,
-                "websocket",
-                "route-" + workerId,
-                transportNodeId,
-                "conn-" + workerId,
-                now + 30_000L,
-                now
+                transportNodeId
         );
     }
 
@@ -158,45 +176,48 @@ class TransportAssignedDeliverySubmitterTest {
     }
 
     private static final class FakeRouteOwnerView implements WorkerDispatchRouteOwnerView {
-        private final Map<String, WorkerDispatchRouteOwner> ownersByWorkerId = new LinkedHashMap<>();
+        private final Map<String, SelectedWorkerDeliveryTarget> ownersByWorkerId = new LinkedHashMap<>();
 
-        private void put(WorkerDispatchRouteOwner owner) {
-            ownersByWorkerId.put(owner.workerId(), owner);
+        private void put(SelectedWorkerDeliveryTarget owner) {
+            ownersByWorkerId.put(owner.selectedWorkerId(), owner);
         }
 
         @Override
         public List<WorkerDispatchRouteOwner> currentOwners(String routeKey) {
-            return ownersByWorkerId.values().stream()
-                    .filter(owner -> owner.routeKey().equals(routeKey))
-                    .toList();
+            return List.of();
         }
 
         @Override
-        public Optional<WorkerDispatchRouteOwner> activeOwnerForSelectedWorker(String adapterId,
+        public Optional<SelectedWorkerDeliveryTarget> targetForSelectedWorker(String deliveryBucketId,
                                                                               String selectedWorkerId) {
-            WorkerDispatchRouteOwner owner = ownersByWorkerId.get(selectedWorkerId);
-            if (owner == null || !owner.adapterId().equals(adapterId) || !owner.isActive(System.currentTimeMillis())) {
+            SelectedWorkerDeliveryTarget owner = ownersByWorkerId.get(selectedWorkerId);
+            if (owner == null || !owner.deliveryBucketId().equals(deliveryBucketId)) {
                 return Optional.empty();
             }
             return Optional.of(owner);
+        }
+
+        @Override
+        public Optional<RouteConsumerEndpoint> endpointForSelectedWorker(String deliveryBucketId, String selectedWorkerId) {
+            return Optional.empty();
         }
     }
 
     private static final class FakeHandoff implements TransportDeliveryCommandHandoff {
         private final List<DeliveryCommandBatch> offered = new ArrayList<>();
         private boolean backpressure;
+        private RuntimeException failure;
 
         @Override
         public List<DispatchOutcome> offer(DeliveryCommandBatch batch) {
+            if (failure != null) {
+                throw failure;
+            }
             offered.add(batch);
             if (backpressure) {
                 return batch.items().stream()
                         .map(item -> DispatchOutcome.fromCommand(
-                                batch.adapterId(),
-                                batch.deliveryQueueKey(),
-                                batch.targetTransportNodeId(),
                                 item,
-                                null,
                                 DispatchOutcomeStatus.BACKPRESSURE,
                                 true,
                                 "test backpressure"))
@@ -204,11 +225,7 @@ class TransportAssignedDeliverySubmitterTest {
             }
             return batch.items().stream()
                     .map(item -> DispatchOutcome.fromCommand(
-                            batch.adapterId(),
-                            batch.deliveryQueueKey(),
-                            batch.targetTransportNodeId(),
                             item,
-                            null,
                             DispatchOutcomeStatus.QUEUED,
                             false,
                             null))

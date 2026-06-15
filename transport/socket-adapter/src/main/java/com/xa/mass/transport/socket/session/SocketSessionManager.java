@@ -7,6 +7,7 @@ import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
+import com.xa.mass.transport.route.TransportRouteOwnerClaim;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
 import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
@@ -19,6 +20,8 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Adapter-owned endpoint registry for raw TCP socket workers.
@@ -30,6 +33,7 @@ public final class SocketSessionManager
 
     private final String adapterId;
     private final RouteEndpointIndex<String, SocketWorkerEndpoint> routeIndex = new RouteEndpointIndex<>();
+    private final ConcurrentMap<String, String> deliveryBucketByEndpoint = new ConcurrentHashMap<>();
     private volatile TransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
     private volatile WorkerPresenceIngress workerPresenceIngress = NoopWorkerPresenceIngress.INSTANCE;
 
@@ -40,11 +44,13 @@ public final class SocketSessionManager
         this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
-    public synchronized void addSession(String routeKey,
+    public synchronized void addSession(String deliveryBucketId,
+                                        String routeKey,
                                         String workerId,
                                         String endpointId,
                                         Socket socket,
                                         BufferedWriter writer) {
+        String normalizedDeliveryBucketId = requireText(deliveryBucketId, "deliveryBucketId");
         RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> previousForWorker =
                 activeEntryForWorker(workerId, endpointId);
         RouteEndpointIndex.BindResult<String, SocketWorkerEndpoint> result = routeIndex.bind(
@@ -57,6 +63,7 @@ public final class SocketSessionManager
         if (result.unchanged()) {
             return;
         }
+        deliveryBucketByEndpoint.put(endpointId, normalizedDeliveryBucketId);
         RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> previous = result.previousEntry();
         if (previous != null && !previous.handle().equals(endpointId)) {
             closeQuietly(previous.endpoint());
@@ -73,7 +80,7 @@ public final class SocketSessionManager
                     reason,
                     endpointId
             ));
-            routeOwnerStore.claimRouteOwner(workerId, adapterId, routeKey, endpointId, reason);
+            routeOwnerStore.claimRouteOwner(routeOwnerClaim(workerId, normalizedDeliveryBucketId, routeKey, endpointId, reason));
         }
         if (previousForWorker != null) {
             logger.warn("Existing socket endpoint for routeKey={} workerId={} found. Replacing session.",
@@ -92,6 +99,7 @@ public final class SocketSessionManager
         if (binding == null) {
             return;
         }
+        String deliveryBucketId = deliveryBucketByEndpoint.remove(endpointId);
         if (result.removedCurrentRoute()) {
             closeQuietly(result.removedEntry().endpoint());
         }
@@ -110,11 +118,7 @@ public final class SocketSessionManager
                 ));
             }
             routeOwnerStore.releaseRouteOwner(
-                    binding.workerId(),
-                    adapterId,
-                    binding.routeKey(),
-                    endpointId,
-                    reason
+                    routeOwnerClaim(binding.workerId(), deliveryBucketId, binding.routeKey(), endpointId, reason)
             );
         }
     }
@@ -218,15 +222,18 @@ public final class SocketSessionManager
                         entry.handle()
                 ));
                 routeOwnerStore.releaseRouteOwner(
-                        entry.workerId(),
-                        adapterId,
-                        entry.routeKey(),
-                        entry.handle(),
-                        reason
+                        routeOwnerClaim(
+                                entry.workerId(),
+                                deliveryBucketByEndpoint.get(entry.handle()),
+                                entry.routeKey(),
+                                entry.handle(),
+                                reason
+                        )
                 );
             }
         }
         routeIndex.clear();
+        deliveryBucketByEndpoint.clear();
         for (SocketWorkerEndpoint endpoint : endpoints) {
             closeQuietly(endpoint);
         }
@@ -301,7 +308,13 @@ public final class SocketSessionManager
                 reason,
                 traceId
         ));
-        routeOwnerStore.refreshHeartbeat(current.workerId(), adapterId, current.routeKey(), endpointId, reason);
+        routeOwnerStore.refreshHeartbeat(routeOwnerClaim(
+                current.workerId(),
+                deliveryBucketByEndpoint.get(endpointId),
+                current.routeKey(),
+                endpointId,
+                reason
+        ));
     }
 
     private boolean matchesAdapter(String adapterId) {
@@ -310,6 +323,14 @@ public final class SocketSessionManager
 
     private static String normalizeNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String requireText(String value, String fieldName) {
+        String normalized = normalizeNullable(value);
+        if (normalized == null) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return normalized;
     }
 
     private RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> currentEntryForHandle(String endpointId) {
@@ -336,13 +357,30 @@ public final class SocketSessionManager
                 continue;
             }
             routeOwnerStore.claimRouteOwner(
-                    entry.workerId(),
-                    adapterId,
-                    entry.routeKey(),
-                    entry.handle(),
-                    reason
+                    routeOwnerClaim(
+                            entry.workerId(),
+                            deliveryBucketByEndpoint.get(entry.handle()),
+                            entry.routeKey(),
+                            entry.handle(),
+                            reason
+                    )
             );
         }
+    }
+
+    private TransportRouteOwnerClaim routeOwnerClaim(String workerId,
+                                                    String deliveryBucketId,
+                                                    String routeKey,
+                                                    String endpointId,
+                                                    String reason) {
+        return new TransportRouteOwnerClaim(
+                workerId,
+                requireText(deliveryBucketId, "deliveryBucketId"),
+                adapterId,
+                routeKey,
+                endpointId,
+                reason
+        );
     }
 
     private void closeQuietly(SocketWorkerEndpoint endpoint) {

@@ -463,6 +463,7 @@ public abstract class AbstractSampleE2eTest {
         return new SampleWorkerWebSocketClient(
                 withWorkerRouteKey(serverUri, canonicalWorkerRouteKey(workerGroupId, workerId)),
                 workerId,
+                workerGroupId,
                 taskResultStatus
         );
     }

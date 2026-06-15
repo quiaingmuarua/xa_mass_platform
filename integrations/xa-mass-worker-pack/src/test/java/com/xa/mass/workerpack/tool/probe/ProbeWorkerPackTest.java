@@ -94,7 +94,6 @@ class ProbeWorkerPackTest {
                 "deviceProbe",
                 "agent",
                 0,
-                null,
                 "worker-1",
                 null,
                 input,

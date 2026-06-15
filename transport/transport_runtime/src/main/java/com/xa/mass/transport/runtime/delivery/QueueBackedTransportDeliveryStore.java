@@ -39,14 +39,11 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
 
     @Override
     public DispatchOutcome enqueue(String adapterId, String deliveryQueueKey, QueuedPulledDispatch item) {
-        String normalizedAdapterId = TransportDeliveryAddressing.normalizeAdapterId(adapterId);
         String normalizedDeliveryQueueKey = normalizeDeliveryQueueKey(deliveryQueueKey);
         String normalizedSelectedWorkerId = item == null ? null : TransportDeliveryAddressing.normalizeText(item.selectedWorkerId());
         if (item == null || normalizedDeliveryQueueKey == null) {
             localInvalidItems.incrementAndGet();
             return DispatchOutcome.invalid(
-                    normalizedAdapterId,
-                    normalizedDeliveryQueueKey,
                     item != null ? item.deliveryId() : null,
                     normalizedSelectedWorkerId,
                     item != null ? item.attemptId() : null,
@@ -59,8 +56,6 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         if (normalizedSelectedWorkerId == null) {
             localInvalidItems.incrementAndGet();
             return DispatchOutcome.invalid(
-                    normalizedAdapterId,
-                    normalizedDeliveryQueueKey,
                     item.deliveryId(),
                     null,
                     item.attemptId(),
@@ -80,8 +75,6 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
         );
         return switch (result.status()) {
             case ENQUEUED -> DispatchOutcome.queued(
-                    normalizedAdapterId,
-                    normalizedDeliveryQueueKey,
                     normalizedItem.deliveryId(),
                     normalizedItem.selectedWorkerId(),
                     normalizedItem.attemptId(),
@@ -90,8 +83,6 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
                     normalizedItem.attemptNo()
             );
             case INVALID -> DispatchOutcome.invalid(
-                    normalizedAdapterId,
-                    normalizedDeliveryQueueKey,
                     normalizedItem.deliveryId(),
                     normalizedItem.selectedWorkerId(),
                     normalizedItem.attemptId(),
@@ -102,10 +93,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
             );
             case UNAVAILABLE -> new DispatchOutcome(
                     normalizedItem.deliveryId(),
-                    normalizedAdapterId,
                     normalizedItem.selectedWorkerId(),
-                    normalizedDeliveryQueueKey,
-                    null,
                     normalizedItem.attemptId(),
                     normalizedItem.content().taskId(),
                     normalizedItem.content().messageId(),
@@ -113,8 +101,6 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
                     com.xa.mass.transport.model.DispatchOutcomeStatus.UNAVAILABLE,
                     true,
                     "delivery store is stopped",
-                    null,
-                    null,
                     System.currentTimeMillis()
             );
             case BACKPRESSURE_REJECTED -> {
@@ -122,8 +108,6 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
                         .computeIfAbsent(normalizedDeliveryQueueKey, ignored -> new AtomicLong())
                         .incrementAndGet();
                 yield DispatchOutcome.backpressure(
-                        normalizedAdapterId,
-                        normalizedDeliveryQueueKey,
                         normalizedItem.deliveryId(),
                         normalizedItem.selectedWorkerId(),
                         normalizedItem.attemptId(),

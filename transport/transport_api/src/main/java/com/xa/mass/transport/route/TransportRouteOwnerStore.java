@@ -3,12 +3,11 @@ package com.xa.mass.transport.route;
 /**
  * Shared transport-owned route-owner heartbeat write surface.
  *
- * <p>For worker delivery, one opaque {@code routeKey} identifies a consumption
- * route that may have multiple active consumers. Claim, heartbeat refresh, and
- * release are consumer-checked evidence writes: heartbeat/release only mutate
- * the consumer addressed by {@code connectionId}. This prevents stale
- * disconnect or heartbeat events from an older connection from revoking a newer
- * active consumer on the same route.</p>
+ * <p>For assigned worker delivery, {@code deliveryBucketId + workerId}
+ * identifies the current consumer projection. Route and connection facts are
+ * endpoint evidence owned by transport. Claim, heartbeat refresh, and release
+ * are consumer-checked writes: heartbeat/release only mutate the current
+ * consumer when the route/connection evidence still matches.</p>
  *
  * <p>This write surface deliberately does not expose worker-id inspection.
  * Assigned delivery routing should depend on {@link WorkerDispatchRouteOwnerView};
@@ -16,23 +15,11 @@ package com.xa.mass.transport.route;
  */
 public interface TransportRouteOwnerStore {
 
-    TransportRouteOwnerRecord claimRouteOwner(String workerId,
-                                   String adapterId,
-                                   String routeKey,
-                                   String connectionId,
-                                   String reason);
+    TransportRouteOwnerRecord claimRouteOwner(TransportRouteOwnerClaim claim);
 
-    TransportRouteOwnerRecord refreshHeartbeat(String workerId,
-                                    String adapterId,
-                                    String routeKey,
-                                    String connectionId,
-                                    String reason);
+    TransportRouteOwnerRecord refreshHeartbeat(TransportRouteOwnerClaim claim);
 
-    TransportRouteOwnerRecord releaseRouteOwner(String workerId,
-                                     String adapterId,
-                                     String routeKey,
-                                     String connectionId,
-                                     String reason);
+    TransportRouteOwnerRecord releaseRouteOwner(TransportRouteOwnerClaim claim);
 
     int pruneExpired();
 

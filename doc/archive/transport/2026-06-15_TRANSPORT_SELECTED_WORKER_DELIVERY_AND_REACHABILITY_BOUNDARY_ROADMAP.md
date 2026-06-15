@@ -1,6 +1,9 @@
 # Transport Selected-Worker Delivery And Reachability Boundary Roadmap
 
-Status: implemented mainline convergence slice on 2026-06-12.
+Status: archived historical roadmap. Worker reachability ownership is now
+captured by worker-runtime presence/reachability docs; assigned-delivery
+transport ownership is superseded by the bucket-worker boundary in
+`transport/TRANSPORT_BOUNDARY_BASELINE.md`.
 
 Redis physical key compaction/bucketing remains deferred to a successor slice.
 

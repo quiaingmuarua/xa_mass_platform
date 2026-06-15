@@ -237,17 +237,14 @@ public class ExternalWorkerApiController {
                 .workerId(workerId)
                 .adapterNodeId(blankToNull(requestBody.getAdapterNodeId()))
                 .workerGroupId(blankToNull(requestBody.getWorkerGroupId()))
-                .adapterId(blankToNull(requestBody.getAdapterId()))
                 .transportHint(transportHint)
                 .attributes(requestBody.getAttributes())
                 .build();
         workerRegistry.registerWorker(request);
-        String effectiveAdapterId = workerClient.getWorkerAdapterId(workerId);
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("workerId", request.getWorkerId());
         response.put("adapterNodeId", request.getAdapterNodeId());
         response.put("workerGroupId", request.getWorkerGroupId());
-        response.put("adapterId", effectiveAdapterId);
         response.put("transportHint", transportHint);
         observeRegistration("WORKER", request.getWorkerId(), "REGISTER", workerPrincipal, response);
         return ApiResponse.success(response);
@@ -268,7 +265,6 @@ public class ExternalWorkerApiController {
         return ApiResponse.success(presenceResponse(
                 boundWorkerId,
                 "online",
-                workerClient.getWorkerAdapterId(boundWorkerId),
                 WorkerTransportHints.POLLING));
     }
 
@@ -287,7 +283,6 @@ public class ExternalWorkerApiController {
         return ApiResponse.success(presenceResponse(
                 boundWorkerId,
                 "heartbeat",
-                workerClient.getWorkerAdapterId(boundWorkerId),
                 WorkerTransportHints.POLLING));
     }
 
@@ -306,7 +301,6 @@ public class ExternalWorkerApiController {
         return ApiResponse.success(presenceResponse(
                 boundWorkerId,
                 "offline",
-                workerClient.getWorkerAdapterId(boundWorkerId),
                 WorkerTransportHints.POLLING));
     }
 
@@ -752,12 +746,10 @@ public class ExternalWorkerApiController {
 
     private Map<String, Object> presenceResponse(String workerId,
                                                 String action,
-                                                String adapterId,
                                                 String transportHint) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("workerId", requireNonBlank(workerId, "workerId"));
         response.put("action", action);
-        response.put("adapterId", requireNonBlank(adapterId, "adapterId"));
         response.put("transportHint", requireNonBlank(transportHint, "transportHint"));
         return response;
     }

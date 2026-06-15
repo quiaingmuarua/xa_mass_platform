@@ -43,8 +43,6 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
                 Map<String, Object> connectionInfo = new LinkedHashMap<>();
                 connectionInfo.put("active", snapshot.isActive());
                 connectionInfo.put("endpointId", snapshot.getEndpointId());
-                connectionInfo.put("routeKey", snapshot.getRouteKey());
-                connectionInfo.put("adapterId", snapshot.getAdapterId());
                 connections.add(connectionInfo);
             });
             entry.put("connections", connections);
@@ -63,23 +61,12 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
             if (endpointInspector != null) {
                 List<WorkerEndpointSnapshot> snapshots = endpointInspector.listWorkerEndpoints();
                 data.put("workerCount", snapshots.stream().map(WorkerEndpointSnapshot::getWorkerId).distinct().count());
-                Map<String, Long> activeConnectionsByAdapter = new LinkedHashMap<>();
-                snapshots.stream()
-                        .filter(WorkerEndpointSnapshot::isActive)
-                        .forEach(snapshot -> activeConnectionsByAdapter.merge(
-                                snapshot.getAdapterId(),
-                                1L,
-                                Long::sum
-                        ));
-                data.put("activeConnectionsByAdapter", activeConnectionsByAdapter);
             } else {
                 data.put("workerCount", 0L);
-                data.put("activeConnectionsByAdapter", Map.of());
             }
         } else {
             data.put("activeConnections", 0);
             data.put("workerCount", 0L);
-            data.put("activeConnectionsByAdapter", Map.of());
         }
         return data;
     }

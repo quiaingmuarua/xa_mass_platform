@@ -1,7 +1,8 @@
 # Transport Selected-Worker Delivery And Reachability Boundary Inventory
 
-Status: current implementation inventory for
+Status: archived historical inventory for
 `TRANSPORT_SELECTED_WORKER_DELIVERY_AND_REACHABILITY_BOUNDARY_ROADMAP.md`.
+Current assigned-delivery truth lives in `transport/TRANSPORT_BOUNDARY_BASELINE.md`.
 
 ## Boundary Symbols
 

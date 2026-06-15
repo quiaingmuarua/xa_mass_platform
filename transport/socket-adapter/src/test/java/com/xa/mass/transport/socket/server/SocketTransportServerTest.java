@@ -81,7 +81,7 @@ class SocketTransportServerTest {
             try (Socket socket = new Socket("127.0.0.1", port);
                  BufferedWriter writer = new BufferedWriter(
                          new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
-                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"routeKey\":\"socket-route-9\"}");
+                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"workerGroupId\":\"bucket-1\",\"routeKey\":\"socket-route-9\"}");
                 writer.newLine();
                 writer.flush();
 
@@ -118,7 +118,7 @@ class SocketTransportServerTest {
             try (Socket socket = new Socket("127.0.0.1", port);
                  BufferedWriter writer = new BufferedWriter(
                          new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
-                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"routeKey\":\"socket-route-9\"}");
+                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"workerGroupId\":\"bucket-1\",\"routeKey\":\"socket-route-9\"}");
                 writer.newLine();
                 writer.flush();
 
@@ -168,7 +168,7 @@ class SocketTransportServerTest {
             try (Socket socket = new Socket("127.0.0.1", port);
                  BufferedWriter writer = new BufferedWriter(
                          new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
-                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"routeKey\":\"socket-route-9\"}");
+                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"workerGroupId\":\"bucket-1\",\"routeKey\":\"socket-route-9\"}");
                 writer.newLine();
                 writer.write("""
                         {"messageId":"msg-1","taskId":"task-1","success":true,"detail":"ok","output":{"status":"SUCCESS"}}

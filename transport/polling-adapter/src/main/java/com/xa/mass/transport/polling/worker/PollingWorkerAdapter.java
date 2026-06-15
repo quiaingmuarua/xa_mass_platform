@@ -7,6 +7,7 @@ import com.xa.mass.transport.channel.TaskPullStatus;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.route.TransportRouteOwnerClaim;
 import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
@@ -54,8 +55,8 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         List<DispatchOutcome> outcomes = deliveryService.enqueue(PROTOCOL, requests);
         for (DispatchOutcome outcome : outcomes) {
             if (outcome.isRetryable()) {
-                logger.warn("Polling delivery rejected: routeKey={}, deliveryId={}, attemptId={}, status={}, reason={}",
-                        outcome.getRouteKey(), outcome.getDeliveryId(), outcome.getAttemptId(),
+                logger.warn("Polling delivery rejected: selectedWorkerId={}, deliveryId={}, attemptId={}, status={}, reason={}",
+                        outcome.getSelectedWorkerId(), outcome.getDeliveryId(), outcome.getAttemptId(),
                         outcome.getStatus(), outcome.getReason());
             }
         }
@@ -76,16 +77,28 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         return TaskPullResult.of(mapStatus(result.getStatus()), toPulledItems(result.getItems()));
     }
 
-    public void announceWorkerOnline(String workerId, String routeKey, String connectionId, String reason) {
-        routeOwnerStore.claimRouteOwner(workerId, PROTOCOL, routeKey, connectionId, reason);
+    public void announceWorkerOnline(String workerId,
+                                     String deliveryBucketId,
+                                     String routeKey,
+                                     String connectionId,
+                                     String reason) {
+        routeOwnerStore.claimRouteOwner(routeOwnerClaim(workerId, deliveryBucketId, routeKey, connectionId, reason));
     }
 
-    public void announceWorkerOffline(String workerId, String routeKey, String connectionId, String reason) {
-        routeOwnerStore.releaseRouteOwner(workerId, PROTOCOL, routeKey, connectionId, reason);
+    public void announceWorkerOffline(String workerId,
+                                      String deliveryBucketId,
+                                      String routeKey,
+                                      String connectionId,
+                                      String reason) {
+        routeOwnerStore.releaseRouteOwner(routeOwnerClaim(workerId, deliveryBucketId, routeKey, connectionId, reason));
     }
 
-    public void refreshRouteOwnerHeartbeat(String workerId, String routeKey, String connectionId, String reason) {
-        routeOwnerStore.refreshHeartbeat(workerId, PROTOCOL, routeKey, connectionId, reason);
+    public void refreshRouteOwnerHeartbeat(String workerId,
+                                           String deliveryBucketId,
+                                           String routeKey,
+                                           String connectionId,
+                                           String reason) {
+        routeOwnerStore.refreshHeartbeat(routeOwnerClaim(workerId, deliveryBucketId, routeKey, connectionId, reason));
     }
 
     private static TaskPullStatus mapStatus(TransportDeliveryPollStatus status) {
@@ -108,6 +121,14 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         return items.stream()
                 .map(QueuedPulledDispatch::toPulledTaskDispatch)
                 .toList();
+    }
+
+    private static TransportRouteOwnerClaim routeOwnerClaim(String workerId,
+                                                           String deliveryBucketId,
+                                                           String routeKey,
+                                                           String connectionId,
+                                                           String reason) {
+        return new TransportRouteOwnerClaim(workerId, deliveryBucketId, PROTOCOL, routeKey, connectionId, reason);
     }
 
 }

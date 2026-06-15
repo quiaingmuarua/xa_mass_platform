@@ -79,8 +79,7 @@ class RedisTransportDeliveryStoreTest {
         store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-2")));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
-        assertEquals("polling", first.getAdapterId());
-        assertEquals("polling", first.getDeliveryQueueKey());
+        assertEquals("worker-1", first.getSelectedWorkerId());
         assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 10)));
         assertTrue(store.drain("polling", "worker-1", 10).isEmpty());
 

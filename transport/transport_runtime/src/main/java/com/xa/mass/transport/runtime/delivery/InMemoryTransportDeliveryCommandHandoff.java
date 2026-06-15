@@ -30,11 +30,7 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         if (!running.get()) {
             return batch.items().stream()
                     .map(item -> DispatchOutcome.fromCommand(
-                            batch.adapterId(),
-                            batch.deliveryQueueKey(),
-                            batch.targetTransportNodeId(),
                             item,
-                            null,
                             DispatchOutcomeStatus.SHUTDOWN,
                             true,
                             "delivery command handoff is stopped"))
@@ -44,11 +40,7 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         if (accepted) {
             return batch.items().stream()
                     .map(item -> DispatchOutcome.fromCommand(
-                            batch.adapterId(),
-                            batch.deliveryQueueKey(),
-                            batch.targetTransportNodeId(),
                             item,
-                            null,
                             DispatchOutcomeStatus.QUEUED,
                             false,
                             null))
@@ -56,11 +48,7 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         }
         return batch.items().stream()
                 .map(item -> DispatchOutcome.fromCommand(
-                        batch.adapterId(),
-                        batch.deliveryQueueKey(),
-                        batch.targetTransportNodeId(),
                         item,
-                        null,
                         DispatchOutcomeStatus.BACKPRESSURE,
                         true,
                         "delivery command handoff queue is full"))
