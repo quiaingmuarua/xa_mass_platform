@@ -181,7 +181,7 @@ done
     "workerKey": "${worker_key}",
     "workerGroupId": "${group_id}",
     "adapterNodeId": "${adapter_node_id}",
-    "adapterId": "polling",
+    "adapterType": "polling",
     "transportHint": "polling",
     "startMode": "api-online",
     "attributes": {

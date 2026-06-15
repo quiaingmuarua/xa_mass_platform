@@ -133,8 +133,12 @@ class TaskResultRuntimeConvergenceTest {
             resultRuntime.allowRepairPumpScans();
             awaitCondition(
                     () -> capturedManager.getTaskResultRuntime().countVisibleResults(task.getTid()) == 1
-                            && capturedManager.getTask(task.getTid()).getStatus() == TaskStatus.TERMINAL,
-                    "repair pump should commit visible result and apply progress");
+                            && capturedManager.getTask(task.getTid()).getStatus() == TaskStatus.TERMINAL
+                            && capturedManager.getTaskResultRuntime()
+                            .getVisibleByMessageId(task.getTid(), claimed.messageId())
+                            .filter(TaskResultRuntimeRow::progressApplied)
+                            .isPresent(),
+                    "repair pump should commit visible result and apply progress barrier");
 
             TaskResultRuntimeRow row = manager.getTaskResultRuntime()
                     .getVisibleByMessageId(task.getTid(), claimed.messageId())
