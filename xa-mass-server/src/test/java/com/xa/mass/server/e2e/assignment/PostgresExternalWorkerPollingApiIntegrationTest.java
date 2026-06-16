@@ -109,7 +109,6 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSam
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
-                "adapterNodeId", "polling-postgres-node",
                 "workerGroupId", "polling-postgres",
                 "attributes", Map.of(
                         "runtime", "postgres-e2e",

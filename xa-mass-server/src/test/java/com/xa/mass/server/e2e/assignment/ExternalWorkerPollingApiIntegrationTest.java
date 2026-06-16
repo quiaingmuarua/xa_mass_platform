@@ -50,7 +50,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
     private MassSdkApplication app;
 
     @Test
-    void externalWorkerRegisterApiDerivesRealtimeAdapterFromAdapterNode() {
+    void externalWorkerRegisterApiAcceptsRealtimeTransportHintWithoutAdapterNodeId() {
         registerExternalWorkerCredential(
                 "realtime-worker",
                 "realtime-worker-key",
@@ -75,7 +75,6 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> realtimeRegisterResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", "realtime-worker-001",
-                "adapterNodeId", "realtime-node",
                 "workerGroupId", "realtime-crawler",
                 "transportHint", "realtime"
         ), realtimeHeaders);
@@ -84,7 +83,6 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> aliasRegisterResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", "realtime-worker-002",
-                "adapterNodeId", "alias-node",
                 "workerGroupId", "realtime-crawler",
                 "transportHint", "websocket"
         ), aliasHeaders);
@@ -110,7 +108,6 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
-                "adapterNodeId", "polling-node",
                 "workerGroupId", "node-runtime",
                 "attributes", Map.of(
                         "lang", "node",
@@ -228,7 +225,6 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", selectedWorkerId,
-                "adapterNodeId", adapterNodeId,
                 "workerGroupId", workerGroupId,
                 "attributes", Map.of(
                         "routingTags", "shared,us",
@@ -238,7 +234,6 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         ), selectedWorkerHeaders));
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", otherWorkerId,
-                "adapterNodeId", adapterNodeId,
                 "workerGroupId", workerGroupId,
                 "attributes", Map.of(
                         "routingTags", "shared,eu",
@@ -333,7 +328,6 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
-                "adapterNodeId", "polling-node",
                 "workerGroupId", "node-runtime",
                 "attributes", Map.of(
                         "lang", "node",
@@ -491,7 +485,6 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
-                "adapterNodeId", "polling-node",
                 "workerGroupId", "node-runtime",
                 "attributes", Map.of(
                         "lang", "node",

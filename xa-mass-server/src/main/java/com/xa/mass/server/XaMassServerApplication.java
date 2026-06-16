@@ -113,9 +113,6 @@ public class XaMassServerApplication {
     @Value("${mass.runtime.event-max-pending-tasks:10000}")
     private int eventRuntimeMaxPendingTasks;
 
-    @Value("${mass.transport.node-id:${random.uuid}}")
-    private String transportNodeId;
-
     @Value("${mass.runtime.mode:memory}")
     private String runtimeMode;
 
@@ -358,7 +355,6 @@ public class XaMassServerApplication {
                     java.util.function.Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory =
                             resolveTransportEndpointLeaseStoreFactory();
                     transport
-                        .transportNodeId(transportNodeId)
                         .maxDeliveryQueuedItems(transportDeliveryMaxQueuedItems)
                         .maxDeliveryItemsPerRoute(transportDeliveryMaxItemsPerRoute)
                         .endpointLeaseMillis(transportEndpointLeaseMillis)
@@ -603,8 +599,7 @@ public class XaMassServerApplication {
             return () -> new RedisTransportEndpointLeaseStore(
                     redisUri(),
                     transportEndpointLeaseRedisNamespace,
-                    transportEndpointLeaseMillis,
-                    transportNodeId
+                    transportEndpointLeaseMillis
             );
         }
         requireDurableLocalInfraMode("mass.transport.endpoint-lease.store", "redis", normalizedMode);

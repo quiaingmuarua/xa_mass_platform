@@ -14,8 +14,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -31,24 +33,20 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     private static final long DEFAULT_VISIBILITY_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30L);
     private static final long POLL_SLEEP_MILLIS = 50L;
     private static final String MEMBER_SEPARATOR = "\u001f";
-    private static final String CONSUMER_EVIDENCE_VERSION = "v2";
+    private static final String CONSUMER_EVIDENCE_VERSION = "v3";
     private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder TOKEN_DECODER = Base64.getUrlDecoder();
     private static final String OFFER_COMMAND_SCRIPT = """
             local commandStoreKey = KEYS[1]
             local commandRetentionDeadlineKey = KEYS[2]
             local readyCommandsKey = KEYS[3]
-            local queueConsumersKey = KEYS[4]
-            local queueConsumerKey = KEYS[5]
-            local queuesKey = KEYS[6]
+            local queuesKey = KEYS[4]
             local maxQueuedItems = tonumber(ARGV[1])
             local commandId = ARGV[2]
             local value = ARGV[3]
             local commandRetentionDeadlineMillis = tonumber(ARGV[4])
             local deliveryQueueKey = ARGV[5]
-            local queueConsumerKeyValue = ARGV[6]
-            local nowMillis = ARGV[7]
-            local referenceValue = ARGV[8]
+            local referenceValue = ARGV[6]
             if maxQueuedItems <= 0 then
               return {'BACKPRESSURE', 'queue capacity is exhausted'}
             end
@@ -61,8 +59,6 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
               redis.call('ZADD', commandRetentionDeadlineKey, commandRetentionDeadlineMillis, commandId)
             end
             redis.call('RPUSH', readyCommandsKey, referenceValue)
-            redis.call('SADD', queueConsumersKey, queueConsumerKeyValue)
-            redis.call('HSET', queueConsumerKey, 'deliveryQueueKey', deliveryQueueKey, 'updatedAtEpochMillis', nowMillis)
             redis.call('SADD', queuesKey, deliveryQueueKey)
             return {'QUEUED', ''}
             """;
@@ -82,7 +78,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     private final StatefulRedisConnection<String, String> connection;
     private final RedisCommands<String, String> commands;
     private final String namespacePrefix;
-    private final String localTransportNodeId;
+    private final Map<String, LocalConsumerEvidence> localConsumers = new ConcurrentHashMap<>();
     private final int maxQueuedCommandsPerQueue;
     private final boolean ownsClient;
     private final AtomicBoolean running = new AtomicBoolean(true);
@@ -90,12 +86,10 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
 
     public RedisTransportDeliveryCommandHandoff(String redisUri,
                                                 String namespacePrefix,
-                                                String localTransportNodeId,
                                                 int maxQueuedCommandsPerQueue) {
         this(
                 RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 namespacePrefix,
-                localTransportNodeId,
                 maxQueuedCommandsPerQueue,
                 true
         );
@@ -103,14 +97,12 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
 
     RedisTransportDeliveryCommandHandoff(RedisClient redisClient,
                                          String namespacePrefix,
-                                         String localTransportNodeId,
                                          int maxQueuedCommandsPerQueue,
                                          boolean ownsClient) {
         this(
                 redisClient,
                 Objects.requireNonNull(redisClient, "redisClient").connect(),
                 namespacePrefix,
-                localTransportNodeId,
                 maxQueuedCommandsPerQueue,
                 ownsClient
         );
@@ -118,15 +110,13 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
 
     RedisTransportDeliveryCommandHandoff(StatefulRedisConnection<String, String> connection,
                                          String namespacePrefix,
-                                         String localTransportNodeId,
                                          int maxQueuedCommandsPerQueue) {
-        this(null, connection, namespacePrefix, localTransportNodeId, maxQueuedCommandsPerQueue, false);
+        this(null, connection, namespacePrefix, maxQueuedCommandsPerQueue, false);
     }
 
     private RedisTransportDeliveryCommandHandoff(RedisClient redisClient,
                                                  StatefulRedisConnection<String, String> connection,
                                                  String namespacePrefix,
-                                                 String localTransportNodeId,
                                                  int maxQueuedCommandsPerQueue,
                                                  boolean ownsClient) {
         if (maxQueuedCommandsPerQueue <= 0) {
@@ -136,7 +126,6 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         this.connection = Objects.requireNonNull(connection, "connection");
         this.commands = connection.sync();
         this.namespacePrefix = normalizeRequired(namespacePrefix, "namespacePrefix");
-        this.localTransportNodeId = normalizeNullable(localTransportNodeId);
         this.maxQueuedCommandsPerQueue = maxQueuedCommandsPerQueue;
         this.ownsClient = ownsClient;
     }
@@ -159,25 +148,9 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         long now = System.currentTimeMillis();
         long commandRetentionDeadline = now + DEFAULT_COMMAND_RETENTION_MILLIS;
         for (DeliveryCommand command : commandsToOffer) {
-            ConsumerEvidence evidence = currentConsumerEvidence(
-                    deliveryQueueKey,
-                    command.getSelectedWorkerId(),
-                    now
-            );
-            if (evidence == null) {
-                outcomes.add(DispatchOutcome.fromCommand(
-                        command,
-                        DispatchOutcomeStatus.NO_ENDPOINT,
-                        true,
-                        "selected worker has no assigned-delivery consumer"
-                ));
-                continue;
-            }
             DeliveryCommandReference reference = new DeliveryCommandReference(
                     deliveryQueueKey,
-                    command.getCommandId(),
-                    evidence.queueConsumerKey(),
-                    evidence.adapterId()
+                    command.getCommandId()
             );
             Object raw = commands.eval(
                     OFFER_COMMAND_SCRIPT,
@@ -185,9 +158,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                     new String[]{
                             commandStoreKey(deliveryQueueKey),
                             commandRetentionDeadlineKey(deliveryQueueKey),
-                            readyCommandsKey(evidence.queueConsumerKey()),
-                            queueConsumersKey(deliveryQueueKey),
-                            queueConsumerKey(evidence.queueConsumerKey()),
+                            readyCommandsKey(deliveryQueueKey),
                             queuesKey()
                     },
                     Integer.toString(maxQueuedCommandsPerQueue),
@@ -195,8 +166,6 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                     codec.encode(new DeliveryCommandBatch(deliveryQueueKey, List.of(command))),
                     Long.toString(commandRetentionDeadline),
                     deliveryQueueKey,
-                    evidence.queueConsumerKey(),
-                    Long.toString(now),
                     encodeReference(reference)
             );
             List<?> values = raw instanceof List<?> list ? list : List.of();
@@ -214,58 +183,20 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
 
     @Override
     public DeliveryCommandBatch poll(long timeoutMillis) throws InterruptedException {
-        String localConsumerKey = localTransportNodeId;
-        if (!running.get() || localConsumerKey == null) {
+        if (!running.get()) {
             return null;
         }
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
         do {
-            reclaimExpiredInflight(localConsumerKey);
-            String encodedReference = claimReadyReference(localConsumerKey);
-            if (encodedReference != null && !encodedReference.isBlank()) {
-                DeliveryCommandReference reference = decodeReference(encodedReference);
-                if (reference == null) {
-                    removeInflightClaim(localConsumerKey, encodedReference);
-                    continue;
+            for (String deliveryQueueKey : pollQueuesSnapshot()) {
+                reclaimExpiredInflight(deliveryQueueKey);
+                String encodedReference = claimReadyReference(deliveryQueueKey);
+                if (encodedReference != null && !encodedReference.isBlank()) {
+                    DeliveryCommandBatch claimed = materializeClaimedReference(deliveryQueueKey, encodedReference);
+                    if (claimed != null) {
+                        return claimed;
+                    }
                 }
-                String json = commands.hget(commandStoreKey(reference.deliveryQueueKey()), reference.commandId());
-                if (json == null || json.isBlank()) {
-                    removeInflightClaim(localConsumerKey, encodedReference);
-                    continue;
-                }
-                DeliveryCommandBatch stored = codec.decode(json);
-                DeliveryCommand command = stored.items().getFirst();
-                ConsumerEvidence currentConsumer = currentConsumerEvidence(
-                        reference.deliveryQueueKey(),
-                        command.getSelectedWorkerId(),
-                        System.currentTimeMillis()
-                );
-                if (currentConsumer != null && !localConsumerKey.equals(currentConsumer.queueConsumerKey())) {
-                    removeInflightClaim(localConsumerKey, encodedReference);
-                    commands.rpush(
-                            readyCommandsKey(currentConsumer.queueConsumerKey()),
-                            encodeReference(new DeliveryCommandReference(
-                                    reference.deliveryQueueKey(),
-                                    reference.commandId(),
-                                    currentConsumer.queueConsumerKey(),
-                                    currentConsumer.adapterId()
-                            ))
-                    );
-                    continue;
-                }
-                DeliveryCommandReference materializedReference = currentConsumer == null
-                        ? reference
-                        : new DeliveryCommandReference(
-                        reference.deliveryQueueKey(),
-                        reference.commandId(),
-                        currentConsumer.queueConsumerKey(),
-                        currentConsumer.adapterId()
-                );
-                return new DeliveryCommandBatch(
-                        reference.deliveryQueueKey(),
-                        List.of(materializedReference),
-                        List.of(command)
-                );
             }
             if (timeoutMillis <= 0L) {
                 return null;
@@ -279,6 +210,52 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         return null;
     }
 
+    private DeliveryCommandBatch materializeClaimedReference(String claimedDeliveryQueueKey, String encodedReference) {
+        DeliveryCommandReference reference = decodeReference(encodedReference);
+        if (reference == null) {
+            removeInflightClaim(claimedDeliveryQueueKey, encodedReference);
+            return null;
+        }
+        String json = commands.hget(commandStoreKey(reference.deliveryQueueKey()), reference.commandId());
+        if (json == null || json.isBlank()) {
+            removeInflightClaim(claimedDeliveryQueueKey, encodedReference);
+            return null;
+        }
+        DeliveryCommandBatch stored = codec.decode(json);
+        DeliveryCommand command = stored.items().getFirst();
+        String selectedWorkerId = command.getSelectedWorkerId();
+        LocalConsumerEvidence local = localConsumers.get(selectedWorkerConsumerKey(reference.deliveryQueueKey(), selectedWorkerId));
+        if (local != null && local.leaseExpireAtEpochMillis() <= System.currentTimeMillis()) {
+            localConsumers.remove(selectedWorkerConsumerKey(local.deliveryQueueKey(), local.selectedWorkerId()), local);
+            local = null;
+        }
+        ConsumerEvidence currentConsumer = currentConsumerEvidence(
+                reference.deliveryQueueKey(),
+                selectedWorkerId,
+                System.currentTimeMillis()
+        );
+        if (currentConsumer == null) {
+            if (local != null) {
+                localConsumers.remove(selectedWorkerConsumerKey(local.deliveryQueueKey(), local.selectedWorkerId()), local);
+                removeInflightClaim(claimedDeliveryQueueKey, encodedReference);
+                commands.rpush(readyCommandsKey(reference.deliveryQueueKey()), encodedReference);
+                return null;
+            }
+        } else if (local == null || !local.endpointLeaseId().equals(currentConsumer.endpointLeaseId())) {
+            if (local != null) {
+                localConsumers.remove(selectedWorkerConsumerKey(local.deliveryQueueKey(), local.selectedWorkerId()), local);
+            }
+            removeInflightClaim(claimedDeliveryQueueKey, encodedReference);
+            commands.rpush(readyCommandsKey(reference.deliveryQueueKey()), encodedReference);
+            return null;
+        }
+        return new DeliveryCommandBatch(
+                reference.deliveryQueueKey(),
+                List.of(reference),
+                List.of(command)
+        );
+    }
+
     @Override
     public void complete(DeliveryCommandBatch batch, List<DispatchOutcome> outcomes) {
         if (batch == null || batch.references().isEmpty()) {
@@ -286,7 +263,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         }
         for (DeliveryCommandReference reference : batch.references()) {
             String encodedReference = encodeReference(reference);
-            commands.zrem(inflightCommandsKey(reference.queueConsumerKey()), encodedReference);
+            commands.zrem(inflightCommandsKey(reference.deliveryQueueKey()), encodedReference);
             commands.hdel(commandStoreKey(reference.deliveryQueueKey()), reference.commandId());
             commands.zrem(commandRetentionDeadlineKey(reference.deliveryQueueKey()), reference.commandId());
         }
@@ -297,12 +274,15 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         Objects.requireNonNull(claim, "claim");
         String deliveryQueueKey = AssignedDeliveryCommandQueueKey.queueKeyFor(claim.deliveryBucketId());
         String selectedWorkerId = normalizeRequired(claim.selectedWorkerId(), "selectedWorkerId");
-        String queueConsumerKey = normalizeRequired(claim.queueConsumerKey(), "queueConsumerKey");
+        LocalConsumerEvidence local = new LocalConsumerEvidence(
+                deliveryQueueKey,
+                selectedWorkerId,
+                claim.endpointLeaseId(),
+                claim.leaseExpireAtEpochMillis()
+        );
+        localConsumers.put(selectedWorkerConsumerKey(deliveryQueueKey, selectedWorkerId), local);
         commands.hset(selectedWorkerConsumersKey(deliveryQueueKey), selectedWorkerId, encodeConsumerEvidence(claim));
         commands.zadd(selectedWorkerConsumerDeadlinesKey(deliveryQueueKey), claim.leaseExpireAtEpochMillis(), selectedWorkerId);
-        commands.sadd(queueConsumersKey(deliveryQueueKey), queueConsumerKey);
-        commands.hset(queueConsumerKey(queueConsumerKey), "deliveryQueueKey", deliveryQueueKey);
-        commands.hset(queueConsumerKey(queueConsumerKey), "adapterId", claim.adapterId());
         commands.sadd(queuesKey(), deliveryQueueKey);
     }
 
@@ -311,10 +291,12 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         Objects.requireNonNull(claim, "claim");
         String deliveryQueueKey = AssignedDeliveryCommandQueueKey.queueKeyFor(claim.deliveryBucketId());
         String selectedWorkerId = normalizeRequired(claim.selectedWorkerId(), "selectedWorkerId");
+        String localKey = selectedWorkerConsumerKey(deliveryQueueKey, selectedWorkerId);
+        localConsumers.computeIfPresent(localKey,
+                (ignored, current) -> claim.endpointLeaseId().equals(current.endpointLeaseId()) ? null : current);
         ConsumerEvidence current = currentConsumerEvidence(deliveryQueueKey, selectedWorkerId, System.currentTimeMillis());
         if (current == null
-                || !claim.queueConsumerKey().equals(current.queueConsumerKey())
-                || !claim.consumerEvidenceId().equals(current.consumerEvidenceId())) {
+                || !claim.endpointLeaseId().equals(current.endpointLeaseId())) {
             return;
         }
         commands.hdel(selectedWorkerConsumersKey(deliveryQueueKey), selectedWorkerId);
@@ -341,16 +323,16 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         return Math.toIntExact(commands.hlen(commandStoreKey(deliveryQueueKey)));
     }
 
-    long readyReferencesForTest(String queueConsumerKey) {
-        return commands.llen(readyCommandsKey(queueConsumerKey));
+    long readyReferencesForTest(String deliveryQueueKey) {
+        return commands.llen(readyCommandsKey(deliveryQueueKey));
     }
 
-    long inflightReferencesForTest(String queueConsumerKey) {
-        return commands.zcard(inflightCommandsKey(queueConsumerKey));
+    long inflightReferencesForTest(String deliveryQueueKey) {
+        return commands.zcard(inflightCommandsKey(deliveryQueueKey));
     }
 
-    void expireInflightForTest(String queueConsumerKey) {
-        String inflightKey = inflightCommandsKey(queueConsumerKey);
+    void expireInflightForTest(String deliveryQueueKey) {
+        String inflightKey = inflightCommandsKey(deliveryQueueKey);
         long expiredAt = System.currentTimeMillis() - 1L;
         for (String encodedReference : commands.zrange(inflightKey, 0, -1)) {
             commands.zadd(inflightKey, expiredAt, encodedReference);
@@ -362,8 +344,8 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         commands.zrem(commandRetentionDeadlineKey(deliveryQueueKey), commandId);
     }
 
-    void pushReadyReferenceForTest(String queueConsumerKey, String encodedReference) {
-        commands.rpush(readyCommandsKey(queueConsumerKey), encodedReference);
+    void pushReadyReferenceForTest(String deliveryQueueKey, String encodedReference) {
+        commands.rpush(readyCommandsKey(deliveryQueueKey), encodedReference);
     }
 
     String encodeReferenceForTest(DeliveryCommandReference reference) {
@@ -372,58 +354,52 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
 
     void clearForTest(String deliveryQueueKey) {
         String normalizedQueueKey = normalizeRequired(deliveryQueueKey, "deliveryQueueKey");
-        for (String queueConsumerKey : commands.smembers(queueConsumersKey(normalizedQueueKey))) {
-            commands.del(readyCommandsKey(queueConsumerKey));
-            commands.del(inflightCommandsKey(queueConsumerKey));
-            commands.del(queueConsumerKey(queueConsumerKey));
-        }
+        commands.del(readyCommandsKey(normalizedQueueKey));
+        commands.del(inflightCommandsKey(normalizedQueueKey));
         commands.del(commandStoreKey(normalizedQueueKey));
         commands.del(commandRetentionDeadlineKey(normalizedQueueKey));
-        commands.del(queueConsumersKey(normalizedQueueKey));
         commands.del(selectedWorkerConsumersKey(normalizedQueueKey));
         commands.del(selectedWorkerConsumerDeadlinesKey(normalizedQueueKey));
         commands.srem(queuesKey(), normalizedQueueKey);
     }
 
-    void claimConsumerForTest(String deliveryBucketId, String selectedWorkerId, String queueConsumerKey) {
+    void claimConsumerForTest(String deliveryBucketId, String selectedWorkerId, String endpointLeaseId) {
         claimConsumer(new DeliveryCommandConsumerClaim(
                 deliveryBucketId,
                 selectedWorkerId,
-                queueConsumerKey,
-                queueConsumerKey,
-                "websocket",
+                endpointLeaseId,
                 System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5L)
         ));
     }
 
-    private String claimReadyReference(String queueConsumerKey) {
+    private String claimReadyReference(String deliveryQueueKey) {
         Object raw = commands.eval(
                 CLAIM_READY_REFERENCE_SCRIPT,
                 ScriptOutputType.VALUE,
                 new String[]{
-                        readyCommandsKey(queueConsumerKey),
-                        inflightCommandsKey(queueConsumerKey)
+                        readyCommandsKey(deliveryQueueKey),
+                        inflightCommandsKey(deliveryQueueKey)
                 },
                 Long.toString(System.currentTimeMillis() + DEFAULT_VISIBILITY_TIMEOUT_MILLIS)
         );
         return raw instanceof String value ? value : null;
     }
 
-    private void removeInflightClaim(String queueConsumerKey, String encodedReference) {
-        commands.zrem(inflightCommandsKey(queueConsumerKey), encodedReference);
+    private void removeInflightClaim(String deliveryQueueKey, String encodedReference) {
+        commands.zrem(inflightCommandsKey(deliveryQueueKey), encodedReference);
     }
 
-    private void reclaimExpiredInflight(String queueConsumerKey) {
+    private void reclaimExpiredInflight(String deliveryQueueKey) {
         long now = System.currentTimeMillis();
         List<String> expired = commands.zrangebyscore(
-                inflightCommandsKey(queueConsumerKey),
+                inflightCommandsKey(deliveryQueueKey),
                 Range.create(Double.NEGATIVE_INFINITY, (double) now)
         );
         for (String encodedReference : expired) {
-            if (commands.zrem(inflightCommandsKey(queueConsumerKey), encodedReference) > 0L) {
+            if (commands.zrem(inflightCommandsKey(deliveryQueueKey), encodedReference) > 0L) {
                 DeliveryCommandReference reference = decodeReference(encodedReference);
                 if (reference != null && commands.hexists(commandStoreKey(reference.deliveryQueueKey()), reference.commandId())) {
-                    commands.rpush(readyCommandsKey(queueConsumerKey), encodedReference);
+                    commands.rpush(readyCommandsKey(reference.deliveryQueueKey()), encodedReference);
                 }
             }
         }
@@ -461,26 +437,16 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                 + ":command-retention-deadlines";
     }
 
-    private String readyCommandsKey(String queueConsumerKey) {
+    private String readyCommandsKey(String deliveryQueueKey) {
         return namespacePrefix
-                + ":consumer:" + encodeToken(normalizeRequired(queueConsumerKey, "queueConsumerKey"))
+                + ":q:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"))
                 + ":ready-commands";
     }
 
-    private String inflightCommandsKey(String queueConsumerKey) {
+    private String inflightCommandsKey(String deliveryQueueKey) {
         return namespacePrefix
-                + ":consumer:" + encodeToken(normalizeRequired(queueConsumerKey, "queueConsumerKey"))
+                + ":q:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"))
                 + ":inflight-commands";
-    }
-
-    private String queueConsumersKey(String deliveryQueueKey) {
-        return namespacePrefix
-                + ":queue-consumers:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"));
-    }
-
-    private String queueConsumerKey(String queueConsumerKey) {
-        return namespacePrefix
-                + ":queue-consumer:" + encodeToken(normalizeRequired(queueConsumerKey, "queueConsumerKey"));
     }
 
     private String selectedWorkerConsumersKey(String deliveryQueueKey) {
@@ -497,6 +463,32 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         return namespacePrefix + ":queues";
     }
 
+    private static String selectedWorkerConsumerKey(String deliveryQueueKey, String selectedWorkerId) {
+        return normalizeRequired(deliveryQueueKey, "deliveryQueueKey")
+                + "\n"
+                + normalizeRequired(selectedWorkerId, "selectedWorkerId");
+    }
+
+    private List<String> pollQueuesSnapshot() {
+        List<String> queues = new ArrayList<>();
+        for (LocalConsumerEvidence local : List.copyOf(localConsumers.values())) {
+            if (local.leaseExpireAtEpochMillis() <= System.currentTimeMillis()) {
+                localConsumers.remove(selectedWorkerConsumerKey(local.deliveryQueueKey(), local.selectedWorkerId()), local);
+                continue;
+            }
+            if (!queues.contains(local.deliveryQueueKey())) {
+                queues.add(local.deliveryQueueKey());
+            }
+        }
+        for (String deliveryQueueKey : commands.smembers(queuesKey())) {
+            String normalized = normalizeNullable(deliveryQueueKey);
+            if (normalized != null && !queues.contains(normalized)) {
+                queues.add(normalized);
+            }
+        }
+        return queues;
+    }
+
     private static String encodeToken(String value) {
         return TOKEN_ENCODER.encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
@@ -508,9 +500,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     private static String encodeReference(DeliveryCommandReference reference) {
         return encodeToken(reference.deliveryQueueKey())
                 + MEMBER_SEPARATOR
-                + encodeToken(reference.commandId())
-                + MEMBER_SEPARATOR
-                + encodeToken(reference.queueConsumerKey());
+                + encodeToken(reference.commandId());
     }
 
     private static DeliveryCommandReference decodeReference(String encoded) {
@@ -518,14 +508,12 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
             return null;
         }
         String[] parts = encoded.split(MEMBER_SEPARATOR, -1);
-        if (parts.length != 3) {
+        if (parts.length != 2) {
             return null;
         }
         return new DeliveryCommandReference(
                 decodeToken(parts[0]),
-                decodeToken(parts[1]),
-                decodeToken(parts[2]),
-                "unknown"
+                decodeToken(parts[1])
         );
     }
 
@@ -533,9 +521,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         return String.join("|",
                 CONSUMER_EVIDENCE_VERSION,
                 encodeToken(claim.selectedWorkerId()),
-                encodeToken(claim.queueConsumerKey()),
-                encodeToken(claim.consumerEvidenceId()),
-                encodeToken(claim.adapterId()),
+                encodeToken(claim.endpointLeaseId()),
                 Long.toString(claim.leaseExpireAtEpochMillis())
         );
     }
@@ -545,15 +531,13 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
             return null;
         }
         String[] parts = encoded.split("\\|", -1);
-        if (parts.length != 6 || !CONSUMER_EVIDENCE_VERSION.equals(parts[0])) {
+        if (parts.length != 4 || !CONSUMER_EVIDENCE_VERSION.equals(parts[0])) {
             return null;
         }
         return new ConsumerEvidence(
                 decodeToken(parts[1]),
                 decodeToken(parts[2]),
-                decodeToken(parts[3]),
-                decodeToken(parts[4]),
-                parseLong(parts[5])
+                parseLong(parts[3])
         );
     }
 
@@ -580,9 +564,13 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     }
 
     private record ConsumerEvidence(String selectedWorkerId,
-                                    String queueConsumerKey,
-                                    String consumerEvidenceId,
-                                    String adapterId,
+                                    String endpointLeaseId,
                                     long leaseExpireAtEpochMillis) {
+    }
+
+    private record LocalConsumerEvidence(String deliveryQueueKey,
+                                         String selectedWorkerId,
+                                         String endpointLeaseId,
+                                         long leaseExpireAtEpochMillis) {
     }
 }

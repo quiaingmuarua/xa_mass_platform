@@ -39,7 +39,6 @@ public class PullWorkerSession {
     private final TaskResultCallbackCodec resultCallbackCodec;
     private final TransportEndpointLeaseStore endpointLeaseStore;
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
-    private final String deliveryCommandConsumerKey;
     private final WorkerPresenceIngress workerPresenceIngress;
     private final String transportHint;
 
@@ -60,7 +59,6 @@ public class PullWorkerSession {
                 resultIngressChannel,
                 endpointLeaseStore,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
-                "local",
                 workerPresenceIngress,
                 transportHint);
     }
@@ -73,7 +71,6 @@ public class PullWorkerSession {
                       TransportResultIngressChannel resultIngressChannel,
                       TransportEndpointLeaseStore endpointLeaseStore,
                       DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
-                      String deliveryCommandConsumerKey,
                       WorkerPresenceIngress workerPresenceIngress,
                       String transportHint) {
         if (workerId == null || workerId.isBlank()) {
@@ -92,7 +89,6 @@ public class PullWorkerSession {
         this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
                 ? deliveryCommandConsumerRegistry
                 : NoopDeliveryCommandConsumerRegistry.INSTANCE;
-        this.deliveryCommandConsumerKey = requireText(deliveryCommandConsumerKey, "deliveryCommandConsumerKey");
         this.workerPresenceIngress = workerPresenceIngress != null
                 ? workerPresenceIngress
                 : NoopWorkerPresenceIngress.INSTANCE;
@@ -200,7 +196,12 @@ public class PullWorkerSession {
     }
 
     public TaskPullResult pollResult(int maxMessages, long timeoutMillis) {
-        DeliveryPullResult result = deliveryPullChannel.pollDeliveryMessagesResult(workerId, maxMessages, timeoutMillis);
+        DeliveryPullResult result = deliveryPullChannel.pollDeliveryMessagesResult(
+                workerGroupId,
+                workerId,
+                maxMessages,
+                timeoutMillis
+        );
         return TaskPullResult.of(mapStatus(result.getStatus()), result.getItems().stream()
                 .map(payloadCodec::decode)
                 .toList());
@@ -282,9 +283,7 @@ public class PullWorkerSession {
         deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
                 evidence.deliveryBucketId(),
                 evidence.workerId(),
-                deliveryCommandConsumerKey,
                 evidence.endpointLeaseId(),
-                evidence.endpointDriverId(),
                 evidence.leaseExpireAtEpochMillis()
         ));
     }
@@ -293,9 +292,7 @@ public class PullWorkerSession {
         deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
                 workerGroupId,
                 workerId,
-                deliveryCommandConsumerKey,
                 connectionId,
-                adapterId,
                 0L
         ));
     }

@@ -126,8 +126,8 @@ external worker client flows.
 
 `transportHint` is required for worker registration. External worker/session
 callers declare `adapterNodeId + transportHint`; they do not pass concrete
-transport runtime ids such as `adapterId`, `routeKey`, `transportNodeId`, or
-`connectionId`. Transport assembly resolves adapter/runtime evidence from the
+transport runtime ids such as `adapterId`, `routeKey`, `connectionId`, or
+endpoint lease ids. Transport assembly resolves adapter/runtime evidence from the
 registered adapter-node and runtime configuration. `transportHint` aliases
 such as `websocket`, `ws`, `push`, `pull`, or `queue` are not accepted; use
 canonical coarse families such as `realtime` or `polling`.
@@ -174,9 +174,8 @@ transport consumer JVMs without adding server-owned transport endpoints. Use
 Redis-backed runtime channels for delivery-command handoff, result ingest, and
 delivery-failure compensation. The one-argument
 `redisDistributedChannels(redisUri)` helper wires the delivery-command handoff,
-result inbox, delivery-failure inbox, Redis endpoint lease store, Redis
-delivery store, and transport-node registry under transport-owned component
-namespaces:
+result inbox, delivery-failure inbox, Redis endpoint lease store, and Redis
+delivery store under transport-owned component namespaces:
 
 | Component | Default namespace |
 | --- | --- |
@@ -185,7 +184,6 @@ namespaces:
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` |
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` |
 | delivery | `xa:mass:transport:delivery:v1` |
-| nodes | `xa:mass:transport:nodes:v1` |
 
 The two-argument overload is for a caller-owned deployment root and appends the
 component names beneath that root. It is not the default namespace shape.
@@ -214,7 +212,6 @@ String redisUri = "redis://localhost:6379";
 MassSdkApplication transportConsumer = MassSdk.builder()
         .transport(transport -> transport
                 .transportRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER)
-                .transportNodeId("edge-node-a")
                 .redisDistributedChannels(redisUri)
                 .webSocketAdapter(webSocket -> webSocket
                         .adapterId("ws-public")
@@ -362,13 +359,14 @@ Assignment no longer hands dispatch-ready batches straight into a transport
 routing listener. SDK runtime assembly now translates assignment truth into
 `DeliveryCommand` and hands it to a transport-owned selected-worker delivery
 submitter; the bundled default is an in-memory bounded queue plus pump, while
-`redisDistributedChannels(...)` uses Redis delivery-command inboxes with
-node-local drain lanes. Starter assembly records only `deliveryBucketId +
+`redisDistributedChannels(...)` uses Redis delivery-command inboxes with a
+bucket-derived delivery queue. Starter assembly records only `deliveryBucketId +
 selectedWorkerId` plus typed payload/context; adapter, route, connection, and
-endpoint facts remain transport-owned evidence. Transport delivery resolves the
-current transport node for that bucket-worker pair before handoff. Transport
-consumers drain already resolved delivery targets, re-resolve endpoint evidence
-locally, and do not reselect workers.
+endpoint facts remain transport-owned evidence. Transport producers derive the
+queue from `deliveryBucketId` and do not resolve transport nodes. Transport
+consumers drain bucket-queue entries, demux by command-level
+`selectedWorkerId`, resolve endpoint evidence locally for final-hop delivery,
+and do not reselect workers.
 The companion result and delivery-failure Redis inboxes are runtime channels
 back to the engine process; they are not server APIs and they do not move task
 lifecycle ownership into transport.
@@ -476,8 +474,8 @@ are surfaced through the explicit operator/runtime `app.runtimeDiagnostics().get
 view and the Boot-shell `/api/v1/runtime/queues` response. That HTTP route is
 operator/console diagnostics, not an external public SDK contract. Default
 worker/session inspection and public worker APIs must not expose transport
-internal ids such as `adapterId`, `routeKey`, `transportNodeId`,
-`connectionId`, or `deliveryQueueKey` as delivery targets. If a future
+internal ids such as `adapterId`, `routeKey`, `connectionId`, endpoint lease
+ids, or `deliveryQueueKey` as delivery targets. If a future
 operator-only detail endpoint needs raw transport ids, it must be a bounded
 diagnostic surface and explicitly documented as non-contractual. Delivery-store diagnostics also expose
 `app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is a legacy

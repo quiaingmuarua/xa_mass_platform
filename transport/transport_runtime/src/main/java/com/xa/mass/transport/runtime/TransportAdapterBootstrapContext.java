@@ -24,7 +24,6 @@ public final class TransportAdapterBootstrapContext {
     private final TransportEndpointLeaseStore endpointLeaseStore;
     private final TransportDeliveryService deliveryService;
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
-    private final String deliveryCommandConsumerKey;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
     private TransportBinding transportBinding;
     private ManagedTransportAdapter managedTransportAdapter;
@@ -43,7 +42,6 @@ public final class TransportAdapterBootstrapContext {
                 endpointLeaseStore,
                 deliveryService,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
-                "local",
                 runtimeTaskExecutor);
     }
 
@@ -53,7 +51,6 @@ public final class TransportAdapterBootstrapContext {
                                             TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryService deliveryService,
                                             DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
-                                            String deliveryCommandConsumerKey,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.resultIngressChannel = resultIngressChannel;
@@ -63,7 +60,6 @@ public final class TransportAdapterBootstrapContext {
         this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
                 ? deliveryCommandConsumerRegistry
                 : NoopDeliveryCommandConsumerRegistry.INSTANCE;
-        this.deliveryCommandConsumerKey = requireText(deliveryCommandConsumerKey, "deliveryCommandConsumerKey");
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
     }
 
@@ -89,10 +85,6 @@ public final class TransportAdapterBootstrapContext {
 
     public DeliveryCommandConsumerRegistry getDeliveryCommandConsumerRegistry() {
         return deliveryCommandConsumerRegistry;
-    }
-
-    public String getDeliveryCommandConsumerKey() {
-        return deliveryCommandConsumerKey;
     }
 
     public RuntimeTaskExecutor getRuntimeTaskExecutor() {
@@ -131,10 +123,4 @@ public final class TransportAdapterBootstrapContext {
         return rawWorkerMessageChannel;
     }
 
-    private static String requireText(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + " must not be blank");
-        }
-        return value.trim();
-    }
 }

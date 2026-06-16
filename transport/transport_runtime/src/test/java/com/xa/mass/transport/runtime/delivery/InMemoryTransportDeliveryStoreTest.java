@@ -36,7 +36,7 @@ class InMemoryTransportDeliveryStoreTest {
     }
 
     @Test
-    void enqueueAndDrainUseCanonicalDeliveryQueueKey() {
+    void enqueueAndDrainTrimOpaqueDeliveryQueueKey() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
 
         DispatchOutcome outcome = store.enqueue(" Polling ", " Polling ", queued(" Polling ", item("msg-1", " worker-1 ")));

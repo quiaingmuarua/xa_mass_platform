@@ -53,7 +53,7 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
     }
 
     @Test
-    void registerWorkerResolvesRealtimeAdapterFromAdapterNodeEvidence() {
+    void registerWorkerUsesRealtimeTransportHintWithoutAdapterNodeId() {
         app.registerCredentialPrincipal(CredentialPrincipalRegistration.builder()
                 .principalId("realtime-worker-websocket-principal")
                 .credential(WORKER_KEY)
@@ -76,7 +76,6 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
-                "adapterNodeId", "realtime-node",
                 "workerGroupId", "realtime-crawler",
                 "transportHint", "realtime"
         ), workerHeaders);
@@ -84,7 +83,6 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
         assertApiOk(registerResponse);
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertTrue(!responseData(registerResponse).containsKey("adapterId"));
-        assertEquals("websocket", app.getWorkerAdapterId(WORKER_ID));
         assertEquals("realtime", app.getWorkerTransportHint(WORKER_ID));
     }
 

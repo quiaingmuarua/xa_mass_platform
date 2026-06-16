@@ -11,7 +11,6 @@ import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
-import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
@@ -55,7 +54,6 @@ public class TransportConfig {
     private Supplier<TransportDeliveryCommandHandoff> deliveryCommandHandoffFactory;
     private Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory;
     private Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
-    private Supplier<TransportNodeRegistry> transportNodeRegistryFactory;
     private TransportAdapterBootstrap primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps = List.of();
     private int maxDeliveryQueuedItems = DEFAULT_MAX_DELIVERY_QUEUED_ITEMS;
@@ -65,7 +63,6 @@ public class TransportConfig {
     private long eventHandlerTimeoutMillis;
     private long endpointLeaseMillis = 30_000L;
     private TransportRuntimeRole runtimeRole = TransportRuntimeRole.EMBEDDED;
-    private String transportNodeId = java.util.UUID.randomUUID().toString();
 
     public TransportConfig() {
         this.endpointRegistryFactory = CompositeWorkerEndpointRegistry::new;
@@ -97,7 +94,6 @@ public class TransportConfig {
         this.deliveryCommandHandoffFactory = source.deliveryCommandHandoffFactory;
         this.taskResultInboxFactory = source.taskResultInboxFactory;
         this.deliveryFailureInboxFactory = source.deliveryFailureInboxFactory;
-        this.transportNodeRegistryFactory = source.transportNodeRegistryFactory;
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
         this.maxDeliveryQueuedItems = source.maxDeliveryQueuedItems;
@@ -107,7 +103,6 @@ public class TransportConfig {
         this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
         this.endpointLeaseMillis = source.endpointLeaseMillis;
         this.runtimeRole = source.runtimeRole;
-        this.transportNodeId = source.transportNodeId;
     }
 
     public boolean isEnabled() {
@@ -274,7 +269,8 @@ public class TransportConfig {
         return deliveryCommandHandoffFactory;
     }
 
-    public void setDeliveryCommandHandoffFactory(Supplier<TransportDeliveryCommandHandoff> deliveryCommandHandoffFactory) {
+    public void setDeliveryCommandHandoffFactory(
+            Supplier<TransportDeliveryCommandHandoff> deliveryCommandHandoffFactory) {
         this.deliveryCommandHandoffFactory = deliveryCommandHandoffFactory;
     }
 
@@ -292,14 +288,6 @@ public class TransportConfig {
 
     public void setDeliveryFailureInboxFactory(Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory) {
         this.deliveryFailureInboxFactory = deliveryFailureInboxFactory;
-    }
-
-    public Supplier<TransportNodeRegistry> getTransportNodeRegistryFactory() {
-        return transportNodeRegistryFactory;
-    }
-
-    public void setTransportNodeRegistryFactory(Supplier<TransportNodeRegistry> transportNodeRegistryFactory) {
-        this.transportNodeRegistryFactory = transportNodeRegistryFactory;
     }
 
     public TransportAdapterBootstrap getPrimaryTransportAdapterBootstrap() {
@@ -367,17 +355,6 @@ public class TransportConfig {
         this.runtimeRole = runtimeRole == null ? TransportRuntimeRole.EMBEDDED : runtimeRole;
     }
 
-    public String getTransportNodeId() {
-        return transportNodeId;
-    }
-
-    public void setTransportNodeId(String transportNodeId) {
-        if (transportNodeId == null || transportNodeId.isBlank()) {
-            throw new IllegalArgumentException("transportNodeId must not be blank");
-        }
-        this.transportNodeId = transportNodeId.trim();
-    }
-
     public int getTransportRuntimeMaxPendingTasks() {
         return transportRuntimeMaxPendingTasks;
     }
@@ -425,10 +402,6 @@ public class TransportConfig {
 
     Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory() {
         return deliveryFailureInboxFactory;
-    }
-
-    Supplier<TransportNodeRegistry> transportNodeRegistryFactory() {
-        return transportNodeRegistryFactory;
     }
 
     Function<WorkerEndpointRegistry, WorkerPresenceIngress> workerPresenceIngressResolver() {

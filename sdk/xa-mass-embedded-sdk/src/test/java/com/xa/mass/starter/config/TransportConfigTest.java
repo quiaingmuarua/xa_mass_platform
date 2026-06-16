@@ -57,22 +57,6 @@ class TransportConfigTest {
         assertTrue(config.snapshotRuntimeComposition().isEnabled());
     }
 
-    @Test
-    void transportNodeIdDefaultsAndSnapshotsExplicitValue() {
-        TransportConfig config = new TransportConfig();
-
-        assertTrue(config.snapshotRuntimeComposition().getTransportNodeId() != null
-                && !config.snapshotRuntimeComposition().getTransportNodeId().isBlank());
-
-        config.setTransportNodeId(" node-1 ");
-        TransportRuntimeComposition snapshot = config.snapshotRuntimeComposition();
-        config.setTransportNodeId("node-2");
-
-        assertEquals("node-1", snapshot.getTransportNodeId());
-        assertEquals("node-2", config.snapshotRuntimeComposition().getTransportNodeId());
-        assertThrows(IllegalArgumentException.class, () -> config.setTransportNodeId(" "));
-    }
-
     private record StubBootstrap(String adapterId, String transportHint)
             implements TransportAdapterBootstrap {
 

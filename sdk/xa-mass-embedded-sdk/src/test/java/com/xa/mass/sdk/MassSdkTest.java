@@ -489,9 +489,9 @@ class MassSdkTest {
 
             String routeKey = CanonicalWorkerGroupRouteKeyCodec.encode("polling-workers");
             assertEquals(List.of(
-                            "CONNECTED:worker-1:polling:" + routeKey + ":session-1:online:session-1",
-                            "HEARTBEAT:worker-1:polling:" + routeKey + ":session-1:heartbeat:session-1",
-                            "DISCONNECTED:worker-1:polling:" + routeKey + ":session-1:offline:session-1"
+                            "CONNECTED:worker-1:polling-default:" + routeKey + ":session-1:online:session-1",
+                            "HEARTBEAT:worker-1:polling-default:" + routeKey + ":session-1:heartbeat:session-1",
+                            "DISCONNECTED:worker-1:polling-default:" + routeKey + ":session-1:offline:session-1"
                     ),
                     presenceIngress.events);
         } finally {
@@ -551,7 +551,6 @@ class MassSdkTest {
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
                         .transportRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER)
-                        .transportNodeId("node-a")
                         .redisDistributedChannels("redis://localhost:6379")
                         .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine.enabled(true))
@@ -568,7 +567,6 @@ class MassSdkTest {
         assertCapturedNamespace(runtimeComposition, "deliveryFailureInboxFactory", RedisTransportNamespaces.DELIVERY_FAILURE);
         assertCapturedNamespace(runtimeComposition, "endpointLeaseStoreFactory", RedisTransportNamespaces.ENDPOINT_LEASE);
         assertCapturedNamespace(runtimeComposition, "deliveryStoreFactory", RedisTransportNamespaces.DELIVERY);
-        assertCapturedNamespace(runtimeComposition, "transportNodeRegistryFactory", RedisTransportNamespaces.NODES);
     }
 
     @Test
@@ -808,13 +806,20 @@ class MassSdkTest {
         TransportConfig config = new TransportConfig();
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        assertEquals("polling", runtimeComposition.resolveRegistrationAdapterId(null, "polling"));
+        assertEquals("polling-default", runtimeComposition.resolveRegistrationAdapterId(null, "polling"));
+        assertEquals("websocket", runtimeComposition.resolveRegistrationAdapterId(null, "realtime"));
         assertEquals("websocket", runtimeComposition.resolveRegistrationAdapterId("websocket", "realtime"));
     }
 
     @Test
-    void transportRuntimeCompositionRejectsRealtimeRegistrationWithoutExplicitAdapterIdBeforeStart() {
+    void transportRuntimeCompositionRequiresExplicitAdapterIdWhenRealtimeRegistrationIsAmbiguousBeforeStart() {
         TransportConfig config = new TransportConfig();
+        com.xa.mass.transport.socket.runtime.SocketAdapterConfig extraSocket =
+                new com.xa.mass.transport.socket.runtime.SocketAdapterConfig();
+        extraSocket.setAdapterId("socket-edge");
+        extraSocket.setEnabled(true);
+        extraSocket.setServerEnabled(false);
+        config.addSupplementalSocketAdapterConfig(extraSocket);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         IllegalArgumentException error = assertThrows(
@@ -822,7 +827,7 @@ class MassSdkTest {
                 () -> runtimeComposition.resolveRegistrationAdapterId(null, "realtime")
         );
 
-        assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
+        assertEquals("worker adapterId must be set when transportHint 'realtime' matches multiple adapters [socket-edge, websocket]",
                 error.getMessage());
     }
 
@@ -837,13 +842,7 @@ class MassSdkTest {
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId("custom-rt", "realtime"));
-
-        IllegalArgumentException error = assertThrows(
-                IllegalArgumentException.class,
-                () -> runtimeComposition.resolveRegistrationAdapterId(null, "realtime")
-        );
-        assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
-                error.getMessage());
+        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId(null, "realtime"));
     }
 
     @Test
@@ -863,7 +862,7 @@ class MassSdkTest {
                 () -> runtimeComposition.resolveRegistrationAdapterId(null, "polling")
         );
         assertEquals(
-                "worker adapterId must be set before runtime start when transport registration metadata is unavailable",
+                "transport registration metadata is unavailable; cannot infer adapter binding before runtime start",
                 error.getMessage()
         );
         assertEquals("custom-polling",
@@ -884,12 +883,7 @@ class MassSdkTest {
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId("custom-rt", "realtime"));
-        IllegalArgumentException error = assertThrows(
-                IllegalArgumentException.class,
-                () -> runtimeComposition.resolveRegistrationAdapterId(null, "realtime")
-        );
-        assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
-                error.getMessage());
+        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId(null, "realtime"));
     }
 
     @Test
@@ -3623,6 +3617,11 @@ class MassSdkTest {
         }
 
         @Override
+        public String adapterId() {
+            return protocol;
+        }
+
+        @Override
         public String transportHint() {
             return transportHint;
         }
@@ -3655,6 +3654,11 @@ class MassSdkTest {
         }
 
         @Override
+        public String adapterId() {
+            return protocol;
+        }
+
+        @Override
         public String transportHint() {
             return transportHint;
         }
@@ -3668,7 +3672,10 @@ class MassSdkTest {
         }
 
         @Override
-        public DeliveryPullResult pollDeliveryMessagesResult(String workerId, int maxMessages, long timeoutMillis) {
+        public DeliveryPullResult pollDeliveryMessagesResult(String deliveryBucketId,
+                                                             String workerId,
+                                                             int maxMessages,
+                                                             long timeoutMillis) {
             return DeliveryPullResult.empty();
         }
     }

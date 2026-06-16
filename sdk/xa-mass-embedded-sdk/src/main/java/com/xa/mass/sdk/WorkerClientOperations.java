@@ -12,8 +12,6 @@ import java.util.List;
  */
 public interface WorkerClientOperations {
 
-    String getWorkerAdapterId(String workerId);
-
     String getWorkerTransportHint(String workerId);
 
     PullWorkerSession pullWorker(String workerId);

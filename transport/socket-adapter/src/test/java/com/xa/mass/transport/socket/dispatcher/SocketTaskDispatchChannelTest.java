@@ -69,6 +69,7 @@ class SocketTaskDispatchChannelTest {
     private AdapterDispatchRequest request(String messageId, String workerId) {
         return new AdapterDispatchRequest(
                 "delivery-" + messageId,
+                "bucket-1",
                 workerId,
                 "{\"messageId\":\"" + messageId + "\"}",
                 "corr-" + messageId,

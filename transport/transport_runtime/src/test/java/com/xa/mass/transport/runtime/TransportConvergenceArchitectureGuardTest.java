@@ -276,6 +276,23 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
+    void pollingPullQueuePlacementDoesNotUseAdapterId() throws IOException {
+        Path deliveryService = repoRoot().resolve(
+                "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryService.java");
+        String source = Files.readString(deliveryService);
+        assertTrue(source.contains("AssignedDeliveryCommandQueueKey.queueKeyFor(deliveryBucketId)"),
+                "Polling pull queue placement must derive from deliveryBucketId");
+        assertTrue(!source.contains("resolveDeliveryQueueKey(adapterId)"),
+                "Polling pull queue placement must not derive from adapterId");
+
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve(
+                        "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/QueueBackedTransportDeliveryStore.java")),
+                "normalizeAdapterId(value)"
+        );
+    }
+
+    @Test
     void oldRouteOwnerStoreAndBucketWorkerOwnerPointersDoNotRemain() throws IOException {
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease")),

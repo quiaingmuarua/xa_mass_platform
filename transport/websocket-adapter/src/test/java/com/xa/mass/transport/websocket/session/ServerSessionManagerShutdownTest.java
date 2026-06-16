@@ -77,7 +77,7 @@ class ServerSessionManagerShutdownTest {
     @Test
     void sessionsProjectEndpointLeaseIntoTransportOwnedStore() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore =
-                new InMemoryTransportEndpointLeaseStore(30_000L, "ws-node-1");
+                new InMemoryTransportEndpointLeaseStore(30_000L);
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
         manager.setEndpointLeaseStore(endpointLeaseStore);
         manager.setWorkerPresenceIngress(presenceIngress);
@@ -88,7 +88,6 @@ class ServerSessionManagerShutdownTest {
 
         assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
         assertEquals("route-1", endpoint(endpointLeaseStore, "worker-1").endpointAddress());
-        assertEquals("ws-node-1", endpoint(endpointLeaseStore, "worker-1").runtimeNodeId());
         assertEquals(List.of("connected:worker-1:websocket:route-1:worker-1:websocket connected:worker-1"),
                 presenceIngress.events);
 
@@ -104,7 +103,7 @@ class ServerSessionManagerShutdownTest {
     @Test
     void disconnectingOneGroupRouteConsumerKeepsPeerEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore =
-                new InMemoryTransportEndpointLeaseStore(30_000L, "ws-node-1");
+                new InMemoryTransportEndpointLeaseStore(30_000L);
         manager.setEndpointLeaseStore(endpointLeaseStore);
         Channel firstChannel = mockActiveChannel("worker-1");
         Channel secondChannel = mockActiveChannel("worker-2");
@@ -293,8 +292,8 @@ class ServerSessionManagerShutdownTest {
 
     @Test
     void setEndpointLeaseStoreReprojectsActiveWebSocketSessions() {
-        InMemoryTransportEndpointLeaseStore firstStore = new InMemoryTransportEndpointLeaseStore(30_000L, "ws-node-1");
-        InMemoryTransportEndpointLeaseStore secondStore = new InMemoryTransportEndpointLeaseStore(30_000L, "ws-node-2");
+        InMemoryTransportEndpointLeaseStore firstStore = new InMemoryTransportEndpointLeaseStore(30_000L);
+        InMemoryTransportEndpointLeaseStore secondStore = new InMemoryTransportEndpointLeaseStore(30_000L);
         manager.setEndpointLeaseStore(firstStore);
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -305,7 +304,6 @@ class ServerSessionManagerShutdownTest {
         assertTrue(hasEndpoint(secondStore, "worker-1"));
         assertEquals("route-1", endpoint(secondStore, "worker-1").endpointAddress());
         assertEquals("worker-1", endpoint(secondStore, "worker-1").endpointLeaseId());
-        assertEquals("ws-node-2", endpoint(secondStore, "worker-1").runtimeNodeId());
     }
 
     private static TransportEndpointLeaseViewRecord endpoint(InMemoryTransportEndpointLeaseStore store, String workerId) {

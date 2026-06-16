@@ -33,7 +33,7 @@ class InMemoryTransportDeliveryCommandHandoffTest {
         DeliveryCommandBatch polled = handoff.poll(100L);
         assertNotNull(polled);
         assertEquals(DeliveryCommandFixtures.queueKey(), polled.deliveryQueueKey());
-        assertEquals("websocket", polled.references().getFirst().adapterId());
+        assertEquals("worker-1", polled.items().getFirst().getSelectedWorkerId());
         assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(polled));
     }
 
@@ -92,15 +92,18 @@ class InMemoryTransportDeliveryCommandHandoffTest {
     }
 
     @Test
-    void missingConsumerEvidenceReturnsNoEndpoint() {
+    void offerQueuesWithoutProducerSideConsumerEvidenceLookup() throws Exception {
         InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(1);
 
         assertEquals(
-                List.of(DispatchOutcomeStatus.NO_ENDPOINT),
+                List.of(DispatchOutcomeStatus.QUEUED),
                 handoff.offer(DeliveryCommandFixtures.offer(
                         DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
+        DeliveryCommandBatch polled = handoff.poll(100L);
+        assertNotNull(polled);
+        assertEquals("worker-1", polled.items().getFirst().getSelectedWorkerId());
     }
 
     @Test
@@ -109,14 +112,7 @@ class InMemoryTransportDeliveryCommandHandoffTest {
         claim(handoff, "worker-1", "node-1", "conn-old", "websocket");
         claim(handoff, "worker-1", "node-1", "conn-new", "websocket");
 
-        handoff.releaseConsumer(new DeliveryCommandConsumerClaim(
-                "bucket-1",
-                "worker-1",
-                "node-1",
-                "conn-old",
-                "websocket",
-                0L
-        ));
+        handoff.releaseConsumer(new DeliveryCommandConsumerClaim("bucket-1", "worker-1", "conn-old", 0L));
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
@@ -128,22 +124,20 @@ class InMemoryTransportDeliveryCommandHandoffTest {
 
     private static void claim(InMemoryTransportDeliveryCommandHandoff handoff,
                               String workerId,
-                              String queueConsumerKey,
-                              String adapterId) {
-        claim(handoff, workerId, queueConsumerKey, queueConsumerKey, adapterId);
+                              String endpointLeaseId,
+                              String endpointDriverId) {
+        claim(handoff, workerId, endpointLeaseId, endpointLeaseId, endpointDriverId);
     }
 
     private static void claim(InMemoryTransportDeliveryCommandHandoff handoff,
                               String workerId,
-                              String queueConsumerKey,
+                              String endpointLeaseId,
                               String consumerEvidenceId,
-                              String adapterId) {
+                              String endpointDriverId) {
         handoff.claimConsumer(new DeliveryCommandConsumerClaim(
                 "bucket-1",
                 workerId,
-                queueConsumerKey,
                 consumerEvidenceId,
-                adapterId,
                 System.currentTimeMillis() + 30_000L
         ));
     }

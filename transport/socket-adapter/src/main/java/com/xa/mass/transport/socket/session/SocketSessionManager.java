@@ -43,7 +43,6 @@ public final class SocketSessionManager
     private volatile TransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
     private volatile DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry =
             NoopDeliveryCommandConsumerRegistry.INSTANCE;
-    private volatile String deliveryCommandConsumerKey;
     private volatile WorkerPresenceIngress workerPresenceIngress = NoopWorkerPresenceIngress.INSTANCE;
 
     public SocketSessionManager(String adapterId) {
@@ -300,13 +299,11 @@ public final class SocketSessionManager
         }
     }
 
-    public void setDeliveryCommandConsumerRegistry(DeliveryCommandConsumerRegistry registry,
-                                                   String queueConsumerKey) {
+    public void setDeliveryCommandConsumerRegistry(DeliveryCommandConsumerRegistry registry) {
         synchronized (this) {
             this.deliveryCommandConsumerRegistry = registry != null
                     ? registry
                     : NoopDeliveryCommandConsumerRegistry.INSTANCE;
-            this.deliveryCommandConsumerKey = requireText(queueConsumerKey, "queueConsumerKey");
             projectActiveSessionsToEndpointLease("socket delivery consumer registry replaced");
         }
     }
@@ -444,9 +441,7 @@ public final class SocketSessionManager
         deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
                 evidence.deliveryBucketId(),
                 evidence.workerId(),
-                deliveryCommandConsumerKey(),
                 evidence.endpointLeaseId(),
-                evidence.endpointDriverId(),
                 evidence.leaseExpireAtEpochMillis()
         ));
     }
@@ -455,9 +450,7 @@ public final class SocketSessionManager
         deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
                 claim.deliveryBucketId(),
                 claim.workerId(),
-                deliveryCommandConsumerKey(),
                 claim.endpointLeaseId(),
-                claim.endpointDriverId(),
                 0L
         ));
     }
@@ -466,16 +459,9 @@ public final class SocketSessionManager
         deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
                 heartbeat.deliveryBucketId(),
                 heartbeat.workerId(),
-                deliveryCommandConsumerKey(),
                 heartbeat.endpointLeaseId(),
-                heartbeat.endpointDriverId(),
                 0L
         ));
-    }
-
-    private String deliveryCommandConsumerKey() {
-        String current = deliveryCommandConsumerKey;
-        return current != null ? current : adapterId;
     }
 
     private void closeQuietly(SocketWorkerEndpoint endpoint) {

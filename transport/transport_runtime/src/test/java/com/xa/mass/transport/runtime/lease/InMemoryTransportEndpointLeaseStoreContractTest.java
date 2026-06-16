@@ -5,7 +5,7 @@ class InMemoryTransportEndpointLeaseStoreContractTest extends TransportEndpointL
     @Override
     protected LeaseStoreFixture createFixture(long leaseMillis) {
         InMemoryTransportEndpointLeaseStore store =
-                new InMemoryTransportEndpointLeaseStore(leaseMillis, "runtime-a");
+                new InMemoryTransportEndpointLeaseStore(leaseMillis);
         return new LeaseStoreFixture(store, store, null);
     }
 }

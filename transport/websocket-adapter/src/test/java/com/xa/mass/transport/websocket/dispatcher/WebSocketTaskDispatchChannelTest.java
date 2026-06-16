@@ -134,6 +134,7 @@ class WebSocketTaskDispatchChannelTest {
     private AdapterDispatchRequest request() {
         return new AdapterDispatchRequest(
                 "delivery-msg-1",
+                "bucket-1",
                 "worker-1",
                 """
                 {

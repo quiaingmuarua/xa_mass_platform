@@ -21,7 +21,7 @@ import java.util.List;
 public final class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRuntimeFactory {
 
     private static final TransportAdapterDescriptor POLLING_DESCRIPTOR =
-            new TransportAdapterDescriptor(PollingWorkerAdapter.PROTOCOL, PollingWorkerAdapter.PROTOCOL);
+            new TransportAdapterDescriptor(PollingWorkerAdapter.DEFAULT_ADAPTER_ID, PollingWorkerAdapter.PROTOCOL);
 
     @Override
     public TransportRuntimeRegistry create(TransportResultIngressChannel resultIngressChannel,
@@ -32,7 +32,6 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
                 endpointLeaseStore,
                 deliveryService,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
-                "local",
                 adapterBindings);
     }
 
@@ -41,14 +40,12 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
                                            TransportEndpointLeaseStore endpointLeaseStore,
                                            TransportDeliveryService deliveryService,
                                            DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
-                                           String deliveryCommandConsumerKey,
                                            List<TransportBinding> adapterBindings) {
         List<TransportBinding> bindings = new ArrayList<>(1 + (adapterBindings == null ? 0 : adapterBindings.size()));
         bindings.add(pollingBinding(
                 endpointLeaseStore,
                 deliveryService,
-                deliveryCommandConsumerRegistry,
-                deliveryCommandConsumerKey
+                deliveryCommandConsumerRegistry
         ));
         if (adapterBindings != null && !adapterBindings.isEmpty()) {
             bindings.addAll(adapterBindings);
@@ -57,7 +54,6 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
                 resultIngressChannel,
                 endpointLeaseStore,
                 deliveryCommandConsumerRegistry,
-                deliveryCommandConsumerKey,
                 bindings
         );
     }
@@ -69,13 +65,12 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
 
     private static TransportBinding pollingBinding(TransportEndpointLeaseStore endpointLeaseStore,
                                                    TransportDeliveryService deliveryService,
-                                                   DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
-                                                   String deliveryCommandConsumerKey) {
+                                                   DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry) {
         PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(
                 endpointLeaseStore,
                 deliveryService,
                 deliveryCommandConsumerRegistry,
-                deliveryCommandConsumerKey
+                PollingWorkerAdapter.DEFAULT_ADAPTER_ID
         );
         return TransportBinding.builder(pollingAdapter)
                 .deliveryPullChannel(pollingAdapter)

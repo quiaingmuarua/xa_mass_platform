@@ -28,7 +28,7 @@ class SocketSessionManagerTest {
     @Test
     void connectHeartbeatDisconnectProjectEndpointLeaseIntoTransportStore() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore =
-                new InMemoryTransportEndpointLeaseStore(30_000L, "socket-node-1");
+                new InMemoryTransportEndpointLeaseStore(30_000L);
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
         SocketSessionManager manager = new SocketSessionManager("socket");
         manager.setEndpointLeaseStore(endpointLeaseStore);
@@ -37,7 +37,6 @@ class SocketSessionManagerTest {
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
                 activeSocket(), mock(BufferedWriter.class));
 
-        assertEquals("socket-node-1", endpoint(endpointLeaseStore, "worker-1").runtimeNodeId());
         assertEquals("route-1", endpoint(endpointLeaseStore, "worker-1").endpointAddress());
         assertEquals(List.of("connected:worker-1:socket:route-1:endpoint-1:socket connected:endpoint-1"),
                 presenceIngress.events);
@@ -170,9 +169,9 @@ class SocketSessionManagerTest {
     @Test
     void setEndpointLeaseStoreReprojectsActiveSocketSessions() {
         InMemoryTransportEndpointLeaseStore firstStore =
-                new InMemoryTransportEndpointLeaseStore(30_000L, "socket-node-1");
+                new InMemoryTransportEndpointLeaseStore(30_000L);
         InMemoryTransportEndpointLeaseStore secondStore =
-                new InMemoryTransportEndpointLeaseStore(30_000L, "socket-node-2");
+                new InMemoryTransportEndpointLeaseStore(30_000L);
         SocketSessionManager manager = new SocketSessionManager("socket");
         manager.setEndpointLeaseStore(firstStore);
 
@@ -182,7 +181,6 @@ class SocketSessionManagerTest {
 
         assertEquals("route-1", endpoint(secondStore, "worker-1").endpointAddress());
         assertEquals("endpoint-1", endpoint(secondStore, "worker-1").endpointLeaseId());
-        assertEquals("socket-node-2", endpoint(secondStore, "worker-1").runtimeNodeId());
     }
 
     private static TransportEndpointLeaseViewRecord endpoint(InMemoryTransportEndpointLeaseStore store,

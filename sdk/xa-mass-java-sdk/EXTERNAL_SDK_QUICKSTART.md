@@ -22,7 +22,7 @@ ownership is summarized in `../../integrations/README.md`.
 - Realtime adapters (`websocket`, `socket`) are active cross-language validation paths, but their wire shapes are adapter-local compatibility seams, not the stable public worker protocol commitment.
 - External worker/session callers declare `workerGroupId + transportHint`.
   Concrete transport runtime ids such as `adapterId`, `routeKey`,
-  `transportNodeId`, `connectionId`, and `deliveryQueueKey` are transport
+  `connectionId`, endpoint lease ids, and `deliveryQueueKey` are transport
   internals, not stable Java SDK worker contracts. Worker sessions declare
   `workerGroupId`; explicit adapter-node and node-group binding APIs are
   topology/admin bootstrap only, not the worker registration or session

@@ -13,12 +13,13 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * Adapter-id resolution for worker registration input.
+ * Adapter binding resolution for runtime paths that still need a concrete
+ * adapter.
  *
  * <p>This keeps the adapter identity rules reusable across the live runtime
- * registry and pre-start embedded-runtime composition. Realtime registrations
- * must always provide explicit {@code adapterId}; only polling keeps an
- * implicit family-level default.
+ * registry and pre-start embedded-runtime composition. Worker-facing
+ * registration should not expose adapter ids; explicit adapter ids are only for
+ * internal adapter binding selection and diagnostics.
  */
 public final class TransportRegistrationResolver {
 
@@ -68,10 +69,6 @@ public final class TransportRegistrationResolver {
         if (familyDescriptors == null || familyDescriptors.isEmpty()) {
             throw new IllegalArgumentException("Unsupported worker transportHint '" + normalizedTransportHint
                     + "'; available transportHints=" + availableTransportHints());
-        }
-        if (WorkerTransportHints.REALTIME.equals(normalizedTransportHint)) {
-            throw new IllegalArgumentException("worker adapterId must be set when transportHint '"
-                    + normalizedTransportHint + "' is used");
         }
         if (familyDescriptors.size() > 1) {
             throw new IllegalArgumentException("worker adapterId must be set when transportHint '"

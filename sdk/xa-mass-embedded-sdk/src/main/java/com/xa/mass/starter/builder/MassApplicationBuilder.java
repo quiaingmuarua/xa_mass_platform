@@ -28,7 +28,6 @@ import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryCommandHando
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
-import com.xa.mass.transport.runtime.node.RedisTransportNodeRegistry;
 import com.xa.mass.transport.runtime.lease.RedisTransportEndpointLeaseStore;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
@@ -236,7 +235,6 @@ public class MassApplicationBuilder {
             config.setDeliveryCommandHandoffFactory(() -> new RedisTransportDeliveryCommandHandoff(
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
-                    config.getTransportNodeId(),
                     RedisTransportDeliveryCommandHandoff.DEFAULT_MAX_QUEUED_COMMANDS_PER_QUEUE
             ));
             return this;
@@ -277,8 +275,7 @@ public class MassApplicationBuilder {
                     .redisResultInbox(redisUri, RedisTransportNamespaces.RESULT_INBOX)
                     .redisDeliveryFailureInbox(redisUri, RedisTransportNamespaces.DELIVERY_FAILURE)
                     .redisEndpointLeaseStore(redisUri, RedisTransportNamespaces.ENDPOINT_LEASE)
-                    .redisDeliveryStore(redisUri, RedisTransportNamespaces.DELIVERY)
-                    .redisTransportNodeRegistry(redisUri, RedisTransportNamespaces.NODES);
+                    .redisDeliveryStore(redisUri, RedisTransportNamespaces.DELIVERY);
         }
 
         public TransportBuilder redisDistributedChannels(String redisUri, String namespacePrefix) {
@@ -287,8 +284,7 @@ public class MassApplicationBuilder {
                     .redisResultInbox(redisUri, normalizedNamespacePrefix + ":result-inbox")
                     .redisDeliveryFailureInbox(redisUri, normalizedNamespacePrefix + ":delivery-failure")
                     .redisEndpointLeaseStore(redisUri, normalizedNamespacePrefix + ":endpoint-lease")
-                    .redisDeliveryStore(redisUri, normalizedNamespacePrefix + ":delivery")
-                    .redisTransportNodeRegistry(redisUri, normalizedNamespacePrefix + ":nodes");
+                    .redisDeliveryStore(redisUri, normalizedNamespacePrefix + ":delivery");
         }
 
         public TransportBuilder endpointLeaseStoreFactory(Supplier<com.xa.mass.transport.lease.TransportEndpointLeaseStore> endpointLeaseStoreFactory) {
@@ -312,29 +308,8 @@ public class MassApplicationBuilder {
             config.setEndpointLeaseStoreFactory(() -> new RedisTransportEndpointLeaseStore(
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
-                    config.getEndpointLeaseMillis(),
-                    config.getTransportNodeId()
+                    config.getEndpointLeaseMillis()
             ));
-            return this;
-        }
-
-        public TransportBuilder redisTransportNodeRegistry(String redisUri) {
-            return redisTransportNodeRegistry(redisUri, RedisTransportNodeRegistry.DEFAULT_NAMESPACE_PREFIX);
-        }
-
-        public TransportBuilder redisTransportNodeRegistry(String redisUri, String namespacePrefix) {
-            String normalizedRedisUri = requireRedisUri(redisUri);
-            String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            config.setTransportNodeRegistryFactory(() -> new RedisTransportNodeRegistry(
-                    normalizedRedisUri,
-                    normalizedNamespacePrefix,
-                    RedisTransportNodeRegistry.DEFAULT_LEASE_MILLIS
-            ));
-            return this;
-        }
-
-        public TransportBuilder transportNodeId(String transportNodeId) {
-            config.setTransportNodeId(transportNodeId);
             return this;
         }
 

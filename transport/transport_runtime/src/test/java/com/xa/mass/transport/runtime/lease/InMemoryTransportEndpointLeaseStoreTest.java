@@ -18,7 +18,7 @@ class InMemoryTransportEndpointLeaseStoreTest {
 
     @Test
     void claimStoresBucketWorkerEndpointLeaseWithoutRouteOwnerLookup() {
-        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L, "runtime-a");
+        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L);
 
         var evidence = store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
 
@@ -29,7 +29,6 @@ class InMemoryTransportEndpointLeaseStoreTest {
         assertTrue(evidence.leaseExpireAtEpochMillis() > System.currentTimeMillis());
 
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-        assertEquals("runtime-a", view.runtimeNodeId());
         assertEquals("route-1", view.endpointAddress());
         assertEquals("conn-1", view.sessionHandle());
         assertEquals("conn-1", view.endpointLeaseId());
@@ -37,7 +36,7 @@ class InMemoryTransportEndpointLeaseStoreTest {
 
     @Test
     void reconnectStaleHeartbeatAndReleaseCannotMoveCurrentLeaseBack() {
-        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L, "runtime-a");
+        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L);
 
         store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-old", "conn-old"));
         store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-new", "conn-new"));
@@ -53,7 +52,7 @@ class InMemoryTransportEndpointLeaseStoreTest {
 
     @Test
     void matchingHeartbeatRefreshesConsumerEvidence() throws Exception {
-        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(250L, "runtime-a");
+        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(250L);
 
         var first = store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
         Thread.sleep(20L);
@@ -66,7 +65,7 @@ class InMemoryTransportEndpointLeaseStoreTest {
 
     @Test
     void expiredLeaseIsRemovedByBucketScopedPrune() throws Exception {
-        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(25L, "runtime-a");
+        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(25L);
 
         store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
         store.claimEndpointLease(claim("worker-2", "bucket-b", "websocket", "route-2", "conn-2"));
@@ -79,7 +78,7 @@ class InMemoryTransportEndpointLeaseStoreTest {
 
     @Test
     void releaseRequiresMatchingLeaseEvidence() {
-        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L, "runtime-a");
+        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L);
 
         store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
 
@@ -99,11 +98,12 @@ class InMemoryTransportEndpointLeaseStoreTest {
         assertFalse(components.contains("leaseExpireAtEpochMillis"));
         assertFalse(components.contains("lastHeartbeatEpochMillis"));
         assertFalse(components.contains("updatedAtEpochMillis"));
+        assertFalse(components.contains("runtimeNodeId"));
     }
 
     @Test
     void claimRequiresDeliveryBucket() {
-        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L, "runtime-a");
+        InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L);
 
         assertThrows(IllegalArgumentException.class, () ->
                 store.claimEndpointLease(claim("worker-1", " ", "websocket", "route-1", "conn-1")));

@@ -14,6 +14,7 @@ import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
@@ -23,7 +24,6 @@ import com.xa.mass.transport.runtime.delivery.DeliveryCommandReference;
 import com.xa.mass.transport.runtime.delivery.DeliveryQueueOffer;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
-import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
@@ -53,13 +53,8 @@ class MassApplicationDistributedTransportTest {
         engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-1"));
         engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-2"));
 
-        InMemoryTransportNodeRegistry nodeRegistry = new InMemoryTransportNodeRegistry();
-        nodeRegistry.register("node-1", List.of("websocket"), 1L);
-        nodeRegistry.register("node-2", List.of("websocket"), 1L);
-
         CapturingDeliveryCommandHandoff handoff = new CapturingDeliveryCommandHandoff();
         TransportConfig transport = disabledEngineProducerTransport();
-        transport.setTransportNodeRegistryFactory(() -> nodeRegistry);
         transport.setDeliveryCommandHandoffFactory(() -> handoff);
         transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
@@ -89,15 +84,15 @@ class MassApplicationDistributedTransportTest {
     }
 
     @Test
-    void transportConsumerDrainsOnlyLocallyReadyRouteBatches() throws Exception {
+    void transportConsumerDrainsOnlyLocallyReadySelectedWorkerBatches() throws Exception {
         EngineConfig engine = new EngineConfig();
         engine.setEnabled(false);
 
-        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff("node-1");
-        handoff.enqueue(deliveryBatch("msg-node-2", "worker-2", "node-2"));
-        handoff.enqueue(deliveryBatch("msg-node-1", "worker-1", "node-1"));
+        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff("worker-1");
+        handoff.enqueue(deliveryBatch("msg-remote", "worker-2"));
+        handoff.enqueue(deliveryBatch("msg-local", "worker-1"));
         RecordingAdapter adapter = new RecordingAdapter("websocket", 1);
-        TransportConfig transport = disabledTransportConsumerTransport("node-1");
+        TransportConfig transport = disabledTransportConsumerTransport();
         transport.setDeliveryCommandHandoffFactory(() -> handoff);
         transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
@@ -107,10 +102,10 @@ class MassApplicationDistributedTransportTest {
 
         app.start();
         try {
-            assertTrue(adapter.awaitDispatch(2, TimeUnit.SECONDS), "transport consumer should drain locally ready route inbox");
-            assertEquals(List.of("msg-node-1"), adapter.dispatchedMessageIds());
+            assertTrue(adapter.awaitDispatch(2, TimeUnit.SECONDS), "transport consumer should drain bucket queue and demux selected worker locally");
+            assertEquals(List.of("msg-local"), adapter.dispatchedMessageIds());
             assertEquals(List.of("worker-1"), adapter.dispatchedWorkerIds());
-            assertEquals(List.of("msg-node-2"), messages(handoff.pollForNode("node-2")));
+            assertEquals(List.of("msg-remote"), messages(handoff.pollForSelectedWorker("worker-2")));
         } finally {
             app.stop();
         }
@@ -126,10 +121,9 @@ class MassApplicationDistributedTransportTest {
         return transport;
     }
 
-    private static TransportConfig disabledTransportConsumerTransport(String transportNodeId) {
+    private static TransportConfig disabledTransportConsumerTransport() {
         TransportConfig transport = new TransportConfig();
         transport.setRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER);
-        transport.setTransportNodeId(transportNodeId);
         transport.getBundledWebSocketAdapterConfig().setEnabled(false);
         transport.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         transport.getBundledSocketAdapterConfig().setEnabled(false);
@@ -181,16 +175,16 @@ class MassApplicationDistributedTransportTest {
         );
     }
 
-    private static DeliveryCommandBatch deliveryBatch(String messageId, String workerId, String transportNodeId) {
-        DeliveryCommand command = deliveryCommand(messageId, workerId, transportNodeId);
+    private static DeliveryCommandBatch deliveryBatch(String messageId, String workerId) {
+        DeliveryCommand command = deliveryCommand(messageId, workerId);
         return new DeliveryCommandBatch(
                 deliveryQueueKey(),
-                List.of(new DeliveryCommandReference(deliveryQueueKey(), command.getCommandId(), transportNodeId, "websocket")),
+                List.of(new DeliveryCommandReference(deliveryQueueKey(), command.getCommandId())),
                 List.of(command)
         );
     }
 
-    private static DeliveryCommand deliveryCommand(String messageId, String workerId, String transportNodeId) {
+    private static DeliveryCommand deliveryCommand(String messageId, String workerId) {
         TaskDispatchBinding binding = binding(messageId, workerId);
         String commandId = "cmd-" + messageId;
         return new DeliveryCommand(
@@ -278,12 +272,12 @@ class MassApplicationDistributedTransportTest {
     }
 
     private static final class LocalDeliveryCommandHandoff implements TransportDeliveryCommandHandoff {
-        private final String localTransportNodeId;
+        private final String localSelectedWorkerId;
         private final Queue<DeliveryCommandBatch> batches = new ConcurrentLinkedQueue<>();
         private volatile boolean running = true;
 
-        private LocalDeliveryCommandHandoff(String localTransportNodeId) {
-            this.localTransportNodeId = localTransportNodeId;
+        private LocalDeliveryCommandHandoff(String localSelectedWorkerId) {
+            this.localSelectedWorkerId = localSelectedWorkerId;
         }
 
         private void enqueue(DeliveryCommandBatch batch) {
@@ -308,7 +302,7 @@ class MassApplicationDistributedTransportTest {
         public DeliveryCommandBatch poll(long timeoutMillis) throws InterruptedException {
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
             do {
-                DeliveryCommandBatch local = pollForNode(localTransportNodeId);
+                DeliveryCommandBatch local = pollForSelectedWorker(localSelectedWorkerId);
                 if (local != null || timeoutMillis <= 0L) {
                     return local;
                 }
@@ -317,10 +311,10 @@ class MassApplicationDistributedTransportTest {
             return null;
         }
 
-        private DeliveryCommandBatch pollForNode(String transportNodeId) {
+        private DeliveryCommandBatch pollForSelectedWorker(String selectedWorkerId) {
             for (DeliveryCommandBatch batch : List.copyOf(batches)) {
-                if (!batch.references().isEmpty()
-                        && batch.references().getFirst().queueConsumerKey().equals(transportNodeId)
+                if (!batch.items().isEmpty()
+                        && batch.items().getFirst().getSelectedWorkerId().equals(selectedWorkerId)
                         && batches.remove(batch)) {
                     return batch;
                 }
@@ -343,6 +337,14 @@ class MassApplicationDistributedTransportTest {
 
         @Override
         public void contribute(TransportAdapterBootstrapContext context) {
+            context.getEndpointLeaseStore().claimEndpointLease(new TransportEndpointLeaseClaim(
+                    "worker-1",
+                    "demo-workers",
+                    adapter.adapterId(),
+                    "route-worker-1",
+                    "session-worker-1",
+                    "test"
+            ));
             context.registerTransportBinding(TransportBinding.builder(adapter)
                     .build());
         }
@@ -361,6 +363,11 @@ class MassApplicationDistributedTransportTest {
 
         @Override
         public String protocol() {
+            return adapterId;
+        }
+
+        @Override
+        public String adapterId() {
             return adapterId;
         }
 

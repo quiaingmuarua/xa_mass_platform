@@ -77,7 +77,6 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
         try (PollingWorkerSession ignored = workerMass.workerSessions().polling()
                 .workerId(workerId)
                 .workerGroupId("java-sdk-phone-probe")
-                .adapterNodeId("java-sdk-poll-node-sg-1")
                 .attribute("region", "sg")
                 .attribute("country", "sg")
                 .attribute("routingTags", "sg")

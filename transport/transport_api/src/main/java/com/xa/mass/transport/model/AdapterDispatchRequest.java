@@ -6,17 +6,20 @@ package com.xa.mass.transport.model;
 public final class AdapterDispatchRequest {
 
     private final String deliveryId;
+    private final String deliveryBucketId;
     private final String selectedWorkerId;
     private final String payload;
     private final String correlationRef;
     private final long createdAtEpochMillis;
 
     public AdapterDispatchRequest(String deliveryId,
+                                  String deliveryBucketId,
                                   String selectedWorkerId,
                                   String payload,
                                   String correlationRef,
                                   long createdAtEpochMillis) {
         this.deliveryId = requireText(deliveryId, "deliveryId");
+        this.deliveryBucketId = requireText(deliveryBucketId, "deliveryBucketId");
         this.selectedWorkerId = requireText(selectedWorkerId, "selectedWorkerId");
         this.payload = requireText(payload, "payload");
         this.correlationRef = requireText(correlationRef, "correlationRef");
@@ -25,6 +28,10 @@ public final class AdapterDispatchRequest {
 
     public String deliveryId() {
         return deliveryId;
+    }
+
+    public String deliveryBucketId() {
+        return deliveryBucketId;
     }
 
     public String selectedWorkerId() {

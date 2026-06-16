@@ -21,7 +21,6 @@ public final class ResolvedPullWorkerTransport {
     private final TransportResultIngressChannel resultIngressChannel;
     private final TransportEndpointLeaseStore endpointLeaseStore;
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
-    private final String deliveryCommandConsumerKey;
 
     public ResolvedPullWorkerTransport(String workerId,
                                        String workerGroupId,
@@ -37,8 +36,7 @@ public final class ResolvedPullWorkerTransport {
                 deliveryPullChannel,
                 resultIngressChannel,
                 endpointLeaseStore,
-                NoopDeliveryCommandConsumerRegistry.INSTANCE,
-                "local");
+                NoopDeliveryCommandConsumerRegistry.INSTANCE);
     }
 
     public ResolvedPullWorkerTransport(String workerId,
@@ -48,8 +46,7 @@ public final class ResolvedPullWorkerTransport {
                                        DeliveryPullChannel deliveryPullChannel,
                                        TransportResultIngressChannel resultIngressChannel,
                                        TransportEndpointLeaseStore endpointLeaseStore,
-                                       DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
-                                       String deliveryCommandConsumerKey) {
+                                       DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry) {
         this.workerId = Objects.requireNonNull(workerId, "workerId");
         this.workerGroupId = Objects.requireNonNull(workerGroupId, "workerGroupId");
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
@@ -60,7 +57,6 @@ public final class ResolvedPullWorkerTransport {
         this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
                 ? deliveryCommandConsumerRegistry
                 : NoopDeliveryCommandConsumerRegistry.INSTANCE;
-        this.deliveryCommandConsumerKey = requireText(deliveryCommandConsumerKey, "deliveryCommandConsumerKey");
     }
 
     public String getWorkerId() {
@@ -95,14 +91,4 @@ public final class ResolvedPullWorkerTransport {
         return deliveryCommandConsumerRegistry;
     }
 
-    public String getDeliveryCommandConsumerKey() {
-        return deliveryCommandConsumerKey;
-    }
-
-    private static String requireText(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + " must not be blank");
-        }
-        return value.trim();
-    }
 }

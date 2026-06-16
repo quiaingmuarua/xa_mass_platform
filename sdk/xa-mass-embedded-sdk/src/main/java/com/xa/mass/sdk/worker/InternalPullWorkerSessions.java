@@ -26,7 +26,6 @@ public final class InternalPullWorkerSessions {
                                          TransportResultIngressChannel resultIngressChannel,
                                          TransportEndpointLeaseStore endpointLeaseStore,
                                          DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
-                                         String deliveryCommandConsumerKey,
                                          WorkerPresenceIngress workerPresenceIngress,
                                          String transportHint) {
         return new PullWorkerSession(
@@ -38,7 +37,6 @@ public final class InternalPullWorkerSessions {
                 resultIngressChannel,
                 endpointLeaseStore,
                 deliveryCommandConsumerRegistry,
-                deliveryCommandConsumerKey,
                 workerPresenceIngress,
                 transportHint
         );

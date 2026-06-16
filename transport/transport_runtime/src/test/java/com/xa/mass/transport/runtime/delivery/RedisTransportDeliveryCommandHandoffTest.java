@@ -25,8 +25,8 @@ class RedisTransportDeliveryCommandHandoffTest {
     private StatefulRedisConnection<String, String> consumerTwoConnection;
     private String namespacePrefix;
     private RedisTransportDeliveryCommandHandoff producer;
-    private RedisTransportDeliveryCommandHandoff nodeOneConsumer;
-    private RedisTransportDeliveryCommandHandoff nodeTwoConsumer;
+    private RedisTransportDeliveryCommandHandoff consumerOne;
+    private RedisTransportDeliveryCommandHandoff consumerTwo;
 
     @BeforeEach
     void setUp() {
@@ -41,9 +41,9 @@ class RedisTransportDeliveryCommandHandoffTest {
             throw ex;
         }
         namespacePrefix = "xa:mass:test:transport-delivery-command:" + UUID.randomUUID();
-        producer = new RedisTransportDeliveryCommandHandoff(producerConnection, namespacePrefix, "producer", 2);
-        nodeOneConsumer = new RedisTransportDeliveryCommandHandoff(consumerOneConnection, namespacePrefix, "node-1", 2);
-        nodeTwoConsumer = new RedisTransportDeliveryCommandHandoff(consumerTwoConnection, namespacePrefix, "node-2", 2);
+        producer = new RedisTransportDeliveryCommandHandoff(producerConnection, namespacePrefix, 2);
+        consumerOne = new RedisTransportDeliveryCommandHandoff(consumerOneConnection, namespacePrefix, 2);
+        consumerTwo = new RedisTransportDeliveryCommandHandoff(consumerTwoConnection, namespacePrefix, 2);
     }
 
     @AfterEach
@@ -54,11 +54,11 @@ class RedisTransportDeliveryCommandHandoffTest {
         if (producer != null) {
             producer.shutdown();
         }
-        if (nodeOneConsumer != null) {
-            nodeOneConsumer.shutdown();
+        if (consumerOne != null) {
+            consumerOne.shutdown();
         }
-        if (nodeTwoConsumer != null) {
-            nodeTwoConsumer.shutdown();
+        if (consumerTwo != null) {
+            consumerTwo.shutdown();
         }
         if (redisClient != null) {
             redisClient.shutdown();
@@ -67,7 +67,7 @@ class RedisTransportDeliveryCommandHandoffTest {
 
     @Test
     void offerAndPollRoundTripsByBucketDerivedQueueKey() throws Exception {
-        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-1");
         DeliveryQueueOffer offer = DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         );
@@ -75,17 +75,17 @@ class RedisTransportDeliveryCommandHandoffTest {
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED),
                 producer.offer(offer).stream().map(outcome -> outcome.getStatus()).toList());
 
-        DeliveryCommandBatch nodeOne = nodeOneConsumer.poll(500L);
+        DeliveryCommandBatch consumerOneBatch = consumerOne.poll(500L);
 
-        assertNotNull(nodeOne);
-        assertEquals(DeliveryCommandFixtures.queueKey(), nodeOne.deliveryQueueKey());
-        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(nodeOne));
+        assertNotNull(consumerOneBatch);
+        assertEquals(DeliveryCommandFixtures.queueKey(), consumerOneBatch.deliveryQueueKey());
+        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(consumerOneBatch));
     }
 
     @Test
     void sharedDeliveryQueueKeyPreservesSelectedWorkerCommands() throws Exception {
-        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
-        producer.claimConsumerForTest("bucket-1", "worker-2", "node-2");
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-1");
+        consumerTwo.claimConsumerForTest("bucket-1", "worker-2", "lease-2");
         producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-2", "worker-2", "node-2")
         ));
@@ -93,20 +93,20 @@ class RedisTransportDeliveryCommandHandoffTest {
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
 
-        DeliveryCommandBatch nodeOne = nodeOneConsumer.poll(500L);
-        DeliveryCommandBatch nodeTwo = nodeTwoConsumer.poll(500L);
+        DeliveryCommandBatch consumerOneBatch = consumerOne.poll(500L);
+        DeliveryCommandBatch consumerTwoBatch = consumerTwo.poll(500L);
 
-        assertNotNull(nodeOne);
-        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(nodeOne));
-        assertEquals("worker-1", nodeOne.items().getFirst().getSelectedWorkerId());
-        assertNotNull(nodeTwo);
-        assertEquals(List.of("msg-2"), DeliveryCommandFixtures.messages(nodeTwo));
-        assertEquals("worker-2", nodeTwo.items().getFirst().getSelectedWorkerId());
+        assertNotNull(consumerOneBatch);
+        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(consumerOneBatch));
+        assertEquals("worker-1", consumerOneBatch.items().getFirst().getSelectedWorkerId());
+        assertNotNull(consumerTwoBatch);
+        assertEquals(List.of("msg-2"), DeliveryCommandFixtures.messages(consumerTwoBatch));
+        assertEquals("worker-2", consumerTwoBatch.items().getFirst().getSelectedWorkerId());
     }
 
     @Test
-    void boundedOfferUpdatesQueueCatalogWithoutLaneOrNodeKeys() {
-        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+    void boundedOfferUpdatesQueueCatalogWithoutWorkerLaneOrNodeKeys() {
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-1");
         producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
@@ -115,8 +115,11 @@ class RedisTransportDeliveryCommandHandoffTest {
         assertTrue(keys.stream().anyMatch(key -> key.contains(":q:") && key.endsWith(":commands")));
         assertTrue(keys.stream().anyMatch(key -> key.endsWith(":command-retention-deadlines")));
         assertTrue(keys.stream().anyMatch(key -> key.endsWith(":queues")));
-        assertTrue(keys.stream().anyMatch(key -> key.contains(":consumer:") && key.endsWith(":ready-commands")));
-        assertTrue(keys.stream().anyMatch(key -> key.contains(":queue-consumers:")));
+        assertTrue(keys.stream().anyMatch(key -> key.contains(":q:") && key.endsWith(":ready-commands")));
+        assertFalse(keys.stream().anyMatch(key -> key.contains(":worker:") && key.endsWith(":ready-commands")));
+        assertFalse(keys.stream().anyMatch(key -> key.contains(":worker:") && key.endsWith(":inflight-commands")));
+        assertFalse(keys.stream().anyMatch(key -> key.contains(":consumer:")));
+        assertFalse(keys.stream().anyMatch(key -> key.contains(":queue-consumers:")));
         assertTrue(keys.stream().anyMatch(key -> key.contains(":selected-worker-consumers:")));
         assertFalse(keys.stream().anyMatch(key -> key.contains(":lane:")));
         assertFalse(keys.stream().anyMatch(key -> key.endsWith(":ready-lanes")));
@@ -126,10 +129,10 @@ class RedisTransportDeliveryCommandHandoffTest {
     }
 
     @Test
-    void fullLaneReturnsBackpressureWithoutSleepingProducer() {
-        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
-        producer.claimConsumerForTest("bucket-1", "worker-2", "node-1");
-        producer.claimConsumerForTest("bucket-1", "worker-3", "node-1");
+    void fullBucketQueueReturnsBackpressureWithoutSleepingProducer() {
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-1");
+        consumerOne.claimConsumerForTest("bucket-1", "worker-2", "lease-2");
+        consumerOne.claimConsumerForTest("bucket-1", "worker-3", "lease-3");
         producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
@@ -144,100 +147,124 @@ class RedisTransportDeliveryCommandHandoffTest {
     }
 
     @Test
-    void missingSelectedWorkerConsumerReturnsNoEndpointWithoutQueueing() throws Exception {
-        assertEquals(List.of(DispatchOutcomeStatus.NO_ENDPOINT),
+    void offerQueuesWithoutProducerSideSelectedWorkerConsumerLookup() throws Exception {
+        assertEquals(List.of(DispatchOutcomeStatus.QUEUED),
                 producer.offer(DeliveryCommandFixtures.offer(
                         DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList());
 
-        assertNull(nodeOneConsumer.poll(50L));
-        assertEquals(0, producer.queuedBatches(DeliveryCommandFixtures.queueKey()));
+        DeliveryCommandBatch batch = consumerOne.poll(500L);
+
+        assertNotNull(batch);
+        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(batch));
+        assertEquals("worker-1", batch.items().getFirst().getSelectedWorkerId());
     }
 
     @Test
     void nonOwningConsumerCannotDestructivelyClaimSelectedWorkerCommand() throws Exception {
-        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-1");
         producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
 
-        assertNull(nodeTwoConsumer.poll(50L));
-        DeliveryCommandBatch nodeOne = nodeOneConsumer.poll(500L);
+        assertNull(consumerTwo.poll(50L));
+        DeliveryCommandBatch consumerOneBatch = consumerOne.poll(500L);
 
-        assertNotNull(nodeOne);
-        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(nodeOne));
+        assertNotNull(consumerOneBatch);
+        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(consumerOneBatch));
     }
 
     @Test
     void completeAcknowledgesClaimedCommand() throws Exception {
-        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-1");
         producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
-        DeliveryCommandBatch batch = nodeOneConsumer.poll(500L);
+        DeliveryCommandBatch batch = consumerOne.poll(500L);
 
         assertNotNull(batch);
-        assertEquals(1L, producer.inflightReferencesForTest("node-1"));
-        nodeOneConsumer.complete(batch, List.of());
+        assertEquals(1L, producer.inflightReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        consumerOne.complete(batch, List.of());
 
         assertEquals(0, producer.queuedBatches(DeliveryCommandFixtures.queueKey()));
-        assertEquals(0L, producer.inflightReferencesForTest("node-1"));
-        assertNull(nodeOneConsumer.poll(50L));
+        assertEquals(0L, producer.inflightReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        assertNull(consumerOne.poll(50L));
     }
 
     @Test
     void pollAtomicallyClaimsReadyReferenceIntoInflightBeforeMaterializing() throws Exception {
-        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-1");
         producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
 
-        assertEquals(1L, producer.readyReferencesForTest("node-1"));
-        DeliveryCommandBatch batch = nodeOneConsumer.poll(500L);
+        assertEquals(1L, producer.readyReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        DeliveryCommandBatch batch = consumerOne.poll(500L);
 
         assertNotNull(batch);
-        assertEquals(0L, producer.readyReferencesForTest("node-1"));
-        assertEquals(1L, producer.inflightReferencesForTest("node-1"));
+        assertEquals(0L, producer.readyReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        assertEquals(1L, producer.inflightReferencesForTest(DeliveryCommandFixtures.queueKey()));
         assertEquals(1, producer.queuedBatches(DeliveryCommandFixtures.queueKey()));
-        nodeOneConsumer.complete(batch, List.of());
+        consumerOne.complete(batch, List.of());
     }
 
     @Test
     void uncompletedClaimReturnsToReadyAfterVisibilityTimeout() throws Exception {
-        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-1");
         producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
-        DeliveryCommandBatch first = nodeOneConsumer.poll(500L);
+        DeliveryCommandBatch first = consumerOne.poll(500L);
 
         assertNotNull(first);
-        assertEquals(1L, producer.inflightReferencesForTest("node-1"));
-        producer.expireInflightForTest("node-1");
-        DeliveryCommandBatch redelivered = nodeOneConsumer.poll(500L);
+        assertEquals(1L, producer.inflightReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        producer.expireInflightForTest(DeliveryCommandFixtures.queueKey());
+        DeliveryCommandBatch redelivered = consumerOne.poll(500L);
 
         assertNotNull(redelivered);
         assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(redelivered));
-        assertEquals(1L, producer.inflightReferencesForTest("node-1"));
-        nodeOneConsumer.complete(redelivered, List.of());
+        assertEquals(1L, producer.inflightReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        consumerOne.complete(redelivered, List.of());
     }
 
     @Test
     void movedOwnerRemovesOldInflightAndForwardsToCurrentConsumer() throws Exception {
-        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-old");
         producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
-        producer.claimConsumerForTest("bucket-1", "worker-1", "node-2");
+        consumerTwo.claimConsumerForTest("bucket-1", "worker-1", "lease-new");
 
-        assertNull(nodeOneConsumer.poll(50L));
-        assertEquals(0L, producer.inflightReferencesForTest("node-1"));
-        assertEquals(1L, producer.readyReferencesForTest("node-2"));
-        DeliveryCommandBatch nodeTwo = nodeTwoConsumer.poll(500L);
+        assertNull(consumerOne.poll(50L));
+        assertEquals(0L, producer.inflightReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        assertEquals(1L, producer.readyReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        DeliveryCommandBatch consumerTwoBatch = consumerTwo.poll(500L);
 
-        assertNotNull(nodeTwo);
-        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(nodeTwo));
-        assertEquals(1L, producer.inflightReferencesForTest("node-2"));
-        nodeTwoConsumer.complete(nodeTwo, List.of());
+        assertNotNull(consumerTwoBatch);
+        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(consumerTwoBatch));
+        assertEquals(1L, producer.inflightReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        consumerTwo.complete(consumerTwoBatch, List.of());
+    }
+
+    @Test
+    void missingConsumerEvidenceStillMaterializesForFinalHopNoEndpointOutcome() throws Exception {
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-1");
+        producer.offer(DeliveryCommandFixtures.offer(
+                DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
+        ));
+        producer.releaseConsumer(new DeliveryCommandConsumerClaim(
+                "bucket-1",
+                "worker-1",
+                "lease-1",
+                0L
+        ));
+
+        DeliveryCommandBatch batch = consumerOne.poll(500L);
+
+        assertNotNull(batch);
+        assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(batch));
+        assertEquals(1L, producer.inflightReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        consumerOne.complete(batch, List.of());
     }
 
     @Test
@@ -246,52 +273,47 @@ class RedisTransportDeliveryCommandHandoffTest {
                 "node-1",
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         );
-        producer.claimConsumerForTest("bucket-1", "worker-1", "node-1");
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-1");
         producer.offer(new DeliveryQueueOffer(DeliveryCommandFixtures.queueKey(), commandBatch.items()));
         producer.deleteCommandPayloadForTest(
                 DeliveryCommandFixtures.queueKey(),
                 commandBatch.items().getFirst().getCommandId()
         );
 
-        assertNull(nodeOneConsumer.poll(50L));
-        assertEquals(0L, producer.inflightReferencesForTest("node-1"));
-        assertEquals(0L, producer.readyReferencesForTest("node-1"));
+        assertNull(consumerOne.poll(50L));
+        assertEquals(0L, producer.inflightReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        assertEquals(0L, producer.readyReferencesForTest(DeliveryCommandFixtures.queueKey()));
     }
 
     @Test
     void invalidReadyReferenceDoesNotLeaveInflightClaimStuck() throws Exception {
-        producer.pushReadyReferenceForTest("node-1", "not-a-valid-reference");
+        consumerOne.claimConsumerForTest("bucket-1", "worker-1", "lease-1");
+        producer.pushReadyReferenceForTest(DeliveryCommandFixtures.queueKey(), "not-a-valid-reference");
 
-        assertNull(nodeOneConsumer.poll(50L));
-        assertEquals(0L, producer.inflightReferencesForTest("node-1"));
-        assertEquals(0L, producer.readyReferencesForTest("node-1"));
+        assertNull(consumerOne.poll(50L));
+        assertEquals(0L, producer.inflightReferencesForTest(DeliveryCommandFixtures.queueKey()));
+        assertEquals(0L, producer.readyReferencesForTest(DeliveryCommandFixtures.queueKey()));
     }
 
     @Test
     void staleReleaseDoesNotRemoveNewConsumerEvidenceOnSameQueueConsumer() {
-        producer.claimConsumer(new DeliveryCommandConsumerClaim(
+        consumerOne.claimConsumer(new DeliveryCommandConsumerClaim(
                 "bucket-1",
                 "worker-1",
-                "node-1",
                 "conn-old",
-                "websocket",
                 System.currentTimeMillis() + 30_000L
         ));
-        producer.claimConsumer(new DeliveryCommandConsumerClaim(
+        consumerOne.claimConsumer(new DeliveryCommandConsumerClaim(
                 "bucket-1",
                 "worker-1",
-                "node-1",
                 "conn-new",
-                "websocket",
                 System.currentTimeMillis() + 30_000L
         ));
 
-        producer.releaseConsumer(new DeliveryCommandConsumerClaim(
+        consumerOne.releaseConsumer(new DeliveryCommandConsumerClaim(
                 "bucket-1",
                 "worker-1",
-                "node-1",
                 "conn-old",
-                "websocket",
                 0L
         ));
 

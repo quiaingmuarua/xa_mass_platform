@@ -73,17 +73,17 @@ class RedisTransportDeliveryStoreTest {
 
     @Test
     void enqueueDrainAndPollUseSelectedWorkerSelectorUnderSharedDeliveryQueue() throws Exception {
-        DispatchOutcome first = store.enqueue(" Polling ", " Polling ", queued(" Polling ", item("msg-1", " worker-1 ")));
-        store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-2")));
+        DispatchOutcome first = store.enqueue(" Polling ", " Queue-A ", queued(" Queue-A ", item("msg-1", " worker-1 ")));
+        store.enqueue("polling", "Queue-A", queued("Queue-A", item("msg-2", "worker-2")));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
         assertEquals("worker-1", first.getSelectedWorkerId());
-        assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 10)));
-        assertTrue(store.drain("polling", "worker-1", 10).isEmpty());
+        assertEquals(List.of("msg-1"), messageIds(store.drain("Queue-A", "worker-1", 10)));
+        assertTrue(store.drain("Queue-A", "worker-1", 10).isEmpty());
 
         CompletableFuture<List<QueuedPulledDispatch>> polled = CompletableFuture.supplyAsync(() -> {
             try {
-                return store.poll("polling", "worker-2", 10, 1, TimeUnit.SECONDS).getItems();
+                return store.poll("Queue-A", "worker-2", 10, 1, TimeUnit.SECONDS).getItems();
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
                 return List.of();

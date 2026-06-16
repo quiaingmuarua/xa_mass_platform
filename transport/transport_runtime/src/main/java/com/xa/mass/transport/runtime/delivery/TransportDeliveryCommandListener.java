@@ -1,6 +1,8 @@
 package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
@@ -28,13 +30,16 @@ public final class TransportDeliveryCommandListener {
     private static final Logger logger = LoggerFactory.getLogger(TransportDeliveryCommandListener.class);
 
     private final TransportRuntimeRegistry transportRuntimeRegistry;
+    private final TransportEndpointLeaseStore endpointLeaseStore;
     private final TransportDeliveryFailureHandler failureHandler;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
 
     public TransportDeliveryCommandListener(TransportRuntimeRegistry transportRuntimeRegistry,
+                                            TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryFailureHandler failureHandler,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
         this.transportRuntimeRegistry = Objects.requireNonNull(transportRuntimeRegistry, "transportRuntimeRegistry");
+        this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
         this.failureHandler = failureHandler;
         this.runtimeTaskExecutor = runtimeTaskExecutor;
     }
@@ -46,22 +51,24 @@ public final class TransportDeliveryCommandListener {
 
         Map<WorkerAdapter, List<AdapterDispatchRequest>> groupedByAdapter = new LinkedHashMap<>();
         Map<String, ResolvedDispatchCommand> itemByDeliveryId = new LinkedHashMap<>();
-        Map<String, DeliveryCommandReference> referencesByCommandId = referencesByCommandId(batch);
         List<DispatchOutcome> immediateOutcomes = new ArrayList<>();
         for (DeliveryCommand command : batch.items()) {
             try {
-                DeliveryCommandReference reference = referencesByCommandId.get(command.getCommandId());
-                if (reference == null) {
+                TransportEndpointLeaseViewRecord endpoint = endpointLeaseStore
+                        .currentEndpointLease(command.getDeliveryBucketId(), command.getSelectedWorkerId())
+                        .orElse(null);
+                if (endpoint == null) {
                     DispatchOutcome outcome = DispatchOutcome.fromCommand(
                             command,
-                            DispatchOutcomeStatus.INVALID,
-                            false,
-                            "delivery command batch is missing handoff reference"
+                            DispatchOutcomeStatus.NO_ENDPOINT,
+                            true,
+                            "selected worker has no current endpoint lease"
                     );
                     immediateOutcomes.add(outcome);
+                    handleRetryableFailure(outcome);
                     continue;
                 }
-                String adapterId = reference.adapterId();
+                String adapterId = endpoint.endpointDriverId();
                 WorkerAdapter adapter = resolveAdapter(adapterId);
                 if (adapter == null) {
                     DispatchOutcome outcome = DispatchOutcome.fromCommand(
@@ -74,7 +81,7 @@ public final class TransportDeliveryCommandListener {
                     handleRetryableFailure(outcome);
                     continue;
                 }
-                AdapterDispatchRequest request = toRequest(adapterId, command);
+                AdapterDispatchRequest request = toRequest(command);
                 itemByDeliveryId.put(request.deliveryId(), new ResolvedDispatchCommand(command));
                 groupedByAdapter.computeIfAbsent(adapter, ignored -> new ArrayList<>()).add(request);
             } catch (RuntimeException e) {
@@ -124,21 +131,10 @@ public final class TransportDeliveryCommandListener {
         }
     }
 
-    private static Map<String, DeliveryCommandReference> referencesByCommandId(DeliveryCommandBatch batch) {
-        if (batch == null || batch.references().isEmpty()) {
-            return Map.of();
-        }
-        Map<String, DeliveryCommandReference> references = new LinkedHashMap<>();
-        for (DeliveryCommandReference reference : batch.references()) {
-            references.put(reference.commandId(), reference);
-        }
-        return references;
-    }
-
-    private AdapterDispatchRequest toRequest(String adapterId,
-                                             DeliveryCommand command) {
+    private AdapterDispatchRequest toRequest(DeliveryCommand command) {
         return new AdapterDispatchRequest(
                 command.getCommandId(),
+                command.getDeliveryBucketId(),
                 command.getSelectedWorkerId(),
                 command.getPayload(),
                 command.getCorrelationRef(),

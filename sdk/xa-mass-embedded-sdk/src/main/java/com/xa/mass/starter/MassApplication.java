@@ -48,8 +48,6 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureInboxPump;
 import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
-import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
-import com.xa.mass.transport.runtime.node.TransportNodeRegistryHeartbeat;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
@@ -105,8 +103,6 @@ public class MassApplication {
     private TransportResultIngressInboxPump taskResultInboxPump;
     private RedisTransportDeliveryFailureChannel deliveryFailureInbox;
     private TransportDeliveryFailureInboxPump deliveryFailureInboxPump;
-    private TransportNodeRegistry transportNodeRegistry;
-    private TransportNodeRegistryHeartbeat transportNodeHeartbeat;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
     private RuntimeTaskExecutor eventRuntimeTaskExecutor;
     private BufferedTransportResultIngressChannel bufferedResultIngestChannel;
@@ -161,7 +157,6 @@ public class MassApplication {
             try {
                 stopTransportServers();
                 stopManagedTransportAdapters();
-                stopTransportNodeHeartbeat();
                 TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
                 if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
                     stopTaskDispatchHandoff();
@@ -177,8 +172,6 @@ public class MassApplication {
             } finally {
                 stopTaskDispatchHandoff();
                 closeDistributedTransportInboxes();
-                stopTransportNodeHeartbeat();
-                closeTransportNodeRegistry();
                 stopTransportDeliveryService();
                 stopEndpointLeaseStore();
                 stopTransportRuntimeTaskExecutor();
@@ -235,13 +228,6 @@ public class MassApplication {
             logger.warn("Failed to stop transport endpoint lease store after startup failure", cleanupError);
         }
         try {
-            stopTransportNodeHeartbeat();
-            closeTransportNodeRegistry();
-        } catch (Exception cleanupError) {
-            startupFailure.addSuppressed(cleanupError);
-            logger.warn("Failed to stop transport node registry after startup failure", cleanupError);
-        }
-        try {
             stopTransportRuntimeTaskExecutor();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
@@ -276,7 +262,6 @@ public class MassApplication {
             WorkerPresenceIngress presenceIngress = resolveWorkerPresenceIngress();
             workerPresenceIngress = presenceIngress;
             endpointLeaseStore = transportRuntimeComposition.resolveTransportEndpointLeaseStore();
-            transportNodeRegistry = transportRuntimeComposition.resolveTransportNodeRegistry();
             TransportDeliveryStore deliveryStore = transportRuntimeComposition.resolveTransportDeliveryStore();
             TransportDeliveryService deliveryService = new TransportDeliveryService(deliveryStore);
             transportDeliveryService = deliveryService;
@@ -340,7 +325,6 @@ public class MassApplication {
                             endpointLeaseStore,
                             deliveryService,
                             deliveryCommandConsumerRegistry,
-                            transportRuntimeComposition.getTransportNodeId(),
                             transportRuntimeTaskExecutor
                     );
                     transportAdapterBootstrap.contribute(bootstrapContext);
@@ -354,18 +338,15 @@ public class MassApplication {
                         endpointLeaseStore,
                         deliveryService,
                         deliveryCommandConsumerRegistry,
-                        transportRuntimeComposition.getTransportNodeId(),
                         adapterBindings
                 );
                 configureRealtimeWorkerCommandDelivery();
-            }
-            if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                startTransportNodeHeartbeat(adapterBindings);
             }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 if (runtimeRole == TransportRuntimeRole.EMBEDDED) {
                     TransportDeliveryCommandListener batchListener = new TransportDeliveryCommandListener(
                             transportRuntimeRegistry,
+                            endpointLeaseStore,
                             createTransportDeliveryFailureHandler(),
                             transportRuntimeTaskExecutor
                     );
@@ -381,6 +362,7 @@ public class MassApplication {
                 deliveryFailureInbox = transportRuntimeComposition.resolveDeliveryFailureInbox();
                 TransportDeliveryCommandListener batchListener = new TransportDeliveryCommandListener(
                         transportRuntimeRegistry,
+                        endpointLeaseStore,
                         deliveryFailureInbox,
                         transportRuntimeTaskExecutor
                 );
@@ -491,31 +473,6 @@ public class MassApplication {
             throw new IllegalStateException("Cannot resolve transport binding for worker " + worker.workerId()
                     + ": " + e.getMessage(), e);
         }
-    }
-
-    private void startTransportNodeHeartbeat(List<TransportBinding> adapterBindings) {
-        TransportNodeRegistry registry = transportNodeRegistry;
-        if (registry == null) {
-            return;
-        }
-        String transportNodeId = transportRuntimeComposition.getTransportNodeId();
-        List<String> adapterIds = adapterBindings == null
-                ? List.of()
-                : adapterBindings.stream()
-                .map(TransportBinding::getAdapterId)
-                .filter(adapterId -> adapterId != null && !adapterId.isBlank())
-                .map(adapterId -> adapterId.trim().toLowerCase(java.util.Locale.ROOT))
-                .distinct()
-                .toList();
-        transportNodeHeartbeat = new TransportNodeRegistryHeartbeat(
-                registry,
-                transportNodeId,
-                adapterIds,
-                () -> endpointRegistry != null ? endpointRegistry.getActiveConnectionCount() : 0L,
-                5_000L
-        );
-        transportNodeHeartbeat.start();
-        logger.info("Transport node heartbeat started: transportNodeId={}, adapters={}", transportNodeId, adapterIds);
     }
 
     private void startManagedTransportAdapters() {
@@ -646,22 +603,6 @@ public class MassApplication {
         }
     }
 
-    private void stopTransportNodeHeartbeat() {
-        TransportNodeRegistryHeartbeat heartbeat = transportNodeHeartbeat;
-        transportNodeHeartbeat = null;
-        if (heartbeat != null) {
-            heartbeat.stop();
-        }
-    }
-
-    private void closeTransportNodeRegistry() throws Exception {
-        TransportNodeRegistry registry = transportNodeRegistry;
-        transportNodeRegistry = null;
-        if (registry instanceof AutoCloseable closeable) {
-            closeable.close();
-        }
-    }
-
     private void stopTransportRuntimeTaskExecutor() throws Exception {
         RuntimeTaskExecutor executor = transportRuntimeTaskExecutor;
         transportRuntimeTaskExecutor = null;
@@ -782,7 +723,6 @@ public class MassApplication {
                 resolved.getResultIngressChannel(),
                 resolved.getEndpointLeaseStore(),
                 resolved.getDeliveryCommandConsumerRegistry(),
-                resolved.getDeliveryCommandConsumerKey(),
                 requireWorkerPresenceIngress(),
                 resolved.getTransportHint()
         );

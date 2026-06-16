@@ -38,30 +38,31 @@ public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel 
     static final int MAX_INBOX_SIZE = 10_000;
 
     public static final String PROTOCOL = "polling";
+    public static final String DEFAULT_ADAPTER_ID = "polling-default";
 
     private final TransportEndpointLeaseStore endpointLeaseStore;
     private final TransportDeliveryService deliveryService;
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
-    private final String deliveryCommandConsumerKey;
+    private final String adapterId;
 
     public PollingWorkerAdapter(TransportEndpointLeaseStore endpointLeaseStore,
                                 TransportDeliveryService deliveryService) {
         this(endpointLeaseStore,
                 deliveryService,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
-                PROTOCOL);
+                DEFAULT_ADAPTER_ID);
     }
 
     public PollingWorkerAdapter(TransportEndpointLeaseStore endpointLeaseStore,
                                 TransportDeliveryService deliveryService,
                                 DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
-                                String deliveryCommandConsumerKey) {
+                                String adapterId) {
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
         this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
                 ? deliveryCommandConsumerRegistry
                 : NoopDeliveryCommandConsumerRegistry.INSTANCE;
-        this.deliveryCommandConsumerKey = requireText(deliveryCommandConsumerKey, "deliveryCommandConsumerKey");
+        this.adapterId = requireText(adapterId, "adapterId");
     }
 
     @Override
@@ -70,11 +71,16 @@ public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel 
     }
 
     @Override
+    public String adapterId() {
+        return adapterId;
+    }
+
+    @Override
     public List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests) {
         if (requests == null || requests.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = deliveryService.enqueue(PROTOCOL, requests);
+        List<DispatchOutcome> outcomes = deliveryService.enqueue(adapterId, requests);
         for (DispatchOutcome outcome : outcomes) {
             if (outcome.isRetryable()) {
                 logger.warn("Polling delivery rejected: selectedWorkerId={}, deliveryId={}, status={}, reason={}",
@@ -86,12 +92,17 @@ public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel 
     }
 
     @Override
-    public DeliveryPullResult pollDeliveryMessagesResult(String selectedWorkerId, int maxMessages, long timeoutMillis) {
-        if (selectedWorkerId == null || selectedWorkerId.isBlank() || maxMessages <= 0) {
+    public DeliveryPullResult pollDeliveryMessagesResult(String deliveryBucketId,
+                                                         String selectedWorkerId,
+                                                         int maxMessages,
+                                                         long timeoutMillis) {
+        if (deliveryBucketId == null || deliveryBucketId.isBlank()
+                || selectedWorkerId == null || selectedWorkerId.isBlank()
+                || maxMessages <= 0) {
             return DeliveryPullResult.invalidRequest();
         }
         TransportDeliveryPollResult result = deliveryService.pollItemResult(
-                PROTOCOL,
+                deliveryBucketId,
                 selectedWorkerId,
                 maxMessages,
                 timeoutMillis
@@ -157,9 +168,7 @@ public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel 
         deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
                 evidence.deliveryBucketId(),
                 evidence.workerId(),
-                deliveryCommandConsumerKey,
                 evidence.endpointLeaseId(),
-                evidence.endpointDriverId(),
                 evidence.leaseExpireAtEpochMillis()
         ));
     }
@@ -168,9 +177,7 @@ public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel 
         deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
                 claim.deliveryBucketId(),
                 claim.workerId(),
-                deliveryCommandConsumerKey,
                 claim.endpointLeaseId(),
-                claim.endpointDriverId(),
                 0L
         ));
     }
@@ -179,35 +186,33 @@ public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel 
         deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
                 heartbeat.deliveryBucketId(),
                 heartbeat.workerId(),
-                deliveryCommandConsumerKey,
                 heartbeat.endpointLeaseId(),
-                heartbeat.endpointDriverId(),
                 0L
         ));
     }
 
-    private static TransportEndpointLeaseClaim endpointLeaseClaim(String workerId,
-                                                                 String deliveryBucketId,
-                                                                 String routeKey,
-                                                                 String connectionId,
-                                                                 String reason) {
-        return new TransportEndpointLeaseClaim(workerId, deliveryBucketId, PROTOCOL, routeKey, connectionId, reason);
+    private TransportEndpointLeaseClaim endpointLeaseClaim(String workerId,
+                                                           String deliveryBucketId,
+                                                           String routeKey,
+                                                           String connectionId,
+                                                           String reason) {
+        return new TransportEndpointLeaseClaim(workerId, deliveryBucketId, adapterId, routeKey, connectionId, reason);
     }
 
-    private static TransportEndpointLeaseHeartbeat endpointLeaseHeartbeat(String workerId,
-                                                                         String deliveryBucketId,
-                                                                         String routeKey,
-                                                                         String connectionId,
-                                                                         String reason) {
-        return new TransportEndpointLeaseHeartbeat(workerId, deliveryBucketId, PROTOCOL, routeKey, connectionId, reason);
+    private TransportEndpointLeaseHeartbeat endpointLeaseHeartbeat(String workerId,
+                                                                   String deliveryBucketId,
+                                                                   String routeKey,
+                                                                   String connectionId,
+                                                                   String reason) {
+        return new TransportEndpointLeaseHeartbeat(workerId, deliveryBucketId, adapterId, routeKey, connectionId, reason);
     }
 
-    private static TransportEndpointLeaseRelease endpointLeaseRelease(String workerId,
-                                                                     String deliveryBucketId,
-                                                                     String routeKey,
-                                                                     String connectionId,
-                                                                     String reason) {
-        return new TransportEndpointLeaseRelease(workerId, deliveryBucketId, PROTOCOL, routeKey, connectionId, reason);
+    private TransportEndpointLeaseRelease endpointLeaseRelease(String workerId,
+                                                               String deliveryBucketId,
+                                                               String routeKey,
+                                                               String connectionId,
+                                                               String reason) {
+        return new TransportEndpointLeaseRelease(workerId, deliveryBucketId, adapterId, routeKey, connectionId, reason);
     }
 
     private static String requireText(String value, String fieldName) {

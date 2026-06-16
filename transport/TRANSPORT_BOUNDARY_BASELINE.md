@@ -48,8 +48,8 @@ Transport should stay centered on these concepts only:
   and the single retryable delivery-failure fact owner. It carries stable
   delivery identity, selected worker, opaque delivery correlation, status,
   retryability, reason, and time. It must not expose adapter id, delivery queue
-  key, route key, transport node id, connection id, endpoint lease evidence,
-  or task-shaped message/attempt fields.
+  key, route key, connection id, endpoint lease evidence, or task-shaped
+  message/attempt fields.
 - `DeliveryCommand`: assigned-item delivery intent. It carries item identity,
   `deliveryBucketId`, `selectedWorkerId`, an opaque worker payload, opaque
   delivery correlation, deadline, and creation timestamp. Task shell metadata,
@@ -70,8 +70,8 @@ Transport should stay centered on these concepts only:
   it does not serialize packets, routeKey, endpoint evidence, deliveryQueueKey,
   taskName, project, userId, or task payload fields as transport-owned facts.
 - `TransportDeliveryStore`: runtime-owned queueing/drain/poll seam for transport
-  delivery. Assigned polling delivery is addressed by shared
-  `deliveryQueueKey + selectedWorkerId`, with routeKey kept as opaque
+  delivery. Assigned polling pull delivery uses the worker id supplied by the
+  poll request as the drain constraint, with routeKey kept as opaque
   endpoint/result metadata outside the queue value.
 - `TransportResultIngressEnvelope`: opaque result ingress carrier. Transport
   may buffer, enqueue, shard, and diagnose it, but task-shaped payload parsing
@@ -83,8 +83,8 @@ Transport should stay centered on these concepts only:
   engine/starter assembly and transport. Producers offer
   `DeliveryQueueOffer(deliveryQueueKey, commands)` where the queue key is
   derived only from the assigned delivery bucket. Handoff implementations own
-  selected-worker consumer evidence, ready references, inflight references,
-  ack/requeue, and queue-consumer adapter context.
+  selected-worker consumer evidence, bucket queue ready references, bucket
+  queue inflight references, ack/requeue, and endpoint lease validation.
 - `DeliveryPullResult`: explicit transport pull-path status plus delivered
   `PulledDeliveryMessage` items. Task-shaped `TaskPullResult` and
   `PulledTaskDispatch` live at the SDK/server public worker boundary, not in
@@ -106,8 +106,8 @@ Transport should stay centered on these concepts only:
   Connected and heartbeat observations may refresh worker-runtime slot heartbeat
   freshness; they must not write worker resource status or dispatch gates.
 - `AdapterNodeRecord`: worker registration endpoint and logical adapter
-  deployment identity. It is not `transportNodeId`, not worker capability
-  truth, and not a worker load or lease owner.
+  deployment identity. It is not a transport runtime process id, not worker
+  capability truth, and not a worker load or lease owner.
 - `NodeGroupBindingRecord`: adapter-node to WorkerGroup hosting relation truth.
   It gates whether one node may host or drain a group, but it must not own
   event capability.
@@ -158,7 +158,7 @@ lifecycle state.
 - engine-to-transport delivery-command handoff queue/store ownership after
   assignment; current embedded default wiring is an in-memory
   `TransportDeliveryCommandHandoff`, while split runtimes use Redis
-  delivery-command command stores with selected-worker consumer ready refs
+  delivery-command bucket queues plus selected-worker consumer evidence
 - producer-side starter assembly translates immutable `TaskDispatchContext +
   TaskDispatchBinding` assignment facts into minimal `DeliveryCommand` values.
   The binding-level worker-group context becomes `deliveryBucketId`, and
@@ -168,10 +168,10 @@ lifecycle state.
   item structure. Starter does not write adapter, queue, node, route,
   connection, session, or packet facts into command items. Transport-owned
   delivery submitters derive only the bucket queue key from `deliveryBucketId`.
-  Handoff implementations use selected-worker consumer evidence to wake a
-  local queue consumer. Transport consumers drain referenced commands, dispatch
-  by selected worker, and do not reselect workers or decode route-key minting
-  rules.
+  Handoff implementations use selected-worker consumer evidence only for
+  demux/final-hop feasibility after claiming bucket queue entries. Transport
+  consumers drain referenced commands, dispatch by selected worker, and do not
+  reselect workers or decode route-key minting rules.
 - worker transport-binding resolution from registered worker truth before
   dispatch handoff; transport consumers do not call worker-resource runtime for
   second-stage selection
@@ -232,9 +232,9 @@ runtime identity inside transport assembly, not an external worker API or
 engine/starter delivery contract; `transportHint` is only a coarse family hint.
 External worker registration/session APIs declare `adapterNodeId` and
 `transportHint`, while transport resolves adapter/runtime evidence internally.
-`routeKey`, `connectionId`, `transportNodeId`, and `deliveryQueueKey` are
-transport-owned owner or queue evidence and must not leak through worker API,
-worker SDK dispatch items, diagnostics summaries, or `DispatchOutcome`.
+`routeKey`, `connectionId`, endpoint lease ids, and `deliveryQueueKey` are
+transport-owned endpoint or queue evidence and must not leak through worker
+API, worker SDK dispatch items, diagnostics summaries, or `DispatchOutcome`.
 
 Owner boundaries:
 
@@ -246,9 +246,10 @@ Owner boundaries:
 - `Worker` remains the smallest schedulable execution identity. `Device`,
   `AccountSlot`, `AdapterNode`, and transport sessions must not replace it as
   the scheduling subject.
-- `adapterId`, `adapterNodeId`, and `transportNodeId` are separate identities:
-  adapter/protocol runtime identity, logical adapter deployment identity, and
-  split-runtime process/node identity.
+- `adapterId` and `adapterNodeId` are separate identities: transport-internal
+  adapter binding identity versus logical worker registration endpoint identity.
+  The delivery mainline no longer has a separate transport process-node
+  identity.
 - Attributes such as `deviceId`, `accountId`, `phoneId`, `devicePool`, `route`,
   and `region` are scheduling evidence first. They must not silently create
   device owners, account-slot lifecycle, or implicit locks.
@@ -319,7 +320,7 @@ current endpoint metadata for a concrete delivery bucket and worker:
 
 ```text
 deliveryBucketId, workerId, endpointDriverId, endpointAddress,
-runtimeNodeId, sessionHandle, endpointLeaseId
+sessionHandle, endpointLeaseId
 ```
 
 Engine matching still selects a worker from control-plane registration,
@@ -386,8 +387,7 @@ default component namespaces are:
 | --- | --- | --- |
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` | `bucket:<encodedDeliveryBucketId>:workers`, `bucket:<encodedDeliveryBucketId>:deadlines` |
 | delivery | `xa:mass:transport:delivery:v1` | `q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `meta:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `queues`, `stats` |
-| nodes | `xa:mass:transport:nodes:v1` | transport-node owner/heartbeat records and deadlines |
-| delivery-command | `xa:mass:transport:delivery-command:v1` | `q:<encodedDeliveryQueueKey>:commands`, `q:<encodedDeliveryQueueKey>:command-retention-deadlines`, `consumer:<encodedQueueConsumerKey>:ready-commands`, `consumer:<encodedQueueConsumerKey>:inflight-commands`, `queue-consumers:<encodedDeliveryQueueKey>`, `queue-consumer:<encodedQueueConsumerKey>`, `selected-worker-consumers:<encodedDeliveryQueueKey>`, `selected-worker-consumer-deadlines:<encodedDeliveryQueueKey>`, `queues` |
+| delivery-command | `xa:mass:transport:delivery-command:v1` | `q:<encodedDeliveryQueueKey>:commands`, `q:<encodedDeliveryQueueKey>:command-retention-deadlines`, `q:<encodedDeliveryQueueKey>:ready-commands`, `q:<encodedDeliveryQueueKey>:inflight-commands`, `selected-worker-consumers:<encodedDeliveryQueueKey>`, `selected-worker-consumer-deadlines:<encodedDeliveryQueueKey>`, `queues` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
 
@@ -415,8 +415,8 @@ Forbidden transport key families:
 
 Worker runtime aggregates such as `group:{groupId}:slots` remain worker runtime
 truth. Transport may maintain endpoint lease, delivery handoff, delivery store,
-node registry, result inbox, and delivery-failure inbox runtime state; it must
-not preserve or derive scheduling/admission truth in its Redis keyspace.
+result inbox, and delivery-failure inbox runtime state; it must not preserve or
+derive scheduling/admission truth in its Redis keyspace.
 
 ## Model Boundaries
 
@@ -536,10 +536,11 @@ Current runtime rules:
   must not require routeKey when selected-worker session addressing is
   available. Queued polling delivery must not rely on routeKey as the only
   isolation key.
-- assigned polling queues are addressed by
-  `deliveryQueueKey + selectedWorkerId`. `deliveryQueueKey` may be shared by
-  many workers; selected-worker isolation must be a direct sub-lane/index or an
-  equivalent keyed selector, never poll-and-discard from a shared route queue.
+- assigned delivery-command handoff queues are addressed by bucket/shard
+  `deliveryQueueKey`. Each queued command carries `selectedWorkerId`; the
+  adapter dispatcher demuxes by that field and resolves endpoint/session lease
+  evidence before final-hop delivery. `selectedWorkerId` is not a second
+  physical queue address.
 - for assigned task delivery, `selectedWorkerId` is the worker correctness
   constraint, `deliveryBucketId` is the assigned-delivery bucket, and `routeKey`
   is only opaque connection/correlation metadata. Transport runtime must not
@@ -569,11 +570,11 @@ WRB convergence note:
 - Redis-backed endpoint lease state uses bucket-local worker metadata plus
   bucket-local deadline indexes. It does not expose route-key owner scans or
   producer-side dispatch lookup.
-- Assigned polling delivery queues are selected-worker scoped under a shared
-  delivery queue key. Adapter or route changes must not make routeKey the worker
-  correctness key; a queue keyed only by routeKey or deliveryQueueKey is invalid
-  for assigned polling task delivery.
-- `adapterId`, `transportNodeId`, and `connectionId` remain transport-internal
+- Assigned delivery-command handoff queues are bucket/shard scoped. Adapter or
+  route changes must not make routeKey the worker correctness key; wrong-worker
+  prevention comes from the `selectedWorkerId` carried by each command and the
+  final-hop endpoint/session lease check.
+- `adapterId` and connection/session handles remain transport-internal
   endpoint/session evidence. They must stay in endpoint/session values or queue
   metadata, not become the route-key minting rule.
 
@@ -631,10 +632,11 @@ claimed by the wrong consumer, ready refs enter inflight before materialization,
 `complete` acks local handoff state, and final-hop execution returns delivery
 outcome or failure evidence.
 
-Runtime delivery stores must enforce explicit admission control. The current
-in-memory store has per selected-worker sub-lane caps under a shared
-`deliveryQueueKey` and a configurable total queued-item cap; Redis or JDBC
-replacements should preserve equivalent backpressure.
+Runtime delivery stores must enforce explicit admission control. Delivery-
+command handoff stores use bucket/shard queue admission plus local claim/ack
+consistency; polling pull stores may keep selected-worker indexes as adapter
+pull implementation details, but those indexes are not the engine-to-transport
+handoff address.
 `TransportDeliveryStoreStats` is queue/store-path only; direct-send diagnostics
 are assembled above the store boundary by
 `TransportDeliveryServiceStats`. Poll semantics must stay explicit enough to
@@ -642,9 +644,9 @@ distinguish delivered, empty, invalid-request, unavailable, and shutdown
 results without forcing callers to treat every non-delivery outcome as an empty
 queue. `DeliveryPullChannel.pollDeliveryMessagesResult(...)` is the transport
 mainline for that statusful view and receives the polling worker's registered
-worker id as `selectedWorkerId`; SDK task-shaped pull helpers are convenience
-wrappers above it. `DELIVERED` status must always carry one or more pulled
-items/envelopes;
+`deliveryBucketId` plus registered worker id as `selectedWorkerId`; SDK
+task-shaped pull helpers are convenience wrappers above it. `DELIVERED` status
+must always carry one or more pulled items/envelopes;
 empty payload sets are `EMPTY`, not a second encoding of delivery. Thread interruption is not a store result contract; store
 implementations should throw interruption and let callers handle it above the
 store boundary. Store shutdown is
@@ -665,11 +667,12 @@ For Redis-ready queue diagnostics, treat the stats contract in two tiers:
 
 `queueByAdapter` keeps its legacy field name for existing diagnostics, but it
 is not queue ownership truth. Current assigned polling delivery aggregates
-that field under the runtime delivery queue key, such as `polling`, while the
-actual drain selector remains `selectedWorkerId`. Best-effort diagnostics must
-remain meaningful, but future distributed queue implementations are not
-required to preserve the exact local JVM waiter or snapshot timing model of the
-current in-memory store.
+that field under the runtime delivery queue key derived from
+`deliveryBucketId`, such as `bucket:<encodedBucketId>`, while the actual drain
+selector remains `selectedWorkerId`. Best-effort diagnostics must remain
+meaningful, but future distributed queue implementations are not required to
+preserve the exact local JVM waiter or snapshot timing model of the current
+in-memory store.
 
 Queue mechanics such as keyed FIFO storage, blocking poll coordination,
 per-key/global admission, and queue snapshot counters may live under
@@ -679,7 +682,7 @@ Embedded runtime composition may choose between the default in-memory delivery
 store and a Redis-backed transport delivery store, but that selection belongs
 to SDK/starter assembly rather than transport-facing adapter contracts.
 That assembly layer also owns queue-cap tuning such as total queued items and
-per-selected-worker sub-lane queued-item caps; transport contracts should
+any adapter-store-specific selected-worker caps; transport contracts should
 consume those resolved limits rather than hard-code runtime policy.
 
 ## Direct vs Queued Delivery

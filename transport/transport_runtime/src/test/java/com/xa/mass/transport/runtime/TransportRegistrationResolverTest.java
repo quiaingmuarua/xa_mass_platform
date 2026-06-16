@@ -20,18 +20,12 @@ class TransportRegistrationResolverTest {
     }
 
     @Test
-    void rejectsRealtimeFamilyWithoutExplicitAdapterIdEvenWhenOnlyOneAdapterExists() {
+    void resolvesSingleRealtimeFamilyWithoutExplicitAdapterId() {
         TransportRegistrationResolver resolver = new TransportRegistrationResolver(List.of(
                 new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME)
         ));
 
-        IllegalArgumentException error = assertThrows(
-                IllegalArgumentException.class,
-                () -> resolver.resolveRegistrationAdapterId(null, "realtime")
-        );
-
-        assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
-                error.getMessage());
+        assertEquals("websocket", resolver.resolveRegistrationAdapterId(null, "realtime"));
     }
 
     @Test
@@ -62,7 +56,7 @@ class TransportRegistrationResolverTest {
                 () -> resolver.resolveRegistrationAdapterId(null, "realtime")
         );
 
-        assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
+        assertEquals("worker adapterId must be set when transportHint 'realtime' matches multiple adapters [socket, websocket]",
                 error.getMessage());
     }
 
@@ -135,6 +129,11 @@ class TransportRegistrationResolverTest {
 
         @Override
         public String protocol() {
+            return protocol;
+        }
+
+        @Override
+        public String adapterId() {
             return protocol;
         }
 

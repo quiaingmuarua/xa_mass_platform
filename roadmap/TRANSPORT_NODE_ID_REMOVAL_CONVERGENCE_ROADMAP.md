@@ -1,6 +1,7 @@
 # Transport Node Id Removal Convergence Roadmap
 
-Status: proposed direction document.
+Status: mainline implemented; bucket-derived queue model verified, with final
+archive decision pending.
 
 ## Summary
 
@@ -31,9 +32,10 @@ Target principle:
 ```text
 workerGroup / deliveryBucketId     = business delivery bucket
 workerId / selectedWorkerId        = execution and delivery correctness identity
-adapterId                          = transport-internal adapter endpoint handle
+deliveryQueueKey                   = storage / batching shard derived from deliveryBucketId
+adapterId                          = optional adapter endpoint label / future extension metadata
 adapterKind / transportHint        = protocol / endpoint kind
-deliveryCommandConsumerKey         = transitional handoff name; value is adapterId
+deliveryCommandConsumerKey         = legacy node-targeted handoff name; target removed
 sessionHandle / endpointLeaseId    = adapter-local session lease facts
 ```
 
@@ -43,11 +45,12 @@ Adapter endpoint handle rule for this roadmap:
 adapterId = supplied by adapter bootstrap / registration
 ```
 
-The value is chosen by the adapter registration path, for example `ws-public`,
-`ws-internal`, `socket-edge`, or a test-chosen unique value. Transport treats
-it as an internal endpoint handle. It is not an engine/starter assignment fact,
-not a worker public API parameter, not a durable placement strategy key, and not
-a replacement for `transportNodeId`.
+The value may be chosen by the adapter registration path, for example
+`ws-public`, `ws-internal`, `socket-edge`, or a test label. Transport treats it
+as endpoint metadata / local adapter binding metadata. It is not an
+engine/starter assignment fact, not a worker public API parameter, not a durable
+placement strategy key, not a queue selector, not a consumer key, and not a
+replacement for `transportNodeId`.
 
 If a future deployment needs richer adapter placement constraints, they should
 be expressed by a later adapter strategy/topology roadmap, not by generic
@@ -56,13 +59,13 @@ attributes, adapter placement, or adapter capacity strategy.
 
 Multi-instance reservation:
 
-- current embedded mode may keep one transport consumer runtime in the same JVM
-  that hosts multiple adapter endpoints
-- each adapter endpoint has a transport-internal `adapterId` supplied by its
-  bootstrap / registration
+- current embedded mode may keep one transport runtime in the same JVM that
+  hosts multiple adapter endpoints
+- an adapter endpoint may expose an `adapterId` label supplied by its bootstrap /
+  registration, but delivery correctness must not depend on that label
 - future distributed mode may run many transport consumer JVMs; the current
-  mechanism only needs distinct active adapter endpoint handles, not a durable
-  adapter topology identity
+  mechanism should need selected-worker endpoint/session lease evidence, not a
+  durable adapter topology identity
 - business sharing happens through `workerGroupId` / `deliveryBucketId`; many
   adapter ids may serve the same bucket
 - `adapterId` is not the protocol kind. `websocket`, `socket`, and `polling`
@@ -72,8 +75,8 @@ Multi-instance reservation:
 - stable cross-restart adapter identity, adapter placement policy, adapter
   capacity strategy, and adapter topology CAS are deferred until a concrete
   adapter strategy caller exists
-- tests and distributed examples choose distinct adapter ids explicitly; the
-  transport mechanism does not need a cluster-wide uniqueness algorithm
+- tests may use distinct adapter ids for readability, but the transport
+  mechanism must not require adapter-id uniqueness for delivery correctness
 
 Scope compression decision:
 
@@ -81,16 +84,17 @@ Scope compression decision:
   leakage
 - add a front-loaded exposure allowlist phase in this roadmap instead
 - remove `transportNodeId` / `runtimeNodeId` as process-node identity
-- keep `adapterId` only where it is an adapter binding / final-hop / consumer
-  evidence handle
+- keep `adapterId` only where it is adapter binding metadata, final-hop local
+  implementation metadata, or bounded diagnostics
 - do not pull `adapterNodeId` into this roadmap. `adapterNodeId` belongs to
   worker/resource control-plane declaration surfaces and should be handled by a
   worker-runtime or external-surface roadmap if it remains too public.
 
-## Current Code Observations
+## Before-Convergence Observations
 
-These observations are from the current work tree and must be rechecked before
-implementation.
+These observations describe the pre-convergence implementation shape. They are
+kept here only to explain why the roadmap exists and must not be read as
+current implementation truth after this roadmap lands.
 
 - `TransportNodeRegistry` is in `transport_runtime`, not `transport_api`; it
   exposes `register`, `heartbeat`, `releaseRouteOwner`, `getNode`,
@@ -110,24 +114,26 @@ implementation.
 - The delivery handoff factory is currently stored as a no-arg
   `Supplier<TransportDeliveryCommandHandoff>` in `TransportConfig`, so the
   builder closure can read `config.getTransportNodeId()` before
-  `TransportRuntimeComposition` can derive adapter-owned queue consumers from
-  resolved adapter bindings.
+  `TransportRuntimeComposition` can derive the real delivery queue / session
+  lease wiring from resolved runtime state.
 - `RedisTransportDeliveryCommandHandoff` stores that value as
   `localTransportNodeId`, but uses it as the local delivery-command consumer
   key for ready/inflight claim. This is a naming and ownership problem: the
-  runtime needs adapter-owned queue consumer keys, not a transport node id.
+  runtime should not replace it with adapter-owned queue consumer keys. The
+  handoff queue should be bucket-derived `deliveryQueueKey`; each item carries
+  `selectedWorkerId` as a demux and final-hop correctness constraint.
 - `TransportAdapterBootstrapContext`, `TransportRuntimeRegistry`,
-  `ResolvedPullWorkerTransport`, adapters, and `PullWorkerSession` already use
-  the transitional name `deliveryCommandConsumerKey`. The source of that key is
-  still `TransportConfig.transportNodeId`; the target shape has no shared
-  runtime-wide key field. Queue-consumer claims use the binding-scoped
-  `adapterId` at the point the adapter/session writes consumer evidence.
+  `ResolvedPullWorkerTransport`, adapters, and `PullWorkerSession` used the
+  transitional name `deliveryCommandConsumerKey`. The source of that key was
+  `TransportConfig.transportNodeId`; the target shape has no shared
+  runtime-wide key field. Target delivery correctness comes from
+  `deliveryBucketId + selectedWorkerId`, and queue placement comes from the
+  bucket-derived delivery queue.
 - `TransportRuntimeComposition.resolveTransportAdapterBootstraps()` builds
   adapter bootstraps from built-in and supplemental configuration. Current code
-  enforces unique adapter ids only inside the local runtime. The target contract
-  should keep local duplicate validation and require distributed/focused tests
-  to configure distinct adapter ids explicitly, instead of adding a cluster-wide
-  uniqueness algorithm.
+  enforces unique adapter ids only inside the local runtime. That validation may
+  remain as a local binding-map constraint, but it must not become a delivery
+  correctness rule or distributed queue ownership rule.
 - `TransportAdapterDescriptor` currently contains only `adapterId` and
   `transportHint`. `TransportRegistrationResolver` uses those descriptors to
   resolve worker registration adapter binding, and requires explicit
@@ -139,7 +145,7 @@ implementation.
   transport hint, and attributes, not endpoint address. Realtime WebSocket /
   socket clients choose a concrete endpoint by URL/path/port at connection
   time. The target shape should use that accepted connection endpoint to attach
-  the local adapter id to endpoint lease and consumer evidence.
+  endpoint/session lease evidence, not adapter-id queue ownership.
 - `WorkerClientOperations.getWorkerAdapterId(...)` is still on the external
   worker runtime interaction surface and returns the transport runtime adapter
   id. This is classified as worker-facing adapter-id leakage, not a stable
@@ -148,15 +154,16 @@ implementation.
   returns `protocol()`. That makes protocol labels such as `websocket`,
   `socket`, or `polling` silently become endpoint handles when an adapter does
   not override the method.
-- `PollingWorkerAdapter` currently uses its `PROTOCOL` value for delivery
-  enqueue/poll storage, endpoint lease driver id, and consumer evidence adapter
-  id. Redis delivery handoff later copies that evidence adapter id into command
-  references. This means polling is not just a store-key naming concern; it can
-  route final-hop delivery with a protocol-shaped adapter identity.
+- `PollingWorkerAdapter` used to let its protocol / adapter id shape delivery
+  enqueue/poll storage and selected-worker consumer evidence. That was not just
+  a store-key naming concern: it made handoff / final-hop delivery depend on an
+  adapter-shaped identity. The target keeps adapter id only as endpoint driver
+  metadata.
 - `TransportRuntimeRegistry` resolves final-hop adapters from local
   `TransportBinding` entries keyed by adapter id. It is a local runtime registry,
-  not a cluster-wide adapter discovery service. In the target shape, the local
-  binding's `adapterId` is also the distributed handoff consumer identity.
+  not a cluster-wide adapter discovery service. In the target shape, local
+  adapter lookup is an implementation detail behind endpoint/session lease
+  delivery, not a distributed handoff consumer identity.
 - `TransportRuntimeComposition` also passes `transportNodeId` into the default
   endpoint lease store. Endpoint lease metadata/view therefore still carry
   `runtimeNodeId` as diagnostic payload.
@@ -166,8 +173,10 @@ implementation.
   `DeliveryQueueOffer(deliveryQueueKey, commands)`.
 - `DeliveryCommandBatch` no longer carries `targetTransportNodeId`; it only
   carries `deliveryQueueKey`, handoff-owned references, and command items.
-- `TransportDeliveryCommandListener` resolves the final-hop adapter from
-  handoff-private command references. It does not require `transportNodeId`.
+- `TransportDeliveryCommandListener` currently resolves the final-hop adapter
+  from handoff-private command references. It does not require
+  `transportNodeId`, but target final-hop delivery should resolve through
+  selected-worker endpoint/session lease rather than adapter id queue ownership.
 - Endpoint lease stores still persist `runtimeNodeId` in diagnostic metadata,
   but `TransportEndpointLeaseConsumerEvidence` deliberately omits it. This is
   evidence that `runtimeNodeId` is not a hot-path consumer fact.
@@ -184,14 +193,15 @@ implementation.
 - adapter binding registration and final-hop adapter dispatch
 - multiple adapter instances in one application/runtime, each with its own
   `adapterId` and protocol/server configuration
-- `adapterId` as a transport-internal adapter endpoint handle supplied by
-  adapter bootstrap / registration
+- `adapterId` as optional adapter endpoint metadata supplied by adapter
+  bootstrap / registration
 - adapter/session endpoint leases keyed by `deliveryBucketId + workerId`
 - selected-worker consumer evidence for delivery-command handoff
+- delivery queue selection from `deliveryBucketId` / `deliveryQueueKey`
+- selected-worker demux and final-hop correctness after bucket queue drain
 - delivery queues, handoff claim/ack/requeue, and dispatch outcomes
-- handoff queue-consumer ownership, with `adapterId` as the target consumer key
-- local adapter descriptor validation, including local duplicate `adapterId`
-  rejection
+- local adapter descriptor validation where current in-memory registries still
+  require a unique local binding label
 - adapter-local diagnostics that explain live connection/session behavior
 
 ### Transport Must Not Own
@@ -200,11 +210,13 @@ implementation.
 - scheduling, reassignment, retry, or compensation decisions
 - generic process-node identity as a delivery target
 - a second routing plane based on `transportNodeId + adapterId`
+- adapter id as delivery queue key, consumer key, correctness identity, or
+  replacement process-node identity
 - a public or operator-required id for delivery-command consumer internals
 - a cluster-wide adapter registry under a renamed node concept
-- a first-slice cluster-wide duplicate adapter registry; registration-supplied
-  ids plus local duplicate validation are the current mechanism unless a later
-  adapter topology roadmap proves the need for CAS ownership
+- a first-slice cluster-wide duplicate adapter registry; adapter labels are not
+  delivery correctness identities, so duplicate policing is not a delivery
+  executor concern unless a later adapter topology roadmap proves it
 - adapter placement policy, adapter capacity strategy, or stable cross-restart
   adapter identity
 - worker/resource control-plane `adapterNodeId` declarations
@@ -228,45 +240,50 @@ Do not replace it with a public `runtimeNodeId`, `adapterInstanceId`, or
 added only after a concrete caller, storage shape, attributes, and proof set are
 defined.
 
-Use `adapterId` as the adapter endpoint handle and assigned-delivery handoff
-consumer handle inside transport. Existing `deliveryCommandConsumerKey` /
-`queueConsumerKey` names may remain temporarily where current storage APIs still
-require those field names, but their value must be `adapterId`. They are
-transitional storage names, not an independent identity:
+Do not replace `transportNodeId` with `adapterId`.
+
+Assigned delivery should use `deliveryBucketId` to derive queue / shard storage
+placement. Each queued command carries `selectedWorkerId` as an item-level
+delivery constraint used by the adapter dispatcher to demux and enforce
+final-hop correctness. Existing
+`deliveryCommandConsumerKey` / `queueConsumerKey` names are legacy
+node-targeted vocabulary and should be removed from the assigned-delivery
+mainline or reduced to private claim metadata that is never minted from
+`adapterId`, `transportNodeId`, connection id, or route key:
 
 - `adapterId` is supplied by adapter bootstrap / registration. The registration
-  owner may choose a human-readable handle or a generated value, but the
-  delivery executor does not define the minting strategy.
-- `adapterId` is only stable for the lifetime of the local adapter binding /
-  runtime process that owns the handle. It is not a worker session, connection,
-  or delivery bucket identity.
+  owner may choose a human-readable handle or a generated value, but assigned
+  delivery must not depend on the minting strategy.
+- `adapterId` is not a worker session, connection, delivery bucket, queue,
+  consumer, or selected-worker identity.
 - cross-restart adapter identity is not a current delivery-executor contract.
   If adapter strategy later needs stable endpoint identity, that belongs in a
   separate adapter topology roadmap.
-- a process that hosts multiple adapter endpoints owns multiple `adapterId`
-  values and therefore multiple handoff consumer identities.
+- a process that hosts multiple adapter endpoints may expose multiple adapter
+  labels, but those labels do not become handoff consumer identities.
 - `deliveryCommandConsumerKey` must not be generated independently from
-  runtime/node/process state.
+  runtime/node/process state, and must not be retargeted to `adapterId`.
 - `deliveryCommandConsumerKey` must not remain as a runtime-wide field on
-  bootstrap context, runtime registry, or resolved pull transport. It may remain
-  only as a storage/interface field name whose value is copied from the
-  binding-scoped adapter id.
-- command references may carry `queueConsumerKey` as handoff-owned storage
-  metadata, but the value should be the target `adapterId`.
+  bootstrap context, runtime registry, or resolved pull transport.
+- command references should not carry adapter id as queue-consumer metadata.
+  If the handoff implementation still needs private claim metadata, it must be
+  derived from the selected-worker endpoint/session lease and kept inside the
+  handoff store.
 - worker APIs, engine/starter assignment, endpoint lease views, and public
   config must not expose a second consumer id.
 
 `adapterId` is not added to `DeliveryCommand`, SDK assignment calls, engine
-assignment records, or public worker registration as a dispatch selector. It is
-introduced by transport-owned consumer evidence and final-hop dispatch only.
+assignment records, public worker registration, or delivery queue selection. It
+may appear only as adapter binding metadata or bounded diagnostics.
 
-Current roadmap decision: do not introduce a new private stable consumer id and
-do not revive a node registry to own adapter uniqueness. Retarget the existing
-handoff consumer key value to `adapterId`, remove runtime-wide
-`deliveryCommandConsumerKey` state in Phase 1, and leave only storage-level
-`queueConsumerKey` vocabulary where the Redis/in-memory handoff contract still
-needs that field name. Redis handoff ready/inflight keys remain partitioned by
-consumer key, but the consumer key is the adapter endpoint handle.
+Current roadmap decision: do not introduce a new private stable consumer id, do
+not revive a node registry to own adapter uniqueness, and do not retarget the
+old handoff consumer key to `adapterId`. Remove runtime-wide
+`deliveryCommandConsumerKey` state in Phase 1. Redis/in-memory handoff ready /
+inflight storage should be keyed by bucket-derived `deliveryQueueKey`; the
+queued record carries `selectedWorkerId`. Any private in-flight claim token is
+not part of the delivery address and must not force a selected-worker physical
+queue split in this roadmap.
 
 The current mainline should converge to:
 
@@ -282,9 +299,8 @@ DeliveryCommand
 Handoff consumer evidence
   deliveryBucketId
   selectedWorkerId
-  queueConsumerKey = adapterId
-  adapterId
   endpointLeaseId
+  sessionHandle / local endpoint handle
   lease deadline
 
 Endpoint lease diagnostic view
@@ -296,14 +312,15 @@ Endpoint lease diagnostic view
   endpointLeaseId
 
 Adapter binding registry
-  adapterId
+  adapterId metadata
   adapterKind / transportHint
   protocol/server configuration
   no runtime-wide deliveryCommandConsumerKey
 
 Handoff listener / pump
-  polls one or more local adapterId consumer queues
-  resolves final-hop adapter by adapterId
+  drains bucket-derived deliveryQueueKey work
+  demuxes by selectedWorkerId
+  resolves final-hop by selected-worker endpoint/session lease
 ```
 
 No delivery command, dispatch outcome, worker public API, engine/starter
@@ -313,9 +330,10 @@ contract, endpoint lease view, or public config should require or expose
 This decision is scoped to the transport delivery executor boundary, including
 polling because polling participates in assigned-delivery consumer evidence and
 final-hop command references. Polling may keep its internal store-key type names
-temporarily, but selected-worker delivery evidence, endpoint lease driver id,
-handoff references, and final-hop adapter resolution must use the binding
-adapter id rather than `PollingWorkerAdapter.PROTOCOL`.
+temporarily, but selected-worker delivery evidence, handoff references, and
+final-hop delivery must not use `PollingWorkerAdapter.PROTOCOL` or `adapterId`
+as queue / consumer identity. Endpoint lease records may still carry adapter id
+as endpoint driver metadata.
 
 ## Multi-Adapter Invariant
 
@@ -346,18 +364,25 @@ The invariant is:
 
 ```text
 one runtime process may host many adapter endpoint bindings
-each adapter endpoint has its own adapterId handle supplied by registration
-each selected-worker consumer evidence record still names the serving adapterId
-final-hop listener resolves the correct adapter from command reference context
-handoff listener polls the adapterId consumer queue for each local adapter endpoint
+adapterId, when present, is endpoint metadata and may be used for diagnostics
+selected-worker consumer evidence names the endpoint/session lease, not adapterId
+final-hop listener resolves delivery through selected-worker session evidence
+handoff listener drains bucket-derived queue and demuxes by selectedWorkerId
 ```
 
-`adapterId` becomes the concrete final-hop adapter endpoint handle. It replaces the
-need for a generic node id in assigned delivery, but it is not a protocol type.
-If the adapter is websocket, socket, or polling, that belongs in
-`adapterKind` / `transportHint`. Test and distributed configurations should
-choose distinct handles such as `ws-edge-a`, `ws-edge-b`, or `socket-edge`,
-instead of relying on one protocol constant for every adapter endpoint.
+`adapterId` does not replace the generic node id in assigned delivery. The
+replacement is the stricter delivery address:
+
+```text
+deliveryQueueKey derived from deliveryBucketId
+selectedWorkerId item field / demux constraint
+endpoint/session lease for final-hop feasibility
+```
+
+If the adapter is websocket, socket, or polling, that belongs in `adapterKind` /
+`transportHint`. Tests may still choose readable adapter labels such as
+`ws-edge-a`, `ws-edge-b`, or `socket-edge`, but the test must not rely on those
+labels for delivery queue selection or selected-worker correctness.
 
 ## Multi-Instance Reservation
 
@@ -378,32 +403,32 @@ JVM B
 Both can serve deliveryBucketId = phone-device-probe
 ```
 
-The current mechanism only requires distinct active adapter handles while they
-are claiming and draining handoff queues. A selected worker is deliverable
-through the adapter endpoint that currently holds selected-worker consumer
-evidence:
+The target mechanism requires selected-worker endpoint/session lease evidence,
+not distinct active adapter handles, while claiming and draining handoff queues.
+A selected worker is deliverable through the active endpoint/session lease that
+currently owns that worker's final-hop connection:
 
 ```text
 deliveryBucketId + selectedWorkerId
-  -> consumer evidence
-       adapterId = ws-edge-a
-       queueConsumerKey = ws-edge-a
-       consumerEvidenceId = endpointLeaseId / session evidence
-  -> handoff queue owned by adapterId
-  -> local adapter endpoint adapterId
+  -> deliveryQueueKey = keyFor(deliveryBucketId)
+  -> bucket queue entry carrying selectedWorkerId
+  -> endpoint/session lease evidence
+       endpointLeaseId / sessionHandle
+       optional adapter metadata
+  -> local final-hop session manager
 ```
 
 This preserves multi-instance capability without exposing a node identity:
 
-- `TransportRegistrationResolver` keeps validating only local runtime
-  descriptors. Global duplicate `adapterId` CAS is not required for this slice.
-  If adapter placement strategy later needs stable endpoint ids, that topology
-  owner must define the lease/CAS proof.
-- Distributed producer routing uses selected-worker consumer evidence and the
-  stored adapter id, not a node table.
+- `TransportRegistrationResolver` may keep validating local runtime descriptors
+  while current registries need it, but global duplicate `adapterId` CAS is not
+  required for this slice because adapter id is not delivery correctness.
+- Distributed producer routing uses bucket-derived queue placement and
+  selected-worker endpoint/session evidence, not a node table and not a stored
+  adapter id.
 - A worker connection can move between adapter endpoints by replacing endpoint
-  lease / consumer evidence from one adapter id to another. Transport does not
-  need to name the old or new JVM as a public target.
+  lease / consumer evidence. Transport does not need to name the old adapter id,
+  new adapter id, or JVM as a public target.
 - If adapter placement constraints are needed later, add adapter-owned
   attributes to descriptor/topology records and prove their caller; do not use
   `transportNodeId` as an untyped catch-all.
@@ -424,9 +449,9 @@ One possible future shape is:
 external adapter process
   -> HTTP registration / heartbeat
   -> adapterKind + optional operator adapter name
-  -> adapter registration supplies / resolves adapter endpoint handle
+  -> adapter registration supplies / resolves adapter metadata
   -> endpoint attributes + lease evidence
-  -> transport adapter topology / handoff consumer ownership
+  -> transport adapter topology diagnostics, not assigned-delivery routing
 
 engine
   -> assigned delivery facts
@@ -438,8 +463,8 @@ Owner split:
 
 - adapter process owns protocol server/client lifecycle, connection/session
   manager, local endpoint health, and any adapter-local capacity diagnostics.
-- transport owns endpoint handle resolution, lease expiry, handoff consumer
-  queues, and final-hop delivery executor mechanics.
+- transport owns endpoint/session lease expiry, bucket-derived delivery queues,
+  selected-worker final-hop delivery evidence, and delivery executor mechanics.
 - engine owns assignment facts and retry/compensation decisions; it does not
   register, discover, heartbeat, or select adapter instances.
 - worker-runtime owns worker execution identity, worker-group membership,
@@ -461,16 +486,17 @@ Current roadmap slice:
 Future registration must still obey the current identity decision:
 
 ```text
-adapterId = transport-internal adapter endpoint handle
+adapterId = optional adapter endpoint metadata / operator handle
 adapterKind / transportHint = protocol / endpoint kind
 deliveryBucketId / workerGroupId = business delivery bucket
 selectedWorkerId = assigned execution identity
+deliveryQueueKey = derived from deliveryBucketId or bucket shard
 ```
 
 More precisely for this roadmap:
 
 ```text
-adapterId = registration-supplied endpoint handle, owned inside transport runtime/evidence
+adapterId = registration-supplied endpoint metadata, not queue or consumer identity
 ```
 
 External workers and engine-facing assignment code must not provide adapter ids
@@ -489,8 +515,8 @@ be smuggled through `adapterId`, `routeKey`, or a revived node id.
 - Supersedes the parts of
   `TRANSPORT_INTERNAL_ID_BOUNDARY_CONVERGENCE_ROADMAP.md` that keep
   `transportNodeId` by renaming it to `runtimeNodeId`. The stronger decision is
-  deletion from public/config/endpoint views, while using adapter id as the
-  delivery-command queue consumer owner.
+  deletion from public/config/endpoint views, while assigned delivery is keyed
+  by delivery bucket and selected worker rather than adapter id.
 - Future result-ingress work should not introduce `transportNodeId` or
   `adapterId` as a result partition. Result partitioning should follow
   result/task correlation semantics unless a later, explicit adapter strategy
@@ -507,17 +533,19 @@ be smuggled through `adapterId`, `routeKey`, or a revived node id.
   node registry under a new name.
 - Do not treat `adapterId` as `websocket` / `socket` / `polling`. Those are
   adapter kinds / transport hints, not endpoint handles.
-- Do not configure two active transport consumers with the same explicit
-  `adapterId`; registration-owned ids and local duplicate validation are the
-  current mechanism, not a new cluster registry.
+- Do not make duplicate `adapterId` values a delivery correctness concern.
+  Local duplicate validation may remain only where the current local registry
+  implementation cannot distinguish bindings otherwise.
 - Do not change worker scheduling, worker-runtime reachability, or engine
   assignment behavior.
 - Do not change routeKey, deliveryBucketId, or selectedWorkerId semantics.
-  `adapterId` is narrowed by this roadmap only at the transport endpoint /
-  handoff consumer boundary.
+  `adapterId` is narrowed by this roadmap to adapter metadata / diagnostics,
+  not queue or consumer selection.
 - Do not collapse multiple adapter instances into one default adapter.
-- Do not derive queue-consumer ownership from worker id, bucket id, route key,
-  connection id, endpoint lease id, or node id. It is the adapter endpoint id.
+- Do not derive queue-consumer ownership from adapter id, route key, connection
+  id, endpoint lease id, or node id. Assigned delivery should use
+  bucket-derived queue placement plus selected-worker demux/correctness; any private
+  claim token stays inside the handoff implementation.
 - Do not add compatibility aliases for `transportNodeId` inside the repo.
 - Do not expose connection/session internals in public worker APIs while
   removing node ids.
@@ -532,8 +560,9 @@ Do not start by creating a new generic instance registry.
 That would keep the same abstraction cost under a better name. First separate
 the real remaining concerns:
 
-1. adapter endpoint identity and handoff consumer ownership (`adapterId`)
-2. adapter binding / multi-adapter registration (`adapterId + adapterKind`)
+1. assigned-delivery queue ownership (`deliveryBucketId` / bucket shard)
+   plus selected-worker item demux
+2. adapter binding / multi-adapter registration metadata (`adapterId + adapterKind`)
 3. endpoint lease session evidence (`endpointLeaseId`, `sessionHandle`)
 4. obsolete generic node heartbeat (`TransportNodeRegistry`)
 
@@ -563,9 +592,9 @@ Scope:
 - public worker API, engine/starter assignment, SDK/server adapter binding
   configuration, and transport-internal runtime usage classified separately
 - multi-adapter builder examples/tests that must keep working
-- multi-consumer assumptions where current tests use `node-1` / `node-2` as
-  fake queue-consumer keys; those should become adapter ids such as
-  `ws-edge-a` / `ws-edge-b`
+- multi-consumer assumptions where current tests use `node-1` / `node-2` or
+  adapter labels as fake queue-consumer keys; those should become
+  bucket queue plus `selectedWorkerId` demux proof
 - `adapterNodeId` occurrences are classified only to mark them out of scope;
   do not clean them up in this roadmap
 
@@ -575,8 +604,8 @@ Transport id exposure allowlist:
 | --- | --- | --- |
 | `transportNodeId` | archived docs and this roadmap until completion | production config, SDK/server public builders, delivery handoff, endpoint lease metadata/view, Redis runtime values |
 | `runtimeNodeId` | none after endpoint lease cleanup | endpoint lease metadata/view, public DTOs, diagnostics that imply process-node truth |
-| `adapterId` | adapter binding config, local transport registry, final-hop adapter selection, consumer evidence, handoff storage references, bounded diagnostics | worker registration/session public selector, worker client API, engine/starter assignment, `DeliveryCommand`, dispatch outcome contract, replacement for node registry, protocol-shaped fallback identity |
-| `deliveryCommandConsumerKey` / `queueConsumerKey` | handoff-private storage/interface vocabulary whose value is binding-scoped `adapterId` | runtime-wide bootstrap/registry field, public API field, separately generated id |
+| `adapterId` | adapter binding config, local transport registry while needed, final-hop implementation metadata, bounded diagnostics | worker registration/session public selector, worker client API, engine/starter assignment, `DeliveryCommand`, dispatch outcome contract, queue key, consumer key, replacement for node registry, protocol-shaped fallback identity |
+| `deliveryCommandConsumerKey` / `queueConsumerKey` | temporary legacy vocabulary during migration, only if private to the handoff store and not derived from adapter/node/process ids | runtime-wide bootstrap/registry field, public API field, separately generated id, alias for `adapterId` |
 | `adapterNodeId` | out of scope; worker/resource control-plane declaration only | do not convert into transport delivery executor identity in this roadmap |
 
 Initial classification:
@@ -590,27 +619,27 @@ Initial classification:
 | `TransportConfig.transportNodeId` | public-ish SDK/server bootstrap config and accidental source for internal ids | delete after replacement consumers are moved |
 | `MassSdk.TransportOptions.transportNodeId(...)` | external SDK builder exposure | delete |
 | `MassApplicationBuilder.TransportBuilder.transportNodeId(...)` | starter builder exposure | delete |
-| `MassApplicationBuilder.redisDeliveryCommandHandoff(...)` | passes node id as Redis handoff local consumer key | retarget so local queue-consumer key(s) are adapter ids |
-| `TransportConfig.deliveryCommandHandoffFactory` | no-arg supplier closes over old config state | replace with adapter-id-aware factory, structured Redis handoff options, or per-adapter handoff listener construction |
+| `MassApplicationBuilder.redisDeliveryCommandHandoff(...)` | passes node id as Redis handoff local consumer key | retarget so handoff no longer needs a process/adapter consumer key; queue placement is bucket-derived and correctness is selected-worker |
+| `TransportConfig.deliveryCommandHandoffFactory` | no-arg supplier closes over old config state | replace with structured Redis handoff options or composition-owned construction that does not require node/adapter consumer identity |
 | `MassApplicationBuilder.redisDistributedChannels(...)` | wires obsolete node registry namespace | remove node registry wiring |
 | `MassApplication.startTransportNodeHeartbeat(...)` | registers process-level heartbeat | delete |
 | `XaMassServerApplication.transportNodeId` | server bootstrap property and endpoint lease constructor input | delete after endpoint lease no longer needs runtime node |
-| `TransportRuntimeComposition.getTransportNodeId()` | source for adapter bootstrap, runtime registry, endpoint lease, handoff | remove; handoff owner is adapter id |
-| `TransportAdapterBootstrapContext.deliveryCommandConsumerKey` | transitional runtime-wide handoff field currently sourced from node id | remove as runtime-wide state; bootstraps must use their binding/config adapter id when claiming consumer evidence |
-| `TransportRuntimeRegistry.deliveryCommandConsumerKey` | transitional runtime-wide pull-session consumer owner | remove; resolved pull transport derives the consumer key from the selected `TransportBinding.adapterId` |
-| `ResolvedPullWorkerTransport.deliveryCommandConsumerKey` | internal SDK session handoff owner | remove; callers use the resolved binding `adapterId` directly instead of a second accessor |
-| `TransportAdapterDescriptor` | local adapter descriptor containing `adapterId + transportHint` | keep; `adapterId` is transport-internal endpoint handle supplied by adapter bootstrap / registration; future strategy attributes belong in a later adapter topology roadmap, not node registry |
-| `TransportRegistrationResolver` | local worker registration adapter resolver | narrow; registration may validate transport hint availability, but realtime registration must not require a delivery handoff `adapterId`; the accepted session endpoint attaches local adapter id |
+| `TransportRuntimeComposition.getTransportNodeId()` | source for adapter bootstrap, runtime registry, endpoint lease, handoff | remove; handoff owner is delivery bucket + selected worker, not adapter id |
+| `TransportAdapterBootstrapContext.deliveryCommandConsumerKey` | transitional runtime-wide handoff field currently sourced from node id | remove as runtime-wide state; adapter bootstraps publish endpoint/session evidence only |
+| `TransportRuntimeRegistry.deliveryCommandConsumerKey` | transitional runtime-wide pull-session consumer owner | remove; resolved pull transport should not expose a second consumer key |
+| `ResolvedPullWorkerTransport.deliveryCommandConsumerKey` | internal SDK session handoff owner | remove; callers use selected worker polling / endpoint lease evidence |
+| `TransportAdapterDescriptor` | local adapter descriptor containing `adapterId + transportHint` | keep as adapter metadata / local binding description; future strategy attributes belong in a later adapter topology roadmap, not node registry |
+| `TransportRegistrationResolver` | local worker registration adapter resolver | narrow; registration may validate transport hint availability, but realtime registration must not require a delivery handoff `adapterId`; the accepted session endpoint attaches endpoint/session evidence |
 | `WorkerClientOperations.getWorkerAdapterId(...)` | worker-facing SDK surface returning transport runtime adapter id | delete or move behind an operator/transport diagnostics surface; not part of worker runtime interaction |
-| `WorkerAdapter.adapterId()` default | SPI default turns protocol label into adapter identity | delete default or require binding-provided endpoint handle; adapters/tests must be explicit |
-| `PollingWorkerAdapter.PROTOCOL` as adapter id | protocol label used for polling queue/lease/evidence identity | replace delivery identity usage with binding-supplied adapter id; protocol remains only adapter kind/transport hint |
-| `RedisTransportDeliveryCommandHandoff.localTransportNodeId` | misnamed local ready/inflight consumer key | rename/retarget to adapter id consumer key; support one or more local adapter ids if one JVM hosts multiple endpoints |
-| `DeliveryCommandConsumerClaim.queueConsumerKey` | handoff-private selected-worker consumer owner | keep field name only as storage residue; value must be adapter id |
+| `WorkerAdapter.adapterId()` default | SPI default turns protocol label into adapter identity | delete default or narrow to diagnostics; protocol must not become delivery identity |
+| `PollingWorkerAdapter.PROTOCOL` as adapter id | protocol label used for polling queue and selected-worker consumer identity | remove from assigned-delivery queue/consumer identity; protocol remains only adapter kind/transport hint, while adapter id may remain endpoint driver metadata |
+| `RedisTransportDeliveryCommandHandoff.localTransportNodeId` | misnamed local ready/inflight consumer key | remove as a required consumer key; Redis handoff should claim bucket queue entries and demux by selectedWorkerId |
+| `DeliveryCommandConsumerClaim.queueConsumerKey` | handoff-private selected-worker consumer owner | remove or narrow to private claim metadata; value must not be adapter id |
 | `AdapterDispatchLane.forTransportNode(...)` | older node-targeted lane vocabulary | delete if unused, otherwise replace owner |
 | `AdapterEndpoint.transportNodeId` | endpoint DTO residue | delete with `AdapterEndpoint` residue |
 | `TransportEndpointLeaseMetadata.runtimeNodeId` | diagnostic endpoint lease field | remove from metadata/view/codec |
 | `TransportEndpointLeaseConsumerEvidence` | hot-path consumer evidence | already does not carry node id; keep |
-| `adapterId` / `TransportBinding` / `addWebSocketAdapter(...)` / `socketAdapter(...)` | concrete adapter endpoint handle and multi-adapter support | keep; validate local duplicates; tests and distributed examples supply distinct handles; do not turn this into public worker/engine input |
+| `adapterId` / `TransportBinding` / `addWebSocketAdapter(...)` / `socketAdapter(...)` | adapter binding metadata and multi-adapter support | keep as configuration/diagnostic metadata; do not turn this into public worker/engine input or delivery queue ownership |
 | archived roadmaps | historical node-targeted context | leave archived; do not execute |
 
 Acceptance:
@@ -623,7 +652,8 @@ Acceptance:
 - Any use that still claims to need node identity names its caller and owner
   before implementation proceeds.
 - Inventory explicitly verifies that adapter binding identity and handoff
-  consumer identity are converging to the same value: `adapterId`.
+  consumer identity are not converging to the same value. `adapterId` must not
+  be the queue / consumer key.
 - `adapterNodeId` hits are not fixed here unless they are accidentally used as
   transport delivery executor identity; otherwise they are left to the worker /
   control-plane surface roadmap.
@@ -632,51 +662,59 @@ Acceptance:
 ## Phase 1 - Runtime-Wide Consumer Key And Endpoint Lease Decoupling
 
 Goal: remove `transportNodeId` as the source for live delivery internals before
-deleting public config and node registry.
+deleting public config and node registry, without replacing it with `adapterId`.
 
 Scope:
 
 - stop generating an independent `deliveryCommandConsumerKey`
-- make the assigned-delivery queue-consumer key equal the resolved `adapterId`
 - remove runtime-wide `deliveryCommandConsumerKey` fields from
   `TransportAdapterBootstrapContext` and `TransportRuntimeRegistry`
-- make pull-session consumer ownership binding-scoped: the selected
-  `TransportBinding.adapterId` is the only source for queue consumer ownership
-- make `PollingWorkerAdapter` binding-scoped: it must receive or derive the
-  local binding adapter id and use it for `adapterId()`, consumer evidence,
-  endpoint lease driver id, handoff command references, and final-hop delivery
-  routing. `PROTOCOL` remains only `protocol()` / transport hint vocabulary.
+- make assigned-delivery handoff queue ownership bucket-scoped:
+  `deliveryQueueKey = keyFor(deliveryBucketId)` or an explicitly documented
+  bucket shard
+- keep `selectedWorkerId` as a required field on every queued command; it is
+  used by the adapter dispatcher for demux and final-hop correctness, not as a
+  required physical queue key
+- make pull-session ownership selected-worker scoped: polling workers poll by
+  selected worker and never by adapter id
+- make `PollingWorkerAdapter` stop using `PROTOCOL` or adapter id for
+  assigned-delivery queue or selected-worker consumer identity. `PROTOCOL`
+  remains only `protocol()` / transport hint vocabulary; adapter id may remain
+  endpoint driver metadata.
 - change the delivery-command handoff factory/listener contract so runtime
-  composition can construct polling for the local adapter id set
+  composition can construct bucket-derived handoff storage without a process,
+  node, worker-specific physical lane, or adapter consumer key
 - preferred implementation: store Redis handoff options in `TransportConfig`
-  and instantiate `RedisTransportDeliveryCommandHandoff` / listener ownership
-  inside `TransportRuntimeComposition`, where the local adapter ids are known
-- the Redis handoff constructor or factory should receive
-  `Collection<String> localAdapterIds` (or an equivalent typed local adapter
-  endpoint set) and poll ready/inflight keys with a bounded fair loop
+  and instantiate `RedisTransportDeliveryCommandHandoff` inside
+  `TransportRuntimeComposition`, without reading adapter ids for queue
+  ownership
+- Redis handoff should store ready/inflight by bucket-derived delivery queue.
+  The dispatcher drains that queue and demuxes each command by
+  `selectedWorkerId`. This roadmap does not require implementing asynchronous
+  final-hop delivery; it only fixes the queue identity model so async delivery
+  can be added without changing the address contract.
 - explicitly forbid `redisDeliveryCommandHandoff(...)` closures from reading
   `config.getTransportNodeId()`
 - remove `deliveryCommandConsumerKey` from `TransportAdapterBootstrapContext`;
-  the context may expose the consumer registry, but each adapter bootstrap must
-  claim consumer evidence with its own configured/binding adapter id
-- remove `deliveryCommandConsumerKey` from `TransportRuntimeRegistry`; when it
-  resolves a `TransportBinding`, the binding's `adapterId` is the consumer key
+  the context may expose endpoint/session lease support, but adapter bootstrap
+  must not claim a queue using adapter id
+- remove `deliveryCommandConsumerKey` from `TransportRuntimeRegistry`
 - remove `deliveryCommandConsumerKey` from `ResolvedPullWorkerTransport`; do
-  not keep a compatibility accessor that hides `adapterId` under a second name
-- use the resolved binding `adapterId` as the queue-consumer key when
-  constructing `PullWorkerSession`, adapter session managers, and Redis handoff
-  claims
-- rename `RedisTransportDeliveryCommandHandoff.localTransportNodeId` and its
-  constructors to adapter-owned queue consumer key vocabulary
-- if one runtime hosts multiple adapter ids, make the handoff poller drain a
-  bounded set of local adapter-id queues; do not split into one unrelated
-  process/node lifecycle per adapter
+  not keep a compatibility accessor that hides a second consumer identity
+- construct `PullWorkerSession`, adapter session managers, and Redis handoff
+  claims around bucket queue entries plus `selectedWorkerId` endpoint/session
+  evidence
+- remove or rename `RedisTransportDeliveryCommandHandoff.localTransportNodeId`
+  so it is not replaced by `localAdapterId`
+- if one runtime hosts multiple adapters, do not create one handoff queue per
+  adapter id. The handoff poller drains bucket queues and lets adapter/session
+  dispatch logic demux by selected worker.
 - define profile semantics explicitly: adapter ids are registration-owned
-  runtime endpoint handles; this roadmap does not require cross-restart
-  stability and does not solve durable recovery of stale consumer queues by
-  reintroducing `transportNodeId`
-- keep `DeliveryCommandConsumerClaim.queueConsumerKey` as the storage-level name
-  for now, but document that its value is the adapter id
+  metadata only; stale ready/inflight residue is handled by delivery timeout,
+  retention/cleanup, or engine compensation paths, not by a revived node id or
+  adapter-id queue owner
+- remove `DeliveryCommandConsumerClaim.queueConsumerKey` from the mainline, or
+  narrow it to private handoff claim metadata that cannot equal `adapterId`
 - remove `runtimeNodeId` from `TransportEndpointLeaseMetadata`
 - remove `runtimeNodeId` from `TransportEndpointLeaseViewRecord`
 - remove runtime-node constructor parameters and getters from in-memory and
@@ -684,13 +722,12 @@ Scope:
 - update Redis endpoint lease serialization to stop writing/reading
   `runtimeNodeId`
 - update websocket/socket/polling tests that assert runtime-node metadata
-- prove multiple adapter bindings in one runtime get distinct adapter-id
-  consumer ownership
+- prove multiple adapter bindings in one runtime do not create adapter-id queue
+  ownership
 - prove two active transport consumer runtimes may serve the same
-  `deliveryBucketId` through distinct registration-supplied adapter endpoint
-  handles
-- prove tests/distributed examples do not rely on a shared protocol constant
-  such as `websocket`, `socket`, or `polling` as the only adapter endpoint id
+  `deliveryBucketId` through selected-worker endpoint/session lease evidence
+- prove tests/distributed examples do not rely on adapter id or protocol
+  constants such as `websocket`, `socket`, or `polling` as queue owners
 - leave cluster-wide duplicate adapter-id CAS to a later adapter topology
   roadmap if adapter strategy needs stable endpoint identity
 
@@ -710,14 +747,17 @@ Acceptance:
 - Endpoint lease claim/heartbeat/release semantics still match on
   `deliveryBucketId + workerId + endpointDriverId + endpointAddress +
   sessionHandle + endpointLeaseId`.
-- Consumer evidence remains unchanged unless implementation proves a narrower
-  field is possible.
+- Consumer evidence is narrowed to selected-worker endpoint/session lease
+  evidence: `deliveryBucketId`, `selectedWorkerId`, `endpointLeaseId`, and
+  `leaseExpireAtEpochMillis`. It must not contain adapter id, queue consumer id,
+  connection id, route key, or transport node id.
 - Redis and in-memory endpoint lease stores expose the same endpoint lease view
   shape.
 - No endpoint lease view or metadata class contains `runtimeNodeId` or
   `transportNodeId`.
 - Redis delivery command handoff no longer has a `localTransportNodeId` field,
-  constructor parameter, or test fixture vocabulary.
+  constructor parameter, test fixture vocabulary, or `localAdapterId`
+  replacement.
 - `TransportConfig` no longer stores delivery-command handoff as a no-arg
   supplier that can close over `getTransportNodeId()`.
 - `MassApplicationBuilder.redisDeliveryCommandHandoff(...)` does not read
@@ -725,25 +765,30 @@ Acceptance:
 - `TransportAdapterBootstrapContext` and `TransportRuntimeRegistry` no longer
   contain a single runtime-wide `deliveryCommandConsumerKey`.
 - `ResolvedPullWorkerTransport` does not preserve a second stored consumer id;
-  its queue consumer ownership is the selected binding `adapterId`.
-- `PollingWorkerAdapter` no longer uses `PROTOCOL` as assigned-delivery adapter
-  identity, endpoint lease driver id, or consumer evidence adapter id.
-- Redis handoff supports a bounded local adapter-id set for one runtime process
-  and does not require one JVM/process identity to select ready queues.
+  polling uses selected worker / endpoint lease evidence instead.
+- `PollingWorkerAdapter` no longer uses `PROTOCOL` or `adapterId` as
+  assigned-delivery queue identity, selected-worker consumer identity, or
+  handoff command reference owner. It may still write adapter id as endpoint
+  driver metadata on endpoint leases.
+- Redis handoff supports bucket-derived queue placement and selected-worker
+  demux, and does not require one JVM/process/adapter identity to select ready
+  queues.
 - Adapter ids are supplied by adapter bootstrap / registration and are not
-  supplied by engine/starter assignment or worker APIs.
+  supplied by engine/starter assignment, worker APIs, queue keys, or consumer
+  keys.
 - Cross-restart adapter id stability is not required for Phase 1 proof; stale
   ready/inflight residue is handled by existing delivery timeout,
   retention/cleanup, or engine compensation paths, not by a revived node id.
 - Distributed handoff tests still prove two transport consumers cannot
   destructively claim each other's selected-worker commands.
 - Distributed handoff tests prove same-bucket active multi-consumer delivery:
-  commands for worker A go only to the adapter id claimed by worker A's current
-  evidence.
+  commands for worker A are demuxed only to worker A's endpoint/session lease,
+  not to another selected worker and not to a shared adapter queue.
 - No new cluster-wide adapter/node registry is introduced to solve duplicate
   adapter ids in this slice.
 - Multi-adapter application assembly still registers distinct adapter bindings
-  and dispatch listener still resolves final-hop adapters by stored `adapterId`.
+  where currently required, but dispatch listener does not use adapter id as the
+  distributed queue selector.
 
 ## Phase 2 - Remove Node Registry And Bootstrap Surface
 
@@ -761,7 +806,7 @@ Scope:
 - delete `WorkerAdapter.adapterId()` default protocol fallback, or change the
   adapter runtime binding contract so endpoint handles are supplied explicitly
   outside the adapter SPI. This roadmap must not leave a path where `protocol()`
-  silently becomes `adapterId`.
+  silently becomes delivery identity.
 - remove `transportNodeRegistryFactory`, `transportNodeId`, and related builder
   methods from SDK/starter config
 - remove `MassSdk.TransportOptions.transportNodeId(...)`
@@ -796,11 +841,11 @@ Acceptance:
   delivery-failure, endpoint-lease, and delivery stores as needed, but no
   longer wires `nodes`.
 - Worker-facing registration/session APIs do not require delivery handoff
-  `adapterId` as an endpoint selector. Realtime adapter id is chosen by the
-  accepted WebSocket/socket endpoint; polling adapter id is resolved inside
-  local runtime assembly.
+  `adapterId` as an endpoint selector. Realtime session evidence is attached by
+  the accepted WebSocket/socket endpoint; polling delivery is resolved by
+  selected worker and local runtime assembly.
 - Tests that previously used node ids for delivery handoff are rewritten around
-  adapter id plus selected-worker consumer evidence.
+  deliveryBucketId plus selected-worker consumer evidence.
 - The dual/multiple realtime adapter example remains valid and covered by a
   compile or focused startup test.
 - At least one Spring context proof covers the server profile affected by
@@ -814,7 +859,7 @@ Acceptance:
   registration no longer requires a public delivery handoff `adapterId`.
 - `WorkerClientOperations` no longer exposes `getWorkerAdapterId(...)`.
 - `WorkerAdapter.adapterId()` no longer defaults to `protocol()`, and built-in
-  adapter/binding tests prove endpoint handles are explicit.
+  adapter/binding tests prove adapter labels are not delivery queue selectors.
 
 ## Phase 3 - Remove DTO And Lane Residue
 
@@ -874,9 +919,9 @@ transport API guard:
 runtime registry guard:
   TransportAdapterBootstrapContext and TransportRuntimeRegistry do not contain
   a runtime-wide deliveryCommandConsumerKey field
-  ResolvedPullWorkerTransport does not store a second consumer id distinct from
-  adapterId
-  PollingWorkerAdapter does not use PROTOCOL as assigned-delivery adapter id
+  ResolvedPullWorkerTransport does not store a second consumer id
+  PollingWorkerAdapter does not use PROTOCOL or adapterId as assigned-delivery
+  queue / consumer identity
 
 SDK/server guard:
   no public builder/config/server property contains transportNodeId
@@ -887,15 +932,20 @@ SDK/server guard:
 assigned delivery guard:
   DeliveryCommand, DeliveryCommandBatch, AdapterDispatchRequest, DispatchOutcome
   do not expose transportNodeId/runtimeNodeId/AdapterEndpoint
+  deliveryQueueKey is derived from deliveryBucketId / bucket shard
+  selectedWorkerId is a required queued-command field and the only worker
+  correctness identity
+  adapterId is not used as deliveryQueueKey, queueConsumerKey, or result
+  partitionKey
 
 multi-adapter guard:
   WebSocket + supplemental WebSocket + socket adapter registration remains
   available and does not require transportNodeId
 
 multi-consumer guard:
-  distributed handoff tests include two consumers with distinct adapterId values
-  serving the same delivery bucket, and tests/configuration do not collapse to
-  one shared static protocol name
+  distributed handoff tests include two selected workers in the same delivery
+  bucket and prove dispatcher demux prevents cross-worker delivery even when
+  adapter labels are identical or irrelevant
 ```
 
 Redis cleanup:
@@ -910,8 +960,8 @@ Redis cleanup:
 Acceptance:
 
 - Active docs do not describe `transportNodeId` as current transport truth.
-- Active docs describe adapter id as the adapter endpoint / queue-consumer
-  identity, not as protocol kind.
+- Active docs describe adapter id as adapter metadata / diagnostics, not as
+  queue-consumer identity or protocol kind.
 - Guards fail if production code reintroduces node registry or node-id DTO
   fields.
 - Redis manifest/baseline no longer lists transport-node registry keys.
@@ -924,8 +974,9 @@ Acceptance:
    owners appear.
 2. Add or update architecture guards from the Phase 0 allowlist before moving
    runtime code.
-3. Retarget Redis handoff / adapter bootstrap / pull session queue-consumer
-   wiring so the consumer key is the resolved adapter id.
+3. Retarget Redis handoff / adapter bootstrap / pull session delivery wiring so
+   queue placement is derived from deliveryBucketId and dispatcher correctness
+   is enforced by selectedWorkerId.
 4. Remove runtime-node fields from endpoint lease metadata and Redis codecs.
 5. Remove SDK/server public `transportNodeId` config and node-registry
    heartbeat assembly.
@@ -963,6 +1014,7 @@ rg -n "transportNodeId|TransportNodeRegistry|TransportNodePresence|TransportNode
 rg -n "RedisTransportNamespaces\\.NODES|:nodes|transport:nodes" transport sdk xa-mass-server doc roadmap -g "*.java" -g "*.md"
 rg -n "localTransportNodeId" transport sdk xa-mass-server -g "*.java"
 rg -n "deliveryCommandConsumerKey" transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrapContext.java transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportRuntimeRegistry.java transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/ResolvedPullWorkerTransport.java
+rg -n "queueConsumerKey.*adapterId|adapterId.*queueConsumerKey|localAdapterId|localAdapterIds|ready.*adapterId|adapterId.*ready" transport sdk xa-mass-server -g "*.java"
 rg -n "worker adapterId must be set when transportHint 'realtime' is used|worker adapterId must be set before runtime start" transport sdk xa-mass-server -g "*.java"
 rg -n "adapterNodeId" transport/transport_api transport/transport_runtime transport/websocket-adapter transport/socket-adapter transport/polling-adapter -g "*.java"
 rg -n "getWorkerAdapterId" sdk/xa-mass-embedded-sdk/src/main/java sdk/xa-mass-embedded-sdk-api/src/main/java sdk/xa-mass-java-sdk/src/main/java xa-mass-server/src/main/java -g "*.java"
@@ -982,18 +1034,20 @@ This roadmap is complete only when all of the following are true:
 - no production code exposes or requires `runtimeNodeId`
 - `TransportNodeRegistry` and its storage implementations are deleted
 - endpoint lease metadata/view does not carry process-node identity
-- Redis delivery-command handoff uses adapter id as queue-consumer ownership,
-  not `localTransportNodeId`
-- delivery-command handoff construction is adapter-id-aware and cannot close
-  over public `transportNodeId` config
+- Redis delivery-command handoff uses deliveryBucketId-derived queue placement
+  and selectedWorkerId demux/correctness, not `localTransportNodeId` or adapter
+  id
+- delivery-command handoff construction cannot close over public
+  `transportNodeId` config or adapter-id consumer ownership
 - no runtime-wide `deliveryCommandConsumerKey` remains on transport bootstrap
   context, runtime registry, or resolved pull transport, including accessor
   methods that would preserve it as a second name
-- adapter id ownership semantics are documented and tested: adapter bootstrap /
-  registration supplies the handle, the handle is not exposed to engine/starter
-  assigned delivery, and cross-restart stability is not part of this roadmap's
-  completion gate
-- polling adapter delivery identity uses a binding-supplied adapter id, not
+- adapter id semantics are documented and tested: adapter bootstrap /
+  registration may supply metadata, but that metadata is not exposed to
+  engine/starter assigned delivery, is not a queue selector, and cross-restart
+  stability is not part of this roadmap's completion gate
+- polling adapter delivery uses bucket queue entries plus selectedWorkerId
+  demux/correctness, not a binding-supplied adapter id or
   `PollingWorkerAdapter.PROTOCOL`
 - `WorkerAdapter.adapterId()` cannot silently default to `protocol()`
 - SDK/server public config no longer has `transportNodeId`
@@ -1001,17 +1055,17 @@ This roadmap is complete only when all of the following are true:
   `adapterId` as a public endpoint selector
 - worker-facing SDK surfaces no longer expose `getWorkerAdapterId(...)`; any
   remaining adapter id visibility is explicit operator/transport diagnostics
-- multi-adapter registration still works through adapter bindings and active
-  adapter endpoint handles
-- same-bucket multi-consumer delivery through distinct active adapter endpoint
-  handles is covered by a focused handoff test or contract test
+- multi-adapter registration still works through adapter bindings and endpoint
+  metadata, without making adapter id a delivery address
+- same-bucket multi-consumer delivery through selected-worker demux/correctness
+  is covered by a focused handoff test or contract test
 - no new cluster-wide node/adapter registry is introduced solely to police
   duplicate adapter ids in this roadmap
 - active transport owner docs describe adapter/session lease facts without
   generic node identity
 - active transport owner docs describe any remaining `queueConsumerKey` /
-  `deliveryCommandConsumerKey` names as transitional storage names whose value
-  is adapter id
+  `deliveryCommandConsumerKey` names as transitional/private storage names that
+  are not adapter id
 - guards prevent reintroducing node-id delivery or lease metadata
 - residue scan shows only archived historical docs or this roadmap, and this
   roadmap is archived after owner docs are updated

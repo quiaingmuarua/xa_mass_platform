@@ -73,7 +73,6 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
         bindExternalAdapterNode(ADAPTER_NODE_ID, "node-websocket-crawler", workerHeaders);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
-                "adapterNodeId", ADAPTER_NODE_ID,
                 "workerGroupId", "node-websocket-crawler",
                 "transportHint", "realtime",
                 "attributes", Map.of(
@@ -161,7 +160,6 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
         bindExternalAdapterNode(STOCK_ADAPTER_NODE_ID, "node-websocket-stock", workerHeaders);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", STOCK_WORKER_ID,
-                "adapterNodeId", STOCK_ADAPTER_NODE_ID,
                 "workerGroupId", "node-websocket-stock",
                 "transportHint", "realtime",
                 "attributes", Map.of(

@@ -98,7 +98,6 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
-                "adapterNodeId", "polling-h2-node",
                 "workerGroupId", "polling-jdbc",
                 "attributes", Map.of(
                         "runtime", "jdbc-e2e",

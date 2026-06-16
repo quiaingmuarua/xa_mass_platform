@@ -72,7 +72,6 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
         bindExternalAdapterNode(SOCKET_ADAPTER_NODE_ID, "node-socket-crawler", workerHeaders);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
-                "adapterNodeId", SOCKET_ADAPTER_NODE_ID,
                 "workerGroupId", "node-socket-crawler",
                 "transportHint", "realtime",
                 "attributes", Map.of("lang", "node", "runtime", "node-socket-worker")
@@ -157,7 +156,6 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WEBSOCKET_WORKER_ID,
-                "adapterNodeId", WEBSOCKET_ADAPTER_NODE_ID,
                 "workerGroupId", "node-websocket-demo",
                 "transportHint", "realtime",
                 "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker")
@@ -165,7 +163,6 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
-                "adapterNodeId", SOCKET_ADAPTER_NODE_ID,
                 "workerGroupId", "node-socket-crawler",
                 "transportHint", "realtime",
                 "attributes", Map.of("lang", "node", "runtime", "node-socket-worker")

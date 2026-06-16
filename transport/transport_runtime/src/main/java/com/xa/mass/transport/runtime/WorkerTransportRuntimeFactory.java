@@ -22,7 +22,6 @@ public interface WorkerTransportRuntimeFactory {
                                             TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryService deliveryService,
                                             DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
-                                            String deliveryCommandConsumerKey,
                                             List<TransportBinding> adapterBindings) {
         return create(resultIngressChannel, endpointLeaseStore, deliveryService, adapterBindings);
     }

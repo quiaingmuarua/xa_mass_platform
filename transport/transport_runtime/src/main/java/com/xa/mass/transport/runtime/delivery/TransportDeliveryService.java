@@ -39,7 +39,6 @@ public final class TransportDeliveryService {
         if (requests == null || requests.isEmpty()) {
             return List.of();
         }
-        String deliveryQueueKey = resolveDeliveryQueueKey(adapterId);
         List<DispatchOutcome> outcomes = new ArrayList<>(requests.size());
         for (AdapterDispatchRequest request : requests) {
             if (request == null) {
@@ -51,24 +50,42 @@ public final class TransportDeliveryService {
                 ));
                 continue;
             }
+            String deliveryQueueKey;
+            try {
+                deliveryQueueKey = resolveDeliveryQueueKey(request.deliveryBucketId());
+            } catch (RuntimeException e) {
+                outcomes.add(DispatchOutcome.invalid(
+                        request,
+                        e.getMessage() == null || e.getMessage().isBlank()
+                                ? "delivery bucket id is invalid for transport queue addressing"
+                                : e.getMessage()
+                ));
+                continue;
+            }
             outcomes.add(deliveryStore.enqueue(adapterId, deliveryQueueKey, QueuedPulledDispatch.from(request)));
         }
         return Collections.unmodifiableList(outcomes);
     }
 
-    public List<QueuedPulledDispatch> drainItems(String adapterId, String selectedWorkerId, int maxItems) {
-        return deliveryStore.drain(resolveDeliveryQueueKey(adapterId), selectedWorkerId, maxItems);
+    public List<QueuedPulledDispatch> drainItems(String deliveryBucketId, String selectedWorkerId, int maxItems) {
+        return deliveryStore.drain(resolveDeliveryQueueKey(deliveryBucketId), selectedWorkerId, maxItems);
     }
 
-    public List<QueuedPulledDispatch> pollItems(String adapterId, String selectedWorkerId, int maxItems, long timeoutMillis) {
-        return pollItemResult(adapterId, selectedWorkerId, maxItems, timeoutMillis).getItems();
+    public List<QueuedPulledDispatch> pollItems(String deliveryBucketId,
+                                                String selectedWorkerId,
+                                                int maxItems,
+                                                long timeoutMillis) {
+        return pollItemResult(deliveryBucketId, selectedWorkerId, maxItems, timeoutMillis).getItems();
     }
 
-    public TransportDeliveryPollResult pollItemResult(String adapterId, String selectedWorkerId, int maxItems, long timeoutMillis) {
+    public TransportDeliveryPollResult pollItemResult(String deliveryBucketId,
+                                                      String selectedWorkerId,
+                                                      int maxItems,
+                                                      long timeoutMillis) {
         TransportDeliveryPollResult result;
         try {
             result = deliveryStore.poll(
-                    resolveDeliveryQueueKey(adapterId),
+                    resolveDeliveryQueueKey(deliveryBucketId),
                     selectedWorkerId,
                     maxItems,
                     Math.max(0L, timeoutMillis),
@@ -156,8 +173,8 @@ public final class TransportDeliveryService {
         return normalizedAdapterId == null ? "unknown" : normalizedAdapterId;
     }
 
-    private static String resolveDeliveryQueueKey(String adapterId) {
-        return TransportDeliveryAddressing.normalizeAdapterId(adapterId);
+    private static String resolveDeliveryQueueKey(String deliveryBucketId) {
+        return AssignedDeliveryCommandQueueKey.queueKeyFor(deliveryBucketId);
     }
 
     private static final class DirectDeliveryCounters {

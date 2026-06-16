@@ -47,7 +47,7 @@ class RedisTransportEndpointLeaseStoreTest {
             throw ex;
         }
         namespacePrefix = "xa:mass:test:transport-endpoint-lease:" + UUID.randomUUID();
-        store = new RedisTransportEndpointLeaseStore(connection, namespacePrefix, 1_000L, "runtime-a");
+        store = new RedisTransportEndpointLeaseStore(connection, namespacePrefix, 1_000L);
     }
 
     @AfterEach
@@ -140,7 +140,7 @@ class RedisTransportEndpointLeaseStoreTest {
     @Test
     void staleDeadlineCleanupCannotDeleteReplacementLeaseAfterDueListRace() throws Exception {
         try (RedisTransportEndpointLeaseStore shortLeaseStore =
-                     new RedisTransportEndpointLeaseStore(redisClient, namespacePrefix, 500L, "runtime-a", false)) {
+                     new RedisTransportEndpointLeaseStore(redisClient, namespacePrefix, 500L, false)) {
             shortLeaseStore.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-old", "conn-old"));
             Thread.sleep(550L);
             long staleCleanupClock = System.currentTimeMillis();
@@ -157,7 +157,7 @@ class RedisTransportEndpointLeaseStoreTest {
     @Test
     void expiredLeasePrunesWithinOneBucketOnly() throws Exception {
         try (RedisTransportEndpointLeaseStore shortLeaseStore =
-                     new RedisTransportEndpointLeaseStore(redisClient, namespacePrefix, 250L, "runtime-a", false)) {
+                     new RedisTransportEndpointLeaseStore(redisClient, namespacePrefix, 250L, false)) {
             shortLeaseStore.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
             shortLeaseStore.claimEndpointLease(claim("worker-2", "bucket-b", "websocket", "route-2", "conn-2"));
 
@@ -174,11 +174,10 @@ class RedisTransportEndpointLeaseStoreTest {
     void sharedNamespaceAllowsAnotherTransportInstanceToReadCurrentEndpointLease() {
         try (StatefulRedisConnection<String, String> secondaryConnection = redisClient.connect();
              RedisTransportEndpointLeaseStore secondary =
-                     new RedisTransportEndpointLeaseStore(secondaryConnection, namespacePrefix, 1_000L, "runtime-b")) {
+                     new RedisTransportEndpointLeaseStore(secondaryConnection, namespacePrefix, 1_000L)) {
             store.claimEndpointLease(claim("worker-4", "bucket-a", "websocket", "route-4", "conn-4"));
 
             var mirrored = secondary.currentEndpointLease("bucket-a", "worker-4").orElseThrow();
-            assertEquals("runtime-a", mirrored.runtimeNodeId());
             assertEquals("route-4", mirrored.endpointAddress());
 
             secondary.releaseEndpointLease(release("worker-4", "bucket-a", "websocket", "route-4", "conn-4"));
@@ -241,7 +240,6 @@ class RedisTransportEndpointLeaseStoreTest {
                 deliveryBucketId,
                 workerId,
                 endpointDriverId,
-                "runtime-a",
                 sessionHandle,
                 sessionHandle,
                 endpointAddress

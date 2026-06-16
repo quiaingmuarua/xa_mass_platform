@@ -81,7 +81,6 @@ class JavaExternalSdkTaskScopedInvocationIntegrationTest extends AbstractSampleE
         try (PollingWorkerSession ignored = workerMass.workerSessions().polling()
                 .workerId(workerId)
                 .workerGroupId("java-sdk-task-handle-phone-probe")
-                .adapterNodeId("java-sdk-task-handle-poll-node-sg-1")
                 .attribute("region", "sg")
                 .attribute("country", "sg")
                 .attribute("routingTags", "sg")

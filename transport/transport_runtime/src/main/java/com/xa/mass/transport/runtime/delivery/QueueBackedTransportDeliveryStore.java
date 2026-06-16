@@ -222,7 +222,7 @@ final class QueueBackedTransportDeliveryStore implements TransportDeliveryStore 
     }
 
     private static String normalizeDeliveryQueueKey(String value) {
-        return TransportDeliveryAddressing.normalizeAdapterId(value);
+        return TransportDeliveryAddressing.normalizeText(value);
     }
 
     private static List<QueuedPulledDispatch> itemView(List<KeyedQueueEntry<QueuedPulledDispatch>> items) {

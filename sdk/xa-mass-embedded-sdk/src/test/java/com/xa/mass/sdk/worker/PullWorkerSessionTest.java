@@ -31,7 +31,7 @@ class PullWorkerSessionTest {
     void pollResultDelegatesToDeliveryPullChannelWithRegisteredWorkerId() {
         DeliveryPullChannel deliveryPullChannel = mock(DeliveryPullChannel.class);
         DeliveryPullResult expected = DeliveryPullResult.delivered(List.of(message("msg-1")));
-        when(deliveryPullChannel.pollDeliveryMessagesResult("worker-1", 5, 250L)).thenReturn(expected);
+        when(deliveryPullChannel.pollDeliveryMessagesResult("group-1", "worker-1", 5, 250L)).thenReturn(expected);
 
         PullWorkerSession session = session(deliveryPullChannel, mock(TransportResultIngressChannel.class),
                 new InMemoryTransportEndpointLeaseStore());
@@ -46,7 +46,7 @@ class PullWorkerSessionTest {
     @Test
     void pollReturnsPulledTaskItemsFromExplicitPullResult() {
         DeliveryPullChannel deliveryPullChannel = mock(DeliveryPullChannel.class);
-        when(deliveryPullChannel.pollDeliveryMessagesResult("worker-1", 3, 100L))
+        when(deliveryPullChannel.pollDeliveryMessagesResult("group-1", "worker-1", 3, 100L))
                 .thenReturn(DeliveryPullResult.delivered(List.of(message("msg-1"), message("msg-2"))));
 
         PullWorkerSession session = session(deliveryPullChannel, mock(TransportResultIngressChannel.class),

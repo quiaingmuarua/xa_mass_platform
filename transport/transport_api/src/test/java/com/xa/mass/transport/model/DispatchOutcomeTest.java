@@ -104,6 +104,7 @@ class DispatchOutcomeTest {
     private AdapterDispatchRequest request() {
         return new AdapterDispatchRequest(
                 "delivery-1",
+                "bucket-1",
                 "worker-1",
                 "{\"messageId\":\"msg-1\"}",
                 "corr-1",

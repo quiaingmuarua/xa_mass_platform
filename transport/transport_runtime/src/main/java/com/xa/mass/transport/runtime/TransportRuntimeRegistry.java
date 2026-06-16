@@ -28,7 +28,6 @@ public final class TransportRuntimeRegistry {
     private final TransportResultIngressChannel resultIngressChannel;
     private final TransportEndpointLeaseStore endpointLeaseStore;
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
-    private final String deliveryCommandConsumerKey;
     private final List<TransportBinding> bindings;
     private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
@@ -39,21 +38,18 @@ public final class TransportRuntimeRegistry {
         this(resultIngressChannel,
                 endpointLeaseStore,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
-                "local",
                 bindings);
     }
 
     public TransportRuntimeRegistry(TransportResultIngressChannel resultIngressChannel,
                                     TransportEndpointLeaseStore endpointLeaseStore,
                                     DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
-                                    String deliveryCommandConsumerKey,
                                     List<TransportBinding> bindings) {
         this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
         this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
                 ? deliveryCommandConsumerRegistry
                 : NoopDeliveryCommandConsumerRegistry.INSTANCE;
-        this.deliveryCommandConsumerKey = requireText(deliveryCommandConsumerKey, "deliveryCommandConsumerKey");
         this.bindings = List.copyOf(bindings);
         if (this.bindings.isEmpty()) {
             throw new IllegalArgumentException("At least one transport binding is required");
@@ -120,8 +116,7 @@ public final class TransportRuntimeRegistry {
                 binding.getDeliveryPullChannel(),
                 resultIngressChannel,
                 endpointLeaseStore,
-                deliveryCommandConsumerRegistry,
-                deliveryCommandConsumerKey
+                deliveryCommandConsumerRegistry
         );
     }
 
@@ -169,10 +164,4 @@ public final class TransportRuntimeRegistry {
         return adapterId.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
-    private static String requireText(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + " must not be blank");
-        }
-        return value.trim();
-    }
 }

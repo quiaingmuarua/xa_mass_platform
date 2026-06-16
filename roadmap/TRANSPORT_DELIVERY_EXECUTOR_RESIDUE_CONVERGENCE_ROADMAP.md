@@ -49,7 +49,7 @@ DeliveryCommand
 Delivery command handoff
   deliveryQueueKey
   command store / ready refs / inflight refs
-  selectedWorkerId -> local queueConsumerKey evidence
+  command.selectedWorkerId -> endpoint/session consumer evidence
 
 Final-hop adapter request
   deliveryId
@@ -92,13 +92,15 @@ implementation.
 - `RedisTransportRouteOwnerStore` and old route-owner selected-worker lookup
   contracts have been deleted. Endpoint lease storage is bucket-worker scoped
   and must not re-enter assigned delivery lookup.
-- `AdapterDispatchRequest` still carries `adapterId` and `AdapterEndpoint`,
-  even though websocket/socket assigned task dispatch sends by
-  `selectedWorkerId`.
+- `AdapterDispatchRequest` no longer carries `adapterId` or `AdapterEndpoint`.
+  It is still part of the final-hop request surface and now carries
+  `deliveryBucketId` so polling pull storage can derive the same bucket queue
+  as assigned delivery.
 - `TransportDeliveryService` mixes two concerns:
   direct push adapter delivery counters and polling worker inbox queueing. Its
-  polling queue key is currently derived from `adapterId`, which is a different
-  concept from assigned-delivery command queue keys.
+  polling queue key now derives from the request `deliveryBucketId`, but the
+  store/service naming still carries the older generic `deliveryQueueKey` /
+  `queueByAdapter` vocabulary.
 - `RedisTransportDeliveryCommandHandoff` has command store, ready refs,
   selected-worker consumer evidence, and inflight refs.
 - `InMemoryTransportDeliveryCommandHandoff` is still a simple blocking queue:
@@ -127,7 +129,9 @@ neutral assignment facts into transport commands.
 - selected-worker consumer evidence:
 
 ```text
-deliveryQueueKey + selectedWorkerId -> queueConsumerKey + endpointDriverId + leaseDeadline
+deliveryQueueKey bucket queue entry
+  command.selectedWorkerId
+  -> endpoint/session lease evidence for final-hop feasibility
 ```
 
 The producer must not receive `queueConsumerKey`, endpoint driver ids, route
@@ -225,13 +229,16 @@ Verification:
 ./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/socket-adapter,transport/websocket-adapter -am -DskipTests test-compile
 ```
 
-## Phase 1 - Make Selected-Worker Consumer Claims The Listener Source Of Truth
+## Phase 1 - Keep Consumer Claims Handoff-Private And Remove Route-Owner Lookup
 
 Status: completed in the current work tree; keep this phase as guard context,
 not as active implementation work.
 
-Goal: keep route-owner/endpoint-lease lookup out of the assigned command
-listener.
+Goal: keep route-owner lookup out of the assigned command listener without
+turning selected-worker consumer claims into a second listener/source-of-truth
+API. The handoff owns consumer evidence only to prevent wrong consumers from
+destructively claiming bucket queue entries. The listener resolves final-hop
+feasibility from endpoint lease evidence for the already selected worker.
 
 Target contract:
 
@@ -239,27 +246,27 @@ Target contract:
 record DeliveryCommandConsumerClaim(
     String deliveryBucketId,
     String selectedWorkerId,
-    String queueConsumerKey,
-    String endpointDriverId,
+    String endpointLeaseId,
     long leaseExpireAtEpochMillis
 ) {}
 ```
 
-`endpointDriverId` is transport-internal final-hop driver identity. It replaces
-the listener's need to read `RouteConsumerEndpoint.adapterId()` for assigned
-task delivery. It must not cross the producer boundary.
+The claim is handoff-private selected-worker consumer evidence. It must not
+carry `adapterId`, route key, connection id, queue consumer key, transport node
+id, or endpoint driver id. The endpoint driver id remains inside endpoint lease
+metadata and is read by the listener only after it has a
+`deliveryBucketId + selectedWorkerId` command to deliver.
 
 Actions:
 
-- Extend delivery command consumer evidence to include internal final-hop driver
-  id.
 - Move consumer claim ownership from
   `DeliveryCommandConsumerProjectingRouteOwnerStore` into adapter/session
   registration paths.
 - Retarget websocket/socket/polling session registration to claim/release
   assigned delivery consumers directly.
-- Change `TransportDeliveryCommandListener` to use the consumer context attached
-  to the claimed command/reference instead of calling
+- Change `TransportDeliveryCommandListener` to use
+  `TransportEndpointLeaseStore.currentEndpointLease(deliveryBucketId,
+  selectedWorkerId)` instead of calling
   `WorkerDispatchRouteOwnerView.endpointForSelectedWorker(...)`.
 - Remove `WorkerDispatchRouteOwnerView` and `localTransportNodeId` from
   `TransportDeliveryCommandListener` constructor after the listener no longer
@@ -270,12 +277,13 @@ Actions:
 Acceptance:
 
 - Assigned delivery listener does not import or call `WorkerDispatchRouteOwnerView`.
-- Missing consumer evidence is a handoff offer/poll outcome, not a listener-side
-  endpoint lookup failure.
-- Final-hop adapter selection comes from delivery consumer context, not
-  endpoint lease records.
-- Endpoint lease claim/heartbeat can change without being the assigned-delivery
-  consumer registration mechanism.
+- Missing endpoint lease is a listener-side `NO_ENDPOINT` delivery outcome.
+- Missing or moved consumer evidence is a handoff claim/materialization concern:
+  non-owning consumers must not destructively pop selected-worker commands.
+- Final-hop adapter selection comes from endpoint lease records, not delivery
+  command references or consumer-key metadata.
+- Endpoint lease claim/heartbeat also claims/releases handoff-private consumer
+  evidence so split consumers can demux safely.
 
 Focused tests:
 
@@ -312,14 +320,15 @@ record AdapterDispatchRequest(
 ) {}
 ```
 
-The concrete adapter/driver id belongs to grouping or consumer context, not each
-item. Route address and session handle belong inside adapter/session internals.
+The concrete adapter/driver id belongs to listener-side grouping after endpoint
+lease resolution, not each item. Route address and session handle belong inside
+adapter/session internals.
 
 Actions:
 
-- Remove `AdapterEndpoint` from `AdapterDispatchRequest`.
-- Remove per-item `adapterId` from `AdapterDispatchRequest` once grouping owns
-  the driver id.
+- Keep `AdapterEndpoint` out of `AdapterDispatchRequest`.
+- Keep per-item `adapterId` out of `AdapterDispatchRequest`; listener grouping
+  owns the driver id.
 - Change websocket/socket task dispatch channels to log only delivery id,
   selected worker, and outcome reason for assigned task dispatch.
 - Remove `TransportDeliveryService.sendDirect(...)` route-key validation.
@@ -425,11 +434,14 @@ Actions:
 - Keep worker-facing polling API as:
 
 ```java
-pollTaskMessagesResult(String selectedWorkerId, int maxMessages, long timeoutMillis)
+pollDeliveryMessagesResult(String deliveryBucketId,
+                           String selectedWorkerId,
+                           int maxMessages,
+                           long timeoutMillis)
 ```
 
-- Make polling adapter own the partition rule internally. Workers and engine
-  should not see polling inbox partitions.
+- Keep polling queue placement bucket-derived. Workers and engine should not see
+  polling inbox partitions or adapter ids as queue selectors.
 
 Acceptance:
 

@@ -30,7 +30,6 @@ class XaMassServerApplicationTransportRuntimeConfigTest {
         ReflectionTestUtils.setField(application, "transportEndpointLeaseStore", "redis");
         ReflectionTestUtils.setField(application, "transportEndpointLeaseRedisNamespace", "xa:mass:test:server-endpoint-lease");
         ReflectionTestUtils.setField(application, "transportEndpointLeaseMillis", 1234L);
-        ReflectionTestUtils.setField(application, "transportNodeId", "server-node-a");
         ReflectionTestUtils.setField(application, "redisHost", "127.0.0.1");
         ReflectionTestUtils.setField(application, "redisPort", 6379);
         ReflectionTestUtils.setField(application, "redisDatabase", 0);
@@ -89,7 +88,6 @@ class XaMassServerApplicationTransportRuntimeConfigTest {
         ReflectionTestUtils.setField(application, "transportDeliveryMaxQueuedItems", 100);
         ReflectionTestUtils.setField(application, "transportDeliveryMaxItemsPerRoute", 10);
         ReflectionTestUtils.setField(application, "transportEndpointLeaseMillis", 1234L);
-        ReflectionTestUtils.setField(application, "transportNodeId", "server-node-a");
         ReflectionTestUtils.setField(application, "redisHost", "127.0.0.1");
         ReflectionTestUtils.setField(application, "redisPort", 6379);
         ReflectionTestUtils.setField(application, "redisDatabase", 0);

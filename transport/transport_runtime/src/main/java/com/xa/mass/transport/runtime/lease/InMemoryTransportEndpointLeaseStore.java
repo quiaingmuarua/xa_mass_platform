@@ -12,7 +12,6 @@ import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -25,7 +24,6 @@ public final class InMemoryTransportEndpointLeaseStore implements TransportEndpo
     public static final long DEFAULT_LEASE_MILLIS = 30_000L;
 
     private final long leaseMillis;
-    private final String runtimeNodeId;
     private final ConcurrentMap<BucketWorkerKey, StoredLease> leases = new ConcurrentHashMap<>();
 
     public InMemoryTransportEndpointLeaseStore() {
@@ -33,15 +31,10 @@ public final class InMemoryTransportEndpointLeaseStore implements TransportEndpo
     }
 
     public InMemoryTransportEndpointLeaseStore(long leaseMillis) {
-        this(leaseMillis, UUID.randomUUID().toString());
-    }
-
-    public InMemoryTransportEndpointLeaseStore(long leaseMillis, String runtimeNodeId) {
         if (leaseMillis <= 0L) {
             throw new IllegalArgumentException("leaseMillis must be greater than 0");
         }
         this.leaseMillis = leaseMillis;
-        this.runtimeNodeId = requireText(runtimeNodeId, "runtimeNodeId");
     }
 
     @Override
@@ -127,16 +120,11 @@ public final class InMemoryTransportEndpointLeaseStore implements TransportEndpo
         return leaseMillis;
     }
 
-    public String getRuntimeNodeId() {
-        return runtimeNodeId;
-    }
-
     private TransportEndpointLeaseMetadata metadataFrom(TransportEndpointLeaseClaim claim) {
         return new TransportEndpointLeaseMetadata(
                 claim.deliveryBucketId(),
                 claim.workerId(),
                 claim.endpointDriverId(),
-                runtimeNodeId,
                 claim.sessionHandle(),
                 claim.endpointLeaseId(),
                 claim.endpointAddress()

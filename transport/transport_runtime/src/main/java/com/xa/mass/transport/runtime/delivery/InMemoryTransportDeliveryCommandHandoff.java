@@ -59,23 +59,11 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         }
         List<DispatchOutcome> outcomes = new ArrayList<>(offer.commands().size());
         for (DeliveryCommand command : offer.commands()) {
-            ConsumerEvidence evidence = currentEvidence(offer.deliveryQueueKey(), command.getSelectedWorkerId());
-            if (evidence == null) {
-                outcomes.add(DispatchOutcome.fromCommand(
-                        command,
-                        DispatchOutcomeStatus.NO_ENDPOINT,
-                        true,
-                        "selected worker has no assigned-delivery consumer"
-                ));
-                continue;
-            }
             DeliveryCommandBatch batch = new DeliveryCommandBatch(
                     offer.deliveryQueueKey(),
                     List.of(new DeliveryCommandReference(
                             offer.deliveryQueueKey(),
-                            command.getCommandId(),
-                            evidence.queueConsumerKey(),
-                            evidence.adapterId()
+                            command.getCommandId()
                     )),
                     List.of(command)
             );
@@ -135,9 +123,7 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         consumerByBucketWorker.put(
                 selectedWorkerConsumerKey(deliveryQueueKey, claim.selectedWorkerId()),
                 new ConsumerEvidence(
-                        claim.queueConsumerKey(),
-                        claim.consumerEvidenceId(),
-                        claim.adapterId(),
+                        claim.endpointLeaseId(),
                         claim.leaseExpireAtEpochMillis()
                 )
         );
@@ -148,8 +134,7 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         Objects.requireNonNull(claim, "claim");
         String deliveryQueueKey = AssignedDeliveryCommandQueueKey.queueKeyFor(claim.deliveryBucketId());
         consumerByBucketWorker.computeIfPresent(selectedWorkerConsumerKey(deliveryQueueKey, claim.selectedWorkerId()),
-                (ignored, current) -> claim.queueConsumerKey().equals(current.queueConsumerKey())
-                        && claim.consumerEvidenceId().equals(current.consumerEvidenceId()) ? null : current);
+                (ignored, current) -> claim.endpointLeaseId().equals(current.endpointLeaseId()) ? null : current);
     }
 
     private ConsumerEvidence currentEvidence(String deliveryQueueKey, String selectedWorkerId) {
@@ -202,9 +187,7 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         inflightByCommandId.replaceAll((ignored, claim) -> new InflightClaim(claim.batch(), expiredAt));
     }
 
-    private record ConsumerEvidence(String queueConsumerKey,
-                                    String consumerEvidenceId,
-                                    String adapterId,
+    private record ConsumerEvidence(String endpointLeaseId,
                                     long leaseExpireAtEpochMillis) {
     }
 

@@ -29,6 +29,7 @@ class WebSocketTransportFrameCodecTest {
     void encodesCanonicalTaskDispatch() {
         AdapterDispatchRequest request = new AdapterDispatchRequest(
                 "delivery-1",
+                "bucket-1",
                 "worker-1",
                 """
                 {

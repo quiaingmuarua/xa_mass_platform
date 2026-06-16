@@ -208,11 +208,6 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions transportNodeId(String transportNodeId) {
-            delegate.transportNodeId(transportNodeId);
-            return this;
-        }
-
         public TransportOptions maxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
             delegate.maxDeliveryQueuedItems(maxDeliveryQueuedItems);
             return this;

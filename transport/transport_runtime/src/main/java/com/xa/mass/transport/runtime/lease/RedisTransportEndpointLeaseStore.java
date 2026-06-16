@@ -20,7 +20,6 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * Redis-backed endpoint lease store keyed by delivery bucket and selected worker.
@@ -32,7 +31,7 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
     public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.ENDPOINT_LEASE;
     public static final long DEFAULT_LEASE_MILLIS = 30_000L;
 
-    private static final String VERSION = "v1";
+    private static final String VERSION = "v2";
     private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder TOKEN_DECODER = Base64.getUrlDecoder();
     private static final String CLAIM_SCRIPT = """
@@ -84,7 +83,6 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
     private final RedisCommands<String, String> commands;
     private final String namespacePrefix;
     private final long leaseMillis;
-    private final String runtimeNodeId;
     private final boolean ownsClient;
 
     public RedisTransportEndpointLeaseStore(String redisUri, long leaseMillis) {
@@ -92,45 +90,33 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
     }
 
     public RedisTransportEndpointLeaseStore(String redisUri, String namespacePrefix, long leaseMillis) {
-        this(redisUri, namespacePrefix, leaseMillis, UUID.randomUUID().toString());
-    }
-
-    public RedisTransportEndpointLeaseStore(String redisUri,
-                                            String namespacePrefix,
-                                            long leaseMillis,
-                                            String runtimeNodeId) {
         this(RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 namespacePrefix,
                 leaseMillis,
-                runtimeNodeId,
                 true);
     }
 
     RedisTransportEndpointLeaseStore(RedisClient redisClient,
                                      String namespacePrefix,
                                      long leaseMillis,
-                                     String runtimeNodeId,
                                      boolean ownsClient) {
         this(redisClient,
                 Objects.requireNonNull(redisClient, "redisClient").connect(),
                 namespacePrefix,
                 leaseMillis,
-                runtimeNodeId,
                 ownsClient);
     }
 
     RedisTransportEndpointLeaseStore(StatefulRedisConnection<String, String> connection,
                                      String namespacePrefix,
-                                     long leaseMillis,
-                                     String runtimeNodeId) {
-        this(null, connection, namespacePrefix, leaseMillis, runtimeNodeId, false);
+                                     long leaseMillis) {
+        this(null, connection, namespacePrefix, leaseMillis, false);
     }
 
     private RedisTransportEndpointLeaseStore(RedisClient redisClient,
                                              StatefulRedisConnection<String, String> connection,
                                              String namespacePrefix,
                                              long leaseMillis,
-                                             String runtimeNodeId,
                                              boolean ownsClient) {
         if (leaseMillis <= 0L) {
             throw new IllegalArgumentException("leaseMillis must be greater than 0");
@@ -140,7 +126,6 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
         this.commands = connection.sync();
         this.namespacePrefix = requireText(namespacePrefix, "namespacePrefix");
         this.leaseMillis = leaseMillis;
-        this.runtimeNodeId = requireText(runtimeNodeId, "runtimeNodeId");
         this.ownsClient = ownsClient;
     }
 
@@ -222,10 +207,6 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
         return namespacePrefix;
     }
 
-    public String getRuntimeNodeId() {
-        return runtimeNodeId;
-    }
-
     public void shutdown() {
         close();
     }
@@ -290,7 +271,6 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
                 claim.deliveryBucketId(),
                 claim.workerId(),
                 claim.endpointDriverId(),
-                runtimeNodeId,
                 claim.sessionHandle(),
                 claim.endpointLeaseId(),
                 claim.endpointAddress()
@@ -342,7 +322,6 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
                 encodeToken(metadata.deliveryBucketId()),
                 encodeToken(metadata.workerId()),
                 encodeToken(metadata.endpointDriverId()),
-                encodeToken(metadata.runtimeNodeId()),
                 encodeToken(metadata.sessionHandle()),
                 encodeToken(metadata.endpointLeaseId()),
                 encodeToken(metadata.endpointAddress())
@@ -354,17 +333,16 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
             return null;
         }
         String[] parts = encoded.split("\\|", -1);
-        if (parts.length != 8 || !VERSION.equals(parts[0])) {
+        if (parts.length != 7 || !VERSION.equals(parts[0])) {
             return null;
         }
         return new TransportEndpointLeaseMetadata(
                 decodeToken(parts[1], "deliveryBucketId"),
                 decodeToken(parts[2], "workerId"),
                 decodeToken(parts[3], "endpointDriverId"),
-                decodeToken(parts[4], "runtimeNodeId"),
-                decodeToken(parts[5], "sessionHandle"),
-                decodeToken(parts[6], "endpointLeaseId"),
-                decodeToken(parts[7], "endpointAddress")
+                decodeToken(parts[4], "sessionHandle"),
+                decodeToken(parts[5], "endpointLeaseId"),
+                decodeToken(parts[6], "endpointAddress")
         );
     }
 

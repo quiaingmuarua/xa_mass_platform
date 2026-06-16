@@ -15,6 +15,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransportDeliveryServiceTest {
 
+    private static final String BUCKET = "bucket-1";
+    private static final String QUEUE_KEY = AssignedDeliveryCommandQueueKey.queueKeyFor(BUCKET);
+
     @Test
     void sendDirectReturnsSentWhenSenderAcceptsItem() {
         TransportDeliveryService service = service();
@@ -123,17 +126,28 @@ class TransportDeliveryServiceTest {
         TransportDeliveryService service = service();
         service.enqueue("polling", List.of(request("msg-1", "worker-1")));
 
-        assertEquals(List.of("msg-1"), service.pollItems("polling", "worker-1", 10, 0).stream()
+        assertEquals(List.of("msg-1"), service.pollItems(BUCKET, "worker-1", 10, 0).stream()
                 .map(item -> messageId(item.payload()))
                 .toList());
     }
 
     @Test
-    void pollUsesCanonicalAdapterAndWorkerKeys() {
+    void pollUsesCanonicalBucketAndWorkerKeys() {
         TransportDeliveryService service = service();
-        service.enqueue("polling", List.of(request("delivery-msg-1", " Polling ", "msg-1", " worker-1 ")));
+        service.enqueue("polling", List.of(request("delivery-msg-1", " " + BUCKET + " ", "msg-1", " worker-1 ")));
 
-        assertEquals(List.of("msg-1"), service.pollItems("polling", "worker-1", 10, 0).stream()
+        assertEquals(List.of("msg-1"), service.pollItems(BUCKET, "worker-1", 10, 0).stream()
+                .map(item -> messageId(item.payload()))
+                .toList());
+    }
+
+    @Test
+    void pollingQueueKeyComesFromDeliveryBucketNotAdapterId() {
+        TransportDeliveryService service = service();
+        service.enqueue("polling-adapter-a", List.of(request("delivery-msg-1", BUCKET, "msg-1", "worker-1")));
+
+        assertTrue(service.pollItems("polling-adapter-a", "worker-1", 10, 0).isEmpty());
+        assertEquals(List.of("msg-1"), service.pollItems(BUCKET, "worker-1", 10, 0).stream()
                 .map(item -> messageId(item.payload()))
                 .toList());
     }
@@ -141,10 +155,10 @@ class TransportDeliveryServiceTest {
     @Test
     void selectedWorkerPollDoesNotDrainAnotherWorkerSharingRouteKey() {
         TransportDeliveryService service = service();
-        service.enqueue("polling", List.of(request("delivery-msg-1", "polling", "msg-1", "worker-2")));
+        service.enqueue("polling", List.of(request("delivery-msg-1", BUCKET, "msg-1", "worker-2")));
 
-        assertTrue(service.pollItems("polling", "worker-1", 10, 0).isEmpty());
-        assertEquals(List.of("msg-1"), service.pollItems("polling", "worker-2", 10, 0).stream()
+        assertTrue(service.pollItems(BUCKET, "worker-1", 10, 0).isEmpty());
+        assertEquals(List.of("msg-1"), service.pollItems(BUCKET, "worker-2", 10, 0).stream()
                 .map(item -> messageId(item.payload()))
                 .toList());
     }
@@ -154,9 +168,9 @@ class TransportDeliveryServiceTest {
         TransportDeliveryService service = service();
 
         assertEquals(TransportDeliveryPollStatus.EMPTY,
-                service.pollItemResult("polling", "worker-1", 10, 0).getStatus());
+                service.pollItemResult(BUCKET, "worker-1", 10, 0).getStatus());
         assertEquals(TransportDeliveryPollStatus.INVALID_REQUEST,
-                service.pollItemResult("polling", " ", 10, 0).getStatus());
+                service.pollItemResult(BUCKET, " ", 10, 0).getStatus());
     }
 
     @Test
@@ -173,7 +187,7 @@ class TransportDeliveryServiceTest {
         assertEquals(1L, stats.getEnqueuedItems());
         assertEquals(0L, stats.getDrainedItems());
         assertEquals(0L, stats.getDirectSentItems());
-        assertEquals(1, stats.getQueueByAdapter().get("polling").getQueuedItems());
+        assertEquals(1, stats.getQueueByAdapter().get(QUEUE_KEY).getQueuedItems());
     }
 
     @Test
@@ -205,7 +219,7 @@ class TransportDeliveryServiceTest {
         TransportDeliveryServiceStats stats = service.stats();
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED), statuses(outcomes));
         assertEquals(1, stats.getQueuedItems());
-        assertEquals(1, stats.getQueueByAdapter().get("polling").getQueuedItems());
+        assertEquals(1, stats.getQueueByAdapter().get(QUEUE_KEY).getQueuedItems());
         assertEquals(0L, stats.getDirectSentItems());
         assertEquals(0L, stats.getDirectOfflineItems());
         assertEquals(0L, stats.getDirectFailedItems());
@@ -222,7 +236,7 @@ class TransportDeliveryServiceTest {
         service.shutdown();
 
         assertEquals(0, service.stats().getQueuedItems());
-        assertTrue(service.pollItems("polling", "worker-1", 10, 0).isEmpty());
+        assertTrue(service.pollItems(BUCKET, "worker-1", 10, 0).isEmpty());
         assertEquals(DispatchOutcomeStatus.UNAVAILABLE,
                 service.enqueue("polling", List.of(request("msg-2", "worker-1"))).get(0).getStatus());
     }
@@ -236,15 +250,16 @@ class TransportDeliveryServiceTest {
     }
 
     private AdapterDispatchRequest request(String messageId, String workerId) {
-        return request("delivery-" + messageId, "polling", messageId, workerId);
+        return request("delivery-" + messageId, BUCKET, messageId, workerId);
     }
 
     private AdapterDispatchRequest request(String deliveryId,
-                                           String adapterId,
+                                           String deliveryBucketId,
                                            String messageId,
                                            String workerId) {
         return new AdapterDispatchRequest(
                 deliveryId,
+                deliveryBucketId,
                 workerId,
                 "{\"messageId\":\"" + messageId + "\"}",
                 "corr-" + messageId,

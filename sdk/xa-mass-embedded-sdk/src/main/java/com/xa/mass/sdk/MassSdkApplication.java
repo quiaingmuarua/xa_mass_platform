@@ -609,20 +609,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public String getWorkerAdapterId(String workerId) {
-        String normalizedWorkerId = requireWorkerId(workerId);
-        WorkerResourceRecord worker = loadWorker(normalizedWorkerId);
-        if (worker == null) {
-            throw new IllegalArgumentException("Worker not found: " + normalizedWorkerId);
-        }
-        if (delegate.getTransportRuntimeRegistry() == null) {
-            throw new IllegalStateException("Worker adapterId is transport runtime diagnostic and the transport runtime is unavailable: "
-                    + worker.workerId());
-        }
-        return delegate.resolveWorkerAdapterId(normalizedWorkerId);
-    }
-
-    @Override
     public String getWorkerTransportHint(String workerId) {
         WorkerResourceRecord worker = loadWorker(requireWorkerId(workerId));
         if (worker == null) {

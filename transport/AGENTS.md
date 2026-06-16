@@ -29,22 +29,25 @@ entry for `transport/`.
   or another owner-level rule, and must not depend on routeKey cardinality for
   wrong-worker prevention.
 - `selectedWorkerId` is the engine-selected execution target carried into
-  transport as a delivery constraint. Transport may filter sessions or selected
-  worker sub-lanes with it, but must not use it to schedule, rank, admit,
-  mutate lifecycle, or mint route keys.
+  transport as a delivery constraint. Delivery-command handoff keeps it as a
+  command field for dispatcher demux and final-hop endpoint/session lookup; it
+  must not become a second physical queue address, scheduling input, lifecycle
+  mutation, or route-key minting rule.
 - Assigned-delivery `deliveryQueueKey` is a queue/storage/batching address
   derived from `deliveryBucketId` by transport. It may be shared by many
-  workers; it must not express worker selection. Polling-store queue keys are
-  a separate adapter-local queue concept until that residue is renamed.
-- external worker/session APIs must not expose endpoint/session internals such as
-  `routeKey`, `connectionId`, `transportNodeId`, `deliveryQueueKey`, or
-  adapter runtime ids. Managed workers declare `adapterNodeId` plus
-  `transportHint`; transport resolves internal adapter/runtime evidence.
+  workers; it must not express worker selection. Polling-store queue placement
+  also derives from the worker's `deliveryBucketId`; `adapterId` is not a pull
+  queue selector.
+- external worker execution/session APIs must not expose endpoint/session internals such as
+  `routeKey`, `connectionId`, `deliveryQueueKey`, endpoint lease ids, or
+  adapter runtime ids. `adapterNodeId`, where still present, belongs to
+  worker/resource control-plane declaration surfaces, not transport delivery
+  executor identity.
 - Polling task delivery is selected-worker delivery: the poll request carries
-  the registered worker id as `selectedWorkerId`, while the runtime resolves a
-  shared `deliveryQueueKey` such as adapter id internally. Two polling workers
-  may share one routeKey and one deliveryQueueKey; they must still drain only
-  their own selected-worker sub-lane.
+  the registered bucket as `deliveryBucketId` and the registered worker id as
+  `selectedWorkerId`. Two polling workers may share one routeKey and one
+  delivery bucket; they must still receive only commands whose command-level
+  `selectedWorkerId` matches the polling worker.
 - `CanonicalWorkerGroupRouteKeyCodec` is the current SDK/starter default
   worker-consumption route mint rule from `workerGroupId`; transport runtime
   and adapters receive explicit route keys as opaque metadata instead of
@@ -63,8 +66,10 @@ entry for `transport/`.
 - worker endpoint lease evidence lives in a transport-owned endpoint lease
   plane keyed by `deliveryBucketId + workerId`. Adapters/session ingress also
   writes handoff-private selected-worker consumer evidence for assigned
-  delivery. Assigned-delivery producer/listener code must not re-own transport
-  endpoint evidence through worker heartbeat folding or endpoint lease lookup.
+  delivery. Assigned-delivery producers must not re-own transport endpoint
+  evidence through worker heartbeat folding or endpoint lease lookup; the
+  delivery listener may read endpoint lease evidence only as final-hop
+  feasibility for the already selected worker.
   Endpoint lease writes are connection-aware: each claim carries an explicit
   `deliveryBucketId`, heartbeat only extends the matching endpoint lease, and
   release only removes the endpoint lease when the caller still holds the
@@ -83,10 +88,11 @@ entry for `transport/`.
   `deliveryQueueKey`, handoff-owned command references, and command items only.
   It does not carry bucket, lane, target node, adapter route, connection, or
   endpoint lease facts.
-- `TransportDeliveryCommandListener` consumes handoff references and resolves
-  the final-hop adapter from handoff-private consumer context. It does not
-  call endpoint lease lookup for assigned delivery. `AdapterDispatchRequest`
-  is the final-hop adapter request and sends by selected worker.
+- `TransportDeliveryCommandListener` consumes bucket-queue handoff references,
+  reads `deliveryBucketId + selectedWorkerId` endpoint lease evidence for
+  final-hop feasibility, then resolves the local adapter from that endpoint
+  lease. `AdapterDispatchRequest` is the final-hop adapter request and sends by
+  selected worker.
 - `DeliveryPullResult` / `PulledDeliveryMessage` are the transport-core pull
   shapes. They carry status plus opaque delivery messages only. Task-shaped
   `PulledTaskDispatch` / `TaskPullResult` live at the SDK/server public worker

@@ -144,7 +144,6 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
         bindExternalAdapterNode(adapterNodeId, spec.workerGroupId(), workerHeaders);
         Map<String, Object> response = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", spec.workerId(),
-                "adapterNodeId", adapterNodeId,
                 "workerGroupId", spec.workerGroupId(),
                 "transportHint", "realtime",
                 "attributes", Map.of(

@@ -7,19 +7,27 @@ import java.util.List;
  */
 public interface DeliveryPullChannel {
 
-    default List<PulledDeliveryMessage> pollDeliveryMessages(String selectedWorkerId, int maxMessages) {
-        return pollDeliveryMessages(selectedWorkerId, maxMessages, 0L);
+    default List<PulledDeliveryMessage> pollDeliveryMessages(String deliveryBucketId,
+                                                             String selectedWorkerId,
+                                                             int maxMessages) {
+        return pollDeliveryMessages(deliveryBucketId, selectedWorkerId, maxMessages, 0L);
     }
 
-    default List<PulledDeliveryMessage> pollDeliveryMessages(String selectedWorkerId,
+    default List<PulledDeliveryMessage> pollDeliveryMessages(String deliveryBucketId,
+                                                             String selectedWorkerId,
                                                              int maxMessages,
                                                              long timeoutMillis) {
-        return pollDeliveryMessagesResult(selectedWorkerId, maxMessages, timeoutMillis).getItems();
+        return pollDeliveryMessagesResult(deliveryBucketId, selectedWorkerId, maxMessages, timeoutMillis).getItems();
     }
 
-    default DeliveryPullResult pollDeliveryMessagesResult(String selectedWorkerId, int maxMessages) {
-        return pollDeliveryMessagesResult(selectedWorkerId, maxMessages, 0L);
+    default DeliveryPullResult pollDeliveryMessagesResult(String deliveryBucketId,
+                                                          String selectedWorkerId,
+                                                          int maxMessages) {
+        return pollDeliveryMessagesResult(deliveryBucketId, selectedWorkerId, maxMessages, 0L);
     }
 
-    DeliveryPullResult pollDeliveryMessagesResult(String selectedWorkerId, int maxMessages, long timeoutMillis);
+    DeliveryPullResult pollDeliveryMessagesResult(String deliveryBucketId,
+                                                  String selectedWorkerId,
+                                                  int maxMessages,
+                                                  long timeoutMillis);
 }

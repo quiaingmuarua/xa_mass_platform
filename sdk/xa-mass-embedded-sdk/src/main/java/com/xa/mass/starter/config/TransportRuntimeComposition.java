@@ -16,7 +16,6 @@ import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryCommandHa
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
-import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
@@ -64,7 +63,6 @@ public class TransportRuntimeComposition {
     private final Supplier<TransportDeliveryCommandHandoff> deliveryCommandHandoffFactory;
     private final Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory;
     private final Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
-    private final Supplier<TransportNodeRegistry> transportNodeRegistryFactory;
     private final TransportAdapterBootstrap primaryTransportAdapterBootstrap;
     private final List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps;
     private final int maxDeliveryQueuedItems;
@@ -74,12 +72,10 @@ public class TransportRuntimeComposition {
     private final long eventHandlerTimeoutMillis;
     private final long endpointLeaseMillis;
     private final TransportRuntimeRole runtimeRole;
-    private final String transportNodeId;
 
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
     private transient TransportRegistrationResolver registrationResolver;
     private transient TransportEndpointLeaseStore runtimeOwnedEndpointLeaseStore;
-    private transient TransportNodeRegistry runtimeOwnedTransportNodeRegistry;
 
     public TransportRuntimeComposition(TransportConfig source) {
         this.transporterType = source.getTransporterType();
@@ -103,7 +99,6 @@ public class TransportRuntimeComposition {
         this.deliveryCommandHandoffFactory = source.deliveryCommandHandoffFactory();
         this.taskResultInboxFactory = source.taskResultInboxFactory();
         this.deliveryFailureInboxFactory = source.deliveryFailureInboxFactory();
-        this.transportNodeRegistryFactory = source.transportNodeRegistryFactory();
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
         this.maxDeliveryQueuedItems = source.getMaxDeliveryQueuedItems();
@@ -113,7 +108,6 @@ public class TransportRuntimeComposition {
         this.eventHandlerTimeoutMillis = source.getEventHandlerTimeoutMillis();
         this.endpointLeaseMillis = source.getEndpointLeaseMillis();
         this.runtimeRole = source.getRuntimeRole();
-        this.transportNodeId = source.getTransportNodeId();
     }
 
     public boolean isEnabled() {
@@ -227,27 +221,13 @@ public class TransportRuntimeComposition {
         return deliveryFailureInboxFactory.get();
     }
 
-    public TransportNodeRegistry resolveTransportNodeRegistry() {
-        if (transportNodeRegistryFactory == null) {
-            return null;
-        }
-        if (runtimeOwnedTransportNodeRegistry == null) {
-            runtimeOwnedTransportNodeRegistry = transportNodeRegistryFactory.get();
-        }
-        return runtimeOwnedTransportNodeRegistry;
-    }
-
     public TransportEndpointLeaseStore resolveTransportEndpointLeaseStore() {
         if (runtimeOwnedEndpointLeaseStore == null) {
             runtimeOwnedEndpointLeaseStore = endpointLeaseStoreFactory != null
                     ? endpointLeaseStoreFactory.get()
-                    : new InMemoryTransportEndpointLeaseStore(endpointLeaseMillis, transportNodeId);
+                    : new InMemoryTransportEndpointLeaseStore(endpointLeaseMillis);
         }
         return runtimeOwnedEndpointLeaseStore;
-    }
-
-    public String getTransportNodeId() {
-        return transportNodeId;
     }
 
     public java.util.Map<String, String> resolveAdapterTransportHintsById() {
@@ -266,7 +246,7 @@ public class TransportRuntimeComposition {
                 return requestedAdapterId.trim().toLowerCase(java.util.Locale.ROOT);
             }
             throw new IllegalStateException(
-                    "worker adapterId must be set before runtime start when transport registration metadata is unavailable");
+                    "transport registration metadata is unavailable; cannot infer adapter binding before runtime start");
         }
         return registrationResolver().resolveRegistrationAdapterId(requestedAdapterId, transportHint);
     }

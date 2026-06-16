@@ -20,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PollingWorkerAdapterTest {
 
+    private static final String BUCKET = "bucket-1";
+
     @Test
     void dispatchQueuesItemsForPollingWorker() {
         PollingWorkerAdapter adapter = adapter();
@@ -28,9 +30,10 @@ class PollingWorkerAdapterTest {
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.QUEUED, outcomes.get(0).getStatus());
-        assertEquals(DeliveryPullStatus.DELIVERED, adapter.pollDeliveryMessagesResult("worker-1", 1, 0).getStatus());
+        assertEquals(DeliveryPullStatus.DELIVERED,
+                adapter.pollDeliveryMessagesResult(BUCKET, "worker-1", 1, 0).getStatus());
         adapter.dispatch(List.of(request("msg-2", "worker-1")));
-        assertEquals(List.of("msg-2"), adapter.pollDeliveryMessages("worker-1", 10, 0).stream()
+        assertEquals(List.of("msg-2"), adapter.pollDeliveryMessages(BUCKET, "worker-1", 10, 0).stream()
                 .map(PulledDeliveryMessage::getPayload)
                 .map(this::messageId)
                 .toList());
@@ -44,8 +47,9 @@ class PollingWorkerAdapterTest {
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.INVALID, outcomes.get(0).getStatus());
-        assertTrue(adapter.pollDeliveryMessages("worker-1", 10, 0).isEmpty());
-        assertEquals(DeliveryPullStatus.EMPTY, adapter.pollDeliveryMessagesResult("worker-1", 10, 0).getStatus());
+        assertTrue(adapter.pollDeliveryMessages(BUCKET, "worker-1", 10, 0).isEmpty());
+        assertEquals(DeliveryPullStatus.EMPTY,
+                adapter.pollDeliveryMessagesResult(BUCKET, "worker-1", 10, 0).getStatus());
     }
 
     @Test
@@ -53,8 +57,9 @@ class PollingWorkerAdapterTest {
         PollingWorkerAdapter adapter = adapter();
         adapter.dispatch(List.of(request("msg-2", "worker-2")));
 
-        assertEquals(DeliveryPullStatus.EMPTY, adapter.pollDeliveryMessagesResult("worker-1", 10, 0).getStatus());
-        assertEquals(List.of("msg-2"), adapter.pollDeliveryMessages("worker-2", 10, 0).stream()
+        assertEquals(DeliveryPullStatus.EMPTY,
+                adapter.pollDeliveryMessagesResult(BUCKET, "worker-1", 10, 0).getStatus());
+        assertEquals(List.of("msg-2"), adapter.pollDeliveryMessages(BUCKET, "worker-2", 10, 0).stream()
                 .map(PulledDeliveryMessage::getPayload)
                 .map(this::messageId)
                 .toList());
@@ -75,7 +80,7 @@ class PollingWorkerAdapterTest {
                 outcomes.get(outcomes.size() - 1).getStatus());
         assertTrue(outcomes.get(outcomes.size() - 1).isRetryable());
         assertEquals(PollingWorkerAdapter.MAX_INBOX_SIZE,
-                adapter.pollDeliveryMessages("worker-1", PollingWorkerAdapter.MAX_INBOX_SIZE + 10, 0).size());
+                adapter.pollDeliveryMessages(BUCKET, "worker-1", PollingWorkerAdapter.MAX_INBOX_SIZE + 10, 0).size());
     }
 
     @Test
@@ -83,21 +88,23 @@ class PollingWorkerAdapterTest {
         PollingWorkerAdapter adapter = adapter();
         adapter.dispatch(List.of(request("msg-1", "worker-1")));
 
-        assertEquals(DeliveryPullStatus.DELIVERED, adapter.pollDeliveryMessagesResult("worker-1", 1, 0).getStatus());
-        assertEquals(DeliveryPullStatus.INVALID_REQUEST, adapter.pollDeliveryMessagesResult(" ", 10, 0).getStatus());
-        assertEquals(DeliveryPullStatus.INVALID_REQUEST, adapter.pollDeliveryMessagesResult("worker-1", 0, 0).getStatus());
+        assertEquals(DeliveryPullStatus.DELIVERED,
+                adapter.pollDeliveryMessagesResult(BUCKET, "worker-1", 1, 0).getStatus());
+        assertEquals(DeliveryPullStatus.INVALID_REQUEST,
+                adapter.pollDeliveryMessagesResult(BUCKET, " ", 10, 0).getStatus());
+        assertEquals(DeliveryPullStatus.INVALID_REQUEST,
+                adapter.pollDeliveryMessagesResult(BUCKET, "worker-1", 0, 0).getStatus());
     }
 
     @Test
     void endpointLeaseAnnouncementsUpdateTransportOwnedEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore =
-                new InMemoryTransportEndpointLeaseStore(30_000L, "poll-node-1");
+                new InMemoryTransportEndpointLeaseStore(30_000L);
         PollingWorkerAdapter adapter = adapter(endpointLeaseStore);
 
         adapter.announceWorkerOnline("worker-1", "bucket-1", "route-1", "conn-1", "poll connected");
 
         var connected = endpointLeaseStore.currentEndpointLease("bucket-1", "worker-1").orElseThrow();
-        assertEquals("poll-node-1", connected.runtimeNodeId());
         assertEquals("route-1", connected.endpointAddress());
         assertEquals("conn-1", connected.endpointLeaseId());
 
@@ -112,13 +119,13 @@ class PollingWorkerAdapterTest {
     @Test
     void endpointLeaseAnnouncementsClaimAndReleaseSelectedWorkerConsumerEvidence() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore =
-                new InMemoryTransportEndpointLeaseStore(30_000L, "poll-node-1");
+                new InMemoryTransportEndpointLeaseStore(30_000L);
         RecordingConsumerRegistry registry = new RecordingConsumerRegistry();
         PollingWorkerAdapter adapter = new PollingWorkerAdapter(
                 endpointLeaseStore,
                 deliveryService(),
                 registry,
-                "poll-node-1"
+                "polling-worker-a"
         );
 
         adapter.announceWorkerOnline("worker-1", "bucket-1", "route-1", "conn-1", "poll connected");
@@ -126,10 +133,8 @@ class PollingWorkerAdapterTest {
 
         assertEquals("bucket-1", registry.claimed.deliveryBucketId());
         assertEquals("worker-1", registry.claimed.selectedWorkerId());
-        assertEquals("poll-node-1", registry.claimed.queueConsumerKey());
-        assertEquals("conn-1", registry.claimed.consumerEvidenceId());
-        assertEquals(PollingWorkerAdapter.PROTOCOL, registry.claimed.adapterId());
-        assertEquals("conn-1", registry.released.consumerEvidenceId());
+        assertEquals("conn-1", registry.claimed.endpointLeaseId());
+        assertEquals("conn-1", registry.released.endpointLeaseId());
     }
 
     private PollingWorkerAdapter adapter() {
@@ -159,6 +164,7 @@ class PollingWorkerAdapterTest {
     private AdapterDispatchRequest request(String deliveryId, String messageId, String workerId) {
         return new AdapterDispatchRequest(
                 deliveryId,
+                BUCKET,
                 workerId,
                 payload(messageId),
                 "corr-" + messageId,

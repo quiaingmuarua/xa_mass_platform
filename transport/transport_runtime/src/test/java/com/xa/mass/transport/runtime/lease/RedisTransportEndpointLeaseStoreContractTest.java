@@ -50,7 +50,7 @@ class RedisTransportEndpointLeaseStoreContractTest extends TransportEndpointLeas
     protected LeaseStoreFixture createFixture(long leaseMillis) {
         StatefulRedisConnection<String, String> connection = redisClient.connect();
         RedisTransportEndpointLeaseStore store =
-                new RedisTransportEndpointLeaseStore(connection, namespacePrefix, leaseMillis, "runtime-a");
+                new RedisTransportEndpointLeaseStore(connection, namespacePrefix, leaseMillis);
         return new LeaseStoreFixture(store, store, store);
     }
 }

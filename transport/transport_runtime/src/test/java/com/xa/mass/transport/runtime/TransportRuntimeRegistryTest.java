@@ -51,6 +51,11 @@ class TransportRuntimeRegistryTest {
         }
 
         @Override
+        public String adapterId() {
+            return protocol;
+        }
+
+        @Override
         public String transportHint() {
             return transportHint;
         }

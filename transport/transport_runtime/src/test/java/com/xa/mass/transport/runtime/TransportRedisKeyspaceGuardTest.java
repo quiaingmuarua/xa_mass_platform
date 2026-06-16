@@ -22,7 +22,6 @@ class TransportRedisKeyspaceGuardTest {
         for (String namespace : List.of(
                 RedisTransportNamespaces.ENDPOINT_LEASE,
                 RedisTransportNamespaces.DELIVERY,
-                RedisTransportNamespaces.NODES,
                 RedisTransportNamespaces.DELIVERY_COMMAND,
                 RedisTransportNamespaces.RESULT_INBOX,
                 RedisTransportNamespaces.DELIVERY_FAILURE
@@ -36,10 +35,8 @@ class TransportRedisKeyspaceGuardTest {
                 "q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>",
                 "q:<encodedDeliveryQueueKey>:commands",
                 "q:<encodedDeliveryQueueKey>:command-retention-deadlines",
-                "consumer:<encodedQueueConsumerKey>:ready-commands",
-                "consumer:<encodedQueueConsumerKey>:inflight-commands",
-                "queue-consumers:<encodedDeliveryQueueKey>",
-                "queue-consumer:<encodedQueueConsumerKey>",
+                "q:<encodedDeliveryQueueKey>:ready-commands",
+                "q:<encodedDeliveryQueueKey>:inflight-commands",
                 "selected-worker-consumers:<encodedDeliveryQueueKey>",
                 "selected-worker-consumer-deadlines:<encodedDeliveryQueueKey>"
         )) {
@@ -101,6 +98,8 @@ class TransportRedisKeyspaceGuardTest {
                 "transport boundary baseline must not document routeKey-only delivery queues");
         assertTrue(content.contains("selected-worker-consumers:<encodedDeliveryQueueKey>"),
                 "transport boundary baseline must document selected-worker delivery consumer evidence");
+        assertTrue(!content.contains("q:<encodedDeliveryQueueKey>:worker:<encodedSelectedWorkerId>:ready-commands"),
+                "delivery-command handoff must not document selected-worker physical ready queues");
     }
 
     private static Stream<Path> scanTextFiles(Path path) throws IOException {

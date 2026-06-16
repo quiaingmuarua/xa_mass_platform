@@ -32,15 +32,14 @@ public interface WorkerAdapter {
     String protocol();
 
     /**
-     * Returns the canonical adapter identity exposed by this adapter.
+     * Returns the canonical adapter binding identity exposed by this adapter.
      *
      * <p>This is the runtime routing truth used to bind one worker instance to
      * one concrete adapter when multiple adapters share the same transport
-     * family.
+     * family. Implementations must provide it explicitly; the protocol label is
+     * not a safe adapter identity.
      */
-    default String adapterId() {
-        return protocol();
-    }
+    String adapterId();
 
     /**
      * Returns the coarse worker transport family exposed by this adapter.

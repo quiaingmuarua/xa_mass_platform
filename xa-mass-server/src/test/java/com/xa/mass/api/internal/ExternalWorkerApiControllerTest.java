@@ -76,8 +76,6 @@ class ExternalWorkerApiControllerTest {
                 Map.of("workerId", "node-worker-1")
         );
         lenient().when(authProvider.authenticate("node-worker-key")).thenReturn(workerCredentialPrincipal);
-        lenient().when(workerClient.getWorkerAdapterId("node-worker-1"))
-                .thenReturn(WorkerTransportHints.POLLING);
         lenient().when(workerClient.getWorkerTransportHint("node-worker-1"))
                 .thenReturn(WorkerTransportHints.POLLING);
         registrationObservationStore = new InMemoryWorkerRegistrationObservationStore();
