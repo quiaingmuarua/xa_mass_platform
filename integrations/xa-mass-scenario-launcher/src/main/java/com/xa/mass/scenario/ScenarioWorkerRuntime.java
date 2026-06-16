@@ -104,14 +104,10 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
     private PollingWorkerSession startPollingSession(WorkerScenarioSpec spec) {
         String workerId = requireNonBlank(spec.workerId(), "workerId");
         String workerGroupId = requireNonBlank(spec.workerGroupId(), "workerGroupId");
-        String adapterNodeId = WorkerScenarioRegistrar.adapterNodeIdFor(spec);
         MassPlatform client = clientFactory.forApiKey(workerApiKey(spec));
         PollingWorkerSession.Builder builder = client.workerSessions().polling()
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)
-                .adapterNodeId(adapterNodeId)
-                .adapterType("polling")
-                .endpointId(adapterNodeId)
                 .attributes(spec.attributes())
                 .pollInterval(POLL_INTERVAL)
                 .pollTimeout(POLL_TIMEOUT)
@@ -132,14 +128,10 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
     private WebSocketWorkerSession startWebSocketSession(WorkerScenarioSpec spec) {
         String workerId = requireNonBlank(spec.workerId(), "workerId");
         String workerGroupId = requireNonBlank(spec.workerGroupId(), "workerGroupId");
-        String adapterNodeId = WorkerScenarioRegistrar.adapterNodeIdFor(spec);
         MassPlatform client = clientFactory.forApiKey(workerApiKey(spec));
         WebSocketWorkerSession.Builder builder = client.workerSessions().webSocket()
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)
-                .adapterNodeId(adapterNodeId)
-                .adapterType("websocket")
-                .endpointId(adapterNodeId)
                 .attributes(spec.attributes())
                 .endpoint(options.webSocketUrl())
                 .listener(new LoggingWorkerSessionListener());

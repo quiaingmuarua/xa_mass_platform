@@ -169,8 +169,8 @@ visible.
 ## Non-Goals
 
 - Do not complete or re-specify the DQK roadmap here.
-- Do not rename all transport ids in one broad sweep. The wider naming
-  direction remains in `TRANSPORT_INTERNAL_ID_BOUNDARY_CONVERGENCE_ROADMAP.md`.
+- Do not rename all transport ids in one broad sweep. Keep naming cleanup in
+  narrow owner roadmaps such as route-key removal and node-id removal.
 - Do not remove raw/manual route dispatch. Keep it separate from assigned task
   delivery and guard the boundary.
 - Do not make engine core depend on transport.
@@ -535,8 +535,7 @@ Actions:
 - Update active roadmaps:
   - mark this roadmap status honestly
   - keep DQK dependency explicit
-  - cross-link `TRANSPORT_INTERNAL_ID_BOUNDARY_CONVERGENCE_ROADMAP.md` only for
-    broader vocabulary work, not for this executor residue slice
+  - cross-link only narrow owner roadmaps, not broad vocabulary cleanup buckets
 - Run source residue scans for old endpoint/task dispatch facts.
 
 Acceptance:

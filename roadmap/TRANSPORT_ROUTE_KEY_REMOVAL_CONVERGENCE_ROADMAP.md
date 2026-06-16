@@ -38,14 +38,12 @@ delivery or worker lifecycle.
 
 ## Relationship To Other Roadmaps
 
-- `TRANSPORT_NODE_ID_REMOVAL_CONVERGENCE_ROADMAP.md` removes generic process
-  node identity. This roadmap should run after, or at least not conflict with,
-  that work because both touch endpoint/session managers and transport owner
-  docs.
-- `TRANSPORT_INTERNAL_ID_BOUNDARY_CONVERGENCE_ROADMAP.md` is broader internal id
-  vocabulary work. This roadmap owns only the `routeKey` removal slice and
-  should not pull in adapter-id, gateway-id, transport-hint, or queue-key
-  renames unless required to delete routeKey safely.
+- Generic process-node identity removal is already completed and archived as
+  historical context. This roadmap must not reopen node identity while removing
+  routeKey from endpoint/session managers and transport owner docs.
+- This roadmap owns only the `routeKey` removal slice and should not pull in
+  adapter-id, gateway-id, transport-hint, or queue-key renames unless required
+  to delete routeKey safely.
 - `TRANSPORT_DELIVERY_EXECUTOR_RESIDUE_CONVERGENCE_ROADMAP.md` already keeps
   assigned delivery free of routeKey. This roadmap removes the leftover session,
   packet, raw-route, and diagnostic vocabulary that still makes routeKey look

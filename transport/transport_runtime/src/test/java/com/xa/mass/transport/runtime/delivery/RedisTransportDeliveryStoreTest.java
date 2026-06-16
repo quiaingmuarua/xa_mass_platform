@@ -107,10 +107,11 @@ class RedisTransportDeliveryStoreTest {
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, second.getStatus());
         assertEquals(DispatchOutcomeStatus.BACKPRESSURE, third.getStatus());
-        assertEquals(DispatchOutcomeStatus.QUEUED, fourth.getStatus());
-        assertEquals(DispatchOutcomeStatus.QUEUED, fifth.getStatus());
+        assertEquals(DispatchOutcomeStatus.BACKPRESSURE, fourth.getStatus());
+        assertEquals(DispatchOutcomeStatus.BACKPRESSURE, fifth.getStatus());
         assertEquals(DispatchOutcomeStatus.BACKPRESSURE, sixth.getStatus());
         assertTrue(observerCommands.keys(namespacePrefix + ":*").stream().allMatch(this::isDeliveryKeyFamily));
+        assertTrue(observerCommands.keys(namespacePrefix + ":*").stream().noneMatch(key -> key.contains("worker-index")));
     }
 
     @Test
@@ -120,10 +121,10 @@ class RedisTransportDeliveryStoreTest {
 
         TransportDeliveryStoreStats queued = store.stats();
         assertEquals(2, queued.getQueuedItems());
-        assertEquals(2, queued.getQueueCount());
+        assertEquals(1, queued.getQueueCount());
         assertEquals(1, queued.getQueueByAdapter().size());
         assertEquals(2, queued.getQueueByAdapter().get("polling").getQueuedItems());
-        assertEquals(2, queued.getQueueByAdapter().get("polling").getQueueCount());
+        assertEquals(1, queued.getQueueByAdapter().get("polling").getQueueCount());
 
         store.shutdown();
 

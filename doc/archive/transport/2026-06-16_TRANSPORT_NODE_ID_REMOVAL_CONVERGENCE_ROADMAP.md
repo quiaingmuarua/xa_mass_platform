@@ -1,7 +1,6 @@
 # Transport Node Id Removal Convergence Roadmap
 
-Status: mainline implemented; bucket-derived queue model verified, with final
-archive decision pending.
+Status: archived; completed on 2026-06-16.
 
 ## Summary
 
@@ -32,7 +31,7 @@ Target principle:
 ```text
 workerGroup / deliveryBucketId     = business delivery bucket
 workerId / selectedWorkerId        = execution and delivery correctness identity
-deliveryQueueKey                   = storage / batching shard derived from deliveryBucketId
+deliveryQueueKey                   = storage / batching queue derived from deliveryBucketId
 adapterId                          = optional adapter endpoint label / future extension metadata
 adapterKind / transportHint        = protocol / endpoint kind
 deliveryCommandConsumerKey         = legacy node-targeted handoff name; target removed
@@ -242,7 +241,7 @@ defined.
 
 Do not replace `transportNodeId` with `adapterId`.
 
-Assigned delivery should use `deliveryBucketId` to derive queue / shard storage
+Assigned delivery should use `deliveryBucketId` to derive queue storage
 placement. Each queued command carries `selectedWorkerId` as an item-level
 delivery constraint used by the adapter dispatcher to demux and enforce
 final-hop correctness. Existing
@@ -490,7 +489,7 @@ adapterId = optional adapter endpoint metadata / operator handle
 adapterKind / transportHint = protocol / endpoint kind
 deliveryBucketId / workerGroupId = business delivery bucket
 selectedWorkerId = assigned execution identity
-deliveryQueueKey = derived from deliveryBucketId or bucket shard
+deliveryQueueKey = derived from deliveryBucketId
 ```
 
 More precisely for this roadmap:
@@ -512,11 +511,10 @@ be smuggled through `adapterId`, `routeKey`, or a revived node id.
   `TRANSPORT_DELIVERY_EXECUTOR_RESIDUE_CONVERGENCE_ROADMAP.md`: that roadmap
   already forbids `transportNodeId` on assigned-delivery command/request/outcome
   paths.
-- Supersedes the parts of
-  `TRANSPORT_INTERNAL_ID_BOUNDARY_CONVERGENCE_ROADMAP.md` that keep
-  `transportNodeId` by renaming it to `runtimeNodeId`. The stronger decision is
-  deletion from public/config/endpoint views, while assigned delivery is keyed
-  by delivery bucket and selected worker rather than adapter id.
+- Supersedes earlier broad internal-id direction that kept `transportNodeId` by
+  renaming it to `runtimeNodeId`. The stronger decision is deletion from
+  public/config/endpoint views, while assigned delivery is keyed by delivery
+  bucket and selected worker rather than adapter id.
 - Future result-ingress work should not introduce `transportNodeId` or
   `adapterId` as a result partition. Result partitioning should follow
   result/task correlation semantics unless a later, explicit adapter strategy
@@ -560,7 +558,7 @@ Do not start by creating a new generic instance registry.
 That would keep the same abstraction cost under a better name. First separate
 the real remaining concerns:
 
-1. assigned-delivery queue ownership (`deliveryBucketId` / bucket shard)
+1. assigned-delivery queue ownership (`deliveryBucketId`)
    plus selected-worker item demux
 2. adapter binding / multi-adapter registration metadata (`adapterId + adapterKind`)
 3. endpoint lease session evidence (`endpointLeaseId`, `sessionHandle`)
@@ -638,7 +636,7 @@ Initial classification:
 | `AdapterDispatchLane.forTransportNode(...)` | older node-targeted lane vocabulary | delete if unused, otherwise replace owner |
 | `AdapterEndpoint.transportNodeId` | endpoint DTO residue | delete with `AdapterEndpoint` residue |
 | `TransportEndpointLeaseMetadata.runtimeNodeId` | diagnostic endpoint lease field | remove from metadata/view/codec |
-| `TransportEndpointLeaseConsumerEvidence` | hot-path consumer evidence | already does not carry node id; keep |
+| `TransportEndpointLeaseConsumerEvidence` | endpoint lease claim/refresh result for final-hop delivery | keep; `endpointDriverId` is endpoint driver metadata only, not queue, handoff consumer, or worker correctness identity |
 | `adapterId` / `TransportBinding` / `addWebSocketAdapter(...)` / `socketAdapter(...)` | adapter binding metadata and multi-adapter support | keep as configuration/diagnostic metadata; do not turn this into public worker/engine input or delivery queue ownership |
 | archived roadmaps | historical node-targeted context | leave archived; do not execute |
 
@@ -670,8 +668,8 @@ Scope:
 - remove runtime-wide `deliveryCommandConsumerKey` fields from
   `TransportAdapterBootstrapContext` and `TransportRuntimeRegistry`
 - make assigned-delivery handoff queue ownership bucket-scoped:
-  `deliveryQueueKey = keyFor(deliveryBucketId)` or an explicitly documented
-  bucket shard
+  `deliveryQueueKey = keyFor(deliveryBucketId)`. Bucket meaning and bucket
+  splitting belong to engine/starter, not transport.
 - keep `selectedWorkerId` as a required field on every queued command; it is
   used by the adapter dispatcher for demux and final-hop correctness, not as a
   required physical queue key
@@ -747,10 +745,13 @@ Acceptance:
 - Endpoint lease claim/heartbeat/release semantics still match on
   `deliveryBucketId + workerId + endpointDriverId + endpointAddress +
   sessionHandle + endpointLeaseId`.
-- Consumer evidence is narrowed to selected-worker endpoint/session lease
-  evidence: `deliveryBucketId`, `selectedWorkerId`, `endpointLeaseId`, and
-  `leaseExpireAtEpochMillis`. It must not contain adapter id, queue consumer id,
-  connection id, route key, or transport node id.
+- Handoff consumer evidence is narrowed to selected-worker endpoint/session
+  lease evidence: `deliveryBucketId`, `selectedWorkerId`, `endpointLeaseId`,
+  and `leaseExpireAtEpochMillis`. It must not contain adapter id, queue
+  consumer id, connection id, route key, or transport node id.
+- `TransportEndpointLeaseConsumerEvidence` may include `endpointDriverId`
+  only as endpoint lease / final-hop driver metadata. It is not handoff
+  consumer identity, queue identity, worker correctness, or public worker API.
 - Redis and in-memory endpoint lease stores expose the same endpoint lease view
   shape.
 - No endpoint lease view or metadata class contains `runtimeNodeId` or
@@ -773,6 +774,10 @@ Acceptance:
 - Redis handoff supports bucket-derived queue placement and selected-worker
   demux, and does not require one JVM/process/adapter identity to select ready
   queues.
+- Polling pull delivery store uses bucket-scoped physical queues; Redis keys
+  are `q:<encodedDeliveryQueueKey>` / `meta:<encodedDeliveryQueueKey>`, and
+  `selectedWorkerId` is a queued value demux constraint rather than a
+  `worker-index` key component.
 - Adapter ids are supplied by adapter bootstrap / registration and are not
   supplied by engine/starter assignment, worker APIs, queue keys, or consumer
   keys.
@@ -873,8 +878,8 @@ Scope:
   explicit no-node-id guards
 - update `TRANSPORT_DELIVERY_EXECUTOR_RESIDUE_CONVERGENCE_ROADMAP.md` if its
   residue list becomes closed by this roadmap
-- update `TRANSPORT_INTERNAL_ID_BOUNDARY_CONVERGENCE_ROADMAP.md` so it no
-  longer recommends retaining `runtimeNodeId`
+- update active owner docs so they no longer recommend retaining
+  `runtimeNodeId`
 
 Acceptance:
 
@@ -932,7 +937,7 @@ SDK/server guard:
 assigned delivery guard:
   DeliveryCommand, DeliveryCommandBatch, AdapterDispatchRequest, DispatchOutcome
   do not expose transportNodeId/runtimeNodeId/AdapterEndpoint
-  deliveryQueueKey is derived from deliveryBucketId / bucket shard
+  deliveryQueueKey is derived from deliveryBucketId
   selectedWorkerId is a required queued-command field and the only worker
   correctness identity
   adapterId is not used as deliveryQueueKey, queueConsumerKey, or result

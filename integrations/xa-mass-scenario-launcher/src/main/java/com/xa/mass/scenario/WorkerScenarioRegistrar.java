@@ -97,7 +97,6 @@ final class WorkerScenarioRegistrar {
 
         client.workers().registerWorker(WorkerSpec.builder()
                 .workerId(workerId)
-                .adapterNodeId(adapterNodeId)
                 .workerGroupId(workerGroupId)
                 .transportHint(transportHintFor(spec, adapterType))
                 .attributes(spec.attributes())

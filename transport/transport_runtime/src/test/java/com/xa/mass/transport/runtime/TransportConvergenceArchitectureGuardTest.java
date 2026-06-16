@@ -286,9 +286,12 @@ class TransportConvergenceArchitectureGuardTest {
                 "Polling pull queue placement must not derive from adapterId");
 
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve(
-                        "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/QueueBackedTransportDeliveryStore.java")),
-                "normalizeAdapterId(value)"
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/InMemoryTransportDeliveryStore.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDeliveryStore.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisQueuedPulledDispatchCodec.java")),
+                "normalizeAdapterId(value)",
+                "worker-index"
         );
     }
 
@@ -428,7 +431,9 @@ class TransportConvergenceArchitectureGuardTest {
     @Test
     void deliveryStoreDoesNotRecoverQueueKeyFromEnvelopeValue() throws IOException {
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/QueueBackedTransportDeliveryStore.java")),
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/InMemoryTransportDeliveryStore.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDeliveryStore.java")),
                 "getDeliveryQueueKey("
         );
     }

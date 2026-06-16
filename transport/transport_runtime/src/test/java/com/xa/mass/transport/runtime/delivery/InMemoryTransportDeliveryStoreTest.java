@@ -57,14 +57,14 @@ class InMemoryTransportDeliveryStoreTest {
     }
 
     @Test
-    void enqueueRejectsWhenWorkerQueueIsFull() {
+    void enqueueRejectsWhenBucketQueueIsFull() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(
                 InMemoryTransportDeliveryStore.DEFAULT_MAX_QUEUED_ITEMS,
                 1
         );
 
         DispatchOutcome first = store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1")));
-        DispatchOutcome second = store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-1")));
+        DispatchOutcome second = store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-2")));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
         assertEquals(DispatchOutcomeStatus.BACKPRESSURE, second.getStatus());
@@ -122,13 +122,13 @@ class InMemoryTransportDeliveryStoreTest {
 
         TransportDeliveryStoreStats queued = store.stats();
         assertEquals(3, queued.getQueuedItems());
-        assertEquals(2, queued.getQueueCount());
+        assertEquals(1, queued.getQueueCount());
         assertEquals(10, queued.getMaxQueuedItems());
         assertEquals(500L, queued.getOldestQueuedAgeMillis());
         assertEquals(3L, queued.getEnqueuedItems());
         assertEquals(0L, queued.getDrainedItems());
         assertEquals(0L, queued.getBackpressureRejectedItems());
-        assertEquals(2, queued.getQueueByAdapter().get("polling").getQueueCount());
+        assertEquals(1, queued.getQueueByAdapter().get("polling").getQueueCount());
         assertEquals(3, queued.getQueueByAdapter().get("polling").getQueuedItems());
         assertEquals(500L, queued.getQueueByAdapter().get("polling").getOldestQueuedAgeMillis());
 

@@ -32,7 +32,8 @@ class TransportRedisKeyspaceGuardTest {
         for (String keyFamily : List.of(
                 "bucket:<encodedDeliveryBucketId>:workers",
                 "bucket:<encodedDeliveryBucketId>:deadlines",
-                "q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>",
+                "q:<encodedDeliveryQueueKey>",
+                "meta:<encodedDeliveryQueueKey>",
                 "q:<encodedDeliveryQueueKey>:commands",
                 "q:<encodedDeliveryQueueKey>:command-retention-deadlines",
                 "q:<encodedDeliveryQueueKey>:ready-commands",
@@ -42,6 +43,8 @@ class TransportRedisKeyspaceGuardTest {
         )) {
             assertTrue(content.contains(keyFamily), () -> "missing transport Redis key family manifest entry: " + keyFamily);
         }
+        assertTrue(!content.contains("worker-index"),
+                "transport Redis key manifest must not preserve selected-worker physical queue keys");
     }
 
     @Test
@@ -100,6 +103,8 @@ class TransportRedisKeyspaceGuardTest {
                 "transport boundary baseline must document selected-worker delivery consumer evidence");
         assertTrue(!content.contains("q:<encodedDeliveryQueueKey>:worker:<encodedSelectedWorkerId>:ready-commands"),
                 "delivery-command handoff must not document selected-worker physical ready queues");
+        assertTrue(!content.contains("worker-index"),
+                "transport boundary baseline must not document selected-worker physical queue indexes");
     }
 
     private static Stream<Path> scanTextFiles(Path path) throws IOException {

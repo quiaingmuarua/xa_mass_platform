@@ -5,28 +5,18 @@ import java.util.Objects;
 final class DeliveryQueueKey implements Comparable<DeliveryQueueKey> {
 
     private final String deliveryQueueKey;
-    private final String selectedWorkerId;
 
-    DeliveryQueueKey(String deliveryQueueKey, String selectedWorkerId) {
+    DeliveryQueueKey(String deliveryQueueKey) {
         this.deliveryQueueKey = Objects.requireNonNull(deliveryQueueKey, "deliveryQueueKey");
-        this.selectedWorkerId = Objects.requireNonNull(selectedWorkerId, "selectedWorkerId");
     }
 
     String deliveryQueueKey() {
         return deliveryQueueKey;
     }
 
-    String selectedWorkerId() {
-        return selectedWorkerId;
-    }
-
     @Override
     public int compareTo(DeliveryQueueKey other) {
-        int queueComparison = deliveryQueueKey.compareTo(other.deliveryQueueKey);
-        if (queueComparison != 0) {
-            return queueComparison;
-        }
-        return selectedWorkerId.compareTo(other.selectedWorkerId);
+        return deliveryQueueKey.compareTo(other.deliveryQueueKey);
     }
 
     @Override
@@ -37,12 +27,11 @@ final class DeliveryQueueKey implements Comparable<DeliveryQueueKey> {
         if (!(object instanceof DeliveryQueueKey other)) {
             return false;
         }
-        return deliveryQueueKey.equals(other.deliveryQueueKey)
-                && selectedWorkerId.equals(other.selectedWorkerId);
+        return deliveryQueueKey.equals(other.deliveryQueueKey);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(deliveryQueueKey, selectedWorkerId);
+        return Objects.hash(deliveryQueueKey);
     }
 }

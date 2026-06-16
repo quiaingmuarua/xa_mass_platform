@@ -14,13 +14,13 @@ class RedisQueuedPulledDispatchCodecTest {
 
     @Test
     void keyPartRoundTripsWithSpecialCharacters() {
-        DeliveryQueueKey key = new DeliveryQueueKey("polling", "worker/route:cn?demo=1");
+        DeliveryQueueKey key = new DeliveryQueueKey("bucket/route:cn?demo=1");
 
         String encoded = codec.encodeKeyPart(key);
         DeliveryQueueKey decoded = codec.decodeKeyPart(encoded);
 
-        assertEquals("polling", decoded.deliveryQueueKey());
-        assertEquals("worker/route:cn?demo=1", decoded.selectedWorkerId());
+        assertEquals("bucket/route:cn?demo=1", decoded.deliveryQueueKey());
+        assertFalse(encoded.contains("worker-index"));
     }
 
     @Test
@@ -51,5 +51,23 @@ class RedisQueuedPulledDispatchCodecTest {
         assertEquals("{\"messageId\":\"msg-1\",\"input\":{\"target\":\"https://example.test\"}}",
                 decoded.value().payload());
         assertEquals("corr-1", decoded.value().correlationRef());
+    }
+
+    @Test
+    void storedValueCarriesSelectedWorkerAsValueDemuxNotKeyPart() {
+        QueuedPulledDispatch item = new QueuedPulledDispatch(
+                "delivery-1",
+                "worker/route:cn?demo=1",
+                "{\"messageId\":\"msg-1\"}",
+                "corr-1",
+                1_234L
+        );
+
+        String storedValue = codec.encodeStoredValue(new KeyedQueueEntry<>(item, item.createdAtEpochMillis()));
+
+        assertFalse(storedValue.contains("worker-index"));
+        KeyedQueueEntry<QueuedPulledDispatch> decoded = codec.decodeStoredValue(storedValue);
+        assertEquals("worker/route:cn?demo=1", decoded.value().selectedWorkerId());
+        assertEquals("delivery-1", decoded.value().deliveryId());
     }
 }

@@ -74,7 +74,7 @@ Transport should stay centered on these concepts only:
   poll request as the drain constraint, with routeKey kept as opaque
   endpoint/result metadata outside the queue value.
 - `TransportResultIngressEnvelope`: opaque result ingress carrier. Transport
-  may buffer, enqueue, shard, and diagnose it, but task-shaped payload parsing
+  may buffer, enqueue, and diagnose it, but task-shaped payload parsing
   and result correctness belong above transport.
 - `TransportResultIngressChannel` / `TransportResultIngressHandler` /
   `TransportResultIngressOutcome`: result ingress producer/consumer seams and
@@ -386,7 +386,7 @@ default component namespaces are:
 | Component | Default namespace | Retained key families |
 | --- | --- | --- |
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` | `bucket:<encodedDeliveryBucketId>:workers`, `bucket:<encodedDeliveryBucketId>:deadlines` |
-| delivery | `xa:mass:transport:delivery:v1` | `q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `meta:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `queues`, `stats` |
+| delivery | `xa:mass:transport:delivery:v1` | `q:<encodedDeliveryQueueKey>`, `meta:<encodedDeliveryQueueKey>`, `queues`, `stats` |
 | delivery-command | `xa:mass:transport:delivery-command:v1` | `q:<encodedDeliveryQueueKey>:commands`, `q:<encodedDeliveryQueueKey>:command-retention-deadlines`, `q:<encodedDeliveryQueueKey>:ready-commands`, `q:<encodedDeliveryQueueKey>:inflight-commands`, `selected-worker-consumers:<encodedDeliveryQueueKey>`, `selected-worker-consumer-deadlines:<encodedDeliveryQueueKey>`, `queues` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
@@ -499,8 +499,8 @@ Transport delivery addressing keeps five facts separate:
 - `adapterId`: concrete adapter identity such as `polling`, `websocket`, `socket`
 - `routeKey`: opaque connection address, coarse delivery-domain metadata, or
   protocol correlation value
-- `deliveryQueueKey`: runtime queue/storage partition used for batching,
-  sharding, and backpressure
+- `deliveryQueueKey`: runtime queue/storage address derived from
+  `deliveryBucketId` and used for batching and backpressure
 - `selectedWorkerId`: engine-selected execution identity used only as a
   delivery constraint
 
@@ -536,7 +536,7 @@ Current runtime rules:
   must not require routeKey when selected-worker session addressing is
   available. Queued polling delivery must not rely on routeKey as the only
   isolation key.
-- assigned delivery-command handoff queues are addressed by bucket/shard
+- assigned delivery-command handoff queues are addressed by bucket-derived
   `deliveryQueueKey`. Each queued command carries `selectedWorkerId`; the
   adapter dispatcher demuxes by that field and resolves endpoint/session lease
   evidence before final-hop delivery. `selectedWorkerId` is not a second
@@ -570,7 +570,7 @@ WRB convergence note:
 - Redis-backed endpoint lease state uses bucket-local worker metadata plus
   bucket-local deadline indexes. It does not expose route-key owner scans or
   producer-side dispatch lookup.
-- Assigned delivery-command handoff queues are bucket/shard scoped. Adapter or
+- Assigned delivery-command handoff queues are bucket scoped. Adapter or
   route changes must not make routeKey the worker correctness key; wrong-worker
   prevention comes from the `selectedWorkerId` carried by each command and the
   final-hop endpoint/session lease check.
@@ -633,7 +633,7 @@ claimed by the wrong consumer, ready refs enter inflight before materialization,
 outcome or failure evidence.
 
 Runtime delivery stores must enforce explicit admission control. Delivery-
-command handoff stores use bucket/shard queue admission plus local claim/ack
+command handoff stores use bucket queue admission plus local claim/ack
 consistency; polling pull stores may keep selected-worker indexes as adapter
 pull implementation details, but those indexes are not the engine-to-transport
 handoff address.

@@ -12,7 +12,9 @@ final class RedisQueuedPulledDispatchCodec {
 
     private static final Base64.Encoder KEY_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder KEY_DECODER = Base64.getUrlDecoder();
-    private static final String WORKER_INDEX_SEPARATOR = ":worker-index:";
+    private static final Base64.Encoder VALUE_ENCODER = Base64.getEncoder();
+    private static final Base64.Decoder VALUE_DECODER = Base64.getDecoder();
+    private static final char STORED_VALUE_DELIMITER = '|';
 
     private final Gson gson;
 
@@ -26,20 +28,42 @@ final class RedisQueuedPulledDispatchCodec {
 
     String encodeKeyPart(DeliveryQueueKey key) {
         Objects.requireNonNull(key, "key");
-        return encodeKeyToken(key.deliveryQueueKey())
-                + WORKER_INDEX_SEPARATOR
-                + encodeKeyToken(key.selectedWorkerId());
+        return encodeKeyToken(key.deliveryQueueKey());
     }
 
     DeliveryQueueKey decodeKeyPart(String encodedKeyPart) {
         if (encodedKeyPart == null || encodedKeyPart.isBlank()) {
             throw new IllegalArgumentException("encodedKeyPart must not be blank");
         }
-        String[] parts = encodedKeyPart.split(WORKER_INDEX_SEPARATOR, 2);
-        if (parts.length != 2) {
-            throw new IllegalArgumentException("encodedKeyPart must include selected worker index");
+        return new DeliveryQueueKey(decodeKeyToken(encodedKeyPart));
+    }
+
+    String encodeSelectedWorkerToken(String selectedWorkerId) {
+        return encodeKeyToken(selectedWorkerId);
+    }
+
+    String encodeStoredValue(KeyedQueueEntry<QueuedPulledDispatch> entry) {
+        Objects.requireNonNull(entry, "entry");
+        QueuedPulledDispatch item = Objects.requireNonNull(entry.value(), "entry.value");
+        String encodedValue = VALUE_ENCODER.encodeToString(encodeEntry(entry));
+        return entry.createdAtEpochMillis()
+                + String.valueOf(STORED_VALUE_DELIMITER)
+                + encodeSelectedWorkerToken(item.selectedWorkerId())
+                + STORED_VALUE_DELIMITER
+                + encodedValue;
+    }
+
+    KeyedQueueEntry<QueuedPulledDispatch> decodeStoredValue(String storedValue) {
+        if (storedValue == null || storedValue.isBlank()) {
+            throw new IllegalArgumentException("stored queue value must not be blank");
         }
-        return new DeliveryQueueKey(decodeKeyToken(parts[0]), decodeKeyToken(parts[1]));
+        int firstDelimiter = storedValue.indexOf(STORED_VALUE_DELIMITER);
+        int secondDelimiter = storedValue.indexOf(STORED_VALUE_DELIMITER, firstDelimiter + 1);
+        if (firstDelimiter <= 0 || secondDelimiter <= firstDelimiter || secondDelimiter == storedValue.length() - 1) {
+            throw new IllegalArgumentException("stored queue value is malformed");
+        }
+        String encodedValue = storedValue.substring(secondDelimiter + 1);
+        return decodeEntry(VALUE_DECODER.decode(encodedValue));
     }
 
     byte[] encodeEntry(KeyedQueueEntry<QueuedPulledDispatch> entry) {
