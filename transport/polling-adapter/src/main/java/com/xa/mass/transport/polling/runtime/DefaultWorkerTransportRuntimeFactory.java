@@ -1,6 +1,6 @@
 package com.xa.mass.transport.polling.runtime;
 
-import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
@@ -24,11 +24,11 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
             new TransportAdapterDescriptor(PollingWorkerAdapter.PROTOCOL, PollingWorkerAdapter.PROTOCOL);
 
     @Override
-    public TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
+    public TransportRuntimeRegistry create(TransportResultIngressChannel resultIngressChannel,
                                            TransportEndpointLeaseStore endpointLeaseStore,
                                            TransportDeliveryService deliveryService,
                                            List<TransportBinding> adapterBindings) {
-        return create(taskResultIngestChannel,
+        return create(resultIngressChannel,
                 endpointLeaseStore,
                 deliveryService,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
@@ -37,7 +37,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
     }
 
     @Override
-    public TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
+    public TransportRuntimeRegistry create(TransportResultIngressChannel resultIngressChannel,
                                            TransportEndpointLeaseStore endpointLeaseStore,
                                            TransportDeliveryService deliveryService,
                                            DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
@@ -54,7 +54,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
             bindings.addAll(adapterBindings);
         }
         return new TransportRuntimeRegistry(
-                taskResultIngestChannel,
+                resultIngressChannel,
                 endpointLeaseStore,
                 deliveryCommandConsumerRegistry,
                 deliveryCommandConsumerKey,

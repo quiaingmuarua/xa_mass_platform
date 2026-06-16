@@ -25,7 +25,7 @@ Transport owns delivery mechanics for workers:
   policy-specific consumer evidence instead of the general view record.
 - adapter registration and adapter selection by `adapterId`
 - task dispatch delivery, queueing, draining, and dispatch outcomes
-- task result ingress wrapping with transport metadata
+- task result ingress queuing and relay through opaque transport envelopes
 - session-presence ingress for adapter connect/disconnect/heartbeat
   observations; worker-runtime owns derived reachability and registry slot
   heartbeat freshness, while endpoint lease refresh does not decide worker
@@ -73,9 +73,12 @@ Transport should stay centered on these concepts only:
   delivery. Assigned polling delivery is addressed by shared
   `deliveryQueueKey + selectedWorkerId`, with routeKey kept as opaque
   endpoint/result metadata outside the queue value.
-- `TaskResultIngestChannel`: result-ingest seam back into engine/starter-owned
-  result lifecycle validation
-- `TransportResultEnvelope`: transport metadata around `TaskResultReport`, not a second worker protocol
+- `TransportResultIngressEnvelope`: opaque result ingress carrier. Transport
+  may buffer, enqueue, shard, and diagnose it, but task-shaped payload parsing
+  and result correctness belong above transport.
+- `TransportResultIngressChannel` / `TransportResultIngressHandler` /
+  `TransportResultIngressOutcome`: result ingress producer/consumer seams and
+  ackability outcome used by local buffers and Redis inbox pumps.
 - `TransportDeliveryCommandHandoff`: post-claim delivery queue between
   engine/starter assembly and transport. Producers offer
   `DeliveryQueueOffer(deliveryQueueKey, commands)` where the queue key is
@@ -148,8 +151,9 @@ lifecycle state.
   dispatch handoff
 - delivery backlog admission control and store statistics
 - runtime executor handoff into adapter bootstraps for transport-owned blocking work
-- result-envelope queueing, buffering, and runtime logging; result correlation
-  and lease/attempt validation live in SDK/starter or engine-owned result code
+- result ingress envelope queueing, buffering, and runtime logging; result
+  payload decoding, correlation, and lease/attempt validation live in
+  SDK/starter or engine-owned result code
 - adapter dispatch from already resolved delivery-command batches
 - engine-to-transport delivery-command handoff queue/store ownership after
   assignment; current embedded default wiring is an in-memory
@@ -287,9 +291,10 @@ The split runtime uses three transport/runtime channels:
   queue/store context, not repeated in every value. `routeKey` remains opaque
   endpoint/result metadata and must not be the only queue isolation key for
   assigned polling task delivery.
-- result/compensation inboxes: transport writes `TransportResultEnvelope`
-  values and retryable delivery-failure events to Redis-backed inboxes; the
-  engine process drains those inboxes into its local result ingest and
+- result/compensation inboxes: transport writes opaque
+  `TransportResultIngressEnvelope` values and retryable delivery-failure events
+  to Redis-backed inboxes; the engine process drains those inboxes into
+  starter-owned result callback decoding and engine-owned result ingest and
   assignment compensation ports. Result lifecycle ownership is defined in
   [../doc/TASK_LIFECYCLE_BASELINE.md](../doc/TASK_LIFECYCLE_BASELINE.md).
 
@@ -465,17 +470,16 @@ needs to unwrap a worker-facing wrapper such as the current SDK
 from the dispatch payload itself, not from unrelated task metadata like
 `_sdk.payloadType`.
 
-`TransportResultEnvelope` is internal runtime metadata around a
-`TaskResultReport`. `TaskResultReport` remains the protocol payload. Envelope
-fields such as `routeKey`, `attemptId`, and `leaseToken` may be used by
-starter/engine-side result validation, but old workers that only submit
-`TaskResultReport` remain valid until the security model explicitly changes.
-`routeKey` is transport route
-evidence/correlation metadata; enveloped result ingress must carry a non-blank
-route key when endpoint lease evidence is enforced, but that value must not be
-treated as worker-selection truth. Adapter-local worker/session/connection
-identities are local diagnostics only and do not belong on the shared
-result-envelope mainline.
+`TransportResultIngressEnvelope` is an opaque transport carrier, not a
+task-result schema. It carries only transport ingress id, opaque payload,
+opaque correlation, optional partition key, diagnostics, and receive time.
+Adapters and polling sessions may include route key, adapter id, trace id, or
+similar facts only as diagnostics; transport must not parse them to decide task
+result correctness. Starter-owned `TaskResultCallbackCodec` decodes the opaque
+payload/correlation into a `TaskResultCallbackCommand`, then engine-owned
+result ingress validates attempt or lease identity before mutating runtime
+truth. SDK/server worker submit paths use `WorkerResultSubmitRequest`, not
+transport-owned result DTOs.
 
 When envelope identity validation rejects stale attempt or lease evidence,
 starter-owned result ingress returns accepted-noop semantics: the envelope was

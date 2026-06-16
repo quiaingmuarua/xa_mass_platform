@@ -22,7 +22,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
-import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
+import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
@@ -243,16 +243,16 @@ public class MassApplicationBuilder {
         }
 
         public TransportBuilder redisResultInbox(String redisUri) {
-            return redisResultInbox(redisUri, RedisTaskResultIngestChannel.DEFAULT_NAMESPACE_PREFIX);
+            return redisResultInbox(redisUri, RedisTransportResultIngressChannel.DEFAULT_NAMESPACE_PREFIX);
         }
 
         public TransportBuilder redisResultInbox(String redisUri, String namespacePrefix) {
             String normalizedRedisUri = requireRedisUri(redisUri);
             String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            config.setTaskResultInboxFactory(() -> new RedisTaskResultIngestChannel(
+            config.setTaskResultInboxFactory(() -> new RedisTransportResultIngressChannel(
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
-                    RedisTaskResultIngestChannel.DEFAULT_MAX_QUEUED_RESULTS
+                    RedisTransportResultIngressChannel.DEFAULT_MAX_QUEUED_RESULTS
             ));
             return this;
         }

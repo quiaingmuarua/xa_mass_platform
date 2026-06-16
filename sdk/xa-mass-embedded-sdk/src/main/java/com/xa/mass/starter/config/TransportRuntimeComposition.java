@@ -5,7 +5,7 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.transport.polling.runtime.DefaultWorkerTransportRuntimeFactory;
-import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
+import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
@@ -62,7 +62,7 @@ public class TransportRuntimeComposition {
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private final Supplier<TransportDeliveryStore> deliveryStoreFactory;
     private final Supplier<TransportDeliveryCommandHandoff> deliveryCommandHandoffFactory;
-    private final Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory;
+    private final Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory;
     private final Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
     private final Supplier<TransportNodeRegistry> transportNodeRegistryFactory;
     private final TransportAdapterBootstrap primaryTransportAdapterBootstrap;
@@ -213,7 +213,7 @@ public class TransportRuntimeComposition {
                 : new InMemoryTransportDeliveryCommandHandoff(defaultCapacity);
     }
 
-    public RedisTaskResultIngestChannel resolveTaskResultInbox() {
+    public RedisTransportResultIngressChannel resolveTaskResultInbox() {
         if (taskResultInboxFactory == null) {
             throw new IllegalStateException("Task result inbox is not configured for split transport runtime");
         }

@@ -1,9 +1,8 @@
 package com.xa.mass.transport.socket.server;
 
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
-import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.model.TaskResultReport;
-import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.transport.channel.TransportResultIngressChannel;
+import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
@@ -139,7 +138,7 @@ class SocketTransportServerTest {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
                 new SocketSessionManager(SocketTaskDispatchChannel.DEFAULT_ADAPTER_ID);
-        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
+        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
                 "127.0.0.1",
@@ -147,14 +146,9 @@ class SocketTransportServerTest {
                 10,
                 sessionManager,
                 new SocketTransportFrameCodec(),
-                new TaskResultIngestChannel() {
+                new TransportResultIngressChannel() {
                     @Override
-                    public boolean ingest(TaskResultReport report) {
-                        return true;
-                    }
-
-                    @Override
-                    public boolean ingest(TransportResultEnvelope envelope) {
+                    public boolean ingest(TransportResultIngressEnvelope envelope) {
                         capturedEnvelope.set(envelope);
                         return true;
                     }
@@ -178,11 +172,12 @@ class SocketTransportServerTest {
 
                 waitUntil(() -> capturedEnvelope.get() != null,
                         "canonical socket result should be ingested");
-                assertEquals("socket", capturedEnvelope.get().getAdapterId());
-                assertEquals("socket-route-9", capturedEnvelope.get().getRouteKey());
-                assertEquals("msg-1", capturedEnvelope.get().getTraceId());
-                assertEquals("task-1", capturedEnvelope.get().getTaskId());
-                assertEquals("msg-1", capturedEnvelope.get().getMessageId());
+                assertEquals("socket", capturedEnvelope.get().diagnostic("adapterId"));
+                assertEquals("socket-route-9", capturedEnvelope.get().diagnostic("routeKey"));
+                assertEquals("msg-1", capturedEnvelope.get().diagnostic("traceId"));
+                assertEquals("msg-1", capturedEnvelope.get().getPartitionKey());
+                assertTrue(capturedEnvelope.get().getPayload().contains("\"taskId\":\"task-1\""));
+                assertTrue(capturedEnvelope.get().getPayload().contains("\"messageId\":\"msg-1\""));
             }
         } finally {
             server.stop();

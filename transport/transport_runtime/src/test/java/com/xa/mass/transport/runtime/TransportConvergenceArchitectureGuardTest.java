@@ -521,6 +521,34 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
+    void transportResultIngressDoesNotExposeTaskShapedContracts() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/TaskResultIngestChannel.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TaskResultReport.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TransportResultEnvelope.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/BufferedTaskResultIngestChannel.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTaskResultIngestChannel.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TaskResultIngestInboxPump.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportResultEnvelopeCodec.java")
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java")
+                ),
+                "TaskResultReport",
+                "TransportResultEnvelope",
+                "TaskResultIngestChannel",
+                "RedisTaskResultIngestChannel",
+                "BufferedTaskResultIngestChannel",
+                "TaskResultIngestInboxPump"
+        );
+    }
+
+    @Test
     void transportDeliveryServiceDoesNotExposeWorkerFacingProjectionHelpers() throws IOException {
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryService.java")),

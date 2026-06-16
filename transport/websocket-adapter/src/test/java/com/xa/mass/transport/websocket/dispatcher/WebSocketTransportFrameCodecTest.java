@@ -2,6 +2,7 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
@@ -70,7 +71,7 @@ class WebSocketTransportFrameCodecTest {
     }
 
     @Test
-    void canonicalTaskResultDecodesIntoTaskResultReport() {
+    void canonicalTaskResultEncodesOpaquePayload() {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
         frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
@@ -81,12 +82,12 @@ class WebSocketTransportFrameCodecTest {
         frame.add(TransportPacket.PAYLOAD_OUTPUT, payload("status", "SUCCESS", "mockData", "completed"));
 
         assertTrue(codec.isCanonicalTaskResult(frame));
-        var report = codec.decodeCanonicalTaskResult(frame);
-        assertEquals("task-1", report.getTaskId());
-        assertEquals("msg-1", report.getMessageId());
-        assertTrue(report.isSuccess());
-        assertEquals("completed", report.getDetail());
-        assertEquals("SUCCESS", report.getOutput().get("status"));
+        JsonObject payload = JsonParser.parseString(codec.encodeCanonicalTaskResultPayload(frame)).getAsJsonObject();
+        assertEquals("task-1", payload.get("taskId").getAsString());
+        assertEquals("msg-1", payload.get("messageId").getAsString());
+        assertTrue(payload.get(TransportPacket.PAYLOAD_SUCCESS).getAsBoolean());
+        assertEquals("completed", payload.get(TransportPacket.PAYLOAD_DETAIL).getAsString());
+        assertEquals("SUCCESS", payload.getAsJsonObject(TransportPacket.PAYLOAD_OUTPUT).get("status").getAsString());
     }
 
     @Test

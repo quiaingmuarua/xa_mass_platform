@@ -3,7 +3,7 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
@@ -19,7 +19,7 @@ import java.util.Objects;
 public final class TransportAdapterBootstrapContext {
 
     private final WorkerEndpointRegistry endpointRegistry;
-    private final TaskResultIngestChannel taskResultIngestChannel;
+    private final TransportResultIngressChannel resultIngressChannel;
     private final WorkerPresenceIngress workerPresenceIngress;
     private final TransportEndpointLeaseStore endpointLeaseStore;
     private final TransportDeliveryService deliveryService;
@@ -32,13 +32,13 @@ public final class TransportAdapterBootstrapContext {
     private RawWorkerMessageChannel rawWorkerMessageChannel;
 
     public TransportAdapterBootstrapContext(WorkerEndpointRegistry endpointRegistry,
-                                            TaskResultIngestChannel taskResultIngestChannel,
+                                            TransportResultIngressChannel resultIngressChannel,
                                             WorkerPresenceIngress workerPresenceIngress,
                                             TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryService deliveryService,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
         this(endpointRegistry,
-                taskResultIngestChannel,
+                resultIngressChannel,
                 workerPresenceIngress,
                 endpointLeaseStore,
                 deliveryService,
@@ -48,7 +48,7 @@ public final class TransportAdapterBootstrapContext {
     }
 
     public TransportAdapterBootstrapContext(WorkerEndpointRegistry endpointRegistry,
-                                            TaskResultIngestChannel taskResultIngestChannel,
+                                            TransportResultIngressChannel resultIngressChannel,
                                             WorkerPresenceIngress workerPresenceIngress,
                                             TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryService deliveryService,
@@ -56,7 +56,7 @@ public final class TransportAdapterBootstrapContext {
                                             String deliveryCommandConsumerKey,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
-        this.taskResultIngestChannel = taskResultIngestChannel;
+        this.resultIngressChannel = resultIngressChannel;
         this.workerPresenceIngress = Objects.requireNonNull(workerPresenceIngress, "workerPresenceIngress");
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
@@ -71,8 +71,8 @@ public final class TransportAdapterBootstrapContext {
         return endpointRegistry;
     }
 
-    public TaskResultIngestChannel getTaskResultIngestChannel() {
-        return taskResultIngestChannel;
+    public TransportResultIngressChannel getResultIngressChannel() {
+        return resultIngressChannel;
     }
 
     public WorkerPresenceIngress getWorkerPresenceIngress() {

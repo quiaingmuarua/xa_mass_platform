@@ -7,7 +7,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
-import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.packet.TransportPacket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -99,7 +98,7 @@ public final class SocketTransportFrameCodec {
         return request.payload();
     }
 
-    public TaskResultReport decodeCanonicalTaskResult(JsonObject frame) {
+    public String encodeCanonicalTaskResultPayload(JsonObject frame) {
         String taskId = readString(frame, TASK_ID_FIELD);
         String messageId = extractMessageId(frame);
         if (taskId == null || messageId == null) {
@@ -109,19 +108,7 @@ public final class SocketTransportFrameCodec {
         if (success == null) {
             throw new IllegalArgumentException(TransportPacket.PAYLOAD_SUCCESS + " is required");
         }
-        String detail = firstNonBlank(
-                readString(frame, TransportPacket.PAYLOAD_DETAIL),
-                readString(frame, "message")
-        );
-        Map<String, Object> output = gson.fromJson(readJsonObject(frame, TransportPacket.PAYLOAD_OUTPUT), MAP_TYPE);
-        return TaskResultReport.fromDecodedTransportPayload(
-                taskId,
-                messageId,
-                success,
-                detail,
-                readString(frame, TransportPacket.PAYLOAD_ERROR_CODE),
-                output
-        );
+        return gson.toJson(frame);
     }
 
     private JsonObject readJsonObject(JsonObject object, String field) {

@@ -5,7 +5,7 @@ import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
-import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
+import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
@@ -53,7 +53,7 @@ public class TransportConfig {
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private Supplier<TransportDeliveryStore> deliveryStoreFactory;
     private Supplier<TransportDeliveryCommandHandoff> deliveryCommandHandoffFactory;
-    private Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory;
+    private Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory;
     private Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
     private Supplier<TransportNodeRegistry> transportNodeRegistryFactory;
     private TransportAdapterBootstrap primaryTransportAdapterBootstrap;
@@ -278,11 +278,11 @@ public class TransportConfig {
         this.deliveryCommandHandoffFactory = deliveryCommandHandoffFactory;
     }
 
-    public Supplier<RedisTaskResultIngestChannel> getTaskResultInboxFactory() {
+    public Supplier<RedisTransportResultIngressChannel> getTaskResultInboxFactory() {
         return taskResultInboxFactory;
     }
 
-    public void setTaskResultInboxFactory(Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory) {
+    public void setTaskResultInboxFactory(Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory) {
         this.taskResultInboxFactory = taskResultInboxFactory;
     }
 
@@ -419,7 +419,7 @@ public class TransportConfig {
         return deliveryCommandHandoffFactory;
     }
 
-    Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory() {
+    Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory() {
         return taskResultInboxFactory;
     }
 

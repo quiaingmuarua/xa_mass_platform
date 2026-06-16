@@ -68,8 +68,8 @@ Hard rules:
 
 - construct codec, channels, endpoint registry, and processors before start
 - pass one endpoint-registry instance into both server and dispatcher wiring
-- route inbound result shells into `TransportResultEnvelope ->
-  TaskResultIngestChannel`
+- route inbound result shells into opaque `TransportResultIngressEnvelope`
+  values through `TransportResultIngressChannel`
 - keep bootstrap defaults inside adapter-owned support code
 - do not add mutable late-binding seams like `setHandler(...)` or `registerRoute(...)`
 

@@ -2,8 +2,9 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
-import com.xa.mass.transport.model.TaskResultReport;
-import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.sdk.worker.WorkerResultSubmitRequest;
+import com.xa.mass.transport.channel.TransportResultIngressOutcome;
+import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
@@ -11,9 +12,13 @@ import org.slf4j.MDC;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RuntimeTaskResultIngestChannelTest {
+
+    private static final TaskResultCallbackCodec CODEC = new TaskResultCallbackCodec();
 
     @AfterEach
     void clearMdc() {
@@ -21,21 +26,30 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void nullIngressIsNotHandled() {
+    void nullIngressIsRetryableFailure() {
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(new RecordingResultIngestFacade(null));
 
-        assertFalse(channel.ingest((TaskResultReport) null));
-        assertFalse(channel.ingest((TransportResultEnvelope) null));
+        assertEquals(ResultIngressHandleOutcome.RETRYABLE_FAILURE, channel.handleResult(null));
+        assertEquals(TransportResultIngressOutcome.RETRYABLE_FAILURE, channel.handle(null));
     }
 
     @Test
-    void taskResultReportDelegatesToFacade() {
+    void opaqueEnvelopeDelegatesToFacade() {
         RecordingResultIngestFacade facade = new RecordingResultIngestFacade(null);
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
 
-        boolean handled = channel.ingest(report("task-1", "msg-1", true, "ok", null));
+        ResultIngressHandleOutcome handled = channel.handleResult(envelope(request(
+                "task-1",
+                "msg-1",
+                true,
+                "ok",
+                null,
+                null,
+                null,
+                null
+        )));
 
-        assertTrue(handled);
+        assertEquals(ResultIngressHandleOutcome.HANDLED_APPLIED, handled);
         assertEquals(1, facade.ingestCalls.get());
         assertEquals("task-1", facade.lastTaskId);
         assertEquals("msg-1", facade.lastMessageId);
@@ -52,14 +66,18 @@ class RuntimeTaskResultIngestChannelTest {
         RecordingResultIngestFacade facade = new RecordingResultIngestFacade(null);
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
 
-        boolean handled = channel.ingest(envelope(
+        ResultIngressHandleOutcome handled = channel.handleResult(envelope(request(
+                "task-2",
+                "msg-2",
+                true,
+                "ok",
                 null,
                 null,
-                "transport-trace",
-                report("task-2", "msg-2", true, "ok", null)
-        ));
+                null,
+                "transport-trace"
+        )));
 
-        assertTrue(handled);
+        assertEquals(ResultIngressHandleOutcome.HANDLED_APPLIED, handled);
         assertEquals(1, facade.ingestCalls.get());
         assertEquals(0, facade.correlationCalls.get());
         assertEquals("outer-trace", MDC.get("traceId"));
@@ -77,14 +95,18 @@ class RuntimeTaskResultIngestChannelTest {
         ));
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
 
-        boolean handled = channel.ingest(envelope(
+        ResultIngressHandleOutcome handled = channel.handleResult(envelope(request(
+                "task-3",
+                "msg-3",
+                true,
+                "ok",
+                null,
                 null,
                 "lease-3",
-                null,
-                report("task-3", "msg-3", true, "ok", null)
-        ));
+                null
+        )));
 
-        assertTrue(handled);
+        assertEquals(ResultIngressHandleOutcome.HANDLED_APPLIED, handled);
         assertEquals(1, facade.correlationCalls.get());
         assertEquals(1, facade.ingestCalls.get());
     }
@@ -101,14 +123,18 @@ class RuntimeTaskResultIngestChannelTest {
         ));
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
 
-        boolean handled = channel.ingest(envelope(
+        ResultIngressHandleOutcome handled = channel.handleResult(envelope(request(
+                "task-4",
+                "msg-4",
+                true,
+                "ok",
+                null,
                 "attempt-4",
                 "lease-4",
-                null,
-                report("task-4", "msg-4", true, "ok", null)
-        ));
+                null
+        )));
 
-        assertTrue(handled);
+        assertEquals(ResultIngressHandleOutcome.HANDLED_APPLIED, handled);
         assertEquals(1, facade.correlationCalls.get());
         assertEquals(1, facade.ingestCalls.get());
     }
@@ -125,16 +151,21 @@ class RuntimeTaskResultIngestChannelTest {
         ));
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
 
-        boolean handled = channel.ingest(envelope(
+        ResultIngressHandleOutcome handled = channel.handleResult(envelope(request(
+                "task-5",
+                "msg-5",
+                true,
+                "ok",
+                null,
                 "wrong-attempt",
                 "lease-5",
-                null,
-                report("task-5", "msg-5", true, "ok", null)
-        ));
+                null
+        )));
 
-        assertTrue(handled);
+        assertEquals(ResultIngressHandleOutcome.HANDLED_NOOP, handled);
         assertEquals(1, facade.correlationCalls.get());
         assertEquals(0, facade.ingestCalls.get());
+        assertEquals(TransportResultIngressOutcome.ACKNOWLEDGED, handled.toTransportOutcome());
     }
 
     @Test
@@ -144,44 +175,77 @@ class RuntimeTaskResultIngestChannelTest {
         );
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
 
-        boolean handled = channel.ingest(envelope(
+        ResultIngressHandleOutcome handled = channel.handleResult(envelope(request(
+                "task-6",
+                "msg-6",
+                true,
+                "ok",
+                null,
                 "attempt-6",
                 "lease-6",
-                null,
-                report("task-6", "msg-6", true, "ok", null)
-        ));
+                null
+        )));
 
-        assertTrue(handled);
+        assertEquals(ResultIngressHandleOutcome.HANDLED_NOOP, handled);
         assertEquals(1, facade.correlationCalls.get());
         assertEquals(0, facade.ingestCalls.get());
     }
 
-    private static TransportResultEnvelope envelope(String attemptId,
-                                                    String leaseToken,
-                                                    String traceId,
-                                                    TaskResultReport report) {
-        return new TransportResultEnvelope(
-                "polling",
-                "worker-1",
-                attemptId,
-                leaseToken,
-                traceId,
-                report
+    @Test
+    void invalidPayloadIsPermanentRejectAndAckable() {
+        RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(new RecordingResultIngestFacade(null));
+
+        ResultIngressHandleOutcome handled = channel.handleResult(
+                TransportResultIngressEnvelope.received("{", null, "msg-1", null)
         );
+
+        assertEquals(ResultIngressHandleOutcome.PERMANENT_REJECT, handled);
+        assertEquals(TransportResultIngressOutcome.ACKNOWLEDGED, handled.toTransportOutcome());
     }
 
-    private static TaskResultReport report(String taskId,
-                                           String messageId,
-                                           boolean success,
-                                           String detail,
-                                           String errorCode) {
-        return new TaskResultReport(
+    @Test
+    void facadeFalseIsPermanentRejectInsteadOfRetryLoop() {
+        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(null);
+        facade.applyResult = false;
+        RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
+
+        ResultIngressHandleOutcome handled = channel.handleResult(envelope(request(
+                "task-7",
+                "msg-7",
+                false,
+                "failed",
+                "ERR",
+                null,
+                null,
+                null
+        )));
+
+        assertEquals(ResultIngressHandleOutcome.PERMANENT_REJECT, handled);
+        assertEquals(TransportResultIngressOutcome.ACKNOWLEDGED, handled.toTransportOutcome());
+    }
+
+    private static TransportResultIngressEnvelope envelope(WorkerResultSubmitRequest request) {
+        return CODEC.toEnvelope(request, request.messageId(), Map.of("adapterId", "polling"));
+    }
+
+    private static WorkerResultSubmitRequest request(String taskId,
+                                                     String messageId,
+                                                     boolean success,
+                                                     String detail,
+                                                     String errorCode,
+                                                     String attemptId,
+                                                     String leaseToken,
+                                                     String traceId) {
+        return new WorkerResultSubmitRequest(
                 taskId,
                 messageId,
                 success,
                 detail,
                 errorCode,
-                Map.of("status", success ? "SUCCESS" : "FAILED", "mockData", detail)
+                Map.of("status", success ? "SUCCESS" : "FAILED", "mockData", detail),
+                attemptId,
+                leaseToken,
+                traceId
         );
     }
 
@@ -189,6 +253,7 @@ class RuntimeTaskResultIngestChannelTest {
         private final TaskResultCorrelation correlation;
         private final AtomicInteger ingestCalls = new AtomicInteger();
         private final AtomicInteger correlationCalls = new AtomicInteger();
+        private boolean applyResult = true;
         private String lastTaskId;
         private String lastMessageId;
         private boolean lastSuccess;
@@ -214,7 +279,7 @@ class RuntimeTaskResultIngestChannelTest {
             lastDetail = detail;
             lastErrorCode = errorCode;
             lastOutput = output;
-            return true;
+            return applyResult;
         }
 
         @Override

@@ -25,6 +25,6 @@ class RedisTransportNamespacesTest {
         assertEquals(RedisTransportNamespaces.DELIVERY_FAILURE, RedisTransportDeliveryFailureChannel.DEFAULT_NAMESPACE_PREFIX);
         assertEquals(RedisTransportNamespaces.ENDPOINT_LEASE, RedisTransportEndpointLeaseStore.DEFAULT_NAMESPACE_PREFIX);
         assertEquals(RedisTransportNamespaces.NODES, RedisTransportNodeRegistry.DEFAULT_NAMESPACE_PREFIX);
-        assertEquals(RedisTransportNamespaces.RESULT_INBOX, RedisTaskResultIngestChannel.DEFAULT_NAMESPACE_PREFIX);
+        assertEquals(RedisTransportNamespaces.RESULT_INBOX, RedisTransportResultIngressChannel.DEFAULT_NAMESPACE_PREFIX);
     }
 }

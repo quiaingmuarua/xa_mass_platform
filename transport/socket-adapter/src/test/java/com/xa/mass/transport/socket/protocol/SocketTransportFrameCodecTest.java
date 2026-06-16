@@ -1,7 +1,7 @@
 package com.xa.mass.transport.socket.protocol;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.transport.model.TaskResultReport;
+import com.google.gson.JsonParser;
 import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +25,7 @@ class SocketTransportFrameCodecTest {
     }
 
     @Test
-    void canonicalTaskResultDecodesIntoTaskResultReport() {
+    void canonicalTaskResultEncodesOpaquePayload() {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
         frame.addProperty("taskId", "task-1");
@@ -35,12 +35,12 @@ class SocketTransportFrameCodecTest {
         output.addProperty("status", "SUCCESS");
         frame.add(TransportPacket.PAYLOAD_OUTPUT, output);
 
-        TaskResultReport report = codec.decodeCanonicalTaskResult(frame);
+        JsonObject payload = JsonParser.parseString(codec.encodeCanonicalTaskResultPayload(frame)).getAsJsonObject();
 
-        assertEquals("task-1", report.getTaskId());
-        assertEquals("msg-1", report.getMessageId());
-        assertTrue(report.isSuccess());
-        assertEquals("completed", report.getDetail());
-        assertEquals("SUCCESS", report.getOutput().get("status"));
+        assertEquals("task-1", payload.get("taskId").getAsString());
+        assertEquals("msg-1", payload.get("messageId").getAsString());
+        assertTrue(payload.get(TransportPacket.PAYLOAD_SUCCESS).getAsBoolean());
+        assertEquals("completed", payload.get(TransportPacket.PAYLOAD_DETAIL).getAsString());
+        assertEquals("SUCCESS", payload.getAsJsonObject(TransportPacket.PAYLOAD_OUTPUT).get("status").getAsString());
     }
 }

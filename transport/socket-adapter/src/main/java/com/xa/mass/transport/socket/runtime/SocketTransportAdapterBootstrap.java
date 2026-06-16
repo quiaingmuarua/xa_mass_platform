@@ -54,7 +54,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                     config.getMaxConnections(),
                     sessionManager,
                     frameCodec,
-                    context.getTaskResultIngestChannel(),
+                    context.getResultIngressChannel(),
                     context.getRuntimeTaskExecutor()
             ));
         }

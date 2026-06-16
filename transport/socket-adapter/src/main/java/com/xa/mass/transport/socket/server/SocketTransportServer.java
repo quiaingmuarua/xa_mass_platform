@@ -3,9 +3,8 @@ package com.xa.mass.transport.socket.server;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.TransportServer;
-import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.model.TaskResultReport;
-import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.transport.channel.TransportResultIngressChannel;
+import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
 import org.slf4j.Logger;
@@ -21,6 +20,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -43,7 +43,7 @@ public final class SocketTransportServer implements TransportServer {
     private final int maxConnections;
     private final SocketSessionManager sessionManager;
     private final SocketTransportFrameCodec frameCodec;
-    private final TaskResultIngestChannel taskResultIngestChannel;
+    private final TransportResultIngressChannel resultIngressChannel;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Set<Future<?>> clientTasks = ConcurrentHashMap.newKeySet();
@@ -57,7 +57,7 @@ public final class SocketTransportServer implements TransportServer {
                                  int maxConnections,
                                  SocketSessionManager sessionManager,
                                  SocketTransportFrameCodec frameCodec,
-                                 TaskResultIngestChannel taskResultIngestChannel,
+                                 TransportResultIngressChannel resultIngressChannel,
                                  RuntimeTaskExecutor runtimeTaskExecutor) {
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
         this.bindHost = bindHost;
@@ -65,7 +65,7 @@ public final class SocketTransportServer implements TransportServer {
         this.maxConnections = maxConnections;
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
         this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
-        this.taskResultIngestChannel = taskResultIngestChannel;
+        this.resultIngressChannel = resultIngressChannel;
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
     }
 
@@ -182,19 +182,17 @@ public final class SocketTransportServer implements TransportServer {
                     continue;
                 }
                 if (frameCodec.isCanonicalTaskResult(frame)) {
-                    if (taskResultIngestChannel == null) {
+                    if (resultIngressChannel == null) {
                         logger.warn("Canonical socket task result ignored because ingest channel is unavailable");
                         continue;
                     }
-                    TaskResultReport report = frameCodec.decodeCanonicalTaskResult(frame);
+                    String payload = frameCodec.encodeCanonicalTaskResultPayload(frame);
                     String traceId = firstNonBlank(frameCodec.extractTraceId(frame), frameCodec.extractMessageId(frame));
-                    boolean accepted = taskResultIngestChannel.ingest(new TransportResultEnvelope(
-                            adapterId,
-                            boundRouteKey,
+                    boolean accepted = resultIngressChannel.ingest(TransportResultIngressEnvelope.received(
+                            payload,
                             null,
-                            null,
-                            traceId,
-                            report
+                            frameCodec.extractMessageId(frame),
+                            diagnostics(boundRouteKey, traceId)
                     ));
                     if (!accepted) {
                         throw new IllegalStateException("task result ingest channel rejected inbound socket task result");
@@ -213,6 +211,18 @@ public final class SocketTransportServer implements TransportServer {
             sessionManager.removeSession(endpointId);
             clientTasks.removeIf(Future::isDone);
         }
+    }
+
+    private Map<String, String> diagnostics(String routeKey, String traceId) {
+        java.util.LinkedHashMap<String, String> values = new java.util.LinkedHashMap<>();
+        values.put("adapterId", adapterId);
+        if (routeKey != null && !routeKey.isBlank()) {
+            values.put("routeKey", routeKey);
+        }
+        if (traceId != null && !traceId.isBlank()) {
+            values.put("traceId", traceId);
+        }
+        return Map.copyOf(values);
     }
 
     private void waitForClientTasksToFinish() throws InterruptedException {

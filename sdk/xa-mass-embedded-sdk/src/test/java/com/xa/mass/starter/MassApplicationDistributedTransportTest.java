@@ -14,7 +14,7 @@ import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
+import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
@@ -61,7 +61,7 @@ class MassApplicationDistributedTransportTest {
         TransportConfig transport = disabledEngineProducerTransport();
         transport.setTransportNodeRegistryFactory(() -> nodeRegistry);
         transport.setDeliveryCommandHandoffFactory(() -> handoff);
-        transport.setTaskResultInboxFactory(() -> mock(RedisTaskResultIngestChannel.class));
+        transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
 
         CapturingMassEngine massEngine = new CapturingMassEngine(engine);
@@ -99,7 +99,7 @@ class MassApplicationDistributedTransportTest {
         RecordingAdapter adapter = new RecordingAdapter("websocket", 1);
         TransportConfig transport = disabledTransportConsumerTransport("node-1");
         transport.setDeliveryCommandHandoffFactory(() -> handoff);
-        transport.setTaskResultInboxFactory(() -> mock(RedisTaskResultIngestChannel.class));
+        transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
         transport.setPrimaryTransportAdapterBootstrap(new RecordingAdapterBootstrap(adapter));
 

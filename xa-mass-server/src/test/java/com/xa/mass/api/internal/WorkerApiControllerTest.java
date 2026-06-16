@@ -117,7 +117,7 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[0].fieldSources.runtimeStatus").value("runtimeStatusDisplay"))
                 .andExpect(jsonPath("$.data.items[0].fieldSources.reachability").value("workerRuntimeReachability"))
                 .andExpect(jsonPath("$.data.items[0].fieldSources.supportedEventCodes")
-                        .value("compatibilityProjection"));
+                        .value("workerGroupCapability"));
     }
 
     @Test

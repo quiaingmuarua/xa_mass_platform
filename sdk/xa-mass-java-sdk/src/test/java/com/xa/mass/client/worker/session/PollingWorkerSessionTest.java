@@ -55,23 +55,6 @@ class PollingWorkerSessionTest {
             String path = exchange.getRequestURI().getRawPath();
             observed.add(method + " " + path);
             String body = readBody(exchange);
-            if ("/worker-api/v1/adapter-nodes".equals(path)) {
-                JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("phone-node-sg-1", request.get("adapterNodeId").asText());
-                assertEquals("polling", request.get("adapterType").asText());
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"phone-node-sg-1","adapterType":"polling","endpointId":"phone-node-sg-1","enabled":true,"online":true,"attributes":{"region":"sg","fingerprint":"fp-android-13-sg"}}}
-                        """);
-                return;
-            }
-            if ("/worker-api/v1/node-group-bindings".equals(path)) {
-                JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("phone-device-probe", request.get("workerGroupId").asText());
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"phone-node-sg-1","workerGroupId":"phone-device-probe","enabled":true,"draining":false,"attributes":{"region":"sg","fingerprint":"fp-android-13-sg"}}}
-                        """);
-                return;
-            }
             if ("/worker-api/v1/workers".equals(path)) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
                 assertEquals("phone-worker-sg-001", request.get("workerId").asText());
@@ -80,7 +63,7 @@ class PollingWorkerSessionTest {
                 assertEquals("polling", request.get("transportHint").asText());
                 assertEquals("fp-android-13-sg", request.get("attributes").get("fingerprint").asText());
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","adapterNodeId":"phone-node-sg-1","workerGroupId":"phone-device-probe","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","workerGroupId":"phone-device-probe","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -149,7 +132,6 @@ class PollingWorkerSessionTest {
         PollingWorkerSession session = platform().workerSessions().polling()
                 .workerId("phone-worker-sg-001")
                 .workerGroupId("phone-device-probe")
-                .adapterNodeId("phone-node-sg-1")
                 .attribute("region", "sg")
                 .attribute("fingerprint", "fp-android-13-sg")
                 .event("probe.phone.metadata", dispatch -> {
@@ -180,16 +162,9 @@ class PollingWorkerSessionTest {
         startServer(exchange -> {
             String path = exchange.getRequestURI().getRawPath();
             observed.add(exchange.getRequestMethod() + " " + path);
-            if ("/worker-api/v1/adapter-nodes".equals(path)) {
-                readBody(exchange);
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"node-1","adapterType":"polling","endpointId":"node-1","enabled":true,"online":true,"attributes":{}}}
-                        """);
-                return;
-            }
-            if ("/worker-api/v1/node-group-bindings".equals(path)) {
-                readBody(exchange);
-                respond(exchange, 500, "bind failed");
+            readBody(exchange);
+            if ("/worker-api/v1/workers".equals(path)) {
+                respond(exchange, 500, "register failed");
                 return;
             }
             respond(exchange, 404, "unexpected");
@@ -206,18 +181,14 @@ class PollingWorkerSessionTest {
                 () -> platform().workerSessions().polling()
                         .workerId("worker-1")
                         .workerGroupId("group-1")
-                        .adapterNodeId("node-1")
                         .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of()))
                         .listener(listener)
                         .start());
 
-        assertEquals(WorkerSessionStartupStep.BIND_NODE_GROUP, exception.failure().failedStep());
-        assertEquals(WorkerSessionStartupStep.REGISTER_ADAPTER_NODE, exception.failure().lastSuccessfulStep());
+        assertEquals(WorkerSessionStartupStep.REGISTER_WORKER, exception.failure().failedStep());
+        assertEquals(null, exception.failure().lastSuccessfulStep());
         assertEquals(exception.failure(), failureRef.get());
-        assertEquals(List.of(
-                "POST /worker-api/v1/adapter-nodes",
-                "POST /worker-api/v1/node-group-bindings"
-        ), observed);
+        assertEquals(List.of("POST /worker-api/v1/workers"), observed);
     }
 
     @Test
@@ -229,21 +200,9 @@ class PollingWorkerSessionTest {
         startServer(exchange -> {
             String path = exchange.getRequestURI().getRawPath();
             readBody(exchange);
-            if ("/worker-api/v1/adapter-nodes".equals(path)) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"node-1","adapterType":"polling","endpointId":"node-1","enabled":true,"online":true,"attributes":{}}}
-                        """);
-                return;
-            }
-            if ("/worker-api/v1/node-group-bindings".equals(path)) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"node-1","workerGroupId":"group-1","enabled":true,"draining":false,"attributes":{}}}
-                        """);
-                return;
-            }
             if ("/worker-api/v1/workers".equals(path)) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","adapterNodeId":"node-1","workerGroupId":"group-1","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","workerGroupId":"group-1","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -284,7 +243,6 @@ class PollingWorkerSessionTest {
         try (PollingWorkerSession ignored = platform().workerSessions().polling()
                 .workerId("worker-1")
                 .workerGroupId("group-1")
-                .adapterNodeId("node-1")
                 .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of()))
                 .pollInterval(Duration.ofMillis(20))
                 .heartbeatInterval(Duration.ofMillis(20))
@@ -307,21 +265,9 @@ class PollingWorkerSessionTest {
         startServer(exchange -> {
             String path = exchange.getRequestURI().getRawPath();
             readBody(exchange);
-            if ("/worker-api/v1/adapter-nodes".equals(path)) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"node-1","adapterType":"polling","endpointId":"node-1","enabled":true,"online":true,"attributes":{}}}
-                        """);
-                return;
-            }
-            if ("/worker-api/v1/node-group-bindings".equals(path)) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"node-1","workerGroupId":"group-1","enabled":true,"draining":false,"attributes":{}}}
-                        """);
-                return;
-            }
             if ("/worker-api/v1/workers".equals(path)) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","adapterNodeId":"node-1","workerGroupId":"group-1","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","workerGroupId":"group-1","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -365,7 +311,6 @@ class PollingWorkerSessionTest {
         try (PollingWorkerSession ignored = platform().workerSessions().polling()
                 .workerId("worker-1")
                 .workerGroupId("group-1")
-                .adapterNodeId("node-1")
                 .eventHandler("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of(
                         "phone", dispatch.input().requiredString("phone")
                 )))
@@ -391,21 +336,9 @@ class PollingWorkerSessionTest {
         startServer(exchange -> {
             String path = exchange.getRequestURI().getRawPath();
             String body = readBody(exchange);
-            if ("/worker-api/v1/adapter-nodes".equals(path)) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"node-1","adapterType":"polling","endpointId":"node-1","enabled":true,"online":true,"attributes":{}}}
-                        """);
-                return;
-            }
-            if ("/worker-api/v1/node-group-bindings".equals(path)) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"node-1","workerGroupId":"group-1","enabled":true,"draining":false,"attributes":{}}}
-                        """);
-                return;
-            }
             if ("/worker-api/v1/workers".equals(path)) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","adapterNodeId":"node-1","workerGroupId":"group-1","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","workerGroupId":"group-1","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -475,7 +408,6 @@ class PollingWorkerSessionTest {
         try (PollingWorkerSession ignored = platform().workerSessions().polling()
                 .workerId("worker-1")
                 .workerGroupId("group-1")
-                .adapterNodeId("node-1")
                 .event("probe.phone.metadata", dispatch -> {
                     dispatch.input().requiredUri("url");
                     return WorkerResult.success(Map.of());
@@ -539,3 +471,4 @@ class PollingWorkerSessionTest {
         void handle(HttpExchange exchange) throws IOException;
     }
 }
+

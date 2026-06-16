@@ -1,12 +1,12 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.model.TaskResultReport;
-import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.transport.channel.TransportResultIngressChannel;
+import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -59,18 +59,10 @@ class WebSocketInputProcessorTest {
 
     @Test
     void canonicalTaskResultIngestsWithoutOutput() {
-        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
-        context = createContext(new TaskResultIngestChannel() {
-            @Override
-            public boolean ingest(TaskResultReport report) {
-                return true;
-            }
-
-            @Override
-            public boolean ingest(TransportResultEnvelope envelope) {
-                capturedEnvelope.set(envelope);
-                return true;
-            }
+        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
+        context = createContext(envelope -> {
+            capturedEnvelope.set(envelope);
+            return true;
         });
         inputProcessor = new WebSocketInputProcessor(context);
 
@@ -78,29 +70,18 @@ class WebSocketInputProcessorTest {
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertEquals("websocket", capturedEnvelope.get().getAdapterId());
-        assertEquals("route-1", capturedEnvelope.get().getRouteKey());
-        assertEquals("task-1", capturedEnvelope.get().getTaskId());
-        assertEquals("msg-1", capturedEnvelope.get().getMessageId());
-        assertTrue(capturedEnvelope.get().getReport().isSuccess());
-        assertEquals("ok", capturedEnvelope.get().getReport().getDetail());
-        assertEquals("SUCCESS", capturedEnvelope.get().getReport().getOutput().get("status"));
+        assertEquals("websocket", capturedEnvelope.get().diagnostic("adapterId"));
+        assertEquals("route-1", capturedEnvelope.get().diagnostic("routeKey"));
+        assertEquals("msg-1", capturedEnvelope.get().getPartitionKey());
+        assertPayload(capturedEnvelope.get(), "task-1", "msg-1", true, "ok");
     }
 
     @Test
     void canonicalTaskResultUsesInboundMetadataWhenFrameOmitsWorkerId() {
-        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
-        context = createContext(new TaskResultIngestChannel() {
-            @Override
-            public boolean ingest(TaskResultReport report) {
-                return true;
-            }
-
-            @Override
-            public boolean ingest(TransportResultEnvelope envelope) {
-                capturedEnvelope.set(envelope);
-                return true;
-            }
+        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
+        context = createContext(envelope -> {
+            capturedEnvelope.set(envelope);
+            return true;
         });
         inputProcessor = new WebSocketInputProcessor(context);
 
@@ -119,25 +100,17 @@ class WebSocketInputProcessorTest {
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertEquals("route-from-handshake", capturedEnvelope.get().getRouteKey());
-        assertEquals("task-1", capturedEnvelope.get().getTaskId());
-        assertEquals("msg-1", capturedEnvelope.get().getMessageId());
+        assertEquals("route-from-handshake", capturedEnvelope.get().diagnostic("routeKey"));
+        assertEquals("msg-1", capturedEnvelope.get().getPartitionKey());
+        assertPayload(capturedEnvelope.get(), "task-1", "msg-1", true, "ok");
     }
 
     @Test
     void canonicalTaskResultCanReuseParsedInboundFrame() {
-        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
-        context = createContext(new TaskResultIngestChannel() {
-            @Override
-            public boolean ingest(TaskResultReport report) {
-                return true;
-            }
-
-            @Override
-            public boolean ingest(TransportResultEnvelope envelope) {
-                capturedEnvelope.set(envelope);
-                return true;
-            }
+        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
+        context = createContext(envelope -> {
+            capturedEnvelope.set(envelope);
+            return true;
         });
         inputProcessor = new WebSocketInputProcessor(context);
 
@@ -158,25 +131,17 @@ class WebSocketInputProcessorTest {
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertEquals("route-from-session", capturedEnvelope.get().getRouteKey());
-        assertEquals("task-1", capturedEnvelope.get().getTaskId());
-        assertEquals("msg-1", capturedEnvelope.get().getMessageId());
+        assertEquals("route-from-session", capturedEnvelope.get().diagnostic("routeKey"));
+        assertEquals("msg-1", capturedEnvelope.get().getPartitionKey());
+        assertPayload(capturedEnvelope.get(), "task-1", "msg-1", true, "ok");
     }
 
     @Test
     void canonicalTaskResultPrefersInlineRouteKeyOverSessionMetadata() {
-        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
-        context = createContext(new TaskResultIngestChannel() {
-            @Override
-            public boolean ingest(TaskResultReport report) {
-                return true;
-            }
-
-            @Override
-            public boolean ingest(TransportResultEnvelope envelope) {
-                capturedEnvelope.set(envelope);
-                return true;
-            }
+        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
+        context = createContext(envelope -> {
+            capturedEnvelope.set(envelope);
+            return true;
         });
         inputProcessor = new WebSocketInputProcessor(context);
 
@@ -196,22 +161,12 @@ class WebSocketInputProcessorTest {
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertEquals("inline-route", capturedEnvelope.get().getRouteKey());
+        assertEquals("inline-route", capturedEnvelope.get().diagnostic("routeKey"));
     }
 
     @Test
     void canonicalTaskResultReturnsFalseWhenIngestChannelRejectsEnvelope() {
-        context = createContext(new TaskResultIngestChannel() {
-            @Override
-            public boolean ingest(TaskResultReport report) {
-                return false;
-            }
-
-            @Override
-            public boolean ingest(TransportResultEnvelope envelope) {
-                return false;
-            }
-        });
+        context = createContext(envelope -> false);
         inputProcessor = new WebSocketInputProcessor(context);
 
         boolean result = inputProcessor.process(canonicalTaskResultFrame("task-1", "msg-1", true, "ok"));
@@ -221,18 +176,10 @@ class WebSocketInputProcessorTest {
 
     @Test
     void canonicalTaskResultWithoutMessageIdIsRejectedWithoutIngest() {
-        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
-        context = createContext(new TaskResultIngestChannel() {
-            @Override
-            public boolean ingest(TaskResultReport report) {
-                return true;
-            }
-
-            @Override
-            public boolean ingest(TransportResultEnvelope envelope) {
-                capturedEnvelope.set(envelope);
-                return true;
-            }
+        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
+        context = createContext(envelope -> {
+            capturedEnvelope.set(envelope);
+            return true;
         });
         inputProcessor = new WebSocketInputProcessor(context);
 
@@ -252,7 +199,7 @@ class WebSocketInputProcessorTest {
         assertNull(capturedEnvelope.get());
     }
 
-    private WebSocketDispatcherContext createContext(TaskResultIngestChannel taskResultIngestChannel) {
+    private WebSocketDispatcherContext createContext(TransportResultIngressChannel taskResultIngestChannel) {
         return new WebSocketDispatcherContext(
                 "websocket",
                 endpointRegistry,
@@ -260,6 +207,18 @@ class WebSocketInputProcessorTest {
                 codec,
                 taskResultIngestChannel
         );
+    }
+
+    private void assertPayload(TransportResultIngressEnvelope envelope,
+                               String taskId,
+                               String messageId,
+                               boolean success,
+                               String detail) {
+        JsonObject payload = JsonParser.parseString(envelope.getPayload()).getAsJsonObject();
+        assertEquals(taskId, payload.get("taskId").getAsString());
+        assertEquals(messageId, payload.get("messageId").getAsString());
+        assertEquals(success, payload.get(TransportPacket.PAYLOAD_SUCCESS).getAsBoolean());
+        assertEquals(detail, payload.get(TransportPacket.PAYLOAD_DETAIL).getAsString());
     }
 
     private String canonicalTaskResultFrame(String taskId, String messageId, boolean success, String detail) {

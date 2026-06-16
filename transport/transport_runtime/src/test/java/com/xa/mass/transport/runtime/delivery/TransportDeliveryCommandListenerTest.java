@@ -4,7 +4,7 @@ import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
@@ -21,7 +21,7 @@ class TransportDeliveryCommandListenerTest {
     @Test
     void adapterUnavailableEmitsOneRetryableFailure() {
         TransportRuntimeRegistry registry = new TransportRuntimeRegistry(
-                (TaskResultReport report) -> true,
+                (TransportResultIngressChannel) envelope -> true,
                 new InMemoryTransportEndpointLeaseStore(),
                 List.of(TransportBinding.builder(new NoopWorkerAdapter("socket")).build())
         );

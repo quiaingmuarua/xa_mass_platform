@@ -1,6 +1,7 @@
 package com.xa.mass.workerpack.tool.probe;
 
 import com.xa.mass.client.MassPlatform;
+import com.xa.mass.client.worker.AdapterNodeSpec;
 import com.xa.mass.client.worker.WorkerGroupSpec;
 import com.xa.mass.client.worker.handler.DispatchContext;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
@@ -358,11 +359,16 @@ public final class ProbeWorkerPack {
             String resolvedWorkerId = requireText(workerId, "workerId");
             String resolvedAdapterNodeId = requireText(adapterNodeId, "adapterNodeId");
             platform.workers().declareGroup(phoneDeviceGroupSpec(projectCodes));
+            platform.workers().registerAdapterNode(AdapterNodeSpec.builder()
+                    .adapterNodeId(resolvedAdapterNodeId)
+                    .adapterType("polling")
+                    .endpointId(resolvedAdapterNodeId)
+                    .attributes(attributes)
+                    .build());
+            platform.workers().bindNodeGroup(resolvedAdapterNodeId, PHONE_DEVICE_GROUP_ID);
             return platform.workerSessions().polling()
                     .workerId(resolvedWorkerId)
                     .workerGroupId(PHONE_DEVICE_GROUP_ID)
-                    .adapterNodeId(resolvedAdapterNodeId)
-                    .adapterType("polling")
                     .attributes(attributes)
                     .eventHandler(PHONE_METADATA_EVENT, phoneMetadataHandler())
                     .pollInterval(pollInterval)

@@ -3,7 +3,7 @@ package com.xa.mass.sdk;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.sdk.worker.PulledTaskDispatch;
 import com.xa.mass.sdk.worker.TaskPullResult;
-import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.sdk.worker.WorkerResultSubmitRequest;
 
 import java.util.List;
 
@@ -38,5 +38,5 @@ public interface WorkerClientOperations {
         return pollTasksResult(workerId, maxMessages, timeoutMillis).getItems();
     }
 
-    boolean submitResult(String workerId, TaskResultReport report);
+    boolean submitResult(String workerId, WorkerResultSubmitRequest request);
 }

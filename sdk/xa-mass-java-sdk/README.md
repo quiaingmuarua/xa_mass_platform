@@ -207,7 +207,7 @@ for (TaskResultItem item : window.items()) {
 }
 ```
 
-Polling worker topology and direct poll:
+Polling worker topology setup and direct poll:
 
 ```java
 mass.workers().declareGroup(WorkerGroupSpec.builder()
@@ -239,6 +239,11 @@ mass.workers().online("phone-worker-sg-001", sessionToken, "startup");
 WorkerPollResult poll = mass.workers().poll("phone-worker-sg-001",
         WorkerPollRequest.builder().maxMessages(10).timeoutMs(500L).build());
 ```
+
+Adapter-node and node-group binding calls are topology/admin setup. Normal
+worker registration and `WorkerSession` helpers use `workerId`,
+`workerGroupId`, worker attributes, and `transportHint`; they do not carry
+`adapterNodeId`.
 
 Managed polling worker session:
 

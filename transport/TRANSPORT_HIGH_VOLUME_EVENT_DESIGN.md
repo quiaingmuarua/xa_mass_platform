@@ -32,8 +32,8 @@ engine assignment
   -> TransportDeliveryStore
   -> adapter drain/send
   -> worker
-  -> TransportResultEnvelope
-  -> TaskResultIngestChannel
+  -> TransportResultIngressEnvelope
+  -> TransportResultIngressChannel / TransportResultIngressHandler
   -> engine lifecycle
 ```
 
@@ -45,8 +45,9 @@ Permanent transport concepts remain:
 - `QueuedPulledDispatch`
 - `TransportDeliveryService`
 - `TransportDeliveryStore`
-- `TransportResultEnvelope`
-- `TaskResultIngestChannel`
+- `TransportResultIngressEnvelope`
+- `TransportResultIngressChannel`
+- `TransportResultIngressHandler`
 
 ## Current Constraints
 

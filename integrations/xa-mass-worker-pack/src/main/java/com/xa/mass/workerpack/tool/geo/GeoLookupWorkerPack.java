@@ -1,6 +1,7 @@
 package com.xa.mass.workerpack.tool.geo;
 
 import com.xa.mass.client.MassPlatform;
+import com.xa.mass.client.worker.AdapterNodeSpec;
 import com.xa.mass.client.worker.WorkerGroupSpec;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerResult;
@@ -133,11 +134,16 @@ public final class GeoLookupWorkerPack {
             String resolvedWorkerId = requireText(workerId, "workerId");
             String resolvedAdapterNodeId = requireText(adapterNodeId, "adapterNodeId");
             platform.workers().declareGroup(groupSpec(projectCodes, provider));
+            platform.workers().registerAdapterNode(AdapterNodeSpec.builder()
+                    .adapterNodeId(resolvedAdapterNodeId)
+                    .adapterType(DEFAULT_ADAPTER_TYPE)
+                    .endpointId(resolvedAdapterNodeId)
+                    .attributes(attributes)
+                    .build());
+            platform.workers().bindNodeGroup(resolvedAdapterNodeId, WORKER_GROUP_ID);
             return platform.workerSessions().polling()
                     .workerId(resolvedWorkerId)
                     .workerGroupId(WORKER_GROUP_ID)
-                    .adapterNodeId(resolvedAdapterNodeId)
-                    .adapterType(DEFAULT_ADAPTER_TYPE)
                     .attributes(attributes)
                     .eventHandler(GeoLookupTool.EVENT_CODE, handler(provider))
                     .maxMessages(maxMessages)

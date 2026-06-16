@@ -1,6 +1,5 @@
 package com.xa.mass.transport.runtime.packet;
 
-import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.packet.PacketType;
 import com.xa.mass.transport.packet.TransportPacket;
 
@@ -19,28 +18,6 @@ public final class TransportPacketFactory {
 
     public TransportPacketFactory(Supplier<String> packetIdSupplier) {
         this.packetIdSupplier = Objects.requireNonNull(packetIdSupplier, "packetIdSupplier");
-    }
-
-    public TransportPacket fromResultReport(String adapterId,
-                                            String routeKey,
-                                            String traceId,
-                                            String attemptId,
-                                            TaskResultReport report) {
-        Objects.requireNonNull(report, "report");
-        return new TransportPacket(
-                TransportPacket.CURRENT_VERSION,
-                packetIdSupplier.get(),
-                traceId,
-                PacketType.TASK_RESULT,
-                adapterId,
-                routeKey,
-                report.getTaskId(),
-                report.getMessageId(),
-                normalize(attemptId),
-                null,
-                TransportPacket.JSON_CONTENT_TYPE,
-                report.transportPayloadView()
-        );
     }
 
     public TransportPacket workerSystemEvent(String eventCode,
@@ -62,13 +39,6 @@ public final class TransportPacketFactory {
                 TransportPacket.JSON_CONTENT_TYPE,
                 payload == null ? Map.of() : payload
         );
-    }
-
-    private static String normalize(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.trim();
     }
 
 }

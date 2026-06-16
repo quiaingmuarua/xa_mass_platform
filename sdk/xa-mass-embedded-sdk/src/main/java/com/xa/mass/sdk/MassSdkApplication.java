@@ -58,7 +58,7 @@ import com.xa.mass.starter.MassEngine;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.sdk.worker.PulledTaskDispatch;
 import com.xa.mass.sdk.worker.TaskPullResult;
-import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.sdk.worker.WorkerResultSubmitRequest;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -736,15 +736,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public boolean submitResult(String workerId, TaskResultReport report) {
-        Objects.requireNonNull(report, "report");
+    public boolean submitResult(String workerId, WorkerResultSubmitRequest request) {
+        Objects.requireNonNull(request, "request");
         return externalPullWorkerSession(workerId).submitResult(
-                report.getTaskId(),
-                report.getMessageId(),
-                report.isSuccess(),
-                report.getDetail(),
-                report.getErrorCode(),
-                report.getOutput()
+                request
         );
     }
 

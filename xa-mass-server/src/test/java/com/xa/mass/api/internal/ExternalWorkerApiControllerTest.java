@@ -589,11 +589,11 @@ class ExternalWorkerApiControllerTest {
     @Test
     void submitResultMapsRequestToTransportReport() throws Exception {
         when(workerClient.submitResult(eq("node-worker-1"), argThat(report ->
-                "task-1".equals(report.getTaskId())
-                        && "msg-1".equals(report.getMessageId())
-                        && report.isSuccess()
-                        && "ok".equals(report.getDetail())
-                        && Map.of("title", "Example").equals(report.getOutput())
+                "task-1".equals(report.taskId())
+                        && "msg-1".equals(report.messageId())
+                        && report.success()
+                        && "ok".equals(report.detail())
+                        && Map.of("title", "Example").equals(report.output())
         ))).thenReturn(true);
 
         mockMvc.perform(post("/worker-api/v1/workers/{workerId}:submit-result", "node-worker-1")
@@ -616,11 +616,11 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.submitted").value(true));
 
         verify(workerClient).submitResult(eq("node-worker-1"), argThat(report ->
-                "task-1".equals(report.getTaskId())
-                        && "msg-1".equals(report.getMessageId())
-                        && report.isSuccess()
-                        && "ok".equals(report.getDetail())
-                        && Map.of("title", "Example").equals(report.getOutput())
+                "task-1".equals(report.taskId())
+                        && "msg-1".equals(report.messageId())
+                        && report.success()
+                        && "ok".equals(report.detail())
+                        && Map.of("title", "Example").equals(report.output())
         ));
     }
 

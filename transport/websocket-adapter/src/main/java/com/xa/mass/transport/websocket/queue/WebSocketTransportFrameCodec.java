@@ -8,7 +8,6 @@ import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
-import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.packet.TransportPacket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,7 +97,7 @@ public final class WebSocketTransportFrameCodec {
         return request.payload();
     }
 
-    public TaskResultReport decodeCanonicalTaskResult(JsonObject frame) {
+    public String encodeCanonicalTaskResultPayload(JsonObject frame) {
         String taskId = readString(frame, "taskId");
         String messageId = extractMessageId(frame);
         if (taskId == null || messageId == null) {
@@ -109,21 +108,7 @@ public final class WebSocketTransportFrameCodec {
         if (success == null) {
             throw new IllegalArgumentException(TransportPacket.PAYLOAD_SUCCESS + " is required");
         }
-        String detail = WebSocketStringValues.firstNonBlank(
-                readString(frame, TransportPacket.PAYLOAD_DETAIL),
-                readString(frame, "message")
-        );
-        String errorCode = readString(frame, TransportPacket.PAYLOAD_ERROR_CODE);
-        JsonObject outputObject = readJsonObject(frame, TransportPacket.PAYLOAD_OUTPUT);
-        Map<String, Object> output = gson.fromJson(outputObject, MAP_TYPE);
-        return TaskResultReport.fromDecodedTransportPayload(
-                taskId,
-                messageId,
-                success,
-                detail,
-                errorCode,
-                output
-        );
+        return gson.toJson(frame);
     }
 
     public Gson getGson() {

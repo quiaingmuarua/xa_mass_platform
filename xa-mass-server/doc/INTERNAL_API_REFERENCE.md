@@ -900,8 +900,8 @@ Request notes:
 
 - `workerId` is required
 - `workerGroupId` is required
-- `eventBindings` is optional compatibility input; WorkerGroup declaration is
-  the capability owner
+- worker registration does not accept `eventBindings`; WorkerGroup declaration
+  is the capability owner
 - `transportHint` defaults to `polling`
 - worker registration does not accept transport owner identifiers such as
   `adapterNodeId` or `adapterId`; explicit adapter node and node-group binding

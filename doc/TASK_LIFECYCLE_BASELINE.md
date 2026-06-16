@@ -1,6 +1,6 @@
 # Task Lifecycle Baseline
 
-Last updated: 2026-06-11
+Last updated: 2026-06-16
 
 Status: current global task lifecycle baseline.
 
@@ -226,8 +226,9 @@ Owner split:
 
 | Layer | Owner | Meaning |
 | --- | --- | --- |
-| worker result payload | `TaskResultReport` | worker-submitted result body; does not own retry, finality, or terminal policy |
-| transport ingress metadata | `TransportResultEnvelope` | adapter id, route key, trace id, optional attempt/lease evidence; does not replace worker protocol |
+| worker result submit request | `WorkerResultSubmitRequest` / adapter worker frame | worker-submitted result body at SDK/server or adapter boundary; does not own retry, finality, or terminal policy |
+| transport ingress carrier | `TransportResultIngressEnvelope` | opaque payload, opaque correlation, optional partition key, diagnostics, and receive time; transport queues and relays it without task-shaped validation |
+| starter result callback projection | `TaskResultCallbackCodec`, `TaskResultCallbackCommand` | decodes opaque ingress payload/correlation and carries task result callback facts into engine-owned validation |
 | engine ingest port | `TaskResultIngestFacade`, `TaskResultIngestPort` | narrow transport-to-engine callable surface |
 | runtime apply truth | `TaskWorkRuntime.applyResultWithContext(...)` | lease-valid apply, retry budget consumption, runtime apply status, counters, and recent receipts |
 | runtime result read truth | `TaskResultRuntime` | staged callback repair anchors, stable-final visible rows, task-local result sequence, and result-side idempotency barriers |

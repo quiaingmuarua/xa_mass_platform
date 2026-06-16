@@ -1112,15 +1112,30 @@ Verified on 2026-06-16 in the current workspace slice:
   "-Dsurefire.failIfNoSpecifiedTests=false" test
 # PASS: 2 tests, 0 failures
 
+.\mvnw.cmd -pl sdk/xa-mass-java-sdk -am `
+  "-Dtest=WorkerClientTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest" `
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
+# PASS: 22 tests, 0 failures
+
 .\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -am `
   "-Dtest=MassSdkTest,MassEngineStartRecoveryTest,WorkerRuntimeSelectionIntegrationTest,WorkerRuntimePresenceIngressTest" `
   "-Dsurefire.failIfNoSpecifiedTests=false" test
 # PASS: 114 tests, 0 failures
 
+.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -am `
+  "-Dtest=MassSdkTest,PullWorkerSessionTest,RuntimeTaskResultIngestChannelTest" `
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
+# PASS: 118 tests, 0 failures
+
 .\mvnw.cmd -pl xa-mass-server -am `
   "-Dtest=ExternalWorkerModelShapeGuardTest,WorkerApiControllerTest,CatalogControllerTest,ExternalWorkerApiControllerTest,MockRuntimeDataLoaderTest" `
   "-Dsurefire.failIfNoSpecifiedTests=false" test
 # PASS: 50 tests, 0 failures
+
+.\mvnw.cmd -pl transport/socket-adapter -am `
+  "-Dtest=SocketTransportServerTest" `
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
+# PASS: 5 tests, 0 failures
 
 .\mvnw.cmd -pl integrations/xa-mass-worker-pack -am `
   "-Dtest=WebSocketClientStarterTest" `
@@ -1138,24 +1153,33 @@ corepack pnpm -C frontend exec vitest run `
   src/api/catalog.test.ts `
   src/pages/resources/workers/WorkersPage.test.ts `
   src/pages/runtime/RuntimeDiscoveryPage.test.ts `
+  src/pages/dashboard/DashboardPage.test.ts `
+  src/components/WorkerDebugPanel.test.ts `
   --maxWorkers=1
-# PASS: 4 files, 9 tests
+# PASS: 6 files, 12 tests
 ```
 
 Verification notes:
 
 - Direct `pnpm` was not on local PATH; frontend commands were run through
   `corepack pnpm`.
-- A mistakenly broad Vitest invocation ran the full frontend suite and exposed
-  three unrelated 5-second timeouts in `AppHeader.test.ts`,
-  `AppShell.test.ts`, and `RuntimeDiscoveryPage.test.ts`. The targeted WMI
-  frontend files passed when run directly.
 - Residue scan result: hot path scheduling/candidate/dispatch contracts and
   default worker-facing SDK/server/frontend models have no `adapterNodeId`,
   `adapterId`, `onlineStrategy`, or raw heartbeat/create/update timestamp
   fields. Remaining `adapterNodeId` in catalog/frontend is limited to explicit
   `AdapterNodeCapability` / `NodeGroupBindingCapability` topology/admin
   models.
+- Default worker view residue scan found only the allowed topology/admin
+  `CatalogController` `adapterNodeId` references used to compose adapter-node
+  and node-group binding capability views.
+- Java SDK session helper residue scan found no hidden topology fields in
+  normal session builders; remaining hits are explicit topology/admin README
+  examples, the quickstart note that transport runtime ids are internal, and
+  tests asserting registration requests do not contain `adapterId`.
+- Old transport result-ingress residue scan found only
+  `RuntimeTaskResultIngestChannelTest` and
+  `TransportConvergenceArchitectureGuardTest` references that exercise the
+  current starter handler and guard removed legacy transport result types.
 - `WorkerResourceRuntime` appears only in architecture guards that prevent the
   retired aggregate from returning.
 

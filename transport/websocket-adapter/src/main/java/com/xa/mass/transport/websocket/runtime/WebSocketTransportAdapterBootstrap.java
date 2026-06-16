@@ -42,7 +42,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 endpointRegistry,
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
-                context.getTaskResultIngestChannel()
+                context.getResultIngressChannel()
         );
 
         if (config.isEnabled()) {

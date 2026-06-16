@@ -26,14 +26,14 @@ import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.runtime.ManagedTransportAdapter;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
-import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
+import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
-import com.xa.mass.transport.runtime.BufferedTaskResultIngestChannel;
+import com.xa.mass.transport.runtime.BufferedTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.runtime.TaskResultIngestInboxPump;
+import com.xa.mass.transport.runtime.TransportResultIngressInboxPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoffPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandListener;
@@ -55,7 +55,7 @@ import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
-import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
@@ -101,15 +101,15 @@ public class MassApplication {
     private TransportDeliveryService transportDeliveryService;
     private TransportDeliveryCommandHandoff transportDeliveryCommandHandoff;
     private TransportDeliveryCommandHandoffPump transportDeliveryCommandHandoffPump;
-    private RedisTaskResultIngestChannel taskResultInbox;
-    private TaskResultIngestInboxPump taskResultInboxPump;
+    private RedisTransportResultIngressChannel taskResultInbox;
+    private TransportResultIngressInboxPump taskResultInboxPump;
     private RedisTransportDeliveryFailureChannel deliveryFailureInbox;
     private TransportDeliveryFailureInboxPump deliveryFailureInboxPump;
     private TransportNodeRegistry transportNodeRegistry;
     private TransportNodeRegistryHeartbeat transportNodeHeartbeat;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
     private RuntimeTaskExecutor eventRuntimeTaskExecutor;
-    private BufferedTaskResultIngestChannel bufferedResultIngestChannel;
+    private BufferedTransportResultIngressChannel bufferedResultIngestChannel;
     private WorkerPresenceIngress workerPresenceIngress;
 
     public MassApplication(MassEngine engine,
@@ -294,24 +294,24 @@ public class MassApplication {
                 }
             }
             TaskDispatchBatchListener taskDispatchListener = null;
-            TaskResultIngestChannel taskResultIngestChannel = null;
+            TransportResultIngressChannel resultIngressChannel = null;
             List<TransportBinding> adapterBindings = new ArrayList<>();
             if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 taskResultInbox = transportRuntimeComposition.resolveTaskResultInbox();
-                taskResultIngestChannel = taskResultInbox;
+                resultIngressChannel = taskResultInbox;
                 logger.info("Task result ingest channel initialized (redis inbox producer)");
             } else if (engineConfig.isEnabled()) {
                 TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
-                BufferedTaskResultIngestChannel buffer = new BufferedTaskResultIngestChannel(
+                BufferedTransportResultIngressChannel buffer = new BufferedTransportResultIngressChannel(
                         new RuntimeTaskResultIngestChannel(taskResultIngestFacade));
                 bufferedResultIngestChannel = buffer;
-                taskResultIngestChannel = buffer;
+                resultIngressChannel = buffer;
                 logger.info("Task result ingest channel initialized (buffered async)");
                 if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
                     taskResultInbox = transportRuntimeComposition.resolveTaskResultInbox();
-                    taskResultInboxPump = new TaskResultIngestInboxPump(
+                    taskResultInboxPump = new TransportResultIngressInboxPump(
                             taskResultInbox,
-                            buffer,
+                            new RuntimeTaskResultIngestChannel(taskResultIngestFacade),
                             transportRuntimeTaskExecutor
                     );
                     taskResultInboxPump.start();
@@ -325,8 +325,8 @@ public class MassApplication {
                     logger.info("Distributed transport inbox pumps started for engine-producer role");
                 }
             }
-            if (taskResultIngestChannel == null && runtimeRole == TransportRuntimeRole.EMBEDDED) {
-                taskResultIngestChannel = report -> false;
+            if (resultIngressChannel == null && runtimeRole == TransportRuntimeRole.EMBEDDED) {
+                resultIngressChannel = envelope -> false;
                 logger.info("Task result ingest channel initialized (noop because engine is disabled)");
             }
 
@@ -335,7 +335,7 @@ public class MassApplication {
                         : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
                     TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
                             endpointRegistry,
-                            taskResultIngestChannel,
+                            resultIngressChannel,
                             presenceIngress,
                             endpointLeaseStore,
                             deliveryService,
@@ -350,7 +350,7 @@ public class MassApplication {
 
             if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
                 transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
-                        taskResultIngestChannel,
+                        resultIngressChannel,
                         endpointLeaseStore,
                         deliveryService,
                         deliveryCommandConsumerRegistry,
@@ -577,7 +577,7 @@ public class MassApplication {
     }
 
     private void drainResultIngestBuffer() {
-        BufferedTaskResultIngestChannel buffer = bufferedResultIngestChannel;
+        BufferedTransportResultIngressChannel buffer = bufferedResultIngestChannel;
         bufferedResultIngestChannel = null;
         if (buffer != null) {
             logger.info("Draining result ingest buffer");
@@ -621,7 +621,7 @@ public class MassApplication {
     }
 
     private void stopDistributedTransportInboxPumps() {
-        TaskResultIngestInboxPump resultPump = taskResultInboxPump;
+        TransportResultIngressInboxPump resultPump = taskResultInboxPump;
         taskResultInboxPump = null;
         if (resultPump != null) {
             resultPump.stop();
@@ -634,7 +634,7 @@ public class MassApplication {
     }
 
     private void closeDistributedTransportInboxes() {
-        RedisTaskResultIngestChannel resultInbox = taskResultInbox;
+        RedisTransportResultIngressChannel resultInbox = taskResultInbox;
         taskResultInbox = null;
         if (resultInbox != null) {
             resultInbox.shutdown();
@@ -779,7 +779,7 @@ public class MassApplication {
                 resolved.getAdapterId(),
                 requireText(sessionToken, "sessionToken"),
                 resolved.getDeliveryPullChannel(),
-                resolved.getTaskResultIngestChannel(),
+                resolved.getResultIngressChannel(),
                 resolved.getEndpointLeaseStore(),
                 resolved.getDeliveryCommandConsumerRegistry(),
                 resolved.getDeliveryCommandConsumerKey(),

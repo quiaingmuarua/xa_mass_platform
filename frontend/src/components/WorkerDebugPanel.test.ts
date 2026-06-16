@@ -21,9 +21,7 @@ describe('WorkerDebugPanel', () => {
         supportedProjects: ['demoApp'],
         supportedEventCodes: ['mock.state.get'],
         attributes: {},
-        lastHeartbeat: '2026-04-21 09:45:00',
         locked: false,
-        updateTime: '2026-04-21 09:45:00',
     }
 
     beforeEach(() => {

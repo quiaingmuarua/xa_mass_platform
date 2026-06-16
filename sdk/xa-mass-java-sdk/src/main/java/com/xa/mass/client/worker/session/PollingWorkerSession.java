@@ -1,7 +1,5 @@
 package com.xa.mass.client.worker.session;
 
-import com.xa.mass.client.worker.AdapterNodeSpec;
-import com.xa.mass.client.worker.NodeGroupBindingSpec;
 import com.xa.mass.client.worker.WorkerCapabilityReport;
 import com.xa.mass.client.worker.WorkerClient;
 import com.xa.mass.client.worker.WorkerDispatchItem;
@@ -36,12 +34,6 @@ public final class PollingWorkerSession implements AutoCloseable {
     private final WorkerClient workerClient;
     private final String workerId;
     private final String workerGroupId;
-    private final String adapterNodeId;
-    private final String adapterType;
-    private final String adapterVersion;
-    private final String endpointId;
-    private final String pluginVersion;
-    private final String deploymentVersion;
     private final String sessionToken;
     private final Map<String, String> attributes;
     private final int maxMessages;
@@ -62,12 +54,6 @@ public final class PollingWorkerSession implements AutoCloseable {
         this.workerClient = builder.workerClient;
         this.workerId = requireText(builder.workerId, "workerId");
         this.workerGroupId = requireText(builder.workerGroupId, "workerGroupId");
-        this.adapterNodeId = optionalText(builder.adapterNodeId);
-        this.adapterType = firstNonBlank(builder.adapterType, "polling");
-        this.adapterVersion = builder.adapterVersion;
-        this.endpointId = firstNonBlank(builder.endpointId, adapterNodeId != null ? adapterNodeId : workerId);
-        this.pluginVersion = builder.pluginVersion;
-        this.deploymentVersion = builder.deploymentVersion;
         this.sessionToken = UUID.randomUUID().toString();
         this.attributes = Map.copyOf(builder.attributes);
         this.maxMessages = builder.maxMessages;
@@ -91,26 +77,6 @@ public final class PollingWorkerSession implements AutoCloseable {
     public PollingWorkerSession start() {
         WorkerSessionStartupStep lastSuccessful = null;
         try {
-            if (adapterNodeId != null) {
-                workerClient.registerAdapterNode(AdapterNodeSpec.builder()
-                        .adapterNodeId(adapterNodeId)
-                        .adapterType(adapterType)
-                        .adapterVersion(adapterVersion)
-                        .endpointId(endpointId)
-                        .attributes(attributes)
-                        .build());
-                lastSuccessful = WorkerSessionStartupStep.REGISTER_ADAPTER_NODE;
-
-                workerClient.bindNodeGroup(NodeGroupBindingSpec.builder()
-                        .adapterNodeId(adapterNodeId)
-                        .workerGroupId(workerGroupId)
-                        .pluginVersion(pluginVersion)
-                        .deploymentVersion(deploymentVersion)
-                        .attributes(attributes)
-                        .build());
-                lastSuccessful = WorkerSessionStartupStep.BIND_NODE_GROUP;
-            }
-
             WorkerRegistrationResult registration = workerClient.registerWorker(WorkerSpec.builder()
                     .workerId(workerId)
                     .workerGroupId(workerGroupId)
@@ -151,7 +117,7 @@ public final class PollingWorkerSession implements AutoCloseable {
         } catch (Throwable failure) {
             running.set(false);
             executor.shutdownNow();
-            WorkerSessionStartupStep failedStep = nextStepAfter(lastSuccessful, adapterNodeId != null);
+            WorkerSessionStartupStep failedStep = nextStepAfter(lastSuccessful);
             WorkerSessionStartupFailure startupFailure =
                     new WorkerSessionStartupFailure(workerId, failedStep, lastSuccessful, failure);
             listener.onStartupFailure(startupFailure);
@@ -269,12 +235,9 @@ public final class PollingWorkerSession implements AutoCloseable {
         return items == null ? List.of() : items;
     }
 
-    private static WorkerSessionStartupStep nextStepAfter(WorkerSessionStartupStep lastSuccessful,
-                                                          boolean topologyBootstrapEnabled) {
+    private static WorkerSessionStartupStep nextStepAfter(WorkerSessionStartupStep lastSuccessful) {
         if (lastSuccessful == null) {
-            return topologyBootstrapEnabled
-                    ? WorkerSessionStartupStep.REGISTER_ADAPTER_NODE
-                    : WorkerSessionStartupStep.REGISTER_WORKER;
+            return WorkerSessionStartupStep.REGISTER_WORKER;
         }
         WorkerSessionStartupStep[] steps = WorkerSessionStartupStep.values();
         int next = lastSuccessful.ordinal() + 1;
@@ -288,24 +251,10 @@ public final class PollingWorkerSession implements AutoCloseable {
         return value.trim();
     }
 
-    private static String optionalText(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private static String firstNonBlank(String primary, String fallback) {
-        return primary == null || primary.isBlank() ? fallback : primary.trim();
-    }
-
     public static final class Builder {
         private final WorkerClient workerClient;
         private String workerId;
         private String workerGroupId;
-        private String adapterNodeId;
-        private String adapterType = "polling";
-        private String adapterVersion;
-        private String endpointId;
-        private String pluginVersion;
-        private String deploymentVersion;
         private Map<String, String> attributes = new LinkedHashMap<>();
         private WorkerEventHandlers.Builder eventHandlers = WorkerEventHandlers.builder();
         private int maxMessages = 1;
@@ -328,36 +277,6 @@ public final class PollingWorkerSession implements AutoCloseable {
 
         public Builder workerGroupId(String workerGroupId) {
             this.workerGroupId = workerGroupId;
-            return this;
-        }
-
-        public Builder adapterNodeId(String adapterNodeId) {
-            this.adapterNodeId = adapterNodeId;
-            return this;
-        }
-
-        public Builder adapterType(String adapterType) {
-            this.adapterType = adapterType;
-            return this;
-        }
-
-        public Builder adapterVersion(String adapterVersion) {
-            this.adapterVersion = adapterVersion;
-            return this;
-        }
-
-        public Builder endpointId(String endpointId) {
-            this.endpointId = endpointId;
-            return this;
-        }
-
-        public Builder pluginVersion(String pluginVersion) {
-            this.pluginVersion = pluginVersion;
-            return this;
-        }
-
-        public Builder deploymentVersion(String deploymentVersion) {
-            this.deploymentVersion = deploymentVersion;
             return this;
         }
 

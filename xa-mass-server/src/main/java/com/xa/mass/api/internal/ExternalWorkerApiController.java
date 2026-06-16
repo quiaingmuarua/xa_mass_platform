@@ -24,7 +24,7 @@ import com.xa.mass.sdk.model.WorkerStateReportRequest;
 import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.sdk.worker.PulledTaskDispatch;
-import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.sdk.worker.WorkerResultSubmitRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -334,13 +334,16 @@ public class ExternalWorkerApiController {
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_SUBMIT_RESULT, workerId, null, null);
         String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "submitResult");
-        boolean submitted = workerClient.submitResult(boundWorkerId, new TaskResultReport(
+        boolean submitted = workerClient.submitResult(boundWorkerId, new WorkerResultSubmitRequest(
                 requireNonBlank(requestBody.getTaskId(), "taskId"),
                 requireNonBlank(requestBody.getMessageId(), "messageId"),
                 requestBody.isSuccess(),
                 blankToNull(requestBody.getDetail()),
                 blankToNull(requestBody.getErrorCode()),
-                requestBody.getOutput()
+                requestBody.getOutput(),
+                null,
+                null,
+                null
         ));
         return ApiResponse.success(Map.of(
                 "workerId", boundWorkerId,

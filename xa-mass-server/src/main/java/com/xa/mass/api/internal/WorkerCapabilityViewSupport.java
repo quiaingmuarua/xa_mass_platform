@@ -2,7 +2,6 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.transport.WorkerTransportHints;
 
@@ -18,69 +17,35 @@ final class WorkerCapabilityViewSupport {
     private static final Map<String, String> WORKER_FIELD_SOURCES = Map.ofEntries(
             Map.entry("workerId", "declaration"),
             Map.entry("workerGroupId", "declaration"),
-            Map.entry("adapterNodeId", "declaration"),
             Map.entry("agentVersion", "declaration"),
             Map.entry("maxConcurrentWork", "declaration"),
             Map.entry("attributes", "declaration"),
             Map.entry("transportHint", "declaration"),
-            Map.entry("updateTime", "declaration"),
             Map.entry("runtimeStatus", "runtimeStatusDisplay"),
-            Map.entry("lastHeartbeat", "runtime"),
             Map.entry("locked", "runtime"),
             Map.entry("reachability", "workerRuntimeReachability"),
             Map.entry("reachable", "workerRuntimeReachability"),
-            Map.entry("connections", "transportSessionEvidence"),
-            Map.entry("hasActiveEndpoint", "transportSessionEvidence"),
-            Map.entry("supportedProjects", "compatibilityProjection"),
-            Map.entry("supportedEventCodes", "compatibilityProjection"),
-            Map.entry("eventBindings", "compatibilityProjection")
+            Map.entry("supportedProjects", "workerGroupCapability"),
+            Map.entry("supportedEventCodes", "workerGroupCapability"),
+            Map.entry("eventBindings", "workerGroupCapability")
     );
     private static final Map<String, String> CATALOG_WORKER_FIELD_SOURCES = Map.ofEntries(
             Map.entry("workerId", "declaration"),
             Map.entry("workerGroupId", "declaration"),
-            Map.entry("adapterNodeId", "declaration"),
             Map.entry("agentVersion", "declaration"),
             Map.entry("maxConcurrentWork", "declaration"),
             Map.entry("attributes", "declaration"),
             Map.entry("transportHint", "declaration"),
-            Map.entry("updateTime", "declaration"),
             Map.entry("runtimeStatus", "runtimeStatusDisplay"),
-            Map.entry("lastHeartbeat", "runtime"),
             Map.entry("locked", "runtime"),
             Map.entry("reachability", "workerRuntimeReachability"),
             Map.entry("reachable", "workerRuntimeReachability"),
-            Map.entry("connections", "transportSessionEvidence"),
-            Map.entry("hasActiveEndpoint", "transportSessionEvidence"),
             Map.entry("supportedProjects", "workerGroupCapability"),
             Map.entry("supportedEventCodes", "workerGroupCapability"),
             Map.entry("eventBindings", "workerGroupCapability")
     );
 
     private WorkerCapabilityViewSupport() {
-    }
-
-    static Map<String, List<Map<String, Object>>> groupConnectionsByWorker(RuntimeDiagnosticsOperations runtimeDiagnostics) {
-        if (runtimeDiagnostics == null) {
-            return Map.of();
-        }
-
-        Map<String, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
-        List<Map<String, Object>> sessions = runtimeDiagnostics.listSessions();
-        if (sessions == null || sessions.isEmpty()) {
-            return grouped;
-        }
-
-        for (Map<String, Object> session : sessions) {
-            if (session == null || session.isEmpty()) {
-                continue;
-            }
-            String workerId = readTrimmed(session.get("workerId"));
-            if (workerId == null) {
-                continue;
-            }
-            grouped.put(workerId, normalizeConnections(session.get("connections")));
-        }
-        return grouped;
     }
 
     static List<Map<String, Object>> deriveEventBindings(List<String> supportedEventCodes,
@@ -121,15 +86,6 @@ final class WorkerCapabilityViewSupport {
         return List.copyOf(bindings);
     }
 
-    static boolean hasActiveConnection(List<Map<String, Object>> connections) {
-        if (connections == null || connections.isEmpty()) {
-            return false;
-        }
-        return connections.stream().anyMatch(connection ->
-                connection != null && Boolean.TRUE.equals(connection.get("active"))
-        );
-    }
-
     static Map<String, String> workerFieldSources() {
         return WORKER_FIELD_SOURCES;
     }
@@ -148,23 +104,6 @@ final class WorkerCapabilityViewSupport {
         }
         List<String> definitionProjects = normalizeStringList(definition.getProjectCodes());
         return definitionProjects.isEmpty() ? List.of() : definitionProjects;
-    }
-
-    private static List<Map<String, Object>> normalizeConnections(Object value) {
-        if (!(value instanceof List<?> list) || list.isEmpty()) {
-            return List.of();
-        }
-        List<Map<String, Object>> connections = new ArrayList<>();
-        for (Object item : list) {
-            if (!(item instanceof Map<?, ?> map) || map.isEmpty()) {
-                continue;
-            }
-            Map<String, Object> normalized = new LinkedHashMap<>();
-            normalized.put("active", Boolean.TRUE.equals(map.get("active")));
-            normalized.put("endpointId", readTrimmed(map.get("endpointId")));
-            connections.add(normalized);
-        }
-        return connections.isEmpty() ? List.of() : List.copyOf(connections);
     }
 
     private static List<String> normalizeStringList(List<String> values) {

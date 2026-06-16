@@ -75,9 +75,10 @@ class WorkerClientTest {
                 assertEquals("phone-worker-sg-001", request.get("workerId").asText());
                 assertEquals("phone-device-probe", request.get("workerGroupId").asText());
                 assertEquals("fp-android-13-sg", request.get("attributes").get("fingerprint").asText());
+                assertFalse(request.has("adapterNodeId"), "worker registration must not carry topology ids");
                 assertFalse(request.has("eventBindings"), "worker registration must stay group-first");
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","adapterNodeId":"phone-poll-node-sg-1","workerGroupId":"phone-device-probe","transportHint":"polling"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","workerGroupId":"phone-device-probe","transportHint":"polling"}}
                         """);
                 return;
             }
@@ -107,7 +108,6 @@ class WorkerClientTest {
                 .build());
         WorkerRegistrationResult worker = workers.registerWorker(WorkerSpec.builder()
                 .workerId("phone-worker-sg-001")
-                .adapterNodeId("phone-poll-node-sg-1")
                 .workerGroupId("phone-device-probe")
                 .polling()
                 .attribute("fingerprint", "fp-android-13-sg")

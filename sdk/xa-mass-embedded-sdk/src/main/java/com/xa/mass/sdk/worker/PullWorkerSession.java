@@ -3,13 +3,12 @@ package com.xa.mass.sdk.worker;
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.DeliveryPullStatus;
-import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
+import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.transport.model.TaskResultReport;
-import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.starter.TaskResultCallbackCodec;
 import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
 import com.xa.mass.transport.lease.TransportEndpointLeaseConsumerEvidence;
 import com.xa.mass.transport.lease.TransportEndpointLeaseHeartbeat;
@@ -36,7 +35,8 @@ public class PullWorkerSession {
     private final String connectionId;
     private final DeliveryPullChannel deliveryPullChannel;
     private final TaskDispatchPayloadCodec payloadCodec;
-    private final TaskResultIngestChannel taskResultIngestChannel;
+    private final TransportResultIngressChannel resultIngressChannel;
+    private final TaskResultCallbackCodec resultCallbackCodec;
     private final TransportEndpointLeaseStore endpointLeaseStore;
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
     private final String deliveryCommandConsumerKey;
@@ -48,7 +48,7 @@ public class PullWorkerSession {
                       String adapterId,
                       String connectionId,
                       DeliveryPullChannel deliveryPullChannel,
-                      TaskResultIngestChannel taskResultIngestChannel,
+                      TransportResultIngressChannel resultIngressChannel,
                       TransportEndpointLeaseStore endpointLeaseStore,
                       WorkerPresenceIngress workerPresenceIngress,
                       String transportHint) {
@@ -57,7 +57,7 @@ public class PullWorkerSession {
                 adapterId,
                 connectionId,
                 deliveryPullChannel,
-                taskResultIngestChannel,
+                resultIngressChannel,
                 endpointLeaseStore,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
                 "local",
@@ -70,7 +70,7 @@ public class PullWorkerSession {
                       String adapterId,
                       String connectionId,
                       DeliveryPullChannel deliveryPullChannel,
-                      TaskResultIngestChannel taskResultIngestChannel,
+                      TransportResultIngressChannel resultIngressChannel,
                       TransportEndpointLeaseStore endpointLeaseStore,
                       DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
                       String deliveryCommandConsumerKey,
@@ -86,7 +86,8 @@ public class PullWorkerSession {
         this.connectionId = requireText(connectionId, "connectionId");
         this.deliveryPullChannel = Objects.requireNonNull(deliveryPullChannel, "deliveryPullChannel");
         this.payloadCodec = new TaskDispatchPayloadCodec();
-        this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
+        this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
+        this.resultCallbackCodec = new TaskResultCallbackCodec();
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
         this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
                 ? deliveryCommandConsumerRegistry
@@ -224,21 +225,26 @@ public class PullWorkerSession {
                                 String errorCode,
                                 Map<String, Object> output) {
         Objects.requireNonNull(item, "item");
-        TaskResultReport report = new TaskResultReport(
+        WorkerResultSubmitRequest request = new WorkerResultSubmitRequest(
                 item.getTaskId(),
                 item.getMessageId(),
                 success,
                 detail,
                 errorCode,
-                output
-        );
-        return taskResultIngestChannel.ingest(new TransportResultEnvelope(
-                adapterId,
-                routeKey,
+                output,
                 item.getAttemptId(),
                 null,
-                null,
-                report
+                null
+        );
+        return submitResult(request);
+    }
+
+    public boolean submitResult(WorkerResultSubmitRequest request) {
+        Objects.requireNonNull(request, "request");
+        return resultIngressChannel.ingest(resultCallbackCodec.toEnvelope(
+                request,
+                request.messageId(),
+                diagnostics(null)
         ));
     }
 
@@ -248,19 +254,24 @@ public class PullWorkerSession {
                                 String detail,
                                 String errorCode,
                                 Map<String, Object> output) {
-        TaskResultReport report = new TaskResultReport(
+        return submitResult(WorkerResultSubmitRequest.of(
                 taskId,
                 messageId,
                 success,
                 detail,
                 errorCode,
                 output
-        );
-        return taskResultIngestChannel.ingest(TransportResultEnvelope.addressed(
-                adapterId,
-                routeKey,
-                report
         ));
+    }
+
+    private Map<String, String> diagnostics(String traceId) {
+        java.util.LinkedHashMap<String, String> values = new java.util.LinkedHashMap<>();
+        values.put("adapterId", adapterId);
+        values.put("routeKey", routeKey);
+        if (traceId != null && !traceId.isBlank()) {
+            values.put("traceId", traceId);
+        }
+        return Map.copyOf(values);
     }
 
     private String normalizeReason(String reason, String defaultReason) {

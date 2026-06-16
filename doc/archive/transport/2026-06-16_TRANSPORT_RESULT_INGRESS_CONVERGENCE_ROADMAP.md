@@ -1,6 +1,6 @@
 # Transport Result Ingress Convergence Roadmap
 
-Status: proposed direction document.
+Status: completed and archived after implementation, verification, and residue cleanup.
 
 ## Summary
 
@@ -54,10 +54,11 @@ shape:
    `partitionKey` are not result correctness facts. They may be diagnostics or
    queue partitioning hints only.
 
-Current result ingress already routes into engine-owned result convergence, but
-the transport API still exposes `TaskResultReport`, `TransportResultEnvelope`,
-and a dual `TaskResultIngestChannel` entry point. This roadmap removes that
-task-shaped result payload projection from transport mainline.
+Before this convergence, result ingress already routed into engine-owned result
+convergence, but the transport API exposed `TaskResultReport`,
+`TransportResultEnvelope`, and a dual `TaskResultIngestChannel` entry point.
+This roadmap removes that task-shaped result payload projection from transport
+mainline.
 
 The first behavior-changing implementation slice must be compile-safe. It must
 not remove the old dual result channel before every production implementer and
@@ -67,9 +68,9 @@ envelope, introduce the owner-owned result callback codec/command, retarget
 runtime channels, adapters, SDK/server submit paths, Redis inbox, pump, and
 tests, then remove the old overloads in the same compile point.
 
-## Current Code Observations
+## Before Convergence Observations
 
-These are current implementation facts, not target state:
+These were implementation facts at roadmap creation time, not target state:
 
 - `TaskResultIngestChannel` exposes two paths:
   `ingest(TaskResultReport)` and `ingest(TransportResultEnvelope)`.
@@ -467,8 +468,9 @@ Scope:
   `WorkerResultSubmitRequest` or `WorkerResultSubmitCommand`. Server external
   worker DTOs map to that SDK-owned command; they must not depend on
   starter-internal `TaskResultCallbackCommand`.
-- Retarget `BufferedTaskResultIngestChannel`, `RedisTaskResultIngestChannel`,
-  `TaskResultIngestInboxPump`, and the process-boundary codec in the same
+- Retarget `BufferedTransportResultIngressChannel`,
+  `RedisTransportResultIngressChannel`, `TransportResultIngressInboxPump`,
+  and the process-boundary codec in the same
   slice.
 - Delete or fully remove from production mainline the old transport result DTOs
   after all production callers in this scope are retargeted.
@@ -561,8 +563,8 @@ transport into the result lifecycle owner.
 
 Scope:
 
-- Keep `BufferedTaskResultIngestChannel` typed to one result ingress item.
-- Keep `RedisTaskResultIngestChannel` on the new single envelope ingestion
+- Keep `BufferedTransportResultIngressChannel` typed to one result ingress item.
+- Keep `RedisTransportResultIngressChannel` on the new single envelope ingestion
   method.
 - Keep the process-boundary codec on the new opaque ingress envelope.
 - Add a transport-owned inbox partition resolver if the first implementation
@@ -602,7 +604,7 @@ Suggested verification:
 
 ```powershell
 .\mvnw.cmd -pl transport/transport_api,transport/transport_runtime -am -DskipTests install
-.\mvnw.cmd -pl transport/transport_runtime -Dtest=BufferedTaskResultIngestChannelTest,RedisTaskResultIngestChannelTest test
+.\mvnw.cmd -pl transport/transport_runtime -Dtest=BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest test
 
 rg -n "LinkedBlockingQueue<Object>|instanceof TaskResultReport|ingest\\(TaskResultReport|TaskResultReportRecord" `
   transport/transport_runtime/src/main/java `
@@ -683,7 +685,7 @@ Suggested verification:
 ```powershell
 .\mvnw.cmd -pl transport/transport_api,transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter,sdk/xa-mass-embedded-sdk,xa-mass-server -am -DskipTests install
 .\mvnw.cmd -pl transport/transport_api test
-.\mvnw.cmd -pl transport/transport_runtime -Dtest=TransportConvergenceArchitectureGuardTest,RedisTaskResultIngestChannelTest,BufferedTaskResultIngestChannelTest test
+.\mvnw.cmd -pl transport/transport_runtime -Dtest=TransportConvergenceArchitectureGuardTest,RedisTransportResultIngressChannelTest,BufferedTransportResultIngressChannelTest test
 
 rg -n "TaskResultReport|TransportResultEnvelope|TaskResultIngestFacade|TaskResultCorrelation|TaskManager|TaskResultService" `
   transport/transport_api/src/main/java `
@@ -755,7 +757,7 @@ Focused tests:
 ```powershell
 .\mvnw.cmd -pl transport/transport_api,transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter,sdk/xa-mass-embedded-sdk,sdk/xa-mass-java-sdk,xa-mass-server -am -DskipTests install
 .\mvnw.cmd -pl transport/transport_api test
-.\mvnw.cmd -pl transport/transport_runtime -Dtest=BufferedTaskResultIngestChannelTest,RedisTaskResultIngestChannelTest,TransportConvergenceArchitectureGuardTest test
+.\mvnw.cmd -pl transport/transport_runtime -Dtest=BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,TransportConvergenceArchitectureGuardTest test
 .\mvnw.cmd -pl transport/websocket-adapter -Dtest=WebSocketInputProcessorTest test
 .\mvnw.cmd -pl transport/socket-adapter -Dtest=SocketTransportServerTest test
 .\mvnw.cmd -pl transport/polling-adapter -Dtest=PollingWorkerAdapterTest test

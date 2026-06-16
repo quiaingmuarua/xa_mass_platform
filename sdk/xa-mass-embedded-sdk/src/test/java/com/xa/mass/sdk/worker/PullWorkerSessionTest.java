@@ -3,12 +3,14 @@ package com.xa.mass.sdk.worker;
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
-import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
+import com.xa.mass.starter.TaskResultCallbackCodec;
+import com.xa.mass.starter.TaskResultCallbackCommand;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -31,7 +33,7 @@ class PullWorkerSessionTest {
         DeliveryPullResult expected = DeliveryPullResult.delivered(List.of(message("msg-1")));
         when(deliveryPullChannel.pollDeliveryMessagesResult("worker-1", 5, 250L)).thenReturn(expected);
 
-        PullWorkerSession session = session(deliveryPullChannel, mock(TaskResultIngestChannel.class),
+        PullWorkerSession session = session(deliveryPullChannel, mock(TransportResultIngressChannel.class),
                 new InMemoryTransportEndpointLeaseStore());
 
         TaskPullResult result = session.pollResult(5, 250L);
@@ -47,7 +49,7 @@ class PullWorkerSessionTest {
         when(deliveryPullChannel.pollDeliveryMessagesResult("worker-1", 3, 100L))
                 .thenReturn(DeliveryPullResult.delivered(List.of(message("msg-1"), message("msg-2"))));
 
-        PullWorkerSession session = session(deliveryPullChannel, mock(TaskResultIngestChannel.class),
+        PullWorkerSession session = session(deliveryPullChannel, mock(TransportResultIngressChannel.class),
                 new InMemoryTransportEndpointLeaseStore());
 
         List<PulledTaskDispatch> items = session.poll(3, 100L);
@@ -57,8 +59,8 @@ class PullWorkerSessionTest {
 
     @Test
     void submitResultUsesSessionRouteKeyAndPulledAttemptContext() {
-        TaskResultIngestChannel resultIngestChannel = mock(TaskResultIngestChannel.class);
-        when(resultIngestChannel.ingest(any(TransportResultEnvelope.class))).thenReturn(true);
+        TransportResultIngressChannel resultIngestChannel = mock(TransportResultIngressChannel.class);
+        when(resultIngestChannel.ingest(any(TransportResultIngressEnvelope.class))).thenReturn(true);
 
         PullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
@@ -77,32 +79,40 @@ class PullWorkerSessionTest {
 
         session.submitResult(item, true, "ok");
 
-        var captured = org.mockito.ArgumentCaptor.forClass(TransportResultEnvelope.class);
+        var captured = org.mockito.ArgumentCaptor.forClass(TransportResultIngressEnvelope.class);
         verify(resultIngestChannel).ingest(captured.capture());
-        assertEquals(routeKey(), captured.getValue().getRouteKey());
-        assertEquals("attempt-1", captured.getValue().getAttemptId());
+        assertEquals(routeKey(), captured.getValue().diagnostic("routeKey"));
+        assertEquals("msg-1", captured.getValue().getPartitionKey());
+        TaskResultCallbackCommand command = new TaskResultCallbackCodec().decode(captured.getValue());
+        assertEquals("task-1", command.taskId());
+        assertEquals("msg-1", command.messageId());
+        assertEquals("attempt-1", command.attemptId());
     }
 
     @Test
     void submitResultWithoutDispatchRouteKeyUsesCanonicalRouteKey() {
-        TaskResultIngestChannel resultIngestChannel = mock(TaskResultIngestChannel.class);
-        when(resultIngestChannel.ingest(any(TransportResultEnvelope.class))).thenReturn(true);
+        TransportResultIngressChannel resultIngestChannel = mock(TransportResultIngressChannel.class);
+        when(resultIngestChannel.ingest(any(TransportResultIngressEnvelope.class))).thenReturn(true);
 
         PullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
 
         session.submitResult("task-1", "msg-1", true, "ok", null, Map.of());
 
-        var captured = org.mockito.ArgumentCaptor.forClass(TransportResultEnvelope.class);
+        var captured = org.mockito.ArgumentCaptor.forClass(TransportResultIngressEnvelope.class);
         verify(resultIngestChannel).ingest(captured.capture());
-        assertEquals(routeKey(), captured.getValue().getRouteKey());
+        assertEquals(routeKey(), captured.getValue().diagnostic("routeKey"));
+        assertEquals("msg-1", captured.getValue().getPartitionKey());
+        TaskResultCallbackCommand command = new TaskResultCallbackCodec().decode(captured.getValue());
+        assertEquals("task-1", command.taskId());
+        assertEquals("msg-1", command.messageId());
     }
 
     @Test
     void connectHeartbeatDisconnectWritePresenceWithCanonicalRouteAndSessionToken() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        PullWorkerSession session = session(mock(DeliveryPullChannel.class), mock(TaskResultIngestChannel.class),
+        PullWorkerSession session = session(mock(DeliveryPullChannel.class), mock(TransportResultIngressChannel.class),
                 endpointLeaseStore, presenceIngress);
 
         assertTrue(session.connectAndClaim("connected"));
@@ -138,7 +148,7 @@ class PullWorkerSessionTest {
     }
 
     private static PullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
-                                             TaskResultIngestChannel resultIngestChannel,
+                                             TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore) {
         return session("conn-1", deliveryPullChannel, resultIngestChannel, endpointLeaseStore,
                 new RecordingWorkerPresenceIngress());
@@ -147,12 +157,12 @@ class PullWorkerSessionTest {
     private static PullWorkerSession staleSession(String connectionId,
                                                   InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                                   WorkerPresenceIngress presenceIngress) {
-        return session(connectionId, mock(DeliveryPullChannel.class), mock(TaskResultIngestChannel.class), endpointLeaseStore,
+        return session(connectionId, mock(DeliveryPullChannel.class), mock(TransportResultIngressChannel.class), endpointLeaseStore,
                 presenceIngress);
     }
 
     private static PullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
-                                             TaskResultIngestChannel resultIngestChannel,
+                                             TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                              WorkerPresenceIngress presenceIngress) {
         return session("conn-1", deliveryPullChannel, resultIngestChannel, endpointLeaseStore, presenceIngress);
@@ -160,7 +170,7 @@ class PullWorkerSessionTest {
 
     private static PullWorkerSession session(String connectionId,
                                              DeliveryPullChannel deliveryPullChannel,
-                                             TaskResultIngestChannel resultIngestChannel,
+                                             TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                              WorkerPresenceIngress presenceIngress) {
         return new PullWorkerSession(

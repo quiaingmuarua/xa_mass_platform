@@ -59,30 +59,13 @@ class WebSocketWorkerSessionTest {
             String path = exchange.getRequestURI().getRawPath();
             observed.add(method + " " + path);
             String body = readBody(exchange);
-            if ("/worker-api/v1/adapter-nodes".equals(path)) {
-                JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("ws-node-sg-1", request.get("adapterNodeId").asText());
-                assertEquals("websocket", request.get("adapterType").asText());
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"ws-node-sg-1","adapterType":"websocket","endpointId":"ws-node-sg-1","enabled":true,"online":true,"attributes":{"region":"sg"}}}
-                        """);
-                return;
-            }
-            if ("/worker-api/v1/node-group-bindings".equals(path)) {
-                JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("realtime-probe", request.get("workerGroupId").asText());
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"ws-node-sg-1","workerGroupId":"realtime-probe","enabled":true,"draining":false,"attributes":{"region":"sg"}}}
-                        """);
-                return;
-            }
             if ("/worker-api/v1/workers".equals(path)) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
                 assertEquals("ws-worker-001", request.get("workerId").asText());
                 assertFalse(request.has("adapterId"));
                 assertEquals("realtime", request.get("transportHint").asText());
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"ws-worker-001","adapterNodeId":"ws-node-sg-1","workerGroupId":"realtime-probe","transportHint":"realtime"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"ws-worker-001","workerGroupId":"realtime-probe","transportHint":"realtime"}}
                         """);
                 return;
             }
@@ -92,7 +75,6 @@ class WebSocketWorkerSessionTest {
         try (WebSocketWorkerSession session = platform().workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .attribute("region", "sg")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of(
@@ -150,7 +132,6 @@ class WebSocketWorkerSessionTest {
         WebSocketWorkerSession session = platform.workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
                 .buildUnstarted();
@@ -177,7 +158,6 @@ class WebSocketWorkerSessionTest {
         WebSocketWorkerSession session = platform.workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .connectTimeout(Duration.ofMillis(654))
                 .httpClient(overrideHttpClient)
@@ -195,7 +175,6 @@ class WebSocketWorkerSessionTest {
         WebSocketWorkerSession session = WebSocketWorkerSession.builder(dummyWorkerClient())
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .reconnectBackoff(Duration.ofMillis(500))
                 .maxReconnectBackoff(Duration.ofSeconds(10))
@@ -218,7 +197,6 @@ class WebSocketWorkerSessionTest {
         try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
                 .connectTimeout(Duration.ofSeconds(1))
@@ -249,7 +227,6 @@ class WebSocketWorkerSessionTest {
         try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
                 .connectTimeout(Duration.ofSeconds(1))
@@ -295,7 +272,6 @@ class WebSocketWorkerSessionTest {
         try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
                 .connectTimeout(Duration.ofSeconds(1))
@@ -334,7 +310,6 @@ class WebSocketWorkerSessionTest {
         try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
                 .connectTimeout(Duration.ofSeconds(1))
@@ -366,7 +341,6 @@ class WebSocketWorkerSessionTest {
         WebSocketWorkerSession session = platform().workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
                 .connectTimeout(Duration.ofMillis(100))
@@ -411,7 +385,6 @@ class WebSocketWorkerSessionTest {
         try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
                 .connectTimeout(Duration.ofSeconds(1))
@@ -453,7 +426,6 @@ class WebSocketWorkerSessionTest {
         try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
                 .connectTimeout(Duration.ofSeconds(1))
@@ -502,7 +474,6 @@ class WebSocketWorkerSessionTest {
         WebSocketWorkerSession session = platform().workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
                 .connectTimeout(Duration.ofMillis(100))
@@ -553,7 +524,6 @@ class WebSocketWorkerSessionTest {
         WebSocketWorkerSession session = platform().workerSessions().webSocket()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
-                .adapterNodeId("ws-node-sg-1")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
                 .connectTimeout(Duration.ofMillis(100))
@@ -614,21 +584,9 @@ class WebSocketWorkerSessionTest {
         startServer(exchange -> {
             String path = exchange.getRequestURI().getRawPath();
             readBody(exchange);
-            if ("/worker-api/v1/adapter-nodes".equals(path)) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"ws-node-sg-1","adapterType":"websocket","endpointId":"ws-node-sg-1","enabled":true,"online":true,"attributes":{}}}
-                        """);
-                return;
-            }
-            if ("/worker-api/v1/node-group-bindings".equals(path)) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"ws-node-sg-1","workerGroupId":"realtime-probe","enabled":true,"draining":false,"attributes":{}}}
-                        """);
-                return;
-            }
             if ("/worker-api/v1/workers".equals(path)) {
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"ws-worker-001","adapterNodeId":"ws-node-sg-1","workerGroupId":"realtime-probe","transportHint":"realtime"}}
+                        {"code":0,"msg":"ok","data":{"workerId":"ws-worker-001","workerGroupId":"realtime-probe","transportHint":"realtime"}}
                         """);
                 return;
             }
@@ -772,3 +730,4 @@ class WebSocketWorkerSessionTest {
         }
     }
 }
+

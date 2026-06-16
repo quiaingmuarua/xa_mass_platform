@@ -138,8 +138,6 @@ public class CatalogController {
         if (workerQueries == null) {
             return ResponseEntity.ok(ApiResponse.success(List.of()));
         }
-        Map<String, List<Map<String, Object>>> connectionsByWorker =
-                WorkerCapabilityViewSupport.groupConnectionsByWorker(runtimeDiagnostics);
         Map<String, WorkerGroupSnapshot> groupsById = workerGroupsById();
         List<WorkerSnapshot> workers = workerQueries.getAllWorkers();
         Set<String> reachableWorkerIds = resolveReachableWorkerIds(workers);
@@ -148,8 +146,6 @@ public class CatalogController {
                 .sorted(Comparator.comparing(worker -> worker.getWorkerId(), Comparator.nullsLast(String::compareTo)))
                 .map(worker -> {
                     WorkerGroupSnapshot group = groupsById.get(worker.getWorkerGroupId());
-                    List<Map<String, Object>> connections =
-                            connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("workerId", worker.getWorkerId());
                     item.put("runtimeStatus", worker.getStatus());
@@ -164,8 +160,6 @@ public class CatalogController {
                     boolean reachable = reachableWorkerIds.contains(worker.getWorkerId());
                     item.put("reachability", reachable ? "ONLINE" : "OFFLINE");
                     item.put("reachable", reachable);
-                    item.put("connections", connections);
-                    item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
                     item.put("locked", lockedWorkerIds.contains(worker.getWorkerId()));
                     item.put("fieldSources", WorkerCapabilityViewSupport.catalogWorkerFieldSources());
                     return item;

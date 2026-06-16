@@ -3,7 +3,7 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.channel.TransportResultIngressChannel;
 
 import java.util.Objects;
 
@@ -15,18 +15,18 @@ public final class WebSocketDispatcherContext {
     private final WorkerEndpointRegistry endpointRegistry;
     private final RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry;
     private final WebSocketTransportFrameCodec frameCodec;
-    private final TaskResultIngestChannel taskResultIngestChannel;
+    private final TransportResultIngressChannel resultIngressChannel;
 
     public WebSocketDispatcherContext(String adapterId,
                                       WorkerEndpointRegistry endpointRegistry,
                                       RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry,
                                       WebSocketTransportFrameCodec frameCodec,
-                                      TaskResultIngestChannel taskResultIngestChannel) {
+                                      TransportResultIngressChannel resultIngressChannel) {
         this.adapterId = requireAdapterId(adapterId);
         this.endpointRegistry = endpointRegistry;
         this.rawRouteEndpointRegistry = rawRouteEndpointRegistry;
         this.frameCodec = frameCodec;
-        this.taskResultIngestChannel = taskResultIngestChannel;
+        this.resultIngressChannel = resultIngressChannel;
     }
 
     public String getAdapterId() {
@@ -45,8 +45,8 @@ public final class WebSocketDispatcherContext {
         return frameCodec;
     }
 
-    public TaskResultIngestChannel getTaskResultIngestChannel() {
-        return taskResultIngestChannel;
+    public TransportResultIngressChannel getResultIngressChannel() {
+        return resultIngressChannel;
     }
 
     private static String requireAdapterId(String adapterId) {

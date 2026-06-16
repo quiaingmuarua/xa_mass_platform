@@ -18,8 +18,8 @@ import java.util.List;
  * be treated as platform capability truth.
  *
  * <p>The result callback side is transport-specific and wired externally
- * into canonical result-ingest seams such as
- * {@code TaskResultIngestChannel}.
+ * into opaque result-ingest seams such as
+ * {@code TransportResultIngressChannel}.
  */
 public interface WorkerAdapter {
 

@@ -127,7 +127,7 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
-import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.sdk.worker.PulledTaskDispatch;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
@@ -601,7 +601,7 @@ class MassSdkTest {
         try {
             bootstrapContext = new TransportAdapterBootstrapContext(
                     new CompositeWorkerEndpointRegistry(),
-                    mock(TaskResultIngestChannel.class),
+                    mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
                     deliveryService(),
@@ -630,7 +630,7 @@ class MassSdkTest {
         try {
             bootstrapContext = new TransportAdapterBootstrapContext(
                     new CompositeWorkerEndpointRegistry(),
-                    mock(TaskResultIngestChannel.class),
+                    mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
                     deliveryService(),
@@ -661,7 +661,7 @@ class MassSdkTest {
         try {
             bootstrapContext = new TransportAdapterBootstrapContext(
                     new CompositeWorkerEndpointRegistry(),
-                    mock(TaskResultIngestChannel.class),
+                    mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
                     deliveryService(),
@@ -694,7 +694,7 @@ class MassSdkTest {
         try {
             bootstrapContext = new TransportAdapterBootstrapContext(
                     new CompositeWorkerEndpointRegistry(),
-                    mock(TaskResultIngestChannel.class),
+                    mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
                     deliveryService(),
@@ -757,7 +757,7 @@ class MassSdkTest {
                     () -> adapterBootstrap(runtimeComposition, "ws-public").contribute(
                             new TransportAdapterBootstrapContext(
                                     new ServerSessionManager("websocket"),
-                                    mock(TaskResultIngestChannel.class),
+                                    mock(TransportResultIngressChannel.class),
                                     NoopWorkerPresenceIngress.INSTANCE,
                                     new InMemoryTransportEndpointLeaseStore(),
                                     deliveryService(),
@@ -788,7 +788,7 @@ class MassSdkTest {
                     () -> adapterBootstrap(runtimeComposition, "socket-edge").contribute(
                             new TransportAdapterBootstrapContext(
                                     new com.xa.mass.transport.socket.session.SocketSessionManager("socket"),
-                                    mock(TaskResultIngestChannel.class),
+                                    mock(TransportResultIngressChannel.class),
                                     NoopWorkerPresenceIngress.INSTANCE,
                                     new InMemoryTransportEndpointLeaseStore(),
                                     deliveryService(),
@@ -899,7 +899,7 @@ class MassSdkTest {
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         config.setWorkerTransportRuntimeFactory(new WorkerTransportRuntimeFactory() {
             @Override
-            public TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
+            public TransportRuntimeRegistry create(TransportResultIngressChannel taskResultIngestChannel,
                                                    TransportEndpointLeaseStore endpointLeaseStore,
                                                    TransportDeliveryService deliveryService,
                                                    List<TransportBinding> adapterBindings) {
