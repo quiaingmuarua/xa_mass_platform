@@ -1,7 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.worker.WorkerAdapter;
@@ -26,7 +26,7 @@ import java.util.TreeSet;
 public final class TransportRuntimeRegistry {
 
     private final TaskResultIngestChannel taskResultIngestChannel;
-    private final TransportRouteOwnerStore routeOwnerStore;
+    private final TransportEndpointLeaseStore endpointLeaseStore;
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
     private final String deliveryCommandConsumerKey;
     private final List<TransportBinding> bindings;
@@ -34,22 +34,22 @@ public final class TransportRuntimeRegistry {
     private final Map<String, TransportBinding> bindingByAdapterId;
 
     public TransportRuntimeRegistry(TaskResultIngestChannel taskResultIngestChannel,
-                                    TransportRouteOwnerStore routeOwnerStore,
+                                    TransportEndpointLeaseStore endpointLeaseStore,
                                     List<TransportBinding> bindings) {
         this(taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
                 "local",
                 bindings);
     }
 
     public TransportRuntimeRegistry(TaskResultIngestChannel taskResultIngestChannel,
-                                    TransportRouteOwnerStore routeOwnerStore,
+                                    TransportEndpointLeaseStore endpointLeaseStore,
                                     DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
                                     String deliveryCommandConsumerKey,
                                     List<TransportBinding> bindings) {
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
-        this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
+        this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
         this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
                 ? deliveryCommandConsumerRegistry
                 : NoopDeliveryCommandConsumerRegistry.INSTANCE;
@@ -119,7 +119,7 @@ public final class TransportRuntimeRegistry {
                 binding.getTransportHint(),
                 binding.getDeliveryPullChannel(),
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 deliveryCommandConsumerRegistry,
                 deliveryCommandConsumerKey
         );

@@ -2,8 +2,8 @@ package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
-import com.xa.mass.transport.route.RouteConsumerEndpoint;
-import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
+import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -75,27 +75,26 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
-    void sessionsProjectRouteOwnerIntoTransportOwnedStore() {
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "ws-node-1");
+    void sessionsProjectEndpointLeaseIntoTransportOwnedStore() {
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore =
+                new InMemoryTransportEndpointLeaseStore(30_000L, "ws-node-1");
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        manager.setRouteOwnerStore(routeOwnerStore);
+        manager.setEndpointLeaseStore(endpointLeaseStore);
         manager.setWorkerPresenceIngress(presenceIngress);
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
 
-        assertTrue(endpoint(routeOwnerStore, "worker-1").isActive(System.currentTimeMillis()));
-        assertEquals("route-1", endpoint(routeOwnerStore, "worker-1").routeKey());
-        assertEquals("ws-node-1", endpoint(routeOwnerStore, "worker-1").transportNodeId());
-        assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
+        assertEquals("route-1", endpoint(endpointLeaseStore, "worker-1").endpointAddress());
+        assertEquals("ws-node-1", endpoint(endpointLeaseStore, "worker-1").runtimeNodeId());
         assertEquals(List.of("connected:worker-1:websocket:route-1:worker-1:websocket connected:worker-1"),
                 presenceIngress.events);
 
         manager.removeSession(channel);
 
-        assertFalse(hasEndpoint(routeOwnerStore, "worker-1"));
-        assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertFalse(hasEndpoint(endpointLeaseStore, "worker-1"));
         assertEquals(List.of(
                 "connected:worker-1:websocket:route-1:worker-1:websocket connected:worker-1",
                 "disconnected:worker-1:websocket:route-1:worker-1:websocket disconnected:worker-1"
@@ -103,9 +102,10 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
-    void disconnectingOneGroupRouteConsumerKeepsPeerRouteOwner() {
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "ws-node-1");
-        manager.setRouteOwnerStore(routeOwnerStore);
+    void disconnectingOneGroupRouteConsumerKeepsPeerEndpointLease() {
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore =
+                new InMemoryTransportEndpointLeaseStore(30_000L, "ws-node-1");
+        manager.setEndpointLeaseStore(endpointLeaseStore);
         Channel firstChannel = mockActiveChannel("worker-1");
         Channel secondChannel = mockActiveChannel("worker-2");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -113,14 +113,14 @@ class ServerSessionManagerShutdownTest {
         manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-1", firstChannel, ctx);
         manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-2", secondChannel, ctx);
 
-        assertEquals(2, routeOwnerStore.currentOwners("group-route").size());
+        assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
+        assertTrue(hasEndpoint(endpointLeaseStore, "worker-2"));
 
         manager.removeSession(firstChannel);
 
-        assertFalse(hasEndpoint(routeOwnerStore, "worker-1"));
-        assertTrue(endpoint(routeOwnerStore, "worker-2").isActive(System.currentTimeMillis()));
-        assertEquals(1, routeOwnerStore.currentOwners("group-route").size());
-        assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "group-route"));
+        assertFalse(hasEndpoint(endpointLeaseStore, "worker-1"));
+        assertTrue(hasEndpoint(endpointLeaseStore, "worker-2"));
+        assertTrue(manager.isAdapterRouteOnline(manager.getAdapterId(), "group-route"));
     }
 
     @Test
@@ -181,8 +181,8 @@ class ServerSessionManagerShutdownTest {
 
     @Test
     void replacingSelectedWorkerWithDifferentRouteRetiresOldEndpoint() {
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
-        manager.setRouteOwnerStore(routeOwnerStore);
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
+        manager.setEndpointLeaseStore(endpointLeaseStore);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
@@ -194,9 +194,7 @@ class ServerSessionManagerShutdownTest {
         assertEquals(1, manager.getWorkerConnectionCount());
         assertNull(manager.getChannel("route-old"));
         assertEquals(secondChannel, manager.getChannel("route-new"));
-        assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-old"));
-        assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-new"));
-        assertEquals("route-new", endpoint(routeOwnerStore, "worker-1").routeKey());
+        assertEquals("route-new", endpoint(endpointLeaseStore, "worker-1").endpointAddress());
         verify(firstChannel).close();
 
         assertTrue(manager.sendToSelectedWorker(manager.getAdapterId(), "worker-1", "{\"messageId\":\"msg-new\"}"));
@@ -205,9 +203,9 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
-    void retiredWebSocketChannelCannotReclaimRouteOwner() {
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
-        manager.setRouteOwnerStore(routeOwnerStore);
+    void retiredWebSocketChannelCannotReclaimEndpointLease() {
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
+        manager.setEndpointLeaseStore(endpointLeaseStore);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
@@ -219,14 +217,14 @@ class ServerSessionManagerShutdownTest {
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", firstChannel, firstCtx);
 
         assertEquals(secondChannel, manager.getChannel("route-1"));
-        assertEquals("worker-1-new", endpoint(routeOwnerStore, "worker-1").connectionId());
+        assertEquals("worker-1-new", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
         verify(firstChannel).close();
     }
 
     @Test
-    void removingStaleChannelDoesNotReleaseReplacementRouteOwner() {
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
-        manager.setRouteOwnerStore(routeOwnerStore);
+    void removingStaleChannelDoesNotReleaseReplacementEndpointLease() {
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
+        manager.setEndpointLeaseStore(endpointLeaseStore);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
@@ -237,14 +235,12 @@ class ServerSessionManagerShutdownTest {
 
         manager.removeSession(firstChannel);
 
-        assertTrue(endpoint(routeOwnerStore, "worker-1").isActive(System.currentTimeMillis()));
-        assertEquals("worker-1-new", endpoint(routeOwnerStore, "worker-1").connectionId());
-        assertTrue(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
+        assertEquals("worker-1-new", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
 
         manager.removeSession(secondChannel);
 
-        assertFalse(hasEndpoint(routeOwnerStore, "worker-1"));
-        assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertFalse(hasEndpoint(endpointLeaseStore, "worker-1"));
     }
 
     @Test
@@ -267,9 +263,9 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
-    void shutdownReleasesRouteOwnerBeforeClearingRoutes() {
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
-        manager.setRouteOwnerStore(routeOwnerStore);
+    void shutdownReleasesEndpointLeaseBeforeClearingRoutes() {
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
+        manager.setEndpointLeaseStore(endpointLeaseStore);
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
@@ -277,14 +273,13 @@ class ServerSessionManagerShutdownTest {
 
         manager.shutdown();
 
-        assertFalse(hasEndpoint(routeOwnerStore, "worker-1"));
-        assertFalse(routeOwnerStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertFalse(hasEndpoint(endpointLeaseStore, "worker-1"));
     }
 
     @Test
-    void activeWebSocketSessionRefreshesRouteOwnerLease() {
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(1_200L);
-        manager.setRouteOwnerStore(routeOwnerStore);
+    void activeWebSocketSessionRefreshesEndpointLease() {
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore(1_200L);
+        manager.setEndpointLeaseStore(endpointLeaseStore);
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
@@ -292,34 +287,33 @@ class ServerSessionManagerShutdownTest {
 
         assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
             Thread.sleep(2_200L);
-            assertTrue(endpoint(routeOwnerStore, "worker-1").isActive(System.currentTimeMillis()));
+            assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
         });
     }
 
     @Test
-    void setRouteOwnerStoreReprojectsActiveWebSocketSessions() {
-        InMemoryTransportRouteOwnerStore firstStore = new InMemoryTransportRouteOwnerStore(30_000L, "ws-node-1");
-        InMemoryTransportRouteOwnerStore secondStore = new InMemoryTransportRouteOwnerStore(30_000L, "ws-node-2");
-        manager.setRouteOwnerStore(firstStore);
+    void setEndpointLeaseStoreReprojectsActiveWebSocketSessions() {
+        InMemoryTransportEndpointLeaseStore firstStore = new InMemoryTransportEndpointLeaseStore(30_000L, "ws-node-1");
+        InMemoryTransportEndpointLeaseStore secondStore = new InMemoryTransportEndpointLeaseStore(30_000L, "ws-node-2");
+        manager.setEndpointLeaseStore(firstStore);
         Channel channel = mockActiveChannel("worker-1");
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
-        manager.setRouteOwnerStore(secondStore);
+        manager.setEndpointLeaseStore(secondStore);
 
-        assertTrue(endpoint(secondStore, "worker-1").isActive(System.currentTimeMillis()));
-        assertEquals("route-1", endpoint(secondStore, "worker-1").routeKey());
-        assertEquals("worker-1", endpoint(secondStore, "worker-1").connectionId());
-        assertEquals("ws-node-2", endpoint(secondStore, "worker-1").transportNodeId());
-        assertTrue(secondStore.hasActiveRouteOwner(manager.getAdapterId(), "route-1"));
+        assertTrue(hasEndpoint(secondStore, "worker-1"));
+        assertEquals("route-1", endpoint(secondStore, "worker-1").endpointAddress());
+        assertEquals("worker-1", endpoint(secondStore, "worker-1").endpointLeaseId());
+        assertEquals("ws-node-2", endpoint(secondStore, "worker-1").runtimeNodeId());
     }
 
-    private static RouteConsumerEndpoint endpoint(InMemoryTransportRouteOwnerStore store, String workerId) {
-        return store.endpointForSelectedWorker(DELIVERY_BUCKET_ID, workerId).orElseThrow();
+    private static TransportEndpointLeaseViewRecord endpoint(InMemoryTransportEndpointLeaseStore store, String workerId) {
+        return store.currentEndpointLease(DELIVERY_BUCKET_ID, workerId).orElseThrow();
     }
 
-    private static boolean hasEndpoint(InMemoryTransportRouteOwnerStore store, String workerId) {
-        return store.endpointForSelectedWorker(DELIVERY_BUCKET_ID, workerId).isPresent();
+    private static boolean hasEndpoint(InMemoryTransportEndpointLeaseStore store, String workerId) {
+        return store.currentEndpointLease(DELIVERY_BUCKET_ID, workerId).isPresent();
     }
 
     private Channel mockActiveChannel(String idText) {

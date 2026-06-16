@@ -11,17 +11,9 @@ import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.AdapterDispatchRequest;
-import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.route.RouteConsumerEndpoint;
-import com.xa.mass.transport.route.SelectedWorkerDeliveryTarget;
-import com.xa.mass.transport.route.TransportRouteOwnerClaim;
-import com.xa.mass.transport.route.TransportRouteOwnerRecord;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
-import com.xa.mass.transport.route.WorkerDispatchRouteOwner;
-import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
 import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
@@ -32,7 +24,6 @@ import com.xa.mass.transport.runtime.delivery.DeliveryQueueOffer;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
-import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
@@ -62,21 +53,12 @@ class MassApplicationDistributedTransportTest {
         engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-1"));
         engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-2"));
 
-        InMemoryTransportRouteOwnerStore nodeOneRouteOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-1");
-        InMemoryTransportRouteOwnerStore nodeTwoRouteOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-2");
-        nodeOneRouteOwnerStore.claimRouteOwner(claim("worker-1", "demo-workers", "websocket", routeKey(), "conn-1", "connected"));
-        nodeTwoRouteOwnerStore.claimRouteOwner(claim("worker-2", "demo-workers", "websocket", routeKey(), "conn-2", "connected"));
-        CombinedRouteOwnerStore routeOwnerStore = new CombinedRouteOwnerStore(
-                List.of(nodeOneRouteOwnerStore, nodeTwoRouteOwnerStore)
-        );
-
         InMemoryTransportNodeRegistry nodeRegistry = new InMemoryTransportNodeRegistry();
         nodeRegistry.register("node-1", List.of("websocket"), 1L);
         nodeRegistry.register("node-2", List.of("websocket"), 1L);
 
         CapturingDeliveryCommandHandoff handoff = new CapturingDeliveryCommandHandoff();
         TransportConfig transport = disabledEngineProducerTransport();
-        transport.setRouteOwnerStoreFactory(() -> routeOwnerStore);
         transport.setTransportNodeRegistryFactory(() -> nodeRegistry);
         transport.setDeliveryCommandHandoffFactory(() -> handoff);
         transport.setTaskResultInboxFactory(() -> mock(RedisTaskResultIngestChannel.class));
@@ -114,12 +96,8 @@ class MassApplicationDistributedTransportTest {
         LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff("node-1");
         handoff.enqueue(deliveryBatch("msg-node-2", "worker-2", "node-2"));
         handoff.enqueue(deliveryBatch("msg-node-1", "worker-1", "node-1"));
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "node-1");
-        routeOwnerStore.claimRouteOwner(claim("worker-1", "demo-workers", "websocket", routeKey(), "conn-worker-1", "test-fixture"));
-
         RecordingAdapter adapter = new RecordingAdapter("websocket", 1);
         TransportConfig transport = disabledTransportConsumerTransport("node-1");
-        transport.setRouteOwnerStoreFactory(() -> routeOwnerStore);
         transport.setDeliveryCommandHandoffFactory(() -> handoff);
         transport.setTaskResultInboxFactory(() -> mock(RedisTaskResultIngestChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
@@ -232,10 +210,6 @@ class MassApplicationDistributedTransportTest {
         );
     }
 
-    private static String routeKey() {
-        return CanonicalWorkerGroupRouteKeyCodec.encode("demo-workers");
-    }
-
     private static String deliveryQueueKey() {
         return "bucket:ZGVtby13b3JrZXJz";
     }
@@ -260,15 +234,6 @@ class MassApplicationDistributedTransportTest {
                 retryable,
                 reason
         );
-    }
-
-    private static TransportRouteOwnerClaim claim(String workerId,
-                                                  String deliveryBucketId,
-                                                  String adapterId,
-                                                  String routeKey,
-                                                  String connectionId,
-                                                  String reason) {
-        return new TransportRouteOwnerClaim(workerId, deliveryBucketId, adapterId, routeKey, connectionId, reason);
     }
 
     private static final class CapturingMassEngine extends MassEngine {
@@ -440,72 +405,4 @@ class MassApplicationDistributedTransportTest {
         }
     }
 
-    private static final class CombinedRouteOwnerStore implements TransportRouteOwnerStore,
-            WorkerDispatchRouteOwnerView {
-        private final List<InMemoryTransportRouteOwnerStore> stores;
-
-        private CombinedRouteOwnerStore(List<InMemoryTransportRouteOwnerStore> stores) {
-            this.stores = stores;
-        }
-
-        @Override
-        public TransportRouteOwnerRecord claimRouteOwner(TransportRouteOwnerClaim claim) {
-            return stores.getFirst().claimRouteOwner(claim);
-        }
-
-        @Override
-        public TransportRouteOwnerRecord refreshHeartbeat(TransportRouteOwnerClaim claim) {
-            return stores.getFirst().refreshHeartbeat(claim);
-        }
-
-        @Override
-        public TransportRouteOwnerRecord releaseRouteOwner(TransportRouteOwnerClaim claim) {
-            return stores.getFirst().releaseRouteOwner(claim);
-        }
-
-        @Override
-        public List<WorkerDispatchRouteOwner> currentOwners(String routeKey) {
-            List<WorkerDispatchRouteOwner> owners = new ArrayList<>();
-            for (InMemoryTransportRouteOwnerStore store : stores) {
-                owners.addAll(store.currentOwners(routeKey));
-            }
-            return List.copyOf(owners);
-        }
-
-        @Override
-        public java.util.Optional<SelectedWorkerDeliveryTarget> targetForSelectedWorker(String deliveryBucketId,
-                                                                                       String selectedWorkerId) {
-            for (InMemoryTransportRouteOwnerStore store : stores) {
-                java.util.Optional<SelectedWorkerDeliveryTarget> target =
-                        store.targetForSelectedWorker(deliveryBucketId, selectedWorkerId);
-                if (target.isPresent()) {
-                    return target;
-                }
-            }
-            return java.util.Optional.empty();
-        }
-
-        @Override
-        public java.util.Optional<RouteConsumerEndpoint> endpointForSelectedWorker(String deliveryBucketId,
-                                                                                  String selectedWorkerId) {
-            for (InMemoryTransportRouteOwnerStore store : stores) {
-                java.util.Optional<RouteConsumerEndpoint> endpoint =
-                        store.endpointForSelectedWorker(deliveryBucketId, selectedWorkerId);
-                if (endpoint.isPresent()) {
-                    return endpoint;
-                }
-            }
-            return java.util.Optional.empty();
-        }
-
-        @Override
-        public int pruneExpired() {
-            return stores.stream().mapToInt(InMemoryTransportRouteOwnerStore::pruneExpired).sum();
-        }
-
-        @Override
-        public long getLeaseMillis() {
-            return stores.stream().mapToLong(InMemoryTransportRouteOwnerStore::getLeaseMillis).min().orElse(30_000L);
-        }
-    }
 }

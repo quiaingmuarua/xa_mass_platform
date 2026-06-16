@@ -229,7 +229,7 @@ Notes:
 - `transportHint` is the coarse transport family
 - `runtimeStatus` is a display/runtime status label, not scheduling truth
 - `reachability` / `reachable` are worker-runtime reachability observations,
-  not route-owner transport proof and not reserve success
+  not endpoint-lease transport proof and not reserve success
 - `connections` and `hasActiveEndpoint` are bounded transport/session
   diagnostics, not capability truth
 - each row includes `fieldSources`, a field-to-owner label map. Expected
@@ -249,7 +249,7 @@ Notes:
   workers
 - `transportCounts` groups declared workers by their transport hint
 - `reachableWorkerCountsByTransport` groups currently reachable workers by
-  transport hint; it is not route-owner proof
+  transport hint; it is not endpoint-lease proof
 - `runtimeStatusCounts` is a display/runtime status summary
 - `reachableUnlockedBindingCount` is a source-labeled catalog coverage count:
   reachable + not locked + available node binding. It excludes rule
@@ -779,7 +779,7 @@ Notes:
 
 - `runtimeStatus` is a display/runtime status label, not scheduling truth
 - `reachability` and `reachable` are worker-runtime reachability observations,
-  not route-owner transport proof and not reserve success
+  not endpoint-lease transport proof and not reserve success
 - joins worker state with current bounded connection snapshots
 - `eventBindings` remains the richer capability read model
 - each row includes `fieldSources`, a field-to-owner label map. Expected

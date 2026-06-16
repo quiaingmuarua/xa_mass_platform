@@ -133,10 +133,10 @@ such as `websocket`, `ws`, `push`, `pull`, or `queue` are not accepted; use
 canonical coarse families such as `realtime` or `polling`.
 
 When distributed final-hop delivery needs cross-instance connection evidence,
-configure shared transport route ownership through
-`redisDistributedChannels(...)`, `redisRouteOwnerStore(...)`, or
-`routeOwnerStoreFactory(...)`. Adapters still own local
-session/connect/heartbeat ingress, but shared route-owner evidence belongs to
+configure shared transport endpoint leases through
+`redisDistributedChannels(...)`, `redisEndpointLeaseStore(...)`, or
+`endpointLeaseStoreFactory(...)`. Adapters still own local
+session/connect/heartbeat ingress, but shared endpoint lease evidence belongs to
 transport runtime as delivery feasibility, not SDK worker inspection or worker
 lifecycle truth. `routeKey` remains opaque connection/domain metadata minted
 outside transport. Assigned delivery commands expose `deliveryBucketId +
@@ -148,7 +148,7 @@ offer the already assigned item to the bucket-derived delivery queue;
 selected-worker consumer evidence prevents wrong-worker delivery at
 drain/final-hop time. Worker runtime capacity, lifecycle, and multi-binding
 behavior remain owned by worker-runtime scheduling/admission, not by transport
-route ownership.
+endpoint leasing.
 
 Task result reads are exposed through `TaskResultQueryOperations`, separate
 from task aggregate query. `readTaskResults(...)` and archive streaming read
@@ -174,7 +174,7 @@ transport consumer JVMs without adding server-owned transport endpoints. Use
 Redis-backed runtime channels for delivery-command handoff, result ingest, and
 delivery-failure compensation. The one-argument
 `redisDistributedChannels(redisUri)` helper wires the delivery-command handoff,
-result inbox, delivery-failure inbox, Redis route-owner store, Redis
+result inbox, delivery-failure inbox, Redis endpoint lease store, Redis
 delivery store, and transport-node registry under transport-owned component
 namespaces:
 
@@ -183,7 +183,7 @@ namespaces:
 | delivery-command | `xa:mass:transport:delivery-command:v1` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` |
-| route-owner | `xa:mass:transport:route-owner:v1` |
+| endpoint-lease | `xa:mass:transport:endpoint-lease:v1` |
 | delivery | `xa:mass:transport:delivery:v1` |
 | nodes | `xa:mass:transport:nodes:v1` |
 
@@ -482,7 +482,7 @@ operator-only detail endpoint needs raw transport ids, it must be a bounded
 diagnostic surface and explicitly documented as non-contractual. Delivery-store diagnostics also expose
 `app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is a legacy
 queue-path breakdown name rather than queue ownership truth. RouteKey-owned stores may aggregate this
-diagnostic under a route-owner bucket instead of preserving adapter-specific queue identity.
+diagnostic under an endpoint-lease bucket instead of preserving adapter-specific queue identity.
 Realtime direct-send counters are intentionally separate under
 `app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
 language with queued delivery but they do not imply queue ownership, dequeue,

@@ -530,18 +530,21 @@ Acceptance:
 1. Every spec names owner, classification, production query, lifecycle rule,
    forbidden key families/patterns/classifications, and the scenario or
    consumer roadmap that needs the family.
-2. Every transport presence spec names its owner-module manifest, generated
+2. Every transport runtime spec names its owner-module manifest, generated
    fixture, or automated owner-source drift guard.
-3. The transport presence specs encode the current owner boundary:
-   - `owner:<shard>` is canonical route-owner truth,
-   - `deadline:<shard>` is the prune index,
-   - `worker-route:<workerId>` is derived and may only return a 0/1 owner
-     projection,
-   - old families such as `workers`, `owner-shards`, `worker-routes:*`, and
-     `route-presence:*` are forbidden/residue.
+3. The transport endpoint-lease specs encode the current owner boundary:
+   - `bucket:<encodedDeliveryBucketId>:workers` is bucket-local endpoint
+     metadata for `deliveryBucketId + workerId`,
+   - `bucket:<encodedDeliveryBucketId>:deadlines` is the bucket-local lease
+     deadline index,
+   - selected-worker delivery feasibility for distributed handoff is stored as
+     handoff-private consumer evidence, not as endpoint lease projection,
+   - old route-owner families such as `owner:<shard>`, `deadline:<shard>`,
+     `worker-route:<workerId>`, `workers`, `owner-shards`,
+     `worker-routes:*`, and `route-presence:*` are forbidden/residue.
 4. No task work/result runtime placeholder is added to RRKP-3A.
-5. RRKP-3A may encode the transport presence shape that WRB converged, but it
-   must not be implemented early merely to freeze current residue.
+5. RRKP-3A may encode the current endpoint-lease and delivery-handoff shapes,
+   but it must not be implemented early merely to freeze current residue.
 6. Transport specs must reject worker runtime/admission truth under transport,
    including worker capacity, reservation, active lease, dispatch gate,
    event-binding ceiling, and `group:{groupId}:slots`.

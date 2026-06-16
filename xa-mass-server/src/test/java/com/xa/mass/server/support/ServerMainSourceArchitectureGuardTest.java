@@ -337,7 +337,7 @@ class ServerMainSourceArchitectureGuardTest {
         assertTrue(durableLocalConfig.contains("mode: redis"),
                 "durable-local profile must select Redis runtime");
         assertTrue(durableLocalConfig.contains("store: redis"),
-                "durable-local profile must select Redis transport delivery/route-owner stores");
+                "durable-local profile must select Redis transport delivery/endpoint-lease stores");
         assertTrue(!durableLocalConfig.contains("trace"),
                 "durable-local profile convergence must not add trace DB ingestion settings");
     }
@@ -373,8 +373,8 @@ class ServerMainSourceArchitectureGuardTest {
                 "durable-local runtime mode must fail closed unless Redis is selected");
         assertTrue(applicationSource.contains("requireDurableLocalInfraMode(\"mass.transport.delivery.store\", \"redis\""),
                 "durable-local transport delivery must fail closed unless Redis is selected");
-        assertTrue(applicationSource.contains("requireDurableLocalInfraMode(\"mass.transport.route-owner.store\", \"redis\""),
-                "durable-local transport route-owner store must fail closed unless Redis is selected");
+        assertTrue(applicationSource.contains("requireDurableLocalInfraMode(\"mass.transport.endpoint-lease.store\", \"redis\""),
+                "durable-local transport endpoint lease store must fail closed unless Redis is selected");
     }
 
     @Test

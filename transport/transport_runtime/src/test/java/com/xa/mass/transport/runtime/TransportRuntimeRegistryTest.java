@@ -2,7 +2,7 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -19,7 +19,7 @@ class TransportRuntimeRegistryTest {
                 IllegalArgumentException.class,
                 () -> new TransportRuntimeRegistry(
                         mock(TaskResultIngestChannel.class),
-                        new InMemoryTransportRouteOwnerStore(),
+                        new InMemoryTransportEndpointLeaseStore(),
                         List.of(
                                 canonicalRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME)),
                                 canonicalRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))

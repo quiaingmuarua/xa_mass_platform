@@ -1,8 +1,8 @@
 package com.xa.mass.transport.polling.runtime;
 
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
@@ -25,11 +25,11 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
 
     @Override
     public TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
-                                           TransportRouteOwnerStore routeOwnerStore,
+                                           TransportEndpointLeaseStore endpointLeaseStore,
                                            TransportDeliveryService deliveryService,
                                            List<TransportBinding> adapterBindings) {
         return create(taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 deliveryService,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
                 "local",
@@ -38,14 +38,14 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
 
     @Override
     public TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
-                                           TransportRouteOwnerStore routeOwnerStore,
+                                           TransportEndpointLeaseStore endpointLeaseStore,
                                            TransportDeliveryService deliveryService,
                                            DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
                                            String deliveryCommandConsumerKey,
                                            List<TransportBinding> adapterBindings) {
         List<TransportBinding> bindings = new ArrayList<>(1 + (adapterBindings == null ? 0 : adapterBindings.size()));
         bindings.add(pollingBinding(
-                routeOwnerStore,
+                endpointLeaseStore,
                 deliveryService,
                 deliveryCommandConsumerRegistry,
                 deliveryCommandConsumerKey
@@ -55,7 +55,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
         }
         return new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 deliveryCommandConsumerRegistry,
                 deliveryCommandConsumerKey,
                 bindings
@@ -67,12 +67,12 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
         return List.of(POLLING_DESCRIPTOR);
     }
 
-    private static TransportBinding pollingBinding(TransportRouteOwnerStore routeOwnerStore,
+    private static TransportBinding pollingBinding(TransportEndpointLeaseStore endpointLeaseStore,
                                                    TransportDeliveryService deliveryService,
                                                    DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
                                                    String deliveryCommandConsumerKey) {
         PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(
-                routeOwnerStore,
+                endpointLeaseStore,
                 deliveryService,
                 deliveryCommandConsumerRegistry,
                 deliveryCommandConsumerKey

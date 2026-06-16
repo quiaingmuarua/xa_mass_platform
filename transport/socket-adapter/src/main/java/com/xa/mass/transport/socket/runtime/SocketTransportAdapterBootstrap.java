@@ -66,7 +66,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                 throw new IllegalStateException("Socket transport requires endpoint registry adapterId '"
                         + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
             }
-            sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
+            sessionManager.setEndpointLeaseStore(context.getEndpointLeaseStore());
             sessionManager.setDeliveryCommandConsumerRegistry(
                     context.getDeliveryCommandConsumerRegistry(),
                     context.getDeliveryCommandConsumerKey()
@@ -79,7 +79,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                     config.getAdapterId(),
                     () -> new SocketSessionManager(config.getAdapterId())
             );
-            sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
+            sessionManager.setEndpointLeaseStore(context.getEndpointLeaseStore());
             sessionManager.setDeliveryCommandConsumerRegistry(
                     context.getDeliveryCommandConsumerRegistry(),
                     context.getDeliveryCommandConsumerKey()

@@ -90,8 +90,8 @@ Worker runtime does not own transport delivery identity:
   into transport as the already selected execution identity.
 - `deliveryQueueKey` is transport queue partitioning and must not be read as
   worker runtime reachability, admission, or capacity truth.
-- transport route-owner leases are connection evidence. Worker runtime may
-  consume reachability evidence for scheduling views, but route-owner lease
+- transport endpoint leases are connection evidence. Worker runtime may
+  consume reachability evidence for scheduling views, but endpoint lease
   refresh/release must not become worker capability, state-report, command, or
   lifecycle truth.
 

@@ -54,7 +54,7 @@ import java.util.Set;
  * Worker access facade for the active engine runtime.
  *
  * <p>Reachability is read through {@link WorkerReachabilityView}, while
- * route-owner connection leases stay in transport delivery and must not be
+ * endpoint leases stay in transport delivery and must not be
  * promoted into worker lifecycle truth.
  */
 public class WorkerManager implements WorkerResourceRuntime,

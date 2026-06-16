@@ -25,9 +25,9 @@ first boundary cut: assigned delivery must not route through
 a bucket-derived queue key plus `selectedWorkerId`.
 
 This roadmap owns the next residue cut after that boundary is in place. It
-removes the remaining task-dispatch hot-path leaks where route-owner endpoint
-facts, adapter endpoint DTOs, and polling-store vocabulary still make transport
-look like a hidden routing runtime instead of a delivery executor.
+removes the remaining task-dispatch hot-path leaks where endpoint lease facts,
+adapter endpoint DTOs, and polling-store vocabulary still make transport look
+like a hidden routing runtime instead of a delivery executor.
 
 This roadmap originally blocked archival of
 `doc/archive/transport/2026-06-15_TRANSPORT_BUCKET_WORKER_DELIVERY_QUEUE_KEY_CONVERGENCE_ROADMAP.md` while
@@ -63,17 +63,17 @@ Adapter/session manager
 ```
 
 The assigned task delivery mainline must not carry `routeKey`,
-`connectionId`, `transportNodeId`, `AdapterEndpoint`, or route-owner endpoint
-records. Those facts may remain inside route-owner/raw-route/session internals,
-but not in the assigned task delivery command, handoff, listener, or adapter
-task request.
+`connectionId`, `transportNodeId`, `AdapterEndpoint`, or endpoint lease
+records. Those facts may remain inside endpoint-lease/raw-route/session
+internals, but not in the assigned task delivery command, handoff, listener,
+or adapter task request.
 
 Payload opacity is already completed by
 `doc/archive/transport/2026-06-15_TRANSPORT_OPAQUE_DELIVERY_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md`.
 That roadmap removed `TaskDispatchContent` and
 `TaskDispatchExecutionContext` from transport API; this residue roadmap must
-not reintroduce task-shaped command payloads while removing remaining
-route-owner endpoint or consumer evidence from assigned delivery.
+not reintroduce task-shaped command payloads while keeping endpoint lease or
+consumer evidence out of assigned delivery.
 
 ## Current Code Observations
 
@@ -89,10 +89,9 @@ implementation.
 - Selected-worker consumer evidence is written by adapter/session ingress into
   the delivery-command handoff registry. The projection bridge
   `DeliveryCommandConsumerProjectingRouteOwnerStore` has been deleted.
-- `RedisTransportRouteOwnerStore` no longer writes the
-  `bucket:<encodedDeliveryBucketId>:worker:<encodedWorkerId>:owner` key family.
-  `endpointForSelectedWorker(...)` is retained only as a diagnostic scan over
-  live route consumer records.
+- `RedisTransportRouteOwnerStore` and old route-owner selected-worker lookup
+  contracts have been deleted. Endpoint lease storage is bucket-worker scoped
+  and must not re-enter assigned delivery lookup.
 - `AdapterDispatchRequest` still carries `adapterId` and `AdapterEndpoint`,
   even though websocket/socket assigned task dispatch sends by
   `selectedWorkerId`.
@@ -104,8 +103,8 @@ implementation.
   selected-worker consumer evidence, and inflight refs.
 - `InMemoryTransportDeliveryCommandHandoff` is still a simple blocking queue:
   `poll()` removes a batch, and there is no matching claim/ack/requeue behavior.
-- `RedisTransportRouteOwnerStore` still exposes selected-worker endpoint lookup
-  for bounded diagnostics. It must not re-enter assigned delivery.
+- Endpoint lease view is diagnostic/session-maintenance only. It must not
+  re-enter assigned delivery.
 
 ## Owner Review
 
@@ -176,11 +175,11 @@ visible.
 
 ## Do Not Start With
 
-Do not start by deleting `RedisTransportRouteOwnerStore` selected-worker lookup
-or `AdapterEndpoint` blindly. First move assigned delivery consumer registration
-and listener final-hop dispatch onto direct selected-worker consumer claims.
-Otherwise producer/consumer handoff may compile but have no way to choose a
-local final-hop driver.
+Do not start by reintroducing endpoint lease lookup into assigned delivery or
+deleting `AdapterEndpoint` blindly. Assigned delivery consumer registration and
+listener final-hop dispatch must stay on direct selected-worker consumer
+claims. Otherwise producer/consumer handoff may compile but have no clear owner
+for choosing a local final-hop driver.
 
 Do not collapse polling worker inbox storage into distributed command handoff
 just because both use a queue key. They are different delivery mechanisms and
@@ -203,7 +202,7 @@ Actions:
   - `TransportDeliveryStore`
   - `AdapterDispatchRequest`
   - `AdapterEndpoint`
-  - `RedisTransportRouteOwnerStore`
+  - `TransportEndpointLeaseStore`
   - websocket/socket/polling task dispatch adapters
 - Confirm DQK status honestly:
   - implemented slice
@@ -228,7 +227,11 @@ Verification:
 
 ## Phase 1 - Make Selected-Worker Consumer Claims The Listener Source Of Truth
 
-Goal: remove route-owner endpoint lookup from assigned command listener.
+Status: completed in the current work tree; keep this phase as guard context,
+not as active implementation work.
+
+Goal: keep route-owner/endpoint-lease lookup out of the assigned command
+listener.
 
 Target contract:
 
@@ -268,10 +271,10 @@ Acceptance:
 
 - Assigned delivery listener does not import or call `WorkerDispatchRouteOwnerView`.
 - Missing consumer evidence is a handoff offer/poll outcome, not a listener-side
-  route-owner lookup failure.
+  endpoint lookup failure.
 - Final-hop adapter selection comes from delivery consumer context, not
-  route-owner endpoint records.
-- Route-owner claim/heartbeat can change without being the assigned-delivery
+  endpoint lease records.
+- Endpoint lease claim/heartbeat can change without being the assigned-delivery
   consumer registration mechanism.
 
 Focused tests:
@@ -447,12 +450,16 @@ Focused tests:
 
 ## Phase 5 - Downgrade Route-Owner Redis To Pure Route/Connection Evidence
 
-Goal: remove selected-worker assigned-delivery projections from route-owner
+Status: completed by endpoint lease convergence in
+`doc/archive/transport/2026-06-16_TRANSPORT_CONSUMER_LEASE_CONVERGENCE_ROADMAP.md`;
+keep this phase as a regression guard only.
+
+Goal: keep selected-worker assigned-delivery projections out of endpoint lease
 storage after delivery consumer claims own the selected-worker delivery path.
 
 Actions:
 
-- Remove route-owner selected-worker lookup methods from assigned delivery
+- Keep route-owner selected-worker lookup methods out of assigned delivery
   callers.
 - Remove or narrow:
   - `endpointForSelectedWorker(...)`
@@ -464,8 +471,8 @@ Actions:
 bucket:<encodedDeliveryBucketId>:worker:<encodedWorkerId>:owner
 ```
 
-- Keep route-owner key families only if they serve route/connection evidence,
-  raw route, or diagnostics:
+- Keep old route-owner key families deleted unless a future raw-route
+  diagnostic owner explicitly reintroduces a bounded family:
 
 ```text
 route:<encodedRouteKey>:consumers
@@ -485,10 +492,11 @@ Acceptance:
 
 Focused tests:
 
-- `RedisTransportRouteOwnerStoreTest`
-- `InMemoryTransportRouteOwnerStoreTest`
+- `RedisTransportEndpointLeaseStoreTest`
+- `RedisTransportEndpointLeaseStoreContractTest`
+- `InMemoryTransportEndpointLeaseStoreContractTest`
 - `TransportRedisKeyspaceGuardTest`
-- raw route endpoint registry tests
+- raw route endpoint registry tests when a raw-route diagnostic owner exists
 - assigned delivery command handoff/listener tests
 
 Guards:

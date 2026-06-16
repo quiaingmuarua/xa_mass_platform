@@ -408,7 +408,7 @@ Repo-level mainline surfaces:
   transport-side consumption now happens through the batch handoff seam rather
   than a direct dispatch-listener callback
 - worker-runtime reachability is read through `WorkerReachabilityView`;
-  dispatch eligibility must not read transport route-owner leases as worker
+  dispatch eligibility must not read transport endpoint leases as worker
   lifecycle truth
 - task-create input consumed by `TaskCommandService` now lives in the neutral
   base model layer; cross-module create flows should not import engine-owned
@@ -492,10 +492,10 @@ Worker selection boundaries:
   lease counters; `WorkerLoadSnapshot` is a read-side value derived from the
   current slot, not a separate mutable owner
 - `Worker.status` and worker lock state are typed truth, not attributes
-- `Worker.status` is worker-runtime lifecycle truth, not transport route-owner
+- `Worker.status` is worker-runtime lifecycle truth, not transport endpoint-lease
   truth
 - dispatch eligibility must read worker-runtime reachability from
-  `WorkerReachabilityView`, not transport route-owner expiry or local
+  `WorkerReachabilityView`, not transport endpoint-lease expiry or local
   heartbeat-expiry heuristics
 - `workerSchedulingAttributes` is one worker-selection evidence family for labels,
   fingerprints, and routing hints; it is not the whole policy model

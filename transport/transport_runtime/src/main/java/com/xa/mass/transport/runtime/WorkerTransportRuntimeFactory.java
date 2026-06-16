@@ -1,7 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
@@ -14,17 +14,17 @@ import java.util.List;
 public interface WorkerTransportRuntimeFactory {
 
     TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
-                                    TransportRouteOwnerStore routeOwnerStore,
+                                    TransportEndpointLeaseStore endpointLeaseStore,
                                     TransportDeliveryService deliveryService,
                                     List<TransportBinding> adapterBindings);
 
     default TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
-                                            TransportRouteOwnerStore routeOwnerStore,
+                                            TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryService deliveryService,
                                             DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
                                             String deliveryCommandConsumerKey,
                                             List<TransportBinding> adapterBindings) {
-        return create(taskResultIngestChannel, routeOwnerStore, deliveryService, adapterBindings);
+        return create(taskResultIngestChannel, endpointLeaseStore, deliveryService, adapterBindings);
     }
 
     default List<TransportAdapterDescriptor> registrationDescriptors() {

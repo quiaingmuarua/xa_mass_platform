@@ -65,7 +65,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 throw new IllegalStateException("WebSocket transport requires endpoint registry adapterId '"
                         + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
             }
-            sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
+            sessionManager.setEndpointLeaseStore(context.getEndpointLeaseStore());
             sessionManager.setDeliveryCommandConsumerRegistry(
                     context.getDeliveryCommandConsumerRegistry(),
                     context.getDeliveryCommandConsumerKey()
@@ -79,7 +79,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                             config.getAdapterId(),
                             () -> new ServerSessionManager(config.getAdapterId())
             );
-            sessionManager.setRouteOwnerStore(context.getRouteOwnerStore());
+            sessionManager.setEndpointLeaseStore(context.getEndpointLeaseStore());
             sessionManager.setDeliveryCommandConsumerRegistry(
                     context.getDeliveryCommandConsumerRegistry(),
                     context.getDeliveryCommandConsumerKey()

@@ -16,6 +16,7 @@ import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.sdk.worker.InternalPullWorkerSessions;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.sdk.worker.TaskDispatchDeliveryCorrelation;
 import com.xa.mass.sdk.worker.TaskDispatchDeliveryCorrelationCodec;
@@ -57,7 +58,7 @@ import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,7 +97,7 @@ public class MassApplication {
     private MessageTransporter<String, TransportOutboundMessage> messageTransporter;
     private WorkerEndpointRegistry endpointRegistry;
     private TransportRuntimeRegistry transportRuntimeRegistry;
-    private TransportRouteOwnerStore routeOwnerStore;
+    private TransportEndpointLeaseStore endpointLeaseStore;
     private TransportDeliveryService transportDeliveryService;
     private TransportDeliveryCommandHandoff transportDeliveryCommandHandoff;
     private TransportDeliveryCommandHandoffPump transportDeliveryCommandHandoffPump;
@@ -179,7 +180,7 @@ public class MassApplication {
                 stopTransportNodeHeartbeat();
                 closeTransportNodeRegistry();
                 stopTransportDeliveryService();
-                stopRouteOwnerStore();
+                stopEndpointLeaseStore();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
             }
@@ -228,10 +229,10 @@ public class MassApplication {
             logger.warn("Failed to stop transport delivery service after startup failure", cleanupError);
         }
         try {
-            stopRouteOwnerStore();
+            stopEndpointLeaseStore();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
-            logger.warn("Failed to stop transport route-owner store after startup failure", cleanupError);
+            logger.warn("Failed to stop transport endpoint lease store after startup failure", cleanupError);
         }
         try {
             stopTransportNodeHeartbeat();
@@ -274,7 +275,7 @@ public class MassApplication {
 
             WorkerPresenceIngress presenceIngress = resolveWorkerPresenceIngress();
             workerPresenceIngress = presenceIngress;
-            routeOwnerStore = transportRuntimeComposition.resolveTransportRouteOwnerStore();
+            endpointLeaseStore = transportRuntimeComposition.resolveTransportEndpointLeaseStore();
             transportNodeRegistry = transportRuntimeComposition.resolveTransportNodeRegistry();
             TransportDeliveryStore deliveryStore = transportRuntimeComposition.resolveTransportDeliveryStore();
             TransportDeliveryService deliveryService = new TransportDeliveryService(deliveryStore);
@@ -336,7 +337,7 @@ public class MassApplication {
                             endpointRegistry,
                             taskResultIngestChannel,
                             presenceIngress,
-                            routeOwnerStore,
+                            endpointLeaseStore,
                             deliveryService,
                             deliveryCommandConsumerRegistry,
                             transportRuntimeComposition.getTransportNodeId(),
@@ -350,7 +351,7 @@ public class MassApplication {
             if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
                 transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
                         taskResultIngestChannel,
-                        routeOwnerStore,
+                        endpointLeaseStore,
                         deliveryService,
                         deliveryCommandConsumerRegistry,
                         transportRuntimeComposition.getTransportNodeId(),
@@ -593,9 +594,9 @@ public class MassApplication {
         }
     }
 
-    private void stopRouteOwnerStore() throws Exception {
-        TransportRouteOwnerStore store = routeOwnerStore;
-        routeOwnerStore = null;
+    private void stopEndpointLeaseStore() throws Exception {
+        TransportEndpointLeaseStore store = endpointLeaseStore;
+        endpointLeaseStore = null;
         if (store instanceof AutoCloseable closeable) {
             closeable.close();
         }
@@ -772,14 +773,14 @@ public class MassApplication {
                 worker.adapterId(),
                 worker.onlineStrategy()
         );
-        return new PullWorkerSession(
+        return InternalPullWorkerSessions.open(
                 resolved.getWorkerId(),
                 resolved.getWorkerGroupId(),
                 resolved.getAdapterId(),
                 requireText(sessionToken, "sessionToken"),
                 resolved.getDeliveryPullChannel(),
                 resolved.getTaskResultIngestChannel(),
-                resolved.getRouteOwnerStore(),
+                resolved.getEndpointLeaseStore(),
                 resolved.getDeliveryCommandConsumerRegistry(),
                 resolved.getDeliveryCommandConsumerKey(),
                 requireWorkerPresenceIngress(),

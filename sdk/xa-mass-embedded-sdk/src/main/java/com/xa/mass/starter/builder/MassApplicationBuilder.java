@@ -29,7 +29,7 @@ import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChann
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.node.RedisTransportNodeRegistry;
-import com.xa.mass.transport.runtime.route.RedisTransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.lease.RedisTransportEndpointLeaseStore;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -276,7 +276,7 @@ public class MassApplicationBuilder {
             return redisDeliveryCommandHandoff(redisUri, RedisTransportNamespaces.DELIVERY_COMMAND)
                     .redisResultInbox(redisUri, RedisTransportNamespaces.RESULT_INBOX)
                     .redisDeliveryFailureInbox(redisUri, RedisTransportNamespaces.DELIVERY_FAILURE)
-                    .redisRouteOwnerStore(redisUri, RedisTransportNamespaces.ROUTE_OWNER)
+                    .redisEndpointLeaseStore(redisUri, RedisTransportNamespaces.ENDPOINT_LEASE)
                     .redisDeliveryStore(redisUri, RedisTransportNamespaces.DELIVERY)
                     .redisTransportNodeRegistry(redisUri, RedisTransportNamespaces.NODES);
         }
@@ -286,21 +286,21 @@ public class MassApplicationBuilder {
             return redisDeliveryCommandHandoff(redisUri, normalizedNamespacePrefix + ":delivery-command")
                     .redisResultInbox(redisUri, normalizedNamespacePrefix + ":result-inbox")
                     .redisDeliveryFailureInbox(redisUri, normalizedNamespacePrefix + ":delivery-failure")
-                    .redisRouteOwnerStore(redisUri, normalizedNamespacePrefix + ":route-owner")
+                    .redisEndpointLeaseStore(redisUri, normalizedNamespacePrefix + ":endpoint-lease")
                     .redisDeliveryStore(redisUri, normalizedNamespacePrefix + ":delivery")
                     .redisTransportNodeRegistry(redisUri, normalizedNamespacePrefix + ":nodes");
         }
 
-        public TransportBuilder routeOwnerStoreFactory(Supplier<com.xa.mass.transport.route.TransportRouteOwnerStore> routeOwnerStoreFactory) {
-            config.setRouteOwnerStoreFactory(Objects.requireNonNull(routeOwnerStoreFactory, "routeOwnerStoreFactory"));
+        public TransportBuilder endpointLeaseStoreFactory(Supplier<com.xa.mass.transport.lease.TransportEndpointLeaseStore> endpointLeaseStoreFactory) {
+            config.setEndpointLeaseStoreFactory(Objects.requireNonNull(endpointLeaseStoreFactory, "endpointLeaseStoreFactory"));
             return this;
         }
 
-        public TransportBuilder redisRouteOwnerStore(String redisUri) {
-            return redisRouteOwnerStore(redisUri, RedisTransportRouteOwnerStore.DEFAULT_NAMESPACE_PREFIX);
+        public TransportBuilder redisEndpointLeaseStore(String redisUri) {
+            return redisEndpointLeaseStore(redisUri, RedisTransportEndpointLeaseStore.DEFAULT_NAMESPACE_PREFIX);
         }
 
-        public TransportBuilder redisRouteOwnerStore(String redisUri, String namespacePrefix) {
+        public TransportBuilder redisEndpointLeaseStore(String redisUri, String namespacePrefix) {
             String normalizedRedisUri = Objects.requireNonNull(redisUri, "redisUri").trim();
             if (normalizedRedisUri.isBlank()) {
                 throw new IllegalArgumentException("redisUri must not be blank");
@@ -309,10 +309,10 @@ public class MassApplicationBuilder {
             if (normalizedNamespacePrefix.isBlank()) {
                 throw new IllegalArgumentException("namespacePrefix must not be blank");
             }
-            config.setRouteOwnerStoreFactory(() -> new RedisTransportRouteOwnerStore(
+            config.setEndpointLeaseStoreFactory(() -> new RedisTransportEndpointLeaseStore(
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
-                    config.getRouteOwnerLeaseMillis(),
+                    config.getEndpointLeaseMillis(),
                     config.getTransportNodeId()
             ));
             return this;
@@ -348,8 +348,8 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder routeOwnerLeaseMillis(long routeOwnerLeaseMillis) {
-            config.setRouteOwnerLeaseMillis(routeOwnerLeaseMillis);
+        public TransportBuilder endpointLeaseMillis(long endpointLeaseMillis) {
+            config.setEndpointLeaseMillis(endpointLeaseMillis);
             return this;
         }
 

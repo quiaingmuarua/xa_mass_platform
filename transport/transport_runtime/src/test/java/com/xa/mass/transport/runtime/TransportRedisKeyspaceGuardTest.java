@@ -20,7 +20,7 @@ class TransportRedisKeyspaceGuardTest {
         String content = Files.readString(baseline, StandardCharsets.UTF_8);
 
         for (String namespace : List.of(
-                RedisTransportNamespaces.ROUTE_OWNER,
+                RedisTransportNamespaces.ENDPOINT_LEASE,
                 RedisTransportNamespaces.DELIVERY,
                 RedisTransportNamespaces.NODES,
                 RedisTransportNamespaces.DELIVERY_COMMAND,
@@ -31,7 +31,8 @@ class TransportRedisKeyspaceGuardTest {
         }
 
         for (String keyFamily : List.of(
-                "route:<encodedRouteKey>:consumers",
+                "bucket:<encodedDeliveryBucketId>:workers",
+                "bucket:<encodedDeliveryBucketId>:deadlines",
                 "q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>",
                 "q:<encodedDeliveryQueueKey>:commands",
                 "q:<encodedDeliveryQueueKey>:command-retention-deadlines",
@@ -78,8 +79,8 @@ class TransportRedisKeyspaceGuardTest {
     void transportRuntimeProductionCodeDoesNotUseDeprecatedPresenceFamilies() throws IOException {
         Path root = repoRoot();
         Path sourceRoot = root.resolve("transport/transport_runtime/src/main/java");
-        List<String> forbidden = List.of("owner-shards", "worker-routes", "route-presence", ":workers",
-                "worker-route", ":routes");
+        List<String> forbidden = List.of("owner-shards", "worker-routes", "route-presence",
+                "worker-route", ":routes", ":route:");
         List<String> offenders = new ArrayList<>();
         try (Stream<Path> paths = scanTextFiles(sourceRoot)) {
             paths.filter(path -> forbidden.stream().anyMatch(token -> contains(path, token)))

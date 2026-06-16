@@ -2,7 +2,7 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 
@@ -19,7 +19,7 @@ public final class ResolvedPullWorkerTransport {
     private final String transportHint;
     private final DeliveryPullChannel deliveryPullChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
-    private final TransportRouteOwnerStore routeOwnerStore;
+    private final TransportEndpointLeaseStore endpointLeaseStore;
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
     private final String deliveryCommandConsumerKey;
 
@@ -29,14 +29,14 @@ public final class ResolvedPullWorkerTransport {
                                        String transportHint,
                                        DeliveryPullChannel deliveryPullChannel,
                                        TaskResultIngestChannel taskResultIngestChannel,
-                                       TransportRouteOwnerStore routeOwnerStore) {
+                                       TransportEndpointLeaseStore endpointLeaseStore) {
         this(workerId,
                 workerGroupId,
                 adapterId,
                 transportHint,
                 deliveryPullChannel,
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
                 "local");
     }
@@ -47,7 +47,7 @@ public final class ResolvedPullWorkerTransport {
                                        String transportHint,
                                        DeliveryPullChannel deliveryPullChannel,
                                        TaskResultIngestChannel taskResultIngestChannel,
-                                       TransportRouteOwnerStore routeOwnerStore,
+                                       TransportEndpointLeaseStore endpointLeaseStore,
                                        DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
                                        String deliveryCommandConsumerKey) {
         this.workerId = Objects.requireNonNull(workerId, "workerId");
@@ -56,7 +56,7 @@ public final class ResolvedPullWorkerTransport {
         this.transportHint = Objects.requireNonNull(transportHint, "transportHint");
         this.deliveryPullChannel = Objects.requireNonNull(deliveryPullChannel, "deliveryPullChannel");
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
-        this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
+        this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
         this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
                 ? deliveryCommandConsumerRegistry
                 : NoopDeliveryCommandConsumerRegistry.INSTANCE;
@@ -87,8 +87,8 @@ public final class ResolvedPullWorkerTransport {
         return taskResultIngestChannel;
     }
 
-    public TransportRouteOwnerStore getRouteOwnerStore() {
-        return routeOwnerStore;
+    public TransportEndpointLeaseStore getEndpointLeaseStore() {
+        return endpointLeaseStore;
     }
 
     public DeliveryCommandConsumerRegistry getDeliveryCommandConsumerRegistry() {

@@ -7,14 +7,16 @@ import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
-import com.xa.mass.transport.route.TransportRouteOwnerClaim;
-import com.xa.mass.transport.route.TransportRouteOwnerRecord;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
+import com.xa.mass.transport.lease.TransportEndpointLeaseConsumerEvidence;
+import com.xa.mass.transport.lease.TransportEndpointLeaseHeartbeat;
+import com.xa.mass.transport.lease.TransportEndpointLeaseRelease;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
-import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -41,21 +43,21 @@ public class ServerSessionManager
     private final java.util.concurrent.ConcurrentMap<Channel, String> deliveryBucketByChannel = new ConcurrentHashMap<>();
     private final Set<Channel> retiredChannels = ConcurrentHashMap.newKeySet();
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
-    private final ScheduledExecutorService routeOwnerRefreshExecutor;
-    private volatile TransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+    private final ScheduledExecutorService endpointLeaseRefreshExecutor;
+    private volatile TransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
     private volatile DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry =
             NoopDeliveryCommandConsumerRegistry.INSTANCE;
     private volatile String deliveryCommandConsumerKey;
     private volatile WorkerPresenceIngress workerPresenceIngress = NoopWorkerPresenceIngress.INSTANCE;
-    private volatile ScheduledFuture<?> routeOwnerRefreshFuture;
+    private volatile ScheduledFuture<?> endpointLeaseRefreshFuture;
 
     public ServerSessionManager(String adapterId) {
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must not be blank");
         }
         this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
-        this.routeOwnerRefreshExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread thread = new Thread(r, "ws-route-owner-refresh-" + this.adapterId);
+        this.endpointLeaseRefreshExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r, "ws-endpoint-lease-refresh-" + this.adapterId);
             thread.setDaemon(true);
             return thread;
         });
@@ -102,21 +104,21 @@ public class ServerSessionManager
                     reason,
                     channelId
             ));
-            TransportRouteOwnerClaim claim = routeOwnerClaim(
+            TransportEndpointLeaseClaim claim = endpointLeaseClaim(
                     workerId,
                     normalizedDeliveryBucketId,
                     routeKey,
                     channelId,
                     reason
             );
-            claimDeliveryConsumerIfCurrent(routeOwnerStore.claimRouteOwner(claim), claim);
+            claimDeliveryConsumer(endpointLeaseStore.claimEndpointLease(claim));
         }
         if (previousForWorker != null) {
             logger.warn("Existing channel for routeKey={} workerId={} found. Replacing session.",
                     routeKey, workerId);
             retireReplacedSession(previousForWorker);
         }
-        ensureRouteOwnerRefreshLoop();
+        ensureEndpointLeaseRefreshLoop();
     }
 
     public synchronized void removeSession(Channel channel) {
@@ -141,13 +143,13 @@ public class ServerSessionManager
                         reason,
                         channelId
                 ));
-                TransportRouteOwnerClaim claim =
-                        routeOwnerClaim(binding.workerId(), deliveryBucketId, binding.routeKey(), channelId, reason);
-                routeOwnerStore.releaseRouteOwner(claim);
+                TransportEndpointLeaseRelease claim =
+                        endpointLeaseRelease(binding.workerId(), deliveryBucketId, binding.routeKey(), channelId, reason);
+                endpointLeaseStore.releaseEndpointLease(claim);
                 releaseDeliveryConsumer(claim);
             }
             if (activeConnectionCount.get() == 0) {
-                cancelRouteOwnerRefreshLoop();
+                cancelEndpointLeaseRefreshLoop();
             }
         } else {
             if (retiredChannels.remove(channel)) {
@@ -257,7 +259,7 @@ public class ServerSessionManager
     @Override
     public synchronized void shutdown() {
         logger.info("Shutting down session manager, closing {} route connections...", routeIndex.routeCount());
-        cancelRouteOwnerRefreshLoop();
+        cancelEndpointLeaseRefreshLoop();
         for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
             if (entry.endpoint().isActive()) {
                 String reason = "websocket adapter shutdown";
@@ -270,15 +272,15 @@ public class ServerSessionManager
                         reason,
                         channelId
                 ));
-                TransportRouteOwnerClaim claim =
-                        routeOwnerClaim(
+                TransportEndpointLeaseRelease claim =
+                        endpointLeaseRelease(
                                 entry.workerId(),
                                 deliveryBucketByChannel.get(entry.handle()),
                                 entry.routeKey(),
                                 channelId,
                                 reason
                         );
-                routeOwnerStore.releaseRouteOwner(claim);
+                endpointLeaseStore.releaseEndpointLease(claim);
                 releaseDeliveryConsumer(claim);
             }
             if (entry.endpoint().isActive()) {
@@ -288,19 +290,19 @@ public class ServerSessionManager
         routeIndex.clear();
         deliveryBucketByChannel.clear();
         activeConnectionCount.set(0);
-        routeOwnerRefreshExecutor.shutdownNow();
+        endpointLeaseRefreshExecutor.shutdownNow();
         logger.info("Session manager shutdown complete.");
     }
 
-    public void setRouteOwnerStore(TransportRouteOwnerStore routeOwnerStore) {
-        TransportRouteOwnerStore nextStore = routeOwnerStore != null
-                ? routeOwnerStore
-                : new InMemoryTransportRouteOwnerStore();
+    public void setEndpointLeaseStore(TransportEndpointLeaseStore endpointLeaseStore) {
+        TransportEndpointLeaseStore nextStore = endpointLeaseStore != null
+                ? endpointLeaseStore
+                : new InMemoryTransportEndpointLeaseStore();
         synchronized (this) {
-            this.routeOwnerStore = nextStore;
+            this.endpointLeaseStore = nextStore;
             if (activeConnectionCount.get() > 0) {
-                projectActiveSessionsToRouteOwner("websocket route-owner store replaced");
-                rescheduleRouteOwnerRefreshLoop();
+                projectActiveSessionsToEndpointLease("websocket endpoint lease store replaced");
+                rescheduleEndpointLeaseRefreshLoop();
             }
         }
     }
@@ -312,7 +314,7 @@ public class ServerSessionManager
                     ? registry
                     : NoopDeliveryCommandConsumerRegistry.INSTANCE;
             this.deliveryCommandConsumerKey = requireText(queueConsumerKey, "queueConsumerKey");
-            projectActiveSessionsToRouteOwner("websocket delivery consumer registry replaced");
+            projectActiveSessionsToEndpointLease("websocket delivery consumer registry replaced");
         }
     }
 
@@ -358,42 +360,42 @@ public class ServerSessionManager
         return adapterId == null || this.adapterId.equalsIgnoreCase(adapterId.trim());
     }
 
-    private synchronized void ensureRouteOwnerRefreshLoop() {
+    private synchronized void ensureEndpointLeaseRefreshLoop() {
         if (activeConnectionCount.get() <= 0) {
-            cancelRouteOwnerRefreshLoop();
+            cancelEndpointLeaseRefreshLoop();
             return;
         }
-        if (routeOwnerRefreshFuture != null && !routeOwnerRefreshFuture.isCancelled()) {
+        if (endpointLeaseRefreshFuture != null && !endpointLeaseRefreshFuture.isCancelled()) {
             return;
         }
-        long refreshIntervalMillis = resolveRouteOwnerRefreshIntervalMillis();
-        routeOwnerRefreshFuture = routeOwnerRefreshExecutor.scheduleAtFixedRate(
-                this::refreshActiveRouteOwners,
+        long refreshIntervalMillis = resolveEndpointLeaseRefreshIntervalMillis();
+        endpointLeaseRefreshFuture = endpointLeaseRefreshExecutor.scheduleAtFixedRate(
+                this::refreshActiveEndpointLeases,
                 refreshIntervalMillis,
                 refreshIntervalMillis,
                 TimeUnit.MILLISECONDS
         );
     }
 
-    private synchronized void rescheduleRouteOwnerRefreshLoop() {
-        cancelRouteOwnerRefreshLoop();
-        ensureRouteOwnerRefreshLoop();
+    private synchronized void rescheduleEndpointLeaseRefreshLoop() {
+        cancelEndpointLeaseRefreshLoop();
+        ensureEndpointLeaseRefreshLoop();
     }
 
-    private synchronized void cancelRouteOwnerRefreshLoop() {
-        if (routeOwnerRefreshFuture != null) {
-            routeOwnerRefreshFuture.cancel(false);
-            routeOwnerRefreshFuture = null;
+    private synchronized void cancelEndpointLeaseRefreshLoop() {
+        if (endpointLeaseRefreshFuture != null) {
+            endpointLeaseRefreshFuture.cancel(false);
+            endpointLeaseRefreshFuture = null;
         }
     }
 
-    private long resolveRouteOwnerRefreshIntervalMillis() {
-        long leaseMillis = routeOwnerStore.getLeaseMillis();
+    private long resolveEndpointLeaseRefreshIntervalMillis() {
+        long leaseMillis = endpointLeaseStore.getLeaseMillis();
         long refreshIntervalMillis = leaseMillis / 3L;
         return Math.max(1_000L, refreshIntervalMillis);
     }
 
-    private void refreshActiveRouteOwners() {
+    private void refreshActiveEndpointLeases() {
         synchronized (this) {
             for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
                 WebSocketRouteEndpoint endpoint = entry.endpoint();
@@ -410,37 +412,35 @@ public class ServerSessionManager
                         reason,
                         channelId
                 ));
-                TransportRouteOwnerClaim claim = routeOwnerClaim(
+                TransportEndpointLeaseHeartbeat heartbeat = endpointLeaseHeartbeat(
                                 entry.workerId(),
                                 deliveryBucketByChannel.get(entry.handle()),
                                 entry.routeKey(),
                                 channelId,
                                 reason
                 );
-                TransportRouteOwnerRecord record = routeOwnerStore.refreshHeartbeat(claim);
-                if (isCurrentOwner(record, claim)) {
-                    claimDeliveryConsumer(record);
-                } else {
-                    releaseDeliveryConsumer(claim);
-                }
+                endpointLeaseStore.refreshEndpointLease(heartbeat).ifPresentOrElse(
+                        this::claimDeliveryConsumer,
+                        () -> releaseDeliveryConsumer(heartbeat)
+                );
             }
         }
     }
 
-    private void projectActiveSessionsToRouteOwner(String reason) {
+    private void projectActiveSessionsToEndpointLease(String reason) {
         for (RouteEndpointIndex.Entry<Channel, WebSocketRouteEndpoint> entry : routeIndex.entries()) {
             WebSocketRouteEndpoint endpoint = entry.endpoint();
             if (endpoint == null || !endpoint.isActive()) {
                 continue;
             }
-            TransportRouteOwnerClaim claim = routeOwnerClaim(
+            TransportEndpointLeaseClaim claim = endpointLeaseClaim(
                             entry.workerId(),
                             deliveryBucketByChannel.get(entry.handle()),
                             entry.routeKey(),
                             entry.handle().id().asShortText(),
                             reason
             );
-            claimDeliveryConsumerIfCurrent(routeOwnerStore.claimRouteOwner(claim), claim);
+            claimDeliveryConsumer(endpointLeaseStore.claimEndpointLease(claim));
         }
     }
 
@@ -462,9 +462,9 @@ public class ServerSessionManager
                 reason,
                 channelId
         ));
-        TransportRouteOwnerClaim claim =
-                routeOwnerClaim(previous.workerId(), deliveryBucketId, previous.routeKey(), channelId, reason);
-        routeOwnerStore.releaseRouteOwner(claim);
+        TransportEndpointLeaseRelease claim =
+                endpointLeaseRelease(previous.workerId(), deliveryBucketId, previous.routeKey(), channelId, reason);
+        endpointLeaseStore.releaseEndpointLease(claim);
         releaseDeliveryConsumer(claim);
         WebSocketRouteEndpoint endpoint = previous.endpoint();
         if (endpoint != null && endpoint.isActive()) {
@@ -484,12 +484,12 @@ public class ServerSessionManager
         return normalized;
     }
 
-    private TransportRouteOwnerClaim routeOwnerClaim(String workerId,
-                                                    String deliveryBucketId,
-                                                    String routeKey,
-                                                    String channelId,
-                                                    String reason) {
-        return new TransportRouteOwnerClaim(
+    private TransportEndpointLeaseClaim endpointLeaseClaim(String workerId,
+                                                          String deliveryBucketId,
+                                                          String routeKey,
+                                                          String channelId,
+                                                          String reason) {
+        return new TransportEndpointLeaseClaim(
                 workerId,
                 requireText(deliveryBucketId, "deliveryBucketId"),
                 adapterId,
@@ -499,30 +499,65 @@ public class ServerSessionManager
         );
     }
 
-    private void claimDeliveryConsumerIfCurrent(TransportRouteOwnerRecord record, TransportRouteOwnerClaim claim) {
-        if (isCurrentOwner(record, claim)) {
-            claimDeliveryConsumer(record);
-        }
+    private TransportEndpointLeaseHeartbeat endpointLeaseHeartbeat(String workerId,
+                                                                  String deliveryBucketId,
+                                                                  String routeKey,
+                                                                  String channelId,
+                                                                  String reason) {
+        return new TransportEndpointLeaseHeartbeat(
+                workerId,
+                requireText(deliveryBucketId, "deliveryBucketId"),
+                adapterId,
+                routeKey,
+                channelId,
+                reason
+        );
     }
 
-    private void claimDeliveryConsumer(TransportRouteOwnerRecord record) {
+    private TransportEndpointLeaseRelease endpointLeaseRelease(String workerId,
+                                                              String deliveryBucketId,
+                                                              String routeKey,
+                                                              String channelId,
+                                                              String reason) {
+        return new TransportEndpointLeaseRelease(
+                workerId,
+                requireText(deliveryBucketId, "deliveryBucketId"),
+                adapterId,
+                routeKey,
+                channelId,
+                reason
+        );
+    }
+
+    private void claimDeliveryConsumer(TransportEndpointLeaseConsumerEvidence evidence) {
         deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
-                record.getDeliveryBucketId(),
-                record.getWorkerId(),
+                evidence.deliveryBucketId(),
+                evidence.workerId(),
                 deliveryCommandConsumerKey(),
-                record.getConnectionId(),
-                record.getAdapterId(),
-                record.getLeaseExpireAtEpochMillis()
+                evidence.endpointLeaseId(),
+                evidence.endpointDriverId(),
+                evidence.leaseExpireAtEpochMillis()
         ));
     }
 
-    private void releaseDeliveryConsumer(TransportRouteOwnerClaim claim) {
+    private void releaseDeliveryConsumer(TransportEndpointLeaseRelease claim) {
         deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
                 claim.deliveryBucketId(),
                 claim.workerId(),
                 deliveryCommandConsumerKey(),
-                claim.connectionId(),
-                claim.adapterId(),
+                claim.endpointLeaseId(),
+                claim.endpointDriverId(),
+                0L
+        ));
+    }
+
+    private void releaseDeliveryConsumer(TransportEndpointLeaseHeartbeat heartbeat) {
+        deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
+                heartbeat.deliveryBucketId(),
+                heartbeat.workerId(),
+                deliveryCommandConsumerKey(),
+                heartbeat.endpointLeaseId(),
+                heartbeat.endpointDriverId(),
                 0L
         ));
     }
@@ -530,16 +565,6 @@ public class ServerSessionManager
     private String deliveryCommandConsumerKey() {
         String current = deliveryCommandConsumerKey;
         return current != null ? current : adapterId;
-    }
-
-    private static boolean isCurrentOwner(TransportRouteOwnerRecord owner, TransportRouteOwnerClaim claim) {
-        return owner != null
-                && claim != null
-                && claim.workerId().equals(owner.getWorkerId())
-                && claim.deliveryBucketId().equals(owner.getDeliveryBucketId())
-                && claim.adapterId().equals(owner.getAdapterId())
-                && claim.routeKey().equals(owner.getRouteKey())
-                && claim.connectionId().equals(owner.getConnectionId());
     }
 
     @Override

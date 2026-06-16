@@ -21,7 +21,7 @@ public interface WorkerInspectionOperations {
 
     /**
      * Returns whether the worker is currently available according to worker
-     * runtime lifecycle state. Transport route-owner leases are delivery
+     * runtime lifecycle state. Transport endpoint leases are delivery
      * feasibility evidence and are not read by this inspection API.
      */
     boolean isWorkerReachable(String workerId);

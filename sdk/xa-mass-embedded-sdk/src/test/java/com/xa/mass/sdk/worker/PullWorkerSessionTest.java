@@ -8,7 +8,7 @@ import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.TransportResultEnvelope;
-import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -32,7 +32,7 @@ class PullWorkerSessionTest {
         when(deliveryPullChannel.pollDeliveryMessagesResult("worker-1", 5, 250L)).thenReturn(expected);
 
         PullWorkerSession session = session(deliveryPullChannel, mock(TaskResultIngestChannel.class),
-                new InMemoryTransportRouteOwnerStore());
+                new InMemoryTransportEndpointLeaseStore());
 
         TaskPullResult result = session.pollResult(5, 250L);
 
@@ -48,7 +48,7 @@ class PullWorkerSessionTest {
                 .thenReturn(DeliveryPullResult.delivered(List.of(message("msg-1"), message("msg-2"))));
 
         PullWorkerSession session = session(deliveryPullChannel, mock(TaskResultIngestChannel.class),
-                new InMemoryTransportRouteOwnerStore());
+                new InMemoryTransportEndpointLeaseStore());
 
         List<PulledTaskDispatch> items = session.poll(3, 100L);
 
@@ -61,7 +61,7 @@ class PullWorkerSessionTest {
         when(resultIngestChannel.ingest(any(TransportResultEnvelope.class))).thenReturn(true);
 
         PullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
-                new InMemoryTransportRouteOwnerStore());
+                new InMemoryTransportEndpointLeaseStore());
 
         PulledTaskDispatch item = new PulledTaskDispatch(
                 "task-1",
@@ -89,7 +89,7 @@ class PullWorkerSessionTest {
         when(resultIngestChannel.ingest(any(TransportResultEnvelope.class))).thenReturn(true);
 
         PullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
-                new InMemoryTransportRouteOwnerStore());
+                new InMemoryTransportEndpointLeaseStore());
 
         session.submitResult("task-1", "msg-1", true, "ok", null, Map.of());
 
@@ -100,34 +100,27 @@ class PullWorkerSessionTest {
 
     @Test
     void connectHeartbeatDisconnectWritePresenceWithCanonicalRouteAndSessionToken() {
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
         PullWorkerSession session = session(mock(DeliveryPullChannel.class), mock(TaskResultIngestChannel.class),
-                routeOwnerStore, presenceIngress);
+                endpointLeaseStore, presenceIngress);
 
         assertTrue(session.connectAndClaim("connected"));
-        assertTrue(routeOwnerStore.endpointForSelectedWorker("group-1", "worker-1")
+        assertTrue(endpointLeaseStore.currentEndpointLease("group-1", "worker-1").isPresent());
+        assertEquals("conn-1", endpointLeaseStore.currentEndpointLease("group-1", "worker-1")
                 .orElseThrow()
-                .isActive(System.currentTimeMillis()));
-        assertTrue(routeOwnerStore.hasActiveRouteOwner("polling", routeKey()));
-        assertEquals("conn-1", routeOwnerStore.endpointForSelectedWorker("group-1", "worker-1")
-                .orElseThrow()
-                .connectionId());
+                .endpointLeaseId());
         assertEquals(List.of("CONNECTED:worker-1:polling:" + routeKey() + ":conn-1:connected:conn-1"),
                 presenceIngress.events);
 
-        assertFalse(staleSession("stale-conn", routeOwnerStore, new RecordingWorkerPresenceIngress())
+        assertFalse(staleSession("stale-conn", endpointLeaseStore, new RecordingWorkerPresenceIngress())
                 .disconnectIfCurrent("stale-disconnect"));
-        assertTrue(routeOwnerStore.endpointForSelectedWorker("group-1", "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
+        assertTrue(endpointLeaseStore.currentEndpointLease("group-1", "worker-1").isPresent());
 
-        assertFalse(staleSession("stale-conn", routeOwnerStore, new RecordingWorkerPresenceIngress())
+        assertFalse(staleSession("stale-conn", endpointLeaseStore, new RecordingWorkerPresenceIngress())
                 .refreshHeartbeatIfCurrent("stale-heartbeat"));
         assertTrue(session.refreshHeartbeatIfCurrent("heartbeat"));
-        assertTrue(routeOwnerStore.endpointForSelectedWorker("group-1", "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
+        assertTrue(endpointLeaseStore.currentEndpointLease("group-1", "worker-1").isPresent());
         assertEquals(List.of(
                         "CONNECTED:worker-1:polling:" + routeKey() + ":conn-1:connected:conn-1",
                         "HEARTBEAT:worker-1:polling:" + routeKey() + ":conn-1:heartbeat:conn-1"
@@ -135,7 +128,7 @@ class PullWorkerSessionTest {
                 presenceIngress.events);
 
         assertTrue(session.disconnectIfCurrent("disconnect"));
-        assertTrue(routeOwnerStore.endpointForSelectedWorker("group-1", "worker-1").isEmpty());
+        assertTrue(endpointLeaseStore.currentEndpointLease("group-1", "worker-1").isEmpty());
         assertEquals(List.of(
                         "CONNECTED:worker-1:polling:" + routeKey() + ":conn-1:connected:conn-1",
                         "HEARTBEAT:worker-1:polling:" + routeKey() + ":conn-1:heartbeat:conn-1",
@@ -146,29 +139,29 @@ class PullWorkerSessionTest {
 
     private static PullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
                                              TaskResultIngestChannel resultIngestChannel,
-                                             InMemoryTransportRouteOwnerStore routeOwnerStore) {
-        return session("conn-1", deliveryPullChannel, resultIngestChannel, routeOwnerStore,
+                                             InMemoryTransportEndpointLeaseStore endpointLeaseStore) {
+        return session("conn-1", deliveryPullChannel, resultIngestChannel, endpointLeaseStore,
                 new RecordingWorkerPresenceIngress());
     }
 
     private static PullWorkerSession staleSession(String connectionId,
-                                                  InMemoryTransportRouteOwnerStore routeOwnerStore,
+                                                  InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                                   WorkerPresenceIngress presenceIngress) {
-        return session(connectionId, mock(DeliveryPullChannel.class), mock(TaskResultIngestChannel.class), routeOwnerStore,
+        return session(connectionId, mock(DeliveryPullChannel.class), mock(TaskResultIngestChannel.class), endpointLeaseStore,
                 presenceIngress);
     }
 
     private static PullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
                                              TaskResultIngestChannel resultIngestChannel,
-                                             InMemoryTransportRouteOwnerStore routeOwnerStore,
+                                             InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                              WorkerPresenceIngress presenceIngress) {
-        return session("conn-1", deliveryPullChannel, resultIngestChannel, routeOwnerStore, presenceIngress);
+        return session("conn-1", deliveryPullChannel, resultIngestChannel, endpointLeaseStore, presenceIngress);
     }
 
     private static PullWorkerSession session(String connectionId,
                                              DeliveryPullChannel deliveryPullChannel,
                                              TaskResultIngestChannel resultIngestChannel,
-                                             InMemoryTransportRouteOwnerStore routeOwnerStore,
+                                             InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                              WorkerPresenceIngress presenceIngress) {
         return new PullWorkerSession(
                 "worker-1",
@@ -177,7 +170,7 @@ class PullWorkerSessionTest {
                 connectionId,
                 deliveryPullChannel,
                 resultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 presenceIngress,
                 "polling"
         );

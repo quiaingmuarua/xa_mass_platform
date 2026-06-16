@@ -9,11 +9,11 @@ import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
 import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
-import com.xa.mass.transport.runtime.route.RedisTransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.lease.RedisTransportEndpointLeaseStore;
 import com.xa.mass.api.review.InProcessTaskReviewReportQueue;
 import com.xa.mass.api.review.InMemoryTaskReviewStore;
 import com.xa.mass.api.review.JdbcTaskReviewStore;
@@ -137,14 +137,14 @@ public class XaMassServerApplication {
     @Value("${mass.transport.delivery.redis.namespace:" + RedisTransportNamespaces.DELIVERY + "}")
     private String transportDeliveryRedisNamespace;
 
-    @Value("${mass.transport.route-owner.store:memory}")
-    private String transportRouteOwnerStore;
+    @Value("${mass.transport.endpoint-lease.store:memory}")
+    private String transportEndpointLeaseStore;
 
-    @Value("${mass.transport.route-owner.lease-millis:30000}")
-    private long transportRouteOwnerLeaseMillis;
+    @Value("${mass.transport.endpoint-lease.lease-millis:30000}")
+    private long transportEndpointLeaseMillis;
 
-    @Value("${mass.transport.route-owner.redis.namespace:" + RedisTransportNamespaces.ROUTE_OWNER + "}")
-    private String transportRouteOwnerRedisNamespace;
+    @Value("${mass.transport.endpoint-lease.redis.namespace:" + RedisTransportNamespaces.ENDPOINT_LEASE + "}")
+    private String transportEndpointLeaseRedisNamespace;
 
     @Value("${mass.storage.mode:memory}")
     private String storageMode;
@@ -355,13 +355,13 @@ public class XaMassServerApplication {
                 .transport(transport -> {
                     java.util.function.Supplier<TransportDeliveryStore> deliveryStoreFactory =
                             resolveTransportDeliveryStoreFactory();
-                    java.util.function.Supplier<TransportRouteOwnerStore> routeOwnerStoreFactory =
-                            resolveTransportRouteOwnerStoreFactory();
+                    java.util.function.Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory =
+                            resolveTransportEndpointLeaseStoreFactory();
                     transport
                         .transportNodeId(transportNodeId)
                         .maxDeliveryQueuedItems(transportDeliveryMaxQueuedItems)
                         .maxDeliveryItemsPerRoute(transportDeliveryMaxItemsPerRoute)
-                        .routeOwnerLeaseMillis(transportRouteOwnerLeaseMillis)
+                        .endpointLeaseMillis(transportEndpointLeaseMillis)
                         .webSocketAdapter(webSocket -> webSocket
                                 .server(massWebSocketPort)
                                 .enabled(true)
@@ -378,8 +378,8 @@ public class XaMassServerApplication {
                     if (deliveryStoreFactory != null) {
                         transport.deliveryStoreFactory(deliveryStoreFactory);
                     }
-                    if (routeOwnerStoreFactory != null) {
-                        transport.routeOwnerStoreFactory(routeOwnerStoreFactory);
+                    if (endpointLeaseStoreFactory != null) {
+                        transport.endpointLeaseStoreFactory(endpointLeaseStoreFactory);
                     }
                 })
                 .engine(engine -> {
@@ -597,22 +597,22 @@ public class XaMassServerApplication {
         );
     }
 
-    private java.util.function.Supplier<TransportRouteOwnerStore> resolveTransportRouteOwnerStoreFactory() {
-        String normalizedMode = normalizeInfraMode(transportRouteOwnerStore, "memory");
+    private java.util.function.Supplier<TransportEndpointLeaseStore> resolveTransportEndpointLeaseStoreFactory() {
+        String normalizedMode = normalizeInfraMode(transportEndpointLeaseStore, "memory");
         if ("redis".equals(normalizedMode)) {
-            return () -> new RedisTransportRouteOwnerStore(
+            return () -> new RedisTransportEndpointLeaseStore(
                     redisUri(),
-                    transportRouteOwnerRedisNamespace,
-                    transportRouteOwnerLeaseMillis,
+                    transportEndpointLeaseRedisNamespace,
+                    transportEndpointLeaseMillis,
                     transportNodeId
             );
         }
-        requireDurableLocalInfraMode("mass.transport.route-owner.store", "redis", normalizedMode);
+        requireDurableLocalInfraMode("mass.transport.endpoint-lease.store", "redis", normalizedMode);
         if ("memory".equals(normalizedMode)) {
             return null;
         }
         throw new IllegalArgumentException(
-                "Unsupported mass.transport.route-owner.store: " + transportRouteOwnerStore
+                "Unsupported mass.transport.endpoint-lease.store: " + transportEndpointLeaseStore
         );
     }
 

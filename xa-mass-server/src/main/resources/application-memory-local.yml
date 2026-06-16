@@ -29,7 +29,7 @@ mass:
     node-id: memory-local-server
     delivery:
       store: memory
-    route-owner:
+    endpoint-lease:
       store: memory
   websocket:
     port: 18088

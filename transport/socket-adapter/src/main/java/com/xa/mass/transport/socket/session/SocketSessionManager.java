@@ -7,14 +7,16 @@ import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
-import com.xa.mass.transport.route.TransportRouteOwnerClaim;
-import com.xa.mass.transport.route.TransportRouteOwnerRecord;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
+import com.xa.mass.transport.lease.TransportEndpointLeaseConsumerEvidence;
+import com.xa.mass.transport.lease.TransportEndpointLeaseHeartbeat;
+import com.xa.mass.transport.lease.TransportEndpointLeaseRelease;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
-import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +40,7 @@ public final class SocketSessionManager
     private final String adapterId;
     private final RouteEndpointIndex<String, SocketWorkerEndpoint> routeIndex = new RouteEndpointIndex<>();
     private final ConcurrentMap<String, String> deliveryBucketByEndpoint = new ConcurrentHashMap<>();
-    private volatile TransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore();
+    private volatile TransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
     private volatile DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry =
             NoopDeliveryCommandConsumerRegistry.INSTANCE;
     private volatile String deliveryCommandConsumerKey;
@@ -87,9 +89,9 @@ public final class SocketSessionManager
                     reason,
                     endpointId
             ));
-            TransportRouteOwnerClaim claim =
-                    routeOwnerClaim(workerId, normalizedDeliveryBucketId, routeKey, endpointId, reason);
-            claimDeliveryConsumerIfCurrent(routeOwnerStore.claimRouteOwner(claim), claim);
+            TransportEndpointLeaseClaim claim =
+                    endpointLeaseClaim(workerId, normalizedDeliveryBucketId, routeKey, endpointId, reason);
+            claimDeliveryConsumer(endpointLeaseStore.claimEndpointLease(claim));
         }
         if (previousForWorker != null) {
             logger.warn("Existing socket endpoint for routeKey={} workerId={} found. Replacing session.",
@@ -126,9 +128,9 @@ public final class SocketSessionManager
                         endpointId
                 ));
             }
-            TransportRouteOwnerClaim claim =
-                    routeOwnerClaim(binding.workerId(), deliveryBucketId, binding.routeKey(), endpointId, reason);
-            routeOwnerStore.releaseRouteOwner(claim);
+            TransportEndpointLeaseRelease claim =
+                    endpointLeaseRelease(binding.workerId(), deliveryBucketId, binding.routeKey(), endpointId, reason);
+            endpointLeaseStore.releaseEndpointLease(claim);
             releaseDeliveryConsumer(claim);
         }
     }
@@ -231,15 +233,15 @@ public final class SocketSessionManager
                         reason,
                         entry.handle()
                 ));
-                TransportRouteOwnerClaim claim =
-                        routeOwnerClaim(
+                TransportEndpointLeaseRelease claim =
+                        endpointLeaseRelease(
                                 entry.workerId(),
                                 deliveryBucketByEndpoint.get(entry.handle()),
                                 entry.routeKey(),
                                 entry.handle(),
                                 reason
                         );
-                routeOwnerStore.releaseRouteOwner(claim);
+                endpointLeaseStore.releaseEndpointLease(claim);
                 releaseDeliveryConsumer(claim);
             }
         }
@@ -288,13 +290,13 @@ public final class SocketSessionManager
         return null;
     }
 
-    public void setRouteOwnerStore(TransportRouteOwnerStore routeOwnerStore) {
-        TransportRouteOwnerStore nextStore = routeOwnerStore != null
-                ? routeOwnerStore
-                : new InMemoryTransportRouteOwnerStore();
+    public void setEndpointLeaseStore(TransportEndpointLeaseStore endpointLeaseStore) {
+        TransportEndpointLeaseStore nextStore = endpointLeaseStore != null
+                ? endpointLeaseStore
+                : new InMemoryTransportEndpointLeaseStore();
         synchronized (this) {
-            this.routeOwnerStore = nextStore;
-            projectActiveSessionsToRouteOwner("socket route-owner store replaced");
+            this.endpointLeaseStore = nextStore;
+            projectActiveSessionsToEndpointLease("socket endpoint lease store replaced");
         }
     }
 
@@ -305,7 +307,7 @@ public final class SocketSessionManager
                     ? registry
                     : NoopDeliveryCommandConsumerRegistry.INSTANCE;
             this.deliveryCommandConsumerKey = requireText(queueConsumerKey, "queueConsumerKey");
-            projectActiveSessionsToRouteOwner("socket delivery consumer registry replaced");
+            projectActiveSessionsToEndpointLease("socket delivery consumer registry replaced");
         }
     }
 
@@ -330,19 +332,17 @@ public final class SocketSessionManager
                 reason,
                 traceId
         ));
-        TransportRouteOwnerClaim claim = routeOwnerClaim(
+        TransportEndpointLeaseHeartbeat heartbeat = endpointLeaseHeartbeat(
                 current.workerId(),
                 deliveryBucketByEndpoint.get(endpointId),
                 current.routeKey(),
                 endpointId,
                 reason
         );
-        TransportRouteOwnerRecord record = routeOwnerStore.refreshHeartbeat(claim);
-        if (isCurrentOwner(record, claim)) {
-            claimDeliveryConsumer(record);
-        } else {
-            releaseDeliveryConsumer(claim);
-        }
+        endpointLeaseStore.refreshEndpointLease(heartbeat).ifPresentOrElse(
+                this::claimDeliveryConsumer,
+                () -> releaseDeliveryConsumer(heartbeat)
+        );
     }
 
     private boolean matchesAdapter(String adapterId) {
@@ -378,29 +378,29 @@ public final class SocketSessionManager
         return null;
     }
 
-    private void projectActiveSessionsToRouteOwner(String reason) {
+    private void projectActiveSessionsToEndpointLease(String reason) {
         for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entries()) {
             SocketWorkerEndpoint endpoint = entry.endpoint();
             if (endpoint == null || !endpoint.isActive()) {
                 continue;
             }
-            TransportRouteOwnerClaim claim = routeOwnerClaim(
+            TransportEndpointLeaseClaim claim = endpointLeaseClaim(
                             entry.workerId(),
                             deliveryBucketByEndpoint.get(entry.handle()),
                             entry.routeKey(),
                             entry.handle(),
                             reason
             );
-            claimDeliveryConsumerIfCurrent(routeOwnerStore.claimRouteOwner(claim), claim);
+            claimDeliveryConsumer(endpointLeaseStore.claimEndpointLease(claim));
         }
     }
 
-    private TransportRouteOwnerClaim routeOwnerClaim(String workerId,
-                                                    String deliveryBucketId,
-                                                    String routeKey,
-                                                    String endpointId,
-                                                    String reason) {
-        return new TransportRouteOwnerClaim(
+    private TransportEndpointLeaseClaim endpointLeaseClaim(String workerId,
+                                                          String deliveryBucketId,
+                                                          String routeKey,
+                                                          String endpointId,
+                                                          String reason) {
+        return new TransportEndpointLeaseClaim(
                 workerId,
                 requireText(deliveryBucketId, "deliveryBucketId"),
                 adapterId,
@@ -410,30 +410,65 @@ public final class SocketSessionManager
         );
     }
 
-    private void claimDeliveryConsumerIfCurrent(TransportRouteOwnerRecord record, TransportRouteOwnerClaim claim) {
-        if (isCurrentOwner(record, claim)) {
-            claimDeliveryConsumer(record);
-        }
+    private TransportEndpointLeaseHeartbeat endpointLeaseHeartbeat(String workerId,
+                                                                  String deliveryBucketId,
+                                                                  String routeKey,
+                                                                  String endpointId,
+                                                                  String reason) {
+        return new TransportEndpointLeaseHeartbeat(
+                workerId,
+                requireText(deliveryBucketId, "deliveryBucketId"),
+                adapterId,
+                routeKey,
+                endpointId,
+                reason
+        );
     }
 
-    private void claimDeliveryConsumer(TransportRouteOwnerRecord record) {
+    private TransportEndpointLeaseRelease endpointLeaseRelease(String workerId,
+                                                              String deliveryBucketId,
+                                                              String routeKey,
+                                                              String endpointId,
+                                                              String reason) {
+        return new TransportEndpointLeaseRelease(
+                workerId,
+                requireText(deliveryBucketId, "deliveryBucketId"),
+                adapterId,
+                routeKey,
+                endpointId,
+                reason
+        );
+    }
+
+    private void claimDeliveryConsumer(TransportEndpointLeaseConsumerEvidence evidence) {
         deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
-                record.getDeliveryBucketId(),
-                record.getWorkerId(),
+                evidence.deliveryBucketId(),
+                evidence.workerId(),
                 deliveryCommandConsumerKey(),
-                record.getConnectionId(),
-                record.getAdapterId(),
-                record.getLeaseExpireAtEpochMillis()
+                evidence.endpointLeaseId(),
+                evidence.endpointDriverId(),
+                evidence.leaseExpireAtEpochMillis()
         ));
     }
 
-    private void releaseDeliveryConsumer(TransportRouteOwnerClaim claim) {
+    private void releaseDeliveryConsumer(TransportEndpointLeaseRelease claim) {
         deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
                 claim.deliveryBucketId(),
                 claim.workerId(),
                 deliveryCommandConsumerKey(),
-                claim.connectionId(),
-                claim.adapterId(),
+                claim.endpointLeaseId(),
+                claim.endpointDriverId(),
+                0L
+        ));
+    }
+
+    private void releaseDeliveryConsumer(TransportEndpointLeaseHeartbeat heartbeat) {
+        deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
+                heartbeat.deliveryBucketId(),
+                heartbeat.workerId(),
+                deliveryCommandConsumerKey(),
+                heartbeat.endpointLeaseId(),
+                heartbeat.endpointDriverId(),
                 0L
         ));
     }
@@ -441,16 +476,6 @@ public final class SocketSessionManager
     private String deliveryCommandConsumerKey() {
         String current = deliveryCommandConsumerKey;
         return current != null ? current : adapterId;
-    }
-
-    private static boolean isCurrentOwner(TransportRouteOwnerRecord owner, TransportRouteOwnerClaim claim) {
-        return owner != null
-                && claim != null
-                && claim.workerId().equals(owner.getWorkerId())
-                && claim.deliveryBucketId().equals(owner.getDeliveryBucketId())
-                && claim.adapterId().equals(owner.getAdapterId())
-                && claim.routeKey().equals(owner.getRouteKey())
-                && claim.connectionId().equals(owner.getConnectionId());
     }
 
     private void closeQuietly(SocketWorkerEndpoint endpoint) {

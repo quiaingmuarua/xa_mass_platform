@@ -77,7 +77,7 @@ Hard rules:
 
 WebSocket changes must preserve:
 
-- realtime route-owner lease perception
+- realtime endpoint-lease perception
 - task dispatch through WebSocket adapter
 - result write-back and callback idempotency behavior
 - coexistence with polling and socket adapters without cross-routing

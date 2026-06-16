@@ -14,7 +14,7 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.model.TransportOutboundMessage;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 
@@ -45,7 +45,7 @@ public class TransportConfig {
     private WorkerEndpointRegistry workerEndpointRegistry;
     private Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
     private Function<WorkerEndpointRegistry, WorkerPresenceIngress> workerPresenceIngressResolver;
-    private Supplier<TransportRouteOwnerStore> routeOwnerStoreFactory;
+    private Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory;
     private WebSocketAdapterConfig bundledWebSocketAdapterConfig = new WebSocketAdapterConfig();
     private SocketAdapterConfig bundledSocketAdapterConfig = new SocketAdapterConfig();
     private List<WebSocketAdapterConfig> supplementalWebSocketAdapterConfigs = List.of();
@@ -63,7 +63,7 @@ public class TransportConfig {
     private int transportRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private int eventRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private long eventHandlerTimeoutMillis;
-    private long routeOwnerLeaseMillis = 30_000L;
+    private long endpointLeaseMillis = 30_000L;
     private TransportRuntimeRole runtimeRole = TransportRuntimeRole.EMBEDDED;
     private String transportNodeId = java.util.UUID.randomUUID().toString();
 
@@ -83,7 +83,7 @@ public class TransportConfig {
         this.workerEndpointRegistry = source.workerEndpointRegistry;
         this.endpointRegistryFactory = source.endpointRegistryFactory;
         this.workerPresenceIngressResolver = source.workerPresenceIngressResolver;
-        this.routeOwnerStoreFactory = source.routeOwnerStoreFactory;
+        this.endpointLeaseStoreFactory = source.endpointLeaseStoreFactory;
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.bundledWebSocketAdapterConfig);
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.bundledSocketAdapterConfig);
         this.supplementalWebSocketAdapterConfigs = source.supplementalWebSocketAdapterConfigs.stream()
@@ -105,7 +105,7 @@ public class TransportConfig {
         this.transportRuntimeMaxPendingTasks = source.transportRuntimeMaxPendingTasks;
         this.eventRuntimeMaxPendingTasks = source.eventRuntimeMaxPendingTasks;
         this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
-        this.routeOwnerLeaseMillis = source.routeOwnerLeaseMillis;
+        this.endpointLeaseMillis = source.endpointLeaseMillis;
         this.runtimeRole = source.runtimeRole;
         this.transportNodeId = source.transportNodeId;
     }
@@ -239,23 +239,23 @@ public class TransportConfig {
         return workerTransportRuntimeFactory;
     }
 
-    public Supplier<TransportRouteOwnerStore> routeOwnerStoreFactory() {
-        return routeOwnerStoreFactory;
+    public Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory() {
+        return endpointLeaseStoreFactory;
     }
 
-    public void setRouteOwnerStoreFactory(Supplier<TransportRouteOwnerStore> routeOwnerStoreFactory) {
-        this.routeOwnerStoreFactory = routeOwnerStoreFactory;
+    public void setEndpointLeaseStoreFactory(Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory) {
+        this.endpointLeaseStoreFactory = endpointLeaseStoreFactory;
     }
 
-    public long getRouteOwnerLeaseMillis() {
-        return routeOwnerLeaseMillis;
+    public long getEndpointLeaseMillis() {
+        return endpointLeaseMillis;
     }
 
-    public void setRouteOwnerLeaseMillis(long routeOwnerLeaseMillis) {
-        if (routeOwnerLeaseMillis <= 0L) {
-            throw new IllegalArgumentException("routeOwnerLeaseMillis must be greater than 0");
+    public void setEndpointLeaseMillis(long endpointLeaseMillis) {
+        if (endpointLeaseMillis <= 0L) {
+            throw new IllegalArgumentException("endpointLeaseMillis must be greater than 0");
         }
-        this.routeOwnerLeaseMillis = routeOwnerLeaseMillis;
+        this.endpointLeaseMillis = endpointLeaseMillis;
     }
 
     public void setWorkerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {

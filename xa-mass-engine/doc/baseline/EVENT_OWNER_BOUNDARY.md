@@ -41,8 +41,8 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | task dispatch handoff | assignment/transport boundary | already-bound task work delivery view | worker matching, allocation, finality |
 | `TaskResultReport` | task result payload | worker task-result input | worker command ack, worker state report |
 | `TransportResultEnvelope` | transport ingress metadata | adapter/route/attempt context around task results | final result classification |
-| `WorkerPresenceIngress` | transport session-presence ingress | worker session connect/heartbeat/disconnect observations projected into worker-runtime reachability, plus connected/heartbeat refresh of registry-owned slot heartbeat freshness | route-owner delivery feasibility, command lifecycle, state projection, capability truth, worker resource status |
-| `WorkerReachabilityView` | worker-runtime read model | dispatchability evidence | transport route-owner leases, device state, load, command status |
+| `WorkerPresenceIngress` | transport session-presence ingress | worker session connect/heartbeat/disconnect observations projected into worker-runtime reachability, plus connected/heartbeat refresh of registry-owned slot heartbeat freshness | endpoint-lease delivery feasibility, command lifecycle, state projection, capability truth, worker resource status |
+| `WorkerReachabilityView` | worker-runtime read model | dispatchability evidence | transport endpoint leases, device state, load, command status |
 | `WorkerRegistry` / `WorkerSlot` | scheduling resource owner | active/reserved task-work capacity and exclusive execution-lane evidence | reachability, device state, command lifecycle |
 | trace/audit plane | evidence | historical facts | current runtime truth |
 
@@ -86,7 +86,7 @@ authorize a new owner path.
 `WorkerRuntimePresenceIngress` projects these observations into the
 worker-runtime presence owner and may emit canonical online/offline trace
 evidence when reachability actually changes. The ingress itself is not a worker
-state, command, capability, or route-owner lifecycle owner.
+state, command, capability, or endpoint-lease lifecycle owner.
 Connected and heartbeat observations may refresh registry-owned slot heartbeat
 freshness so Stage-1 slot lifecycle eligibility has current evidence, but they
 must not write worker resource status or dispatch gates.
@@ -288,12 +288,12 @@ task result, or scheduling lifecycle truth by itself.
   - event availability is intersected with registration-approved event codes
   - stale, conflicting, and unknown-worker reports are rejected as no-ops
 - `WorkerReachabilityView` stays worker-runtime reachability evidence, not
-  transport route-owner lease truth or generic health.
+  transport endpoint-lease truth or generic health.
 - `WorkerRegistry` stays task-work capacity and exclusive execution-lane
   evidence, not device state.
 - `WorkerPresenceIngress` must not import engine scheduling packages, mutate
   engine lifecycle state, write worker resource status, or derive presence or
-  slot heartbeat from route-owner currentness.
+  slot heartbeat from endpoint-lease currentness.
 - A shared runtime envelope remains future-only until concrete owners exist and
   duplicate carrier shape becomes a real problem.
 - Event routing must not become lifecycle ownership merely because a future

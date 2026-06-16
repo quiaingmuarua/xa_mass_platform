@@ -36,7 +36,7 @@ entry for `transport/`.
   derived from `deliveryBucketId` by transport. It may be shared by many
   workers; it must not express worker selection. Polling-store queue keys are
   a separate adapter-local queue concept until that residue is renamed.
-- external worker/session APIs must not expose route-owner internals such as
+- external worker/session APIs must not expose endpoint/session internals such as
   `routeKey`, `connectionId`, `transportNodeId`, `deliveryQueueKey`, or
   adapter runtime ids. Managed workers declare `adapterNodeId` plus
   `transportHint`; transport resolves internal adapter/runtime evidence.
@@ -60,24 +60,24 @@ entry for `transport/`.
 - raw/debug worker side-channels are also adapter-scoped. They may resolve one
   concrete active route for a worker, but once resolved they must dispatch via
   the serving adapter identity instead of reviving route-only shared semantics.
-- worker route-owner heartbeat evidence lives in a transport-owned route-owner
-  plane. Adapters/session ingress also writes handoff-private selected-worker
-  consumer evidence for assigned delivery. Assigned-delivery producer/listener
-  code must not re-own transport route evidence through worker heartbeat
-  folding or route-owner lookup. Route-owner writes are connection-aware: each
-  claim carries an explicit `deliveryBucketId`, heartbeat only extends the
-  matching route consumer lease, and release only removes the route consumer
-  when the caller still holds the stored `connectionId` / public
-  `sessionToken`.
+- worker endpoint lease evidence lives in a transport-owned endpoint lease
+  plane keyed by `deliveryBucketId + workerId`. Adapters/session ingress also
+  writes handoff-private selected-worker consumer evidence for assigned
+  delivery. Assigned-delivery producer/listener code must not re-own transport
+  endpoint evidence through worker heartbeat folding or endpoint lease lookup.
+  Endpoint lease writes are connection-aware: each claim carries an explicit
+  `deliveryBucketId`, heartbeat only extends the matching endpoint lease, and
+  release only removes the endpoint lease when the caller still holds the
+  stored `endpointLeaseId` / public `sessionToken`.
 - `WorkerPresenceIngress` is current session-presence ingress only. Adapters may
   publish connect/heartbeat/disconnect observations, while worker-runtime owns
-  derived reachability and registry slot heartbeat freshness. Route-owner leases
+  derived reachability and registry slot heartbeat freshness. Endpoint leases
   remain delivery feasibility evidence and must not become worker lifecycle
   truth, worker state-report truth, slot heartbeat truth, or capability truth.
 - `DeliveryCommand` is the assigned-item delivery intent. It carries only
   `deliveryBucketId`, `selectedWorkerId`, an opaque worker payload, opaque
   delivery correlation, and item timing/id facts. Task shell metadata such as
-  `taskName`, `project`, and `userId`, plus adapter, queue, node, route-owner,
+  `taskName`, `project`, and `userId`, plus adapter, queue, node, endpoint,
   connection, and session facts are not command fields.
 - `DeliveryCommandBatch` is consumer-local handoff materialization:
   `deliveryQueueKey`, handoff-owned command references, and command items only.
@@ -85,7 +85,7 @@ entry for `transport/`.
   endpoint lease facts.
 - `TransportDeliveryCommandListener` consumes handoff references and resolves
   the final-hop adapter from handoff-private consumer context. It does not
-  call route-owner endpoint lookup for assigned delivery. `AdapterDispatchRequest`
+  call endpoint lease lookup for assigned delivery. `AdapterDispatchRequest`
   is the final-hop adapter request and sends by selected worker.
 - `DeliveryPullResult` / `PulledDeliveryMessage` are the transport-core pull
   shapes. They carry status plus opaque delivery messages only. Task-shaped
@@ -153,7 +153,7 @@ Document layering inside `transport/`:
 - Do not reintroduce `TaskDispatchContent`, `TaskDispatchExecutionContext`,
   task-shaped `TaskPullResult`, or task-shaped `PulledTaskDispatch` into
   `transport_api`.
-- Do not turn route-owner/presence evidence into a post-assignment routing
+- Do not turn endpoint lease/presence evidence into a post-assignment routing
   engine. Missing selected-worker delivery evidence is infeasible delivery,
   not permission for transport to choose another worker.
 
@@ -174,7 +174,7 @@ Use this order for transport changes:
 Prefer these after transport changes:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDeliveryCommandHandoffTest,TransportDeliveryCommandBatchCodecTest,RedisTransportDeliveryCommandHandoffTest,RedisTransportDeliveryFailureChannelTest,InMemoryTransportRouteOwnerStoreTest,RedisTransportRouteOwnerStoreTest,RouteEndpointIndexTest,TransportConvergenceArchitectureGuardTest
+./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDeliveryCommandHandoffTest,TransportDeliveryCommandBatchCodecTest,RedisTransportDeliveryCommandHandoffTest,RedisTransportDeliveryFailureChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,RouteEndpointIndexTest,TransportConvergenceArchitectureGuardTest
 ./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,WebSocketInputProcessorTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,ServerSessionManagerShutdownTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
@@ -185,7 +185,7 @@ Acceptance focus:
 - task dispatch preserves the engine-selected worker through
   `selectedWorkerId` and cannot fallback to route-only delivery
 - polling `poll` and result submission work
-- realtime direct-send, route-owner delivery feasibility, and worker-runtime
+- realtime direct-send, endpoint lease delivery feasibility, and worker-runtime
   presence/reachability projection work
 - result lifecycle validation remains outside transport runtime; starter/engine
   assembly applies result correlation before engine mutation

@@ -770,14 +770,14 @@ Allowed outcomes:
 - Keep the current per-candidate reachability read after slot lifecycle
   acquisition. This is the selected current mainline outcome.
 - Add a worker-runtime reachability projection writer that composes
-  `dispatchEligible` without moving transport route-owner truth.
+  `dispatchEligible` without moving transport endpoint/session truth.
 - Add a bounded batch reachability read surface if the owner can prove it
   without leaking transport key shape.
 
 Acceptance:
 
 - The selected approach names the writer/reader owner.
-- Transport route-owner leases remain transport truth.
+- Transport endpoint/session leases remain delivery-feasibility truth only.
 - Redis registry does not read transport presence keys directly.
 - Non-ONLINE reachability still prevents dispatch binding.
 

@@ -112,9 +112,13 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.route.WorkerDispatchRouteOwnerView;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
-import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
+import com.xa.mass.transport.lease.TransportEndpointLeaseConsumerEvidence;
+import com.xa.mass.transport.lease.TransportEndpointLeaseHeartbeat;
+import com.xa.mass.transport.lease.TransportEndpointLeaseRelease;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
+import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
@@ -430,7 +434,7 @@ class MassSdkTest {
         WorkerPresenceIngress customPresenceIngress = mock(WorkerPresenceIngress.class);
         config.setCustomWorkerPresenceIngress(customPresenceIngress);
         WorkerTransportRuntimeFactory customFactory = (taskResultIngestChannel,
-                                                     routeOwnerStore,
+                                                     endpointLeaseStore,
                                                      deliveryService,
                                                      adapterBindings) -> mock(TransportRuntimeRegistry.class);
         config.setWorkerTransportRuntimeFactory(customFactory);
@@ -562,7 +566,7 @@ class MassSdkTest {
         assertCapturedNamespace(runtimeComposition, "deliveryCommandHandoffFactory", RedisTransportNamespaces.DELIVERY_COMMAND);
         assertCapturedNamespace(runtimeComposition, "taskResultInboxFactory", RedisTransportNamespaces.RESULT_INBOX);
         assertCapturedNamespace(runtimeComposition, "deliveryFailureInboxFactory", RedisTransportNamespaces.DELIVERY_FAILURE);
-        assertCapturedNamespace(runtimeComposition, "routeOwnerStoreFactory", RedisTransportNamespaces.ROUTE_OWNER);
+        assertCapturedNamespace(runtimeComposition, "endpointLeaseStoreFactory", RedisTransportNamespaces.ENDPOINT_LEASE);
         assertCapturedNamespace(runtimeComposition, "deliveryStoreFactory", RedisTransportNamespaces.DELIVERY);
         assertCapturedNamespace(runtimeComposition, "transportNodeRegistryFactory", RedisTransportNamespaces.NODES);
     }
@@ -599,7 +603,7 @@ class MassSdkTest {
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
-                    new InMemoryTransportRouteOwnerStore(),
+                    new InMemoryTransportEndpointLeaseStore(),
                     deliveryService(),
                     runtimeTaskExecutor
             );
@@ -628,7 +632,7 @@ class MassSdkTest {
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
-                    new InMemoryTransportRouteOwnerStore(),
+                    new InMemoryTransportEndpointLeaseStore(),
                     deliveryService(),
                     runtimeTaskExecutor
             );
@@ -659,7 +663,7 @@ class MassSdkTest {
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
-                    new InMemoryTransportRouteOwnerStore(),
+                    new InMemoryTransportEndpointLeaseStore(),
                     deliveryService(),
                     runtimeTaskExecutor
             );
@@ -692,7 +696,7 @@ class MassSdkTest {
                     new CompositeWorkerEndpointRegistry(),
                     mock(TaskResultIngestChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
-                    new InMemoryTransportRouteOwnerStore(),
+                    new InMemoryTransportEndpointLeaseStore(),
                     deliveryService(),
                     runtimeTaskExecutor
             );
@@ -725,7 +729,7 @@ class MassSdkTest {
                                     endpointRegistry,
                                     null,
                                     runtimeComposition.resolveWorkerPresenceIngress(),
-                                    new InMemoryTransportRouteOwnerStore(),
+                                    new InMemoryTransportEndpointLeaseStore(),
                                     deliveryService(),
                                     runtimeTaskExecutor
                             )
@@ -755,7 +759,7 @@ class MassSdkTest {
                                     new ServerSessionManager("websocket"),
                                     mock(TaskResultIngestChannel.class),
                                     NoopWorkerPresenceIngress.INSTANCE,
-                                    new InMemoryTransportRouteOwnerStore(),
+                                    new InMemoryTransportEndpointLeaseStore(),
                                     deliveryService(),
                                     runtimeTaskExecutor
                             )
@@ -786,7 +790,7 @@ class MassSdkTest {
                                     new com.xa.mass.transport.socket.session.SocketSessionManager("socket"),
                                     mock(TaskResultIngestChannel.class),
                                     NoopWorkerPresenceIngress.INSTANCE,
-                                    new InMemoryTransportRouteOwnerStore(),
+                                    new InMemoryTransportEndpointLeaseStore(),
                                     deliveryService(),
                                     runtimeTaskExecutor
                             )
@@ -848,7 +852,7 @@ class MassSdkTest {
         config.getBundledWebSocketAdapterConfig().setEnabled(false);
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         config.setWorkerTransportRuntimeFactory((taskResultIngestChannel,
-                                                routeOwnerStore,
+                                                endpointLeaseStore,
                                                 deliveryService,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
 
@@ -870,7 +874,7 @@ class MassSdkTest {
     void transportRuntimeCompositionUsesBootstrapDescriptorEvenWithCustomRuntimeFactory() {
         TransportConfig config = new TransportConfig();
         config.setWorkerTransportRuntimeFactory((taskResultIngestChannel,
-                                                routeOwnerStore,
+                                                endpointLeaseStore,
                                                 deliveryService,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
         config.setPrimaryTransportAdapterBootstrap(new DescriptorOnlyBootstrap(
@@ -896,7 +900,7 @@ class MassSdkTest {
         config.setWorkerTransportRuntimeFactory(new WorkerTransportRuntimeFactory() {
             @Override
             public TransportRuntimeRegistry create(TaskResultIngestChannel taskResultIngestChannel,
-                                                   com.xa.mass.transport.route.TransportRouteOwnerStore routeOwnerStore,
+                                                   TransportEndpointLeaseStore endpointLeaseStore,
                                                    TransportDeliveryService deliveryService,
                                                    List<TransportBinding> adapterBindings) {
                 return mock(TransportRuntimeRegistry.class);
@@ -1020,11 +1024,11 @@ class MassSdkTest {
     }
 
     @Test
-    void massApplicationStopsCustomRouteOwnerStore() {
-        StubTransportRouteOwnerStore store = new StubTransportRouteOwnerStore();
+    void massApplicationStopsCustomEndpointLeaseStore() {
+        StubTransportEndpointLeaseStore store = new StubTransportEndpointLeaseStore();
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
-                        .routeOwnerStoreFactory(() -> store)
+                        .endpointLeaseStoreFactory(() -> store)
                         .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine.enabled(false))
                 .build();
@@ -1036,11 +1040,11 @@ class MassSdkTest {
     }
 
     @Test
-    void sdkBuilderAcceptsRedisRouteOwnerStoreNamespaceOverride() {
+    void sdkBuilderAcceptsRedisEndpointLeaseStoreNamespaceOverride() {
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
-                        .routeOwnerLeaseMillis(5_000L)
-                        .redisRouteOwnerStore("redis://127.0.0.1:6379/0", "xa:mass:test:transport:route-owner")
+                        .endpointLeaseMillis(5_000L)
+                        .redisEndpointLeaseStore("redis://127.0.0.1:6379/0", "xa:mass:test:transport:endpoint-lease")
                         .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine.enabled(false))
                 .build();
@@ -2732,11 +2736,11 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         routeOwnerStore,
+                                                         endpointLeaseStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 List.of(canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
@@ -2769,11 +2773,11 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         routeOwnerStore,
+                                                         endpointLeaseStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 List.of(
                         canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
                         canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
@@ -2809,11 +2813,11 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         routeOwnerStore,
+                                                         endpointLeaseStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 List.of(
                         canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
                         canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
@@ -2848,11 +2852,11 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         routeOwnerStore,
+                                                         endpointLeaseStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 List.of(
                         canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
                         canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
@@ -2906,11 +2910,11 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         routeOwnerStore,
+                                                         endpointLeaseStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 List.of(
                         canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
                         canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
@@ -3001,11 +3005,11 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         routeOwnerStore,
+                                                         endpointLeaseStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 List.of(canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
@@ -3059,11 +3063,11 @@ class MassSdkTest {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         routeOwnerStore,
+                                                         endpointLeaseStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 List.of(canonicalRouteBinding(
                         new StubPullCapableAdapter("queue-consumer", "queue-consumer"),
                         new StubPullCapableAdapter("queue-consumer", "queue-consumer")))
@@ -3102,11 +3106,11 @@ class MassSdkTest {
                 WorkerTransportHints.POLLING
         );
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         routeOwnerStore,
+                                                         endpointLeaseStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 List.of(canonicalRouteBinding(pollingAdapter, pollingAdapter))
         );
 
@@ -3877,59 +3881,33 @@ class MassSdkTest {
         }
     }
 
-    private static final class StubTransportRouteOwnerStore
-            implements TransportRouteOwnerStore,
-            WorkerDispatchRouteOwnerView,
+    private static final class StubTransportEndpointLeaseStore
+            implements TransportEndpointLeaseStore,
             AutoCloseable {
 
         private final AtomicBoolean closed = new AtomicBoolean(false);
-        private final InMemoryTransportRouteOwnerStore delegate = new InMemoryTransportRouteOwnerStore();
+        private final InMemoryTransportEndpointLeaseStore delegate = new InMemoryTransportEndpointLeaseStore();
 
         @Override
-        public com.xa.mass.transport.route.TransportRouteOwnerRecord claimRouteOwner(
-                com.xa.mass.transport.route.TransportRouteOwnerClaim claim) {
-            return delegate.claimRouteOwner(claim);
+        public TransportEndpointLeaseConsumerEvidence claimEndpointLease(TransportEndpointLeaseClaim claim) {
+            return delegate.claimEndpointLease(claim);
         }
 
         @Override
-        public com.xa.mass.transport.route.TransportRouteOwnerRecord refreshHeartbeat(
-                com.xa.mass.transport.route.TransportRouteOwnerClaim claim) {
-            return delegate.refreshHeartbeat(claim);
+        public java.util.Optional<TransportEndpointLeaseConsumerEvidence> refreshEndpointLease(
+                TransportEndpointLeaseHeartbeat heartbeat) {
+            return delegate.refreshEndpointLease(heartbeat);
         }
 
         @Override
-        public com.xa.mass.transport.route.TransportRouteOwnerRecord releaseRouteOwner(
-                com.xa.mass.transport.route.TransportRouteOwnerClaim claim) {
-            return delegate.releaseRouteOwner(claim);
+        public boolean releaseEndpointLease(TransportEndpointLeaseRelease release) {
+            return delegate.releaseEndpointLease(release);
         }
 
         @Override
-        public boolean hasActiveRouteOwner(String adapterId, String routeKey) {
-            return delegate.hasActiveRouteOwner(adapterId, routeKey);
-        }
-
-        @Override
-        public List<com.xa.mass.transport.route.WorkerDispatchRouteOwner> currentOwners(String routeKey) {
-            return delegate.currentOwners(routeKey);
-        }
-
-        @Override
-        public java.util.Optional<com.xa.mass.transport.route.SelectedWorkerDeliveryTarget> targetForSelectedWorker(
-                String deliveryBucketId,
-                String selectedWorkerId) {
-            return delegate.targetForSelectedWorker(deliveryBucketId, selectedWorkerId);
-        }
-
-        @Override
-        public java.util.Optional<com.xa.mass.transport.route.RouteConsumerEndpoint> endpointForSelectedWorker(
-                String deliveryBucketId,
-                String selectedWorkerId) {
-            return delegate.endpointForSelectedWorker(deliveryBucketId, selectedWorkerId);
-        }
-
-        @Override
-        public int pruneExpired() {
-            return delegate.pruneExpired();
+        public java.util.Optional<TransportEndpointLeaseViewRecord> currentEndpointLease(String deliveryBucketId,
+                                                                                        String workerId) {
+            return delegate.currentEndpointLease(deliveryBucketId, workerId);
         }
 
         @Override

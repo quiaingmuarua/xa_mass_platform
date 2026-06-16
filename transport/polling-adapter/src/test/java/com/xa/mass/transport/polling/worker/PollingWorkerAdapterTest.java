@@ -9,7 +9,7 @@ import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -89,37 +89,33 @@ class PollingWorkerAdapterTest {
     }
 
     @Test
-    void routeOwnerAnnouncementsUpdateTransportOwnedRouteOwnerLease() {
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "poll-node-1");
-        PollingWorkerAdapter adapter = adapter(routeOwnerStore);
+    void endpointLeaseAnnouncementsUpdateTransportOwnedEndpointLease() {
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore =
+                new InMemoryTransportEndpointLeaseStore(30_000L, "poll-node-1");
+        PollingWorkerAdapter adapter = adapter(endpointLeaseStore);
 
         adapter.announceWorkerOnline("worker-1", "bucket-1", "route-1", "conn-1", "poll connected");
 
-        assertTrue(routeOwnerStore.endpointForSelectedWorker("bucket-1", "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
-        assertEquals("poll-node-1", routeOwnerStore.targetForSelectedWorker("bucket-1", "worker-1")
-                .orElseThrow()
-                .targetTransportNodeId());
-        assertTrue(routeOwnerStore.hasActiveRouteOwner(PollingWorkerAdapter.PROTOCOL, "route-1"));
+        var connected = endpointLeaseStore.currentEndpointLease("bucket-1", "worker-1").orElseThrow();
+        assertEquals("poll-node-1", connected.runtimeNodeId());
+        assertEquals("route-1", connected.endpointAddress());
+        assertEquals("conn-1", connected.endpointLeaseId());
 
-        adapter.refreshRouteOwnerHeartbeat("worker-1", "bucket-1", "route-1", "conn-1", "poll heartbeat");
-        assertTrue(routeOwnerStore.endpointForSelectedWorker("bucket-1", "worker-1")
-                .orElseThrow()
-                .isActive(System.currentTimeMillis()));
+        adapter.refreshEndpointLeaseHeartbeat("worker-1", "bucket-1", "route-1", "conn-1", "poll heartbeat");
+        assertTrue(endpointLeaseStore.currentEndpointLease("bucket-1", "worker-1").isPresent());
 
         adapter.announceWorkerOffline("worker-1", "bucket-1", "route-1", "conn-1", "poll disconnect");
 
-        assertTrue(routeOwnerStore.endpointForSelectedWorker("bucket-1", "worker-1").isEmpty());
-        assertTrue(routeOwnerStore.currentOwners("route-1").isEmpty());
+        assertTrue(endpointLeaseStore.currentEndpointLease("bucket-1", "worker-1").isEmpty());
     }
 
     @Test
-    void routeOwnerAnnouncementsClaimAndReleaseSelectedWorkerConsumerEvidence() {
-        InMemoryTransportRouteOwnerStore routeOwnerStore = new InMemoryTransportRouteOwnerStore(30_000L, "poll-node-1");
+    void endpointLeaseAnnouncementsClaimAndReleaseSelectedWorkerConsumerEvidence() {
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore =
+                new InMemoryTransportEndpointLeaseStore(30_000L, "poll-node-1");
         RecordingConsumerRegistry registry = new RecordingConsumerRegistry();
         PollingWorkerAdapter adapter = new PollingWorkerAdapter(
-                routeOwnerStore,
+                endpointLeaseStore,
                 deliveryService(),
                 registry,
                 "poll-node-1"
@@ -137,12 +133,12 @@ class PollingWorkerAdapterTest {
     }
 
     private PollingWorkerAdapter adapter() {
-        return adapter(new InMemoryTransportRouteOwnerStore());
+        return adapter(new InMemoryTransportEndpointLeaseStore());
     }
 
-    private PollingWorkerAdapter adapter(InMemoryTransportRouteOwnerStore routeOwnerStore) {
+    private PollingWorkerAdapter adapter(InMemoryTransportEndpointLeaseStore endpointLeaseStore) {
         return new PollingWorkerAdapter(
-                routeOwnerStore,
+                endpointLeaseStore,
                 deliveryService()
         );
     }

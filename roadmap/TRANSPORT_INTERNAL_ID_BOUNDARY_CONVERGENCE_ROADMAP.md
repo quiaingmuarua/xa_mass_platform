@@ -283,7 +283,7 @@ new names.
   that old type in the same executable slice.
 - Do not introduce pass-through `*Resolver`, `*Facade`, `*Bridge`,
   `*Wrapper`, or successor DTOs that only forward to the previous owner.
-- `TransportEndpointLease` may replace the current route-owner endpoint record
+- `TransportEndpointLease` has replaced the old route-owner endpoint record
   shape; it must not sit beside `RouteConsumerEndpoint`,
   `TransportRouteOwnerRecord`, and `AdapterEndpoint` as a fourth live truth.
 - `SelectedWorkerDeliveryTarget` should be renamed in place or replaced by a
@@ -330,10 +330,6 @@ Scope:
 - `WorkerAdapter`
 - `AdapterDispatchRequest`
 - `AdapterEndpoint`
-- `RouteConsumerEndpoint`
-- `TransportRouteOwnerRecord`
-- `TransportRouteOwnerClaim`
-- `SelectedWorkerDeliveryTarget`
 - `DeliveryCommandBatch`
 - `TransportDeliveryStore`
 - `TransportDeliveryService`
@@ -341,6 +337,11 @@ Scope:
 - public Java SDK worker sessions and worker-pack samples
 - server worker registration and polling/realtime controllers
 - worker-runtime adapter-node and node-group binding records
+
+Deleted old route-owner endpoint contracts are not part of the current
+inventory. Keep `RouteConsumerEndpoint`, `TransportRouteOwnerRecord`,
+`TransportRouteOwnerClaim`, and `SelectedWorkerDeliveryTarget` only as residue
+guard targets so they are not reintroduced.
 
 Acceptance:
 
@@ -417,22 +418,22 @@ Acceptance:
 
 ## Phase TID-2: Endpoint Lease API Convergence
 
-Goal: make route-owner API names describe endpoint leases instead of route keys
-and adapters.
+Status: implemented by
+`doc/archive/transport/2026-06-16_TRANSPORT_CONSUMER_LEASE_CONVERGENCE_ROADMAP.md`;
+remaining work here is guard/vocabulary upkeep, not reintroducing a route-owner
+store.
+
+Goal: keep endpoint lease APIs described as bucket-worker endpoint/session
+evidence instead of route-key or adapter-worker ownership.
 
 Scope:
 
-- Rename or replace the existing route-owner endpoint record shape with
-  `TransportEndpointLease`; the old record/view type must be removed or merged
-  in the same slice.
-- Rename `RouteConsumerEndpoint` in place where possible. If a replacement type
-  is unavoidable, the old type must be deleted in the same slice; do not leave
-  a successor pair.
-- Rename `SelectedWorkerDeliveryTarget` to a runtime-node target, or replace it
-  with a narrower target and delete the old type in the same slice. It carries
-  only `deliveryBucketId + selectedWorkerId + runtimeNodeId`.
-- Route-owner store/view APIs should talk in bucket-worker current endpoint
-  terms, not adapter-worker or route-owner terms.
+- Keep the old route-owner endpoint record/view types deleted:
+  `TransportRouteOwnerRecord`, `TransportRouteOwnerStore`,
+  `WorkerDispatchRouteOwnerView`, `RouteConsumerEndpoint`, and
+  `SelectedWorkerDeliveryTarget`.
+- Endpoint lease store/view APIs talk in bucket-worker current endpoint terms,
+  not adapter-worker or route-owner terms.
 - Keep route-key diagnostic reads only as bounded maintenance/raw side-channel
   reads.
 
@@ -545,19 +546,19 @@ Compile:
 Focused transport tests:
 
 ```powershell
-./mvnw -q -pl transport/transport_api,transport/transport_runtime "-Dtest=DeliveryCommandTest,DispatchOutcomeTest,TransportAssignedDeliverySubmitterTest,TransportDeliveryCommandListenerTest,TransportDeliveryCommandBatchCodecTest,InMemoryTransportRouteOwnerStoreTest,RedisTransportRouteOwnerStoreTest,TransportRouteOwnerViewTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest" test
-./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter "-Dtest=DeliveryCommandTest,DispatchOutcomeTest,TransportAssignedDeliverySubmitterTest,TransportDeliveryCommandListenerTest,TransportDeliveryCommandBatchCodecTest,InMemoryTransportRouteOwnerStoreTest,RedisTransportRouteOwnerStoreTest,TransportRouteOwnerViewTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest,PollingWorkerAdapterTest" test
-./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/socket-adapter "-Dtest=DeliveryCommandTest,DispatchOutcomeTest,TransportAssignedDeliverySubmitterTest,TransportDeliveryCommandListenerTest,TransportDeliveryCommandBatchCodecTest,InMemoryTransportRouteOwnerStoreTest,RedisTransportRouteOwnerStoreTest,TransportRouteOwnerViewTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,SocketTransportServerTest" test
-./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/websocket-adapter "-Dtest=DeliveryCommandTest,DispatchOutcomeTest,TransportAssignedDeliverySubmitterTest,TransportDeliveryCommandListenerTest,TransportDeliveryCommandBatchCodecTest,InMemoryTransportRouteOwnerStoreTest,RedisTransportRouteOwnerStoreTest,TransportRouteOwnerViewTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest,WebSocketTaskDispatchChannelTest,WebSocketTransportFrameCodecTest,DispatcherInboundHandlerTest,ServerSessionManagerShutdownTest" test
+./mvnw -q -pl transport/transport_api,transport/transport_runtime -DskipTests install
+./mvnw -q -pl transport/transport_runtime "-Dtest=DeliveryCommandTest,DispatchOutcomeTest,TransportAssignedDeliverySubmitterTest,TransportDeliveryCommandListenerTest,TransportDeliveryCommandBatchCodecTest,InMemoryTransportEndpointLeaseStoreContractTest,RedisTransportEndpointLeaseStoreContractTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest" test
+./mvnw -q -pl transport/polling-adapter,transport/socket-adapter,transport/websocket-adapter "-Dtest=PollingWorkerAdapterTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,SocketTransportServerTest,WebSocketTaskDispatchChannelTest,WebSocketTransportFrameCodecTest,DispatcherInboundHandlerTest,ServerSessionManagerShutdownTest" test
 ```
 
 Public/SDK/server tests:
 
 ```powershell
-./mvnw -q -pl transport/transport_api,transport/transport_runtime,sdk/xa-mass-embedded-sdk "-Dtest=DeliveryCommandTest,DispatchOutcomeTest,TransportAssignedDeliverySubmitterTest,TransportDeliveryCommandListenerTest,TransportDeliveryCommandBatchCodecTest,InMemoryTransportRouteOwnerStoreTest,RedisTransportRouteOwnerStoreTest,TransportRouteOwnerViewTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest,MassSdkTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest" test
+./mvnw -q -pl xa-mass-worker-runtime,xa-mass-engine,transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/socket-adapter,transport/websocket-adapter -am -DskipTests install
+./mvnw -q -pl sdk/xa-mass-embedded-sdk "-Dtest=MassSdkTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest" test
 ./mvnw -q -pl sdk/xa-mass-java-sdk "-Dtest=WorkerClientTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest" test
 ./mvnw -q -pl integrations/xa-mass-worker-pack "-Dtest=SampleWorkerWebSocketClientTest,WebSocketClientStarterTest" test
-./mvnw -q -pl transport/transport_api,transport/transport_runtime,xa-mass-server "-Dtest=DeliveryCommandTest,DispatchOutcomeTest,TransportAssignedDeliverySubmitterTest,TransportDeliveryCommandListenerTest,TransportDeliveryCommandBatchCodecTest,InMemoryTransportRouteOwnerStoreTest,RedisTransportRouteOwnerStoreTest,TransportRouteOwnerViewTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest,ExternalWorkerApiControllerTest,ExternalWorkerPollingApiIntegrationTest#pollingWorkersSharingRouteAndQueueCannotCrossConsumeSelectedWorkerItems" test
+./mvnw -q -pl xa-mass-server "-Dtest=XaMassServerApplicationTransportRuntimeConfigTest,ServerMainSourceArchitectureGuardTest,ExternalWorkerApiControllerTest,ExternalWorkerPollingApiIntegrationTest#pollingWorkersSharingRouteAndQueueCannotCrossConsumeSelectedWorkerItems" test
 ```
 
 When a slice needs `-am`, do not combine it with adapter-only `-Dtest` names

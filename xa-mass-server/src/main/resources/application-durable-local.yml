@@ -58,7 +58,7 @@ mass:
     node-id: durable-local-server
     delivery:
       store: redis
-    route-owner:
+    endpoint-lease:
       store: redis
   websocket:
     port: 18088

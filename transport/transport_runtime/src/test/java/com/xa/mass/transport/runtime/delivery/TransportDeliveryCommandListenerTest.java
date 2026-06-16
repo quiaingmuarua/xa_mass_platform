@@ -7,7 +7,7 @@ import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.runtime.route.InMemoryTransportRouteOwnerStore;
+import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +22,7 @@ class TransportDeliveryCommandListenerTest {
     void adapterUnavailableEmitsOneRetryableFailure() {
         TransportRuntimeRegistry registry = new TransportRuntimeRegistry(
                 (TaskResultReport report) -> true,
-                new InMemoryTransportRouteOwnerStore(),
+                new InMemoryTransportEndpointLeaseStore(),
                 List.of(TransportBinding.builder(new NoopWorkerAdapter("socket")).build())
         );
         RecordingFailureHandler failures = new RecordingFailureHandler();

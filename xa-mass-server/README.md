@@ -421,14 +421,14 @@ Observability:
 | `mass.runtime.mode` | `memory` | engine runtime backend; normal `memory-local` uses `memory`, while normal `durable-local` uses Redis-backed work/result runtime |
 | `mass.runtime.redis.namespace` | `xa:mass:runtime:v1` | Redis namespace prefix when `mass.runtime.mode=redis` |
 | `mass.runtime.redis.max-queued-items` | `1000000` | runtime work backpressure cap for the Redis-backed work runtime |
-| `mass.transport.node-id` | random UUID | server transport runtime node id; set explicitly when comparing Redis route-owner evidence across restarts |
+| `mass.transport.node-id` | random UUID | server transport runtime node id; set explicitly when comparing Redis endpoint-lease evidence across restarts |
 | `mass.transport.delivery.store` | `memory` | embedded transport delivery-store backend; `memory` or `redis` |
 | `mass.transport.delivery.max-queued-items` | `100000` | total dispatch backlog cap for the resolved transport delivery store |
 | `mass.transport.delivery.max-items-per-route` | `10000` | per-route dispatch backlog cap for polling queues and adapter-local route queues |
 | `mass.transport.delivery.redis.namespace` | `xa:mass:transport:delivery:v1` | Redis namespace prefix when `mass.transport.delivery.store=redis` |
-| `mass.transport.route-owner.store` | `memory` | embedded transport route-owner backend; `memory` or `redis` |
-| `mass.transport.route-owner.lease-millis` | `30000` | route-owner lease before stale route evidence is unavailable |
-| `mass.transport.route-owner.redis.namespace` | `xa:mass:transport:route-owner:v1` | Redis namespace prefix when `mass.transport.route-owner.store=redis` |
+| `mass.transport.endpoint-lease.store` | `memory` | embedded transport endpoint-lease backend; `memory` or `redis` |
+| `mass.transport.endpoint-lease.lease-millis` | `30000` | endpoint lease duration before stale endpoint evidence is unavailable |
+| `mass.transport.endpoint-lease.redis.namespace` | `xa:mass:transport:endpoint-lease:v1` | Redis namespace prefix when `mass.transport.endpoint-lease.store=redis` |
 | `mass.control-plane.seed.enabled` | `false` | explicitly apply or validate catalog/rule/credential seed files during startup |
 | `mass.control-plane.seed.mode` | `apply` | `apply` writes parsed seed metadata; `validate` parses/counts without writing |
 | `mass.control-plane.seed.catalog-location` | empty | resource location for event/project/submitter seed JSON |
@@ -446,26 +446,26 @@ JDBC storage scope:
 - `durable-local` is the current default no-arg server profile and the
   single-node inspectable durable local baseline. It uses SQLite for
   control-plane storage and Redis for runtime work/result, worker registry,
-  transport delivery, and transport route-owner evidence.
+  transport delivery, and transport endpoint-lease evidence.
 - `durable-local` is fail-closed for infra mode selection: control-plane storage must be
-  JDBC-enabled, runtime must be Redis, and transport delivery/route-owner must be
+  JDBC-enabled, runtime must be Redis, and transport delivery/endpoint lease must be
   Redis. Misconfiguration must fail startup instead of falling back to process
   memory.
 - PostgreSQL remains a manual property override path with
   `mass.storage.mode=jdbc-postgres`; it is not one of the normal server
   profiles after profile convergence.
 - task-work runtime backend, transport delivery-store backend, and transport
-  route-owner backend are configured separately; `mass.runtime.mode` controls
+  endpoint-lease backend are configured separately; `mass.runtime.mode` controls
   engine work/result runtime, `mass.transport.delivery.store` controls dispatch
-  queue backend, and `mass.transport.route-owner.store` controls worker
-  reachability evidence
+  queue backend, and `mass.transport.endpoint-lease.store` controls endpoint
+  feasibility evidence
 - for restart/recovery diagnosis with local Redis, use Redis for the runtime
   surfaces you want to observe, for example
   `mass.runtime.mode=redis`,
   `mass.transport.delivery.store=redis`, and
-  `mass.transport.route-owner.store=redis`; this preserves runtime queues and
-  route-owner evidence across a server process restart, while expired leases and
-  stale route owners should still converge through timeout/retry rather than
+  `mass.transport.endpoint-lease.store=redis`; this preserves runtime queues and
+  endpoint evidence across a server process restart, while expired leases and
+  stale endpoint leases should still converge through timeout/retry rather than
   requiring every intermediate state to be durable
 - root `compose.yaml` is the preferred local distributed-verification shell:
   build the jar first with
@@ -521,7 +521,7 @@ Server control-plane store hard rules:
   cross-process sharing belongs to runtime/Redis session design, not SQLite or
   JDBC control-plane storage
 - durable-local profile must not synthesize memory fallbacks for control-plane storage,
-  task work/result runtime, transport delivery, or transport route-owner evidence. The only
+  task work/result runtime, transport delivery, or transport endpoint-lease evidence. The only
   current explicit memory exception in durable-local-facing server auth/session assembly
   is `SubmitterViewerSessionStore`, because it is volatile viewer session state
   and not durable control-plane truth.
@@ -544,7 +544,7 @@ Server control-plane store hard rules:
   omitted, wildcard, and bounded project/event scopes with explicit mode fields
   or an equivalent representation
 - `TaskMsg`, `TaskMsgAttempt`, runtime queues, leases, worker locks, worker
-  registry churn, and heartbeat/route-owner churn stay in runtime backends, with
+  registry churn, and heartbeat/endpoint-lease churn stay in runtime backends, with
   Redis as the current inspectable durable-local runtime backend
 - do not use JDBC storage as a cross-task message-status analytics surface;
   large-scale message history, attempt history, heartbeat streams, and failure

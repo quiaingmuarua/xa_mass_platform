@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-06-15
+Last updated: 2026-06-16
 
 Status: current transport boundary baseline.
 
@@ -19,17 +19,16 @@ over richer but expensive observability state.
 Transport owns delivery mechanics for workers:
 
 - worker endpoint connectivity and endpoint metadata
-- worker route-owner heartbeat evidence as a shared readable runtime view with
-  one or more active consumer records addressed by opaque `routeKey`; the
-  current assigned-delivery consumer projection is keyed by
-  `deliveryBucketId + selectedWorkerId`, while `adapterId`, `transportNodeId`,
-  lease, and connection evidence stay inside the owner value
+- worker endpoint lease evidence keyed by `deliveryBucketId + workerId`.
+  Endpoint leases contain adapter/runtime/session facts for current delivery
+  feasibility, while timestamps stay in store deadline indexes or
+  policy-specific consumer evidence instead of the general view record.
 - adapter registration and adapter selection by `adapterId`
 - task dispatch delivery, queueing, draining, and dispatch outcomes
 - task result ingress wrapping with transport metadata
 - session-presence ingress for adapter connect/disconnect/heartbeat
   observations; worker-runtime owns derived reachability and registry slot
-  heartbeat freshness, while route-owner lease refresh does not decide worker
+  heartbeat freshness, while endpoint lease refresh does not decide worker
   lifecycle, state-report, capability, or slot heartbeat truth
 
 Engine remains the owner of task lifecycle:
@@ -49,12 +48,12 @@ Transport should stay centered on these concepts only:
   and the single retryable delivery-failure fact owner. It carries stable
   delivery identity, selected worker, opaque delivery correlation, status,
   retryability, reason, and time. It must not expose adapter id, delivery queue
-  key, route key, transport node id, connection id, endpoint lease,
-  route-owner evidence, or task-shaped message/attempt fields.
+  key, route key, transport node id, connection id, endpoint lease evidence,
+  or task-shaped message/attempt fields.
 - `DeliveryCommand`: assigned-item delivery intent. It carries item identity,
   `deliveryBucketId`, `selectedWorkerId`, an opaque worker payload, opaque
   delivery correlation, deadline, and creation timestamp. Task shell metadata,
-  adapter, lane, target node, route-owner, connection, session, packet, and
+  adapter, lane, target node, endpoint lease, connection, session, packet, and
   structured task payload facts are not command fields.
 - `DeliveryCommandBatch`: consumer-local handoff record for one assigned
   delivery queue. It carries the bucket-derived `deliveryQueueKey`,
@@ -89,16 +88,18 @@ Transport should stay centered on these concepts only:
   transport core. Empty queue, invalid request, temporary unavailability, and
   shutdown must not be flattened into one fake "no work" result on the
   transport mainline.
-- `TransportRouteOwnerStore`: transport adapter write surface for typed
-  route-owner claims, heartbeat refresh, and owner release. Claims carry
-  `deliveryBucketId` explicitly; the store must not infer a bucket from
-  adapterId, routeKey, or workerId.
-- `WorkerDispatchRouteOwnerView`: narrow read-only route-owner view retained
-  for bounded diagnostics, maintenance, and route/session inspection. Assigned
-  delivery producer queue selection and listener dispatch do not call it.
+- `TransportEndpointLeaseStore`: transport adapter write surface for current
+  endpoint lease claim, heartbeat refresh, and release. Claims carry
+  `deliveryBucketId` and `workerId` explicitly; the store must not infer a
+  bucket from adapterId, routeKey, connection/session id, or worker id.
+- `TransportEndpointLeaseView`: narrow diagnostic read surface for current
+  `deliveryBucketId + workerId` endpoint metadata. General view records do not
+  expose lease deadlines; only claim/refresh consumer evidence carries deadline
+  when the delivery-command consumer registry needs it.
 - `WorkerPresenceIngress`: transport-neutral ingress seam for worker session
-  connect/disconnect/heartbeat observations. It is not a route-owner projection,
-  worker command, worker state-report, or capability-report lifecycle owner.
+  connect/disconnect/heartbeat observations. It is not an endpoint lease
+  projection, worker command, worker state-report, or capability-report
+  lifecycle owner.
   Connected and heartbeat observations may refresh worker-runtime slot heartbeat
   freshness; they must not write worker resource status or dispatch gates.
 - `AdapterNodeRecord`: worker registration endpoint and logical adapter
@@ -117,7 +118,7 @@ self-report flows may use transport ingress, but they must first define a
 separate owner that validates, stores, projects, repairs, and exposes the
 resulting state. Transport must not route command acknowledgements through task
 result ingest, treat state reports as reachability truth, mutate worker
-capability truth directly from presence ingress, or let `TransportRouteOwnerStore`
+capability truth directly from presence ingress, or let `TransportEndpointLeaseStore`
 claim/refresh/release currentness drive presence or slot heartbeat truth.
 
 The completed worker-control owner-baseline roadmap is archived at
@@ -177,28 +178,30 @@ Concrete adapters own protocol I/O only:
 
 - server/session/endpoint lifecycle for their protocol
 - frame or request/response codec
-- endpoint connect/disconnect/heartbeat lease refresh and route-owner evidence
-  writes into transport-owned route evidence
+- endpoint connect/disconnect/heartbeat lease refresh into
+  transport-owned endpoint lease evidence and handoff-private selected-worker
+  consumer evidence
 - calls into runtime delivery and result-ingest contracts
 - accept/read/write loops submitted through the runtime executor context when they block
 
-Transport-owned final-hop delivery submitters do not read route-owner target
-hints after worker selection has already produced concrete bindings. Transport
-owns only route/session heartbeat evidence and handoff consumer evidence, not
-worker online/offline lifecycle.
+Transport-owned final-hop delivery submitters do not read endpoint/session
+target hints after worker selection has already produced concrete bindings.
+Transport owns only endpoint/session lease evidence and handoff consumer
+evidence, not worker online/offline lifecycle.
 Heartbeat expiry is a transport lease rule, not an engine selector heuristic.
-Expired owner evidence is not dispatchable; missing or stale owner evidence is
-a retryable delivery-failure input, not permission to reselect workers or mark
-workers offline. Shared-store implementations such as Redis must preserve the
-same route-owner semantics as the in-memory default. One opaque `routeKey` may
-have multiple active consumer records, but only one current assigned-delivery
-consumer may own a given `(deliveryBucketId, selectedWorkerId)` pair.
-SDK/operator worker inspection must not read route-owner worker-id projections;
+Expired endpoint or consumer evidence is not dispatchable; missing or stale
+evidence is a retryable delivery-failure input, not permission to reselect
+workers or mark workers offline. Shared-store implementations such as Redis
+must preserve the same endpoint lease semantics as the in-memory default. Only
+one current endpoint lease may own a given `(deliveryBucketId, workerId)` pair;
+delivery-command handoff consumer evidence decides which local consumer may
+drain a selected worker.
+SDK/operator worker inspection must not read endpoint lease projections;
 it reads worker runtime lifecycle state. Engine and SDK inspection must not
 write presence, read adapter sessions, or treat presence as a schedule owner.
-Runtime assembly may keep the `TransportRouteOwnerStore` write surface for
-adapter writes and shutdown ownership, but direct route-owner lookup is bound
-into transport delivery components only.
+Runtime assembly keeps `TransportEndpointLeaseStore` for adapter/session writes
+and shutdown ownership. Assigned-delivery producer and listener code do not use
+endpoint lease view lookup as a routing engine.
 
 ## Worker Registration Relation Baseline
 
@@ -241,7 +244,7 @@ Owner boundaries:
   the scheduling subject.
 - `adapterId`, `adapterNodeId`, and `transportNodeId` are separate identities:
   adapter/protocol runtime identity, logical adapter deployment identity, and
-  split-runtime route-owner node.
+  split-runtime process/node identity.
 - Attributes such as `deviceId`, `accountId`, `phoneId`, `devicePool`, `route`,
   and `region` are scheduling evidence first. They must not silently create
   device owners, account-slot lifecycle, or implicit locks.
@@ -253,7 +256,7 @@ Resolved relation conflict:
   production relation surface.
 - `WorkerGroupCompatibilityProjection` is retired from node/group relation
   ownership.
-- If operator history or offline query needs adapter-node, group, route-owner,
+- If operator history or offline query needs adapter-node, group, endpoint,
   load, or reachability facts, emit trace/events and let async materialization
   build durable views. Do not reintroduce direct DB CRUD paths as runtime
   relation truth.
@@ -306,12 +309,12 @@ task-dispatch batch string such as `taskBatchJson`. Large item bodies continue
 to use `payloadRef` when needed; the handoff queue is not a copy of a
 million-item task queue.
 
-Worker runtime state is not a queue. The shared worker view contains
-route-owner records:
+Worker runtime state is not a queue. Transport endpoint lease state contains
+current endpoint metadata for a concrete delivery bucket and worker:
 
 ```text
-routeKey, adapterId, transportNodeId, connectionId,
-deliveryBucketId, optional workerId, leaseExpireAt, updatedAt
+deliveryBucketId, workerId, endpointDriverId, endpointAddress,
+runtimeNodeId, sessionHandle, endpointLeaseId
 ```
 
 Engine matching still selects a worker from control-plane registration,
@@ -330,15 +333,15 @@ SDK/starter assembly exposes three runtime roles:
 - `ENGINE_PRODUCER`: engine runs and submits delivery-command batches into the
   configured handoff; it drains result and delivery-failure inboxes back into
   local engine ports, but does not start transport adapters
-- `TRANSPORT_CONSUMER`: transport adapters, route-owner store, delivery store,
-  and delivery-command handoff pump run without starting the engine; results
-  and retryable delivery failures are enqueued for engine-side draining
+- `TRANSPORT_CONSUMER`: transport adapters, endpoint lease store, delivery
+  store, and delivery-command handoff pump run without starting the engine;
+  results and retryable delivery failures are enqueued for engine-side draining
 
 Transport consumers consume already resolved delivery targets. They must not
 call worker runtime, engine, or server APIs for worker lookup, worker
 selection, result finality, retry, release, or task state mutation.
 
-Route-owner semantics are also part of the transport contract:
+Endpoint lease semantics are also part of the transport contract:
 
 - `routeKey` is opaque connection address, coarse delivery-domain metadata, or
   protocol correlation; transport treats it as opaque and must not require
@@ -346,28 +349,27 @@ Route-owner semantics are also part of the transport contract:
 - `deliveryBucketId` is the assigned-delivery bucket supplied by
   engine/starter or adapter session context. It is opaque to transport and is
   not adapter identity, route-key syntax, or worker-runtime scheduling truth.
-- `workerId` is execution metadata attached to a route consumer; after engine
-  assignment the same value is carried as `selectedWorkerId`, the delivery
-  constraint used with `deliveryBucketId` for feasibility lookup
-- producer-side assigned delivery must not call route-owner lookup to choose a
-  queue, node, adapter, route, or connection; it derives the queue key from
+- `workerId` is execution identity attached to endpoint lease evidence; after
+  engine assignment the same value is carried as `selectedWorkerId`, the
+  delivery constraint used with `deliveryBucketId`.
+- producer-side assigned delivery must not call endpoint lease lookup to choose
+  a queue, node, adapter, route, or connection; it derives the queue key from
   `deliveryBucketId`
-- `endpointForSelectedWorker(deliveryBucketId, selectedWorkerId)` is retained
-  for bounded diagnostics and route/session inspection; assigned-delivery
-  listener dispatch does not call it
-- `currentOwners(routeKey)` is a bounded read for maintenance, diagnostics, and
-  raw side-channels, not the assigned-delivery hot path
-- `connectionId` identifies one live consumer connection for that route
-- `claimRouteOwner(...)` stores adapter, route, node, and connection evidence
-  for one route consumer; it does not create assigned-delivery queue ownership
-- multiple route consumer records may exist for one selected worker during
-  reconnect or protocol churn; route-owner inspection chooses the latest live
-  record only for diagnostics
-- `refreshHeartbeat(...)` extends the matching live route consumer lease only
-- `releaseRouteOwner(...)` removes the matching route consumer only; it does
-  not write an offline worker state and must not revoke a replacement consumer
+- `currentEndpointLease(deliveryBucketId, workerId)` is a narrow diagnostic
+  view for current endpoint metadata. It is not worker lifecycle truth, not a
+  scheduling view, and not producer-side queue selection.
+- `endpointLeaseId` identifies one live endpoint lease/session for that worker
+  in the bucket; stale heartbeat or disconnect events from an older lease must
+  never revoke a newer active endpoint after reconnect or endpoint takeover.
+- `claimEndpointLease(...)` replaces the current endpoint lease for exactly
+  one `deliveryBucketId + workerId` pair and returns consumer evidence when
+  the handoff registry needs lease deadline policy.
+- `refreshEndpointLease(...)` extends only the matching current endpoint lease.
+- `releaseEndpointLease(...)` removes only the matching current endpoint lease;
+  it does not write an offline worker state and must not revoke a replacement
+  endpoint.
 - stale heartbeat or disconnect events from an older connection must never
-  revoke a newer active connection after reconnect or route takeover
+  revoke a newer active connection after reconnect or endpoint takeover
 
 ## Redis Key Manifest
 
@@ -377,32 +379,39 @@ default component namespaces are:
 
 | Component | Default namespace | Retained key families |
 | --- | --- | --- |
-| route-owner | `xa:mass:transport:route-owner:v1` | `route:<encodedRouteKey>:consumers`, `deadline` |
+| endpoint-lease | `xa:mass:transport:endpoint-lease:v1` | `bucket:<encodedDeliveryBucketId>:workers`, `bucket:<encodedDeliveryBucketId>:deadlines` |
 | delivery | `xa:mass:transport:delivery:v1` | `q:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `meta:<encodedDeliveryQueueKey>:worker-index:<selectedWorkerId>`, `queues`, `stats` |
 | nodes | `xa:mass:transport:nodes:v1` | transport-node owner/heartbeat records and deadlines |
 | delivery-command | `xa:mass:transport:delivery-command:v1` | `q:<encodedDeliveryQueueKey>:commands`, `q:<encodedDeliveryQueueKey>:command-retention-deadlines`, `consumer:<encodedQueueConsumerKey>:ready-commands`, `consumer:<encodedQueueConsumerKey>:inflight-commands`, `queue-consumers:<encodedDeliveryQueueKey>`, `queue-consumer:<encodedQueueConsumerKey>`, `selected-worker-consumers:<encodedDeliveryQueueKey>`, `selected-worker-consumer-deadlines:<encodedDeliveryQueueKey>`, `queues` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
 
-Route-owner truth is keyed by opaque route and consumer id. Redis stores a
-route consumer hash plus deadline index so one opaque `routeKey` can have
-multiple active consumer records. Route-owner no longer stores a
-`bucket:<deliveryBucketId>:worker:<workerId>:owner` pointer; selected-worker
-delivery feasibility is represented by handoff-private delivery-command
-consumer evidence. The old adapter-worker pointer shape is not a retained
-transport key family.
+Endpoint lease truth is keyed by opaque `deliveryBucketId + workerId`. Redis
+stores bucket-local worker metadata plus a bucket-local deadline index. The
+general endpoint lease view does not expose the deadline timestamp; claim and
+refresh return deadline-bearing consumer evidence only for components that own
+lease policy, such as the delivery-command consumer registry. Endpoint lease
+does not store route-key consumer hashes, route-owner worker projections, or
+`bucket:<deliveryBucketId>:worker:<workerId>:owner` pointers. Selected-worker
+delivery feasibility for split transport handoff is represented by
+handoff-private delivery-command consumer evidence.
 
 Forbidden transport key families:
 
-- route-owner-side `workers`, `owner-shards`, `worker-routes:*`,
-  `worker-route:*`, `routes`, and `route-presence:*`
+- old route-owner-side `route:<encodedRouteKey>:consumers`, `deadline`,
+  `workers`, `owner-shards`, `worker-routes:*`, `worker-route:*`, `routes`,
+  and `route-presence:*`
+- old adapter/worker or bucket/worker owner pointers such as
+  `adapter:<adapterId>:worker:<workerId>:owner` and
+  `bucket:<deliveryBucketId>:worker:<workerId>:owner`
 - transport-owned worker capacity, reservation, active lease, dispatch gate,
   event-binding ceiling, `group:{groupId}:slots`, `worker:meta:*`, or
   `worker:occupancy:*` keys
 
 Worker runtime aggregates such as `group:{groupId}:slots` remain worker runtime
-truth. Transport may read route owner and node owner state; it must not preserve
-or derive scheduling/admission truth in its Redis keyspace.
+truth. Transport may maintain endpoint lease, delivery handoff, delivery store,
+node registry, result inbox, and delivery-failure inbox runtime state; it must
+not preserve or derive scheduling/admission truth in its Redis keyspace.
 
 ## Model Boundaries
 
@@ -463,7 +472,7 @@ starter/engine-side result validation, but old workers that only submit
 `TaskResultReport` remain valid until the security model explicitly changes.
 `routeKey` is transport route
 evidence/correlation metadata; enveloped result ingress must carry a non-blank
-route key when route-owner evidence is enforced, but that value must not be
+route key when endpoint lease evidence is enforced, but that value must not be
 treated as worker-selection truth. Adapter-local worker/session/connection
 identities are local diagnostics only and do not belong on the shared
 result-envelope mainline.
@@ -495,7 +504,7 @@ Current runtime rules:
 
 - `adapterId` is canonicalized by trim + lowercase
 - `deliveryBucketId` is canonicalized as an opaque text id and must be explicit
-  on assigned-delivery commands and route-owner claims
+  on assigned-delivery commands and endpoint lease claims
 - `routeKey` is canonicalized by trim only; case is preserved
 - route-key assembly is outside transport runtime. SDK/starter currently uses
   `CanonicalWorkerGroupRouteKeyCodec` as the default worker-group consumption
@@ -508,7 +517,7 @@ Current runtime rules:
 - adapter ingress may receive an explicit routeKey from adapter-local or legacy
   protocols, but public managed SDK sessions must not expose routeKey. When a
   managed session omits it, the adapter/server side mints an internal opaque
-  route-owner address from stable bucket/session context such as worker group.
+  endpoint address from stable bucket/session context such as worker group.
 - task dispatch endpoint registries must expose selected-worker addressing,
   such as `sendToSelectedWorker(adapterId, selectedWorkerId, message)`, with no
   default implementation that drops the selected worker and falls back to
@@ -518,7 +527,8 @@ Current runtime rules:
   contract. Route-only raw/manual sends are separated behind
   `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`; assigned task
   delivery callers must not receive those helpers through the same interface.
-- blank `routeKey` is invalid for route-owner evidence. Direct-send delivery
+- blank `routeKey` is invalid for endpoint lease evidence when an adapter
+  protocol uses routeKey as the endpoint address. Direct-send delivery
   must not require routeKey when selected-worker session addressing is
   available. Queued polling delivery must not rely on routeKey as the only
   isolation key.
@@ -552,16 +562,16 @@ WRB convergence note:
   transport, while routeKey remains internal connection/domain metadata.
 - Binding-level `workerId` remains the selected execution identity and
   delivery constraint within the bucket.
-- Redis-backed route-owner state uses route-key consumer hashes plus deadline
-  indexes plus a derived `deliveryBucketId + selectedWorkerId` owner pointer
-  for dispatch producer lookup; `currentOwners(routeKey)` is a bounded read.
+- Redis-backed endpoint lease state uses bucket-local worker metadata plus
+  bucket-local deadline indexes. It does not expose route-key owner scans or
+  producer-side dispatch lookup.
 - Assigned polling delivery queues are selected-worker scoped under a shared
   delivery queue key. Adapter or route changes must not make routeKey the worker
   correctness key; a queue keyed only by routeKey or deliveryQueueKey is invalid
   for assigned polling task delivery.
-- `adapterId`, `transportNodeId`, and `connectionId` remain delivery-owner
-  evidence. They must stay in owner values or queue metadata, not become the
-  route-key minting rule.
+- `adapterId`, `transportNodeId`, and `connectionId` remain transport-internal
+  endpoint/session evidence. They must stay in endpoint/session values or queue
+  metadata, not become the route-key minting rule.
 
 ## Forbidden Drift
 

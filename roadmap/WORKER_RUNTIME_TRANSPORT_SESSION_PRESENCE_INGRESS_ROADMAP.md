@@ -15,7 +15,7 @@ Related records:
 ## Purpose
 
 Define the production boundary for using transport session evidence as worker
-presence ingress without letting transport route-owner leases become worker
+presence ingress without letting transport endpoint leases become worker
 lifecycle, state-report, command-drain, capability, or dispatch-gate truth.
 
 The selected direction is:
@@ -31,7 +31,7 @@ transport session connect/disconnect/heartbeat
 The rejected direction is:
 
 ```text
-route-owner claim/release/refresh
+endpoint-lease claim/release/refresh
   -> worker online/offline/heartbeat lifecycle event
   -> WorkerResourceRecord.statusName
   -> WORKER_STATE dispatch gate mutation
@@ -39,8 +39,10 @@ route-owner claim/release/refresh
 
 For websocket and socket push workers, the live connection is the natural
 presence ingress. For polling workers, explicit worker online/heartbeat/offline
-calls may also be presence ingress. In both cases, route-owner state remains
-delivery feasibility evidence only.
+calls may also be presence ingress. In both cases, endpoint-lease state remains
+transport session/endpoint evidence only; assigned
+delivery feasibility is owned by handoff-private selected-worker consumer
+evidence.
 
 ## Owner Review
 
@@ -58,7 +60,7 @@ Worker runtime owns:
 Transport owns:
 
 - protocol session connect/disconnect/heartbeat observation,
-- route-owner claim, refresh, release, and delivery-feasibility lookup,
+- endpoint lease claim, refresh, release, and delivery-feasibility lookup,
 - adapter endpoint registries, delivery queues, dispatch outcomes, and
   transport node evidence.
 
@@ -69,7 +71,7 @@ Transport does not own:
 - worker command drain truth,
 - worker capability truth,
 - worker scheduling eligibility,
-- worker lifecycle projection from route-owner records.
+- worker lifecycle projection from endpoint lease records.
 
 Starter/SDK assembly owns:
 
@@ -83,7 +85,7 @@ Engine owns:
 - scheduling orchestration and stage-2 reachability consumption,
 - retry or compensation after transport reports delivery failure.
 
-Engine must not read adapter sessions or route-owner records to infer worker
+Engine must not read adapter sessions or endpoint lease records to infer worker
 reachability.
 
 ## Code Gaps Fixed By This Roadmap
@@ -93,16 +95,16 @@ The implemented mainline removes these former working-tree gaps:
 - removed `TransportRouteLifecycleProjector`, which projected `TransportRouteOwnerRecord`
   currentness into `publishWorkerOnline`, `publishWorkerHeartbeat`, and
   `publishWorkerOffline`.
-- socket and websocket session managers no longer call that projector after route-owner
+- socket and websocket session managers no longer call that projector after endpoint lease
   claim, refresh, or release.
 - removed `WorkerHeartbeatProjectionListener`, which handled lifecycle-named events by
   rewriting `WorkerResourceRecord.statusName`, updating `lastHeartbeat`, and
   clearing or disabling `DispatchAvailabilitySource.WORKER_STATE`.
 - polling SDK paths publish worker presence independent of whether
-  `PullWorkerSession` route-owner claim/refresh/release says the caller is the
-  current route owner.
+  `PullWorkerSession` endpoint lease claim/refresh/release says the caller is
+  the current endpoint lease holder.
 - public `PullWorkerSession#connect`, `heartbeat`, and `disconnect` now publish
-  session presence directly instead of remaining a route-owner-only side path.
+  session presence directly instead of remaining an endpoint-lease-only side path.
 - SDK inspection now derives reachability from worker-runtime reachability rather than
   `WorkerResourceRecord.statusName`.
 - starter `EngineConfig` defaults reachability to the worker-runtime presence
@@ -113,12 +115,12 @@ The implemented mainline removes these former working-tree gaps:
 - heartbeat refreshes only existing presence sessions; it cannot create or
   resurrect reachability for a disconnected or replaced session token.
 - transport and engine architecture guards now cover the rejected indirect
-  route-owner-to-lifecycle chain and the new presence ingress boundary.
+  endpoint-lease-to-lifecycle chain and the new presence ingress boundary.
 - worker state scheduling proof remains on the engine scheduling rows; presence
   does not write state or dispatch-gate truth.
 
-This roadmap must repair those gaps by changing the mechanism, not by adding a
-facade around the current route-owner projector.
+This roadmap repaired those gaps by changing the mechanism, not by adding a
+facade around the old route-owner projector.
 
 ## Boundary Decisions
 
@@ -153,7 +155,7 @@ PresenceSessionKey = workerId + adapterId + sessionToken
 
 `routeKey` remains opaque diagnostic metadata and must not participate in worker
 presence identity. `sessionToken` is not a global namespace by itself. The event
-must not carry or expose `TransportRouteOwnerRecord`.
+must not carry or expose endpoint lease metadata.
 
 ### 2. Replace Generic Lifecycle-Named Channel Internals
 
@@ -180,22 +182,24 @@ Public SDK worker data-plane methods may keep caller-facing names like
 implementation make clear they are presence ingress, not worker state-report or
 capability truth.
 
-### 3. Route-Owner Store Remains Delivery Feasibility Only
+### 3. Endpoint Lease Store Remains Delivery Feasibility Only
 
-Adapters still write `TransportRouteOwnerStore` so selected-worker delivery can
-find a current concrete consumer after engine assignment.
+Adapters write `TransportEndpointLeaseStore` for endpoint/session feasibility
+evidence. Assigned task delivery still finds concrete consumers through the
+handoff-private `DeliveryCommandConsumerRegistry`, not through endpoint lease
+lookup.
 
-No code path may use route-owner claim/refresh/release success as the condition
-for worker presence projection. Route-owner currentness can decide whether a
-delivery send is feasible. Worker-runtime presence currentness decides whether a
-worker is reachable.
+No code path may use endpoint lease claim/refresh/release success as the
+condition for worker presence projection. Endpoint lease currentness can inform
+whether an endpoint/session is feasible. Worker-runtime presence currentness
+decides whether a worker is reachable.
 
 Valid adapter session flow:
 
 ```text
 session observed
   -> publish WorkerSessionPresenceEvent
-  -> write or refresh TransportRouteOwnerStore for delivery feasibility
+  -> write or refresh TransportEndpointLeaseStore for endpoint feasibility
 ```
 
 The order may be adapter-specific for retry safety, but the two writes are
@@ -203,13 +207,13 @@ owned separately and either one failing must not be interpreted as the other
 truth.
 
 The guard target is data dependency, not file-level co-existence. A session
-manager may both publish presence and write route-owner evidence. It must not:
+manager may both publish presence and write endpoint lease evidence. It must not:
 
-- pass `TransportRouteOwnerRecord` into the presence event or presence runtime,
+- pass `TransportEndpointLeaseMetadata` into the presence event or presence runtime,
 - wrap `sessionConnected` / `sessionHeartbeat` / `sessionDisconnected` inside a
-  `claimRouteOwner` / `refreshHeartbeat` / `releaseRouteOwner` currentness
+  `claimEndpointLease` / `refreshEndpointLease` / `releaseEndpointLease` currentness
   check,
-- use route-owner write success or failure as the condition for presence
+- use endpoint lease write success or failure as the condition for presence
   publication.
 
 ### 4. Presence Does Not Mutate WORKER_STATE Or WorkerResource Status
@@ -230,7 +234,7 @@ WorkerGroup/registration capability truth.
 Connected and heartbeat observations may also refresh registry-owned slot
 heartbeat freshness, because CES Stage-1 source eligibility depends on the
 worker-runtime slot deadline. That write is not worker status, state-report,
-dispatch gate, command, capability, or route-owner truth.
+dispatch gate, command, capability, or endpoint-lease truth.
 
 Presence may otherwise update only the worker-runtime presence/reachability
 evidence that backs `WorkerReachabilityView`.
@@ -245,8 +249,8 @@ Required semantics:
 - connect for the new session installs or refreshes the current presence token,
 - disconnect for the replaced old session is either not emitted as worker-level
   presence or is rejected as stale by worker-runtime presence currentness,
-- route-owner release for the old connection must not revoke a newer
-  route-owner record,
+- endpoint lease release for the old connection must not revoke a newer
+  endpoint lease record,
 - disconnect closes only the matching `PresenceSessionKey`,
 - the worker remains reachable while the active non-expired session set is
   non-empty.
@@ -264,7 +268,7 @@ Stage-1 candidate acquisition/source guard stays on worker-runtime slot
 lifecycle evidence: group membership, heartbeat/deadline where registry-owned,
 dispatch gate, removing, and reserve validation.
 
-Do not move route-owner evidence into stage-1 eligibility. If stage-1 needs a
+Do not move endpoint lease evidence into stage-1 eligibility. If stage-1 needs a
 group-scoped reachable-worker set later, create a worker-runtime-owned
 `WORKER_PRESENCE` / `WORKER_REACHABILITY` projection with deadline semantics.
 That is a later performance slice, not a prerequisite for this roadmap's first
@@ -276,20 +280,21 @@ Do not start by keeping `TransportRouteLifecycleProjector` and moving it behind
 another bridge/facade. That preserves the wrong owner decision.
 
 Do not start by making `WorkerHeartbeatProjectionListener` write less status
-while still using route-owner records as lifecycle evidence. That hides the
+while still using endpoint lease records as lifecycle evidence. That hides the
 problem and leaves the same boundary leak.
 
 Do not start by adding Redis key families or ZSET deadlines. First establish the
 owner contract and in-process proof that presence, state, command, capability,
-and route-owner evidence cannot overwrite each other.
+and endpoint lease evidence cannot overwrite each other.
 
 Do not split the first executable slice into "delete old projector now, add
 presence runtime later". That creates a reachability write-source gap for SDK
 inspection and engine stage-2.
 
 Do not implement guards that forbid a session manager from both publishing
-presence and writing route-owner state. The invalid edge is route-owner result
-driving presence, not session-flow co-location.
+presence and writing endpoint-lease state. The invalid
+edge is endpoint-lease write result driving presence, not
+session-flow co-location.
 
 ## Implementation Slices
 
@@ -297,7 +302,7 @@ driving presence, not session-flow co-location.
 
 Status: complete.
 
-Goal: replace the wrong route-owner-to-lifecycle path with a real
+Goal: replace the wrong endpoint-lease-to-lifecycle path with a real
 worker-runtime presence owner in one compileable, verifiable slice. This slice
 must not be split into "remove old writes" and "add new reachability source"
 sub-slices.
@@ -318,7 +323,7 @@ Actions:
 - Make `WorkerSchedulingViewRuntime#getWorkerReachability(...)` and
   `MassSdkApplication#isWorkerReachable(...)` / `listReachableWorkerIds()` read
   the same worker-runtime presence source instead of
-  `WorkerResourceRecord.statusName` or transport route-owner lookup.
+  `WorkerResourceRecord.statusName` or transport endpoint lease lookup.
 - Delete `TransportRouteLifecycleProjector` and remove all projector wiring
   from transport adapter bootstrap, socket session manager, websocket session
   manager, polling/session paths, and tests.
@@ -329,11 +334,11 @@ Actions:
   delivery feasibility, but its result is not the predicate for presence
   publication.
 - Ensure polling data-plane `workerOnline`, `workerHeartbeat`, and
-  `workerOffline` publish presence regardless of route-owner store success;
-  route-owner failure is delivery-feasibility evidence only.
-- Add first-pass guards that forbid route-owner results from driving presence:
-  no `TransportRouteOwnerRecord` in presence payload/projection, no presence
-  publication inside route-owner currentness checks, and no route-owner write
+  `workerOffline` publish presence regardless of endpoint lease store success;
+  endpoint lease failure is delivery-feasibility evidence only.
+- Add first-pass guards that forbid endpoint lease results from driving presence:
+  no `TransportEndpointLeaseMetadata` in presence payload/projection, no presence
+  publication inside endpoint lease currentness checks, and no endpoint lease write
   result used as a condition for `sessionConnected`, `sessionHeartbeat`, or
   `sessionDisconnected`.
 - Add first-pass guards that forbid presence projection from mutating
@@ -351,7 +356,7 @@ Acceptance:
   write worker resource status or dispatch-gate truth.
 - Presence offline/disconnect does not write worker state report, worker
   resource status, command drain, or capability truth.
-- Polling presence publication is not swallowed when route-owner write fails.
+- Polling presence publication is not swallowed when endpoint lease write fails.
 - Public `PullWorkerSession#connect`, `heartbeat`, and `disconnect` participate
   in the same presence ingress contract as `workerOnline`, `workerHeartbeat`,
   and `workerOffline`.
@@ -359,8 +364,11 @@ Acceptance:
   `PullWorkerSession` as the single polling-session presence path and do not
   also call lower-level `publishWorkerSession*` helpers.
 - Socket and websocket replacement do not expose worker-level offline jitter.
-- Transport selected-worker delivery feasibility still uses route-owner state
-  and still passes existing route-owner delivery proof.
+- Transport selected-worker delivery feasibility still uses
+  `DeliveryCommandConsumerRegistry` handoff evidence written by
+  adapter/session ingress. Route-owner or endpoint lease state remains
+  session/endpoint evidence and must not be restored as assigned-delivery
+  lookup truth.
 
 ### TSP-B - Multi-Session And Staleness Hardening
 
@@ -399,7 +407,7 @@ the documented owner truth.
 
 Actions:
 
-- Expand architecture guards to cover indirect route-owner-to-presence data
+- Expand architecture guards to cover indirect endpoint-lease-to-presence data
   dependencies in adapters, transport runtime, SDK worker session code, and
   starter assembly.
 - Restore a strong worker state scheduling proof: draining and command-drained
@@ -414,11 +422,11 @@ Actions:
 
 Acceptance:
 
-- guards fail on the rejected route-owner-to-lifecycle chain,
+- guards fail on the rejected endpoint-lease-to-lifecycle chain,
 - guards do not fail on valid session flow that both publishes presence and
-  writes route-owner delivery evidence,
+  writes endpoint lease delivery evidence,
 - docs describe implemented behavior only,
-- proof registry distinguishes transport route-owner delivery feasibility from
+- proof registry distinguishes transport endpoint lease delivery feasibility from
   worker-runtime reachability.
 
 ### TSP-D - Optional Deadline-Aware Presence Index
@@ -441,7 +449,7 @@ Acceptance before starting:
 
 - TSP-A through TSP-C are complete,
 - hot-path read cost is measured,
-- the caller contract is a worker-runtime API, not a Redis key or route-owner
+- the caller contract is a worker-runtime API, not a Redis key or endpoint lease
   lookup,
 - bucket rules and safety policies have an owner decision.
 
@@ -511,7 +519,7 @@ PONG
 
 The roadmap is complete only when all of these are true:
 
-- no route-owner claim, refresh, release result, owner record, or route-owner
+- no endpoint lease claim, refresh, release result, owner record, or endpoint lease
   Redis key can drive worker lifecycle, worker reachability, or slot heartbeat
   directly,
 - transport session evidence reaches worker runtime through a
@@ -530,7 +538,7 @@ The roadmap is complete only when all of these are true:
 - presence online/heartbeat/offline cannot mutate `WORKER_STATE`,
   `WORKER_COMMAND`, worker resource status, or capability truth,
 - SDK inspection and engine scheduling read worker-runtime reachability instead
-  of transport route-owner evidence,
+  of transport endpoint lease evidence,
 - guards cover direct and indirect regressions,
 - owner docs and proof registry entries describe the implemented behavior,
 - optional Redis/deadline indexes, if added, are hidden behind worker-runtime

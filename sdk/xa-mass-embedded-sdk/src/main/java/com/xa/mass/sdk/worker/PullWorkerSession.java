@@ -10,9 +10,11 @@ import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
-import com.xa.mass.transport.route.TransportRouteOwnerClaim;
-import com.xa.mass.transport.route.TransportRouteOwnerRecord;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
+import com.xa.mass.transport.lease.TransportEndpointLeaseConsumerEvidence;
+import com.xa.mass.transport.lease.TransportEndpointLeaseHeartbeat;
+import com.xa.mass.transport.lease.TransportEndpointLeaseRelease;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
@@ -35,45 +37,45 @@ public class PullWorkerSession {
     private final DeliveryPullChannel deliveryPullChannel;
     private final TaskDispatchPayloadCodec payloadCodec;
     private final TaskResultIngestChannel taskResultIngestChannel;
-    private final TransportRouteOwnerStore routeOwnerStore;
+    private final TransportEndpointLeaseStore endpointLeaseStore;
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
     private final String deliveryCommandConsumerKey;
     private final WorkerPresenceIngress workerPresenceIngress;
     private final String transportHint;
 
-    public PullWorkerSession(String workerId,
-                             String workerGroupId,
-                             String adapterId,
-                             String connectionId,
-                             DeliveryPullChannel deliveryPullChannel,
-                             TaskResultIngestChannel taskResultIngestChannel,
-                             TransportRouteOwnerStore routeOwnerStore,
-                             WorkerPresenceIngress workerPresenceIngress,
-                             String transportHint) {
+    PullWorkerSession(String workerId,
+                      String workerGroupId,
+                      String adapterId,
+                      String connectionId,
+                      DeliveryPullChannel deliveryPullChannel,
+                      TaskResultIngestChannel taskResultIngestChannel,
+                      TransportEndpointLeaseStore endpointLeaseStore,
+                      WorkerPresenceIngress workerPresenceIngress,
+                      String transportHint) {
         this(workerId,
                 workerGroupId,
                 adapterId,
                 connectionId,
                 deliveryPullChannel,
                 taskResultIngestChannel,
-                routeOwnerStore,
+                endpointLeaseStore,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
                 "local",
                 workerPresenceIngress,
                 transportHint);
     }
 
-    public PullWorkerSession(String workerId,
-                             String workerGroupId,
-                             String adapterId,
-                             String connectionId,
-                             DeliveryPullChannel deliveryPullChannel,
-                             TaskResultIngestChannel taskResultIngestChannel,
-                             TransportRouteOwnerStore routeOwnerStore,
-                             DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
-                             String deliveryCommandConsumerKey,
-                             WorkerPresenceIngress workerPresenceIngress,
-                             String transportHint) {
+    PullWorkerSession(String workerId,
+                      String workerGroupId,
+                      String adapterId,
+                      String connectionId,
+                      DeliveryPullChannel deliveryPullChannel,
+                      TaskResultIngestChannel taskResultIngestChannel,
+                      TransportEndpointLeaseStore endpointLeaseStore,
+                      DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
+                      String deliveryCommandConsumerKey,
+                      WorkerPresenceIngress workerPresenceIngress,
+                      String transportHint) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
         }
@@ -85,7 +87,7 @@ public class PullWorkerSession {
         this.deliveryPullChannel = Objects.requireNonNull(deliveryPullChannel, "deliveryPullChannel");
         this.payloadCodec = new TaskDispatchPayloadCodec();
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
-        this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
+        this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
         this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
                 ? deliveryCommandConsumerRegistry
                 : NoopDeliveryCommandConsumerRegistry.INSTANCE;
@@ -126,12 +128,10 @@ public class PullWorkerSession {
                 normalizedReason,
                 connectionId
         ));
-        TransportRouteOwnerRecord owner = routeOwnerStore.claimRouteOwner(routeOwnerClaim(normalizedReason));
-        if (isCurrentOwner(owner)) {
-            claimDeliveryConsumer(owner);
-            return true;
-        }
-        return false;
+        TransportEndpointLeaseConsumerEvidence evidence =
+                endpointLeaseStore.claimEndpointLease(endpointLeaseClaim(normalizedReason));
+        claimDeliveryConsumer(evidence);
+        return true;
     }
 
     public void disconnect() {
@@ -152,7 +152,7 @@ public class PullWorkerSession {
                 normalizedReason,
                 connectionId
         ));
-        boolean releasedCurrent = isCurrentOwner(routeOwnerStore.releaseRouteOwner(routeOwnerClaim(normalizedReason)));
+        boolean releasedCurrent = endpointLeaseStore.releaseEndpointLease(endpointLeaseRelease(normalizedReason));
         releaseDeliveryConsumer();
         return releasedCurrent;
     }
@@ -175,13 +175,15 @@ public class PullWorkerSession {
                 normalizedReason,
                 connectionId
         ));
-        TransportRouteOwnerRecord owner = routeOwnerStore.refreshHeartbeat(routeOwnerClaim(normalizedReason));
-        if (isCurrentOwner(owner)) {
-            claimDeliveryConsumer(owner);
-            return true;
-        }
-        releaseDeliveryConsumer();
-        return false;
+        return endpointLeaseStore.refreshEndpointLease(endpointLeaseHeartbeat(normalizedReason))
+                .map(evidence -> {
+                    claimDeliveryConsumer(evidence);
+                    return true;
+                })
+                .orElseGet(() -> {
+                    releaseDeliveryConsumer();
+                    return false;
+                });
     }
 
     public List<PulledTaskDispatch> poll(int maxMessages) {
@@ -265,23 +267,14 @@ public class PullWorkerSession {
         return reason == null || reason.isBlank() ? defaultReason : reason.trim();
     }
 
-    private boolean isCurrentOwner(TransportRouteOwnerRecord owner) {
-        return owner != null
-                && workerId.equals(owner.getWorkerId())
-                && workerGroupId.equals(owner.getDeliveryBucketId())
-                && adapterId.equals(owner.getAdapterId())
-                && routeKey.equals(owner.getRouteKey())
-                && connectionId.equals(owner.getConnectionId());
-    }
-
-    private void claimDeliveryConsumer(TransportRouteOwnerRecord owner) {
+    private void claimDeliveryConsumer(TransportEndpointLeaseConsumerEvidence evidence) {
         deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
-                owner.getDeliveryBucketId(),
-                owner.getWorkerId(),
+                evidence.deliveryBucketId(),
+                evidence.workerId(),
                 deliveryCommandConsumerKey,
-                owner.getConnectionId(),
-                owner.getAdapterId(),
-                owner.getLeaseExpireAtEpochMillis()
+                evidence.endpointLeaseId(),
+                evidence.endpointDriverId(),
+                evidence.leaseExpireAtEpochMillis()
         ));
     }
 
@@ -296,8 +289,30 @@ public class PullWorkerSession {
         ));
     }
 
-    private TransportRouteOwnerClaim routeOwnerClaim(String reason) {
-        return new TransportRouteOwnerClaim(
+    private TransportEndpointLeaseClaim endpointLeaseClaim(String reason) {
+        return new TransportEndpointLeaseClaim(
+                workerId,
+                workerGroupId,
+                adapterId,
+                routeKey,
+                connectionId,
+                reason
+        );
+    }
+
+    private TransportEndpointLeaseHeartbeat endpointLeaseHeartbeat(String reason) {
+        return new TransportEndpointLeaseHeartbeat(
+                workerId,
+                workerGroupId,
+                adapterId,
+                routeKey,
+                connectionId,
+                reason
+        );
+    }
+
+    private TransportEndpointLeaseRelease endpointLeaseRelease(String reason) {
+        return new TransportEndpointLeaseRelease(
                 workerId,
                 workerGroupId,
                 adapterId,

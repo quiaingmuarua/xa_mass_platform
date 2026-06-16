@@ -6,7 +6,7 @@ import java.util.Objects;
  * Transport-neutral session presence evidence.
  *
  * <p>This event describes a transport session observation. It is not worker
- * state-report truth, worker capability truth, or route-owner delivery truth.</p>
+ * state-report truth, worker capability truth, or endpoint-lease delivery truth.</p>
  */
 public record WorkerSessionPresenceEvent(String workerId,
                                          String adapterId,

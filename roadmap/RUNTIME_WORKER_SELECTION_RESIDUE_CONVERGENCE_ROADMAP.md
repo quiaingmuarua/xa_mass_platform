@@ -26,22 +26,25 @@ Predecessors:
 This roadmap is a cleanup and proof-hardening pass for runtime worker
 selection across engine, worker-runtime, and transport. The previous
 engine-only framing was insufficient because worker reachability is
-transport-derived evidence. If transport route-owner truth is not included in
-the proof chain, scheduling can still drift into two live truths:
+transport-observed session evidence. If transport endpoint/session evidence is
+treated as worker lifecycle truth, scheduling can still drift into two live
+truths:
 
-- transport presence / route owner truth,
+- transport endpoint lease / selected-worker consumer evidence,
 - worker-runtime or engine-side reachability truth.
 
 The target chain is:
 
 ```text
-transport route-owner presence
+transport session presence ingress
   -> WorkerReachabilityView assembly
   -> worker-runtime scheduling evidence
   -> engine runtime worker selection
   -> dispatch binding
-  -> transport route selection / delivery
+  -> transport selected-worker delivery feasibility
   -> result / compensation
+transport endpoint lease / consumer evidence
+  -> delivery feasibility only
 ```
 
 This roadmap does not introduce a new policy product, matching plugin,
@@ -167,13 +170,13 @@ changing behavior.
 Scope:
 
 - Inventory every production caller of `WorkerReachabilityView`.
-- Inventory every production caller of transport route-owner lookup and
-  inspection methods.
+- Inventory every production caller of transport endpoint lease lookup,
+  selected-worker consumer evidence, and inspection methods.
 - Classify each caller as:
-  - transport route-owner truth,
+  - transport endpoint/session delivery evidence,
   - reachability assembly seam,
   - operator/inspection compatibility projection,
-  - dispatch route selection after worker binding,
+  - selected-worker delivery feasibility after worker binding,
   - residue to remove or guard.
 - Inventory every key in `WorkerMatchContext#getRuleContext()`.
 - Inventory every key present only in full `WorkerMatchContext#getContext()`.
@@ -229,14 +232,15 @@ Scope:
 
 Acceptance:
 
-- A source guard fails if runtime worker selection consumes worker-id
-  route-owner projections or scan-based active route lists.
+- A source guard fails if runtime worker selection consumes worker-id endpoint
+  lease projections, delivery-consumer evidence, or scan-based active route
+  lists.
 - A source guard fails if engine or worker-runtime production code imports
-  transport route-owner store implementations.
-- Embedded SDK assembly must not adapt transport route-owner leases into
+  transport endpoint lease store implementations.
+- Embedded SDK assembly must not adapt transport endpoint leases into
   `WorkerReachabilityView`.
-- Transport dispatch handoff assembly remains allowed to resolve route owners
-  after worker bindings are already selected.
+- Transport dispatch handoff assembly may use selected-worker delivery-consumer
+  evidence only after worker bindings are already selected.
 
 Suggested proof:
 
@@ -249,37 +253,42 @@ rg -n "findRouteOwners\\(|getLatestOwnerByWorker\\(|isWorkerReachable\\(" \
   --glob '!**/target/**'
 ```
 
-## RWS-C2 Route-Owner Dispatch Behavior Proof
+## RWS-C2 Endpoint Lease Dispatch Behavior Proof
 
-Goal: prove that transport route-owner truth is used for dispatch handoff only,
-not for worker scheduling reachability.
+Goal: prove that transport endpoint/session evidence is used for delivery
+feasibility only, not for worker scheduling reachability.
 
 Scope:
 
 - Add or tighten focused tests for:
   - SDK/starter default route key is derived from `workerGroupId`,
-  - dispatch handoff uses the resolved opaque `routeKey`,
-  - missing route owner triggers engine-owned compensation after binding,
-  - offline transport node triggers engine-owned compensation after binding,
-  - stale/offline evidence from an old connection cannot revoke a newer owner,
-  - worker-id inspection projection cannot make transport dispatch possible when
-    resolved route owner is absent.
+  - dispatch handoff uses `deliveryBucketId + selectedWorkerId` and
+    selected-worker delivery-consumer evidence,
+  - missing endpoint/consumer evidence triggers engine-owned compensation after
+    binding,
+  - unavailable transport consumer triggers engine-owned compensation after
+    binding,
+  - stale/offline evidence from an old connection cannot revoke a newer endpoint
+    lease,
+  - worker-id inspection projections cannot make transport dispatch possible
+    when selected-worker consumer evidence is absent.
 - Prefer existing transport runtime and embedded SDK tests over broad E2E.
 
 Acceptance:
 
-- Transport route-owner lookup is not needed to prove schedulability.
-- Worker-id projection APIs are not needed for dispatch handoff.
-- Route-owner takeover semantics are covered by tests.
-- Memory and Redis route-owner stores both satisfy the route-owner contract where
-  relevant.
+- Transport endpoint lease lookup is not needed to prove schedulability.
+- Worker-id endpoint projection APIs are not needed for dispatch handoff.
+- Endpoint lease replacement semantics are covered by tests.
+- Memory and Redis endpoint lease stores both satisfy the endpoint lease
+  contract where relevant.
 
 Suggested proof:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk -am \
-  -Dtest=MassApplicationDistributedTransportTest,RedisTransportRouteOwnerStoreTest,MassApplicationDistributedTransportTest \
-  -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -q -pl transport/transport_runtime \
+  -Dtest=InMemoryTransportEndpointLeaseStoreContractTest,RedisTransportEndpointLeaseStoreContractTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest test
+./mvnw -q -pl sdk/xa-mass-embedded-sdk \
+  -Dtest=MassApplicationDistributedTransportTest,MassSdkTest test
 ```
 
 ## RWS-C3 Rule And Diagnostic Context Hardening
@@ -446,9 +455,10 @@ Minimum completion proof:
 ./mvnw -q -pl xa-mass-engine -am \
   -Dtest=WorkerMatchContextTest,RuleBasedTaskWorkerMatchingStrategyTest,DefaultSchedulingPlaneResolverTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,EngineSchedulingCoreArchitectureGuardTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
-./mvnw -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk -am \
-  -Dtest=MassApplicationDistributedTransportTest,RedisTransportRouteOwnerStoreTest,MassApplicationDistributedTransportTest \
-  -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -q -pl transport/transport_runtime \
+  -Dtest=InMemoryTransportEndpointLeaseStoreContractTest,RedisTransportEndpointLeaseStoreContractTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest test
+./mvnw -q -pl sdk/xa-mass-embedded-sdk \
+  -Dtest=MassApplicationDistributedTransportTest,MassSdkTest test
 git diff --check
 ```
 
@@ -456,8 +466,8 @@ git diff --check
 
 This roadmap is complete when:
 
-1. Transport route-owner presence is the only production transport truth that
-   can influence scheduling reachability.
+1. Transport endpoint/session evidence cannot influence scheduling
+   reachability; it is delivery feasibility evidence only.
 2. Worker reachability consumed by scheduling is derived through the approved
    `WorkerReachabilityView` assembly seam.
 3. Worker-id presence projections remain operator/compatibility/support

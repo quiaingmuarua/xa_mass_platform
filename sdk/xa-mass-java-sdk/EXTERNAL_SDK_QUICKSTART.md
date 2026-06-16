@@ -285,5 +285,5 @@ These prove:
 - external workers execute by `eventCode`
 - engine mainline still owns dispatch and result convergence
 - realtime adapters do not cross selected-worker delivery boundaries when
-  transport internals such as adapter runtime id or route-owner address differ
+  transport internals such as adapter runtime id or endpoint address differ
 - sample output identifies the actual worker process that handled the task

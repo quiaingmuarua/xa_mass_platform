@@ -94,13 +94,19 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void routeOwnerRecordsDoNotBecomePresencePayloadOrProjectionInput() throws IOException {
+    void endpointLeaseRecordsDoNotBecomePresencePayloadOrProjectionInput() throws IOException {
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel"),
                         repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java"),
                         repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/presence")
                 ),
+                "TransportEndpointLeaseStore",
+                "TransportEndpointLeaseRecord",
+                "TransportEndpointLeaseMetadata",
+                "claimEndpointLease",
+                "refreshEndpointLease",
+                "releaseEndpointLease",
                 "TransportRouteOwnerRecord",
                 "TransportRouteOwnerStore",
                 "claimRouteOwner",
@@ -202,6 +208,9 @@ class TransportConvergenceArchitectureGuardTest {
     void deliveryCommandSubmitterDoesNotUseRouteOwnerScansForSelectedWorkerLookup() throws IOException {
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/TaskDispatchDeliveryCommandSubmitter.java")),
+                "TransportEndpointLeaseStore",
+                "TransportEndpointLeaseView",
+                "currentEndpointLease(",
                 "WorkerDispatchRouteOwnerView",
                 "WorkerDispatchRouteOwner",
                 "TransportNodeRegistry",
@@ -218,6 +227,8 @@ class TransportConvergenceArchitectureGuardTest {
                         repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdkApplication.java"),
                         repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/WorkerInspectionOperations.java")
                 ),
+                "TransportEndpointLease",
+                "currentEndpointLease(",
                 "WorkerDispatchRouteOwnerView",
                 "activeOwnerForSelectedWorker(",
                 "getWorkerRouteOwnerView("
@@ -228,8 +239,17 @@ class TransportConvergenceArchitectureGuardTest {
     void starterDoesNotExposeRouteOwnerViewAsSdkReadableInspectionSurface() throws IOException {
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java")),
+                "public TransportEndpointLease",
                 "public WorkerDispatchRouteOwnerView",
                 "getWorkerRouteOwnerView("
+        );
+    }
+
+    @Test
+    void pullWorkerSessionDoesNotExposeTransportInternalConstructors() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/PullWorkerSession.java")),
+                "public PullWorkerSession("
         );
     }
 
@@ -256,16 +276,22 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void routeOwnerStoreDoesNotProjectBucketWorkerOwnerPointers() throws IOException {
+    void oldRouteOwnerStoreAndBucketWorkerOwnerPointersDoNotRemain() throws IOException {
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/route")),
-                "bucketWorkerKey",
-                "\":bucket:\"",
-                "\":worker:\"",
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease")),
                 "\":owner\""
         );
         assertPathsDoNotExist(
-                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DeliveryCommandConsumerProjectingRouteOwnerStore.java")
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/route/RouteConsumerEndpoint.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/route/SelectedWorkerDeliveryTarget.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/route/TransportRouteOwnerClaim.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/route/TransportRouteOwnerRecord.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/route/TransportRouteOwnerStore.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/route/WorkerDispatchRouteOwner.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/route/WorkerDispatchRouteOwnerView.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DeliveryCommandConsumerProjectingRouteOwnerStore.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/route/InMemoryTransportRouteOwnerStore.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/route/RedisTransportRouteOwnerStore.java")
         );
     }
 

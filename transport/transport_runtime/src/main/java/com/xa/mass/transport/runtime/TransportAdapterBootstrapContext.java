@@ -5,7 +5,7 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
@@ -21,7 +21,7 @@ public final class TransportAdapterBootstrapContext {
     private final WorkerEndpointRegistry endpointRegistry;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerPresenceIngress workerPresenceIngress;
-    private final TransportRouteOwnerStore routeOwnerStore;
+    private final TransportEndpointLeaseStore endpointLeaseStore;
     private final TransportDeliveryService deliveryService;
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
     private final String deliveryCommandConsumerKey;
@@ -34,13 +34,13 @@ public final class TransportAdapterBootstrapContext {
     public TransportAdapterBootstrapContext(WorkerEndpointRegistry endpointRegistry,
                                             TaskResultIngestChannel taskResultIngestChannel,
                                             WorkerPresenceIngress workerPresenceIngress,
-                                            TransportRouteOwnerStore routeOwnerStore,
+                                            TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryService deliveryService,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
         this(endpointRegistry,
                 taskResultIngestChannel,
                 workerPresenceIngress,
-                routeOwnerStore,
+                endpointLeaseStore,
                 deliveryService,
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
                 "local",
@@ -50,7 +50,7 @@ public final class TransportAdapterBootstrapContext {
     public TransportAdapterBootstrapContext(WorkerEndpointRegistry endpointRegistry,
                                             TaskResultIngestChannel taskResultIngestChannel,
                                             WorkerPresenceIngress workerPresenceIngress,
-                                            TransportRouteOwnerStore routeOwnerStore,
+                                            TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryService deliveryService,
                                             DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
                                             String deliveryCommandConsumerKey,
@@ -58,7 +58,7 @@ public final class TransportAdapterBootstrapContext {
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.workerPresenceIngress = Objects.requireNonNull(workerPresenceIngress, "workerPresenceIngress");
-        this.routeOwnerStore = Objects.requireNonNull(routeOwnerStore, "routeOwnerStore");
+        this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
         this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
                 ? deliveryCommandConsumerRegistry
@@ -79,8 +79,8 @@ public final class TransportAdapterBootstrapContext {
         return workerPresenceIngress;
     }
 
-    public TransportRouteOwnerStore getRouteOwnerStore() {
-        return routeOwnerStore;
+    public TransportEndpointLeaseStore getEndpointLeaseStore() {
+        return endpointLeaseStore;
     }
 
     public TransportDeliveryService getDeliveryService() {

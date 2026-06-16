@@ -1,6 +1,6 @@
 package com.xa.mass.server;
 
-import com.xa.mass.transport.route.TransportRouteOwnerStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
@@ -14,30 +14,30 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class XaMassServerApplicationTransportRuntimeConfigTest {
 
     @Test
-    void routeOwnerStoreDefaultsToInMemorySdkStore() {
+    void endpointLeaseStoreDefaultsToInMemorySdkStore() {
         XaMassServerApplication application = new XaMassServerApplication();
-        ReflectionTestUtils.setField(application, "transportRouteOwnerStore", "memory");
+        ReflectionTestUtils.setField(application, "transportEndpointLeaseStore", "memory");
 
-        Supplier<TransportRouteOwnerStore> factory =
-                ReflectionTestUtils.invokeMethod(application, "resolveTransportRouteOwnerStoreFactory");
+        Supplier<TransportEndpointLeaseStore> factory =
+                ReflectionTestUtils.invokeMethod(application, "resolveTransportEndpointLeaseStoreFactory");
 
         assertThat(factory).isNull();
     }
 
     @Test
-    void redisRouteOwnerStoreCanBeSelectedForServerStartup() throws Exception {
+    void redisEndpointLeaseStoreCanBeSelectedForServerStartup() throws Exception {
         XaMassServerApplication application = new XaMassServerApplication();
-        ReflectionTestUtils.setField(application, "transportRouteOwnerStore", "redis");
-        ReflectionTestUtils.setField(application, "transportRouteOwnerRedisNamespace", "xa:mass:test:server-route-owner");
-        ReflectionTestUtils.setField(application, "transportRouteOwnerLeaseMillis", 1234L);
+        ReflectionTestUtils.setField(application, "transportEndpointLeaseStore", "redis");
+        ReflectionTestUtils.setField(application, "transportEndpointLeaseRedisNamespace", "xa:mass:test:server-endpoint-lease");
+        ReflectionTestUtils.setField(application, "transportEndpointLeaseMillis", 1234L);
         ReflectionTestUtils.setField(application, "transportNodeId", "server-node-a");
         ReflectionTestUtils.setField(application, "redisHost", "127.0.0.1");
         ReflectionTestUtils.setField(application, "redisPort", 6379);
         ReflectionTestUtils.setField(application, "redisDatabase", 0);
         ReflectionTestUtils.setField(application, "redisPassword", "");
 
-        Supplier<TransportRouteOwnerStore> factory =
-                ReflectionTestUtils.invokeMethod(application, "resolveTransportRouteOwnerStoreFactory");
+        Supplier<TransportEndpointLeaseStore> factory =
+                ReflectionTestUtils.invokeMethod(application, "resolveTransportEndpointLeaseStoreFactory");
 
         assertThat(factory).isNotNull();
     }
@@ -69,26 +69,26 @@ class XaMassServerApplicationTransportRuntimeConfigTest {
     void durableLocalProfileRejectsMemoryTransportStores() {
         XaMassServerApplication application = durableLocalApplication();
         ReflectionTestUtils.setField(application, "transportDeliveryStore", "memory");
-        ReflectionTestUtils.setField(application, "transportRouteOwnerStore", "memory");
+        ReflectionTestUtils.setField(application, "transportEndpointLeaseStore", "memory");
 
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(application, "resolveTransportDeliveryStoreFactory"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("durable-local requires mass.transport.delivery.store=redis");
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(application, "resolveTransportRouteOwnerStoreFactory"))
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(application, "resolveTransportEndpointLeaseStoreFactory"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("durable-local requires mass.transport.route-owner.store=redis");
+                .hasMessageContaining("durable-local requires mass.transport.endpoint-lease.store=redis");
     }
 
     @Test
     void durableLocalProfileAcceptsRedisTransportModesWithoutInstantiatingRedis() {
         XaMassServerApplication application = durableLocalApplication();
         ReflectionTestUtils.setField(application, "transportDeliveryStore", "redis");
-        ReflectionTestUtils.setField(application, "transportRouteOwnerStore", "redis");
+        ReflectionTestUtils.setField(application, "transportEndpointLeaseStore", "redis");
         ReflectionTestUtils.setField(application, "transportDeliveryRedisNamespace", "xa:mass:test:server-delivery");
-        ReflectionTestUtils.setField(application, "transportRouteOwnerRedisNamespace", "xa:mass:test:server-route-owner");
+        ReflectionTestUtils.setField(application, "transportEndpointLeaseRedisNamespace", "xa:mass:test:server-endpoint-lease");
         ReflectionTestUtils.setField(application, "transportDeliveryMaxQueuedItems", 100);
         ReflectionTestUtils.setField(application, "transportDeliveryMaxItemsPerRoute", 10);
-        ReflectionTestUtils.setField(application, "transportRouteOwnerLeaseMillis", 1234L);
+        ReflectionTestUtils.setField(application, "transportEndpointLeaseMillis", 1234L);
         ReflectionTestUtils.setField(application, "transportNodeId", "server-node-a");
         ReflectionTestUtils.setField(application, "redisHost", "127.0.0.1");
         ReflectionTestUtils.setField(application, "redisPort", 6379);
@@ -97,11 +97,11 @@ class XaMassServerApplicationTransportRuntimeConfigTest {
 
         Supplier<TransportDeliveryStore> deliveryFactory =
                 ReflectionTestUtils.invokeMethod(application, "resolveTransportDeliveryStoreFactory");
-        Supplier<TransportRouteOwnerStore> routeOwnerFactory =
-                ReflectionTestUtils.invokeMethod(application, "resolveTransportRouteOwnerStoreFactory");
+        Supplier<TransportEndpointLeaseStore> endpointLeaseFactory =
+                ReflectionTestUtils.invokeMethod(application, "resolveTransportEndpointLeaseStoreFactory");
 
         assertThat(deliveryFactory).isNotNull();
-        assertThat(routeOwnerFactory).isNotNull();
+        assertThat(endpointLeaseFactory).isNotNull();
     }
 
     private XaMassServerApplication durableLocalApplication() {

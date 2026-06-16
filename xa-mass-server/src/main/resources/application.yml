@@ -76,11 +76,11 @@ mass:
       max-items-per-route: 10000
       redis:
         namespace: xa:mass:transport:delivery:v1
-    route-owner:
+    endpoint-lease:
       store: memory
       lease-millis: 30000
       redis:
-        namespace: xa:mass:transport:route-owner:v1
+        namespace: xa:mass:transport:endpoint-lease:v1
   websocket:
     port: 18088
   queue:

@@ -4,7 +4,7 @@ package com.xa.mass.transport.model;
  * Assigned-worker delivery intent accepted by the transport executor.
  *
  * <p>The command carries item-level assignment facts only. Adapter, lane,
- * route-owner, node, and session evidence live in transport-owned target
+ * endpoint lease, node, and session evidence live in transport-owned target
  * resolution, batches, endpoint evidence, and final-hop envelopes. The deadline
  * field is delivery observation metadata; retry, reassign, compensation, and
  * final recovery remain engine-owned.</p>
