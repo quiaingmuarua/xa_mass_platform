@@ -7,7 +7,7 @@ import com.xa.mass.transport.channel.WorkerPresenceEventType;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.presence.InMemoryWorkerPresenceRuntime;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -26,16 +26,16 @@ class WorkerRuntimePresenceIngressTest {
     @Test
     void connectedSessionProjectsReachabilityAndOnlineTrace() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
-        WorkerResourceRuntime resourceRuntime = mock(WorkerResourceRuntime.class);
+        WorkerHeartbeatRuntime heartbeatRuntime = mock(WorkerHeartbeatRuntime.class);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, resourceRuntime, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, heartbeatRuntime, sink);
 
         ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
                 "worker-1", "websocket", "route-1", "session-1", 1_000L, "connected", "trace-1"
         ));
 
         assertEquals(WorkerReachabilityState.ONLINE, runtime.getWorkerReachability("worker-1"));
-        verify(resourceRuntime).refreshWorkerHeartbeat("worker-1", 1_000L);
+        verify(heartbeatRuntime).refreshWorkerHeartbeat("worker-1", 1_000L);
         assertEquals(1, sink.events.size());
         ExecutionEvent event = sink.events.get(0);
         assertEquals(ExecutionEventType.WORKER_ONLINE, event.getEventType());
@@ -52,25 +52,25 @@ class WorkerRuntimePresenceIngressTest {
     @Test
     void heartbeatDoesNotCreatePresenceWhenSessionWasNotConnected() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
-        WorkerResourceRuntime resourceRuntime = mock(WorkerResourceRuntime.class);
+        WorkerHeartbeatRuntime heartbeatRuntime = mock(WorkerHeartbeatRuntime.class);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, resourceRuntime, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, heartbeatRuntime, sink);
 
         ingress.sessionHeartbeat(presenceEvent(WorkerPresenceEventType.HEARTBEAT,
                 "worker-1", "polling", "route-1", "session-1", 1_000L, "heartbeat", "trace-1"
         ));
 
         assertEquals(WorkerReachabilityState.UNKNOWN, runtime.getWorkerReachability("worker-1"));
-        verify(resourceRuntime, never()).refreshWorkerHeartbeat("worker-1", 1_000L);
+        verify(heartbeatRuntime, never()).refreshWorkerHeartbeat("worker-1", 1_000L);
         assertEquals(0, sink.events.size());
     }
 
     @Test
     void heartbeatRefreshesConnectedPresenceWithoutAdditionalTrace() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
-        WorkerResourceRuntime resourceRuntime = mock(WorkerResourceRuntime.class);
+        WorkerHeartbeatRuntime heartbeatRuntime = mock(WorkerHeartbeatRuntime.class);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, resourceRuntime, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, heartbeatRuntime, sink);
 
         ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
                 "worker-1", "polling", "route-1", "session-1", 1_000L, "connected", "trace-1"
@@ -80,8 +80,8 @@ class WorkerRuntimePresenceIngressTest {
         ));
 
         assertEquals(WorkerReachabilityState.ONLINE, runtime.getWorkerReachability("worker-1"));
-        verify(resourceRuntime).refreshWorkerHeartbeat("worker-1", 1_000L);
-        verify(resourceRuntime).refreshWorkerHeartbeat("worker-1", 1_001L);
+        verify(heartbeatRuntime).refreshWorkerHeartbeat("worker-1", 1_000L);
+        verify(heartbeatRuntime).refreshWorkerHeartbeat("worker-1", 1_001L);
         assertEquals(1, sink.events.size());
         assertEquals(ExecutionEventType.WORKER_ONLINE, sink.events.get(0).getEventType());
         assertEquals("CONNECTED", sink.events.get(0).getAttrs().get("eventType"));
@@ -90,9 +90,9 @@ class WorkerRuntimePresenceIngressTest {
     @Test
     void staleDisconnectDoesNotEmitOfflineUntilLastSessionEnds() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
-        WorkerResourceRuntime resourceRuntime = mock(WorkerResourceRuntime.class);
+        WorkerHeartbeatRuntime heartbeatRuntime = mock(WorkerHeartbeatRuntime.class);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, resourceRuntime, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, heartbeatRuntime, sink);
 
         ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
                 "worker-1", "websocket", "route-1", "old-session", 1_000L, "connected", "old"
@@ -105,7 +105,7 @@ class WorkerRuntimePresenceIngressTest {
         ));
 
         assertEquals(WorkerReachabilityState.ONLINE, runtime.getWorkerReachability("worker-1"));
-        verify(resourceRuntime, times(2)).refreshWorkerHeartbeat(org.mockito.ArgumentMatchers.eq("worker-1"),
+        verify(heartbeatRuntime, times(2)).refreshWorkerHeartbeat(org.mockito.ArgumentMatchers.eq("worker-1"),
                 org.mockito.ArgumentMatchers.anyLong());
         assertEquals(1, sink.events.size());
         assertEquals(ExecutionEventType.WORKER_ONLINE, sink.events.get(0).getEventType());
@@ -125,9 +125,9 @@ class WorkerRuntimePresenceIngressTest {
     @Test
     void staleHeartbeatForReplacedSessionDoesNotRefreshSlotHeartbeat() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
-        WorkerResourceRuntime resourceRuntime = mock(WorkerResourceRuntime.class);
+        WorkerHeartbeatRuntime heartbeatRuntime = mock(WorkerHeartbeatRuntime.class);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, resourceRuntime, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, heartbeatRuntime, sink);
 
         ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
                 "worker-1", "websocket", "route-1", "old-session", 1_000L, "connected", null
@@ -143,9 +143,9 @@ class WorkerRuntimePresenceIngressTest {
         ));
 
         assertEquals(WorkerReachabilityState.ONLINE, runtime.getWorkerReachability("worker-1"));
-        verify(resourceRuntime).refreshWorkerHeartbeat("worker-1", 1_000L);
-        verify(resourceRuntime).refreshWorkerHeartbeat("worker-1", 1_001L);
-        verify(resourceRuntime, never()).refreshWorkerHeartbeat("worker-1", 1_003L);
+        verify(heartbeatRuntime).refreshWorkerHeartbeat("worker-1", 1_000L);
+        verify(heartbeatRuntime).refreshWorkerHeartbeat("worker-1", 1_001L);
+        verify(heartbeatRuntime, never()).refreshWorkerHeartbeat("worker-1", 1_003L);
         assertEquals(1, sink.events.size());
         assertEquals(ExecutionEventType.WORKER_ONLINE, sink.events.get(0).getEventType());
     }
@@ -153,9 +153,9 @@ class WorkerRuntimePresenceIngressTest {
     @Test
     void disconnectingOneOfMultipleAdaptersKeepsWorkerReachable() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
-        WorkerResourceRuntime resourceRuntime = mock(WorkerResourceRuntime.class);
+        WorkerHeartbeatRuntime heartbeatRuntime = mock(WorkerHeartbeatRuntime.class);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, resourceRuntime, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, heartbeatRuntime, sink);
 
         ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
                 "worker-1", "websocket", "route-1", "ws", 1_000L, "connected", null
@@ -168,9 +168,9 @@ class WorkerRuntimePresenceIngressTest {
         ));
 
         assertEquals(WorkerReachabilityState.ONLINE, runtime.getWorkerReachability("worker-1"));
-        verify(resourceRuntime, times(2)).refreshWorkerHeartbeat(org.mockito.ArgumentMatchers.eq("worker-1"),
+        verify(heartbeatRuntime, times(2)).refreshWorkerHeartbeat(org.mockito.ArgumentMatchers.eq("worker-1"),
                 org.mockito.ArgumentMatchers.anyLong());
-        verify(resourceRuntime, never()).refreshWorkerHeartbeat("worker-1", 1_002L);
+        verify(heartbeatRuntime, never()).refreshWorkerHeartbeat("worker-1", 1_002L);
         assertEquals(1, sink.events.size());
         assertTrue(sink.events.stream().allMatch(event -> event.getEventType() == ExecutionEventType.WORKER_ONLINE));
     }

@@ -4,11 +4,12 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
 import com.xa.mass.worker.runtime.resource.EventBinding;
 import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -36,27 +37,31 @@ public final class WorkerRegistrationTestSupport {
         if (worker.getLastHeartbeat() == null) {
             worker.setLastHeartbeat(LocalDateTime.now());
         }
-        workerManager.addWorker(workerResource(worker));
+        if (worker.getOnlineStrategy() == null || worker.getOnlineStrategy().isBlank()) {
+            worker.setOnlineStrategy("polling");
+        }
+        workerManager.addWorker(workerDeclaration(worker));
+        refreshHeartbeatEvidence(workerManager, worker);
         return worker;
     }
 
-    private static WorkerResourceRecord workerResource(Worker worker) {
-        return new WorkerResourceRecord(
+    private static WorkerDeclarationRecord workerDeclaration(Worker worker) {
+        return new WorkerDeclarationRecord(
                 worker.getWorkerId(),
-                worker.getStatus() == null ? null : worker.getStatus().name(),
-                worker.getAgentVersion(),
-                worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
                 worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
                 worker.getOnlineStrategy(),
+                worker.getAgentVersion(),
                 worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime()
+                worker.getAttributes()
         );
+    }
+
+    private static void refreshHeartbeatEvidence(WorkerManager workerManager, Worker worker) {
+        long observedAtMillis = worker.getLastHeartbeat()
+                .atZone(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli();
+        workerManager.refreshWorkerHeartbeat(worker.getWorkerId(), observedAtMillis);
     }
 
     public static void ensureWorkerRegistrationSpine(WorkerManager workerManager,

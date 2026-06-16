@@ -62,10 +62,10 @@ public final class PollingWorkerSession implements AutoCloseable {
         this.workerClient = builder.workerClient;
         this.workerId = requireText(builder.workerId, "workerId");
         this.workerGroupId = requireText(builder.workerGroupId, "workerGroupId");
-        this.adapterNodeId = requireText(builder.adapterNodeId, "adapterNodeId");
+        this.adapterNodeId = optionalText(builder.adapterNodeId);
         this.adapterType = firstNonBlank(builder.adapterType, "polling");
         this.adapterVersion = builder.adapterVersion;
-        this.endpointId = firstNonBlank(builder.endpointId, adapterNodeId);
+        this.endpointId = firstNonBlank(builder.endpointId, adapterNodeId != null ? adapterNodeId : workerId);
         this.pluginVersion = builder.pluginVersion;
         this.deploymentVersion = builder.deploymentVersion;
         this.sessionToken = UUID.randomUUID().toString();
@@ -91,27 +91,28 @@ public final class PollingWorkerSession implements AutoCloseable {
     public PollingWorkerSession start() {
         WorkerSessionStartupStep lastSuccessful = null;
         try {
-            workerClient.registerAdapterNode(AdapterNodeSpec.builder()
-                    .adapterNodeId(adapterNodeId)
-                    .adapterType(adapterType)
-                    .adapterVersion(adapterVersion)
-                    .endpointId(endpointId)
-                    .attributes(attributes)
-                    .build());
-            lastSuccessful = WorkerSessionStartupStep.REGISTER_ADAPTER_NODE;
+            if (adapterNodeId != null) {
+                workerClient.registerAdapterNode(AdapterNodeSpec.builder()
+                        .adapterNodeId(adapterNodeId)
+                        .adapterType(adapterType)
+                        .adapterVersion(adapterVersion)
+                        .endpointId(endpointId)
+                        .attributes(attributes)
+                        .build());
+                lastSuccessful = WorkerSessionStartupStep.REGISTER_ADAPTER_NODE;
 
-            workerClient.bindNodeGroup(NodeGroupBindingSpec.builder()
-                    .adapterNodeId(adapterNodeId)
-                    .workerGroupId(workerGroupId)
-                    .pluginVersion(pluginVersion)
-                    .deploymentVersion(deploymentVersion)
-                    .attributes(attributes)
-                    .build());
-            lastSuccessful = WorkerSessionStartupStep.BIND_NODE_GROUP;
+                workerClient.bindNodeGroup(NodeGroupBindingSpec.builder()
+                        .adapterNodeId(adapterNodeId)
+                        .workerGroupId(workerGroupId)
+                        .pluginVersion(pluginVersion)
+                        .deploymentVersion(deploymentVersion)
+                        .attributes(attributes)
+                        .build());
+                lastSuccessful = WorkerSessionStartupStep.BIND_NODE_GROUP;
+            }
 
             WorkerRegistrationResult registration = workerClient.registerWorker(WorkerSpec.builder()
                     .workerId(workerId)
-                    .adapterNodeId(adapterNodeId)
                     .workerGroupId(workerGroupId)
                     .polling()
                     .attributes(attributes)
@@ -150,7 +151,7 @@ public final class PollingWorkerSession implements AutoCloseable {
         } catch (Throwable failure) {
             running.set(false);
             executor.shutdownNow();
-            WorkerSessionStartupStep failedStep = nextStepAfter(lastSuccessful);
+            WorkerSessionStartupStep failedStep = nextStepAfter(lastSuccessful, adapterNodeId != null);
             WorkerSessionStartupFailure startupFailure =
                     new WorkerSessionStartupFailure(workerId, failedStep, lastSuccessful, failure);
             listener.onStartupFailure(startupFailure);
@@ -268,9 +269,12 @@ public final class PollingWorkerSession implements AutoCloseable {
         return items == null ? List.of() : items;
     }
 
-    private static WorkerSessionStartupStep nextStepAfter(WorkerSessionStartupStep lastSuccessful) {
+    private static WorkerSessionStartupStep nextStepAfter(WorkerSessionStartupStep lastSuccessful,
+                                                          boolean topologyBootstrapEnabled) {
         if (lastSuccessful == null) {
-            return WorkerSessionStartupStep.REGISTER_ADAPTER_NODE;
+            return topologyBootstrapEnabled
+                    ? WorkerSessionStartupStep.REGISTER_ADAPTER_NODE
+                    : WorkerSessionStartupStep.REGISTER_WORKER;
         }
         WorkerSessionStartupStep[] steps = WorkerSessionStartupStep.values();
         int next = lastSuccessful.ordinal() + 1;
@@ -282,6 +286,10 @@ public final class PollingWorkerSession implements AutoCloseable {
             throw new IllegalArgumentException(fieldName + " is required");
         }
         return value.trim();
+    }
+
+    private static String optionalText(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private static String firstNonBlank(String primary, String fallback) {

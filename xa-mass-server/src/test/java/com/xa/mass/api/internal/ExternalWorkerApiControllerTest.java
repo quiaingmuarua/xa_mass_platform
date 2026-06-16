@@ -244,7 +244,6 @@ class ExternalWorkerApiControllerTest {
                         .content("""
                                 {
                                   "workerId": "node-worker-1",
-                                  "adapterNodeId": "node-a",
                                   "workerGroupId": "node-runtime",
                                   "attributes": {
                                     "lang": "node"
@@ -254,7 +253,7 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.workerId").value("node-worker-1"))
-                .andExpect(jsonPath("$.data.adapterNodeId").value("node-a"))
+                .andExpect(jsonPath("$.data.adapterNodeId").doesNotExist())
                 .andExpect(jsonPath("$.data.workerGroupId").value("node-runtime"))
                 .andExpect(jsonPath("$.data.adapterId").doesNotExist())
                 .andExpect(jsonPath("$.data.transportHint").value(WorkerTransportHints.POLLING))
@@ -262,9 +261,7 @@ class ExternalWorkerApiControllerTest {
 
         verify(workerRegistry).registerWorker(argThat(request ->
                 "node-worker-1".equals(request.getWorkerId())
-                        && "node-a".equals(request.getAdapterNodeId())
                         && "node-runtime".equals(request.getWorkerGroupId())
-                        && request.getAdapterId() == null
                         && WorkerTransportHints.POLLING.equals(request.getTransportHint())
         ));
     }
@@ -277,7 +274,6 @@ class ExternalWorkerApiControllerTest {
                         .content("""
                                 {
                                   "workerId": "node-worker-1",
-                                  "adapterNodeId": "node-a",
                                   "workerGroupId": "node-runtime"
                                 }
                                 """))
@@ -289,7 +285,6 @@ class ExternalWorkerApiControllerTest {
 
         verify(workerRegistry).registerWorker(argThat(request ->
                 "node-worker-1".equals(request.getWorkerId())
-                        && "node-a".equals(request.getAdapterNodeId())
                         && "node-runtime".equals(request.getWorkerGroupId())
         ));
     }
@@ -341,7 +336,6 @@ class ExternalWorkerApiControllerTest {
                         .content("""
                                 {
                                   "workerId": "node-worker-1",
-                                  "adapterNodeId": "node-a",
                                   "workerGroupId": "node-runtime"
                                 }
                                 """))
@@ -361,7 +355,6 @@ class ExternalWorkerApiControllerTest {
                         .content("""
                                 {
                                   "workerId": "other-worker",
-                                  "adapterNodeId": "node-a",
                                   "workerGroupId": "node-runtime"
                                 }
                                 """))
@@ -393,7 +386,6 @@ class ExternalWorkerApiControllerTest {
                         .content("""
                 {
                   "workerId": "node-worker-1",
-                  "adapterNodeId": "node-a",
                   "workerGroupId": "node-runtime",
                   "transportHint": "pull"
                                 }
@@ -440,7 +432,6 @@ class ExternalWorkerApiControllerTest {
                         .content("""
                 {
                   "workerId": "node-worker-1",
-                  "adapterNodeId": "node-a",
                   "workerGroupId": "node-runtime",
                   "eventBindings": [
                                     {

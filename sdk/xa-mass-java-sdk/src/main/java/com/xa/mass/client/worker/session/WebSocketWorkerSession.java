@@ -81,10 +81,10 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         this.workerClient = builder.workerClient;
         this.workerId = requireText(builder.workerId, "workerId");
         this.workerGroupId = requireText(builder.workerGroupId, "workerGroupId");
-        this.adapterNodeId = requireText(builder.adapterNodeId, "adapterNodeId");
+        this.adapterNodeId = optionalText(builder.adapterNodeId);
         this.adapterType = firstNonBlank(builder.adapterType, "websocket");
         this.adapterVersion = builder.adapterVersion;
-        this.endpointId = firstNonBlank(builder.endpointId, adapterNodeId);
+        this.endpointId = firstNonBlank(builder.endpointId, adapterNodeId != null ? adapterNodeId : workerId);
         this.pluginVersion = builder.pluginVersion;
         this.deploymentVersion = builder.deploymentVersion;
         this.attributes = Map.copyOf(builder.attributes);
@@ -114,27 +114,28 @@ public final class WebSocketWorkerSession implements AutoCloseable {
     public WebSocketWorkerSession start() {
         WorkerSessionStartupStep lastSuccessful = null;
         try {
-            workerClient.registerAdapterNode(AdapterNodeSpec.builder()
-                    .adapterNodeId(adapterNodeId)
-                    .adapterType(adapterType)
-                    .adapterVersion(adapterVersion)
-                    .endpointId(endpointId)
-                    .attributes(attributes)
-                    .build());
-            lastSuccessful = WorkerSessionStartupStep.REGISTER_ADAPTER_NODE;
+            if (adapterNodeId != null) {
+                workerClient.registerAdapterNode(AdapterNodeSpec.builder()
+                        .adapterNodeId(adapterNodeId)
+                        .adapterType(adapterType)
+                        .adapterVersion(adapterVersion)
+                        .endpointId(endpointId)
+                        .attributes(attributes)
+                        .build());
+                lastSuccessful = WorkerSessionStartupStep.REGISTER_ADAPTER_NODE;
 
-            workerClient.bindNodeGroup(NodeGroupBindingSpec.builder()
-                    .adapterNodeId(adapterNodeId)
-                    .workerGroupId(workerGroupId)
-                    .pluginVersion(pluginVersion)
-                    .deploymentVersion(deploymentVersion)
-                    .attributes(attributes)
-                    .build());
-            lastSuccessful = WorkerSessionStartupStep.BIND_NODE_GROUP;
+                workerClient.bindNodeGroup(NodeGroupBindingSpec.builder()
+                        .adapterNodeId(adapterNodeId)
+                        .workerGroupId(workerGroupId)
+                        .pluginVersion(pluginVersion)
+                        .deploymentVersion(deploymentVersion)
+                        .attributes(attributes)
+                        .build());
+                lastSuccessful = WorkerSessionStartupStep.BIND_NODE_GROUP;
+            }
 
             WorkerRegistrationResult registration = workerClient.registerWorker(WorkerSpec.builder()
                     .workerId(workerId)
-                    .adapterNodeId(adapterNodeId)
                     .workerGroupId(workerGroupId)
                     .realtime()
                     .attributes(attributes)
@@ -151,7 +152,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         } catch (Throwable failure) {
             running.set(false);
             executor.shutdownNow();
-            WorkerSessionStartupStep failedStep = nextWebSocketStep(lastSuccessful);
+            WorkerSessionStartupStep failedStep = nextWebSocketStep(lastSuccessful, adapterNodeId != null);
             WorkerSessionStartupFailure startupFailure =
                     new WorkerSessionStartupFailure(workerId, failedStep, lastSuccessful, unwrap(failure));
             listener.onStartupFailure(startupFailure);
@@ -465,9 +466,12 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         return text == null || text.isBlank() ? null : text;
     }
 
-    private static WorkerSessionStartupStep nextWebSocketStep(WorkerSessionStartupStep lastSuccessful) {
+    private static WorkerSessionStartupStep nextWebSocketStep(WorkerSessionStartupStep lastSuccessful,
+                                                              boolean topologyBootstrapEnabled) {
         if (lastSuccessful == null) {
-            return WorkerSessionStartupStep.REGISTER_ADAPTER_NODE;
+            return topologyBootstrapEnabled
+                    ? WorkerSessionStartupStep.REGISTER_ADAPTER_NODE
+                    : WorkerSessionStartupStep.REGISTER_WORKER;
         }
         return switch (lastSuccessful) {
             case REGISTER_ADAPTER_NODE -> WorkerSessionStartupStep.BIND_NODE_GROUP;
@@ -490,6 +494,10 @@ public final class WebSocketWorkerSession implements AutoCloseable {
             throw new IllegalArgumentException(fieldName + " is required");
         }
         return value.trim();
+    }
+
+    private static String optionalText(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private static String firstNonBlank(String primary, String fallback) {

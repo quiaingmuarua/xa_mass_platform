@@ -64,15 +64,6 @@ class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
     }
 
     @Test
-    void acquireCandidatesSupportsNodeScopedBuckets() {
-        WorkerRegistry registry = createRegistry();
-        registry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));
-
-        assertEquals(List.of("worker-1"), registry.acquireCandidates("group-a", "node-a", "default", 10));
-        assertTrue(registry.acquireCandidates("group-a", "node-b", "default", 10).isEmpty());
-    }
-
-    @Test
     void routeAttributeUpdateRemovesOnlyKnownPreviousBucketMembership() {
         WorkerRegistry registry = new InMemoryWorkerRegistry(
                 regionRoutePolicy(),
@@ -109,8 +100,6 @@ class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
         return new WorkerMeta(
                 workerId,
                 groupId,
-                "node-a",
-                "polling",
                 "polling",
                 Map.of("region", region),
                 "agent-1",

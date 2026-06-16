@@ -73,7 +73,7 @@
           </el-table-column>
           <el-table-column label="Reachable unlocked" min-width="150">
             <template #default="{ row }">
-              {{ row.reachableUnlockedBindingCount }} / {{ row.workerCount }}
+              {{ row.reachableUnlockedWorkerCount }} / {{ row.workerCount }}
             </template>
           </el-table-column>
           <el-table-column label="Owner" min-width="180">
@@ -118,7 +118,7 @@ import {toErrorMessage} from '@/utils/errors'
 interface ProjectRow extends ProjectDefinition {
   eventCount: number
   workerGroupCount: number
-  reachableUnlockedBindingCount: number
+  reachableUnlockedWorkerCount: number
   workerCount: number
 }
 
@@ -138,8 +138,8 @@ const projectRows = computed<ProjectRow[]>(() =>
       ...project,
       eventCount: project.eventCodes.length,
       workerGroupCount: workerGroupsForProject(project).length,
-      reachableUnlockedBindingCount: workerGroupsForProject(project).reduce(
-        (sum, group) => sum + group.reachableUnlockedBindingCount,
+      reachableUnlockedWorkerCount: workerGroupsForProject(project).reduce(
+        (sum, group) => sum + group.reachableUnlockedWorkerCount,
         0,
       ),
       workerCount: workerGroupsForProject(project).reduce(

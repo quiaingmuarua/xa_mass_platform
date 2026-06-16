@@ -59,7 +59,6 @@ public class MassEngine {
             taskCommands = runtimeKernel.taskCommands();
             runtimeBridge.start(
                     startedRuntime.eventListeners(),
-                    startedRuntime.workerResourceRuntime(),
                     startedRuntime.workerDispatchGateRuntime(),
                     startedRuntime.dispatchWakeupCallback());
             config.getWorkerPresenceRuntime().setDispatchWakeupCallback(startedRuntime.dispatchWakeupCallback());

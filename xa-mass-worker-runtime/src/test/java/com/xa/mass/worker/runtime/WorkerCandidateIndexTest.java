@@ -72,7 +72,7 @@ public class WorkerCandidateIndexTest {
     }
 
     @Test
-    void targetWorkerLookupStillRespectsAdapterNodePlacement() {
+    void targetWorkerLookupDoesNotUseAdapterNodePlacement() {
         WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
         ), List.of(
@@ -80,12 +80,10 @@ public class WorkerCandidateIndexTest {
                 worker("worker-node-b", "crawler", "node-b", Map.of())
         )));
 
-        WorkerTaskSelector selector = taskWithAdapterNode("node-a", "worker-node-b", "crawler");
-
-        assertTrue(index.workersFor(selector).isEmpty());
-
-        selector = taskWithAdapterNode("node-a", "worker-node-a", "crawler");
-        assertEquals(List.of("worker-node-a"), workerIds(index.workersFor(selector)));
+        assertEquals(List.of("worker-node-b"),
+                workerIds(index.workersFor(task("demoApp", "crawler.fetch", "worker-node-b", "crawler"))));
+        assertEquals(List.of("worker-node-a"),
+                workerIds(index.workersFor(task("demoApp", "crawler.fetch", "worker-node-a", "crawler"))));
     }
 
     @Test
@@ -219,7 +217,6 @@ public class WorkerCandidateIndexTest {
         WorkerCandidateIndex.SourceGuardResult result = index.sourceGuard(
                 task("demoApp", "crawler.fetch", "worker-disabled", "crawler"),
                 "crawler",
-                null,
                 WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY,
                 "worker-disabled"
         );
@@ -254,14 +251,14 @@ public class WorkerCandidateIndexTest {
         String observedCandidateBucket = selector.candidateBucketKeys().iterator().next();
 
         WorkerCandidateIndex.SourceGuardResult result =
-                index.sourceGuard(selector, "crawler", null, observedCandidateBucket, "worker-eu");
+                index.sourceGuard(selector, "crawler", observedCandidateBucket, "worker-eu");
 
         assertFalse(result.accepted());
         assertEquals(WorkerCandidateIndex.SourceGuardRejectionReason.CANDIDATE_BUCKET_MISMATCH, result.rejectionReason());
     }
 
     @Test
-    void sourceGuardRejectsStaleAdapterNodeEvidenceBeforeStageTwo() {
+    void sourceGuardDoesNotUseAdapterNodeEvidenceBeforeStageTwo() {
         WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
         ), List.of(
@@ -271,12 +268,10 @@ public class WorkerCandidateIndexTest {
         WorkerCandidateIndex.SourceGuardResult result =
                 index.sourceGuard(task("demoApp", "crawler.fetch", null, "crawler"),
                         "crawler",
-                        "node-a",
                         WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY,
                         "worker-node-b");
 
-        assertFalse(result.accepted());
-        assertEquals(WorkerCandidateIndex.SourceGuardRejectionReason.ADAPTER_NODE_MISMATCH, result.rejectionReason());
+        assertTrue(result.accepted());
     }
 
     private static List<String> workerIds(List<Worker> workers) {
@@ -304,8 +299,6 @@ public class WorkerCandidateIndexTest {
             registry.upsertSlot(new WorkerMeta(
                     worker.getWorkerId(),
                     worker.getWorkerGroupId(),
-                    worker.getAdapterNodeId(),
-                    worker.getAdapterId(),
                     worker.getOnlineStrategy(),
                     worker.getAttributes(),
                     worker.getAgentVersion(),
@@ -322,8 +315,6 @@ public class WorkerCandidateIndexTest {
                 workerId,
                 groupId,
                 null,
-                null,
-                null,
                 Map.of(),
                 null,
                 null,
@@ -336,19 +327,6 @@ public class WorkerCandidateIndexTest {
         return new WorkerTaskSelector(
                 "task-" + project,
                 groupIdList(groupIds),
-                null,
-                targetWorkerId,
-                Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY)
-        );
-    }
-
-    private static WorkerTaskSelector taskWithAdapterNode(String adapterNodeId,
-                                                          String targetWorkerId,
-                                                          String... groupIds) {
-        return new WorkerTaskSelector(
-                "task-adapter",
-                groupIdList(groupIds),
-                adapterNodeId,
                 targetWorkerId,
                 Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY)
         );
@@ -362,7 +340,6 @@ public class WorkerCandidateIndexTest {
         return new WorkerTaskSelector(
                 "task-routed",
                 groupIdList(groupIds),
-                null,
                 null,
                 Set.of(candidateBucketKey)
         );

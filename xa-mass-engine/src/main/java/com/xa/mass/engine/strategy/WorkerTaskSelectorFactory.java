@@ -19,7 +19,6 @@ public final class WorkerTaskSelectorFactory {
         return new WorkerTaskSelector(
                 resolvedPolicy.taskId(),
                 resolvedPolicy.workerGroupIds(),
-                resolvedPolicy.adapterNodeId(),
                 resolvedPolicy.targetWorkerId(),
                 resolvedPolicy.candidateBucketKeys()
         );

@@ -4,16 +4,11 @@ Status: active implementation; Slice 0A/0B, Slice 1 source-guard, Slice 2,
 Slice 3 policy seam, Slice 4 measurement, and Slice 5 warm-hint first slices
 are implemented.
 
-This roadmap continues from
-[`TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md`](../../../transport/TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md)
-after the TW-4 spine work. Transport spine owns transport registration,
-fixed-worker routing, worker relation evidence, and dispatch handoff seams; this
-roadmap owns the engine-side worker match strategy, policy, diagnostics, and
-follow-up tuning.
-
-Transport spine keeps the transport boundary and TW-1C scaling intent. This
-roadmap owns the engine-side follow-through for bounded candidate acquisition,
-candidate-bucket cleanup, and match diagnostics that consume those spine contracts.
+This roadmap supersedes the former transport worker-match spine direction. The
+current transport boundary lives in `transport/AGENTS.md` and
+`transport/TRANSPORT_BOUNDARY_BASELINE.md`; this roadmap owns the engine-side
+worker match strategy, policy, diagnostics, bounded candidate acquisition,
+candidate-bucket cleanup, and follow-up tuning.
 
 This roadmap supersedes the former `TASK_CANDIDATE_WARM_POOL_ROADMAP.md`.
 Warm candidate reuse now lives under Slice 5 instead of driving the overall

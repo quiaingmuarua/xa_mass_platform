@@ -46,10 +46,6 @@ public record WorkerSlot(
         return meta.groupId();
     }
 
-    public String adapterNodeId() {
-        return meta.adapterNodeId();
-    }
-
     public boolean dispatchEnabled() {
         return disabledSources.isEmpty();
     }

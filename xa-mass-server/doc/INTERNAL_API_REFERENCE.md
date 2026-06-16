@@ -230,12 +230,9 @@ Notes:
 - `runtimeStatus` is a display/runtime status label, not scheduling truth
 - `reachability` / `reachable` are worker-runtime reachability observations,
   not endpoint-lease transport proof and not reserve success
-- `connections` and `hasActiveEndpoint` are bounded transport/session
-  diagnostics, not capability truth
 - each row includes `fieldSources`, a field-to-owner label map. Expected
   owners include `declaration`, `runtimeStatusDisplay`,
-  `workerRuntimeReachability`, `transportSessionEvidence`,
-  `declarationOrTransport`, and `workerGroupCapability`.
+  `workerRuntimeReachability`, `declaration`, and `workerGroupCapability`.
 
 ### 4.5 List WorkerGroup Capability Snapshots
 
@@ -251,10 +248,10 @@ Notes:
 - `reachableWorkerCountsByTransport` groups currently reachable workers by
   transport hint; it is not endpoint-lease proof
 - `runtimeStatusCounts` is a display/runtime status summary
-- `reachableUnlockedBindingCount` is a source-labeled catalog coverage count:
-  reachable + not locked + available node binding. It excludes rule
-  evaluation, target-worker policy, capacity reservation races, and reserve
-  mutation outcome, so it must not be presented as CES composite eligibility.
+- `reachableUnlockedWorkerCount` is a source-labeled catalog coverage count:
+  reachable + not locked workers in the group. It excludes rule evaluation,
+  target-worker policy, capacity reservation races, and reserve mutation
+  outcome, so it must not be presented as CES composite eligibility.
 
 ## 5. Task API
 
@@ -906,8 +903,9 @@ Request notes:
 - `eventBindings` is optional compatibility input; WorkerGroup declaration is
   the capability owner
 - `transportHint` defaults to `polling`
-- `adapterNodeId` is optional for polling and required for realtime; the server
-  derives internal adapter identity from the registered adapter node
+- worker registration does not accept transport owner identifiers such as
+  `adapterNodeId` or `adapterId`; explicit adapter node and node-group binding
+  routes remain topology/admin bootstrap only
 - caller must authenticate with a worker credential that includes `worker:poll`
   and binds the same `workerId`
 

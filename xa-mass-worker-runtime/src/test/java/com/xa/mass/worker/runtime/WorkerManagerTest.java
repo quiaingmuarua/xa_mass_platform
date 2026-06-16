@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -197,21 +198,24 @@ public class WorkerManagerTest {
 
     @Test
     void updateWorkerHeartbeatRefreshesRegistryEvidenceButNotDeclarationTruth() {
+        declareProjectGroup("us", "demoApp");
         Worker worker = worker("worker-heartbeat-projection", "us");
         worker.setAgentVersion("declared-v1");
         worker.setLastHeartbeat(null);
         addWorker(worker);
 
-        LocalDateTime heartbeat = LocalDateTime.of(2026, 6, 10, 10, 30);
+        LocalDateTime heartbeat = LocalDateTime.now();
         Worker update = worker("worker-heartbeat-projection", "us");
         update.setAgentVersion("declared-v2");
         update.setStatus(WorkerStatus.ONLINE);
         update.setLastHeartbeat(heartbeat);
         assertTrue(updateWorker(update));
 
+        assertEquals(List.of("worker-heartbeat-projection"),
+                candidateIds(task("demoApp", selector("us"))));
         Worker readModel = workerModel("worker-heartbeat-projection");
-        assertEquals(heartbeat, readModel.getLastHeartbeat());
-        assertEquals(WorkerStatus.ONLINE, readModel.getStatus());
+        assertNull(readModel.getLastHeartbeat());
+        assertEquals(WorkerStatus.OFFLINE, readModel.getStatus());
 
         WorkerDeclarationRecord declaration = workerDeclarationStore.getWorker("worker-heartbeat-projection")
                 .orElseThrow();
@@ -297,7 +301,7 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void relationshipChangesWakeDispatchPumpWhenTheyCanMakeWorkEligible() {
+    void relationshipChangesDoNotWakeDispatchPump() {
         AtomicInteger wakeups = new AtomicInteger();
         manager.setDispatchWakeupCallback(wakeups::incrementAndGet);
 
@@ -314,12 +318,12 @@ public class WorkerManagerTest {
         int beforeDrainClear = wakeups.get();
         manager.setNodeGroupBindingDraining("node-a", "crawler", false);
 
-        assertTrue(beforeDrainClear >= 4);
-        assertEquals(beforeDrainClear + 1, wakeups.get());
+        assertEquals(2, beforeDrainClear);
+        assertEquals(beforeDrainClear, wakeups.get());
     }
 
     @Test
-    void nodeGroupBindingStateChangesGateWorkerCandidateEligibility() {
+    void nodeGroupBindingStateIsTopologyMetadataNotCandidateEligibility() {
         declareEventGroup("crawler", "demoApp", "crawler.fetch");
         manager.registerAdapterNode(adapterNode("node-a"));
         manager.bindNodeGroup(binding("node-a", "crawler"));
@@ -332,9 +336,10 @@ public class WorkerManagerTest {
 
         assertFalse(disabled.enabled());
         assertTrue(draining.draining());
-        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
-        assertTrue(candidateIndexIds(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))).isEmpty());
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+        assertEquals(List.of("w-binding"),
+                candidateIndexIds(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))));
 
         manager.setNodeGroupBindingEnabled("node-a", "crawler", true);
         manager.setNodeGroupBindingDraining("node-a", "crawler", false);
@@ -346,19 +351,15 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void explicitWorkerRegistrationRequiresRegisteredNodeGroupBinding() {
+    void explicitWorkerRegistrationDoesNotRequireRegisteredNodeGroupBinding() {
         manager.registerAdapterNode(adapterNode("node-a"));
         Worker worker = worker("w-explicit", "crawler");
         worker.setAdapterNodeId("node-a");
 
-        IllegalArgumentException missingBinding = assertThrows(IllegalArgumentException.class,
-                () -> addWorker(worker));
-        assertTrue(missingBinding.getMessage().contains("node group binding is not registered"));
-
-        manager.bindNodeGroup(binding("node-a", "crawler"));
         addWorker(worker);
 
-        assertEquals("node-a", workerModel("w-explicit").getAdapterNodeId());
+        assertNull(workerModel("w-explicit").getAdapterNodeId());
+        assertTrue(manager.nodeGroupBinding("node-a", "crawler").isEmpty());
     }
 
     @Test
@@ -374,7 +375,7 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void nodeLocalDrainExcludesOnlyWorkersOnThatNodeGroupPair() {
+    void nodeLocalDrainDoesNotChangeWorkerDispatchEligibility() {
         manager.registerAdapterNode(adapterNode("node-a"));
         manager.registerAdapterNode(adapterNode("node-b"));
         manager.bindNodeGroup(binding("node-a", "crawler"));
@@ -388,7 +389,7 @@ public class WorkerManagerTest {
 
         manager.setNodeGroupBindingDraining("node-a", "crawler", true);
 
-        assertFalse(manager.isWorkerDispatchEnabled(workerA.getWorkerId()));
+        assertTrue(manager.isWorkerDispatchEnabled(workerA.getWorkerId()));
         assertTrue(manager.isWorkerDispatchEnabled(workerB.getWorkerId()));
 
         manager.setNodeGroupBindingDraining("node-a", "crawler", false);
@@ -425,7 +426,7 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void rebindingNodeGroupUpdatesDispatchGateForExistingWorkers() {
+    void rebindingNodeGroupUpdatesTopologyMetadataOnly() {
         manager.registerAdapterNode(adapterNode("node-a"));
         manager.bindNodeGroup(binding("node-a", "crawler"));
         Worker worker = worker("w-node-a", "crawler");
@@ -445,11 +446,13 @@ public class WorkerManagerTest {
                 Map.of()
         ));
 
-        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+        NodeGroupBindingRecord binding = manager.nodeGroupBinding("node-a", "crawler").orElseThrow();
+        assertFalse(binding.enabled());
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     @Test
-    void unbindingNodeGroupDisablesDispatchForExistingWorkers() {
+    void unbindingNodeGroupRemovesTopologyMetadataOnly() {
         manager.registerAdapterNode(adapterNode("node-a"));
         manager.bindNodeGroup(binding("node-a", "crawler"));
         Worker worker = worker("w-node-a", "crawler");
@@ -459,7 +462,8 @@ public class WorkerManagerTest {
 
         assertTrue(manager.unbindNodeGroup("node-a", "crawler"));
 
-        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+        assertTrue(manager.nodeGroupBinding("node-a", "crawler").isEmpty());
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     @Test
@@ -1018,8 +1022,8 @@ public class WorkerManagerTest {
         assertEquals(WorkerReachabilityState.OFFLINE, reachabilityAwareManager.getWorkerReachability("w-offline"));
         assertEquals(WorkerReachabilityState.UNKNOWN, reachabilityAwareManager.getWorkerReachability("missing"));
 
-        // Worker model status can still say ONLINE while transport reachability has already converged to STALE.
-        assertEquals(WorkerStatus.ONLINE, workerModel(reachabilityAwareManager, "w-stale").getStatus());
+        // Default worker lookup no longer exposes runtime reachability/status evidence.
+        assertEquals(WorkerStatus.OFFLINE, workerModel(reachabilityAwareManager, "w-stale").getStatus());
         assertTrue(reachabilityAwareManager.isWorkerDispatchEnabled(staleModelWorker.getWorkerId()));
     }
 
@@ -1090,11 +1094,16 @@ public class WorkerManagerTest {
     }
 
     private static void addWorker(WorkerManager workerManager, Worker worker) {
-        workerManager.addWorker(workerResource(worker));
+        workerManager.addWorker(workerDeclaration(worker));
+        refreshHeartbeatEvidence(workerManager, worker);
     }
 
     private boolean updateWorker(Worker worker) {
-        return manager.updateWorker(workerResource(worker));
+        boolean updated = manager.updateWorker(workerDeclaration(worker));
+        if (updated) {
+            refreshHeartbeatEvidence(manager, worker);
+        }
+        return updated;
     }
 
     private Worker workerModel(String workerId) {
@@ -1105,38 +1114,26 @@ public class WorkerManagerTest {
         return toWorker(workerManager.worker(workerId).orElse(null));
     }
 
-    private static WorkerResourceRecord workerResource(Worker worker) {
-        return new WorkerResourceRecord(
-                worker.getWorkerId(),
-                worker.getStatus() == null ? null : worker.getStatus().name(),
-                worker.getAgentVersion(),
-                worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
-                worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
-                worker.getOnlineStrategy(),
-                worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime()
-        );
-    }
-
     private static WorkerDeclarationRecord workerDeclaration(Worker worker) {
         return new WorkerDeclarationRecord(
                 worker.getWorkerId(),
                 worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
                 worker.getOnlineStrategy(),
                 worker.getAgentVersion(),
                 worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime()
+                worker.getAttributes()
         );
+    }
+
+    private static void refreshHeartbeatEvidence(WorkerManager workerManager, Worker worker) {
+        if (worker == null || worker.getLastHeartbeat() == null) {
+            return;
+        }
+        long observedAtMillis = worker.getLastHeartbeat()
+                .atZone(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli();
+        workerManager.refreshWorkerHeartbeat(worker.getWorkerId(), observedAtMillis);
     }
 
     private static Worker toWorker(WorkerResourceRecord record) {
@@ -1145,19 +1142,11 @@ public class WorkerManagerTest {
         }
         Worker worker = new Worker();
         worker.setWorkerId(record.workerId());
-        worker.setStatus(record.statusName() == null ? null : WorkerStatus.valueOf(record.statusName()));
         worker.setAgentVersion(record.agentVersion());
-        worker.setLastHeartbeat(record.lastHeartbeat());
-        worker.setSupportedProjects(record.supportedProjects());
-        worker.setSupportedEventCodes(record.supportedEventCodes());
         worker.setWorkerGroupId(record.workerGroupId());
-        worker.setAdapterNodeId(record.adapterNodeId());
-        worker.setAdapterId(record.adapterId());
-        worker.setOnlineStrategy(record.onlineStrategy());
+        worker.setOnlineStrategy(record.transportHint());
         worker.setMaxConcurrentWork(record.maxConcurrentWork());
         worker.setAttributes(record.attributes());
-        worker.setCreateTime(record.createTime());
-        worker.setUpdateTime(record.updateTime());
         return worker;
     }
 
@@ -1199,7 +1188,6 @@ public class WorkerManagerTest {
         return new WorkerTaskSelector(
                 task == null ? null : task.getTid(),
                 TaskSharedConfig.workerGroupSelector(task),
-                TaskSharedConfig.adapterNodeId(task),
                 TaskSharedConfig.targetWorkerId(task),
                 java.util.Set.of(WorkerCandidateBucketPolicies.approvedAttributePolicy(
                                 WorkerCandidateBucketPolicies.STANDARD_APPROVED_ROUTE_ATTRIBUTES)
@@ -1223,8 +1211,6 @@ public class WorkerManagerTest {
                 worker.getWorkerId(),
                 worker.getAgentVersion(),
                 worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
                 worker.getOnlineStrategy(),
                 worker.getAttributes()
         );

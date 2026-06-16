@@ -24,8 +24,7 @@ import java.util.Set;
 public final class WorkerSchedulingView {
     private final String workerId;
     private final String workerGroupId;
-    private final String adapterNodeId;
-    private final String onlineStrategy;
+    private final String transportHint;
     private final String agentVersion;
     private final List<String> supportedProjects;
     private final List<String> supportedEventCodes;
@@ -48,8 +47,7 @@ public final class WorkerSchedulingView {
                                  WorkerLoadSnapshot workerLoad) {
         this.workerId = candidateRow.workerId();
         this.workerGroupId = candidateRow.workerGroupId();
-        this.adapterNodeId = candidateRow.adapterNodeId();
-        this.onlineStrategy = candidateRow.onlineStrategy();
+        this.transportHint = candidateRow.transportHint();
         this.agentVersion = candidateRow.agentVersion();
         this.supportedProjects = workerGroup == null ? List.of() : List.copyOf(workerGroup.projectCodes());
         this.supportedEventCodes = workerGroup == null ? List.of() : List.copyOf(workerGroup.eventCodes());
@@ -109,12 +107,8 @@ public final class WorkerSchedulingView {
         return workerGroupId;
     }
 
-    public String adapterNodeId() {
-        return adapterNodeId;
-    }
-
-    public String onlineStrategy() {
-        return onlineStrategy;
+    public String transportHint() {
+        return transportHint;
     }
 
     public String agentVersion() {

@@ -14,8 +14,6 @@ public final class TestWorkerCandidateRows {
                 worker.getWorkerGroupId() == null || worker.getWorkerGroupId().isBlank()
                         ? "group-a"
                         : worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
                 worker.getOnlineStrategy(),
                 worker.getAttributes()
         );

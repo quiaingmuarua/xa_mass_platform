@@ -6,7 +6,7 @@ import com.xa.mass.trace.sink.ExecutionEventType;
 import com.xa.mass.trace.sink.NoopExecutionEventSink;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
 import com.xa.mass.worker.runtime.presence.WorkerPresenceChange;
 import com.xa.mass.worker.runtime.presence.WorkerPresenceRuntime;
 
@@ -21,14 +21,14 @@ import java.util.Objects;
 final class WorkerRuntimePresenceIngress implements WorkerPresenceIngress {
 
     private final WorkerPresenceRuntime workerPresenceRuntime;
-    private final WorkerResourceRuntime workerResourceRuntime;
+    private final WorkerHeartbeatRuntime workerHeartbeatRuntime;
     private final ExecutionEventSink traceSink;
 
     WorkerRuntimePresenceIngress(WorkerPresenceRuntime workerPresenceRuntime,
-                                 WorkerResourceRuntime workerResourceRuntime,
+                                 WorkerHeartbeatRuntime workerHeartbeatRuntime,
                                  ExecutionEventSink traceSink) {
         this.workerPresenceRuntime = Objects.requireNonNull(workerPresenceRuntime, "workerPresenceRuntime");
-        this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
+        this.workerHeartbeatRuntime = Objects.requireNonNull(workerHeartbeatRuntime, "workerHeartbeatRuntime");
         this.traceSink = traceSink == null ? new NoopExecutionEventSink() : traceSink;
     }
 
@@ -79,7 +79,7 @@ final class WorkerRuntimePresenceIngress implements WorkerPresenceIngress {
     }
 
     private void refreshSlotHeartbeat(WorkerSessionPresenceEvent event) {
-        workerResourceRuntime.refreshWorkerHeartbeat(event.workerId(), event.observedAtMillis());
+        workerHeartbeatRuntime.refreshWorkerHeartbeat(event.workerId(), event.observedAtMillis());
     }
 
     private void emitReachabilityTrace(WorkerPresenceChange change, WorkerSessionPresenceEvent event) {

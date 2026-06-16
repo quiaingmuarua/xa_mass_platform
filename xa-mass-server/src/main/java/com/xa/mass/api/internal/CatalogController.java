@@ -159,7 +159,7 @@ public class CatalogController {
                     item.put("supportedEventCodes", groupEventCodes(group));
                     item.put("maxConcurrentWork", worker.getMaxConcurrentWork());
                     item.put("eventBindings", groupEventBindings(group));
-                    item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
+                    item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getTransportHint()));
                     item.put("attributes", worker.getAttributes());
                     boolean reachable = reachableWorkerIds.contains(worker.getWorkerId());
                     item.put("reachability", reachable ? "ONLINE" : "OFFLINE");
@@ -336,13 +336,13 @@ public class CatalogController {
 
         Map<String, Long> transportCounts = groupWorkers.stream()
                 .collect(java.util.stream.Collectors.groupingBy(
-                        worker -> normalizeTransport(worker.getOnlineStrategy()),
+                        worker -> normalizeTransport(worker.getTransportHint()),
                         LinkedHashMap::new,
                         java.util.stream.Collectors.counting()));
         Map<String, Long> reachableWorkerCountsByTransport = groupWorkers.stream()
                 .filter(worker -> reachableWorkerIds.contains(worker.getWorkerId()))
                 .collect(java.util.stream.Collectors.groupingBy(
-                        worker -> normalizeTransport(worker.getOnlineStrategy()),
+                        worker -> normalizeTransport(worker.getTransportHint()),
                         LinkedHashMap::new,
                         java.util.stream.Collectors.counting()));
         Map<String, Long> runtimeStatusCounts = groupWorkers.stream()
@@ -360,10 +360,9 @@ public class CatalogController {
                         java.util.stream.Collectors.counting()));
 
         long lockedCount = groupWorkers.stream().filter(worker -> lockedWorkerIds.contains(worker.getWorkerId())).count();
-        long reachableUnlockedBindingCount = groupWorkers.stream()
+        long reachableUnlockedWorkerCount = groupWorkers.stream()
                 .filter(worker -> reachableWorkerIds.contains(worker.getWorkerId()))
                 .filter(worker -> !lockedWorkerIds.contains(worker.getWorkerId()))
-                .filter(worker -> hasAvailableBinding(worker, bindings, adapterNodesById))
                 .count();
 
         Map<String, Object> item = new LinkedHashMap<>();
@@ -380,7 +379,7 @@ public class CatalogController {
         item.put("reachableWorkerCountsByTransport", reachableWorkerCountsByTransport);
         item.put("runtimeStatusCounts", runtimeStatusCounts);
         item.put("lockedCount", lockedCount);
-        item.put("reachableUnlockedBindingCount", reachableUnlockedBindingCount);
+        item.put("reachableUnlockedWorkerCount", reachableUnlockedWorkerCount);
         item.put("fingerprintDistribution", fingerprintDistribution);
         return item;
     }
@@ -398,25 +397,6 @@ public class CatalogController {
                 .map(String::trim)
                 .filter(workerId -> !workerId.isEmpty())
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
-    }
-
-    private boolean hasAvailableBinding(WorkerSnapshot worker,
-                                        List<NodeGroupBindingSnapshot> bindings,
-                                        Map<String, AdapterNodeSnapshot> adapterNodesById) {
-        if (bindings.isEmpty()) {
-            return true;
-        }
-        String workerAdapterNodeId = worker.getAdapterNodeId();
-        return bindings.stream()
-                .filter(binding -> workerAdapterNodeId == null || workerAdapterNodeId.equals(binding.adapterNodeId()))
-                .anyMatch(binding -> {
-                    AdapterNodeSnapshot node = adapterNodesById.get(binding.adapterNodeId());
-                    return binding.enabled()
-                            && !binding.draining()
-                            && node != null
-                            && node.enabled()
-                            && node.online();
-                });
     }
 
     private String normalizeTransport(String value) {

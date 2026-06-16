@@ -1,7 +1,7 @@
 package com.xa.mass.sdk.model;
 
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.*;
@@ -18,26 +18,17 @@ public final class SdkResourceMapper {
         return MassTaskShellCreateRequestMapper.toEngineRequest(request);
     }
 
-    public static WorkerResourceRecord toWorkerResourceRecord(WorkerRegistration request) {
+    public static WorkerDeclarationRecord toWorkerDeclarationRecord(WorkerRegistration request) {
         Objects.requireNonNull(request, "request");
         String workerId = requireNonBlank(request.getWorkerId(), "workerId");
-        String adapterId = requireNonBlank(request.getAdapterId(), "adapterId");
         String transportHint = WorkerTransportHints.normalize(requireNonBlank(request.getTransportHint(), "transportHint"));
-        return new WorkerResourceRecord(
+        return new WorkerDeclarationRecord(
                 workerId,
-                null,
-                null,
-                null,
-                Collections.emptyList(),
-                Collections.emptyList(),
                 blankToNull(request.getWorkerGroupId()),
-                blankToNull(request.getAdapterNodeId()),
-                adapterId,
                 transportHint,
-                request.getMaxConcurrentWork(),
-                normalizedAttributes(request.getAttributes()),
                 null,
-                null
+                request.getMaxConcurrentWork(),
+                normalizedAttributes(request.getAttributes())
         );
     }
 

@@ -151,14 +151,10 @@ class MassApplicationDistributedTransportTest {
         return new WorkerDeclarationRecord(
                 worker.getWorkerId(),
                 worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
                 worker.getOnlineStrategy(),
                 worker.getAgentVersion(),
                 worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime()
+                worker.getAttributes()
         );
     }
 
@@ -167,7 +163,7 @@ class MassApplicationDistributedTransportTest {
     }
 
     private static TaskDispatchBinding binding(String messageId, String workerId) {
-        return TaskDispatchBinding.workerLevelWithTransportEvidence(
+        return TaskDispatchBinding.workerLevelWithEvidence(
                 "task-1",
                 messageId,
                 "demo.event",
@@ -180,8 +176,6 @@ class MassApplicationDistributedTransportTest {
                 workerId,
                 "batch-1",
                 "demo-workers",
-                null,
-                WorkerTransportHints.REALTIME,
                 null,
                 "test-fixture"
         );

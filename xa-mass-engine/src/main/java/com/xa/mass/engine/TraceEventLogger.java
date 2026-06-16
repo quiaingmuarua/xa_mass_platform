@@ -1034,7 +1034,6 @@ public final class TraceEventLogger {
             values.put("workerSchedulingMatchesRoutingCode",
                     routingCode != null && view.schedulingRoutingTagsContain(routingCode));
             values.put("workerGroupId", view.workerGroupId());
-            values.put("adapterNodeId", view.adapterNodeId());
             values.put("workerCandidateSource", workerCandidateSource(task));
             if (task != null && taskEventCode != null && !taskEventCode.isBlank()
                     && task.getProject() != null && !task.getProject().isBlank()) {
@@ -1069,10 +1068,6 @@ public final class TraceEventLogger {
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         if (targetWorkerId != null && !targetWorkerId.isBlank()) {
             return "TARGET_WORKER";
-        }
-        String adapterNodeId = TaskSharedConfig.adapterNodeId(task);
-        if (adapterNodeId != null && !adapterNodeId.isBlank()) {
-            return "GROUP_SELECTOR_WITH_NODE";
         }
         return "GROUP_SELECTOR";
     }

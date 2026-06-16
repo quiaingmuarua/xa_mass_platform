@@ -163,7 +163,7 @@
                 </el-table-column>
                 <el-table-column label="Reachable unlocked" min-width="150">
                   <template #default="{ row }">
-                    {{ row.reachableUnlockedBindingCount }}
+                    {{ row.reachableUnlockedWorkerCount }}
                   </template>
                 </el-table-column>
                 <el-table-column label="Reachable by transport" min-width="180">
@@ -379,7 +379,7 @@ function groupsForEvent(eventCode: string): WorkerGroupCapability[] {
 
 function reachableUnlockedForEvent(eventCode: string): number {
   return groupsForEvent(eventCode).reduce(
-    (sum, group) => sum + group.reachableUnlockedBindingCount,
+    (sum, group) => sum + group.reachableUnlockedWorkerCount,
     0,
   )
 }

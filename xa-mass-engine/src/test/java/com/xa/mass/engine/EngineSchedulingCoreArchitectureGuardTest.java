@@ -2266,9 +2266,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 repo.resolve("transport/websocket-adapter/src/main/java")
         );
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
-                Map.entry("full resource mutation surface",
+                Map.entry("worker resource runtime surface",
                         Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.worker\\.runtime\\.resource\\."
-                                + "(?:WorkerResourceRuntime|WorkerResourceDeclarationRuntime|WorkerNodeBindingRuntime)\\b")),
+                                + "(?:WorkerResourceQueryRuntime|WorkerResourceDeclarationRuntime|"
+                                + "WorkerNodeBindingRuntime|WorkerHeartbeatRuntime)\\b")),
                 Map.entry("worker registry mutation surface",
                         Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.runtime\\.worker\\.WorkerRegistry\\b")),
                 Map.entry("admission/control/report mutation surface",
@@ -2662,8 +2663,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 || sdkSource.contains("getWorkerDeclarationStore()")) {
             violations.add(sdkApplicationPath + " uses WorkerDeclarationStore for SDK worker shell operations");
         }
-        if (!sdkSource.contains("WorkerResourceRuntime")) {
-            violations.add(sdkApplicationPath + " does not use WorkerResourceRuntime");
+        if (sdkSource.contains("WorkerResourceRuntime") || sdkSource.contains("getWorkerResourceRuntime")) {
+            violations.add(sdkApplicationPath + " uses retired WorkerResourceRuntime aggregate");
+        }
+        if (!sdkSource.contains("WorkerResourceQueryRuntime")
+                || !sdkSource.contains("getWorkerResourceQueryRuntime()")
+                || !sdkSource.contains("getWorkerResourceDeclarationRuntime()")
+                || !sdkSource.contains("getWorkerNodeBindingRuntime()")) {
+            violations.add(sdkApplicationPath + " does not use narrow worker resource accessors");
         }
         if (sdkSource.contains("com.xa.mass.engine.worker.WorkerControlService")
                 || Pattern.compile("\\bWorkerControlService\\b").matcher(sdkSource).find()) {
@@ -2716,14 +2723,16 @@ class EngineSchedulingCoreArchitectureGuardTest {
                     || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
                 violations.add(bridgePath + " depends on full WorkerManager");
             }
-            if (!source.contains("WorkerResourceRuntime")) {
-                violations.add(bridgePath + " does not use WorkerResourceRuntime");
+            if (source.contains("WorkerResourceRuntime") || source.contains("WorkerResourceQueryRuntime")
+                    || source.contains("WorkerResourceDeclarationRuntime")
+                    || source.contains("WorkerNodeBindingRuntime")
+                    || source.contains("WorkerHeartbeatRuntime")) {
+                violations.add(bridgePath + " depends on worker resource runtime ports");
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "SDK runtime bridge is shell wiring for legacy heartbeat refresh. It must depend on "
-                        + "WorkerResourceRuntime instead of full WorkerManager:\n"
+                "SDK runtime bridge is shell wiring and must not carry worker resource runtime ports:\n"
                         + String.join("\n", violations));
     }
 
@@ -2790,13 +2799,21 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerResourceRuntimeContractDoesNotExposeBaseWorkerModel() throws IOException {
+    void workerResourceContractsDoNotExposeBaseWorkerModel() throws IOException {
         Path engineContractPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerResourceRuntime.java");
         Path lookupStorePath = Path.of("..", "platform_infra", "mass-storage-api", "src", "main", "java",
                 "com", "xa", "mass", "storage", "api", "WorkerLookupStore.java");
-        Path runtimeContractPath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
-                "com", "xa", "mass", "worker", "runtime", "resource", "WorkerResourceRuntime.java");
+        List<Path> runtimeContractPaths = List.of(
+                Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                        "com", "xa", "mass", "worker", "runtime", "resource", "WorkerResourceQueryRuntime.java"),
+                Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                        "com", "xa", "mass", "worker", "runtime", "resource", "WorkerResourceDeclarationRuntime.java"),
+                Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                        "com", "xa", "mass", "worker", "runtime", "resource", "WorkerNodeBindingRuntime.java"),
+                Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                        "com", "xa", "mass", "worker", "runtime", "resource", "WorkerHeartbeatRuntime.java")
+        );
         Path runtimeRecordPath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
                 "com", "xa", "mass", "worker", "runtime", "resource", "WorkerResourceRecord.java");
 
@@ -2807,9 +2824,16 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Files.exists(lookupStorePath)) {
             violations.add(lookupStorePath + " reintroduces a storage-edge worker lookup seam");
         }
-        String runtimeContract = Files.readString(runtimeContractPath, StandardCharsets.UTF_8);
+        if (Files.exists(Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                "com", "xa", "mass", "worker", "runtime", "resource", "WorkerResourceRuntime.java"))) {
+            violations.add("retired WorkerResourceRuntime aggregate still exists");
+        }
+        StringBuilder runtimeContracts = new StringBuilder();
+        for (Path runtimeContractPath : runtimeContractPaths) {
+            runtimeContracts.append(Files.readString(runtimeContractPath, StandardCharsets.UTF_8)).append('\n');
+        }
         String runtimeRecord = Files.readString(runtimeRecordPath, StandardCharsets.UTF_8);
-        String combined = runtimeContract + "\n" + runtimeRecord;
+        String combined = runtimeContracts + "\n" + runtimeRecord;
         if (combined.contains("com.xa.mass.engine")) {
             violations.add("worker resource runtime contract imports engine types");
         }
@@ -2818,7 +2842,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerResourceRuntime is a worker-runtime resource boundary and must not expose base.model.Worker:\n"
+                "Worker resource runtime ports must stay narrow and must not expose base.model.Worker:\n"
                         + String.join("\n", violations));
     }
 

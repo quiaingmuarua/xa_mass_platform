@@ -36,6 +36,14 @@ Deferred decisions:
 - `GET /api/v1/tasks/{taskId}` remains `public-sdk-read` for now because
   `TaskClient.get` and frontend detail call it. API-5 owns whether to split a
   richer console detail from shell-only public detail.
+- `GET /api/v1/catalog/worker-capabilities` remains `console-diagnostics` in
+  category but currently uses SDK credential bypass through the broader
+  `/api/v1/catalog/**` read family. Before changing this route, decide whether
+  it should stay an operator diagnostic and remove SDK bypass, become a bounded
+  public SDK read contract, or split public WorkerGroup capability catalog from
+  operator worker-instance diagnostics. That decision must name caller set,
+  auth mode, permission, DTO owner, SDK/public-contract impact, frontend
+  adapter impact, and route tests.
 
 ## Route Inventory
 
@@ -54,7 +62,7 @@ Deferred decisions:
 | GET | /api/v1/catalog/events | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded catalog read | frontend, SDK users | keep |
 | GET | /api/v1/catalog/events/{eventCode} | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded catalog read | frontend, SDK users | keep |
 | GET | /api/v1/catalog/event-capabilities | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded capability read | frontend, SDK users | keep |
-| GET | /api/v1/catalog/worker-capabilities | CatalogController | console-diagnostics | SDK credential bypass | capability diagnostics | bound; joins declaration/runtime reachability/session diagnostics with source-labeled fields; auth/category split needs successor decision | frontend | keep as diagnostics |
+| GET | /api/v1/catalog/worker-capabilities | CatalogController | console-diagnostics | SDK credential bypass | capability diagnostics | bound; joins declaration/runtime reachability/session diagnostics with source-labeled fields; auth/category split is a deferred decision above | frontend | keep as diagnostics |
 | GET | /api/v1/catalog/worker-group-capabilities | CatalogController | public-sdk-read | SDK credential bypass | WorkerGroup capability owner | keep; bounded capability read | frontend, SDK users | keep |
 | GET | /api/v1/tasks | TaskApiController | public-sdk-read | SDK credential bypass or TASK_VIEW | task shell owner | bounded list window and filters | TaskClient, frontend | keep; future split needs caller decision |
 | POST | /api/v1/tasks | TaskApiController | public-sdk-ingress | SDK credential bypass or TASK_CREATE | task shell owner | keep; shell create intent | TaskClient, frontend | keep; response uses shell-only task object |

@@ -1,6 +1,5 @@
 package com.xa.mass.worker.runtime.resource;
 
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -15,21 +14,15 @@ import java.util.Map;
 public record WorkerDeclarationRecord(
         String workerId,
         String workerGroupId,
-        String adapterNodeId,
-        String adapterId,
-        String onlineStrategy,
+        String transportHint,
         String agentVersion,
         int maxConcurrentWork,
-        Map<String, String> attributes,
-        LocalDateTime createTime,
-        LocalDateTime updateTime
+        Map<String, String> attributes
 ) {
     public WorkerDeclarationRecord {
         workerId = normalizeNullable(workerId);
         workerGroupId = normalizeNullable(workerGroupId);
-        adapterNodeId = normalizeNullable(adapterNodeId);
-        adapterId = normalizeNullable(adapterId);
-        onlineStrategy = normalizeNullable(onlineStrategy);
+        transportHint = normalizeNullable(transportHint);
         agentVersion = normalizeNullable(agentVersion);
         maxConcurrentWork = Math.max(1, maxConcurrentWork);
         attributes = copyMap(attributes);

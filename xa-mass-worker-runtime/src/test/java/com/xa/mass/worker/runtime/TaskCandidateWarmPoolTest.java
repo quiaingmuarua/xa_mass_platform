@@ -41,7 +41,6 @@ class TaskCandidateWarmPoolTest {
                 taskId,
                 workerId,
                 "group-a",
-                null,
                 WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY,
                 observedAtMillis
         );

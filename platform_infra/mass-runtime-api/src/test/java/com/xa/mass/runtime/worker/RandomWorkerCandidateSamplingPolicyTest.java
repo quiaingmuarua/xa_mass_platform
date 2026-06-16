@@ -41,6 +41,6 @@ class RandomWorkerCandidateSamplingPolicyTest {
     }
 
     private WorkerCandidateSamplingContext context() {
-        return new WorkerCandidateSamplingContext("group-a", null, "default");
+        return new WorkerCandidateSamplingContext("group-a", "default");
     }
 }

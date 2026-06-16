@@ -11,7 +11,6 @@ import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 
 import java.util.Map;
 
@@ -46,8 +45,6 @@ public interface EngineRuntimeKernelConfig {
     WorkerCandidateRuntime getWorkerCandidateRuntime();
 
     WorkerSchedulingViewRuntime getWorkerSchedulingViewRuntime();
-
-    WorkerResourceRuntime getWorkerResourceRuntime();
 
     WorkerDispatchGateRuntime getWorkerDispatchGateRuntime();
 

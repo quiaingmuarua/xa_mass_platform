@@ -170,7 +170,6 @@ Examples:
 - Java SDK task producer flow
 - worker launcher registration and polling flow
 - trace analyzer or proof summary writer
-- Redis/runtime key proof script when runtime state is the risk
 
 Operator map:
 
@@ -180,7 +179,6 @@ Operator map:
 | `scenario launcher` | external task producer or worker path through SDK/API surfaces | full policy matrix or all credential denial cases |
 | `trace analyzer` | runtime observation through canonical trace evidence | mutation ownership or hidden repair authority |
 | `worker-read health` | worker read-model/API health at a named worker/group scale | task execution scale or scheduling policy correctness |
-| `redis-runtime-proof` | runtime key owner, lifecycle, cleanup, and residue expectations for a named keyspace | runtime behavior by itself without owner-level or process proof |
 | `proof summary` | evidence classification, proof-line visibility, and workflow/report integrity | the underlying runtime behavior unless linked to executed proof evidence |
 
 Proof operators are not substitutes for deterministic kernel tests. They prove
@@ -195,7 +193,7 @@ Use the three project proof classes from [TESTING_INDEX.md](./TESTING_INDEX.md):
 | --- | --- | --- |
 | `Product / API Capability Proof` | correct users can start, authenticate, create work, run workers, and read results | packaged server, admin CLI, Java SDK, worker launcher |
 | `Policy & Safety Correctness Proof` | wrong worker, wrong scope, wrong state, wrong credential, or wrong lifecycle mutation is rejected | engine deterministic tests, representative server E2E, negative auth tests |
-| `Scoped Operational Resilience Proof` | a named fault, load, runtime, duration, and oracle holds under pressure | chaos, soak, perf, worker-read health, Redis/runtime probes |
+| `Scoped Operational Resilience Proof` | a named fault, load, runtime, duration, and oracle holds under pressure | chaos, soak, perf, worker-read health, owner-scoped runtime probes |
 
 Agent rule:
 

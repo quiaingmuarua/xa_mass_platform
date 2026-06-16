@@ -16,8 +16,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @RestController
@@ -26,9 +24,6 @@ public class WorkerApiController {
 
     private static final int DEFAULT_DIAGNOSTIC_LIMIT = 200;
     private static final int MAX_DIAGNOSTIC_LIMIT = 500;
-    private static final DateTimeFormatter DATE_TIME_FORMATTER =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
     private final WorkerQueryOperations workerQueries;
     private final ControlPlaneCatalog catalog;
     private final RuntimeDiagnosticsOperations runtimeDiagnostics;
@@ -80,8 +75,6 @@ public class WorkerApiController {
     public ApiResponse<Map<String, Object>> listWorkers(
             @RequestParam(required = false) Integer limit) {
         int resolvedLimit = resolveDiagnosticLimit(limit);
-        Map<String, List<Map<String, Object>>> connectionsByWorker =
-                WorkerCapabilityViewSupport.groupConnectionsByWorker(runtimeDiagnostics);
         List<WorkerSnapshot> allWorkers = workerQueries.getAllWorkers();
         List<WorkerSnapshot> visibleWorkers = allWorkers.stream()
                 .sorted(Comparator.comparing(WorkerSnapshot::getWorkerId, Comparator.nullsLast(String::compareTo)))
@@ -91,8 +84,6 @@ public class WorkerApiController {
         Set<String> lockedWorkerIds = resolveLockedWorkerIds();
         List<Map<String, Object>> items = visibleWorkers.stream()
                 .map(worker -> {
-                    List<Map<String, Object>> connections =
-                            connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
                     boolean reachable = reachableWorkerIds.contains(worker.getWorkerId());
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("workerId", worker.getWorkerId());
@@ -100,20 +91,15 @@ public class WorkerApiController {
                     item.put("reachability", reachable ? "ONLINE" : "OFFLINE");
                     item.put("reachable", reachable);
                     item.put("workerGroupId", worker.getWorkerGroupId());
-                    item.put("adapterNodeId", worker.getAdapterNodeId());
                     item.put("agentVersion", worker.getAgentVersion());
                     item.put("supportedProjects", worker.getSupportedProjects());
                     item.put("supportedEventCodes", worker.getSupportedEventCodes());
                     item.put("maxConcurrentWork", worker.getMaxConcurrentWork());
                     item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(
                             worker.getEventBindings(), worker.getSupportedEventCodes(), catalog));
-                    item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
+                    item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getTransportHint()));
                     item.put("attributes", worker.getAttributes());
-                    item.put("lastHeartbeat", formatDateTime(worker.getLastHeartbeat()));
                     item.put("locked", lockedWorkerIds.contains(worker.getWorkerId()));
-                    item.put("connections", connections);
-                    item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
-                    item.put("updateTime", formatDateTime(worker.getUpdateTime()));
                     item.put("fieldSources", WorkerCapabilityViewSupport.workerFieldSources());
                     return item;
                 })
@@ -190,10 +176,6 @@ public class WorkerApiController {
     @Operation(summary = "Get worker command")
     public ResponseEntity<ApiResponse<?>> getWorkerCommand(@PathVariable String commandId) {
         return ResponseEntity.ok(ApiResponse.success(requireWorkerControl().getWorkerCommand(commandId)));
-    }
-
-    private String formatDateTime(LocalDateTime value) {
-        return value == null ? "" : value.format(DATE_TIME_FORMATTER);
     }
 
     private WorkerControlOperations requireWorkerControl() {

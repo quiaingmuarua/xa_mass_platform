@@ -41,7 +41,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
             new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> workerIdToGroupId = new ConcurrentHashMap<>();
     private final ConcurrentMap<GroupCandidateBucketKey, Set<String>> candidateBuckets = new ConcurrentHashMap<>();
-    private final ConcurrentMap<NodeGroupCandidateBucketKey, Set<String>> nodeCandidateBuckets = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, BucketMembership> bucketMembershipByWorkerId = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Set<String>> taskActiveWorkersByTask = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ConcurrentMap<String, Integer>> taskWorkerActiveCounts = new ConcurrentHashMap<>();
@@ -199,29 +198,8 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     }
 
     @Override
-    public Set<String> workerIdsByAdapterNodeGroup(String adapterNodeId, String groupId) {
-        String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
-        String normalizedGroupId = normalizeNullable(groupId);
-        if (normalizedAdapterNodeId == null || normalizedGroupId == null) {
-            return Set.of();
-        }
-        ConcurrentMap<String, AtomicReference<WorkerSlot>> groupSlots = slotsByGroupId.get(normalizedGroupId);
-        if (groupSlots == null || groupSlots.isEmpty()) {
-            return Set.of();
-        }
-        LinkedHashSet<String> workerIds = new LinkedHashSet<>();
-        for (AtomicReference<WorkerSlot> slotRef : groupSlots.values()) {
-            WorkerSlot slot = slotRef.get();
-            if (slot != null && normalizedAdapterNodeId.equals(slot.adapterNodeId())) {
-                workerIds.add(slot.workerId());
-            }
-        }
-        return Set.copyOf(workerIds);
-    }
-
-    @Override
     public List<String> acquireCandidates(String groupId, String candidateBucketKey, int maxCandidateCount) {
-        return acquireCandidates(groupId, null, candidateBucketKey, maxCandidateCount);
+        return acquireCandidates(groupId, candidateBucketKey, maxCandidateCount, null);
     }
 
     @Override
@@ -229,44 +207,23 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                                           String candidateBucketKey,
                                           int maxCandidateCount,
                                           long nowMillis) {
-        return acquireCandidates(groupId, null, candidateBucketKey, maxCandidateCount, Long.valueOf(nowMillis));
-    }
-
-    @Override
-    public List<String> acquireCandidates(String groupId,
-                                          String adapterNodeId,
-                                          String candidateBucketKey,
-                                          int maxCandidateCount) {
-        return acquireCandidates(groupId, adapterNodeId, candidateBucketKey, maxCandidateCount, null);
-    }
-
-    @Override
-    public List<String> acquireCandidates(String groupId,
-                                          String adapterNodeId,
-                                          String candidateBucketKey,
-                                          int maxCandidateCount,
-                                          long nowMillis) {
-        return acquireCandidates(groupId, adapterNodeId, candidateBucketKey, maxCandidateCount, Long.valueOf(nowMillis));
+        return acquireCandidates(groupId, candidateBucketKey, maxCandidateCount, Long.valueOf(nowMillis));
     }
 
     private List<String> acquireCandidates(String groupId,
-                                           String adapterNodeId,
                                            String candidateBucketKey,
                                            int maxCandidateCount,
                                            Long nowMillis) {
         String normalizedGroupId = normalizeNullable(groupId);
         String normalizedCandidateBucketKey = normalizeCandidateBucketKey(candidateBucketKey);
-        String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
         if (normalizedGroupId == null || normalizedCandidateBucketKey == null || maxCandidateCount <= 0) {
             return List.of();
         }
 
-        Set<String> workerIds = normalizedAdapterNodeId == null
-                ? candidateBuckets.getOrDefault(new GroupCandidateBucketKey(normalizedGroupId, normalizedCandidateBucketKey), Set.of())
-                : nodeCandidateBuckets.getOrDefault(
-                        new NodeGroupCandidateBucketKey(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey),
-                        Set.of()
-                );
+        Set<String> workerIds = candidateBuckets.getOrDefault(
+                new GroupCandidateBucketKey(normalizedGroupId, normalizedCandidateBucketKey),
+                Set.of()
+        );
         List<String> sourceWorkerIds = snapshotWorkerIds(workerIds);
         if (nowMillis != null) {
             sourceWorkerIds = sourceWorkerIds.stream()
@@ -274,7 +231,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     .toList();
         }
         return samplingPolicy.sample(
-                new WorkerCandidateSamplingContext(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey),
+                new WorkerCandidateSamplingContext(normalizedGroupId, normalizedCandidateBucketKey),
                 sourceWorkerIds,
                 maxCandidateCount
         );
@@ -727,7 +684,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
 
     private void addToBuckets(WorkerMeta meta) {
         LinkedHashSet<GroupCandidateBucketKey> groupKeys = new LinkedHashSet<>();
-        LinkedHashSet<NodeGroupCandidateBucketKey> nodeKeys = new LinkedHashSet<>();
         for (String candidateBucketKey : candidateBucketKeys(meta)) {
             GroupCandidateBucketKey groupKey = new GroupCandidateBucketKey(meta.groupId(), candidateBucketKey);
             candidateBuckets.computeIfAbsent(
@@ -735,17 +691,8 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     ignored -> newWorkerBucketSet()
             ).add(meta.workerId());
             groupKeys.add(groupKey);
-            if (meta.adapterNodeId() != null) {
-                NodeGroupCandidateBucketKey nodeKey =
-                        new NodeGroupCandidateBucketKey(meta.groupId(), meta.adapterNodeId(), candidateBucketKey);
-                nodeCandidateBuckets.computeIfAbsent(
-                        nodeKey,
-                        ignored -> newWorkerBucketSet()
-                ).add(meta.workerId());
-                nodeKeys.add(nodeKey);
-            }
         }
-        bucketMembershipByWorkerId.put(meta.workerId(), new BucketMembership(groupKeys, nodeKeys));
+        bucketMembershipByWorkerId.put(meta.workerId(), new BucketMembership(groupKeys));
     }
 
     private void removeFromBuckets(String groupId, String workerId) {
@@ -761,15 +708,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                 continue;
             }
             Set<String> workers = candidateBuckets.get(key);
-            if (workers != null) {
-                workers.remove(workerId);
-            }
-        }
-        for (NodeGroupCandidateBucketKey key : membership.nodeKeys()) {
-            if (!groupId.equals(key.groupId())) {
-                continue;
-            }
-            Set<String> workers = nodeCandidateBuckets.get(key);
             if (workers != null) {
                 workers.remove(workerId);
             }
@@ -897,17 +835,12 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         WorkerSlot update(WorkerSlot current);
     }
 
-    private record BucketMembership(Set<GroupCandidateBucketKey> groupKeys,
-                                    Set<NodeGroupCandidateBucketKey> nodeKeys) {
+    private record BucketMembership(Set<GroupCandidateBucketKey> groupKeys) {
         private BucketMembership {
             groupKeys = groupKeys == null || groupKeys.isEmpty() ? Set.of() : Set.copyOf(groupKeys);
-            nodeKeys = nodeKeys == null || nodeKeys.isEmpty() ? Set.of() : Set.copyOf(nodeKeys);
         }
     }
 
     private record GroupCandidateBucketKey(String groupId, String candidateBucketKey) {
-    }
-
-    private record NodeGroupCandidateBucketKey(String groupId, String adapterNodeId, String candidateBucketKey) {
     }
 }

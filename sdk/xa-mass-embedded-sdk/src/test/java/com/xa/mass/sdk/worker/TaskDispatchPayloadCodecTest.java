@@ -67,7 +67,7 @@ class TaskDispatchPayloadCodecTest {
     }
 
     private static TaskDispatchBinding binding() {
-        return TaskDispatchBinding.workerLevelWithTransportEvidence(
+        return TaskDispatchBinding.workerLevelWithEvidence(
                 "task-1",
                 "msg-1",
                 "crawler.fetch-page",
@@ -80,8 +80,6 @@ class TaskDispatchPayloadCodecTest {
                 "worker-1",
                 "batch-1",
                 "workers",
-                null,
-                "polling",
                 null,
                 "test-fixture"
         );

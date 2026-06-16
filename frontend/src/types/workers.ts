@@ -4,7 +4,6 @@ export interface WorkerListItem {
     reachability?: string
     reachable?: boolean
     workerGroupId: string | null
-    adapterNodeId?: string | null
     agentVersion: string | null
     supportedProjects: string[]
     supportedEventCodes: string[]
@@ -12,25 +11,13 @@ export interface WorkerListItem {
     transportHint?: string | null
     maxConcurrentWork?: number
     attributes: Record<string, string>
-    lastHeartbeat: string
     locked: boolean
-    connections?: WorkerConnectionItem[]
-    hasActiveEndpoint?: boolean
-    updateTime: string
     fieldSources?: Record<string, string>
 }
 
 export interface WorkerEventBindingItem {
     eventCode: string
     projectCodes: string[]
-}
-
-export interface WorkerConnectionItem {
-    active: boolean
-    endpointId: string | null
-    routeKey?: string | null
-    adapterId?: string | null
-    transport?: string | null
 }
 
 export interface WorkerListResponse {

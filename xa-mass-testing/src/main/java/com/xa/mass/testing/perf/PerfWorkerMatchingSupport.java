@@ -1,7 +1,6 @@
 package com.xa.mass.testing.perf;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
@@ -13,8 +12,6 @@ import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
-
-import java.util.Locale;
 
 final class PerfWorkerMatchingSupport {
 
@@ -48,21 +45,22 @@ final class PerfWorkerMatchingSupport {
         return candidate(schedulingViewRuntime, worker);
     }
 
-    static boolean workerAvailable(WorkerResourceRecord worker) {
-        if (worker == null || worker.statusName() == null || worker.statusName().isBlank()) {
+    static boolean workerAvailable(WorkerSchedulingViewRuntime schedulingViewRuntime,
+                                   WorkerResourceRecord worker) {
+        if (schedulingViewRuntime == null || worker == null
+                || worker.workerId() == null || worker.workerId().isBlank()) {
             return false;
         }
-        try {
-            return WorkerStatus.valueOf(worker.statusName().trim().toUpperCase(Locale.ROOT)).isAvailable();
-        } catch (IllegalArgumentException ignored) {
+        WorkerReachabilityState reachability = schedulingViewRuntime.getWorkerReachability(worker.workerId());
+        if (reachability == WorkerReachabilityState.OFFLINE) {
             return false;
         }
+        return schedulingViewRuntime.isWorkerDispatchEnabled(worker.workerId())
+                && !schedulingViewRuntime.hasWorkerExclusiveLease(worker.workerId());
     }
 
     static boolean supportsProject(WorkerResourceRecord worker, String projectCode) {
-        return worker != null
-                && worker.supportedProjects() != null
-                && worker.supportedProjects().contains(projectCode);
+        return false;
     }
 
     static boolean supportsProject(WorkerSchedulingViewRuntime schedulingViewRuntime,
@@ -108,9 +106,7 @@ final class PerfWorkerMatchingSupport {
                 worker.workerId(),
                 worker.agentVersion(),
                 worker.workerGroupId(),
-                worker.adapterNodeId(),
-                worker.adapterId(),
-                worker.onlineStrategy(),
+                worker.transportHint(),
                 worker.attributes()
         );
     }

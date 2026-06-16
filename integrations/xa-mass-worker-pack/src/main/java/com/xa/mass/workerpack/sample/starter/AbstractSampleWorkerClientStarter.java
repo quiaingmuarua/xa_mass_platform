@@ -7,6 +7,7 @@ import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.WorkerControlOperations;
 import com.xa.mass.sdk.model.WorkerSnapshot;
+import com.xa.mass.transport.WorkerTransportHints;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.MDC;
@@ -122,8 +123,10 @@ public abstract class AbstractSampleWorkerClientStarter {
         if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
             return false;
         }
-        String adapterNodeId = worker.getAdapterNodeId();
-        return adapterNodeId != null && adapterId().equalsIgnoreCase(adapterNodeId.trim());
+        String transportHint = WorkerTransportHints.normalize(worker.getTransportHint());
+        return "websocket".equalsIgnoreCase(adapterId())
+                ? WorkerTransportHints.REALTIME.equals(transportHint)
+                : adapterId().equalsIgnoreCase(transportHint);
     }
 
     protected void establishConnections(List<WorkerSnapshot> workers, String baseUri) throws InterruptedException {

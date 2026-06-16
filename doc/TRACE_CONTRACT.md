@@ -271,8 +271,8 @@ Stable assignment-oriented fields are:
 - ranked worker candidate fields: `candidateRank`, `candidateScore`,
   `workerActiveLeaseCount`, `workerReservedCount`, `workerDeclaredCapacity`,
   `workerEstimatedLoadRatio`
-- group candidate-source evidence: `workerGroupId`, `adapterNodeId`,
-  `eventBindingKey`, `workerCandidateSource`
+- group candidate-source evidence: `workerGroupId`, `eventBindingKey`,
+  `workerCandidateSource`
 - scheduling profile fields: `initialStatus`, `currentStatus`,
   `dispatchLane`, `dispatchPriority`, `workloadClass`, `foreground`,
   `batchPolicy`, `leaseProfile`

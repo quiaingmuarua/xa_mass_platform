@@ -10,14 +10,12 @@ import java.util.Set;
  */
 public record WorkerTaskSelector(String taskId,
                                  List<String> workerGroupIds,
-                                 String adapterNodeId,
                                  String targetWorkerId,
                                  Set<String> candidateBucketKeys) {
 
     public WorkerTaskSelector {
         taskId = normalizeNullable(taskId);
         workerGroupIds = normalizeList(workerGroupIds);
-        adapterNodeId = normalizeNullable(adapterNodeId);
         targetWorkerId = normalizeNullable(targetWorkerId);
         candidateBucketKeys = normalizeCandidateBucketKeys(candidateBucketKeys);
     }

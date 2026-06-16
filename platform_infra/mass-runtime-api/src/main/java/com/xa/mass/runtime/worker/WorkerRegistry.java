@@ -59,32 +59,6 @@ public interface WorkerRegistry {
         return changed;
     }
 
-    Set<String> workerIdsByAdapterNodeGroup(String adapterNodeId, String groupId);
-
-    default int disableDispatchForAdapterNodeGroup(String adapterNodeId,
-                                                   String groupId,
-                                                   DispatchAvailabilitySource source) {
-        int changed = 0;
-        for (String workerId : workerIdsByAdapterNodeGroup(adapterNodeId, groupId)) {
-            if (disableDispatch(workerId, source)) {
-                changed++;
-            }
-        }
-        return changed;
-    }
-
-    default int clearDispatchDisableForAdapterNodeGroup(String adapterNodeId,
-                                                        String groupId,
-                                                        DispatchAvailabilitySource source) {
-        int changed = 0;
-        for (String workerId : workerIdsByAdapterNodeGroup(adapterNodeId, groupId)) {
-            if (clearDispatchDisable(workerId, source)) {
-                changed++;
-            }
-        }
-        return changed;
-    }
-
     /**
      * Acquires a bounded Stage-1 candidate source batch.
      *
@@ -110,27 +84,6 @@ public interface WorkerRegistry {
                                            int maxCandidateCount,
                                            long nowMillis) {
         return acquireCandidates(groupId, candidateBucketKey, maxCandidateCount);
-    }
-
-    /**
-     * Acquires a bounded Stage-1 candidate source batch scoped by group and
-     * optional adapter node.
-     */
-    List<String> acquireCandidates(String groupId,
-                                   String adapterNodeId,
-                                   String candidateBucketKey,
-                                   int maxCandidateCount);
-
-    /**
-     * Acquires a bounded Stage-1 scheduling candidate batch scoped by group,
-     * optional adapter node, and scheduling clock.
-     */
-    default List<String> acquireCandidates(String groupId,
-                                           String adapterNodeId,
-                                           String candidateBucketKey,
-                                           int maxCandidateCount,
-                                           long nowMillis) {
-        return acquireCandidates(groupId, adapterNodeId, candidateBucketKey, maxCandidateCount);
     }
 
     /**

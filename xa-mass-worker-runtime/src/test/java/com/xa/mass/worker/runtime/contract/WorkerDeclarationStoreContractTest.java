@@ -111,13 +111,9 @@ public abstract class WorkerDeclarationStoreContractTest {
                 workerId,
                 groupId,
                 null,
-                null,
-                null,
                 "1.0",
                 1,
-                Map.of(),
-                null,
-                null
+                Map.of()
         );
     }
 
@@ -125,14 +121,10 @@ public abstract class WorkerDeclarationStoreContractTest {
         return new WorkerDeclarationRecord(
                 source.workerId(),
                 groupId,
-                source.adapterNodeId(),
-                source.adapterId(),
-                source.onlineStrategy(),
+                source.transportHint(),
                 source.agentVersion(),
                 source.maxConcurrentWork(),
-                source.attributes(),
-                source.createTime(),
-                source.updateTime()
+                source.attributes()
         );
     }
 }

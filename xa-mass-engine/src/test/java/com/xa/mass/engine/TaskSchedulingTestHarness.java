@@ -26,7 +26,7 @@ import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
@@ -41,6 +41,7 @@ import com.xa.mass.worker.runtime.report.WorkerStateReport;
 
 import java.util.ArrayList;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -203,7 +204,8 @@ final class TaskSchedulingTestHarness {
     Worker addStatelessWorker(String workerId, int maxConcurrentWork) {
         Worker worker = worker(workerId);
         worker.setMaxConcurrentWork(maxConcurrentWork);
-        workerManager.addWorker(workerResource(worker));
+        workerManager.addWorker(workerDeclaration(worker));
+        refreshHeartbeatEvidence(worker);
         return worker;
     }
 
@@ -221,7 +223,8 @@ final class TaskSchedulingTestHarness {
         Worker worker = worker(workerId);
         worker.setWorkerGroupId(workerGroupId);
         worker.setAttributes(workerAttributes(routingCode, attributes));
-        workerManager.addWorker(workerResource(worker));
+        workerManager.addWorker(workerDeclaration(worker));
+        refreshHeartbeatEvidence(worker);
         return worker;
     }
 
@@ -238,23 +241,26 @@ final class TaskSchedulingTestHarness {
         return result;
     }
 
-    private static WorkerResourceRecord workerResource(Worker worker) {
-        return new WorkerResourceRecord(
+    private static WorkerDeclarationRecord workerDeclaration(Worker worker) {
+        return new WorkerDeclarationRecord(
                 worker.getWorkerId(),
-                worker.getStatus() == null ? null : worker.getStatus().name(),
-                worker.getAgentVersion(),
-                worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
                 worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
                 worker.getOnlineStrategy(),
+                worker.getAgentVersion(),
                 worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime()
+                worker.getAttributes()
         );
+    }
+
+    private void refreshHeartbeatEvidence(Worker worker) {
+        if (worker == null || worker.getLastHeartbeat() == null) {
+            return;
+        }
+        long observedAtMillis = worker.getLastHeartbeat()
+                .atZone(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli();
+        workerManager.refreshWorkerHeartbeat(worker.getWorkerId(), observedAtMillis);
     }
 
     TaskWorkStats stats(String taskId) {
@@ -314,6 +320,7 @@ final class TaskSchedulingTestHarness {
         worker.setWorkerId(workerId);
         worker.setStatus(WorkerStatus.ONLINE);
         worker.setLastHeartbeat(LocalDateTime.now());
+        worker.setOnlineStrategy("polling");
         worker.setAdapterNodeId(DEFAULT_ADAPTER_NODE_ID);
         worker.setWorkerGroupId(DEFAULT_WORKER_GROUP_ID);
         worker.setSupportedProjects(List.of("demoApp"));

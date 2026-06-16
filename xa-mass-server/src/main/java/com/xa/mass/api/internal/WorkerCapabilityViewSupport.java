@@ -138,8 +138,8 @@ final class WorkerCapabilityViewSupport {
         return CATALOG_WORKER_FIELD_SOURCES;
     }
 
-    static String resolveTransportHint(String onlineStrategy) {
-        return WorkerTransportHints.normalize(onlineStrategy);
+    static String resolveTransportHint(String transportHint) {
+        return WorkerTransportHints.normalize(transportHint);
     }
 
     private static List<String> resolveBindingProjects(EventDefinition definition) {

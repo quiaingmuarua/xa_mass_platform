@@ -432,9 +432,9 @@
               </template>
             </el-table-column>
             <el-table-column
-              prop="lastHeartbeat"
-              label="Last heartbeat"
-              min-width="180"
+              prop="transportHint"
+              label="Transport"
+              min-width="140"
             />
             <el-table-column label="Actions" min-width="150" fixed="right">
               <template #default="{ row }">

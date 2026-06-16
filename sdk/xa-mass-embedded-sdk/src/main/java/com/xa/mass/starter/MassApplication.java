@@ -475,7 +475,7 @@ public class MassApplication {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
         }
-        WorkerResourceRecord worker = engineConfig.getWorkerResourceRuntime()
+        WorkerResourceRecord worker = engineConfig.getWorkerResourceQueryRuntime()
                 .worker(workerId.trim())
                 .orElse(null);
         if (worker == null) {
@@ -486,7 +486,7 @@ public class MassApplication {
 
     private TransportBinding resolveTransportBinding(WorkerResourceRecord worker) {
         try {
-            return transportRuntimeRegistry.resolveBinding(worker.adapterId(), worker.onlineStrategy());
+            return transportRuntimeRegistry.resolveBinding(null, worker.transportHint());
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("Cannot resolve transport binding for worker " + worker.workerId()
                     + ": " + e.getMessage(), e);
@@ -712,7 +712,7 @@ public class MassApplication {
         }
         return new WorkerRuntimePresenceIngress(
                 engineConfig.getWorkerPresenceRuntime(),
-                engineConfig.getWorkerResourceRuntime(),
+                engineConfig.getWorkerHeartbeatRuntime(),
                 engineConfig.getExecutionEventSink()
         );
     }
@@ -770,8 +770,8 @@ public class MassApplication {
         ResolvedPullWorkerTransport resolved = transportRuntimeRegistry.resolvePullWorkerTransport(
                 worker.workerId(),
                 worker.workerGroupId(),
-                worker.adapterId(),
-                worker.onlineStrategy()
+                null,
+                worker.transportHint()
         );
         return InternalPullWorkerSessions.open(
                 resolved.getWorkerId(),

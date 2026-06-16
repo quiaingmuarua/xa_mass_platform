@@ -10,8 +10,8 @@ import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.redis.RedisWorkerRegistry;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
 import com.xa.mass.starter.config.EngineConfig;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -19,7 +19,6 @@ import io.lettuce.core.api.sync.RedisCommands;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -60,19 +59,21 @@ class WorkerRuntimeSelectionIntegrationTest {
         config.setWorkerRegistry(workerRegistry);
         config.setRuntimeReadyDispatchIntervalMillis(50L);
 
-        WorkerResourceRuntime workerResources = config.getWorkerResourceRuntime();
-        workerResources.upsertWorkerGroup(WorkerGroupRecord.builder("wrx-selection-workers")
+        WorkerResourceDeclarationRuntime workerDeclaration = config.getWorkerResourceDeclarationRuntime();
+        workerDeclaration.upsertWorkerGroup(WorkerGroupRecord.builder("wrx-selection-workers")
                 .projectCodes(Set.of("demoApp"))
                 .build());
-        workerResources.addWorker(workerResource("wrx-worker-1", "wrx-selection-workers"));
+        workerDeclaration.addWorker(workerDeclaration("wrx-worker-1", "wrx-selection-workers"));
+        long observedAtMillis = System.currentTimeMillis();
         config.getWorkerPresenceRuntime().sessionConnected(
                 "wrx-worker-1",
                 "polling",
                 "wrx-selection-workers",
                 "wrx-session-1",
-                System.currentTimeMillis(),
+                observedAtMillis,
                 "test worker session connected"
         );
+        config.getWorkerHeartbeatRuntime().refreshWorkerHeartbeat("wrx-worker-1", observedAtMillis);
 
         CountDownLatch dispatchLatch = new CountDownLatch(1);
         AtomicReference<String> taskIdRef = new AtomicReference<>();
@@ -114,22 +115,14 @@ class WorkerRuntimeSelectionIntegrationTest {
         }
     }
 
-    private static WorkerResourceRecord workerResource(String workerId, String workerGroupId) {
-        return new WorkerResourceRecord(
+    private static WorkerDeclarationRecord workerDeclaration(String workerId, String workerGroupId) {
+        return new WorkerDeclarationRecord(
                 workerId,
-                "ONLINE",
-                null,
-                LocalDateTime.now(),
-                List.of("demoApp"),
-                List.of(),
                 workerGroupId,
-                null,
-                null,
+                "polling",
                 null,
                 1,
-                Map.of(),
-                null,
-                null
+                Map.of()
         );
     }
 

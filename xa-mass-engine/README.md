@@ -153,12 +153,12 @@ Current WorkerGroup / group-selector scheduling baseline:
   resource contracts; `WorkerRegistrySnapshot` is worker-runtime package-local
   implementation evidence, not an engine public surface
 - `WorkerCandidateIndex` consumes explicit group selectors and narrows
-  `workerGroupId(s) -> route/node bucket -> workerIds`; it does not derive
+  `workerGroupId(s) -> group-scoped candidate source -> workerIds`; it does not derive
   candidate groups from task eventCode/project and does not own reachability,
   load, reservation, or resource policy
 - `WorkerManager` lives in `xa-mass-worker-runtime` as private runtime assembly.
-  SDK/server registration crosses `WorkerResourceRuntime`; accepted resource
-  mutations refresh the derived runtime projection.
+  SDK/server registration crosses narrow worker-runtime declaration and query
+  ports; accepted worker declarations refresh derived registry projections.
 - candidate source enters through `WorkerCandidateRuntime.findWorkerCandidateBatch(...)`
   and is materialized by the strategy-package
   `WorkerSchedulingCandidateEnumerator`
@@ -173,8 +173,9 @@ Current WorkerGroup / group-selector scheduling baseline:
   candidate-source key
 - Stage 2 scheduling capability evidence is materialized from
   `WorkerGroupRecord`; group-level capability remains the boundary for
-  supported event handlers and projects, and explicit AdapterNode/NodeGroupBinding registration
-  is required before adapter-node scoped worker registration
+  supported event handlers and projects. AdapterNode/NodeGroupBinding metadata
+  is topology/admin evidence, not a scheduling selector or worker-registration
+  prerequisite.
 - `WorkerSchedulingCandidateEnumerator` is a strategy-package implementation
   detail, not a public extension point
 - the old unused `WorkerSelector` / `DefaultWorkerSelector` path is removed so

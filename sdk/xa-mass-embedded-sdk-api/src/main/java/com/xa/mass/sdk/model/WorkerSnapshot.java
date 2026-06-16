@@ -1,86 +1,46 @@
 package com.xa.mass.sdk.model;
 
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Composite current-state worker read model.
- *
- * <p>Identity, group, adapter, attributes, and declared capacity are
- * declaration fields. Status and heartbeat are runtime evidence.
- * Project/event capability fields are compatibility projections and should
- * not be treated as durable worker declaration truth.</p>
+ * Default worker inspection model.
  */
 public final class WorkerSnapshot {
 
     private final String workerId;
     private final String status;
     private final String agentVersion;
-    private final LocalDateTime lastHeartbeat;
     private final List<String> supportedProjects;
     private final List<String> supportedEventCodes;
     private final List<WorkerEventBinding> eventBindings;
     private final String workerGroupId;
-    private final String adapterNodeId;
-    private final String adapterId;
-    private final String onlineStrategy;
+    private final String transportHint;
     private final int maxConcurrentWork;
     private final Map<String, String> attributes;
-    private final LocalDateTime createTime;
-    private final LocalDateTime updateTime;
 
     public WorkerSnapshot(String workerId,
                           String status,
                           String agentVersion,
-                          LocalDateTime lastHeartbeat,
                           List<String> supportedProjects,
                           List<String> supportedEventCodes,
                           List<WorkerEventBinding> eventBindings,
                           String workerGroupId,
-                          String adapterId,
-                          String onlineStrategy,
+                          String transportHint,
                           int maxConcurrentWork,
-                          Map<String, String> attributes,
-                          LocalDateTime createTime,
-                          LocalDateTime updateTime) {
-        this(workerId, status, agentVersion, lastHeartbeat, supportedProjects, supportedEventCodes,
-                eventBindings, workerGroupId, null, adapterId, onlineStrategy, maxConcurrentWork,
-                attributes, createTime, updateTime);
-    }
-
-    public WorkerSnapshot(String workerId,
-                          String status,
-                          String agentVersion,
-                          LocalDateTime lastHeartbeat,
-                          List<String> supportedProjects,
-                          List<String> supportedEventCodes,
-                          List<WorkerEventBinding> eventBindings,
-                          String workerGroupId,
-                          String adapterNodeId,
-                          String adapterId,
-                          String onlineStrategy,
-                          int maxConcurrentWork,
-                          Map<String, String> attributes,
-                          LocalDateTime createTime,
-                          LocalDateTime updateTime) {
+                          Map<String, String> attributes) {
         this.workerId = workerId;
         this.status = status;
         this.agentVersion = agentVersion;
-        this.lastHeartbeat = lastHeartbeat;
         this.supportedProjects = copyList(supportedProjects);
         this.supportedEventCodes = copyList(supportedEventCodes);
         this.eventBindings = copyBindingList(eventBindings);
         this.workerGroupId = workerGroupId;
-        this.adapterNodeId = adapterNodeId;
-        this.adapterId = adapterId;
-        this.onlineStrategy = onlineStrategy;
+        this.transportHint = transportHint;
         this.maxConcurrentWork = Math.max(1, maxConcurrentWork);
         this.attributes = copyMap(attributes);
-        this.createTime = createTime;
-        this.updateTime = updateTime;
     }
 
     public String getWorkerId() {
@@ -93,10 +53,6 @@ public final class WorkerSnapshot {
 
     public String getAgentVersion() {
         return agentVersion;
-    }
-
-    public LocalDateTime getLastHeartbeat() {
-        return lastHeartbeat;
     }
 
     public List<String> getSupportedProjects() {
@@ -115,16 +71,8 @@ public final class WorkerSnapshot {
         return workerGroupId;
     }
 
-    public String getAdapterNodeId() {
-        return adapterNodeId;
-    }
-
-    public String getAdapterId() {
-        return adapterId;
-    }
-
-    public String getOnlineStrategy() {
-        return onlineStrategy;
+    public String getTransportHint() {
+        return transportHint;
     }
 
     public int getMaxConcurrentWork() {
@@ -133,14 +81,6 @@ public final class WorkerSnapshot {
 
     public Map<String, String> getAttributes() {
         return attributes;
-    }
-
-    public LocalDateTime getCreateTime() {
-        return createTime;
-    }
-
-    public LocalDateTime getUpdateTime() {
-        return updateTime;
     }
 
     private static List<String> copyList(List<String> source) {

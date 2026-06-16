@@ -69,7 +69,6 @@
             <div class="row-secondary">{{ row.transportHint || '-' }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="adapterNodeId" label="Adapter node" min-width="160" />
         <el-table-column prop="agentVersion" label="Agent" min-width="120" />
         <el-table-column label="Projects" min-width="220">
           <template #default="{ row }">
@@ -115,11 +114,6 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column
-          prop="lastHeartbeat"
-          label="Last heartbeat"
-          min-width="180"
-        />
         <el-table-column label="Attributes" min-width="220">
           <template #default="{ row }">
             <pre class="json-inline">{{ formatJson(row.attributes) }}</pre>

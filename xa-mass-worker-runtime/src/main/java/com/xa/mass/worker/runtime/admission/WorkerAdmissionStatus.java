@@ -9,8 +9,7 @@ public enum WorkerAdmissionStatus {
     STALE_HEARTBEAT,
     DISPATCH_DISABLED,
     CAPACITY_UNAVAILABLE,
-    GROUP_MISMATCH,
-    ADAPTER_NODE_MISMATCH;
+    GROUP_MISMATCH;
 
     public static WorkerAdmissionStatus fromReserveStatus(ReserveStatus status) {
         if (status == null) {

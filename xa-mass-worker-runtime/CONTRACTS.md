@@ -54,10 +54,11 @@ Package: `com.xa.mass.worker.runtime.resource`
 
 Owned contracts:
 
-- `WorkerResourceRuntime`
 - `WorkerResourceQueryRuntime`
 - `WorkerResourceDeclarationRuntime`
+- `WorkerHeartbeatRuntime`
 - `WorkerNodeBindingRuntime`
+- `WorkerDeclarationRecord`
 - `WorkerResourceRecord`
 - `WorkerRuntimeStateRecord`
 - `WorkerGroupRecord`
@@ -69,18 +70,23 @@ Role split:
 
 - `WorkerDeclarationRecord` and `WorkerDeclarationStore` live in this module
   because worker declaration is worker-runtime lifecycle/control-plane
-  ownership. The record contains stable worker identity, group/node membership,
-  adapter hints, static attributes, max concurrency, and timestamps. It does
-  not contain heartbeat, online/offline state, dispatch gates, reservations,
-  leases, or worker-level supported project/event capability hints.
+  ownership. The record contains stable worker identity, WorkerGroup
+  membership, transport hint, static attributes, and max concurrency. It does
+  not contain adapter-node topology ids, heartbeat, online/offline state,
+  dispatch gates, reservations, leases, raw timestamps, or worker-level
+  supported project/event capability hints.
 - `WorkerRuntimeStateRecord` is a current runtime-state view assembled from
   registry, reachability, heartbeat freshness, dispatch gate, and admission
   evidence. It exposes reachability/readiness diagnostics and occupancy
   evidence fields, but it is not persisted as declaration truth.
-- `WorkerResourceRecord` is the current composite resource read model used by
-  SDK/server/operator views and compatibility mutation surfaces. Because it
-  contains status, heartbeat, and compatibility capability hints, it must not
-  be described as declaration-store truth.
+- `WorkerResourceRecord` is a minimal lookup read model for worker-owned
+  identity/declaration facts. It does not carry runtime status, heartbeat,
+  adapter topology ids, raw timestamps, or compatibility capability hints.
+- `WorkerHeartbeatRuntime` is the narrow runtime-evidence port used to refresh
+  registry heartbeat evidence. It is separate from declaration mutation.
+- `WorkerNodeBindingRuntime` is topology/admin. It may manage adapter node and
+  node-group binding metadata, but it does not own scheduling selection or
+  worker dispatch eligibility.
 
 Allowed callers:
 

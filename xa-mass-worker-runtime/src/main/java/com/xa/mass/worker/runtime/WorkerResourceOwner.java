@@ -22,16 +22,13 @@ public final class WorkerResourceOwner {
     private final WorkerDeclarationStore workerStorage;
     private final WorkerRegistry workerRegistry;
     private final WorkerGroupOwner groupOwner;
-    private final WorkerRelationshipOwner relationshipOwner;
 
     public WorkerResourceOwner(WorkerDeclarationStore workerStorage,
                                WorkerRegistry workerRegistry,
-                               WorkerGroupOwner groupOwner,
-                               WorkerRelationshipOwner relationshipOwner) {
+                               WorkerGroupOwner groupOwner) {
         this.workerStorage = workerStorage;
         this.workerRegistry = workerRegistry;
         this.groupOwner = groupOwner;
-        this.relationshipOwner = relationshipOwner;
     }
 
     public Worker addWorker(Worker worker) {
@@ -41,7 +38,6 @@ public final class WorkerResourceOwner {
         synchronized (lock) {
             upsertWorkerRegistrySlot(registrationRow);
         }
-        applyNodeGroupBindingDispatchGate(registrationRow);
         return toWorkerWithRuntimeState(declarationRow);
     }
 
@@ -63,7 +59,6 @@ public final class WorkerResourceOwner {
             synchronized (lock) {
                 upsertWorkerRegistrySlot(registrationRow);
             }
-            applyNodeGroupBindingDispatchGate(registrationRow);
             return Optional.of(toWorkerWithRuntimeState(declarationRow));
         }
         return Optional.empty();
@@ -119,7 +114,9 @@ public final class WorkerResourceOwner {
     }
 
     private void upsertWorkerRegistrySlot(Worker worker) {
-        WorkerMeta meta = workerMeta(worker);
+        String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
+        WorkerMeta existingMeta = workerId == null ? null : workerRegistry.workerMeta(workerId).orElse(null);
+        WorkerMeta meta = workerMeta(worker, existingMeta);
         if (meta == null) {
             return;
         }
@@ -135,25 +132,30 @@ public final class WorkerResourceOwner {
     }
 
     private WorkerMeta workerMeta(Worker worker) {
+        return workerMeta(worker, null);
+    }
+
+    private WorkerMeta workerMeta(Worker worker, WorkerMeta existingMeta) {
         String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
         String groupId = worker == null ? null : normalizeNullable(worker.getWorkerGroupId());
         if (workerId == null || groupId == null) {
             return null;
         }
         long lastHeartbeatMillis = worker.getLastHeartbeat() == null
-                ? 0L
+                ? existingMeta == null ? 0L : existingMeta.lastHeartbeatMillis()
                 : worker.getLastHeartbeat().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        String diagnosticStatus = existingMeta == null
+                ? worker.getStatus() == null ? null : worker.getStatus().name()
+                : existingMeta.diagnosticStatus();
         return new WorkerMeta(
                 workerId,
                 groupId,
-                normalizeNullable(worker.getAdapterNodeId()),
-                normalizeNullable(worker.getAdapterId()),
                 normalizeNullable(worker.getOnlineStrategy()),
                 worker.getAttributes(),
                 normalizeNullable(worker.getAgentVersion()),
                 null,
                 lastHeartbeatMillis,
-                worker.getStatus() == null ? null : worker.getStatus().name()
+                diagnosticStatus
         );
     }
 
@@ -166,9 +168,7 @@ public final class WorkerResourceOwner {
         return new WorkerMeta(
                 declaration.workerId(),
                 declaration.workerGroupId(),
-                declaration.adapterNodeId(),
-                declaration.adapterId(),
-                declaration.onlineStrategy(),
+                declaration.transportHint(),
                 declaration.attributes(),
                 declaration.agentVersion(),
                 null,
@@ -190,11 +190,6 @@ public final class WorkerResourceOwner {
         if (groupId != null) {
             worker.setWorkerGroupId(groupId);
         }
-        String adapterNodeId = normalizeNullable(worker.getAdapterNodeId());
-        if (adapterNodeId != null) {
-            relationshipOwner.validateExplicitWorkerNodeGroupMembership(adapterNodeId, groupId);
-            worker.setAdapterNodeId(adapterNodeId);
-        }
         return worker;
     }
 
@@ -202,14 +197,10 @@ public final class WorkerResourceOwner {
         return new WorkerDeclarationRecord(
                 worker.getWorkerId(),
                 worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
                 worker.getOnlineStrategy(),
                 worker.getAgentVersion(),
                 worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime()
+                worker.getAttributes()
         );
     }
 
@@ -233,13 +224,11 @@ public final class WorkerResourceOwner {
         worker.setStatus(WorkerStatus.OFFLINE);
         worker.setAgentVersion(declaration.agentVersion());
         worker.setWorkerGroupId(declaration.workerGroupId());
-        worker.setAdapterNodeId(declaration.adapterNodeId());
-        worker.setAdapterId(declaration.adapterId());
-        worker.setOnlineStrategy(declaration.onlineStrategy());
+        worker.setOnlineStrategy(declaration.transportHint());
         worker.setMaxConcurrentWork(declaration.maxConcurrentWork());
         worker.setAttributes(declaration.attributes());
-        worker.setCreateTime(declaration.createTime() != null ? declaration.createTime() : LocalDateTime.now());
-        worker.setUpdateTime(declaration.updateTime() != null ? declaration.updateTime() : LocalDateTime.now());
+        worker.setCreateTime(LocalDateTime.now());
+        worker.setUpdateTime(LocalDateTime.now());
         return worker;
     }
 
@@ -249,12 +238,6 @@ public final class WorkerResourceOwner {
             return WorkerStatus.OFFLINE;
         }
         return WorkerStatus.valueOf(normalizedStatus);
-    }
-
-    private void applyNodeGroupBindingDispatchGate(Worker worker) {
-        if (worker != null) {
-            relationshipOwner.applyNodeGroupBindingDispatchGate(worker);
-        }
     }
 
     private static String normalizeNullable(String value) {

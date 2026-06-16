@@ -213,8 +213,8 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.reachableWorkerCountsByTransport.realtime==1)]").exists())
                 .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.runtimeStatusCounts.ONLINE==1)]").exists())
                 .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.lockedCount==0)]").exists())
-                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.reachableUnlockedBindingCount==1)]").exists())
-                .andExpect(jsonPath("$.data[?(@.groupId=='chat' && @.reachableUnlockedBindingCount==0)]").exists());
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.reachableUnlockedWorkerCount==1)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='chat' && @.reachableUnlockedWorkerCount==0)]").exists());
     }
 
     @Test
@@ -267,7 +267,7 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.length()").value(5))
                 .andExpect(jsonPath("$.data[?(@.groupId=='group-00' && @.workerCount==25)]").exists())
-                .andExpect(jsonPath("$.data[?(@.groupId=='group-00' && @.reachableUnlockedBindingCount > 0)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='group-00' && @.reachableUnlockedWorkerCount > 0)]").exists())
                 .andExpect(jsonPath("$.data[?(@.groupId=='group-02' && @.lockedCount > 0)]").exists());
 
         verify(workerQueries, times(1)).getAllWorkers();
@@ -289,31 +289,23 @@ class CatalogControllerTest {
                                   String status,
                                   List<String> supportedProjects,
                                   List<String> supportedEventCodes) {
-        String adapterId = null;
         String transportHint = null;
         if ("crawler-worker-1".equals(workerId)) {
-            adapterId = "websocket";
             transportHint = "realtime";
         } else if ("scope-only-worker".equals(workerId)) {
-            adapterId = "polling";
             transportHint = "polling";
         }
         return new WorkerSnapshot(
                 workerId,
                 status,
                 null,
-                null,
                 supportedProjects,
                 supportedEventCodes,
                 List.of(),
                 workerId.startsWith("crawler") ? "crawler" : workerId.startsWith("chat") ? "chat" : null,
-                workerId.startsWith("crawler") ? "node-crawler" : workerId.startsWith("chat") ? "node-chat" : null,
-                adapterId,
                 transportHint,
                 1,
-                java.util.Map.of(),
-                null,
-                null
+                java.util.Map.of()
         );
     }
 
@@ -362,21 +354,16 @@ class CatalogControllerTest {
                     workerId,
                     index % 3 == 0 ? "OFFLINE" : "ONLINE",
                     "1.2.%d".formatted(index % 10),
-                    null,
                     List.of("legacyProject"),
                     List.of("legacy.event"),
                     List.of(),
                     "group-%02d".formatted(groupIndex),
-                    "node-%02d".formatted(groupIndex),
-                    "polling",
                     "polling",
                     2,
                     Map.of(
                             "fingerprintProfile", "fp-%02d".formatted(index % 4),
                             "fixture", "bounded-fanout"
-                    ),
-                    null,
-                    null
+                    )
             ));
         }
         return new LargeWorkerFixture(

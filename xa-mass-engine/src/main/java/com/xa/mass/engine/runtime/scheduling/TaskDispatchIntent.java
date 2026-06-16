@@ -18,7 +18,6 @@ public record TaskDispatchIntent(
         String project,
         String eventCode,
         List<String> workerGroupIds,
-        String adapterNodeId,
         String routingCode,
         Map<String, String> routeAttributes,
         String targetWorkerId,
@@ -30,7 +29,6 @@ public record TaskDispatchIntent(
         project = normalizeNullable(project);
         eventCode = normalizeNullable(eventCode);
         workerGroupIds = normalizeList(workerGroupIds);
-        adapterNodeId = normalizeNullable(adapterNodeId);
         routingCode = normalizeNullable(routingCode);
         routeAttributes = normalizeMap(routeAttributes);
         targetWorkerId = normalizeNullable(targetWorkerId);
@@ -43,7 +41,6 @@ public record TaskDispatchIntent(
                 task == null ? null : task.getProject(),
                 TaskSharedConfig.sdkEventCode(task),
                 TaskSharedConfig.workerGroupSelector(task),
-                TaskSharedConfig.adapterNodeId(task),
                 TaskSharedConfig.routingCode(task),
                 TaskSharedConfig.routeAttributes(task),
                 TaskSharedConfig.targetWorkerId(task),

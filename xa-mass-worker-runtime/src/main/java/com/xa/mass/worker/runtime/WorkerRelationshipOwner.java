@@ -1,9 +1,7 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
 import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
-import com.xa.mass.runtime.worker.WorkerRegistry;
 
 import java.time.Instant;
 import java.util.Collections;
@@ -13,10 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.function.Predicate;
-
-import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.NODE_GROUP_BINDING;
 
 /**
  * Worker runtime owner for adapter-node and WorkerGroup relationship state.
@@ -29,17 +24,10 @@ public final class WorkerRelationshipOwner {
             new LinkedHashMap<>();
     private final LinkedHashMap<String, LinkedHashSet<String>> groupIdsByAdapterNodeId = new LinkedHashMap<>();
     private final LinkedHashMap<String, LinkedHashSet<String>> adapterNodeIdsByGroupId = new LinkedHashMap<>();
-    private final WorkerRegistry workerRegistry;
     private final Predicate<String> workerGroupDeclared;
-    private final Consumer<String> dispatchWakeupNotifier;
 
-    public WorkerRelationshipOwner(WorkerRegistry workerRegistry,
-                                   Predicate<String> workerGroupDeclared,
-                                   Consumer<String> dispatchWakeupNotifier) {
-        this.workerRegistry = workerRegistry;
+    public WorkerRelationshipOwner(Predicate<String> workerGroupDeclared) {
         this.workerGroupDeclared = workerGroupDeclared == null ? ignored -> false : workerGroupDeclared;
-        this.dispatchWakeupNotifier = dispatchWakeupNotifier == null ? ignored -> {
-        } : dispatchWakeupNotifier;
     }
 
     public AdapterNodeRecord registerAdapterNode(AdapterNodeRecord adapterNode) {
@@ -52,9 +40,6 @@ public final class WorkerRelationshipOwner {
                     resolveUpdatedAt(record.lastSeenAt())
             );
             adapterNodesById.put(normalized.adapterNodeId(), normalized);
-        }
-        if (isAdapterNodeAvailable(normalized)) {
-            notifyDispatchWakeup("adapter node available");
         }
         return normalized;
     }
@@ -115,10 +100,6 @@ public final class WorkerRelationshipOwner {
             }
             nodeGroupBindingsByKey.put(key, normalized);
             addBindingIndex(normalized);
-            applyNodeGroupBindingDispatchGate(normalized);
-        }
-        if (isNodeGroupBindingAvailable(normalized)) {
-            notifyDispatchWakeup("node group binding available");
         }
         return normalized;
     }
@@ -173,16 +154,10 @@ public final class WorkerRelationshipOwner {
                                                              String groupId,
                                                              boolean enabled) {
         NodeGroupBindingRecord updated;
-        boolean becameAvailable;
         synchronized (lock) {
             NodeGroupBindingRecord current = requireExistingBinding(adapterNodeId, groupId);
             updated = current.withEnabled(enabled, Instant.now());
             nodeGroupBindingsByKey.put(NodeGroupBindingKey.from(updated.adapterNodeId(), updated.groupId()), updated);
-            applyNodeGroupBindingDispatchGate(updated);
-            becameAvailable = !isNodeGroupBindingAvailable(current) && isNodeGroupBindingAvailable(updated);
-        }
-        if (becameAvailable) {
-            notifyDispatchWakeup("node group binding enabled");
         }
         return updated;
     }
@@ -191,16 +166,10 @@ public final class WorkerRelationshipOwner {
                                                               String groupId,
                                                               boolean draining) {
         NodeGroupBindingRecord updated;
-        boolean becameAvailable;
         synchronized (lock) {
             NodeGroupBindingRecord current = requireExistingBinding(adapterNodeId, groupId);
             updated = current.withDraining(draining, Instant.now());
             nodeGroupBindingsByKey.put(NodeGroupBindingKey.from(updated.adapterNodeId(), updated.groupId()), updated);
-            applyNodeGroupBindingDispatchGate(updated);
-            becameAvailable = !isNodeGroupBindingAvailable(current) && isNodeGroupBindingAvailable(updated);
-        }
-        if (becameAvailable) {
-            notifyDispatchWakeup("node group binding drain cleared");
         }
         return updated;
     }
@@ -222,22 +191,6 @@ public final class WorkerRelationshipOwner {
         requireDeclaredWorkerGroup(groupId);
     }
 
-    public void applyNodeGroupBindingDispatchGate(Worker worker) {
-        String adapterNodeId = normalizeNullable(worker.getAdapterNodeId());
-        String groupId = normalizeNullable(worker.getWorkerGroupId());
-        if (adapterNodeId == null || groupId == null) {
-            return;
-        }
-        synchronized (lock) {
-            NodeGroupBindingRecord binding = nodeGroupBindingsByKey.get(NodeGroupBindingKey.from(adapterNodeId, groupId));
-            if (binding != null && (!binding.enabled() || binding.draining())) {
-                workerRegistry.disableDispatch(worker.getWorkerId(), NODE_GROUP_BINDING);
-            } else if (binding != null) {
-                workerRegistry.clearDispatchDisable(worker.getWorkerId(), NODE_GROUP_BINDING);
-            }
-        }
-    }
-
     private void validateAdapterNodeRegistered(String adapterNodeId) {
         synchronized (lock) {
             if (!adapterNodesById.containsKey(adapterNodeId)) {
@@ -250,38 +203,6 @@ public final class WorkerRelationshipOwner {
         if (!workerGroupDeclared.test(groupId)) {
             throw new IllegalArgumentException("workerGroupId is not declared: " + groupId);
         }
-    }
-
-    private void applyNodeGroupBindingDispatchGate(NodeGroupBindingRecord binding) {
-        if (!binding.enabled() || binding.draining()) {
-            disableWorkerDispatchForNodeGroup(binding);
-        } else {
-            clearWorkerDispatchDisableForNodeGroup(binding);
-        }
-    }
-
-    private void applyNodeGroupBindingUnavailable(NodeGroupBindingRecord binding) {
-        disableWorkerDispatchForNodeGroup(binding);
-    }
-
-    private void disableWorkerDispatchForNodeGroup(NodeGroupBindingRecord binding) {
-        workerRegistry.disableDispatchForAdapterNodeGroup(
-                binding.adapterNodeId(),
-                binding.groupId(),
-                NODE_GROUP_BINDING
-        );
-    }
-
-    private void clearWorkerDispatchDisableForNodeGroup(NodeGroupBindingRecord binding) {
-        workerRegistry.clearDispatchDisableForAdapterNodeGroup(
-                binding.adapterNodeId(),
-                binding.groupId(),
-                NODE_GROUP_BINDING
-        );
-    }
-
-    private void notifyDispatchWakeup(String reason) {
-        dispatchWakeupNotifier.accept(reason);
     }
 
     private static AdapterNodeRecord requireAdapterNode(AdapterNodeRecord adapterNode) {
@@ -332,7 +253,6 @@ public final class WorkerRelationshipOwner {
     private NodeGroupBindingRecord removeBinding(NodeGroupBindingKey key) {
         NodeGroupBindingRecord removed = nodeGroupBindingsByKey.remove(key);
         if (removed != null) {
-            applyNodeGroupBindingUnavailable(removed);
             removeBindingIndex(removed);
         }
         return removed;
@@ -359,14 +279,6 @@ public final class WorkerRelationshipOwner {
             return Set.of();
         }
         return Collections.unmodifiableSet(new LinkedHashSet<>(source));
-    }
-
-    private static boolean isAdapterNodeAvailable(AdapterNodeRecord record) {
-        return record != null && record.enabled() && record.online();
-    }
-
-    private static boolean isNodeGroupBindingAvailable(NodeGroupBindingRecord binding) {
-        return binding != null && binding.enabled() && !binding.draining();
     }
 
     private static String normalizeNullable(String value) {

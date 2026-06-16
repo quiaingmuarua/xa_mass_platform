@@ -87,7 +87,6 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
                 .build());
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(workerId)
-                .adapterNodeId("crawler-polling-node")
                 .workerGroupId("crawler")
                 .transportHint(WorkerTransportHints.POLLING)
                 .attributes(Map.of(

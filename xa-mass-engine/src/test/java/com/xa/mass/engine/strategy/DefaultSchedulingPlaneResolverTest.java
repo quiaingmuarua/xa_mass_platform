@@ -36,7 +36,6 @@ public class DefaultSchedulingPlaneResolverTest {
         assertEquals("task-psp", resolution.dispatchIntent().taskId());
         assertEquals("demoApp", resolution.dispatchIntent().project());
         assertEquals(List.of("pool-a", "pool-b"), resolution.dispatchIntent().workerGroupIds());
-        assertEquals("node-a", resolution.dispatchIntent().adapterNodeId());
         assertEquals("worker-target", resolution.dispatchIntent().targetWorkerId());
         assertEquals("us", resolution.dispatchIntent().routingCode());
         assertEquals(Map.of("region", "us"), resolution.dispatchIntent().routeAttributes());
@@ -109,7 +108,6 @@ public class DefaultSchedulingPlaneResolverTest {
         assertEquals("demoApp", workerPolicy.project());
         assertEquals("event.probe", workerPolicy.eventCode());
         assertEquals(List.of("pool-a", "pool-b"), workerPolicy.workerGroupIds());
-        assertEquals("node-a", workerPolicy.adapterNodeId());
         assertEquals("us", workerPolicy.routingCode());
         assertEquals(Map.of("region", "us"), workerPolicy.routeAttributes());
         assertEquals("worker-target", workerPolicy.targetWorkerId());

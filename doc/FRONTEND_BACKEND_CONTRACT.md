@@ -124,7 +124,7 @@ Rules:
   `reachable`, `declaredWorkerIds`, `reachableWorkerIds`,
   `hasReachableWorkerCoverage`, `hasInvocationCoverage`,
   `reachableWorkerCountsByTransport`, `runtimeStatusCounts`, and
-  `reachableUnlockedBindingCount`, but it must not combine them into a local
+  `reachableUnlockedWorkerCount`, but it must not combine them into a local
   scheduler eligibility predicate.
 
 ## Backend Route Guardrails For Console Needs

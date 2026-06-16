@@ -92,7 +92,6 @@ class MockRuntimeDataLoaderTest {
         assertEquals(1, runtime.nodeGroupBindings.size());
         assertEquals("OFFLINE", runtime.workers.get(0).getStatus());
         assertEquals("polling", runtime.registeredWorkers.get(0).getTransportHint());
-        assertNotNull(runtime.registeredWorkers.get(0).getAdapterNodeId());
         assertEquals("route-us", runtime.registeredWorkers.get(0).getAttributes().get("routingTags"));
         assertEquals("us", runtime.registeredWorkers.get(0).getAttributes().get("region"));
     }
@@ -315,17 +314,13 @@ class MockRuntimeDataLoaderTest {
                     request.getWorkerId(),
                     "OFFLINE",
                     null,
-                    null,
                     supportedProjects,
                     supportedEventCodes,
                     List.of(),
                     request.getWorkerGroupId(),
-                    request.getAdapterId(),
                     request.getTransportHint(),
                     request.getMaxConcurrentWork(),
-                    request.getAttributes(),
-                    null,
-                    null
+                    request.getAttributes()
             ));
         }
 

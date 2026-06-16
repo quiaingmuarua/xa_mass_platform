@@ -24,7 +24,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -83,31 +82,18 @@ class WorkerApiControllerTest {
                 "worker-001",
                 "ONLINE",
                 "1.2.3",
-                LocalDateTime.of(2026, 4, 21, 10, 15),
                 List.of("demoApp"),
                 List.of("demo.dispatch"),
                 List.of(),
                 "group-a",
-                "websocket",
                 "realtime",
                 3,
-                Map.of("region", "us"),
-                null,
-                LocalDateTime.of(2026, 4, 21, 10, 16)
+                Map.of("region", "us")
         );
 
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
         when(workerQueries.listReachableWorkerIds()).thenReturn(List.of("worker-001"));
         when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of("worker-001"));
-        when(runtimeDiagnostics.listSessions()).thenReturn(List.of(Map.of(
-                "workerId", "worker-001",
-                "connections", List.of(Map.of(
-                        "active", true,
-                        "endpointId", "ws-1",
-                        "routeKey", "route-1",
-                        "adapterId", "ws-public"
-                ))
-        )));
 
         mockMvc.perform(get("/api/v1/runtime/workers"))
                 .andExpect(status().isOk())
@@ -123,12 +109,10 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[0].runtimeStatus").value("ONLINE"))
                 .andExpect(jsonPath("$.data.items[0].reachability").value("ONLINE"))
                 .andExpect(jsonPath("$.data.items[0].reachable").value(true))
-                .andExpect(jsonPath("$.data.items[0].connections[0].endpointId").value("ws-1"))
-                .andExpect(jsonPath("$.data.items[0].connections[0].routeKey").doesNotExist())
-                .andExpect(jsonPath("$.data.items[0].connections[0].adapterId").doesNotExist())
-                .andExpect(jsonPath("$.data.items[0].hasActiveEndpoint").value(true))
+                .andExpect(jsonPath("$.data.items[0].connections").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].hasActiveEndpoint").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].locked").value(true))
-                .andExpect(jsonPath("$.data.items[0].lastHeartbeat").value("2026-04-21 10:15:00"))
+                .andExpect(jsonPath("$.data.items[0].lastHeartbeat").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].fieldSources.workerGroupId").value("declaration"))
                 .andExpect(jsonPath("$.data.items[0].fieldSources.runtimeStatus").value("runtimeStatusDisplay"))
                 .andExpect(jsonPath("$.data.items[0].fieldSources.reachability").value("workerRuntimeReachability"))
@@ -143,7 +127,6 @@ class WorkerApiControllerTest {
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker1, worker2));
         when(workerQueries.listReachableWorkerIds()).thenReturn(List.of("worker-001", "worker-002"));
         when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of());
-        when(runtimeDiagnostics.listSessions()).thenReturn(List.of());
 
         mockMvc.perform(get("/api/v1/runtime/workers").param("limit", "1"))
                 .andExpect(status().isOk())
@@ -165,7 +148,6 @@ class WorkerApiControllerTest {
                 "worker-0042",
                 "worker-0099"
         ));
-        when(runtimeDiagnostics.listSessions()).thenReturn(sessionFacts(workers, 20));
 
         mockMvc.perform(get("/api/v1/runtime/workers"))
                 .andExpect(status().isOk())
@@ -178,12 +160,11 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[1].workerId").value("worker-0002"))
                 .andExpect(jsonPath("$.data.items[1].reachable").value(true))
                 .andExpect(jsonPath("$.data.items[2].locked").value(true))
-                .andExpect(jsonPath("$.data.items[19].connections[0].endpointId").value("endpoint-worker-0020"));
+                .andExpect(jsonPath("$.data.items[19].connections").doesNotExist());
 
         verify(workerQueries, times(1)).getAllWorkers();
         verify(workerQueries, times(1)).listReachableWorkerIds();
         verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
-        verify(runtimeDiagnostics, times(1)).listSessions();
     }
 
     @Test
@@ -304,17 +285,13 @@ class WorkerApiControllerTest {
                 workerId,
                 "ONLINE",
                 "1.2.3",
-                LocalDateTime.of(2026, 4, 21, 10, 15),
                 List.of("demoApp"),
                 List.of("demo.dispatch"),
                 List.of(),
                 "group-a",
-                "websocket",
                 "realtime",
                 3,
-                Map.of("region", "us"),
-                null,
-                LocalDateTime.of(2026, 4, 21, 10, 16)
+                Map.of("region", "us")
         );
     }
 
@@ -327,21 +304,16 @@ class WorkerApiControllerTest {
                     workerId,
                     index % 3 == 0 ? "OFFLINE" : "ONLINE",
                     "1.2.%d".formatted(index % 10),
-                    LocalDateTime.of(2026, 4, 21, 10, index % 60),
                     List.of("demoApp"),
                     List.of("demo.dispatch"),
                     List.of(),
                     groupId,
-                    "node-%02d".formatted((index - 1) % groupCount),
-                    "polling",
                     "polling",
                     3,
                     Map.of(
                             "region", index % 2 == 0 ? "us" : "sg",
                             "fixture", "bounded-fanout"
-                    ),
-                    null,
-                    LocalDateTime.of(2026, 4, 21, 11, index % 60)
+                    )
             ));
         }
         return workers;
@@ -351,21 +323,6 @@ class WorkerApiControllerTest {
         return workers.stream()
                 .filter(worker -> numericSuffix(worker.getWorkerId()) % everyNthWorker == 0)
                 .map(WorkerSnapshot::getWorkerId)
-                .toList();
-    }
-
-    private List<Map<String, Object>> sessionFacts(List<WorkerSnapshot> workers, int everyNthWorker) {
-        return workers.stream()
-                .filter(worker -> numericSuffix(worker.getWorkerId()) % everyNthWorker == 0)
-                .map(worker -> Map.<String, Object>of(
-                        "workerId", worker.getWorkerId(),
-                        "connections", List.of(Map.of(
-                                "active", true,
-                                "endpointId", "endpoint-" + worker.getWorkerId(),
-                                "routeKey", "route-" + worker.getWorkerId(),
-                                "adapterId", "polling"
-                        ))
-                ))
                 .toList();
     }
 

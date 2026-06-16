@@ -145,7 +145,7 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
         snapshot.setAgentVersion(view.agentVersion());
         snapshot.setSupportedProjects(view.supportedProjects());
         snapshot.setWorkerGroupId(view.workerGroupId());
-        snapshot.setOnlineStrategy(view.onlineStrategy());
+        snapshot.setOnlineStrategy(view.transportHint());
         snapshot.setAttributes(view.workerAttributes());
         snapshot.setAppCount(view.supportedProjects().size());
         snapshot.setWorkerAvailable(view.schedulingResourceAvailable());

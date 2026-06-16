@@ -201,7 +201,7 @@ export const mockWorkerGroupCapabilities: WorkerGroupCapability[] = [
         reachableWorkerCountsByTransport: {polling: 60, realtime: 20},
         runtimeStatusCounts: {ONLINE: 80},
         lockedCount: 2,
-        reachableUnlockedBindingCount: 78,
+        reachableUnlockedWorkerCount: 78,
         fingerprintDistribution: {},
     },
     {
@@ -222,7 +222,7 @@ export const mockWorkerGroupCapabilities: WorkerGroupCapability[] = [
         reachableWorkerCountsByTransport: {polling: 10, realtime: 5},
         runtimeStatusCounts: {ONLINE: 15},
         lockedCount: 0,
-        reachableUnlockedBindingCount: 15,
+        reachableUnlockedWorkerCount: 15,
         fingerprintDistribution: {},
     },
     {
@@ -244,7 +244,7 @@ export const mockWorkerGroupCapabilities: WorkerGroupCapability[] = [
         reachableWorkerCountsByTransport: {polling: 20, realtime: 10},
         runtimeStatusCounts: {ONLINE: 30},
         lockedCount: 1,
-        reachableUnlockedBindingCount: 29,
+        reachableUnlockedWorkerCount: 29,
         fingerprintDistribution: {
             'fp-android-sg-a': 3,
             'fp-android-sg-b': 3,
@@ -277,7 +277,7 @@ export const mockWorkerGroupCapabilities: WorkerGroupCapability[] = [
         reachableWorkerCountsByTransport: {polling: 10},
         runtimeStatusCounts: {ONLINE: 10},
         lockedCount: 0,
-        reachableUnlockedBindingCount: 10,
+        reachableUnlockedWorkerCount: 10,
         fingerprintDistribution: {},
     },
     {
@@ -298,7 +298,7 @@ export const mockWorkerGroupCapabilities: WorkerGroupCapability[] = [
         reachableWorkerCountsByTransport: {polling: 10},
         runtimeStatusCounts: {ONLINE: 10},
         lockedCount: 0,
-        reachableUnlockedBindingCount: 10,
+        reachableUnlockedWorkerCount: 10,
         fingerprintDistribution: {},
     },
 ]

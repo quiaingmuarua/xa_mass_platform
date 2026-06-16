@@ -9,8 +9,6 @@ import java.util.Objects;
 public record WorkerMeta(
         String workerId,
         String groupId,
-        String adapterNodeId,
-        String adapterId,
         String transportHint,
         Map<String, String> attributes,
         String agentVersion,
@@ -22,8 +20,6 @@ public record WorkerMeta(
     public WorkerMeta {
         workerId = requireNonBlank(workerId, "workerId");
         groupId = requireNonBlank(groupId, "groupId");
-        adapterNodeId = normalizeNullable(adapterNodeId);
-        adapterId = normalizeNullable(adapterId);
         transportHint = normalizeNullable(transportHint);
         attributes = attributes == null ? Map.of() : Map.copyOf(attributes);
         agentVersion = normalizeNullable(agentVersion);

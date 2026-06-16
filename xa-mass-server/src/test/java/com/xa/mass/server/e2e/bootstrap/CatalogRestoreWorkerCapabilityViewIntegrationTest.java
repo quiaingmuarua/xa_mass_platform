@@ -80,9 +80,7 @@ public class CatalogRestoreWorkerCapabilityViewIntegrationTest extends AbstractS
                 .build());
         app.registerWorker(WorkerRegistration.builder()
                 .workerId("capability-worker-001")
-                .adapterNodeId("capability-node-001")
                 .workerGroupId("capability-group")
-                .adapterId("polling")
                 .transportHint("polling")
                 .maxConcurrentWork(1)
                 .build());

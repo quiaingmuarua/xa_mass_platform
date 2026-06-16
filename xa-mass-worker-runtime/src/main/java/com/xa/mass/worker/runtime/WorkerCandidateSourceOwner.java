@@ -78,7 +78,6 @@ public final class WorkerCandidateSourceOwner {
                     taskId,
                     workerId,
                     groupId,
-                    normalizeNullable(candidate.adapterNodeId()),
                     candidateBucketKey,
                     nowMillis
             ));
@@ -106,7 +105,6 @@ public final class WorkerCandidateSourceOwner {
             WorkerCandidateIndex.SourceGuardResult guardResult = candidateIndex.sourceGuard(
                     selector,
                     entry.observedGroupId(),
-                    entry.observedAdapterNodeId(),
                     entry.observedCandidateBucketKey(),
                     entry.workerId()
             );
@@ -159,8 +157,6 @@ public final class WorkerCandidateSourceOwner {
                 worker.getWorkerId(),
                 worker.getAgentVersion(),
                 worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
                 worker.getOnlineStrategy(),
                 worker.getAttributes()
         );

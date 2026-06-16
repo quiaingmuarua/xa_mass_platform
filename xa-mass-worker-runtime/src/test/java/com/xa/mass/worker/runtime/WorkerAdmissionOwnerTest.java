@@ -64,8 +64,6 @@ class WorkerAdmissionOwnerTest {
         return new WorkerMeta(
                 workerId,
                 "group-1",
-                null,
-                "test-adapter",
                 "HEARTBEAT",
                 Map.of(),
                 "test",

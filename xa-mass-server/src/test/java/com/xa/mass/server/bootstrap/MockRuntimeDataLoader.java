@@ -254,9 +254,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     private WorkerRegistration toRegistration(WorkerFixture worker) {
         WorkerRegistration.Builder builder = WorkerRegistration.builder()
                 .workerId(worker.getWorkerId())
-                .adapterNodeId(worker.getAdapterId())
                 .workerGroupId(worker.getWorkerGroupId())
-                .adapterId(worker.getAdapterId())
                 .transportHint(worker.getOnlineStrategy())
                 .attributes(worker.getAttributes());
         return builder.build();

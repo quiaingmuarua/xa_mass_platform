@@ -235,7 +235,6 @@ public class ExternalWorkerApiController {
         String transportHint = resolveSupportedTransportHint(requestBody.getTransportHint());
         WorkerRegistration request = WorkerRegistration.builder()
                 .workerId(workerId)
-                .adapterNodeId(blankToNull(requestBody.getAdapterNodeId()))
                 .workerGroupId(blankToNull(requestBody.getWorkerGroupId()))
                 .transportHint(transportHint)
                 .attributes(requestBody.getAttributes())
@@ -243,7 +242,6 @@ public class ExternalWorkerApiController {
         workerRegistry.registerWorker(request);
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("workerId", request.getWorkerId());
-        response.put("adapterNodeId", request.getAdapterNodeId());
         response.put("workerGroupId", request.getWorkerGroupId());
         response.put("transportHint", transportHint);
         observeRegistration("WORKER", request.getWorkerId(), "REGISTER", workerPrincipal, response);
@@ -458,7 +456,6 @@ public class ExternalWorkerApiController {
                     + String.join(", ", requestBody.getUnknownFieldNames()));
         }
         requireNonBlank(requestBody.getWorkerGroupId(), "workerGroupId");
-        requireNonBlank(requestBody.getAdapterNodeId(), "adapterNodeId");
     }
 
     private void validateAdapterNodeRegisterRequest(ExternalAdapterNodeRegisterApiRequest requestBody) {

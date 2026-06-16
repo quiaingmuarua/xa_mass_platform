@@ -270,10 +270,8 @@ public final class SdkPollingSchedulingSoakRunner {
                 String workerId = workerId(i);
                 app.registerWorker(WorkerRegistration.builder()
                         .workerId(workerId)
-                        .adapterNodeId(adapterNodeId)
                         .workerGroupId(groupId)
                         .transportHint(WorkerTransportHints.POLLING)
-                        .adapterId(ADAPTER_ID)
                         .maxConcurrentWork(Math.max(1, config.pollBatchSize()))
                         .attributes(Map.of(
                                 "soakRunId", runId,

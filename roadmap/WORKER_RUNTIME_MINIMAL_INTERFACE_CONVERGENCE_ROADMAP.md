@@ -1,6 +1,8 @@
 # Worker Runtime Minimal Interface Convergence Roadmap
 
-Status: proposed direction document.
+Status: active roadmap; WMI mainline convergence implemented and verified in
+the current workspace slice. Legacy/base/diagnostic residue remains tracked
+below and should not be treated as a second live mainline.
 
 ## Problem
 
@@ -23,59 +25,53 @@ This weakens owner boundaries:
 This roadmap converges worker-runtime and worker-facing surfaces around a
 minimum-parameter rule.
 
-## Current Code Observations
+## Current Mainline State
 
-These are current implementation facts, not target state:
+These are implementation facts after the WMI mainline slice in this workspace:
 
-- `WorkerResourceRecord` includes worker identity, `statusName`,
-  `lastHeartbeat`, worker-level supported project/event hints,
-  `workerGroupId`, `adapterNodeId`, `adapterId`, `onlineStrategy`,
-  concurrency, attributes, and timestamps.
+- `WorkerDeclarationRecord` is the declaration mutation shape and contains
+  only worker-owned declaration fields: `workerId`, `workerGroupId`,
+  `transportHint`, `agentVersion`, `maxConcurrentWork`, and `attributes`.
+- `WorkerResourceRecord` is a minimal lookup read model with the same
+  worker-owned identity/declaration facts. It no longer carries runtime status,
+  heartbeat time, worker-level capability hints, adapter topology ids, or
+  create/update timestamps.
 - `WorkerResourceDeclarationRuntime#addWorker` and `#updateWorker` accept
-  `WorkerResourceRecord`, so mutation callers can supply runtime and
-  compatibility fields they do not own.
-- `WorkerResourceQueryRuntime#worker` and `#workers` return
-  `WorkerResourceRecord`, so lookup callers receive transport topology and
-  runtime evidence even when they only need identity/group evidence.
-- `WorkerManager` converts between `WorkerResourceRecord` and the legacy base
-  `Worker` model, including `statusName`, `lastHeartbeat`, worker-level
-  capability hints, `adapterNodeId`, and `adapterId`.
-- The current `WorkerDeclarationRecord` is not a minimal target. It still
-  contains `adapterNodeId`, `adapterId`, `onlineStrategy`, and persistence
-  timestamps.
-- `WorkerResourceRuntime` is itself a broad residual surface: it aggregates
-  query, declaration mutation, node-group binding mutation, and heartbeat
-  refresh. Engine/starter/SDK callers still obtain that broad surface through
-  runtime config.
-- `MassSdkApplication` assembles public `WorkerSnapshot` objects from
-  `WorkerResourceRecord`, and update paths rebuild full records to change a
-  narrow concern.
-- The public Java SDK `WorkerSpec` still carries `adapterNodeId`, and worker
-  session helpers use it while registering workers.
-- Public Java SDK `PollingWorkerSession` and `WebSocketWorkerSession` require
-  `adapterNodeId` and combine topology bootstrap, node-group binding, worker
-  registration, presence, capability report, and state report in one helper.
-- Server external worker routes receive and return `adapterNodeId` for worker
-  registration responses.
-- Frontend worker list types and worker pages still include `adapterNodeId`
-  and connection `adapterId`.
-- Transport docs already state that `adapterId` is concrete transport runtime
-  truth, but some current wording still says external worker registration or
-  session APIs declare `adapterNodeId`.
-- Engine scheduling still carries `adapterNodeId` through
-  `TaskDispatchIntent`, `ResolvedWorkerSchedulingPolicy`, and
-  `WorkerTaskSelector`, and `WorkerCandidateIndex` can acquire and guard
-  candidates by adapter node. This is current code behavior, but it is not the
-  target scheduling boundary.
-- NodeGroupBinding dispatch gate currently depends on worker/registry
-  adapter-node membership. If worker declaration stops carrying
-  `adapterNodeId`, that gate needs an explicit replacement source or a
-  deliberate downgrade to topology/admin diagnostics only.
-- Several current records and snapshots expose raw timestamps by default,
-  including worker heartbeat, create/update time, adapter-node registration
-  time, node-group binding update time, and runtime observation time. Their
-  existence in current interfaces is not proof that default views should return
-  them.
+  `WorkerDeclarationRecord`, not `WorkerResourceRecord`.
+- The broad `WorkerResourceRuntime` aggregate has been removed. Engine, SDK,
+  starter, and server assembly use narrow ports such as declaration mutation,
+  resource query, node binding, heartbeat refresh, scheduling evidence, and
+  control/runtime views.
+- Worker candidate acquisition is WorkerGroup-scoped. `WorkerTaskSelector`,
+  `WorkerCandidateSamplingContext`, `WorkerRegistry#acquireCandidates(...)`,
+  memory registry, and Redis registry no longer accept `adapterNodeId` as a
+  candidate-source dimension.
+- Engine scheduling intent and resolved worker scheduling policy no longer
+  carry `adapterNodeId`. `TaskDispatchBinding` and ordinary assignment evidence
+  no longer expose adapter-node worker-selection evidence.
+- `WorkerMeta` no longer serializes or exposes `adapterNodeId` or `adapterId`.
+- NodeGroupBinding is topology/admin diagnostics for this roadmap. It remains
+  available as adapter-node to WorkerGroup metadata but no longer drives worker
+  dispatch eligibility.
+- Embedded SDK worker registration, Java SDK worker registration/session
+  helpers, server external worker registration, and frontend worker default
+  views no longer require or return `adapterNodeId` / `adapterId`.
+- Public `WorkerSnapshot` exposes `transportHint` and no longer has the
+  compatibility `getOnlineStrategy()` alias. Default worker list/snapshot
+  views do not expose raw heartbeat/create/update timestamps.
+- WorkerGroup capability remains the capability truth used to compose public
+  worker/catalog views; worker rows are not the canonical project/event source.
+
+Known residual surfaces:
+
+- The legacy base `com.xa.mass.base.model.Worker` still has historical fields
+  such as `onlineStrategy`, `adapterNodeId`, `adapterId`, timestamps, and
+  worker-level capability hints. Current WMI mainline treats this as legacy
+  model residue, not the target worker-runtime contract.
+- Engine monkey/diagnostic snapshot code still has historical
+  `onlineStrategy` naming. It is not a worker default-view or hot-path
+  scheduling contract and should be handled by a later diagnostic cleanup
+  slice.
 
 ## Owner Review
 
@@ -374,6 +370,11 @@ adapter-node-free scheduling selector path, and an explicit decision for the
 current NodeGroupBinding dispatch gate. Removing only the registration field
 would create either a hidden reverse lookup dependency or a broken gate.
 
+Do not treat `adapterNodeId` removal from scheduling as complete while
+`TaskDispatchBinding`, `WorkerSchedulingView`, assignment evidence, trace
+events, runtime-api candidate sampling, or Redis candidate buckets still carry
+adapter-node worker-selection evidence.
+
 First classify every usage as one of:
 
 - worker declaration
@@ -395,6 +396,9 @@ their identities leak through worker resource and worker registration models.
 
 Goal: produce a code-grounded inventory and allowlist before changing behavior.
 
+Inventory artifact:
+[WORKER_RUNTIME_MINIMAL_INTERFACE_CONVERGENCE_INVENTORY.md](WORKER_RUNTIME_MINIMAL_INTERFACE_CONVERGENCE_INVENTORY.md).
+
 Scope:
 
 - Inventory all production and test usages of:
@@ -406,6 +410,12 @@ Scope:
   - `TaskDispatchIntent#adapterNodeId`
   - `ResolvedWorkerSchedulingPolicy#adapterNodeId`
   - `WorkerTaskSelector#adapterNodeId`
+  - `WorkerSchedulingView#adapterNodeId`
+  - `TaskDispatchBinding#adapterNodeId`
+  - `SimpleTaskDispatchBinder` dispatch evidence `adapterNodeId`
+  - `TraceEventLogger` worker-selection `adapterNodeId`
+  - trace sink node context `adapterNodeId`
+  - `WorkerCandidateSamplingContext#adapterNodeId`
   - `WorkerRegistry#acquireCandidates(groupId, adapterNodeId, ...)`
   - `WorkerRegistry#disableDispatchForAdapterNodeGroup`
   - `WorkerRelationshipOwner#applyNodeGroupBindingDispatchGate`
@@ -421,6 +431,14 @@ Scope:
   - frontend `WorkerListItem`
   - `adapterNodeId` and `adapterId` in worker-facing surfaces
 - Classify each usage by owner category.
+- For every production `WorkerResourceRuntime` caller, record the target
+  narrow port:
+  - declaration mutation
+  - identity/group lookup
+  - runtime evidence
+  - presence ingress
+  - topology admin
+  - diagnostic snapshot
 - Separate legal topology/admin surfaces from illegal worker-facing model
   surfaces.
 - Separate legal topology/admin drain gates from illegal task scheduling
@@ -440,14 +458,25 @@ Acceptance:
 - A sibling inventory file records current usages, owner category, and target.
 - The roadmap links to the inventory.
 - Inventory distinguishes main-source usage from tests/fixtures/docs.
+- Inventory contains a caller mapping for every production
+  `WorkerResourceRuntime`, `WorkerResourceQueryRuntime`,
+  `WorkerResourceDeclarationRuntime`, and `WorkerNodeBindingRuntime` caller.
+- Inventory classifies `TaskDispatchBinding`, `WorkerSchedulingView`,
+  `SimpleTaskDispatchBinder`, `TraceEventLogger`,
+  `WorkerCandidateSamplingContext`, and Redis node candidate bucket usages.
 - No code behavior changes in this slice.
 
 Suggested verification:
 
 ```powershell
-rg -n "WorkerResourceRecord|WorkerDeclarationRecord|WorkerResourceRuntime|WorkerSnapshot|WorkerSpec|PollingWorkerSession|WebSocketWorkerSession|ExternalWorkerRegisterApiRequest|WorkerListItem|adapterNodeId|adapterId|lastHeartbeat|observedAt|createTime|updateTime|registeredAt|lastSeenAt|expiresAt|deadline|leaseExpireAt" `
+rg -n "WorkerResourceRecord|WorkerDeclarationRecord|WorkerResourceRuntime|WorkerSnapshot|WorkerSpec|PollingWorkerSession|WebSocketWorkerSession|ExternalWorkerRegisterApiRequest|WorkerListItem|TaskDispatchBinding|WorkerSchedulingView|WorkerCandidateSamplingContext|TraceEventLogger|adapterNodeId|adapterId|lastHeartbeat|observedAt|createTime|updateTime|registeredAt|lastSeenAt|expiresAt|deadline|leaseExpireAt" `
   xa-mass-worker-runtime/src/main/java `
   xa-mass-engine/src/main/java `
+  xa-mass-base/src/main/java `
+  platform_infra/mass-runtime-api/src/main/java `
+  platform_infra/mass-runtime-memory/src/main/java `
+  platform_infra/mass-runtime-redis/src/main/java `
+  platform_infra/mass-trace-sink/src/main/java `
   sdk/xa-mass-embedded-sdk-api/src/main/java `
   sdk/xa-mass-embedded-sdk/src/main/java `
   sdk/xa-mass-java-sdk/src/main/java `
@@ -475,6 +504,9 @@ Scope:
 - Split `WorkerResourceRuntime` into narrow ports or reduce it to internal
   assembly only. Production callers should depend on operation-owned ports,
   not the broad aggregate.
+- Use the WMI-0 caller mapping to move each production caller to its target
+  narrow port. Do not introduce a generic `minimal` facade that still forwards
+  all behavior through `WorkerResourceRuntime`.
 - Do not add a same-module wrapper that only forwards to the current fat
   `WorkerResourceRecord`.
 
@@ -490,6 +522,9 @@ Acceptance:
   explicitly scoped to a compatibility snapshot path.
 - `WorkerResourceRuntime` is no longer the default injected port for engine,
   SDK, starter, or server production callers.
+- Each previous `WorkerResourceRuntime` production caller has an explicit
+  target port in code and in the inventory.
+- No new facade/wrapper becomes a second broad worker-runtime aggregate.
 - New contracts do not contain `adapterId` or `adapterNodeId`.
 - New contracts do not contain worker-level supported project/event
   capability hints.
@@ -508,25 +543,198 @@ rg -n "addWorker\\(WorkerResourceRecord|updateWorker\\(WorkerResourceRecord|Opti
   --glob '!**/target/**'
 ```
 
-## WMI-2 - Converge Registration, Scheduling Constraints, And Topology Gate
+## WMI-1A - NodeGroupBinding Dispatch Gate Decision
 
-Goal: remove `adapterNodeId` from worker declaration and runtime worker
-selection without creating a broken NodeGroupBinding gate or a hidden reverse
-lookup path.
+Goal: record the topology gate decision before any slice removes
+`adapterNodeId` from worker declaration or candidate selection.
 
-This is one executable slice. Do not land worker registration cleanup while
-the scheduling selector and NodeGroupBinding dispatch-gate decision still
-depend on worker declaration carrying `adapterNodeId`.
+Decision: `NodeGroupBinding` is topology/admin diagnostics only. It remains
+the owner for adapter-node to WorkerGroup relation metadata, including
+enabled/draining fields, but it no longer drives worker dispatch eligibility.
+
+Rationale:
+
+- Scheduling is WorkerGroup and worker runtime evidence based.
+- Adapter-node topology must not become a worker-selection selector.
+- Keeping NodeGroupBinding operational would require a second internal
+  membership truth for `(adapterNodeId, workerGroupId)`, preserving the same
+  topology/lifecycle coupling this roadmap removes.
+- Worker state report and dispatch gate mechanisms already own worker-level
+  drain/disable semantics.
+
+Scope:
+
+- Remove NodeGroupBinding from scheduling proof expectations.
+- Identify tests/docs that currently treat it as a dispatch gate.
+- Keep adapter node and node-group binding APIs as topology/admin surfaces.
+- Record the decision in the WMI inventory.
+
+Acceptance:
+
+- The roadmap no longer presents NodeGroupBinding gate semantics as an open
+  option inside WMI-2.x implementation.
+- No later slice depends on NodeGroupBinding to prove worker dispatch
+  exclusion.
+- Adapter node and node-group binding topology/admin APIs remain in scope and
+  are not removed by this decision.
+- Verification commands for diagnostics-only behavior are listed before
+  WMI-2.x implementation starts.
+
+Suggested verification:
+
+```powershell
+rg -n "applyNodeGroupBindingDispatchGate|disableDispatchForAdapterNodeGroup|clearDispatchDisableForAdapterNodeGroup|workerIdsByAdapterNodeGroup" `
+  xa-mass-worker-runtime/src/main/java `
+  platform_infra/mass-runtime-api/src/main/java `
+  platform_infra/mass-runtime-memory/src/main/java `
+  platform_infra/mass-runtime-redis/src/main/java `
+  xa-mass-worker-runtime/src/test/java `
+  xa-mass-engine/src/test/java `
+  --glob '!**/target/**'
+```
+
+## WMI-2.0 - Implement NodeGroupBinding Gate Decision
+
+Goal: land the WMI-1A decision without changing public worker registration or
+engine scheduling selector shape in the same slice.
+
+Scope:
+
+- For diagnostics-only:
+  - remove the NodeGroupBinding dispatch-gate mutation from worker lifecycle
+    writes
+  - remove or retarget tests that assert binding disable/drain blocks worker
+    scheduling
+  - keep topology/admin read and mutation APIs intact
+- For operational gate:
+  - add or retarget the internal topology/session/endpoint membership source
+  - make `WorkerRelationshipOwner` use that source instead of worker
+    declaration `adapterNodeId`
+  - keep registry gate methods only if they consume the new internal
+    membership source
+- Do not remove `adapterNodeId` from public registration in this slice.
+- Do not remove task scheduling selectors in this slice.
+
+Acceptance:
+
+- The chosen NodeGroupBinding behavior is implemented and tested.
+- Worker declaration `adapterNodeId` is no longer the required evidence source
+  for NodeGroupBinding dispatch gating.
+- The repo compiles after this slice without relying on a later registration
+  or scheduling cleanup.
+
+Suggested verification:
+
+```powershell
+.\mvnw.cmd -pl xa-mass-worker-runtime `
+  "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest" test
+
+.\mvnw.cmd -pl xa-mass-engine `
+  "-Dtest=TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest" test
+```
+
+## WMI-2.1 - Remove Adapter Node From Scheduling Intent And Selector
+
+Goal: remove transport topology ids from the engine worker-selection request
+path while leaving registration and public SDK/API cleanup to later slices.
+
+Scope:
+
+- Remove `adapterNodeId` from `TaskDispatchIntent`.
+- Remove `adapterNodeId` from `ResolvedWorkerSchedulingPolicy`.
+- Remove `adapterNodeId` from `WorkerTaskSelector`.
+- Stop `WorkerTaskSelectorFactory` from reading adapter-node evidence.
+- Remove task shared config `adapterNodeId` as an engine mainline scheduling
+  consumer, or classify it as stale config residue with no runtime consumer.
+- For any real product constraint, use worker attributes or an explicit worker
+  scheduling policy dimension instead of transport topology ids.
+
+Acceptance:
+
+- Engine scheduling intent and resolved worker scheduling policy contain no
+  `adapterNodeId`.
+- Worker-runtime selector contracts contain no `adapterNodeId`.
+- Engine matching/ranking still selects workers by WorkerGroup, target worker,
+  attributes, capability, and runtime evidence.
+- The repo compiles after this slice while public registration may still carry
+  adapter-node residue.
+
+Suggested verification:
+
+```powershell
+rg -n "adapterNodeId" `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/runtime/scheduling `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/strategy/WorkerTaskSelectorFactory.java `
+  xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/candidate/WorkerTaskSelector.java `
+  xa-mass-base/src/main/java/com/xa/mass/base/model/TaskSharedConfig.java `
+  --glob '!**/target/**'
+
+.\mvnw.cmd -pl xa-mass-engine `
+  "-Dtest=TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest" test
+```
+
+## WMI-2.2 - Retarget Candidate Runtime And Registry Source
+
+Goal: remove adapter-node scoped candidate acquisition from worker-runtime and
+runtime registry contracts after the engine selector no longer supplies that
+dimension.
+
+Scope:
+
+- Remove `adapterNodeId` from `WorkerRegistry#acquireCandidates(...)`.
+- Remove `adapterNodeId` from `WorkerCandidateSamplingContext`.
+- Remove adapter-node candidate guard logic from `WorkerCandidateIndex`.
+- Remove or classify Redis/memory node candidate bucket keys as residue with
+  no hot-path runtime consumer.
+- Keep NodeGroupBinding operational membership, if chosen, on its separate
+  internal source. Do not reuse candidate acquisition as the membership owner.
+
+Acceptance:
+
+- Worker candidate acquisition is group-scoped and attribute/bucket-scoped,
+  not adapter-node scoped.
+- `WorkerCandidateIndex` does not acquire or reject scheduling candidates by
+  adapter-node selector.
+- Runtime-api, memory registry, and Redis registry compile with the new
+  candidate acquisition contract.
+- Any remaining adapter-node registry methods are topology gate/admin residue
+  called out by the WMI-1A decision, not scheduling source APIs.
+
+Suggested verification:
+
+```powershell
+rg -n "acquireCandidates\\(|WorkerCandidateSamplingContext|nodeCandidateBucket|adapterNodeId" `
+  platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker `
+  platform_infra/mass-runtime-memory/src/main/java/com/xa/mass/runtime/memory `
+  platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis `
+  xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateIndex.java `
+  xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/candidate `
+  --glob '!**/target/**'
+
+.\mvnw.cmd -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis,xa-mass-worker-runtime -DskipTests compile
+
+.\mvnw.cmd -pl xa-mass-worker-runtime `
+  "-Dtest=WorkerCandidateIndexTest,WorkerManagerTest" test
+```
+
+Remaining `adapterNodeId` hits in this slice must be WMI-1A
+topology-gate/admin allowlist entries, not candidate source reads.
+
+## WMI-2.3 - Retarget Worker Registration And Session Public Surface
+
+Goal: remove transport topology ids from worker declaration and normal worker
+session startup after scheduling and candidate acquisition no longer depend on
+adapter-node evidence.
 
 Scope:
 
 - Define how a worker becomes a schedulable WorkerGroup member using
   `workerId`, `workerGroupId`, declaration fields, and optional coarse
-  `transportHint`; do not require public `adapterNodeId`.
+  `transportHint`.
 - Retarget SDK embedded registration mapping away from `WorkerResourceRecord`
   and away from `adapterNodeId`.
-- Retarget Java SDK worker registration request generation and normal worker
-  session helpers away from `adapterNodeId`.
+- Retarget Java SDK `WorkerSpec` and `WorkerRegistrationResult` away from
+  `adapterNodeId`.
 - Split Java SDK `PollingWorkerSession` and `WebSocketWorkerSession` behavior:
   normal worker session startup registers/updates worker declaration and
   presence only; topology bootstrap, if still needed, is an explicit topology
@@ -538,23 +746,6 @@ Scope:
 - Decide whether worker-level `updateWorkerSupportedProjects` is removed,
   redirected to WorkerGroup capability, or kept only as explicitly deprecated
   compatibility residue with no scheduling authority.
-- Remove `adapterNodeId` from `TaskDispatchIntent`.
-- Remove `adapterNodeId` from `ResolvedWorkerSchedulingPolicy`.
-- Remove `adapterNodeId` from `WorkerTaskSelector`.
-- Remove adapter-node scoped candidate acquisition from the engine-to-worker
-  runtime mainline.
-- Remove task shared config `adapterNodeId` as a scheduling selector, or
-  reclassify it as deprecated/stale config residue with no runtime consumer.
-- For any legitimate current use case, introduce or reuse worker attributes
-  such as `region`, `pool`, or `deploymentDomain`, and route them through the
-  worker scheduling policy/candidate bucket policy owner instead of transport
-  topology ids.
-- Resolve NodeGroupBinding dispatch-gate ownership in the same slice:
-  - either keep NodeGroupBinding as topology/admin diagnostics only, with no
-    worker dispatch-gate effect
-  - or keep it as an operational gate, but feed membership from an internal
-    topology/session/endpoint source that is not worker declaration and not
-    task scheduling input
 
 Acceptance:
 
@@ -567,48 +758,65 @@ Acceptance:
 - Declaration writers cannot supply raw runtime timestamps except persistence
   timestamps owned by the declaration store adapter. Public declaration APIs
   should not accept those persistence timestamps by default.
-- Engine scheduling intent, resolved worker scheduling policy, and
-  worker-runtime selector contracts contain no `adapterNodeId`.
-- `WorkerCandidateIndex` does not acquire or reject scheduling candidates by
-  adapter-node selector.
-- Task shared config no longer provides adapter-node scheduling input to the
-  engine mainline.
-- NodeGroupBinding gate behavior is explicitly implemented according to the
-  chosen target. If operational, it is driven by topology/session/endpoint
-  membership evidence; if diagnostic-only, tests and docs stop treating it as
-  scheduling proof.
-- Any remaining `adapterNodeId` usage in worker-runtime is topology/admin,
-  diagnostics, or explicitly documented migration residue called out in the
-  inventory.
 - Tests prove worker registration still creates a schedulable worker in the
-  selected WorkerGroup, WorkerGroup-scoped scheduling still works, and the
-  chosen NodeGroupBinding behavior is enforced.
+  selected WorkerGroup.
+
+Suggested verification:
+
+```powershell
+rg -n "adapterNodeId|adapterId" `
+  sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/model/WorkerRegistration.java `
+  sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk `
+  sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerSpec.java `
+  sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerRegistrationResult.java `
+  sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/session `
+  xa-mass-server/src/main/java/com/xa/mass/api/model/worker/ExternalWorkerRegisterApiRequest.java `
+  --glob '!**/target/**'
+
+.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk-api,sdk/xa-mass-embedded-sdk,sdk/xa-mass-java-sdk,xa-mass-server -DskipTests compile
+```
+
+## WMI-2.4 - Remove Dispatch Binding And Trace Adapter-Node Residue
+
+Goal: remove adapter-node worker-selection residue that can survive after the
+selector and registration paths are cleaned.
+
+Scope:
+
+- Remove `adapterNodeId` from `WorkerSchedulingView` unless it is moved to an
+  explicitly named topology/diagnostic snapshot.
+- Remove `adapterNodeId` from `TaskDispatchBinding`.
+- Stop `SimpleTaskDispatchBinder` from writing adapter-node evidence into
+  task dispatch binding or ordinary assignment evidence.
+- Stop `TraceEventLogger` from writing adapter-node worker-selection evidence.
+- Review trace sink `ExecutionEvent.NodeContext`: keep adapter node only for
+  explicit transport/topology events, not engine worker-selection or task
+  dispatch proof.
+- Update assignment snapshot and proof docs if they currently treat
+  adapter-node evidence as scheduling truth.
+
+Acceptance:
+
+- Engine/starter/transport handoff sees `workerGroupId`, selected `workerId`,
+  task/work ids, delivery bucket, and worker attributes/evidence as needed,
+  but not transport topology ids.
+- `TaskDispatchBinding`, `WorkerSchedulingView`, assignment evidence, and
+  worker-selection trace attrs do not expose `adapterNodeId`.
+- Any remaining trace `adapterNodeId` is explicit transport/topology
+  diagnostics and is not sourced from worker scheduling view.
 
 Suggested verification:
 
 ```powershell
 rg -n "adapterNodeId" `
-  sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk `
-  sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker `
-  xa-mass-server/src/main/java/com/xa/mass/api/internal `
-  xa-mass-engine/src/main/java/com/xa/mass/engine/runtime/scheduling `
-  xa-mass-engine/src/main/java/com/xa/mass/engine/strategy `
-  xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/candidate `
-  xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateIndex.java `
-  xa-mass-base/src/main/java/com/xa/mass/base/model/TaskSharedConfig.java `
+  xa-mass-base/src/main/java/com/xa/mass/base/runtime/dispatch/TaskDispatchBinding.java `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/TraceEventLogger.java `
+  platform_infra/mass-trace-sink/src/main/java/com/xa/mass/trace/sink `
   --glob '!**/target/**'
 
-.\mvnw.cmd -pl xa-mass-worker-runtime -DskipTests compile
-.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk-api -DskipTests compile
-.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -DskipTests compile
-.\mvnw.cmd -pl sdk/xa-mass-java-sdk -DskipTests compile
-.\mvnw.cmd -pl xa-mass-server -DskipTests compile
-
-.\mvnw.cmd -pl xa-mass-engine `
-  "-Dtest=TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest" test
-
-.\mvnw.cmd -pl xa-mass-worker-runtime `
-  "-Dtest=WorkerCandidateIndexTest,WorkerManagerTest" test
+.\mvnw.cmd -pl xa-mass-base,xa-mass-engine,platform_infra/mass-trace-sink -DskipTests compile
 ```
 
 ## WMI-3 - Retarget Worker Reads And Inspection
@@ -771,6 +979,14 @@ Scope:
 - Add guards for worker-runtime mutation/query contract shapes.
 - Add source scans that fail on `adapterId`/`adapterNodeId` in worker-facing
   SDK/server/frontend models while allowlisting topology/admin packages.
+- Add guards that fail if engine worker-selection or task dispatch contracts
+  expose `adapterNodeId`, including `TaskDispatchIntent`,
+  `ResolvedWorkerSchedulingPolicy`, `WorkerTaskSelector`,
+  `WorkerSchedulingView`, `TaskDispatchBinding`, ordinary assignment evidence,
+  and worker-selection trace attrs.
+- Add guards that fail if runtime candidate acquisition reintroduces
+  adapter-node scoped source reads through `WorkerCandidateSamplingContext`,
+  `WorkerRegistry#acquireCandidates`, memory registry, or Redis registry.
 - Scope raw timestamp guards to default worker list/snapshot/catalog contracts.
   Do not scan the entire server API model package with bare timestamp field
   names because command requests, state reports, deadlines, API keys, task
@@ -795,8 +1011,15 @@ Acceptance:
 - Guards fail if declaration mutation accepts inspection/composite snapshots.
 - Guards fail if worker snapshots include worker-level capability hints as
   capability truth.
+- Guards fail if engine scheduling selector, worker scheduling view, task
+  dispatch binding, or ordinary worker-selection trace evidence contains
+  `adapterNodeId`.
+- Guards fail if runtime candidate acquisition accepts or indexes by
+  `adapterNodeId` as a scheduling source dimension.
 - Guards allow timestamps only in command/evidence result packages and
   explicitly named diagnostic/audit snapshot packages.
+- Guards allow `adapterNodeId` only in explicit topology/admin/transport
+  diagnostic packages and in tests for those explicit surfaces.
 - Owning docs state the implemented contract, not target state.
 
 Suggested verification:
@@ -810,6 +1033,14 @@ Suggested verification:
 
 .\mvnw.cmd -pl xa-mass-server `
   "-Dtest=*ArchitectureGuardTest,*Contract*Test" test
+
+rg -n "adapterNodeId" `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/runtime/scheduling `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java `
+  xa-mass-base/src/main/java/com/xa/mass/base/runtime/dispatch/TaskDispatchBinding.java `
+  xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/candidate `
+  platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerCandidateSamplingContext.java `
+  --glob '!**/target/**'
 ```
 
 Exact guard class names may change during implementation; update this section
@@ -826,6 +1057,8 @@ This roadmap is complete only when all of the following are true:
 - `WorkerResourceRuntime` is retired as a production caller surface or reduced
   to internal assembly only. Engine, SDK, starter, and server callers use
   narrow owner ports.
+- The WMI inventory records the target narrow port for every former production
+  `WorkerResourceRuntime`/resource-query/declaration/node-binding caller.
 - Worker lookup contracts return minimal records, not composite inspection
   snapshots.
 - Worker public SDK/server/frontend surfaces do not expose transport topology
@@ -838,6 +1071,12 @@ This roadmap is complete only when all of the following are true:
 - NodeGroupBinding dispatch behavior is explicitly decided and implemented:
   either diagnostics-only, or operational with internal topology/session/
   endpoint membership evidence rather than worker declaration `adapterNodeId`.
+- Engine scheduling intent, resolved worker scheduling policy, worker task
+  selector, worker scheduling view, task dispatch binding, assignment
+  evidence, and worker-selection trace evidence do not expose `adapterNodeId`.
+- Runtime candidate acquisition no longer accepts or indexes by
+  `adapterNodeId`; Redis/memory node candidate bucket residue is removed or
+  explicitly classified as non-hot-path topology/admin residue.
 - Worker capability truth comes from WorkerGroup capability contracts, not
   worker-level supported project/event fields.
 - Runtime scheduling evidence comes from worker-runtime evidence/admission
@@ -847,16 +1086,91 @@ This roadmap is complete only when all of the following are true:
 - All in-repo callers are retargeted; no compatibility wrapper preserves the
   old fat model as a second live path.
 - Architecture guards cover default public worker read/list/catalog DTO/model
-  packages and worker-runtime mutation/query interfaces.
+  packages, worker-runtime mutation/query interfaces, engine
+  worker-selection/dispatch contracts, runtime candidate acquisition
+  contracts, and worker-selection trace evidence.
 - Owning docs are updated and stale roadmap residue is archived after a
   residue scan.
+
+## Current Verification Record
+
+Verified on 2026-06-16 in the current workspace slice:
+
+```powershell
+.\mvnw.cmd -pl xa-mass-worker-runtime -am `
+  "-Dtest=WorkerDeclarationBoundaryGuardTest,WorkerCandidateIndexTest,WorkerManagerTest" `
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
+# PASS: 73 tests, 0 failures
+
+.\mvnw.cmd -pl xa-mass-engine -am `
+  "-Dtest=DefaultSchedulingPlaneResolverTest,TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,WorkerSchedulingCandidateEnumeratorTest" `
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
+# PASS: 23 tests, 0 failures
+
+.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk-api -am `
+  "-Dtest=WorkerModelShapeGuardTest" `
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
+# PASS: 2 tests, 0 failures
+
+.\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -am `
+  "-Dtest=MassSdkTest,MassEngineStartRecoveryTest,WorkerRuntimeSelectionIntegrationTest,WorkerRuntimePresenceIngressTest" `
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
+# PASS: 114 tests, 0 failures
+
+.\mvnw.cmd -pl xa-mass-server -am `
+  "-Dtest=ExternalWorkerModelShapeGuardTest,WorkerApiControllerTest,CatalogControllerTest,ExternalWorkerApiControllerTest,MockRuntimeDataLoaderTest" `
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
+# PASS: 50 tests, 0 failures
+
+.\mvnw.cmd -pl integrations/xa-mass-worker-pack -am `
+  "-Dtest=WebSocketClientStarterTest" `
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
+# PASS: 5 tests, 0 failures
+
+.\mvnw.cmd -pl xa-mass-worker-runtime,sdk/xa-mass-embedded-sdk,sdk/xa-mass-embedded-sdk-api,sdk/xa-mass-java-sdk,integrations/xa-mass-worker-pack,xa-mass-server,xa-mass-testing -am -DskipTests test-compile
+# PASS
+
+corepack pnpm -C frontend typecheck
+# PASS
+
+corepack pnpm -C frontend exec vitest run `
+  src/api/workers.real.test.ts `
+  src/api/catalog.test.ts `
+  src/pages/resources/workers/WorkersPage.test.ts `
+  src/pages/runtime/RuntimeDiscoveryPage.test.ts `
+  --maxWorkers=1
+# PASS: 4 files, 9 tests
+```
+
+Verification notes:
+
+- Direct `pnpm` was not on local PATH; frontend commands were run through
+  `corepack pnpm`.
+- A mistakenly broad Vitest invocation ran the full frontend suite and exposed
+  three unrelated 5-second timeouts in `AppHeader.test.ts`,
+  `AppShell.test.ts`, and `RuntimeDiscoveryPage.test.ts`. The targeted WMI
+  frontend files passed when run directly.
+- Residue scan result: hot path scheduling/candidate/dispatch contracts and
+  default worker-facing SDK/server/frontend models have no `adapterNodeId`,
+  `adapterId`, `onlineStrategy`, or raw heartbeat/create/update timestamp
+  fields. Remaining `adapterNodeId` in catalog/frontend is limited to explicit
+  `AdapterNodeCapability` / `NodeGroupBindingCapability` topology/admin
+  models.
+- `WorkerResourceRuntime` appears only in architecture guards that prevent the
+  retired aggregate from returning.
 
 ## Verification Candidates
 
 Focused compile:
 
 ```powershell
+.\mvnw.cmd -pl xa-mass-base -DskipTests compile
 .\mvnw.cmd -pl xa-mass-worker-runtime -DskipTests compile
+.\mvnw.cmd -pl platform_infra/mass-runtime-api -DskipTests compile
+.\mvnw.cmd -pl platform_infra/mass-runtime-memory -DskipTests compile
+.\mvnw.cmd -pl platform_infra/mass-runtime-redis -DskipTests compile
+.\mvnw.cmd -pl platform_infra/mass-trace-sink -DskipTests compile
+.\mvnw.cmd -pl xa-mass-engine -DskipTests compile
 .\mvnw.cmd -pl sdk/xa-mass-embedded-sdk-api -DskipTests compile
 .\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -DskipTests compile
 .\mvnw.cmd -pl sdk/xa-mass-java-sdk -DskipTests compile
@@ -868,6 +1182,9 @@ Focused tests:
 ```powershell
 .\mvnw.cmd -pl xa-mass-worker-runtime `
   "-Dtest=WorkerManagerTest,WorkerDeclarationBoundaryGuardTest,WorkerCandidateIndexTest" test
+
+.\mvnw.cmd -pl xa-mass-engine `
+  "-Dtest=TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest" test
 
 .\mvnw.cmd -pl sdk/xa-mass-embedded-sdk `
   "-Dtest=MassSdkTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest" test
@@ -893,6 +1210,21 @@ Residue scans:
 ```powershell
 rg -n "WorkerResourceRecord" `
   sdk xa-mass-server frontend xa-mass-engine transport `
+  --glob '!**/target/**'
+
+rg -n "adapterNodeId" `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/runtime/scheduling `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/strategy `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java `
+  xa-mass-engine/src/main/java/com/xa/mass/engine/TraceEventLogger.java `
+  xa-mass-base/src/main/java/com/xa/mass/base/runtime/dispatch/TaskDispatchBinding.java `
+  xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/candidate `
+  xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateIndex.java `
+  platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerCandidateSamplingContext.java `
+  platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerRegistry.java `
+  platform_infra/mass-runtime-memory/src/main/java/com/xa/mass/runtime/memory `
+  platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis `
   --glob '!**/target/**'
 
 rg -n "adapterNodeId|adapterId|routeKey|connectionId|transportNodeId|deliveryQueueKey|lastHeartbeat|observedAt|createTime|updateTime|registeredAt|lastSeenAt|expiresAt|deadline|leaseExpireAt" `

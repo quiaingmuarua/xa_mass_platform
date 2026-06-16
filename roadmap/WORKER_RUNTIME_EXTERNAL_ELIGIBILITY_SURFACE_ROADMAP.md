@@ -2,8 +2,8 @@
 
 Status: mainline implemented. WES-0 inventory, WES-1 vocabulary decision,
 WES-2 server/catalog alignment, WES-3 SDK classification verification, WES-4
-frontend alignment, WRP-0 decision, WES-5 docs/guards, and successor handoff
-are landed for the current WES scope.
+frontend alignment, WRP-0 decision, WES-5 docs/guards, and API-surface
+deferred-decision handoff are landed for the current WES scope.
 
 Successor to:
 
@@ -18,9 +18,9 @@ Execution artifacts:
 - `roadmap/WORKER_RUNTIME_EXTERNAL_ELIGIBILITY_SURFACE_INVENTORY.md`
 - `roadmap/WORKER_RUNTIME_EXTERNAL_ELIGIBILITY_SURFACE_DECISION.md`
 
-Successor handoff:
+Deferred decision owner:
 
-- `roadmap/SERVER_CATALOG_WORKER_CAPABILITY_API_CATEGORY_ROADMAP.md`
+- `xa-mass-server/doc/API_SURFACE_INVENTORY.md`
 
 ## Purpose
 
@@ -65,9 +65,8 @@ Current deferred problems carried here:
   for scheduler truth,
 - `/api/v1/catalog/worker-capabilities` still has a diagnostic category with
   SDK credential bypass in the route inventory; WES can source-label its fields,
-  but caller/auth/category cleanup belongs to
-  `roadmap/SERVER_CATALOG_WORKER_CAPABILITY_API_CATEGORY_ROADMAP.md` unless
-  this roadmap is explicitly expanded,
+  but caller/auth/category cleanup is now recorded as a deferred decision in
+  `xa-mass-server/doc/API_SURFACE_INVENTORY.md`,
 - optional reachability projection optimization has a WRP-0 decision in
   `roadmap/WORKER_RUNTIME_EXTERNAL_ELIGIBILITY_SURFACE_DECISION.md`; WES keeps
   the live `WorkerReachabilityView` and does not implement a projection writer.

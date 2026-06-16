@@ -249,7 +249,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 false
         );
         registry.upsertSlot(
-                new WorkerMeta("worker-1", "group-a", null, null, null,
+                new WorkerMeta("worker-1", "group-a", null,
                         Map.of("region", "us"), null, null, 1_000, "ONLINE"),
                 1,
                 Set.of(eventKey())
@@ -423,7 +423,6 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 10
         ).isEmpty());
         assertTrue(workerRegistry.acquireCandidates("group-a", "attr:region=us", 10).isEmpty());
-        assertTrue(workerRegistry.acquireCandidates("group-a", "node-a", "attr:region=us", 10).isEmpty());
     }
 
     @Test
@@ -464,7 +463,6 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                     start.await();
                     while (!stop.get()) {
                         workerRegistry.slotByWorkerId("worker-1");
-                        workerRegistry.workerIdsByAdapterNodeGroup("node-a", "group-a");
                         workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_CANDIDATE_BUCKET_KEY, 10);
                         workerRegistry.hasExclusiveLease("worker-1");
                     }
@@ -495,8 +493,6 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
         return new WorkerMeta(
                 workerId,
                 groupId,
-                "node-a",
-                "polling",
                 "polling",
                 Map.of("region", "us"),
                 "agent-1",
@@ -510,8 +506,6 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
         return new WorkerMeta(
                 workerId,
                 groupId,
-                "node-a",
-                "polling",
                 "polling",
                 Map.of("region", region),
                 "agent-1",

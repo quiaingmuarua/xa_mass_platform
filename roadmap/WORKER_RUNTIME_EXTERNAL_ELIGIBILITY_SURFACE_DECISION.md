@@ -34,7 +34,7 @@ recompute it.
 
 | Dimension | External name | Owner/source | Rule |
 | --- | --- | --- | --- |
-| Worker declaration | `workerId`, `workerGroupId`, `adapterNodeId`, `adapterId`, `transportHint`, `attributes`, `maxConcurrentWork` | worker-runtime declaration/resource | Stable identity and declared facts. |
+| Worker declaration | `workerId`, `workerGroupId`, `transportHint`, `attributes`, `maxConcurrentWork` | worker-runtime declaration/resource | Stable identity and declared facts. |
 | WorkerGroup capability | `eventBindings`, `projectCodes`, `declaredWorkerIds` | WorkerGroup capability | Capability truth is group-level, not worker-row supported lists. |
 | Runtime status display | `runtimeStatus` | worker-runtime read model | Display-only current-state label. Not scheduling truth. |
 | Reachability | `reachability`, `reachable`, `reachableWorkerIds`, `hasReachableWorkerCoverage` | worker-runtime reachability/inspection | Current observed reachability. Not route-owner proof and not reserve success. |
@@ -118,9 +118,9 @@ Target shape changes:
 | `workerIds` | `declaredWorkerIds` | Group declaration membership, not eligibility. |
 | `transportOnlineCounts` | `reachableWorkerCountsByTransport` | Current formula is reachability grouped by transport hint. |
 | `modelStatusCounts` | `runtimeStatusCounts` | Display/runtime status summary. |
-| `dispatchEligibleCount` | `reachableUnlockedBindingCount` | Current formula is reachable + not locked + available node binding; it is not CES composite eligibility. |
+| `dispatchEligibleCount` | `reachableUnlockedWorkerCount` | Current formula is reachable + not locked worker coverage; it is not CES composite eligibility. |
 
-`reachableUnlockedBindingCount` is still only a catalog coverage/diagnostic
+`reachableUnlockedWorkerCount` is still only a catalog coverage/diagnostic
 count. It excludes reserve mutation outcome, capacity reservation races, rule
 evaluation, target-worker policy, and any future policy-owned attribute index.
 
@@ -163,7 +163,7 @@ Frontend must consume the target server names directly:
   `hasReachableWorkerCoverage`, `hasInvocationCoverage`
 - worker group capability: `declaredWorkerIds`,
   `reachableWorkerCountsByTransport`, `runtimeStatusCounts`,
-  `reachableUnlockedBindingCount`
+  `reachableUnlockedWorkerCount`
 
 Frontend pages may display source-aware summaries, but must not compute a local
 replacement for scheduler eligibility by combining reachability, lock,

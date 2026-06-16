@@ -321,10 +321,8 @@ public final class SdkTransportLoadRunner {
                 String workerId = "sdk-load-worker-" + i;
                 app.registerWorker(WorkerRegistration.builder()
                         .workerId(workerId)
-                        .adapterNodeId(adapterNodeId)
                         .workerGroupId(WORKER_GROUP_ID)
                         .transportHint(transportHint)
-                        .adapterId(transportMode.adapterId())
                         .attributes(Map.of("routingTags", "us", "country", "us"))
                         .build());
             }

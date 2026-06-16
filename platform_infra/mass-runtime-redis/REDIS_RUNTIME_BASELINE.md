@@ -328,33 +328,17 @@ Per-group heartbeat, slot, and candidate indexes:
   - `SET`
   - member: `candidateBucketKey`
   - bounded cleanup discovery for group buckets
-- `...:group:{groupId}:node:{adapterNodeId}:bucket:{candidateBucketKey}:workers`
-  - `SET`
-  - member: `workerId`
-  - node-scoped placement candidate bucket
-  - also backs current complete-set node/group maintenance lookup; paged
-    maintenance is deferred to
-    `roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md`
-- `...:group:{groupId}:node:{adapterNodeId}:bucket:{candidateBucketKey}:workers:slot-lifecycle-deadlines`
-  - `ZSET`
-  - member: `workerId`
-  - score: heartbeat deadline millis
-  - node-scoped scheduling index with the same derived-truth rules as the
-    group-level lifecycle deadline zset
-- `...:group:{groupId}:node-buckets`
-  - `SET`
-  - member: encoded `adapterNodeId + candidateBucketKey`
-  - bounded cleanup discovery for node buckets
 - `...:group:{groupId}:bucket-membership`
   - `HASH`
   - field: `workerId`
-  - value: encoded list of group/node bucket keys currently containing the worker
+  - value: encoded list of group bucket keys currently containing the worker
   - reverse cleanup projection for `RedisWorkerRegistry` bucket updates and slot
     removal
   - group-local replacement for the retired per-worker
     `...:group:{groupId}:worker:{workerId}:bucket-membership` key family
-  - this is not scheduling truth; stale bucket members remain correctness-neutral
-    because reserve re-validates the current slot
+  - this is not scheduling truth; stale bucket members remain
+    correctness-neutral because candidate acquisition and reserve revalidate the
+    current slot lifecycle
 
 Per-task worker occupancy indexes:
 

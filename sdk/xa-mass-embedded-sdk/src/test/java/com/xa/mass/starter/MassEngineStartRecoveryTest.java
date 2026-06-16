@@ -10,8 +10,10 @@ import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
@@ -35,15 +37,16 @@ class MassEngineStartRecoveryTest {
         EngineConfig config = new EngineConfig();
         TaskCommandService taskCommands = config.getTaskCommandService();
         TaskQueryService taskQueries = config.getTaskQueryService();
-        WorkerResourceRuntime workerResources = config.getWorkerResourceRuntime();
+        WorkerResourceDeclarationRuntime workerDeclaration = config.getWorkerResourceDeclarationRuntime();
+        WorkerResourceQueryRuntime workerQuery = config.getWorkerResourceQueryRuntime();
         WorkerAdmissionRuntime workerAdmission = config.getWorkerAdmissionRuntime();
-        workerResources.addWorker(workerResource("worker-1", "demo-workers"));
+        workerDeclaration.addWorker(workerDeclaration("worker-1", "demo-workers"));
 
         config.setMatchingStrategy((task, maxWorkerCount) -> {
             if (!workerAdmission.tryAcquireWorkerExclusiveLease("worker-1")) {
                 return List.of();
             }
-            WorkerResourceRecord candidateWorker = workerResources.worker("worker-1").orElseThrow();
+            WorkerResourceRecord candidateWorker = workerQuery.worker("worker-1").orElseThrow();
             WorkerCandidateRow candidateRow = candidateRow(candidateWorker);
             return List.of(new WorkerSchedulingCandidate(
                     candidateRow,
@@ -108,15 +111,16 @@ class MassEngineStartRecoveryTest {
             TaskCommandService taskCommands = config.getTaskCommandService();
             TaskQueryService taskQueries = config.getTaskQueryService();
             TaskResultIngestFacade resultIngestFacade = config.getTaskResultIngestFacade();
-            WorkerResourceRuntime workerResources = config.getWorkerResourceRuntime();
+            WorkerResourceDeclarationRuntime workerDeclaration = config.getWorkerResourceDeclarationRuntime();
+            WorkerResourceQueryRuntime workerQuery = config.getWorkerResourceQueryRuntime();
             WorkerAdmissionRuntime workerAdmission = config.getWorkerAdmissionRuntime();
-            workerResources.addWorker(workerResource("worker-1", "demo-workers"));
+            workerDeclaration.addWorker(workerDeclaration("worker-1", "demo-workers"));
 
             config.setMatchingStrategy((task, maxWorkerCount) -> {
                 if (!workerAdmission.tryAcquireWorkerExclusiveLease("worker-1")) {
                     return List.of();
                 }
-                WorkerResourceRecord candidateWorker = workerResources.worker("worker-1").orElseThrow();
+                WorkerResourceRecord candidateWorker = workerQuery.worker("worker-1").orElseThrow();
                 WorkerCandidateRow candidateRow = candidateRow(candidateWorker);
                 return List.of(new WorkerSchedulingCandidate(
                         candidateRow,
@@ -200,22 +204,14 @@ class MassEngineStartRecoveryTest {
         }
     }
 
-    private static WorkerResourceRecord workerResource(String workerId, String workerGroupId) {
-        return new WorkerResourceRecord(
+    private static WorkerDeclarationRecord workerDeclaration(String workerId, String workerGroupId) {
+        return new WorkerDeclarationRecord(
                 workerId,
-                "ONLINE",
-                null,
-                java.time.LocalDateTime.now(),
-                List.of("demoApp"),
-                List.of(),
                 workerGroupId,
-                null,
-                null,
+                "polling",
                 null,
                 1,
-                Map.of(),
-                null,
-                null
+                Map.of()
         );
     }
 
@@ -224,9 +220,7 @@ class MassEngineStartRecoveryTest {
                 worker.workerId(),
                 worker.agentVersion(),
                 worker.workerGroupId(),
-                worker.adapterNodeId(),
-                worker.adapterId(),
-                worker.onlineStrategy(),
+                worker.transportHint(),
                 worker.attributes()
         );
     }

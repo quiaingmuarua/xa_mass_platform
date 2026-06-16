@@ -371,7 +371,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         }
         return switch (result.status()) {
             case DISPATCH_DISABLED, MISSING_SLOT, REMOVING_SLOT, STALE_HEARTBEAT -> AssignmentResult.RESOURCE_UNAVAILABLE;
-            case GROUP_MISMATCH, ADAPTER_NODE_MISMATCH -> AssignmentResult.RULE_NOT_MATCH;
+            case GROUP_MISMATCH -> AssignmentResult.RULE_NOT_MATCH;
             default -> AssignmentResult.QUOTA_EXCEEDED;
         };
     }

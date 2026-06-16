@@ -1,7 +1,9 @@
 package com.xa.mass.worker.runtime;
 
+import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -60,6 +62,8 @@ class WorkerDeclarationBoundaryGuardTest {
                 "lastHeartbeat",
                 "supportedProjects",
                 "supportedEventCodes",
+                "adapterNodeId",
+                "adapterId",
                 "dispatchEnabled",
                 "reservedPermits",
                 "exclusiveLeaseHeld"
@@ -73,6 +77,55 @@ class WorkerDeclarationBoundaryGuardTest {
         assertTrue(violations.isEmpty(),
                 "WorkerDeclarationRecord must stay declaration-only and must not carry runtime state "
                         + "or worker-level capability hints:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerResourceRecordStaysMinimalLookupModel() {
+        Set<String> forbiddenComponents = Set.of(
+                "statusName",
+                "status",
+                "lastHeartbeat",
+                "lastHeartbeatMillis",
+                "supportedProjects",
+                "supportedEventCodes",
+                "adapterNodeId",
+                "adapterId",
+                "onlineStrategy",
+                "createTime",
+                "updateTime",
+                "dispatchEnabled",
+                "reservedPermits",
+                "exclusiveLeaseHeld"
+        );
+
+        List<String> violations = Stream.of(WorkerResourceRecord.class.getRecordComponents())
+                .map(component -> component.getName())
+                .filter(forbiddenComponents::contains)
+                .toList();
+
+        assertTrue(violations.isEmpty(),
+                "WorkerResourceRecord is a minimal lookup model. Runtime, capability, topology, "
+                        + "and raw timestamp fields must use dedicated owner views:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerMetaDoesNotCarryTransportOwnerTopology() {
+        Set<String> forbiddenComponents = Set.of(
+                "adapterNodeId",
+                "adapterId",
+                "nodeId"
+        );
+
+        List<String> violations = Stream.of(WorkerMeta.class.getRecordComponents())
+                .map(component -> component.getName())
+                .filter(forbiddenComponents::contains)
+                .toList();
+
+        assertTrue(violations.isEmpty(),
+                "WorkerMeta may carry registry scheduling metadata, but must not expose "
+                        + "transport-owner topology fields:\n"
                         + String.join("\n", violations));
     }
 }

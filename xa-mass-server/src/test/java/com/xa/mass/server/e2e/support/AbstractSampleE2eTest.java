@@ -778,9 +778,7 @@ public abstract class AbstractSampleE2eTest {
                 .build());
         return WorkerRegistration.builder()
                 .workerId(workerId)
-                .adapterNodeId(adapterNodeId)
                 .workerGroupId(workerGroupId)
-                .adapterId("websocket")
                 .transportHint("realtime")
                 .maxConcurrentWork(maxConcurrentWork)
                 .attributes(attributes == null ? Map.of() : attributes)

@@ -67,7 +67,7 @@ describe('catalog.real', () => {
                                 reachableWorkerCountsByTransport: {realtime: 10, polling: 20},
                                 runtimeStatusCounts: {ONLINE: 30},
                                 lockedCount: 0,
-                                reachableUnlockedBindingCount: 30,
+                                reachableUnlockedWorkerCount: 30,
                                 fingerprintDistribution: {'fp-android-sg-a': 3},
                             },
                         ],

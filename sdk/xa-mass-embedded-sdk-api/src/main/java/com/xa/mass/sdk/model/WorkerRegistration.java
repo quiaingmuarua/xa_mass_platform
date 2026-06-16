@@ -5,25 +5,21 @@ import java.util.*;
 /**
  * SDK-native worker registration contract.
  *
- * <p>Registration declares worker execution identity and its adapter-node /
- * group relation. WorkerGroupDeclaration owns capability truth. Runtime online
+ * <p>Registration declares worker execution identity and WorkerGroup
+ * membership. WorkerGroupDeclaration owns capability truth. Runtime online
  * state is produced by worker transport connect/heartbeat events.
  */
 public final class WorkerRegistration {
 
     private final String workerId;
-    private final String adapterNodeId;
     private final String workerGroupId;
-    private final String adapterId;
     private final String transportHint;
     private final int maxConcurrentWork;
     private final Map<String, String> attributes;
 
     private WorkerRegistration(Builder builder) {
         this.workerId = builder.workerId;
-        this.adapterNodeId = builder.adapterNodeId;
         this.workerGroupId = builder.workerGroupId;
-        this.adapterId = builder.adapterId;
         this.transportHint = builder.transportHint;
         this.maxConcurrentWork = Math.max(1, builder.maxConcurrentWork);
         this.attributes = immutableMapCopy(builder.attributes);
@@ -37,16 +33,8 @@ public final class WorkerRegistration {
         return workerId;
     }
 
-    public String getAdapterNodeId() {
-        return adapterNodeId;
-    }
-
     public String getWorkerGroupId() {
         return workerGroupId;
-    }
-
-    public String getAdapterId() {
-        return adapterId;
     }
 
     public String getTransportHint() {
@@ -66,9 +54,7 @@ public final class WorkerRegistration {
         if (this == o) return true;
         if (!(o instanceof WorkerRegistration that)) return false;
         return Objects.equals(workerId, that.workerId)
-                && Objects.equals(adapterNodeId, that.adapterNodeId)
                 && Objects.equals(workerGroupId, that.workerGroupId)
-                && Objects.equals(adapterId, that.adapterId)
                 && Objects.equals(transportHint, that.transportHint)
                 && maxConcurrentWork == that.maxConcurrentWork
                 && Objects.equals(attributes, that.attributes);
@@ -78,9 +64,7 @@ public final class WorkerRegistration {
     public int hashCode() {
         return Objects.hash(
                 workerId,
-                adapterNodeId,
                 workerGroupId,
-                adapterId,
                 transportHint,
                 maxConcurrentWork,
                 attributes
@@ -91,9 +75,7 @@ public final class WorkerRegistration {
     public String toString() {
         return "WorkerRegistration{" +
                 "workerId='" + workerId + '\'' +
-                ", adapterNodeId='" + adapterNodeId + '\'' +
                 ", workerGroupId='" + workerGroupId + '\'' +
-                ", adapterId='" + adapterId + '\'' +
                 ", transportHint='" + transportHint + '\'' +
                 ", maxConcurrentWork=" + maxConcurrentWork +
                 ", attributes=" + attributes +
@@ -109,9 +91,7 @@ public final class WorkerRegistration {
 
     public static final class Builder {
         private String workerId;
-        private String adapterNodeId;
         private String workerGroupId;
-        private String adapterId;
         private String transportHint;
         private int maxConcurrentWork = 1;
         private Map<String, String> attributes = Collections.emptyMap();
@@ -124,18 +104,8 @@ public final class WorkerRegistration {
             return this;
         }
 
-        public Builder adapterNodeId(String adapterNodeId) {
-            this.adapterNodeId = adapterNodeId;
-            return this;
-        }
-
         public Builder workerGroupId(String workerGroupId) {
             this.workerGroupId = workerGroupId;
-            return this;
-        }
-
-        public Builder adapterId(String adapterId) {
-            this.adapterId = adapterId;
             return this;
         }
 

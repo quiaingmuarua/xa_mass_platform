@@ -52,7 +52,6 @@ import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.worker.runtime.report.WorkerReportRuntime;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.report.WorkerStateProjectionRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
@@ -67,6 +66,10 @@ import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.starter.EngineRuntimeBridge;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.NoopExecutionEventSink;
+import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerNodeBindingRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 
 import java.util.Map;
 
@@ -332,7 +335,19 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         return workerManager;
     }
 
-    public WorkerResourceRuntime getWorkerResourceRuntime() {
+    public WorkerResourceQueryRuntime getWorkerResourceQueryRuntime() {
+        return workerManager();
+    }
+
+    public WorkerResourceDeclarationRuntime getWorkerResourceDeclarationRuntime() {
+        return workerManager();
+    }
+
+    public WorkerNodeBindingRuntime getWorkerNodeBindingRuntime() {
+        return workerManager();
+    }
+
+    public WorkerHeartbeatRuntime getWorkerHeartbeatRuntime() {
         return workerManager();
     }
 
@@ -368,7 +383,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         if (workerControlRuntime == null) {
             workerControlRuntime = new WorkerControlService(
                     getWorkerReportRuntime(),
-                    getWorkerResourceRuntime(),
+                    getWorkerResourceQueryRuntime(),
                     getWorkerDispatchGateRuntime(),
                     workerCommandLifecycleOwner,
                     workerStateProjectionRuntime,

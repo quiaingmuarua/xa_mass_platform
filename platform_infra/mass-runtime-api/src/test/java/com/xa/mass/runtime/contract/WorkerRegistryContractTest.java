@@ -161,8 +161,6 @@ public abstract class WorkerRegistryContractTest {
         registry.upsertSlot(meta("worker-c", "group-b"), 1, Set.of(eventKey()));
 
         assertEquals(Set.of("worker-a", "worker-b"), registry.workerIdsByGroupId("group-a"));
-        assertEquals(Set.of("worker-a", "worker-b"), registry.workerIdsByAdapterNodeGroup("node-a", "group-a"));
-        assertEquals(Set.of(), registry.workerIdsByAdapterNodeGroup("node-b", "group-a"));
     }
 
     @Test
@@ -178,24 +176,6 @@ public abstract class WorkerRegistryContractTest {
         assertEquals(ReserveStatus.REMOVING_SLOT,
                 registry.tryReserve("worker-b", "task-b", 1, 1000).status());
         assertTrue(registry.tryReserve("worker-c", "task-c", 1, 1000).accepted());
-    }
-
-    @Test
-    void bulkNodeGroupDispatchGateIsSemanticAndDoesNotRequireCallerToListWorkers() {
-        WorkerRegistry registry = createRegistry();
-        registry.upsertSlot(meta("worker-a", "group-a"), 1, Set.of(eventKey()));
-        registry.upsertSlot(meta("worker-b", "group-a"), 1, Set.of(eventKey()));
-        registry.upsertSlot(meta("worker-c", "group-b"), 1, Set.of(eventKey()));
-
-        assertEquals(2, registry.disableDispatchForAdapterNodeGroup("node-a", "group-a", WORKER_STATE));
-        assertFalse(registry.isDispatchEnabled("worker-a"));
-        assertFalse(registry.isDispatchEnabled("worker-b"));
-        assertTrue(registry.isDispatchEnabled("worker-c"));
-        assertEquals(0, registry.disableDispatchForAdapterNodeGroup("node-b", "group-a", WORKER_STATE));
-
-        assertEquals(2, registry.clearDispatchDisableForAdapterNodeGroup("node-a", "group-a", WORKER_STATE));
-        assertTrue(registry.isDispatchEnabled("worker-a"));
-        assertTrue(registry.isDispatchEnabled("worker-b"));
     }
 
     @Test
@@ -313,8 +293,6 @@ public abstract class WorkerRegistryContractTest {
         return new WorkerMeta(
                 workerId,
                 groupId,
-                "node-a",
-                "polling",
                 "polling",
                 Map.of("region", "us"),
                 "agent-1",

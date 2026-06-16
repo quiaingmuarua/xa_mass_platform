@@ -8,8 +8,6 @@ import java.util.Objects;
 public final class RedisWorkerRegistryKeyspace {
 
     public static final String DEFAULT_NAMESPACE = RedisTaskWorkKeyspace.DEFAULT_NAMESPACE + ":worker";
-    static final String NODE_BUCKET_SEPARATOR = "\u001F";
-
     private final String namespace;
 
     public RedisWorkerRegistryKeyspace() {
@@ -56,23 +54,8 @@ public final class RedisWorkerRegistryKeyspace {
         return groupPrefix(groupId) + ":buckets";
     }
 
-    public String nodeCandidateBucket(String groupId, String adapterNodeId, String candidateBucketKey) {
-        return groupPrefix(groupId)
-                + ":node:" + requireToken(adapterNodeId, "adapterNodeId")
-                + ":bucket:" + requireToken(candidateBucketKey, "candidateBucketKey")
-                + ":workers";
-    }
-
-    public String nodeCandidateBucketLifecycleDeadlinesZset(String groupId, String adapterNodeId, String candidateBucketKey) {
-        return candidateBucketLifecycleDeadlinesZset(nodeCandidateBucket(groupId, adapterNodeId, candidateBucketKey));
-    }
-
     public String candidateBucketLifecycleDeadlinesZset(String candidateBucketStorageKey) {
         return requireToken(candidateBucketStorageKey, "candidateBucketStorageKey") + ":slot-lifecycle-deadlines";
-    }
-
-    public String groupNodeCandidateBucketsSet(String groupId) {
-        return groupPrefix(groupId) + ":node-buckets";
     }
 
     public String groupBucketMembershipHash(String groupId) {
@@ -81,17 +64,6 @@ public final class RedisWorkerRegistryKeyspace {
 
     public String taskWorkerActiveCountsHash(String taskId) {
         return taskPrefix(taskId) + ":worker-active-count";
-    }
-
-    public String nodeCandidateBucketMember(String adapterNodeId, String candidateBucketKey) {
-        return requireToken(adapterNodeId, "adapterNodeId")
-                + NODE_BUCKET_SEPARATOR
-                + requireToken(candidateBucketKey, "candidateBucketKey");
-    }
-
-    public NodeCandidateBucketMember parseNodeCandidateBucketMember(String member) {
-        String[] parts = splitPair(member, "node candidate bucket member");
-        return new NodeCandidateBucketMember(parts[0], parts[1]);
     }
 
     private String groupPrefix(String groupId) {
@@ -104,18 +76,6 @@ public final class RedisWorkerRegistryKeyspace {
 
     private String namespaced(String suffix) {
         return namespace + ":" + suffix;
-    }
-
-    private static String[] splitPair(String value, String fieldName) {
-        String token = requireToken(value, fieldName);
-        int separator = token.indexOf(NODE_BUCKET_SEPARATOR);
-        if (separator <= 0 || separator == token.length() - NODE_BUCKET_SEPARATOR.length()) {
-            throw new IllegalArgumentException(fieldName + " is malformed");
-        }
-        return new String[]{
-                token.substring(0, separator),
-                token.substring(separator + NODE_BUCKET_SEPARATOR.length())
-        };
     }
 
     private static String normalizeNamespace(String namespace) {
@@ -137,6 +97,4 @@ public final class RedisWorkerRegistryKeyspace {
         return value.trim();
     }
 
-    public record NodeCandidateBucketMember(String adapterNodeId, String candidateBucketKey) {
-    }
 }

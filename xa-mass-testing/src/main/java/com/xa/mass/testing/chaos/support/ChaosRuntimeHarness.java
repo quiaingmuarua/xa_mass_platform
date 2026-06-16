@@ -300,10 +300,8 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         ensureWorkerGroupBinding(workerGroupId, projectCode, "chaos-websocket-node", WorkerTransportHints.REALTIME);
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(workerId)
-                .adapterNodeId("chaos-websocket-node")
                 .workerGroupId(workerGroupId)
                 .transportHint(WorkerTransportHints.REALTIME)
-                .adapterId("websocket")
                 .attributes(Map.of("routingTags", routingCode, "country", routingCode))
                 .build());
         workerGroupIdByWorkerId.put(workerId, workerGroupId);
@@ -316,10 +314,8 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         ensureWorkerGroupBinding(workerGroupId, projectCode, "chaos-polling-node", WorkerTransportHints.POLLING);
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(workerId)
-                .adapterNodeId("chaos-polling-node")
                 .workerGroupId(workerGroupId)
                 .transportHint(WorkerTransportHints.POLLING)
-                .adapterId("polling")
                 .attributes(Map.of("routingTags", routingCode, "country", routingCode))
                 .build());
         workerGroupIdByWorkerId.put(workerId, workerGroupId);

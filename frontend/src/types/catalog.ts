@@ -52,7 +52,7 @@ export interface WorkerGroupCapability {
     reachableWorkerCountsByTransport: Record<string, number>
     runtimeStatusCounts: Record<string, number>
     lockedCount: number
-    reachableUnlockedBindingCount: number
+    reachableUnlockedWorkerCount: number
     fingerprintDistribution: Record<string, number>
 }
 

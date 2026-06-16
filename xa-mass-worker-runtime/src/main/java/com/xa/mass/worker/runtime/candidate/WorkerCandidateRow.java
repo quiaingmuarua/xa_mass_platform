@@ -15,9 +15,7 @@ public record WorkerCandidateRow(
         String workerId,
         String agentVersion,
         String workerGroupId,
-        String adapterNodeId,
-        String adapterId,
-        String onlineStrategy,
+        String transportHint,
         Map<String, String> attributes
 ) {
     public WorkerCandidateRow {

@@ -49,7 +49,7 @@
         <div class="metric-tile">
           <div class="metric-label">Transport</div>
           <div class="metric-value metric-text">
-            {{ worker.hasActiveEndpoint ? 'Active' : 'Idle' }}
+            {{ worker.transportHint || '-' }}
           </div>
         </div>
       </section>
@@ -76,8 +76,8 @@
               <el-descriptions-item label="Agent version">
                 {{ worker.agentVersion || '-' }}
               </el-descriptions-item>
-              <el-descriptions-item label="Last heartbeat">
-                {{ worker.lastHeartbeat || '-' }}
+              <el-descriptions-item label="Transport hint">
+                {{ worker.transportHint || '-' }}
               </el-descriptions-item>
               <el-descriptions-item label="Lock state">
                 {{ worker.locked ? 'LOCKED' : 'FREE' }}

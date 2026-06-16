@@ -457,7 +457,6 @@ public class TaskWorkerAssignListenerTest {
                 "batch-" + messageId,
                 "pool-a",
                 null,
-                null,
                 "test-candidate"
         );
     }

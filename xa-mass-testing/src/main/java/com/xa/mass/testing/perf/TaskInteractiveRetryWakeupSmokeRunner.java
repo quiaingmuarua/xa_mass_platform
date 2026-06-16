@@ -4,7 +4,6 @@ package com.xa.mass.testing.perf;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
@@ -33,9 +32,11 @@ import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
 import com.xa.mass.starter.config.EngineConfig;
@@ -107,7 +108,8 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             TaskDispatchWakeupPort dispatchWakeupPort = engineConfig.getTaskDispatchWakeupPort();
             TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-            WorkerResourceRuntime workerResourceRuntime = workerManager;
+            WorkerResourceDeclarationRuntime workerDeclarationRuntime = workerManager;
+            WorkerResourceQueryRuntime workerResourceQueryRuntime = workerManager;
             WorkerAdmissionRuntime workerAdmissionRuntime = workerManager;
             WorkerSchedulingViewRuntime workerSchedulingViewRuntime = workerManager;
             WorkerWarmHintRuntime workerWarmHintRuntime = workerManager;
@@ -152,7 +154,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
 
             TaskWorkerMatchingStrategy matchingStrategy =
                     new LaneAwareMatchingStrategy(
-                            workerResourceRuntime,
+                            workerResourceQueryRuntime,
                             workerAdmissionRuntime,
                             workerSchedulingViewRuntime,
                             config.reservedInteractiveWorkers());
@@ -185,7 +187,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             );
 
             try {
-                registerWorkers(workerResourceRuntime, config.workerCount());
+                registerWorkers(workerDeclarationRuntime, config.workerCount());
                 taskEvents.addTaskReadyListener(assignWorker::submit);
                 taskEvents.addTaskDispatchListener(assignWorker::submit);
                 taskEvents.addTaskWorkAttemptClosedListener(releaseListener::onTaskWorkAttemptClosed);
@@ -389,26 +391,18 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             return inputs;
         }
 
-        private static void registerWorkers(WorkerResourceRuntime workerResourceRuntime, int workerCount) {
-            workerResourceRuntime.upsertWorkerGroup(WorkerGroupRecord.builder(WORKER_GROUP_ID)
+        private static void registerWorkers(WorkerResourceDeclarationRuntime workerDeclarationRuntime, int workerCount) {
+            workerDeclarationRuntime.upsertWorkerGroup(WorkerGroupRecord.builder(WORKER_GROUP_ID)
                     .projectCodes(List.of(PROJECT_CODE))
                     .build());
             for (int i = 0; i < workerCount; i++) {
-                workerResourceRuntime.addWorker(new WorkerResourceRecord(
+                workerDeclarationRuntime.addWorker(new WorkerDeclarationRecord(
                         "retry-wakeup-worker-" + i,
-                        WorkerStatus.ONLINE.name(),
-                        "retry-wakeup-smoke",
-                        LocalDateTime.now(),
-                        List.of(PROJECT_CODE),
-                        List.of(),
                         WORKER_GROUP_ID,
                         null,
-                        null,
-                        null,
+                        "retry-wakeup-smoke",
                         1,
-                        Map.of(),
-                        null,
-                        null
+                        Map.of()
                 ));
             }
         }
@@ -429,16 +423,16 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
     }
 
     private static final class LaneAwareMatchingStrategy implements TaskWorkerMatchingStrategy {
-        private final WorkerResourceRuntime workerResourceRuntime;
+        private final WorkerResourceQueryRuntime workerResourceQueryRuntime;
         private final WorkerAdmissionRuntime workerAdmissionRuntime;
         private final WorkerSchedulingViewRuntime workerSchedulingViewRuntime;
         private final int reservedInteractiveWorkers;
 
-        private LaneAwareMatchingStrategy(WorkerResourceRuntime workerResourceRuntime,
+        private LaneAwareMatchingStrategy(WorkerResourceQueryRuntime workerResourceQueryRuntime,
                                           WorkerAdmissionRuntime workerAdmissionRuntime,
                                           WorkerSchedulingViewRuntime workerSchedulingViewRuntime,
                                           int reservedInteractiveWorkers) {
-            this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
+            this.workerResourceQueryRuntime = Objects.requireNonNull(workerResourceQueryRuntime, "workerResourceQueryRuntime");
             this.workerAdmissionRuntime = Objects.requireNonNull(workerAdmissionRuntime, "workerAdmissionRuntime");
             this.workerSchedulingViewRuntime = Objects.requireNonNull(workerSchedulingViewRuntime,
                     "workerSchedulingViewRuntime");
@@ -452,7 +446,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 return List.of();
             }
             List<WorkerSchedulingCandidate> matched = new ArrayList<>();
-            for (WorkerResourceRecord worker : workerResourceRuntime.workers()) {
+            for (WorkerResourceRecord worker : workerResourceQueryRuntime.workers()) {
                 if (matched.size() >= maxWorkerCount) {
                     break;
                 }
@@ -460,7 +454,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                         && isReservedInteractiveWorker(worker)) {
                     continue;
                 }
-                if (!PerfWorkerMatchingSupport.workerAvailable(worker)
+                if (!PerfWorkerMatchingSupport.workerAvailable(workerSchedulingViewRuntime, worker)
                         || !workerGroupSelector.contains(worker.workerGroupId())
                         || !PerfWorkerMatchingSupport.supportsProject(
                                 workerSchedulingViewRuntime,
@@ -492,7 +486,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             }
             try {
                 int workerIndex = Integer.parseInt(workerId.substring(dash + 1));
-                int totalWorkers = workerResourceRuntime.workers().size();
+                int totalWorkers = workerResourceQueryRuntime.workers().size();
                 return workerIndex >= Math.max(totalWorkers - reservedInteractiveWorkers, 0);
             } catch (NumberFormatException ignored) {
                 return false;

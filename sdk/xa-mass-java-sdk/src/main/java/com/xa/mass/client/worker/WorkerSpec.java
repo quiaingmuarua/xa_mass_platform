@@ -4,7 +4,6 @@ import java.util.Map;
 
 public record WorkerSpec(
         String workerId,
-        String adapterNodeId,
         String workerGroupId,
         String transportHint,
         Map<String, String> attributes
@@ -19,7 +18,6 @@ public record WorkerSpec(
 
     public static final class Builder {
         private String workerId;
-        private String adapterNodeId;
         private String workerGroupId;
         private String transportHint;
         private Map<String, String> attributes = WorkerRequestSupport.mutableMap();
@@ -29,11 +27,6 @@ public record WorkerSpec(
 
         public Builder workerId(String workerId) {
             this.workerId = workerId;
-            return this;
-        }
-
-        public Builder adapterNodeId(String adapterNodeId) {
-            this.adapterNodeId = adapterNodeId;
             return this;
         }
 
@@ -68,7 +61,7 @@ public record WorkerSpec(
         }
 
         public WorkerSpec build() {
-            return new WorkerSpec(workerId, adapterNodeId, workerGroupId, transportHint, attributes);
+            return new WorkerSpec(workerId, workerGroupId, transportHint, attributes);
         }
     }
 }

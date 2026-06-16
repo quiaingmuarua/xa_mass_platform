@@ -24,7 +24,6 @@ import com.xa.mass.engine.watchdog.LeaseExpireWatchdog;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.engine.watchdog.WorkerCommandMaintenanceWatchdog;
 import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -290,7 +289,6 @@ public class EngineRuntimeKernel {
     private StartedRuntime startedRuntime() {
         return new StartedRuntime(
                 eventListeners,
-                config.getWorkerResourceRuntime(),
                 config.getWorkerDispatchGateRuntime(),
                 null
         );
@@ -299,14 +297,12 @@ public class EngineRuntimeKernel {
     private StartedRuntime startedRuntime(Runnable dispatchWakeupCallback) {
         return new StartedRuntime(
                 eventListeners,
-                config.getWorkerResourceRuntime(),
                 config.getWorkerDispatchGateRuntime(),
                 dispatchWakeupCallback
         );
     }
 
     public record StartedRuntime(TaskEventListenerRegistrar eventListeners,
-                                 WorkerResourceRuntime workerResourceRuntime,
                                  WorkerDispatchGateRuntime workerDispatchGateRuntime,
                                  Runnable dispatchWakeupCallback) {
     }

@@ -20,12 +20,13 @@ ownership is summarized in `../../integrations/README.md`.
   `POST /worker-api/v1/worker-groups`, then register Worker identity through
   `POST /worker-api/v1/workers`.
 - Realtime adapters (`websocket`, `socket`) are active cross-language validation paths, but their wire shapes are adapter-local compatibility seams, not the stable public worker protocol commitment.
-- External worker/session callers declare `adapterNodeId + transportHint`.
+- External worker/session callers declare `workerGroupId + transportHint`.
   Concrete transport runtime ids such as `adapterId`, `routeKey`,
   `transportNodeId`, `connectionId`, and `deliveryQueueKey` are transport
   internals, not stable Java SDK worker contracts. Worker sessions declare
-  `workerGroupId`; any internal assigned-delivery bucket is derived by
-  SDK/server transport assembly and is not a caller-configured Java SDK id.
+  `workerGroupId`; explicit adapter-node and node-group binding APIs are
+  topology/admin bootstrap only, not the worker registration or session
+  identity.
 - `eventCode` is the global capability identity.
 - Task shell creation enters through `POST /api/v1/tasks`, then work items are appended through `POST /api/v1/tasks/{taskId}/items`.
 - Task list/detail reads may return composite task rows. Java `TaskView`

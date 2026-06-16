@@ -228,7 +228,6 @@ mass.workers().bindNodeGroup("phone-poll-node-sg-1", "phone-device-probe");
 
 mass.workers().registerWorker(WorkerSpec.builder()
         .workerId("phone-worker-sg-001")
-        .adapterNodeId("phone-poll-node-sg-1")
         .workerGroupId("phone-device-probe")
         .polling()
         .attribute("fingerprint", "fp-android-13-sg")
@@ -263,7 +262,6 @@ mass.workers().declareGroup(WorkerGroupSpec.builder()
 try (PollingWorkerSession session = mass.workerSessions().polling()
         .workerId("phone-worker-sg-001")
         .workerGroupId("phone-device-probe")
-        .adapterNodeId("phone-poll-node-sg-1")
         .attribute("fingerprint", "fp-android-13-sg")
         .attribute("region", "sg")
         .eventHandlers(handlers)
@@ -307,7 +305,6 @@ mass.workers().declareGroup(WorkerGroupSpec.builder()
 try (WebSocketWorkerSession session = mass.workerSessions().webSocket()
         .workerId("crawler-ws-001")
         .workerGroupId("realtime-crawler")
-        .adapterNodeId("crawler-ws-node-1")
         .endpoint(URI.create("ws://localhost:18088/ws"))
         .maxReconnectAttempts(10)
         .event("crawler.fetch-page", dispatch -> WorkerResult.success(Map.of(
@@ -328,7 +325,6 @@ Lifecycle callbacks:
 PollingWorkerSession session = mass.workerSessions().polling()
         .workerId("phone-worker-sg-001")
         .workerGroupId("phone-device-probe")
-        .adapterNodeId("phone-poll-node-sg-1")
         .listener(new WorkerSessionListener() {
             @Override
             public void onHandlerFailure(WorkerSessionDispatchFailure failure) {

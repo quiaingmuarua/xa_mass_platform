@@ -9,7 +9,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -24,7 +24,7 @@ public class WorkerSchedulingCandidateEnumeratorTest {
     void createsWorkerLevelCandidateFromRoutingAttributes() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-stateless", Map.of("routingTags", "shared,us", "country", "us"));
-        workerManager.addWorker(workerResource(worker));
+        workerManager.addWorker(workerDeclaration(worker));
 
         WorkerSchedulingCandidateEnumerator enumerator = new WorkerSchedulingCandidateEnumerator(workerManager);
 
@@ -42,7 +42,7 @@ public class WorkerSchedulingCandidateEnumeratorTest {
     void enumerationBuildsWorkerLevelCandidateFromWorkerAttributes() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-attribute-backed", Map.of("country", "worker-level"));
-        workerManager.addWorker(workerResource(worker));
+        workerManager.addWorker(workerDeclaration(worker));
 
         WorkerSchedulingCandidateEnumerator enumerator = new WorkerSchedulingCandidateEnumerator(workerManager);
 
@@ -64,22 +64,14 @@ public class WorkerSchedulingCandidateEnumeratorTest {
         return worker;
     }
 
-    private WorkerResourceRecord workerResource(Worker worker) {
-        return new WorkerResourceRecord(
+    private WorkerDeclarationRecord workerDeclaration(Worker worker) {
+        return new WorkerDeclarationRecord(
                 worker.getWorkerId(),
-                worker.getStatus() == null ? null : worker.getStatus().name(),
-                worker.getAgentVersion(),
-                worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
                 worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
                 worker.getOnlineStrategy(),
+                worker.getAgentVersion(),
                 worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime()
+                worker.getAttributes()
         );
     }
 

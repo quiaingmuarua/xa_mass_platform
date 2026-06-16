@@ -4,7 +4,6 @@ package com.xa.mass.testing.perf;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
@@ -40,9 +39,11 @@ import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
@@ -150,7 +151,8 @@ public final class TaskFlowLoadModelRunner {
                 TaskDispatchWakeupPort dispatchWakeupPort = engineConfig.getTaskDispatchWakeupPort();
                 TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
                 WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
-                WorkerResourceRuntime workerResourceRuntime = workerManager;
+                WorkerResourceDeclarationRuntime workerDeclarationRuntime = workerManager;
+                WorkerResourceQueryRuntime workerResourceQueryRuntime = workerManager;
                 WorkerAdmissionRuntime workerAdmissionRuntime = workerManager;
                 WorkerSchedulingViewRuntime workerSchedulingViewRuntime = workerManager;
                 WorkerWarmHintRuntime workerWarmHintRuntime = workerManager;
@@ -268,7 +270,7 @@ public final class TaskFlowLoadModelRunner {
                 };
 
                 TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(
-                        workerResourceRuntime,
+                        workerResourceQueryRuntime,
                         workerAdmissionRuntime,
                         workerSchedulingViewRuntime);
                 SimpleTaskDispatchBinder dispatchBinder =
@@ -299,7 +301,7 @@ public final class TaskFlowLoadModelRunner {
                         );
 
                 try {
-                    registerWorkers(workerResourceRuntime, config);
+                    registerWorkers(workerDeclarationRuntime, config);
 
                     taskEvents.addTaskReadyListener(assignWorker::submit);
                     taskEvents.addTaskDispatchListener(assignWorker::submit);
@@ -518,27 +520,19 @@ public final class TaskFlowLoadModelRunner {
             return inputs;
         }
 
-        private static void registerWorkers(WorkerResourceRuntime workerResourceRuntime, LoadConfig config) {
-            workerResourceRuntime.upsertWorkerGroup(WorkerGroupRecord.builder(WORKER_GROUP_ID)
+        private static void registerWorkers(WorkerResourceDeclarationRuntime workerDeclarationRuntime, LoadConfig config) {
+            workerDeclarationRuntime.upsertWorkerGroup(WorkerGroupRecord.builder(WORKER_GROUP_ID)
                     .projectCodes(List.of(PROJECT_CODE))
                     .defaultMaxConcurrentWork(config.batchSize())
                     .build());
             for (int i = 0; i < config.workerCount(); i++) {
-                workerResourceRuntime.addWorker(new WorkerResourceRecord(
+                workerDeclarationRuntime.addWorker(new WorkerDeclarationRecord(
                         "load-worker-" + i,
-                        WorkerStatus.ONLINE.name(),
-                        "load-model",
-                        LocalDateTime.now(),
-                        List.of(PROJECT_CODE),
-                        List.of(),
                         WORKER_GROUP_ID,
                         null,
-                        null,
-                        null,
+                        "load-model",
                         config.batchSize(),
-                        Map.of(),
-                        null,
-                        null
+                        Map.of()
                 ));
             }
         }
@@ -613,14 +607,14 @@ public final class TaskFlowLoadModelRunner {
     }
 
     private static final class DeterministicMatchingStrategy implements TaskWorkerMatchingStrategy {
-        private final WorkerResourceRuntime workerResourceRuntime;
+        private final WorkerResourceQueryRuntime workerResourceQueryRuntime;
         private final WorkerAdmissionRuntime workerAdmissionRuntime;
         private final WorkerSchedulingViewRuntime workerSchedulingViewRuntime;
 
-        private DeterministicMatchingStrategy(WorkerResourceRuntime workerResourceRuntime,
+        private DeterministicMatchingStrategy(WorkerResourceQueryRuntime workerResourceQueryRuntime,
                                               WorkerAdmissionRuntime workerAdmissionRuntime,
                                               WorkerSchedulingViewRuntime workerSchedulingViewRuntime) {
-            this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
+            this.workerResourceQueryRuntime = Objects.requireNonNull(workerResourceQueryRuntime, "workerResourceQueryRuntime");
             this.workerAdmissionRuntime = Objects.requireNonNull(workerAdmissionRuntime, "workerAdmissionRuntime");
             this.workerSchedulingViewRuntime = Objects.requireNonNull(workerSchedulingViewRuntime,
                     "workerSchedulingViewRuntime");
@@ -633,11 +627,11 @@ public final class TaskFlowLoadModelRunner {
                 return List.of();
             }
             List<WorkerSchedulingCandidate> matched = new ArrayList<>();
-            for (WorkerResourceRecord worker : workerResourceRuntime.workers()) {
+            for (WorkerResourceRecord worker : workerResourceQueryRuntime.workers()) {
                 if (matched.size() >= maxWorkerCount) {
                     break;
                 }
-                if (!PerfWorkerMatchingSupport.workerAvailable(worker)
+                if (!PerfWorkerMatchingSupport.workerAvailable(workerSchedulingViewRuntime, worker)
                         || !workerGroupSelector.contains(worker.workerGroupId())
                         || !PerfWorkerMatchingSupport.supportsProject(
                                 workerSchedulingViewRuntime,

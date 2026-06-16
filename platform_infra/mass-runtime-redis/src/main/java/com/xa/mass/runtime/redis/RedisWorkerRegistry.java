@@ -262,31 +262,8 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public synchronized Set<String> workerIdsByAdapterNodeGroup(String adapterNodeId, String groupId) {
-        String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
-        String normalizedGroupId = normalizeNullable(groupId);
-        if (normalizedAdapterNodeId == null || normalizedGroupId == null) {
-            return Set.of();
-        }
-        LinkedHashSet<String> workerIds = new LinkedHashSet<>();
-        for (String nodeCandidateBucketMember : commands.smembers(keyspace.groupNodeCandidateBucketsSet(normalizedGroupId))) {
-            try {
-                RedisWorkerRegistryKeyspace.NodeCandidateBucketMember parsed = keyspace.parseNodeCandidateBucketMember(nodeCandidateBucketMember);
-                if (normalizedAdapterNodeId.equals(parsed.adapterNodeId())) {
-                    workerIds.addAll(commands.smembers(
-                            keyspace.nodeCandidateBucket(normalizedGroupId, parsed.adapterNodeId(), parsed.candidateBucketKey())
-                    ));
-                }
-            } catch (IllegalArgumentException ignored) {
-                // Stale malformed diagnostic member; bounded cleanup can remove it later.
-            }
-        }
-        return Set.copyOf(workerIds);
-    }
-
-    @Override
     public synchronized List<String> acquireCandidates(String groupId, String candidateBucketKey, int maxCandidateCount) {
-        return acquireCandidates(groupId, null, candidateBucketKey, maxCandidateCount);
+        return acquireCandidatesInternal(groupId, candidateBucketKey, maxCandidateCount, Long.MIN_VALUE);
     }
 
     @Override
@@ -294,32 +271,19 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                                                        String candidateBucketKey,
                                                        int maxCandidateCount,
                                                        long nowMillis) {
-        return acquireCandidates(groupId, null, candidateBucketKey, maxCandidateCount, nowMillis);
+        return acquireCandidatesInternal(groupId, candidateBucketKey, maxCandidateCount, nowMillis);
     }
 
-    @Override
-    public synchronized List<String> acquireCandidates(String groupId,
-                                          String adapterNodeId,
-                                          String candidateBucketKey,
-                                          int maxCandidateCount) {
-        return acquireCandidates(groupId, adapterNodeId, candidateBucketKey, maxCandidateCount, Long.MIN_VALUE);
-    }
-
-    @Override
-    public synchronized List<String> acquireCandidates(String groupId,
-                                                       String adapterNodeId,
-                                                       String candidateBucketKey,
-                                                       int maxCandidateCount,
-                                                       long nowMillis) {
+    private List<String> acquireCandidatesInternal(String groupId,
+                                                   String candidateBucketKey,
+                                                   int maxCandidateCount,
+                                                   long nowMillis) {
         String normalizedGroupId = normalizeNullable(groupId);
         String normalizedCandidateBucketKey = normalizeCandidateBucketKey(candidateBucketKey);
-        String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
         if (normalizedGroupId == null || maxCandidateCount <= 0) {
             return List.of();
         }
-        String bucketKey = normalizedAdapterNodeId == null
-                ? keyspace.groupCandidateBucket(normalizedGroupId, normalizedCandidateBucketKey)
-                : keyspace.nodeCandidateBucket(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey);
+        String bucketKey = keyspace.groupCandidateBucket(normalizedGroupId, normalizedCandidateBucketKey);
         int sourceLimit = sourceBatchLimit(maxCandidateCount);
         List<String> workerIds = nowMillis == Long.MIN_VALUE
                 ? new ArrayList<>(commands.srandmember(bucketKey, sourceLimit))
@@ -330,7 +294,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                 );
         workerIds.sort(String::compareTo);
         return samplingPolicy.sample(
-                new WorkerCandidateSamplingContext(normalizedGroupId, normalizedAdapterNodeId, normalizedCandidateBucketKey),
+                new WorkerCandidateSamplingContext(normalizedGroupId, normalizedCandidateBucketKey),
                 workerIds,
                 maxCandidateCount
         );
@@ -830,13 +794,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             commands.sadd(groupBucketKey, meta.workerId());
             bucketKeys.add(groupBucketKey);
             addToLifecycleProjectionIfEligible(slot, groupBucketKey);
-            if (meta.adapterNodeId() != null) {
-                commands.sadd(keyspace.groupNodeCandidateBucketsSet(meta.groupId()), keyspace.nodeCandidateBucketMember(meta.adapterNodeId(), candidateBucketKey));
-                String nodeBucketKey = keyspace.nodeCandidateBucket(meta.groupId(), meta.adapterNodeId(), candidateBucketKey);
-                commands.sadd(nodeBucketKey, meta.workerId());
-                bucketKeys.add(nodeBucketKey);
-                addToLifecycleProjectionIfEligible(slot, nodeBucketKey);
-            }
         }
         if (!bucketKeys.isEmpty()) {
             commands.hset(
@@ -1109,8 +1066,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     private static final class WorkerMetaPayload {
         String workerId;
         String groupId;
-        String adapterNodeId;
-        String adapterId;
         String transportHint;
         Map<String, String> attributes;
         String agentVersion;
@@ -1122,8 +1077,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             WorkerMetaPayload payload = new WorkerMetaPayload();
             payload.workerId = meta.workerId();
             payload.groupId = meta.groupId();
-            payload.adapterNodeId = meta.adapterNodeId();
-            payload.adapterId = meta.adapterId();
             payload.transportHint = meta.transportHint();
             payload.attributes = meta.attributes();
             payload.agentVersion = meta.agentVersion();
@@ -1137,8 +1090,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             return new WorkerMeta(
                     workerId,
                     groupId,
-                    adapterNodeId,
-                    adapterId,
                     transportHint,
                     attributes,
                     agentVersion,

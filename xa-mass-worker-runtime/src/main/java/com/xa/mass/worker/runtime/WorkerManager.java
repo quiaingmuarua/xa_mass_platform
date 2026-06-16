@@ -24,8 +24,12 @@ import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.worker.runtime.report.WorkerReportRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
+import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerNodeBindingRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
@@ -57,7 +61,10 @@ import java.util.Set;
  * endpoint leases stay in transport delivery and must not be
  * promoted into worker lifecycle truth.
  */
-public class WorkerManager implements WorkerResourceRuntime,
+public class WorkerManager implements WorkerResourceQueryRuntime,
+        WorkerResourceDeclarationRuntime,
+        WorkerNodeBindingRuntime,
+        WorkerHeartbeatRuntime,
         WorkerCandidateRuntime,
         WorkerSchedulingViewRuntime,
         WorkerAdmissionRuntime,
@@ -116,16 +123,11 @@ public class WorkerManager implements WorkerResourceRuntime,
         this.groupOwner = new WorkerGroupOwner(this.workerRegistry);
         this.candidateSourceOwner = new WorkerCandidateSourceOwner(this::getWorkerCandidateIndex);
         this.admissionOwner = new WorkerAdmissionOwner(this.workerRegistry);
-        this.relationshipOwner = new WorkerRelationshipOwner(
-                this.workerRegistry,
-                this.groupOwner::hasWorkerGroup,
-                this::notifyDispatchWakeup
-        );
+        this.relationshipOwner = new WorkerRelationshipOwner(this.groupOwner::hasWorkerGroup);
         this.resourceOwner = new WorkerResourceOwner(
                 workerStorage,
                 this.workerRegistry,
-                this.groupOwner,
-                this.relationshipOwner
+                this.groupOwner
         );
         this.resourceOwner.syncWorkerRegistrySlots(this.resourceOwner.getAllWorkers());
         this.reportOwner = new WorkerReportOwner(capabilityAuthority, this.resourceOwner, this.groupOwner);
@@ -133,7 +135,7 @@ public class WorkerManager implements WorkerResourceRuntime,
     }
 
     @Override
-    public void addWorker(WorkerResourceRecord worker) {
+    public void addWorker(WorkerDeclarationRecord worker) {
         resourceOwner.addWorker(toWorker(worker));
         publishWorkerRegistrySnapshot();
         notifyDispatchWakeup("worker registered");
@@ -145,7 +147,7 @@ public class WorkerManager implements WorkerResourceRuntime,
     }
 
     @Override
-    public boolean updateWorker(WorkerResourceRecord worker) {
+    public boolean updateWorker(WorkerDeclarationRecord worker) {
         Optional<Worker> updated = resourceOwner.updateWorker(toWorker(worker));
         updated.ifPresent(ignored -> publishWorkerRegistrySnapshot());
         return updated.isPresent();
@@ -399,41 +401,28 @@ public class WorkerManager implements WorkerResourceRuntime,
         }
         return new WorkerResourceRecord(
                 worker.getWorkerId(),
-                worker.getStatus() == null ? null : worker.getStatus().name(),
                 worker.getAgentVersion(),
-                worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
                 worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
                 worker.getOnlineStrategy(),
                 worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime()
+                worker.getAttributes()
         );
     }
 
-    private static Worker toWorker(WorkerResourceRecord record) {
+    private static Worker toWorker(WorkerDeclarationRecord record) {
         if (record == null) {
-            throw new IllegalArgumentException("worker resource record must not be null");
+            throw new IllegalArgumentException("worker declaration record must not be null");
         }
         Worker worker = new Worker();
         worker.setWorkerId(record.workerId());
-        worker.setStatus(toWorkerStatus(record.statusName()));
+        worker.setStatus(WorkerStatus.OFFLINE);
         worker.setAgentVersion(record.agentVersion());
-        worker.setLastHeartbeat(record.lastHeartbeat());
-        worker.setSupportedProjects(record.supportedProjects());
-        worker.setSupportedEventCodes(record.supportedEventCodes());
         worker.setWorkerGroupId(record.workerGroupId());
-        worker.setAdapterNodeId(record.adapterNodeId());
-        worker.setAdapterId(record.adapterId());
-        worker.setOnlineStrategy(record.onlineStrategy());
+        worker.setOnlineStrategy(record.transportHint());
         worker.setMaxConcurrentWork(record.maxConcurrentWork());
         worker.setAttributes(record.attributes());
-        worker.setCreateTime(record.createTime() != null ? record.createTime() : LocalDateTime.now());
-        worker.setUpdateTime(record.updateTime() != null ? record.updateTime() : LocalDateTime.now());
+        worker.setCreateTime(LocalDateTime.now());
+        worker.setUpdateTime(LocalDateTime.now());
         return worker;
     }
 

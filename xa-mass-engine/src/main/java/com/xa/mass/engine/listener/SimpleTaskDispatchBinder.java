@@ -388,7 +388,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 "attempt dispatched",
                 dispatchEvidence
         );
-        return TaskDispatchBinding.workerLevelWithTransportEvidence(
+        return TaskDispatchBinding.workerLevelWithEvidence(
                 task.getTid(),
                 work.messageId(),
                 work.eventCode(),
@@ -401,8 +401,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 work.workerId(),
                 work.batchId(),
                 schedulingView.workerGroupId(),
-                schedulingView.adapterNodeId(),
-                schedulingView.onlineStrategy(),
                 eventBindingKey,
                 workerCandidateSource
         );
@@ -414,8 +412,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         Map<String, Object> evidence = new LinkedHashMap<>();
         if (schedulingView != null) {
             evidence.put("workerGroupId", schedulingView.workerGroupId());
-            evidence.put("adapterNodeId", schedulingView.adapterNodeId());
-            evidence.put("onlineStrategy", schedulingView.onlineStrategy());
         }
         evidence.put("eventBindingKey", eventBindingKey);
         evidence.put("workerCandidateSource", workerCandidateSource);
@@ -440,10 +436,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         if (targetWorkerId != null && !targetWorkerId.isBlank()) {
             return "TARGET_WORKER";
-        }
-        String adapterNodeId = TaskSharedConfig.adapterNodeId(task);
-        if (adapterNodeId != null && !adapterNodeId.isBlank()) {
-            return "GROUP_SELECTOR_WITH_NODE";
         }
         return "GROUP_SELECTOR";
     }

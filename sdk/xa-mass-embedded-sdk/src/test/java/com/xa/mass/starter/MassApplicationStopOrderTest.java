@@ -319,14 +319,10 @@ class MassApplicationStopOrderTest {
         c.getWorkerDeclarationStore().addWorker(new WorkerDeclarationRecord(
                 workerId,
                 "raw-message-workers",
-                null,
-                adapterId,
                 transportHint,
                 null,
                 1,
-                Map.of(),
-                null,
-                null
+                Map.of()
         ));
         return c;
     }

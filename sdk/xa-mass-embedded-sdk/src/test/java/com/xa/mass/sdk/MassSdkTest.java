@@ -43,9 +43,10 @@ import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.engine.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
+import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
@@ -479,7 +480,6 @@ class MassSdkTest {
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("worker-1")
                     .workerGroupId("polling-workers")
-                    .adapterNodeId("sdk-test-node")
                     .transportHint(WorkerTransportHints.POLLING)
                     .build());
 
@@ -1153,12 +1153,12 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = mock(EngineConfig.class);
-        WorkerResourceRuntime workerRuntime = mock(WorkerResourceRuntime.class);
+        WorkerResourceQueryRuntime workerRuntime = mock(WorkerResourceQueryRuntime.class);
         WorkerSchedulingViewRuntime schedulingViewRuntime = mock(WorkerSchedulingViewRuntime.class);
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
-        when(config.getWorkerResourceRuntime()).thenReturn(workerRuntime);
+        when(config.getWorkerResourceQueryRuntime()).thenReturn(workerRuntime);
         when(config.getWorkerSchedulingViewRuntime()).thenReturn(schedulingViewRuntime);
         when(workerRuntime.worker("worker-1")).thenReturn(java.util.Optional.of(workerResource("worker-1", "group-1")));
         when(schedulingViewRuntime.getWorkerReachability("worker-1")).thenReturn(WorkerReachabilityState.ONLINE);
@@ -1173,12 +1173,12 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = mock(EngineConfig.class);
-        WorkerResourceRuntime workerRuntime = mock(WorkerResourceRuntime.class);
+        WorkerResourceQueryRuntime workerRuntime = mock(WorkerResourceQueryRuntime.class);
         WorkerSchedulingViewRuntime schedulingViewRuntime = mock(WorkerSchedulingViewRuntime.class);
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
-        when(config.getWorkerResourceRuntime()).thenReturn(workerRuntime);
+        when(config.getWorkerResourceQueryRuntime()).thenReturn(workerRuntime);
         when(config.getWorkerSchedulingViewRuntime()).thenReturn(schedulingViewRuntime);
         when(workerRuntime.worker("worker-stale")).thenReturn(java.util.Optional.of(
                 workerResource("worker-stale", "group-1")));
@@ -1493,7 +1493,6 @@ class MassSdkTest {
         bindSdkTestNode(app, "crawler");
         app.registerWorker(WorkerRegistration.builder()
                 .workerId("crawler-worker-001")
-                .adapterNodeId("sdk-test-node")
                 .workerGroupId("crawler")
                 .transportHint("polling")
                 .maxConcurrentWork(4)
@@ -1505,7 +1504,7 @@ class MassSdkTest {
         WorkerDeclarationRecord worker = captor.getValue();
         Assertions.assertEquals("crawler-worker-001", worker.workerId());
         Assertions.assertEquals("crawler", worker.workerGroupId());
-        Assertions.assertEquals("polling", worker.onlineStrategy());
+        Assertions.assertEquals("polling", worker.transportHint());
         Assertions.assertEquals(4, worker.maxConcurrentWork());
         Assertions.assertEquals(Map.of("type", "crawler"), worker.attributes());
     }
@@ -1689,16 +1688,18 @@ class MassSdkTest {
     @Test
     void engineConfigDerivesWorkerRuntimeFromCurrentWorkerDeclarationStore() {
         EngineConfig config = new EngineConfig();
-        WorkerResourceRuntime initial = config.getWorkerResourceRuntime();
-        assertSame(initial, config.getWorkerResourceRuntime());
+        WorkerResourceDeclarationRuntime initialDeclaration = config.getWorkerResourceDeclarationRuntime();
+        WorkerResourceQueryRuntime initialQuery = config.getWorkerResourceQueryRuntime();
+        assertSame(initialDeclaration, initialQuery);
         WorkerDeclarationStore replacement = spy(new com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore());
 
         config.setWorkerDeclarationStore(replacement);
 
-        WorkerResourceRuntime rebound = config.getWorkerResourceRuntime();
-        assertNotSame(initial, rebound);
-        assertSame(rebound, config.getWorkerResourceRuntime());
-        rebound.addWorker(workerResource("worker-rebound", "runtime-group"));
+        WorkerResourceDeclarationRuntime reboundDeclaration = config.getWorkerResourceDeclarationRuntime();
+        WorkerResourceQueryRuntime reboundQuery = config.getWorkerResourceQueryRuntime();
+        assertNotSame(initialDeclaration, reboundDeclaration);
+        assertSame(reboundDeclaration, reboundQuery);
+        reboundDeclaration.addWorker(workerDeclaration("worker-rebound", "runtime-group"));
 
         verify(replacement).addWorker(argThat(worker -> "worker-rebound".equals(worker.workerId())));
         assertNotNull(replacement.getWorker("worker-rebound").orElse(null));
@@ -1710,7 +1711,7 @@ class MassSdkTest {
         InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry();
 
         config.setWorkerRegistry(registry);
-        config.getWorkerResourceRuntime().addWorker(workerResource("worker-registry-runtime", "runtime-group"));
+        config.getWorkerResourceDeclarationRuntime().addWorker(workerDeclaration("worker-registry-runtime", "runtime-group"));
 
         assertTrue(registry.slotByWorkerId("worker-registry-runtime").isPresent());
     }
@@ -1718,7 +1719,7 @@ class MassSdkTest {
     @Test
     void engineConfigRejectsWorkerRegistryReplacementAfterWorkerRuntimeIsConfigured() {
         EngineConfig config = new EngineConfig();
-        config.getWorkerResourceRuntime();
+        config.getWorkerResourceDeclarationRuntime();
 
         assertThrows(IllegalStateException.class,
                 () -> config.setWorkerRegistry(new InMemoryWorkerRegistry()));
@@ -1804,7 +1805,7 @@ class MassSdkTest {
         EngineConfig config = mock(EngineConfig.class);
         TaskCommandService taskCommandService = mock(TaskCommandService.class);
         TaskQueryService taskQueryService = mock(TaskQueryService.class);
-        WorkerResourceRuntime workerManager = mock(WorkerResourceRuntime.class);
+        WorkerResourceQueryRuntime workerManager = mock(WorkerResourceQueryRuntime.class);
         Task task = new Task();
         task.setTid("task-resolve-single");
         task.setProject("crawlerApp");
@@ -1814,7 +1815,7 @@ class MassSdkTest {
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
         when(config.getTaskQueryService()).thenReturn(taskQueryService);
-        when(config.getWorkerResourceRuntime()).thenReturn(workerManager);
+        when(config.getWorkerResourceQueryRuntime()).thenReturn(workerManager);
         when(taskQueryService.getTask("task-resolve-single")).thenReturn(task);
         when(workerManager.workerGroups()).thenReturn(List.of(group("crawler", "crawlerApp", "crawler.fetch-page")));
         stubAppendReceipts(taskCommandService);
@@ -1840,7 +1841,7 @@ class MassSdkTest {
         EngineConfig config = mock(EngineConfig.class);
         TaskCommandService taskCommandService = mock(TaskCommandService.class);
         TaskQueryService taskQueryService = mock(TaskQueryService.class);
-        WorkerResourceRuntime workerManager = mock(WorkerResourceRuntime.class);
+        WorkerResourceQueryRuntime workerManager = mock(WorkerResourceQueryRuntime.class);
         Task task = new Task();
         task.setTid("task-resolve-multi");
         task.setProject("crawlerApp");
@@ -1850,7 +1851,7 @@ class MassSdkTest {
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
         when(config.getTaskQueryService()).thenReturn(taskQueryService);
-        when(config.getWorkerResourceRuntime()).thenReturn(workerManager);
+        when(config.getWorkerResourceQueryRuntime()).thenReturn(workerManager);
         when(taskQueryService.getTask("task-resolve-multi")).thenReturn(task);
         when(workerManager.workerGroups()).thenReturn(List.of(
                 group("crawler-a", "crawlerApp", "crawler.fetch-page"),
@@ -1879,7 +1880,7 @@ class MassSdkTest {
         EngineConfig config = mock(EngineConfig.class);
         TaskCommandService taskCommandService = mock(TaskCommandService.class);
         TaskQueryService taskQueryService = mock(TaskQueryService.class);
-        WorkerResourceRuntime workerManager = mock(WorkerResourceRuntime.class);
+        WorkerResourceQueryRuntime workerManager = mock(WorkerResourceQueryRuntime.class);
         Task task = new Task();
         task.setTid("task-resolve-none");
         task.setProject("crawlerApp");
@@ -1889,7 +1890,7 @@ class MassSdkTest {
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
         when(config.getTaskQueryService()).thenReturn(taskQueryService);
-        when(config.getWorkerResourceRuntime()).thenReturn(workerManager);
+        when(config.getWorkerResourceQueryRuntime()).thenReturn(workerManager);
         when(taskQueryService.getTask("task-resolve-none")).thenReturn(task);
         when(workerManager.workerGroups()).thenReturn(List.of());
 
@@ -2515,7 +2516,6 @@ class MassSdkTest {
         bindSdkTestNode(app, "crawler");
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(" crawler-worker-001 ")
-                .adapterNodeId(" sdk-test-node ")
                 .workerGroupId(" crawler ")
                 .transportHint(" POLLING ")
                 .attributes(workerAttributes)
@@ -2526,7 +2526,7 @@ class MassSdkTest {
         WorkerDeclarationRecord worker = workerCaptor.getValue();
         Assertions.assertEquals("crawler-worker-001", worker.workerId());
         Assertions.assertEquals("crawler", worker.workerGroupId());
-        Assertions.assertEquals("polling", worker.onlineStrategy());
+        Assertions.assertEquals("polling", worker.transportHint());
         Assertions.assertEquals(Map.of("type", "crawler"), worker.attributes());
     }
 
@@ -2554,25 +2554,24 @@ class MassSdkTest {
                 .defaultMaxConcurrentWork(3)
                 .build());
 
-        WorkerResourceRuntime workerRuntime = config.getWorkerResourceRuntime();
-        Assertions.assertTrue(workerRuntime.workerGroups().stream()
+        WorkerResourceQueryRuntime workerQuery = config.getWorkerResourceQueryRuntime();
+        Assertions.assertTrue(workerQuery.workerGroups().stream()
                 .flatMap(group -> group.eventBindings().stream())
                 .anyMatch(binding -> "crawler.fetch-page".equals(binding.eventCode())
                         && binding.projectCodes().contains("crawlerApp")));
-        Assertions.assertTrue(workerRuntime.worker("crawler-worker-001").isEmpty());
-        var group = workerRuntime.workerGroup("crawler").orElseThrow();
+        Assertions.assertTrue(workerQuery.worker("crawler-worker-001").isEmpty());
+        var group = workerQuery.workerGroup("crawler").orElseThrow();
         Assertions.assertEquals(Map.of("source", "declared"), group.defaultAttributes());
         Assertions.assertEquals(3, group.defaultMaxConcurrentWork());
 
         bindSdkTestNode(app, "crawler");
         app.registerWorker(WorkerRegistration.builder()
                 .workerId("crawler-worker-001")
-                .adapterNodeId("sdk-test-node")
                 .workerGroupId("crawler")
                 .transportHint("polling")
                 .build());
 
-        WorkerResourceRecord registered = workerRuntime.worker("crawler-worker-001").orElseThrow();
+        WorkerResourceRecord registered = workerQuery.worker("crawler-worker-001").orElseThrow();
         Assertions.assertEquals("crawler", registered.workerGroupId());
     }
 
@@ -2670,7 +2669,7 @@ class MassSdkTest {
     }
 
     @Test
-    void registerWorkerRejectsAdapterLabelAsTransportHint() {
+    void registerWorkerStoresCustomTransportHintWithoutAdapterIdentity() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
@@ -2681,17 +2680,15 @@ class MassSdkTest {
         stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
-        IllegalArgumentException error = assertThrows(
-                IllegalArgumentException.class,
-                () -> app.registerWorker(WorkerRegistration.builder()
-                        .workerId("worker-with-websocket-label")
-                        .adapterId("websocket")
-                        .transportHint("websocket")
-                        .build())
-        );
+        app.registerWorker(WorkerRegistration.builder()
+                .workerId("worker-with-custom-transport")
+                .transportHint("websocket")
+                .build());
 
-        Assertions.assertEquals("Worker adapterId 'websocket' belongs to transportHint 'realtime', not 'websocket'",
-                error.getMessage());
+        WorkerDeclarationRecord worker = config.getWorkerDeclarationStore()
+                .getWorker("worker-with-custom-transport")
+                .orElseThrow();
+        Assertions.assertEquals("websocket", worker.transportHint());
     }
 
     @Test
@@ -2732,7 +2729,7 @@ class MassSdkTest {
     }
 
     @Test
-    void registerWorkerRejectsMissingAdapterIdWhenRealtimeFamilyHasOnlyOneRuntimeAdapter() {
+    void registerWorkerStoresRealtimeTransportHintWithoutAdapterIdentity() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
@@ -2754,22 +2751,23 @@ class MassSdkTest {
 
         try {
             app.start();
-            IllegalArgumentException error = assertThrows(
-                    IllegalArgumentException.class,
-                    () -> app.registerWorker(WorkerRegistration.builder()
-                            .workerId("realtime-worker-default-websocket")
-                            .transportHint("realtime")
-                            .build())
-            );
-            assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
-                    error.getMessage());
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("realtime-worker-default-websocket")
+                    .transportHint("realtime")
+                    .build());
+
+            WorkerDeclarationRecord worker = requireDelegate(app).getEngine().getConfig()
+                    .getWorkerDeclarationStore()
+                    .getWorker("realtime-worker-default-websocket")
+                    .orElseThrow();
+            assertEquals(WorkerTransportHints.REALTIME, worker.transportHint());
         } finally {
             app.stop();
         }
     }
 
     @Test
-    void registerWorkerRejectsMissingAdapterIdWhenMultipleRealtimeAdaptersAreConfigured() {
+    void registerWorkerKeepsRealtimeTransportHintWhenMultipleRealtimeAdaptersAreConfigured() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
@@ -2794,22 +2792,23 @@ class MassSdkTest {
 
         try {
             app.start();
-            IllegalArgumentException error = assertThrows(
-                    IllegalArgumentException.class,
-                    () -> app.registerWorker(WorkerRegistration.builder()
-                            .workerId("realtime-worker-missing-adapter")
-                            .transportHint("realtime")
-                            .build())
-            );
-            assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
-                    error.getMessage());
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("realtime-worker-missing-adapter")
+                    .transportHint("realtime")
+                    .build());
+
+            WorkerDeclarationRecord worker = requireDelegate(app).getEngine().getConfig()
+                    .getWorkerDeclarationStore()
+                    .getWorker("realtime-worker-missing-adapter")
+                    .orElseThrow();
+            assertEquals(WorkerTransportHints.REALTIME, worker.transportHint());
         } finally {
             app.stop();
         }
     }
 
     @Test
-    void registerWorkerUsesExplicitRealtimeAdapterIdWhenMultipleRealtimeAdaptersAreConfigured() {
+    void registerWorkerDoesNotPersistRealtimeAdapterIdentity() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
@@ -2836,19 +2835,18 @@ class MassSdkTest {
             app.start();
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("realtime-worker-socket")
-                    .adapterId("socket")
                     .transportHint("realtime")
                     .build());
 
-            assertEquals("socket", app.getWorkerAdapterId("realtime-worker-socket"));
             assertEquals(WorkerTransportHints.REALTIME, app.getWorkerTransportHint("realtime-worker-socket"));
+            assertEquals(WorkerTransportHints.REALTIME, app.getWorker("realtime-worker-socket").getTransportHint());
         } finally {
             app.stop();
         }
     }
 
     @Test
-    void registerWorkerResolvesRealtimeAdapterIdFromRegisteredAdapterNode() {
+    void registerWorkerIgnoresAdapterNodeTopologyForWorkerDeclaration() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
@@ -2892,70 +2890,13 @@ class MassSdkTest {
                     .build());
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("realtime-worker-websocket-node")
-                    .adapterNodeId("websocket-node")
                     .workerGroupId("realtime-workers")
                     .transportHint("realtime")
                     .build());
 
-            assertEquals("websocket", app.getWorkerAdapterId("realtime-worker-websocket-node"));
             assertEquals(WorkerTransportHints.REALTIME, app.getWorkerTransportHint("realtime-worker-websocket-node"));
-            assertEquals("websocket-node", app.getWorker("realtime-worker-websocket-node").getAdapterNodeId());
-        } finally {
-            app.stop();
-        }
-    }
-
-    @Test
-    void getWorkerTransportHintFallsBackToRegistryBindingInsteadOfNormalizingAdapterId() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         endpointLeaseStore,
-                                                         deliveryService,
-                                                         adapterBindings) -> new TransportRuntimeRegistry(
-                taskResultIngestChannel,
-                endpointLeaseStore,
-                List.of(
-                        canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
-                        canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
-                )
-        );
-
-        MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
-                        .workerTransportRuntimeFactory(transportFactory))
-                .engine(engine -> engine.enabled(true).workerThreads(1))
-                .build();
-
-        try {
-            app.start();
-            app.registerWorker(WorkerRegistration.builder()
-                    .workerId("realtime-worker-websocket")
-                    .adapterId("websocket")
-                    .transportHint("realtime")
-                    .build());
-            WorkerDeclarationRecord worker = requireDelegate(app).getEngine().getConfig()
-                    .getWorkerDeclarationStore()
-                    .getWorker("realtime-worker-websocket")
-                    .orElseThrow();
-            assertTrue(requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().updateWorker(
-                    new WorkerDeclarationRecord(
-                            worker.workerId(),
-                            worker.workerGroupId(),
-                            worker.adapterNodeId(),
-                            worker.adapterId(),
-                            null,
-                            worker.agentVersion(),
-                            worker.maxConcurrentWork(),
-                            worker.attributes(),
-                            worker.createTime(),
-                            worker.updateTime()
-                    )
-            ));
-
-            assertEquals(WorkerTransportHints.REALTIME, app.getWorkerTransportHint("realtime-worker-websocket"));
+            assertEquals(WorkerTransportHints.REALTIME,
+                    app.getWorker("realtime-worker-websocket-node").getTransportHint());
         } finally {
             app.stop();
         }
@@ -2980,14 +2921,10 @@ class MassSdkTest {
             requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().addWorker(new WorkerDeclarationRecord(
                     worker.getWorkerId(),
                     worker.getWorkerGroupId(),
-                    worker.getAdapterNodeId(),
-                    worker.getAdapterId(),
                     worker.getOnlineStrategy(),
                     worker.getAgentVersion(),
                     worker.getMaxConcurrentWork(),
-                    worker.getAttributes(),
-                    worker.getCreateTime(),
-                    worker.getUpdateTime()
+                    worker.getAttributes()
             ));
 
             IllegalArgumentException error = assertThrows(
@@ -3001,7 +2938,7 @@ class MassSdkTest {
     }
 
     @Test
-    void pullWorkerRejectsRealtimeWorkerWhenTransportIsNotPullCapable() {
+    void pullWorkerRejectsPushOnlyWorkerWhenTransportIsNotPullCapable() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
@@ -3010,7 +2947,7 @@ class MassSdkTest {
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 endpointLeaseStore,
-                List.of(canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
+                List.of(canonicalRouteBinding(new StubPushOnlyAdapter("push-only", "push-only")))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -3024,34 +2961,16 @@ class MassSdkTest {
         try {
             app.start();
             app.registerWorker(WorkerRegistration.builder()
-                    .workerId("realtime-worker-1")
-                    .adapterId("websocket")
-                    .transportHint("realtime")
+                    .workerId("push-only-worker-1")
+                    .workerGroupId("push-only-workers")
+                    .transportHint("push-only")
                     .build());
-            WorkerDeclarationRecord worker = requireDelegate(app).getEngine().getConfig()
-                    .getWorkerDeclarationStore()
-                    .getWorker("realtime-worker-1")
-                    .orElseThrow();
-            assertTrue(requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().updateWorker(
-                    new WorkerDeclarationRecord(
-                            worker.workerId(),
-                            "realtime-workers",
-                            worker.adapterNodeId(),
-                            worker.adapterId(),
-                            worker.onlineStrategy(),
-                            worker.agentVersion(),
-                            worker.maxConcurrentWork(),
-                            worker.attributes(),
-                            worker.createTime(),
-                            worker.updateTime()
-                    )
-            ));
 
             IllegalStateException error = assertThrows(
                     IllegalStateException.class,
-                    () -> app.pullWorker("realtime-worker-1")
+                    () -> app.pullWorker("push-only-worker-1")
             );
-            Assertions.assertEquals("Worker adapter 'websocket' under transport 'realtime' is not pull-capable for worker realtime-worker-1",
+            Assertions.assertEquals("Worker adapter 'push-only' under transport 'push-only' is not pull-capable for worker push-only-worker-1",
                     error.getMessage());
         } finally {
             app.stop();
@@ -3083,12 +3002,14 @@ class MassSdkTest {
 
         try {
             app.start();
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("polling-worker-unsupported")
+                    .workerGroupId("unsupported-workers")
+                    .transportHint("polling")
+                    .build());
             IllegalArgumentException error = assertThrows(
                     IllegalArgumentException.class,
-                    () -> app.registerWorker(WorkerRegistration.builder()
-                            .workerId("polling-worker-unsupported")
-                            .transportHint("polling")
-                            .build())
+                    () -> app.pullWorker("polling-worker-unsupported")
             );
             Assertions.assertEquals("Unsupported worker transportHint 'polling'; available transportHints=[queue-consumer]",
                     error.getMessage());
@@ -3135,7 +3056,6 @@ class MassSdkTest {
             bindSdkTestNode(app, "polling-canonical-group");
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("polling-worker-canonical")
-                    .adapterNodeId("sdk-test-node")
                     .workerGroupId("polling-canonical-group")
                     .transportHint("polling")
                     .build());
@@ -3179,7 +3099,6 @@ class MassSdkTest {
             bindSdkTestNode(app, "polling-crawler");
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("polling-worker-1")
-                    .adapterNodeId("sdk-test-node")
                     .workerGroupId("polling-crawler")
                     .transportHint("polling")
                     .build());
@@ -3622,6 +3541,17 @@ class MassSdkTest {
         return workerResource(workerId, workerGroupId, WorkerStatus.ONLINE.name());
     }
 
+    private static WorkerDeclarationRecord workerDeclaration(String workerId, String workerGroupId) {
+        return new WorkerDeclarationRecord(
+                workerId,
+                workerGroupId,
+                WorkerTransportHints.POLLING,
+                null,
+                1,
+                Map.of()
+        );
+    }
+
     private static WorkerResourceRecord workerResource(String workerId, String workerGroupId, String statusName) {
         return workerResource(workerId, workerGroupId, statusName, null);
     }
@@ -3632,19 +3562,11 @@ class MassSdkTest {
                                                        String adapterId) {
         return new WorkerResourceRecord(
                 workerId,
-                statusName,
                 null,
-                null,
-                List.of("demoApp"),
-                List.of(),
                 workerGroupId,
                 null,
-                adapterId,
-                null,
                 1,
-                Map.of(),
-                null,
-                null
+                Map.of()
         );
     }
 

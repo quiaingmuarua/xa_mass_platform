@@ -356,8 +356,8 @@ Within starter assembly, `EngineConfig` now treats `WorkerManager` and
 rule matching contracts as derived helpers over `WorkerDeclarationStore` / `RuleStorage`
 rather than independent config slots that outer modules should wire or cache.
 Embedded transport runtime assembly also consumes only
-`WorkerResourceRuntime` worker resource reads instead of reaching through the
-broader worker facade or storage lookup seams.
+the narrow worker resource query/transport registry ports it needs instead of
+reaching through a broad worker facade or storage lookup seams.
 Assignment no longer hands dispatch-ready batches straight into a transport
 routing listener. SDK runtime assembly now translates assignment truth into
 `DeliveryCommand` and hands it to a transport-owned selected-worker delivery

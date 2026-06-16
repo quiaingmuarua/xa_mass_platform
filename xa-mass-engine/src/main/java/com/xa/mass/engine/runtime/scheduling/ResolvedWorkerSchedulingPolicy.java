@@ -18,7 +18,6 @@ public record ResolvedWorkerSchedulingPolicy(
         String project,
         String eventCode,
         List<String> workerGroupIds,
-        String adapterNodeId,
         String routingCode,
         Map<String, String> routeAttributes,
         Set<String> candidateBucketKeys,
@@ -35,14 +34,13 @@ public record ResolvedWorkerSchedulingPolicy(
 
     public static ResolvedWorkerSchedulingPolicy from(TaskDispatchIntent intent, Set<String> candidateBucketKeys) {
         TaskDispatchIntent resolvedIntent = intent == null
-                ? new TaskDispatchIntent(null, null, null, List.of(), null, null, Map.of(), null, Map.of())
+                ? new TaskDispatchIntent(null, null, null, List.of(), null, Map.of(), null, Map.of())
                 : intent;
         return new ResolvedWorkerSchedulingPolicy(
                 resolvedIntent.taskId(),
                 resolvedIntent.project(),
                 resolvedIntent.eventCode(),
                 resolvedIntent.workerGroupIds(),
-                resolvedIntent.adapterNodeId(),
                 resolvedIntent.routingCode(),
                 resolvedIntent.routeAttributes(),
                 candidateBucketKeys,
