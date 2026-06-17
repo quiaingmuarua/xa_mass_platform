@@ -46,11 +46,11 @@ public final class WsFrameTestSupport {
         JsonObject frame = new JsonObject();
         frame.addProperty("resultCorrelationRef", resultCorrelationRef);
         frame.addProperty("success", "SUCCESS".equalsIgnoreCase(status));
-        frame.addProperty("detail", detail);
+        output.addProperty("detail", detail);
         if (errorCode != null) {
-            frame.addProperty("errorCode", errorCode);
+            frame.addProperty("resultCode", errorCode);
         }
-        frame.add("output", output);
+        frame.addProperty("result", GSON.toJson(output));
         return GSON.toJson(frame);
     }
 
@@ -82,6 +82,13 @@ public final class WsFrameTestSupport {
         }
         if (frame != null && frame.has("output") && frame.get("output").isJsonObject()) {
             return frame.getAsJsonObject("output");
+        }
+        if (frame != null && frame.has("result") && !frame.get("result").isJsonNull()) {
+            try {
+                return GSON.fromJson(frame.get("result").getAsString(), JsonObject.class);
+            } catch (Exception ignored) {
+                return new JsonObject();
+            }
         }
         return new JsonObject();
     }

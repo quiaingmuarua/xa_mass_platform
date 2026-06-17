@@ -70,15 +70,15 @@ public enum ApiSecurityScenario {
             PrincipalContext.EXTERNAL_WORKER_PERMISSION,
             CredentialAudience.EXTERNAL_WORKER
     ),
-    WORKER_REPORT_CAPABILITY(
-            "worker-report-capability",
+    WORKER_REPORT_HANDLER_EVIDENCE(
+            "worker-report-handler-evidence",
             PlatformResourceType.WORKER,
             PlatformAction.POLL,
             PrincipalContext.EXTERNAL_WORKER_PERMISSION,
             CredentialAudience.EXTERNAL_WORKER
     ),
-    WORKER_REPORT_STATE(
-            "worker-report-state",
+    WORKER_REPORT_RUNTIME_EVIDENCE(
+            "worker-report-runtime-evidence",
             PlatformResourceType.WORKER,
             PlatformAction.POLL,
             PrincipalContext.EXTERNAL_WORKER_PERMISSION,

@@ -5,13 +5,13 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class PulledTaskDispatchPayloadDecoderTest {
+class WorkerInvocationPayloadDecoderTest {
 
-    private final PulledTaskDispatchPayloadDecoder decoder = new PulledTaskDispatchPayloadDecoder();
+    private final WorkerInvocationPayloadDecoder decoder = new WorkerInvocationPayloadDecoder();
 
     @Test
     void decodesOpaquePulledDeliveryMessageIntoSdkTaskDispatch() {
-        PulledTaskDispatch decoded = decoder.decode(new PulledDeliveryMessage(
+        WorkerInvocation decoded = decoder.decode(new PulledDeliveryMessage(
                 "delivery-1",
                 "worker-1",
                 """

@@ -106,11 +106,11 @@ Transport should stay centered on these concepts only:
   local adapter command executors and is not part of transport-neutral command
   or queue storage shape.
 - `DeliveryPullResult`: explicit transport pull-path status plus delivered
-  `PulledDeliveryMessage` items. Task-shaped `TaskPullResult` and
-  `PulledTaskDispatch` live at the SDK/server public worker boundary, not in
-  transport core. Empty queue, invalid request, temporary unavailability, and
-  shutdown must not be flattened into one fake "no work" result on the
-  transport mainline.
+  `PulledDeliveryMessage` items. SDK/server worker polling projects those
+  messages into `WorkerInvocation` and `WorkerPollResult`; task-shaped pull DTOs
+  must not live in transport core. Empty queue, invalid request, temporary
+  unavailability, and shutdown must not be flattened into one fake "no work"
+  result on the transport mainline.
 - `TransportEndpointLeaseStore`: transport adapter write surface for current
   endpoint lease claim, heartbeat refresh, and release. Claims carry
   `deliveryBucketId` and `workerId` explicitly; the store must not infer a
@@ -466,14 +466,15 @@ SDK/starter assembly consumes the task-level dispatch snapshot plus concrete
 `DeliveryCommand` items carrying `deliveryBucketId + selectedWorkerId`.
 Transport runtime consumes delivery commands and resolved batches only.
 
-`PulledDeliveryMessage` is the transport-core pull value. `PulledTaskDispatch`
-is the SDK/server public worker DTO, not the internal delivery-command handoff
-payload and not a transport metadata carrier. Worker identity comes from the
-poll session/path, and route/session/endpoint facts stay inside transport
-delivery. WebSocket/socket worker frames are final-hop wire projections from
-the opaque payload and selected-worker endpoint evidence. Task shell metadata
-such as task name, project, and user id must not be copied into
-`DeliveryCommand`, transport pull results, or handoff codecs as parallel truth.
+`PulledDeliveryMessage` is the transport-core pull value. SDK/server worker
+polling projects it into `WorkerInvocation`, not into a task-shaped transport
+DTO. `WorkerInvocation` is not the internal delivery-command handoff payload
+and not a transport metadata carrier. Worker identity comes from the poll
+session/path, and route/session/endpoint facts stay inside transport delivery.
+WebSocket/socket worker frames are final-hop wire projections from the opaque
+payload and selected-worker endpoint evidence. Task shell metadata such as task
+name, project, and user id must not be copied into `DeliveryCommand`, transport
+pull results, or handoff codecs as parallel truth.
 
 `TransportPacket` remains the internal flat transport envelope for result and
 worker-system-event shapes, while task-dispatch wire frames are assembled at
@@ -508,7 +509,7 @@ similar facts only as diagnostics; transport must not parse them to decide task
 result correctness. Starter-owned `TaskResultCallbackCodec` decodes the opaque
 payload/correlation into a `TaskResultCallbackCommand`, then engine-owned
 result ingress validates attempt or lease identity before mutating runtime
-truth. SDK/server worker submit paths use `WorkerResultSubmitRequest`, not
+truth. SDK/server worker submit paths use `WorkerResultSubmission`, not
 transport-owned result DTOs.
 
 When envelope identity validation rejects stale attempt or lease evidence,

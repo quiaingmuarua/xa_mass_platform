@@ -80,16 +80,16 @@ Current implemented surface:
   event handler registry, handler invocation, deterministic handler failure
   conversion, and session-owned result sink hooks
 - worker handler invocation is payload-first:
-  handlers receive `WorkerInvocation` with `eventCode`, `input`, and
-  `sharedConfig` only. Result association is carried by the SDK/session as an
-  opaque `resultCorrelationRef`; worker handlers and public worker result
-  requests must not depend on task ids, message ids, attempt ids, transport
-  commands, or raw wire DTOs.
+  handlers receive `WorkerInvocation` with opaque `resultCorrelationRef`,
+  `eventCode`, `input`, and `sharedConfig`. Result association is a submit
+  token that must only be round-tripped; worker handlers and public worker
+  result requests must not depend on task ids, message ids, attempt ids,
+  transport commands, or raw wire DTOs.
 - common worker-session model:
   narrow `WorkerSession` lifecycle contract and `WorkerSessionSpec` shared
   identity/options object for `workerId`, `workerGroupId`, attributes, event
   handlers, and listener wiring. `WorkerSession` does not expose transport
-  internals, report-capability/state policy, polling methods, reconnect
+  internals, handler/runtime evidence policy, polling methods, reconnect
   controls, session tokens, or result queues.
 
 Stable public entry points are:
@@ -162,8 +162,9 @@ The internal executable adopter is
 [../../integrations/xa-mass-scenario-launcher](../../integrations/xa-mass-scenario-launcher),
 not standalone Java sample apps. It assumes catalog, rules, and credentials are
 prepared by server-owned seed/import, real control-plane setup, or test
-fixtures before its worker launcher registers worker topology and its task
-launcher submits scenario tasks through SDK-backed external calls.
+fixtures before its worker launcher registers workers and publishes explicit
+worker evidence, while its task launcher submits scenario tasks through
+SDK-backed external calls.
 
 For the short task-producer plus worker-session onboarding path, use
 [EXTERNAL_SDK_QUICKSTART.md](./EXTERNAL_SDK_QUICKSTART.md).
@@ -226,7 +227,7 @@ for (TaskResultItem item : window.items()) {
 }
 ```
 
-Polling worker topology setup and direct poll:
+Polling worker declaration and direct poll:
 
 ```java
 mass.workers().declareGroup(WorkerGroupSpec.builder()
@@ -235,15 +236,6 @@ mass.workers().declareGroup(WorkerGroupSpec.builder()
         .defaultAttribute("deviceFamily", "android")
         .defaultMaxConcurrentWork(20)
         .build());
-
-mass.workers().registerAdapterNode(AdapterNodeSpec.builder()
-        .adapterNodeId("phone-poll-node-sg-1")
-        .adapterType("polling")
-        .endpointId("phone-poll-node-sg-1")
-        .attribute("region", "sg")
-        .build());
-
-mass.workers().bindNodeGroup("phone-poll-node-sg-1", "phone-device-probe");
 
 mass.workers().registerWorker(WorkerSpec.builder()
         .workerId("phone-worker-sg-001")
@@ -259,15 +251,18 @@ WorkerPollResult poll = mass.workers().poll("phone-worker-sg-001",
         WorkerPollRequest.builder().maxMessages(10).timeoutMs(500L).build());
 ```
 
-Adapter-node and node-group binding calls are topology/admin setup. Normal
-worker registration and `WorkerSession` helpers use `workerId`,
+Normal worker registration and `WorkerSession` helpers use `workerId`,
 `workerGroupId`, worker attributes, and `transportHint`; they do not carry
-`adapterNodeId`.
+adapter-node topology ids.
 
 Managed polling worker session:
 
 ```java
-WorkerEventHandlers handlers = WorkerEventHandlers.builder()
+WorkerSessionSpec sessionSpec = WorkerSessionSpec.builder()
+        .workerId("phone-worker-sg-001")
+        .workerGroupId("phone-device-probe")
+        .attribute("fingerprint", "fp-android-13-sg")
+        .attribute("region", "sg")
         .event("probe.phone.metadata", dispatch -> {
             String phone = dispatch.input().requiredString("phone");
             return WorkerResult.success(Map.of(
@@ -276,14 +271,6 @@ WorkerEventHandlers handlers = WorkerEventHandlers.builder()
                     "mnc", "01"
             ));
         })
-        .build();
-
-WorkerSessionSpec sessionSpec = WorkerSessionSpec.builder()
-        .workerId("phone-worker-sg-001")
-        .workerGroupId("phone-device-probe")
-        .attribute("fingerprint", "fp-android-13-sg")
-        .attribute("region", "sg")
-        .eventHandlers(handlers)
         .build();
 
 mass.workers().declareGroup(WorkerGroupSpec.builder()
@@ -300,14 +287,11 @@ try (WorkerSession session = mass.workerSessions().polling(sessionSpec)
 `PollingWorkerSession.start()` does not declare WorkerGroups. Group declaration
 is an explicit topology/setup operation through `mass.workers()`.
 
-`PollingWorkerSession` uses the SDK-owned
-`com.xa.mass.client.worker.handler` runtime internally. `WebSocketWorkerSession`
-uses the same handler runtime through the common session dispatch processor and
-routes handler results through a session-owned outbound frame queue.
-Both managed sessions keep result correlation opaque to handlers. Worker
-business code should read only `dispatch.eventCode()`, `dispatch.input()`, and
-`dispatch.sharedConfig()`; it should not use task/message identity as worker API
-state.
+`PollingWorkerSession` and `WebSocketWorkerSession` use the same session
+dispatch processor and route handler results through their protocol-specific
+result-submit mechanism. Both managed sessions expose result correlation only
+as an opaque submit token; worker business code must not interpret it as task
+identity or lifecycle state.
 Queue-full outcomes are reported through
 `WorkerSessionListener.onQueuedResultDropped(...)`; queued results that cannot
 be requeued after send failure, or cannot be submitted because the session

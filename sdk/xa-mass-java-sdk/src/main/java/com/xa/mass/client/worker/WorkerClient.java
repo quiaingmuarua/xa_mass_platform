@@ -13,29 +13,10 @@ public final class WorkerClient {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient is required");
     }
 
-    public AdapterNodeRegistrationResult registerAdapterNode(AdapterNodeSpec request) {
-        return httpClient.post("/worker-api/v1/adapter-nodes",
-                Objects.requireNonNull(request, "request is required"),
-                AdapterNodeRegistrationResult.class);
-    }
-
     public WorkerGroupDeclarationResult declareGroup(WorkerGroupSpec request) {
         return httpClient.post("/worker-api/v1/worker-groups",
                 Objects.requireNonNull(request, "request is required"),
                 WorkerGroupDeclarationResult.class);
-    }
-
-    public NodeGroupBindingResult bindNodeGroup(NodeGroupBindingSpec request) {
-        return httpClient.post("/worker-api/v1/node-group-bindings",
-                Objects.requireNonNull(request, "request is required"),
-                NodeGroupBindingResult.class);
-    }
-
-    public NodeGroupBindingResult bindNodeGroup(String adapterNodeId, String workerGroupId) {
-        return bindNodeGroup(NodeGroupBindingSpec.builder()
-                .adapterNodeId(adapterNodeId)
-                .workerGroupId(workerGroupId)
-                .build());
     }
 
     public WorkerRegistrationResult registerWorker(WorkerSpec request) {
@@ -62,37 +43,27 @@ public final class WorkerClient {
                 resolved, WorkerPollResult.class);
     }
 
-    public WorkerResultSubmitOutcome submitResult(String workerId, WorkerResultSubmitRequest request) {
-        return httpClient.post("/worker-api/v1/workers/" + WorkerRequestSupport.encode(workerId) + ":submit-result",
+    public boolean submitResult(String workerId, WorkerResultSubmission request) {
+        Map<?, ?> response = httpClient.post(
+                "/worker-api/v1/workers/" + WorkerRequestSupport.encode(workerId) + ":submit-result",
                 Objects.requireNonNull(request, "request is required"),
-                WorkerResultSubmitOutcome.class);
+                Map.class);
+        Object submitted = response == null ? null : response.get("submitted");
+        return !(submitted instanceof Boolean value) || value;
     }
 
-    public WorkerCommandPollResult pollCommands(String workerId, WorkerCommandPollRequest request) {
-        WorkerCommandPollRequest resolved = request == null ? WorkerCommandPollRequest.builder().build() : request;
-        return httpClient.post("/worker-api/v1/workers/" + WorkerRequestSupport.encode(workerId) + "/commands:poll",
-                resolved, WorkerCommandPollResult.class);
-    }
-
-    public WorkerCommandAckResult ackCommand(String workerId, String commandId, WorkerCommandAck request) {
+    public WorkerHandlerEvidenceResult reportHandlerEvidence(String workerId, WorkerHandlerEvidence request) {
         return httpClient.post("/worker-api/v1/workers/" + WorkerRequestSupport.encode(workerId)
-                        + "/commands/" + WorkerRequestSupport.encode(commandId) + ":ack",
+                        + ":report-handler-evidence",
                 Objects.requireNonNull(request, "request is required"),
-                WorkerCommandAckResult.class);
+                WorkerHandlerEvidenceResult.class);
     }
 
-    public WorkerCapabilityReportResult reportCapability(String workerId, WorkerCapabilityReport request) {
+    public WorkerRuntimeEvidenceResult reportRuntimeEvidence(String workerId, WorkerRuntimeEvidence request) {
         return httpClient.post("/worker-api/v1/workers/" + WorkerRequestSupport.encode(workerId)
-                        + ":report-capability",
+                        + ":report-runtime-evidence",
                 Objects.requireNonNull(request, "request is required"),
-                WorkerCapabilityReportResult.class);
-    }
-
-    public WorkerStateReportResult reportState(String workerId, WorkerStateReport request) {
-        return httpClient.post("/worker-api/v1/workers/" + WorkerRequestSupport.encode(workerId)
-                        + ":report-state",
-                Objects.requireNonNull(request, "request is required"),
-                WorkerStateReportResult.class);
+                WorkerRuntimeEvidenceResult.class);
     }
 
     private WorkerPresenceResult presence(String workerId, String action, String sessionToken, String reason) {

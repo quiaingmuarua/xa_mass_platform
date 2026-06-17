@@ -1,21 +1,14 @@
 package com.xa.mass.client.worker.session;
 
-import com.xa.mass.client.worker.WorkerCapabilityReport;
 import com.xa.mass.client.worker.WorkerClient;
-import com.xa.mass.client.worker.WorkerDispatchItem;
+import com.xa.mass.client.worker.WorkerInvocation;
 import com.xa.mass.client.worker.WorkerPollRequest;
 import com.xa.mass.client.worker.WorkerPollResult;
 import com.xa.mass.client.worker.WorkerRegistrationResult;
-import com.xa.mass.client.worker.WorkerResultSubmitRequest;
-import com.xa.mass.client.worker.ResultCorrelationRef;
+import com.xa.mass.client.worker.WorkerResultSubmission;
 import com.xa.mass.client.worker.WorkerSpec;
-import com.xa.mass.client.worker.WorkerStateReport;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
-import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
-import com.xa.mass.client.worker.handler.WorkerEventHandlers;
-import com.xa.mass.client.worker.handler.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
-import com.xa.mass.client.worker.handler.WorkerResultSink;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -42,9 +35,7 @@ public final class PollingWorkerSession implements WorkerSession {
     private final Duration heartbeatInterval;
     private final Duration maxPollBackoff;
     private final WorkerSessionListener listener;
-    private final WorkerEventHandlers eventHandlers;
     private final WorkerDispatchProcessor dispatchProcessor;
-    private final WorkerResultSink resultSink;
     private final ScheduledExecutorService executor;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicInteger consecutiveHeartbeatFailures = new AtomicInteger();
@@ -62,9 +53,7 @@ public final class PollingWorkerSession implements WorkerSession {
         this.heartbeatInterval = builder.heartbeatInterval;
         this.maxPollBackoff = builder.maxPollBackoff;
         this.listener = builder.listener;
-        this.eventHandlers = builder.eventHandlers.build();
-        this.dispatchProcessor = new WorkerDispatchProcessor(workerId, new WorkerEventHandlerRuntime(eventHandlers), listener);
-        this.resultSink = builder.resultSink == null ? this::submitResultToWorkerApi : builder.resultSink;
+        this.dispatchProcessor = new WorkerDispatchProcessor(workerId, builder.eventHandlers, listener);
         this.executor = builder.executor == null
                 ? Executors.newScheduledThreadPool(2, new SessionThreadFactory(workerId))
                 : builder.executor;
@@ -89,21 +78,6 @@ public final class PollingWorkerSession implements WorkerSession {
             workerClient.online(registration.workerId(), sessionToken, "polling-session-start");
             offlineOnClose = true;
             lastSuccessful = WorkerSessionStartupStep.ONLINE;
-
-            workerClient.reportCapability(workerId, WorkerCapabilityReport.builder()
-                    .workerId(workerId)
-                    .availableEventCodes(eventHandlers.eventCodes().stream().toList())
-                    .schedulingAttributes(attributes)
-                    .build());
-            lastSuccessful = WorkerSessionStartupStep.REPORT_CAPABILITY;
-
-            workerClient.reportState(workerId, WorkerStateReport.builder()
-                    .workerId(workerId)
-                    .available()
-                    .reason("polling-session-start")
-                    .attributes(attributes)
-                    .build());
-            lastSuccessful = WorkerSessionStartupStep.REPORT_STATE;
 
             running.set(true);
             executor.scheduleWithFixedDelay(this::heartbeatOnce,
@@ -193,7 +167,7 @@ public final class PollingWorkerSession implements WorkerSession {
                         .timeoutMs(pollTimeoutMs)
                         .build());
                 consecutiveFailures = 0;
-                for (WorkerDispatchItem item : nullSafeItems(result.items())) {
+                for (WorkerInvocation item : nullSafeItems(result.items())) {
                     handleItem(item);
                 }
                 sleep(pollInterval);
@@ -205,26 +179,25 @@ public final class PollingWorkerSession implements WorkerSession {
         }
     }
 
-    private void handleItem(WorkerDispatchItem item) {
+    private void handleItem(WorkerInvocation item) {
         WorkerDispatchProcessor.ProcessedDispatch processed = dispatchProcessor.process(item);
         submitResult(processed.resultCorrelationRef(), processed.invocation(), processed.result());
     }
 
-    private void submitResult(ResultCorrelationRef resultCorrelationRef, WorkerInvocation invocation, WorkerResult result) {
+    private void submitResult(String resultCorrelationRef, WorkerInvocation invocation, WorkerResult result) {
         try {
-            resultSink.submit(resultCorrelationRef, result);
+            submitResultToWorkerApi(resultCorrelationRef, result);
         } catch (Throwable failure) {
             listener.onSubmitFailure(new WorkerSessionDispatchFailure(workerId, resultCorrelationRef, invocation, failure));
         }
     }
 
-    private void submitResultToWorkerApi(ResultCorrelationRef resultCorrelationRef, WorkerResult result) {
-        workerClient.submitResult(workerId, new WorkerResultSubmitRequest(
-                resultCorrelationRef.value(),
+    private void submitResultToWorkerApi(String resultCorrelationRef, WorkerResult result) {
+        workerClient.submitResult(workerId, new WorkerResultSubmission(
+                resultCorrelationRef,
                 result.success(),
-                result.detail(),
-                result.errorCode(),
-                result.output()
+                result.resultCode(),
+                result.result()
         ));
     }
 
@@ -243,7 +216,7 @@ public final class PollingWorkerSession implements WorkerSession {
         }
     }
 
-    private static List<WorkerDispatchItem> nullSafeItems(List<WorkerDispatchItem> items) {
+    private static List<WorkerInvocation> nullSafeItems(List<WorkerInvocation> items) {
         return items == null ? List.of() : items;
     }
 
@@ -268,14 +241,13 @@ public final class PollingWorkerSession implements WorkerSession {
         private String workerId;
         private String workerGroupId;
         private Map<String, String> attributes = new LinkedHashMap<>();
-        private WorkerEventHandlers.Builder eventHandlers = WorkerEventHandlers.builder();
+        private Map<String, WorkerEventHandler> eventHandlers = new LinkedHashMap<>();
         private int maxMessages = 1;
         private long pollTimeoutMs = 0L;
         private Duration pollInterval = Duration.ofSeconds(1);
         private Duration heartbeatInterval = Duration.ofSeconds(10);
         private Duration maxPollBackoff = Duration.ofSeconds(30);
         private WorkerSessionListener listener = WorkerSessionListener.NOOP;
-        private WorkerResultSink resultSink;
         private ScheduledExecutorService executor;
 
         private Builder(WorkerClient workerClient) {
@@ -302,19 +274,21 @@ public final class PollingWorkerSession implements WorkerSession {
             return this;
         }
 
-        public Builder event(String eventCode, WorkerDispatchHandler handler) {
+        public Builder event(String eventCode, WorkerEventHandler handler) {
             Objects.requireNonNull(handler, "handler is required");
-            return eventHandler(eventCode, handler::handle);
+            return eventHandler(eventCode, handler);
         }
 
         public Builder eventHandler(String eventCode, WorkerEventHandler handler) {
-            this.eventHandlers.event(requireText(eventCode, "eventCode"),
+            this.eventHandlers.put(requireText(eventCode, "eventCode"),
                     Objects.requireNonNull(handler, "handler is required"));
             return this;
         }
 
-        public Builder eventHandlers(WorkerEventHandlers eventHandlers) {
-            this.eventHandlers.events(eventHandlers);
+        public Builder eventHandlers(Map<String, WorkerEventHandler> eventHandlers) {
+            if (eventHandlers != null) {
+                eventHandlers.forEach(this::eventHandler);
+            }
             return this;
         }
 
@@ -352,11 +326,6 @@ public final class PollingWorkerSession implements WorkerSession {
 
         public Builder listener(WorkerSessionListener listener) {
             this.listener = listener == null ? WorkerSessionListener.NOOP : listener;
-            return this;
-        }
-
-        public Builder resultSink(WorkerResultSink resultSink) {
-            this.resultSink = Objects.requireNonNull(resultSink, "resultSink is required");
             return this;
         }
 

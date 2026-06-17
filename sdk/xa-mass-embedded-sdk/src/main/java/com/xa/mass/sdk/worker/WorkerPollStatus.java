@@ -1,6 +1,6 @@
 package com.xa.mass.sdk.worker;
 
-public enum TaskPullStatus {
+public enum WorkerPollStatus {
     DELIVERED,
     EMPTY,
     INVALID_REQUEST,

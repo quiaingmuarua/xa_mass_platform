@@ -79,7 +79,6 @@ class ScenarioWorkerRuntimeTest {
                 workerId,
                 workerId + "-key",
                 "sample-group",
-                "sample-node",
                 adapterType,
                 transportHint,
                 startMode,

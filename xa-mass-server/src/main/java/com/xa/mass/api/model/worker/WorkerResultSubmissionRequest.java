@@ -3,16 +3,13 @@ package com.xa.mass.api.model.worker;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.api.model.AbstractUnknownFieldRequest;
 
-import java.util.Map;
-
 @JsonIgnoreProperties(ignoreUnknown = false)
-public class ExternalWorkerResultSubmitApiRequest extends AbstractUnknownFieldRequest {
+public class WorkerResultSubmissionRequest extends AbstractUnknownFieldRequest {
 
     private String resultCorrelationRef;
     private boolean success;
-    private String detail;
-    private String errorCode;
-    private Map<String, Object> output;
+    private String resultCode;
+    private String result;
 
     public String getResultCorrelationRef() {
         return resultCorrelationRef;
@@ -30,27 +27,19 @@ public class ExternalWorkerResultSubmitApiRequest extends AbstractUnknownFieldRe
         this.success = success;
     }
 
-    public String getDetail() {
-        return detail;
+    public String getResultCode() {
+        return resultCode;
     }
 
-    public void setDetail(String detail) {
-        this.detail = detail;
+    public void setResultCode(String resultCode) {
+        this.resultCode = resultCode;
     }
 
-    public String getErrorCode() {
-        return errorCode;
+    public String getResult() {
+        return result;
     }
 
-    public void setErrorCode(String errorCode) {
-        this.errorCode = errorCode;
-    }
-
-    public Map<String, Object> getOutput() {
-        return output;
-    }
-
-    public void setOutput(Map<String, Object> output) {
-        this.output = output;
+    public void setResult(String result) {
+        this.result = result;
     }
 }

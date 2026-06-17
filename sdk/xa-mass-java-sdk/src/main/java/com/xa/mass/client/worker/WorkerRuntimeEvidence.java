@@ -3,15 +3,15 @@ package com.xa.mass.client.worker;
 import java.time.Instant;
 import java.util.Map;
 
-public record WorkerStateReport(
+public record WorkerRuntimeEvidence(
         String workerId,
-        Long stateVersion,
+        Long evidenceVersion,
         String state,
         String reason,
         Instant observedAt,
         Map<String, String> attributes
 ) {
-    public WorkerStateReport {
+    public WorkerRuntimeEvidence {
         attributes = WorkerRequestSupport.copyStringMap(attributes);
     }
 
@@ -21,7 +21,7 @@ public record WorkerStateReport(
 
     public static final class Builder {
         private String workerId;
-        private Long stateVersion;
+        private Long evidenceVersion;
         private String state;
         private String reason;
         private Instant observedAt;
@@ -35,8 +35,8 @@ public record WorkerStateReport(
             return this;
         }
 
-        public Builder stateVersion(Long stateVersion) {
-            this.stateVersion = stateVersion;
+        public Builder evidenceVersion(Long evidenceVersion) {
+            this.evidenceVersion = evidenceVersion;
             return this;
         }
 
@@ -85,8 +85,8 @@ public record WorkerStateReport(
             return this;
         }
 
-        public WorkerStateReport build() {
-            return new WorkerStateReport(workerId, stateVersion, state, reason, observedAt, attributes);
+        public WorkerRuntimeEvidence build() {
+            return new WorkerRuntimeEvidence(workerId, evidenceVersion, state, reason, observedAt, attributes);
         }
     }
 }

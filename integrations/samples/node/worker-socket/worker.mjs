@@ -25,38 +25,36 @@ function sendFrame(frame) {
 }
 
 function buildTaskResult(taskFrame, result) {
-  return {
-    messageId: taskFrame?.messageId,
-    taskId: taskFrame?.taskId,
-    success: Boolean(result?.success),
-    detail: result?.detail ?? "completed by external node socket worker",
-    errorCode: result?.errorCode ?? null,
-    output: {
-      status: result?.success === false ? "FAILED" : "SUCCESS",
-      message: result?.detail ?? "completed by external node socket worker",
-      integrationProbe: "cross-language-node-socket",
-      workerProfile: {
-        runtime: "node-socket-worker",
-        language: "nodejs",
-        workerId,
-      },
-      execution: {
-        transport: "socket",
-        dispatchShape: "canonical-task-dispatch",
-        resultShape: "canonical-task-result",
-        respondedAt: new Date().toISOString(),
-      },
-      eventCode: taskFrame?.eventCode ?? null,
-      ...(result?.output ?? {}),
+  const body = {
+    status: result?.success === false ? "FAILED" : "SUCCESS",
+    integrationProbe: "cross-language-node-socket",
+    workerProfile: {
+      runtime: "node-socket-worker",
+      language: "nodejs",
+      workerId,
     },
+    execution: {
+      transport: "socket",
+      dispatchShape: "canonical-task-dispatch",
+      resultShape: "canonical-task-result",
+      respondedAt: new Date().toISOString(),
+    },
+    eventCode: taskFrame?.eventCode ?? null,
+    ...(result?.result ?? {}),
+  };
+  return {
+    resultCorrelationRef: taskFrame?.resultCorrelationRef,
+    success: Boolean(result?.success),
+    resultCode: result?.resultCode ?? null,
+    result: JSON.stringify(body),
   };
 }
 
 async function handleDemoDispatch(frame) {
   return {
     success: true,
-    detail: "completed by external node socket worker",
-    output: {
+    result: {
+      detail: "completed by external node socket worker",
       taskInput: frame?.input ?? {},
     },
   };
@@ -65,8 +63,8 @@ async function handleDemoDispatch(frame) {
 async function handleCrawlerFetchPage(frame) {
   return {
     success: true,
-    detail: "crawler fetch simulated by external node socket worker",
-    output: {
+    result: {
+      detail: "crawler fetch simulated by external node socket worker",
       url: frame?.input?.url ?? frame?.sharedConfig?.url ?? null,
       fetchedAt: new Date().toISOString(),
     },
@@ -79,7 +77,7 @@ const taskHandlers = new Map([
 ]);
 
 function isCanonicalTaskDispatch(frame) {
-  return Boolean(frame?.taskId) && Boolean(frame?.messageId) && frame?.success === undefined;
+  return Boolean(frame?.resultCorrelationRef) && Boolean(frame?.eventCode) && frame?.success === undefined;
 }
 
 async function handleFrame(rawFrame) {
@@ -91,14 +89,15 @@ async function handleFrame(rawFrame) {
 
   const eventCode = frame?.eventCode;
   const handler = eventCode ? taskHandlers.get(eventCode) : null;
-  log(`received task frame taskId=${frame.taskId} messageId=${frame.messageId} eventCode=${eventCode ?? "<none>"}`);
+  log(`received task frame resultCorrelationRef=${frame.resultCorrelationRef} eventCode=${eventCode ?? "<none>"}`);
 
   if (!handler) {
     sendFrame(buildTaskResult(frame, {
       success: false,
-      detail: `Unsupported eventCode: ${eventCode ?? "<missing>"}`,
-      errorCode: "UNSUPPORTED_EVENT_CODE",
-      output: {},
+      resultCode: "UNSUPPORTED_EVENT_CODE",
+      result: {
+        detail: `Unsupported eventCode: ${eventCode ?? "<missing>"}`,
+      },
     }));
     return;
   }

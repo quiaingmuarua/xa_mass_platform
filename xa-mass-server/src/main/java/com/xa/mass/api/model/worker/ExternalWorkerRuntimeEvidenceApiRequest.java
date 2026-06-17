@@ -7,10 +7,10 @@ import java.time.Instant;
 import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = false)
-public class ExternalWorkerStateReportApiRequest extends AbstractUnknownFieldRequest {
+public class ExternalWorkerRuntimeEvidenceApiRequest extends AbstractUnknownFieldRequest {
 
     private String workerId;
-    private Long stateVersion;
+    private Long evidenceVersion;
     private String state;
     private String reason;
     private Instant observedAt;
@@ -24,12 +24,12 @@ public class ExternalWorkerStateReportApiRequest extends AbstractUnknownFieldReq
         this.workerId = workerId;
     }
 
-    public Long getStateVersion() {
-        return stateVersion;
+    public Long getEvidenceVersion() {
+        return evidenceVersion;
     }
 
-    public void setStateVersion(Long stateVersion) {
-        this.stateVersion = stateVersion;
+    public void setEvidenceVersion(Long evidenceVersion) {
+        this.evidenceVersion = evidenceVersion;
     }
 
     public String getState() {

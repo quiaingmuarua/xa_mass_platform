@@ -87,12 +87,8 @@ class JavaExternalSdkTaskScopedInvocationIntegrationTest extends AbstractSampleE
                 .attribute("fingerprint", "fp-android-13-sg")
                 .event("crawler.fetch-page", dispatch -> {
                     URI phoneUri = dispatch.input().requiredUri("url");
-                    return WorkerResult.success(Map.of(
-                            "url", phoneUri.toString(),
-                            "mcc", "525",
-                            "mnc", "01",
-                            "workerId", workerId
-                    ));
+                    return WorkerResult.success("{\"url\":\"" + phoneUri + "\",\"mcc\":\"525\",\"mnc\":\"01\",\"workerId\":\""
+                            + workerId + "\"}");
                 })
                 .maxMessages(2)
                 .pollTimeout(Duration.ofMillis(250))
@@ -126,12 +122,13 @@ class JavaExternalSdkTaskScopedInvocationIntegrationTest extends AbstractSampleE
             assertTrue(sync.synced());
             assertFalse(sync.timedOut());
             assertEquals("SUCCESS", sync.status());
-            assertEquals("525", sync.output().get("mcc"));
-            assertEquals(workerId, sync.output().get("workerId"));
+            assertEquals("{\"url\":\"tel:+6588880001\",\"mcc\":\"525\",\"mnc\":\"01\",\"workerId\":\""
+                    + workerId + "\"}", sync.output().get("result"));
 
             TaskResultWindow results = handle.results(TaskResultReadRequest.builder().limit(10).build());
             assertFalse(results.items().isEmpty());
-            assertEquals("525", results.items().getFirst().output().get("mcc"));
+            assertEquals("{\"url\":\"tel:+6588880001\",\"mcc\":\"525\",\"mnc\":\"01\",\"workerId\":\""
+                    + workerId + "\"}", results.items().getFirst().output().get("result"));
             assertEquals(workerId, results.items().getFirst().workerId());
         }
     }

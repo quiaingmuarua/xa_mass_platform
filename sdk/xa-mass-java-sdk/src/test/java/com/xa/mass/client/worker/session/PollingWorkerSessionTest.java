@@ -73,22 +73,6 @@ class PollingWorkerSessionTest {
                         """);
                 return;
             }
-            if ("/worker-api/v1/workers/phone-worker-sg-001:report-capability".equals(path)) {
-                JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("probe.phone.metadata", request.get("availableEventCodes").get(0).asText());
-                assertEquals("fp-android-13-sg", request.get("schedulingAttributes").get("fingerprint").asText());
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"phone-worker-sg-001","capabilityVersion":1,"accepted":true,"snapshotChanged":true,"reason":"updated"}}
-                        """);
-                return;
-            }
-            if ("/worker-api/v1/workers/phone-worker-sg-001:report-state".equals(path)) {
-                assertEquals("AVAILABLE", OBJECT_MAPPER.readTree(body).get("state").asText());
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"phone-worker-sg-001","stateVersion":1,"accepted":true,"projectionChanged":true,"reason":"updated","projection":{"workerId":"phone-worker-sg-001","stateVersion":1,"state":"AVAILABLE"}}}
-                        """);
-                return;
-            }
             if ("/worker-api/v1/workers/phone-worker-sg-001:heartbeat".equals(path)) {
                 heartbeatSeen.countDown();
                 respond(exchange, 200, """
@@ -112,8 +96,10 @@ class PollingWorkerSessionTest {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
                 assertEquals("corr-1", request.get("resultCorrelationRef").asText());
                 assertTrue(request.get("success").asBoolean());
-                assertEquals("+14155550100", request.get("output").get("phone").asText());
-                assertEquals("525", request.get("output").get("mcc").asText());
+                JsonNode result = OBJECT_MAPPER.readTree(request.get("result").asText());
+                assertEquals("+14155550100", result.get("phone").asText());
+                assertEquals("525", result.get("mcc").asText());
+                assertFalse(request.hasNonNull("resultCode"));
                 resultSubmitted.countDown();
                 respond(exchange, 200, """
                         {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","resultCorrelationRef":"corr-1","submitted":true}}
@@ -137,11 +123,9 @@ class PollingWorkerSessionTest {
                 .attribute("fingerprint", "fp-android-13-sg")
                 .event("probe.phone.metadata", dispatch -> {
                     String phone = dispatch.input().requiredString("phone");
-                    return WorkerResult.success(Map.of(
-                            "phone", phone,
-                            "mcc", "525",
-                            "mnc", "01"
-                    ));
+                    return WorkerResult.success("""
+                            {"phone":"%s","mcc":"525","mnc":"01"}
+                            """.formatted(phone).trim());
                 })
                 .maxMessages(5)
                 .pollInterval(Duration.ofMillis(20))
@@ -154,6 +138,8 @@ class PollingWorkerSessionTest {
         assertTrue(offlineSeen.await(2, TimeUnit.SECONDS), "close should mark worker offline");
         assertFalse(session.isRunning());
         assertTrue(observed.contains("POST /worker-api/v1/workers/phone-worker-sg-001:poll"));
+        assertFalse(observed.contains("POST /worker-api/v1/workers/phone-worker-sg-001:report-handler-evidence"));
+        assertFalse(observed.contains("POST /worker-api/v1/workers/phone-worker-sg-001:report-runtime-evidence"));
     }
 
     @Test
@@ -182,7 +168,7 @@ class PollingWorkerSessionTest {
                 () -> platform().workerSessions().polling()
                         .workerId("worker-1")
                         .workerGroupId("group-1")
-                        .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of()))
+                        .event("probe.phone.metadata", dispatch -> WorkerResult.success("{}"))
                         .listener(listener)
                         .start());
 
@@ -207,8 +193,7 @@ class PollingWorkerSessionTest {
                         """);
                 return;
             }
-            if (path.endsWith(":online") || path.endsWith(":report-capability") || path.endsWith(":report-state")
-                    || path.endsWith(":offline")) {
+            if (path.endsWith(":online") || path.endsWith(":offline")) {
                 respond(exchange, 200, """
                         {"code":0,"msg":"ok","data":{"workerId":"worker-1","accepted":true}}
                         """);
@@ -244,7 +229,7 @@ class PollingWorkerSessionTest {
         try (PollingWorkerSession ignored = platform().workerSessions().polling()
                 .workerId("worker-1")
                 .workerGroupId("group-1")
-                .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.phone.metadata", dispatch -> WorkerResult.success("{}"))
                 .pollInterval(Duration.ofMillis(20))
                 .heartbeatInterval(Duration.ofMillis(20))
                 .listener(listener)
@@ -256,78 +241,6 @@ class PollingWorkerSessionTest {
         assertEquals(1, heartbeatFailure.get().consecutiveFailures());
         assertTrue(heartbeatAttempts.get() >= 1);
         assertFalse(pollFailureReported.get(), "heartbeat failure must not be reported as poll failure");
-    }
-
-    @Test
-    void customResultSinkReceivesHandlerResultWithoutHttpSubmit() throws Exception {
-        CountDownLatch resultReported = new CountDownLatch(1);
-        AtomicReference<WorkerResult> reportedResult = new AtomicReference<>();
-        AtomicBoolean firstPoll = new AtomicBoolean(true);
-        startServer(exchange -> {
-            String path = exchange.getRequestURI().getRawPath();
-            readBody(exchange);
-            if ("/worker-api/v1/workers".equals(path)) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","workerGroupId":"group-1","transportHint":"polling"}}
-                        """);
-                return;
-            }
-            if (path.endsWith(":online") || path.endsWith(":heartbeat") || path.endsWith(":offline")) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","action":"accepted","transportHint":"polling"}}
-                        """);
-                return;
-            }
-            if (path.endsWith(":report-capability")) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"worker-1","capabilityVersion":1,"accepted":true,"snapshotChanged":true,"reason":"updated"}}
-                        """);
-                return;
-            }
-            if (path.endsWith(":report-state")) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"worker-1","stateVersion":1,"accepted":true,"projectionChanged":true,"reason":"updated","projection":{"workerId":"worker-1","stateVersion":1,"state":"AVAILABLE"}}}
-                        """);
-                return;
-            }
-            if (path.endsWith(":poll")) {
-                if (firstPoll.getAndSet(false)) {
-                    respond(exchange, 200, """
-                            {"code":0,"msg":"ok","data":{"workerId":"worker-1","total":1,"items":[{"resultCorrelationRef":"corr-1","eventCode":"probe.phone.metadata","input":{"phone":"+14155550100"},"sharedConfig":{}}]}}
-                            """);
-                } else {
-                    respond(exchange, 200, """
-                            {"code":0,"msg":"ok","data":{"workerId":"worker-1","total":0,"items":[]}}
-                            """);
-                }
-                return;
-            }
-            if (path.endsWith(":submit-result")) {
-                respond(exchange, 500, "HTTP submit should not be used when custom result sink is configured");
-                return;
-            }
-            respond(exchange, 404, "unexpected");
-        });
-
-        try (PollingWorkerSession ignored = platform().workerSessions().polling()
-                .workerId("worker-1")
-                .workerGroupId("group-1")
-                .eventHandler("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of(
-                        "phone", dispatch.input().requiredString("phone")
-                )))
-                .resultSink((resultCorrelationRef, result) -> {
-                    assertEquals("corr-1", resultCorrelationRef.value());
-                    reportedResult.set(result);
-                    resultReported.countDown();
-                })
-                .pollInterval(Duration.ofMillis(20))
-                .heartbeatInterval(Duration.ofMillis(50))
-                .start()) {
-            assertTrue(resultReported.await(2, TimeUnit.SECONDS), "result should be reported to custom sink");
-        }
-
-        assertTrue(reportedResult.get().success());
-        assertEquals("+14155550100", reportedResult.get().output().get("phone"));
     }
 
     @Test
@@ -347,18 +260,6 @@ class PollingWorkerSessionTest {
             if (path.endsWith(":online")) {
                 respond(exchange, 200, """
                         {"code":0,"msg":"ok","data":{"workerId":"worker-1","action":"online","transportHint":"polling"}}
-                        """);
-                return;
-            }
-            if (path.endsWith(":report-capability")) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"worker-1","capabilityVersion":1,"accepted":true,"snapshotChanged":true,"reason":"updated"}}
-                        """);
-                return;
-            }
-            if (path.endsWith(":report-state")) {
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"worker-1","stateVersion":1,"accepted":true,"projectionChanged":true,"reason":"updated","projection":{"workerId":"worker-1","stateVersion":1,"state":"AVAILABLE"}}}
                         """);
                 return;
             }
@@ -384,8 +285,8 @@ class PollingWorkerSessionTest {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
                 assertEquals("corr-1", request.get("resultCorrelationRef").asText());
                 assertFalse(request.get("success").asBoolean());
-                assertEquals("HANDLER_ERROR", request.get("errorCode").asText());
-                assertEquals(MassPayloadException.class.getName(), request.get("output").get("exception").asText());
+                assertEquals("HANDLER_ERROR", request.get("resultCode").asText());
+                assertTrue(request.get("result").asText().contains(MassPayloadException.class.getName()));
                 failedResultSubmitted.countDown();
                 respond(exchange, 200, """
                         {"code":0,"msg":"ok","data":{"workerId":"worker-1","resultCorrelationRef":"corr-1","submitted":true}}
@@ -413,7 +314,7 @@ class PollingWorkerSessionTest {
                 .workerGroupId("group-1")
                 .event("probe.phone.metadata", dispatch -> {
                     dispatch.input().requiredUri("url");
-                    return WorkerResult.success(Map.of());
+                    return WorkerResult.success("{}");
                 })
                 .pollInterval(Duration.ofMillis(20))
                 .heartbeatInterval(Duration.ofMillis(50))
@@ -426,16 +327,11 @@ class PollingWorkerSessionTest {
     }
 
     @Test
-    void workerResultAllowsNullOutputValuesForJsonNullFields() {
-        Map<String, Object> output = new LinkedHashMap<>();
-        output.put("title", null);
-        output.put("statusCode", 204);
+    void workerResultKeepsOpaqueResultBody() {
+        WorkerResult result = WorkerResult.success("{\"title\":null,\"statusCode\":204}");
 
-        WorkerResult result = WorkerResult.success(output);
-
-        assertTrue(result.output().containsKey("title"));
-        assertEquals(null, result.output().get("title"));
-        assertEquals(204, result.output().get("statusCode"));
+        assertTrue(result.success());
+        assertEquals("{\"title\":null,\"statusCode\":204}", result.result());
     }
 
     private MassPlatform platform() {

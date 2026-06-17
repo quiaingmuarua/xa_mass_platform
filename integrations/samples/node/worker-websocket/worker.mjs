@@ -19,9 +19,8 @@ function log(message) {
 }
 
 function buildTaskResult(taskFrame, result) {
-  const output = compactObject({
+  const resultBody = compactObject({
     status: result?.success === false ? "FAILED" : "SUCCESS",
-    message: result?.detail ?? "completed by external node worker",
     integrationProbe: "cross-language-node",
     workerProfile: {
       runtime: "node-websocket-worker",
@@ -35,24 +34,22 @@ function buildTaskResult(taskFrame, result) {
       respondedAt: new Date().toISOString(),
     },
     eventCode: taskFrame?.eventCode ?? null,
-    ...(result?.output ?? {}),
+    ...(result?.result ?? {}),
   });
 
   return JSON.stringify({
-    messageId: taskFrame?.messageId,
-    taskId: taskFrame?.taskId,
+    resultCorrelationRef: taskFrame?.resultCorrelationRef,
     success: Boolean(result?.success),
-    detail: result?.detail ?? "completed by external node worker",
-    errorCode: result?.errorCode ?? null,
-    output,
+    resultCode: result?.resultCode ?? null,
+    result: JSON.stringify(resultBody),
   });
 }
 
 async function handleDemoDispatch(frame) {
   return {
     success: true,
-    detail: "completed by external node worker",
-    output: {
+    result: {
+      detail: "completed by external node worker",
       taskInput: frame?.input ?? {},
     },
   };
@@ -61,8 +58,8 @@ async function handleDemoDispatch(frame) {
 async function handleCrawlerFetchPage(frame) {
   return {
     success: true,
-    detail: "crawler fetch simulated by external node websocket worker",
-    output: {
+    result: {
+      detail: "crawler fetch simulated by external node websocket worker",
       url: frame?.input?.url ?? frame?.sharedConfig?.url ?? null,
       fetchedAt: new Date().toISOString(),
     },
@@ -79,9 +76,9 @@ async function handleStockQuoteFetch(frame) {
   if (!requestId || !symbol) {
     return {
       success: false,
-      detail: "requestId and symbol are required in TaskDispatchItem.input",
-      errorCode: "INVALID_INPUT",
-      output: {
+      resultCode: "INVALID_INPUT",
+      result: {
+        detail: "requestId and symbol are required in WorkerInvocation.input",
         requestId: requestId ?? null,
         symbol: symbol ?? null,
         market,
@@ -99,9 +96,9 @@ async function handleStockQuoteFetch(frame) {
     const quote = extractQuote(parsed, symbol, market, sourceUrl);
     return {
       success: response.ok,
-      detail: response.ok ? "stock-quote-success" : `stock-quote-http-${response.status}`,
-      errorCode: response.ok ? null : `HTTP_${response.status}`,
-      output: {
+      resultCode: response.ok ? null : `HTTP_${response.status}`,
+      result: {
+        detail: response.ok ? "stock-quote-success" : `stock-quote-http-${response.status}`,
         requestId,
         symbol,
         market: quote.market,
@@ -116,9 +113,9 @@ async function handleStockQuoteFetch(frame) {
   } catch (error) {
     return {
       success: false,
-      detail: error instanceof Error ? error.message : String(error),
-      errorCode: "QUOTE_FETCH_ERROR",
-      output: {
+      resultCode: "QUOTE_FETCH_ERROR",
+      result: {
+        detail: error instanceof Error ? error.message : String(error),
         requestId,
         symbol,
         market,
@@ -137,11 +134,11 @@ const taskHandlers = new Map([
 ]);
 
 function isControlCompatibilityFrame(frame) {
-  return Boolean(frame?.eventCode) && !frame?.taskId;
+  return Boolean(frame?.eventCode) && !frame?.resultCorrelationRef;
 }
 
 function isCanonicalTaskDispatch(frame) {
-  return Boolean(frame?.taskId) && Boolean(frame?.messageId) && frame?.success === undefined;
+  return Boolean(frame?.resultCorrelationRef) && Boolean(frame?.eventCode) && frame?.success === undefined;
 }
 
 async function handleFrame(rawFrame) {
@@ -159,14 +156,15 @@ async function handleFrame(rawFrame) {
 
   const eventCode = frame?.eventCode;
   const handler = eventCode ? taskHandlers.get(eventCode) : null;
-  log(`received task frame taskId=${frame.taskId} messageId=${frame.messageId} eventCode=${eventCode ?? "<none>"}`);
+  log(`received task frame resultCorrelationRef=${frame.resultCorrelationRef} eventCode=${eventCode ?? "<none>"}`);
 
   if (!handler) {
     socket.send(buildTaskResult(frame, {
       success: false,
-      detail: `Unsupported eventCode: ${eventCode ?? "<missing>"}`,
-      errorCode: "UNSUPPORTED_EVENT_CODE",
-      output: {},
+      resultCode: "UNSUPPORTED_EVENT_CODE",
+      result: {
+        detail: `Unsupported eventCode: ${eventCode ?? "<missing>"}`,
+      },
     }));
     return;
   }

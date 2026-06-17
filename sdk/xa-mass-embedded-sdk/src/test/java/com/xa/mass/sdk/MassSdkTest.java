@@ -130,7 +130,7 @@ import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.sdk.worker.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.WorkerInvocation;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import org.junit.jupiter.api.Assertions;
@@ -3109,10 +3109,10 @@ class MassSdkTest {
 
             assertTrue(app.approveTask(task.getTaskId()));
 
-            PulledTaskDispatch dispatchItem = waitFor(
+            WorkerInvocation dispatchItem = waitFor(
                     Duration.ofSeconds(10),
                     () -> {
-                        List<PulledTaskDispatch> polled = session.poll(1, 250L);
+                        List<WorkerInvocation> polled = session.poll(1, 250L);
                         return polled.isEmpty() ? null : polled.get(0);
                     }
             );
@@ -3124,8 +3124,8 @@ class MassSdkTest {
             assertTrue(session.submitResult(
                     dispatchItem,
                     true,
-                    "fetched",
-                    Map.of("httpStatus", 200, "bodyLength", 42)
+                    null,
+                    "{\"httpStatus\":200,\"bodyLength\":42}"
             ));
 
             TaskDetailSnapshot terminalTask = waitFor(

@@ -1,11 +1,11 @@
 package com.xa.mass.client.worker;
 
-public record WorkerCapabilityReportResult(
+public record WorkerHandlerEvidenceResult(
         String status,
         String workerId,
-        long capabilityVersion,
+        long evidenceVersion,
         boolean accepted,
-        boolean snapshotChanged,
+        boolean changed,
         String reason
 ) {
 }

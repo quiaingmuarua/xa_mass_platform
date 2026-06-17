@@ -34,12 +34,12 @@ class PullWorkerSessionTest {
         PullWorkerSession session = session(deliveryPullChannel, mock(TransportResultIngressChannel.class),
                 new InMemoryTransportEndpointLeaseStore());
 
-        TaskPullResult result = session.pollResult(5, 250L);
+        WorkerPollResult result = session.pollResult(5, 250L);
 
-        assertEquals(TaskPullStatus.DELIVERED, result.getStatus());
+        assertEquals(WorkerPollStatus.DELIVERED, result.getStatus());
         assertEquals("group-1", session.workerGroupId());
         assertEquals(List.of(correlation("msg-1", "attempt-msg-1")),
-                result.getItems().stream().map(PulledTaskDispatch::getResultCorrelationRef).toList());
+                result.getItems().stream().map(WorkerInvocation::getResultCorrelationRef).toList());
     }
 
     @Test
@@ -51,10 +51,10 @@ class PullWorkerSessionTest {
         PullWorkerSession session = session(deliveryPullChannel, mock(TransportResultIngressChannel.class),
                 new InMemoryTransportEndpointLeaseStore());
 
-        List<PulledTaskDispatch> items = session.poll(3, 100L);
+        List<WorkerInvocation> items = session.poll(3, 100L);
 
         assertEquals(List.of(correlation("msg-1", "attempt-msg-1"), correlation("msg-2", "attempt-msg-2")),
-                items.stream().map(PulledTaskDispatch::getResultCorrelationRef).toList());
+                items.stream().map(WorkerInvocation::getResultCorrelationRef).toList());
     }
 
     @Test
@@ -65,7 +65,7 @@ class PullWorkerSessionTest {
         PullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
 
-        PulledTaskDispatch item = new PulledTaskDispatch(
+        WorkerInvocation item = new WorkerInvocation(
                 correlation("msg-1", "attempt-1"),
                 "crawler.fetch-page",
                 Map.of("target", "target-1"),
@@ -90,13 +90,14 @@ class PullWorkerSessionTest {
                 new InMemoryTransportEndpointLeaseStore());
 
         String resultCorrelationRef = correlation("msg-1", "attempt-1");
-        session.submitResult(resultCorrelationRef, true, "ok", null, Map.of());
+        session.submitResult(resultCorrelationRef, true, null, "ok");
 
         var captured = org.mockito.ArgumentCaptor.forClass(TransportResultIngressEnvelope.class);
         verify(resultIngestChannel).ingest(captured.capture());
         assertEquals(routeKey(), captured.getValue().diagnostic("routeKey"));
         assertEquals(resultCorrelationRef, captured.getValue().getPartitionKey());
         assertTrue(captured.getValue().getPayload().contains("\"resultCorrelationRef\":\"" + resultCorrelationRef + "\""));
+        assertTrue(captured.getValue().getPayload().contains("\"result\":\"ok\""));
     }
 
     @Test
@@ -210,8 +211,8 @@ class PullWorkerSessionTest {
         return CanonicalWorkerGroupRouteKeyCodec.encode("group-1");
     }
 
-    private static PulledTaskDispatch item(String messageId) {
-        return new PulledTaskDispatch(
+    private static WorkerInvocation item(String messageId) {
+        return new WorkerInvocation(
                 correlation(messageId, "attempt-" + messageId),
                 "crawler.fetch-page",
                 Map.of("target", "target-1"),

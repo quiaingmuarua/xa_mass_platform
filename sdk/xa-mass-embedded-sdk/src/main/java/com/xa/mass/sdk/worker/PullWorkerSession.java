@@ -34,7 +34,7 @@ public class PullWorkerSession {
     private final String routeKey;
     private final String connectionId;
     private final DeliveryPullChannel deliveryPullChannel;
-    private final PulledTaskDispatchPayloadDecoder payloadDecoder;
+    private final WorkerInvocationPayloadDecoder payloadDecoder;
     private final TransportResultIngressChannel resultIngressChannel;
     private final TaskResultCallbackCodec resultCallbackCodec;
     private final TransportEndpointLeaseStore endpointLeaseStore;
@@ -82,7 +82,7 @@ public class PullWorkerSession {
         this.routeKey = CanonicalWorkerGroupRouteKeyCodec.encode(this.workerGroupId);
         this.connectionId = requireText(connectionId, "connectionId");
         this.deliveryPullChannel = Objects.requireNonNull(deliveryPullChannel, "deliveryPullChannel");
-        this.payloadDecoder = new PulledTaskDispatchPayloadDecoder();
+        this.payloadDecoder = new WorkerInvocationPayloadDecoder();
         this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
         this.resultCallbackCodec = new TaskResultCallbackCodec();
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
@@ -183,60 +183,50 @@ public class PullWorkerSession {
                 });
     }
 
-    public List<PulledTaskDispatch> poll(int maxMessages) {
+    public List<WorkerInvocation> poll(int maxMessages) {
         return poll(maxMessages, 0L);
     }
 
-    public List<PulledTaskDispatch> poll(int maxMessages, long timeoutMillis) {
+    public List<WorkerInvocation> poll(int maxMessages, long timeoutMillis) {
         return pollResult(maxMessages, timeoutMillis).getItems();
     }
 
-    public TaskPullResult pollResult(int maxMessages) {
+    public WorkerPollResult pollResult(int maxMessages) {
         return pollResult(maxMessages, 0L);
     }
 
-    public TaskPullResult pollResult(int maxMessages, long timeoutMillis) {
+    public WorkerPollResult pollResult(int maxMessages, long timeoutMillis) {
         DeliveryPullResult result = deliveryPullChannel.pollDeliveryMessagesResult(
                 workerGroupId,
                 workerId,
                 maxMessages,
                 timeoutMillis
         );
-        return TaskPullResult.of(mapStatus(result.getStatus()), result.getItems().stream()
+        return WorkerPollResult.of(mapStatus(result.getStatus()), result.getItems().stream()
                 .map(payloadDecoder::decode)
                 .toList());
     }
 
-    public boolean submitResult(PulledTaskDispatch item, boolean success, String detail) {
+    public boolean submitResult(WorkerInvocation item, boolean success, String result) {
         Objects.requireNonNull(item, "item");
-        return submitResult(item, success, detail, null, Map.of());
+        return submitResult(item, success, null, result);
     }
 
-    public boolean submitResult(PulledTaskDispatch item,
+    public boolean submitResult(WorkerInvocation item,
                                 boolean success,
-                                String detail,
-                                Map<String, Object> output) {
+                                String resultCode,
+                                String result) {
         Objects.requireNonNull(item, "item");
-        return submitResult(item, success, detail, null, output);
-    }
-
-    public boolean submitResult(PulledTaskDispatch item,
-                                boolean success,
-                                String detail,
-                                String errorCode,
-                                Map<String, Object> output) {
-        Objects.requireNonNull(item, "item");
-        WorkerResultSubmitRequest request = new WorkerResultSubmitRequest(
+        WorkerResultSubmission request = new WorkerResultSubmission(
                 item.getResultCorrelationRef(),
                 success,
-                detail,
-                errorCode,
-                output
+                resultCode,
+                result
         );
         return submitResult(request);
     }
 
-    public boolean submitResult(WorkerResultSubmitRequest request) {
+    public boolean submitResult(WorkerResultSubmission request) {
         Objects.requireNonNull(request, "request");
         return resultIngressChannel.ingest(resultCallbackCodec.toEnvelope(
                 request,
@@ -247,15 +237,13 @@ public class PullWorkerSession {
 
     public boolean submitResult(String resultCorrelationRef,
                                 boolean success,
-                                String detail,
-                                String errorCode,
-                                Map<String, Object> output) {
-        return submitResult(WorkerResultSubmitRequest.of(
+                                String resultCode,
+                                String result) {
+        return submitResult(WorkerResultSubmission.of(
                 resultCorrelationRef,
                 success,
-                detail,
-                errorCode,
-                output
+                resultCode,
+                result
         ));
     }
 
@@ -331,16 +319,16 @@ public class PullWorkerSession {
         return value.trim();
     }
 
-    private static TaskPullStatus mapStatus(DeliveryPullStatus status) {
+    private static WorkerPollStatus mapStatus(DeliveryPullStatus status) {
         if (status == null) {
-            return TaskPullStatus.UNAVAILABLE;
+            return WorkerPollStatus.UNAVAILABLE;
         }
         return switch (status) {
-            case DELIVERED -> TaskPullStatus.DELIVERED;
-            case EMPTY -> TaskPullStatus.EMPTY;
-            case INVALID_REQUEST -> TaskPullStatus.INVALID_REQUEST;
-            case UNAVAILABLE -> TaskPullStatus.UNAVAILABLE;
-            case SHUTDOWN -> TaskPullStatus.SHUTDOWN;
+            case DELIVERED -> WorkerPollStatus.DELIVERED;
+            case EMPTY -> WorkerPollStatus.EMPTY;
+            case INVALID_REQUEST -> WorkerPollStatus.INVALID_REQUEST;
+            case UNAVAILABLE -> WorkerPollStatus.UNAVAILABLE;
+            case SHUTDOWN -> WorkerPollStatus.SHUTDOWN;
         };
     }
 }

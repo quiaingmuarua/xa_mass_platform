@@ -56,9 +56,9 @@ import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.sdk.worker.PulledTaskDispatch;
-import com.xa.mass.sdk.worker.TaskPullResult;
-import com.xa.mass.sdk.worker.WorkerResultSubmitRequest;
+import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerPollResult;
+import com.xa.mass.sdk.worker.WorkerResultSubmission;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -704,12 +704,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<PulledTaskDispatch> pollTasks(String workerId, int maxMessages) {
+    public List<WorkerInvocation> pollTasks(String workerId, int maxMessages) {
         return pollTasks(workerId, maxMessages, 0L);
     }
 
     @Override
-    public TaskPullResult pollTasksResult(String workerId, int maxMessages, long timeoutMillis) {
+    public WorkerPollResult pollTasksResult(String workerId, int maxMessages, long timeoutMillis) {
         if (maxMessages <= 0) {
             throw new IllegalArgumentException("maxMessages must be greater than 0");
         }
@@ -717,12 +717,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<PulledTaskDispatch> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
+    public List<WorkerInvocation> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
         return pollTasksResult(workerId, maxMessages, timeoutMillis).getItems();
     }
 
     @Override
-    public boolean submitResult(String workerId, WorkerResultSubmitRequest request) {
+    public boolean submitResult(String workerId, WorkerResultSubmission request) {
         Objects.requireNonNull(request, "request");
         return externalPullWorkerSession(workerId).submitResult(
                 request

@@ -1,8 +1,6 @@
 package com.xa.mass.client.worker.session;
 
-import com.xa.mass.client.worker.WorkerDispatchItem;
-import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
-import com.xa.mass.client.worker.handler.WorkerEventHandlers;
+import com.xa.mass.client.worker.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import org.junit.jupiter.api.Test;
 
@@ -18,18 +16,15 @@ class WorkerDispatchProcessorTest {
     void invokesHandlerAndReturnsProcessedDispatch() {
         WorkerDispatchProcessor processor = new WorkerDispatchProcessor(
                 "worker-1",
-                new WorkerEventHandlerRuntime(WorkerEventHandlers.builder()
-                        .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of(
-                                "eventCode", dispatch.eventCode())))
-                        .build()),
+                Map.of("probe.phone.metadata", dispatch -> WorkerResult.success(dispatch.eventCode())),
                 WorkerSessionListener.NOOP);
 
         WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
 
-        assertEquals("corr-1", processed.resultCorrelationRef().value());
+        assertEquals("corr-1", processed.resultCorrelationRef());
         assertEquals("probe.phone.metadata", processed.invocation().eventCode());
         assertTrue(processed.result().success());
-        assertEquals("probe.phone.metadata", processed.result().output().get("eventCode"));
+        assertEquals("probe.phone.metadata", processed.result().result());
     }
 
     @Test
@@ -43,23 +38,52 @@ class WorkerDispatchProcessorTest {
         };
         WorkerDispatchProcessor processor = new WorkerDispatchProcessor(
                 "worker-1",
-                new WorkerEventHandlerRuntime(WorkerEventHandlers.builder()
-                        .event("probe.phone.metadata", dispatch -> {
-                            throw new IllegalStateException("handler failed");
-                        })
-                        .build()),
+                Map.of("probe.phone.metadata", dispatch -> {
+                    throw new IllegalStateException("handler failed");
+                }),
                 listener);
 
         WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
 
         assertNotNull(observed.get());
-        assertEquals("corr-1", observed.get().resultCorrelationRef().value());
+        assertEquals("corr-1", observed.get().resultCorrelationRef());
         assertEquals("handler failed", observed.get().cause().getMessage());
-        assertEquals("HANDLER_ERROR", processed.result().errorCode());
+        assertEquals("HANDLER_ERROR", processed.result().resultCode());
     }
 
-    private static WorkerDispatchItem dispatch() {
-        return new WorkerDispatchItem(
+    @Test
+    void missingHandlerReturnsStructuredFailureWithoutHandlerFailureCallback() {
+        AtomicReference<WorkerSessionDispatchFailure> observed = new AtomicReference<>();
+        WorkerDispatchProcessor processor = new WorkerDispatchProcessor(
+                "worker-1",
+                Map.of(),
+                new WorkerSessionListener() {
+                    @Override
+                    public void onHandlerFailure(WorkerSessionDispatchFailure failure) {
+                        observed.set(failure);
+                    }
+                });
+
+        WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
+
+        assertEquals("NO_HANDLER", processed.result().resultCode());
+        assertEquals(null, observed.get());
+    }
+
+    @Test
+    void nullHandlerResultReturnsStructuredFailure() {
+        WorkerDispatchProcessor processor = new WorkerDispatchProcessor(
+                "worker-1",
+                Map.of("probe.phone.metadata", dispatch -> null),
+                WorkerSessionListener.NOOP);
+
+        WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
+
+        assertEquals("HANDLER_NULL_RESULT", processed.result().resultCode());
+    }
+
+    private static WorkerInvocation dispatch() {
+        return new WorkerInvocation(
                 "corr-1",
                 "probe.phone.metadata",
                 Map.of(),

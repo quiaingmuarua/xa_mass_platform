@@ -131,6 +131,30 @@ class JavaExternalSdkArchitectureGuardTest {
         assertFalse(Files.exists(Path.of(
                         "src/main/java/com/xa/mass/client/worker/handler/DispatchContext.java")),
                 "DispatchContext must not remain as a compatibility alias");
+        assertFalse(Files.exists(Path.of(
+                        "src/main/java/com/xa/mass/client/worker/WorkerResultSubmitRequest.java")),
+                "WorkerResultSubmitRequest must not remain as a compatibility alias");
+        assertFalse(Files.exists(Path.of(
+                        "src/main/java/com/xa/mass/client/worker/WorkerResultSubmitOutcome.java")),
+                "WorkerResultSubmitOutcome must not remain as a compatibility alias");
+        assertFalse(Files.exists(Path.of(
+                        "src/main/java/com/xa/mass/client/worker/WorkerDispatchItem.java")),
+                "WorkerDispatchItem must converge into WorkerInvocation instead of remaining as a second public dispatch DTO");
+        assertFalse(Files.exists(Path.of(
+                        "src/main/java/com/xa/mass/client/worker/ResultCorrelationRef.java")),
+                "ResultCorrelationRef must not remain as a one-field wrapper around the public submit token");
+        assertFalse(Files.exists(Path.of(
+                        "src/main/java/com/xa/mass/client/worker/session/WorkerDispatchHandler.java")),
+                "WorkerDispatchHandler must not remain as a second public handler callback");
+        assertFalse(Files.exists(Path.of(
+                        "src/main/java/com/xa/mass/client/worker/handler/WorkerEventHandlers.java")),
+                "WorkerEventHandlers must not remain as a public Map wrapper");
+        assertFalse(Files.exists(Path.of(
+                        "src/main/java/com/xa/mass/client/worker/handler/WorkerEventInvocation.java")),
+                "WorkerEventInvocation must not expose handler runtime outcome as a public model");
+        assertFalse(Files.exists(Path.of(
+                        "src/main/java/com/xa/mass/client/worker/handler/WorkerResultSink.java")),
+                "WorkerResultSink must not expose a second public result-submit hook");
 
         assertNoProductionSourceContains(
                 List.of(WORKER_HANDLER_SOURCE),
@@ -146,6 +170,7 @@ class JavaExternalSdkArchitectureGuardTest {
                 "rawItem",
                 "DeliveryCommand",
                 "WorkerDispatchItem",
+                "WorkerResultSink",
                 "endpoint",
                 "connectionId",
                 "sessionHandle"
@@ -153,9 +178,8 @@ class JavaExternalSdkArchitectureGuardTest {
 
         assertNoProductionSourceContains(
                 List.of(
-                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerDispatchItem.java"),
-                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerResultSubmitRequest.java"),
-                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerResultSubmitOutcome.java")
+                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerInvocation.java"),
+                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerResultSubmission.java")
                 ),
                 "taskId",
                 "messageId",
@@ -173,6 +197,8 @@ class JavaExternalSdkArchitectureGuardTest {
         assertNoProductionSourceContains(
                 List.of(Path.of("src/main/java/com/xa/mass/client/worker/session")),
                 "DispatchContext",
+                "WorkerDispatchHandler",
+                "WorkerResultSink",
                 ".taskId(",
                 ".messageId(",
                 ".attemptId(",
@@ -180,6 +206,41 @@ class JavaExternalSdkArchitectureGuardTest {
                 ".retryCount(",
                 ".batchId(",
                 "DeliveryCommand"
+        );
+    }
+
+    @Test
+    void workerClientDoesNotExposeOldTopologyEvidenceOrCommandModels() throws IOException {
+        for (String deletedFile : List.of(
+                "AdapterNodeSpec.java",
+                "AdapterNodeRegistrationResult.java",
+                "NodeGroupBindingSpec.java",
+                "NodeGroupBindingResult.java",
+                "WorkerCapabilityReport.java",
+                "WorkerCapabilityReportResult.java",
+                "WorkerStateReport.java",
+                "WorkerStateReportResult.java",
+                "WorkerStateProjection.java",
+                "WorkerCommand.java",
+                "WorkerCommandPollRequest.java",
+                "WorkerCommandPollResult.java",
+                "WorkerCommandAck.java",
+                "WorkerCommandAckResult.java"
+        )) {
+            assertFalse(Files.exists(Path.of("src/main/java/com/xa/mass/client/worker").resolve(deletedFile)),
+                    deletedFile + " must not remain on the Java external worker SDK surface");
+        }
+
+        assertNoProductionSourceContains(
+                List.of(Path.of("src/main/java/com/xa/mass/client/worker")),
+                "registerAdapterNode",
+                "bindNodeGroup",
+                "reportCapability",
+                "reportState",
+                "pollCommands",
+                "ackCommand",
+                ":report-capability",
+                ":report-state"
         );
     }
 
@@ -208,6 +269,41 @@ class JavaExternalSdkArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "Java integrations must use MassPlatform or worker sessions for /api/v1 and /worker-api/v1 calls. "
                         + "Only SDK internals/tests and explicit roadmap exceptions may hard-code route literals: "
+                        + violations);
+    }
+
+    @Test
+    void externalSamplesDoNotTeachOldWorkerEvidenceRoutes() throws IOException {
+        Path repoRoot = resolveRepoRoot();
+        Path samplesRoot = repoRoot.resolve("integrations/samples");
+        List<String> violations = new ArrayList<>();
+        List<String> forbiddenTokens = List.of(
+                ":report-capability",
+                ":report-state",
+                "availableEventCodes",
+                "schedulingAttributes"
+        );
+
+        try (var paths = Files.walk(samplesRoot)) {
+            List<Path> sampleFiles = paths
+                    .filter(path -> {
+                        String fileName = path.getFileName().toString();
+                        return fileName.endsWith(".md") || fileName.endsWith(".mjs");
+                    })
+                    .filter(path -> !hasPathSegment(path, "target"))
+                    .toList();
+            for (Path sampleFile : sampleFiles) {
+                String source = Files.readString(sampleFile);
+                for (String forbiddenToken : forbiddenTokens) {
+                    if (source.contains(forbiddenToken)) {
+                        violations.add(repoRoot.relativize(sampleFile) + " contains " + forbiddenToken);
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "External samples must use :report-handler-evidence / :report-runtime-evidence and evidence field names: "
                         + violations);
     }
 

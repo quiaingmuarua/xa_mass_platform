@@ -73,7 +73,6 @@ class WorkerPackGeoLookupExternalSdkIntegrationTest extends AbstractSampleE2eTes
 
         try (PollingWorkerSession ignored = GeoLookupWorkerPack.builder(workerMass)
                 .workerId(workerId)
-                .adapterNodeId("worker-pack-geo-node-001")
                 .projectCodes(List.of("workerPackApp"))
                 .attribute("routingTags", "global")
                 .pollInterval(Duration.ofMillis(50))

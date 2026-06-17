@@ -37,11 +37,9 @@ class WorkerScenarioRegistrarTest {
             ));
 
             assertEquals(1, registrar.declaredWorkerGroupCount());
-            assertEquals(1, registrar.registeredAdapterNodeCount());
-            assertEquals(1, registrar.boundAdapterNodeGroupCount());
             assertEquals(1, countPath(requests, "/worker-api/v1/worker-groups"));
-            assertEquals(1, countPath(requests, "/worker-api/v1/adapter-nodes"));
-            assertEquals(1, countPath(requests, "/worker-api/v1/node-group-bindings"));
+            assertEquals(0, countPath(requests, "/worker-api/v1/adapter-nodes"));
+            assertEquals(0, countPath(requests, "/worker-api/v1/node-group-bindings"));
             assertEquals(2, countPath(requests, "/worker-api/v1/workers"));
             assertTrue(requests.stream().allMatch(request ->
                     "override-worker-key".equals(request.headers().get("X-mass-api-key"))));
@@ -49,8 +47,8 @@ class WorkerScenarioRegistrarTest {
                     .filter(request -> request.path().equals("/worker-api/v1/workers"))
                     .map(RecordedRequest::body)
                     .toList();
-            assertTrue(workerBodies.stream().allMatch(body -> body.contains("\"adapterNodeId\":\"sample-node\"")));
             assertTrue(workerBodies.stream().allMatch(body -> body.contains("\"transportHint\":\"polling\"")));
+            assertFalse(workerBodies.stream().anyMatch(body -> body.contains("\"adapterNodeId\"")));
             assertFalse(workerBodies.stream().anyMatch(body -> body.contains("\"adapterId\"")));
         }
     }
@@ -71,7 +69,6 @@ class WorkerScenarioRegistrarTest {
                     "worker-001",
                     "worker-key",
                     "sample-group",
-                    "sample-node",
                     "polling",
                     null,
                     null,
@@ -104,7 +101,6 @@ class WorkerScenarioRegistrarTest {
                     "api-worker-001",
                     "api-worker-key",
                     "sample-group",
-                    "sample-node",
                     "polling",
                     "polling",
                     "api-online",
@@ -114,8 +110,8 @@ class WorkerScenarioRegistrarTest {
 
             assertEquals(0, requests.stream()
                     .filter(request -> request.path().contains(":online")
-                            || request.path().contains(":report-capability")
-                            || request.path().contains(":report-state"))
+                            || request.path().contains(":report-handler-evidence")
+                            || request.path().contains(":report-runtime-evidence"))
                     .count());
         }
     }
@@ -125,7 +121,6 @@ class WorkerScenarioRegistrarTest {
                 workerId,
                 "worker-key",
                 "sample-group",
-                "sample-node",
                 "polling",
                 "polling",
                 null,

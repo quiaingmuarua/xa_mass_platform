@@ -161,12 +161,12 @@ async function registerWorker(spec) {
       sessionToken,
       reason: "sample-launcher-api-online",
     });
-    await post(`/worker-api/v1/workers/${encodeURIComponent(spec.workerId)}:report-capability`, spec.workerKey, {
-      availableEventCodes: [...new Set((spec.eventBindings ?? []).map((binding) => binding.eventCode).filter(Boolean))],
+    await post(`/worker-api/v1/workers/${encodeURIComponent(spec.workerId)}:report-handler-evidence`, spec.workerKey, {
+      eventCodes: [...new Set((spec.eventBindings ?? []).map((binding) => binding.eventCode).filter(Boolean))],
       agentVersion: "sample-launcher-api-online",
-      schedulingAttributes: spec.attributes ?? {},
+      attributes: spec.attributes ?? {},
     });
-    await post(`/worker-api/v1/workers/${encodeURIComponent(spec.workerId)}:report-state`, spec.workerKey, {
+    await post(`/worker-api/v1/workers/${encodeURIComponent(spec.workerId)}:report-runtime-evidence`, spec.workerKey, {
       state: "AVAILABLE",
       reason: "sample-launcher-api-online",
       observedAt: new Date().toISOString(),

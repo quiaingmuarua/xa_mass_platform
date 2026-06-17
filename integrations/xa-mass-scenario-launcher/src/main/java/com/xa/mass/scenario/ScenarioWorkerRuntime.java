@@ -1,8 +1,10 @@
 package com.xa.mass.scenario;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.WorkerEventBindingSpec;
-import com.xa.mass.client.worker.handler.WorkerInvocation;
+import com.xa.mass.client.worker.WorkerInvocation;
 import com.xa.mass.client.worker.session.PollingWorkerSession;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.client.worker.session.WebSocketWorkerSession;
@@ -25,6 +27,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class ScenarioWorkerRuntime implements AutoCloseable {
+    private static final ObjectMapper RESULT_MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final Duration POLL_INTERVAL = Duration.ofMillis(250L);
     private static final Duration POLL_TIMEOUT = Duration.ofMillis(500L);
     private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(10L);
@@ -160,7 +163,16 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
         ));
         output.put("input", dispatch.input().asMap());
         output.put("sharedConfig", dispatch.sharedConfig().asMap());
-        return WorkerResult.success("java-scenario-launcher-success", output);
+        output.put("detail", "java-scenario-launcher-success");
+        return WorkerResult.success(resultBody(output));
+    }
+
+    private static String resultBody(Map<String, Object> output) {
+        try {
+            return RESULT_MAPPER.writeValueAsString(output);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to encode worker result", e);
+        }
     }
 
     private String workerApiKey(WorkerScenarioSpec spec) {
@@ -207,13 +219,13 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
         @Override
         public void onHandlerFailure(WorkerSessionDispatchFailure failure) {
             System.err.printf("[java-scenario-launcher] worker handler failed workerId=%s resultCorrelationRef=%s error=%s%n",
-                    failure.workerId(), failure.resultCorrelationRef().value(), failure.cause().getMessage());
+                    failure.workerId(), failure.resultCorrelationRef(), failure.cause().getMessage());
         }
 
         @Override
         public void onSubmitFailure(WorkerSessionDispatchFailure failure) {
             System.err.printf("[java-scenario-launcher] worker submit failed workerId=%s resultCorrelationRef=%s error=%s%n",
-                    failure.workerId(), failure.resultCorrelationRef().value(), failure.cause().getMessage());
+                    failure.workerId(), failure.resultCorrelationRef(), failure.cause().getMessage());
         }
 
         @Override

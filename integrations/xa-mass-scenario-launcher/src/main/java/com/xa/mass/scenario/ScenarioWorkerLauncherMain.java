@@ -29,11 +29,9 @@ public final class ScenarioWorkerLauncherMain {
             WorkerScenarioRegistrar workerRegistrar = new WorkerScenarioRegistrar(options, clientFactory);
             if (options.registerApiOnlineOnly()) {
                 workerRegistrar.register(files.workerSpecs(), true);
-                System.out.printf("[java-scenario-worker-launcher] registered api-online workers=%d groups=%d adapterNodes=%d bindings=%d%n",
+                System.out.printf("[java-scenario-worker-launcher] registered api-online workers=%d groups=%d%n",
                         files.workerSpecs().size(),
-                        workerRegistrar.declaredWorkerGroupCount(),
-                        workerRegistrar.registeredAdapterNodeCount(),
-                        workerRegistrar.boundAdapterNodeGroupCount());
+                        workerRegistrar.declaredWorkerGroupCount());
                 return;
             }
             workerRegistrar.register(files.workerSpecs(), false);

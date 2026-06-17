@@ -4,13 +4,10 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.reflect.TypeToken;
-import com.xa.mass.sdk.worker.WorkerResultSubmitRequest;
+import com.xa.mass.sdk.worker.WorkerResultSubmission;
 import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.payload.TransportJsonValueNormalizer;
 
-import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.Objects;
 
@@ -21,12 +18,12 @@ import java.util.Objects;
 public final class TaskResultCallbackCodec {
 
     private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
+    private static final String RESULT_CODE_FIELD = "resultCode";
+    private static final String RESULT_FIELD = "result";
     private static final String MESSAGE_FIELD = "message";
     private static final String ATTEMPT_ID_FIELD = "attemptId";
     private static final String LEASE_TOKEN_FIELD = "leaseToken";
     private static final String TRACE_ID_FIELD = "traceId";
-    private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
-    }.getType();
 
     private final Gson gson;
     private final TaskDispatchDeliveryCorrelationCodec deliveryCorrelationCodec;
@@ -44,7 +41,7 @@ public final class TaskResultCallbackCodec {
         this.deliveryCorrelationCodec = Objects.requireNonNull(deliveryCorrelationCodec, "deliveryCorrelationCodec");
     }
 
-    public TransportResultIngressEnvelope toEnvelope(WorkerResultSubmitRequest request,
+    public TransportResultIngressEnvelope toEnvelope(WorkerResultSubmission request,
                                                      String partitionKey,
                                                      Map<String, String> diagnostics) {
         Objects.requireNonNull(request, "request");
@@ -75,13 +72,12 @@ public final class TaskResultCallbackCodec {
         );
     }
 
-    private String encodeWorkerResultRequestPayload(WorkerResultSubmitRequest request) {
+    private String encodeWorkerResultRequestPayload(WorkerResultSubmission request) {
         JsonObject payload = new JsonObject();
         payload.addProperty(RESULT_CORRELATION_REF_FIELD, request.resultCorrelationRef());
         payload.addProperty(TransportPacket.PAYLOAD_SUCCESS, request.success());
-        addOptionalProperty(payload, TransportPacket.PAYLOAD_DETAIL, request.detail());
-        addOptionalProperty(payload, TransportPacket.PAYLOAD_ERROR_CODE, request.errorCode());
-        payload.add(TransportPacket.PAYLOAD_OUTPUT, gson.toJsonTree(request.output()));
+        addOptionalProperty(payload, RESULT_CODE_FIELD, request.resultCode());
+        addOptionalProperty(payload, RESULT_FIELD, request.result());
         return gson.toJson(payload);
     }
 
@@ -102,19 +98,18 @@ public final class TaskResultCallbackCodec {
             throw new IllegalArgumentException("result callback payload requires resultCorrelationRef");
         }
         TaskDispatchDeliveryCorrelation deliveryCorrelation = deliveryCorrelationCodec.decode(resultCorrelationRef);
-        String detail = firstNonBlank(
-                readString(payload, TransportPacket.PAYLOAD_DETAIL),
+        String result = firstNonBlank(
+                readString(payload, RESULT_FIELD),
                 readString(payload, MESSAGE_FIELD)
         );
-        String errorCode = readString(payload, TransportPacket.PAYLOAD_ERROR_CODE);
-        Map<String, Object> output = readObject(payload, TransportPacket.PAYLOAD_OUTPUT);
+        String resultCode = readString(payload, RESULT_CODE_FIELD);
         return new TaskResultCallbackCommand(
                 deliveryCorrelation.taskId(),
                 deliveryCorrelation.messageId(),
                 success,
-                detail,
-                errorCode,
-                output,
+                success ? null : result,
+                resultCode,
+                success && result != null ? Map.of(RESULT_FIELD, result) : Map.of(),
                 deliveryCorrelation.attemptId(),
                 null,
                 null);
@@ -142,18 +137,6 @@ public final class TaskResultCallbackCodec {
             throw new IllegalArgumentException(fieldName + " must be a JSON object", ex);
         }
         throw new IllegalArgumentException(fieldName + " must be a JSON object");
-    }
-
-    private Map<String, Object> readObject(JsonObject object, String field) {
-        if (object == null || !object.has(field) || object.get(field).isJsonNull()) {
-            return Map.of();
-        }
-        JsonElement element = object.get(field);
-        if (!element.isJsonObject()) {
-            return Map.of();
-        }
-        Map<String, Object> decoded = gson.fromJson(element, MAP_TYPE);
-        return TransportJsonValueNormalizer.freezeDecodedObject(decoded);
     }
 
     private Boolean readBoolean(JsonObject object, String field) {

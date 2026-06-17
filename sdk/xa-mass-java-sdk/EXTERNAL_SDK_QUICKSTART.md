@@ -125,20 +125,22 @@ The stable third-party worker protocol today is the polling surface:
 - `POST /worker-api/v1/workers/{workerId}:heartbeat`
 - `POST /worker-api/v1/workers/{workerId}:poll`
 - `POST /worker-api/v1/workers/{workerId}:submit-result`
-- `POST /worker-api/v1/workers/{workerId}:report-capability`
-- `POST /worker-api/v1/workers/{workerId}:report-state`
+- `POST /worker-api/v1/workers/{workerId}:report-handler-evidence`
+- `POST /worker-api/v1/workers/{workerId}:report-runtime-evidence`
 - `POST /worker-api/v1/workers/{workerId}/commands/{commandId}:ack`
 - `POST /worker-api/v1/workers/{workerId}:offline`
 
-Polling workers receive pulled task dispatch items, execute by `eventCode`, and
-submit `TaskResultReport`. The pulled item does not carry worker identity or
-route metadata; those come from the worker session/path context. Workers may
-also report current worker-local handler availability/scheduling attributes
-through `:report-capability` and bounded state snapshots through
-`:report-state`; WorkerGroup declaration remains the capability truth and
+Polling workers receive worker invocation items, execute by `eventCode`, and
+submit `WorkerResultSubmission` with the opaque `resultCorrelationRef` from
+that item. The pulled item does not carry worker identity, task lifecycle
+identity, or route metadata; those come from the worker session/path context
+or stay inside runtime correlation. Workers may also report current
+worker-local handler availability/scheduling attributes
+through `:report-handler-evidence` and bounded runtime evidence through
+`:report-runtime-evidence`; WorkerGroup declaration remains the capability truth and
 these reports are not `WorkerSession` lifecycle requirements. Workers may also
 acknowledge owner-issued worker commands. In current mainline,
-`report-state(DRAINING)` stops new dispatches to that worker but does not
+`report-runtime-evidence(DRAINING)` stops new dispatches to that worker but does not
 revoke or interrupt already in-flight work. Acknowledging a `DRAIN` command to
 an accepted state converges to the same dispatch-gate behavior.
 Presence calls (`online`, `heartbeat`, and `offline`) require a stable
@@ -149,13 +151,8 @@ Example dispatch payload:
 
 ```json
 {
-  "taskId": "...",
-  "messageId": "...",
+  "resultCorrelationRef": "...",
   "eventCode": "crawler.fetch-page",
-  "attemptId": "...",
-  "attemptNo": 1,
-  "retryCount": 0,
-  "batchId": "...",
   "input": {
     "url": "https://example.com"
   },
@@ -165,6 +162,17 @@ Example dispatch payload:
       "region": "us"
     }
   }
+}
+```
+
+Example result submission:
+
+```json
+{
+  "resultCorrelationRef": "...",
+  "success": true,
+  "resultCode": null,
+  "result": "{\"status\":\"SUCCESS\",\"title\":\"Example\"}"
 }
 ```
 

@@ -78,7 +78,6 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
 
         try (PollingWorkerSession matched = ProbeWorkerPack.phoneDevicePolling(matchedWorkerMass)
                 .workerId(matchedWorkerId)
-                .adapterNodeId("phone-device-probe-node-a")
                 .attribute("fingerprintProfile", "fp-android-sg-a")
                 .attribute("fingerprintHash", "sha256:dev-fp-android-sg-a-001")
                 .attribute("networkOperatorMccMnc", "52501")
@@ -88,7 +87,6 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
                 .startPolling();
              PollingWorkerSession other = ProbeWorkerPack.phoneDevicePolling(otherWorkerMass)
                      .workerId(otherWorkerId)
-                     .adapterNodeId("phone-device-probe-node-b")
                      .attribute("fingerprintProfile", "fp-android-sg-b")
                      .attribute("fingerprintHash", "sha256:dev-fp-android-sg-b-002")
                      .attribute("networkOperatorMccMnc", "52505")

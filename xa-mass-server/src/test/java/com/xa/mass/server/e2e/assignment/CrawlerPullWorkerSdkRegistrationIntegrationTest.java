@@ -17,7 +17,7 @@ import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.sdk.worker.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.WorkerInvocation;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -121,7 +121,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
 
             assertTrue(app.approveTask(task.getTaskId()));
 
-            List<PulledTaskDispatch> items = List.of();
+            List<WorkerInvocation> items = List.of();
             for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
                 items = session.poll(10);
                 if (items.isEmpty()) {
@@ -130,15 +130,15 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
             }
             assertFalse(items.isEmpty(), "Expected crawler task dispatch via polling");
 
-            PulledTaskDispatch item = items.get(0);
+            WorkerInvocation item = items.get(0);
             assertFalse(item.getResultCorrelationRef().isBlank());
             assertEquals("https://example.test/page-1", item.getInput().get("url"));
 
             assertTrue(session.submitResult(
                     item,
                     true,
-                    "crawler-success",
-                    Map.of("url", "https://example.test/page-1", "statusCode", 200, "title", "Example Page")
+                    null,
+                    "{\"url\":\"https://example.test/page-1\",\"statusCode\":200,\"title\":\"Example Page\"}"
             ));
 
             TaskSnapshot terminal = waitForTerminalTask(task.getTaskId());
@@ -148,9 +148,8 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
             assertEquals("SUCCESS", result.getStatus());
             assertEquals(workerId, result.getWorkerId());
             Map<?, ?> output = result.getOutput();
-            assertEquals("https://example.test/page-1", output.get("url"));
-            assertEquals(200, ((Number) output.get("statusCode")).intValue());
-            assertEquals("Example Page", output.get("title"));
+            assertEquals("{\"url\":\"https://example.test/page-1\",\"statusCode\":200,\"title\":\"Example Page\"}",
+                    output.get("result"));
         } finally {
             session.disconnect();
         }

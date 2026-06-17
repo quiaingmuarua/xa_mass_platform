@@ -107,22 +107,22 @@ async function registerWorker() {
 }
 
 async function reportWorkerCapability() {
-  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:report-capability`, {
-    availableEventCodes: [eventCode],
+  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:report-handler-evidence`, {
+    eventCodes: [eventCode],
     agentVersion: `node-${process.version}`,
-    schedulingAttributes: {
+    attributes: {
       region,
       routingTags: routingTags.join(","),
     },
   });
-  console.log("[worker] reported worker capability:", response.data);
+  console.log("[worker] reported worker handler evidence:", response.data);
 }
 
 async function reportInitialWorkerState() {
   if (!initialWorkerState) {
     return;
   }
-  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:report-state`, {
+  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:report-runtime-evidence`, {
     state: initialWorkerState,
     reason: initialWorkerStateReason,
     attributes: {
@@ -130,7 +130,7 @@ async function reportInitialWorkerState() {
       region,
     },
   });
-  console.log("[worker] reported worker state:", response.data);
+  console.log("[worker] reported worker runtime evidence:", response.data);
 }
 
 async function pollOnce() {
@@ -147,8 +147,8 @@ async function pollOnce() {
 }
 
 async function handleDispatch(item) {
-  const { taskId, messageId, eventCode: dispatchEventCode } = item;
-  console.log(`[worker] received taskId=${taskId} messageId=${messageId} eventCode=${dispatchEventCode}`);
+  const { resultCorrelationRef, eventCode: dispatchEventCode } = item;
+  console.log(`[worker] received resultCorrelationRef=${resultCorrelationRef} eventCode=${dispatchEventCode}`);
 
   let result;
   try {
@@ -156,9 +156,9 @@ async function handleDispatch(item) {
   } catch (error) {
     result = {
       success: false,
-      detail: error instanceof Error ? error.message : String(error),
-      errorCode: "WORKER_HANDLER_ERROR",
-      output: {
+      resultCode: "WORKER_HANDLER_ERROR",
+      result: {
+        detail: error instanceof Error ? error.message : String(error),
         workerId,
         eventCode: dispatchEventCode,
       },
@@ -166,12 +166,10 @@ async function handleDispatch(item) {
   }
 
   const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:submit-result`, {
-    taskId,
-    messageId,
+    resultCorrelationRef,
     success: result.success,
-    detail: result.detail,
-    errorCode: result.errorCode ?? null,
-    output: result.output ?? {},
+    resultCode: result.resultCode ?? null,
+    result: JSON.stringify(result.result ?? {}),
   });
   console.log("[worker] submitted result:", response.data);
 }
@@ -190,9 +188,9 @@ async function handleCrawlerFetchPage(item) {
   if (!url || typeof url !== "string") {
     return {
       success: false,
-      detail: "url is required in TaskDispatchItem.input.url",
-      errorCode: "INVALID_INPUT",
-      output: {
+      resultCode: "INVALID_INPUT",
+      result: {
+        detail: "url is required in WorkerInvocation.input.url",
         workerId,
         eventCode: item.eventCode,
       },
@@ -203,7 +201,7 @@ async function handleCrawlerFetchPage(item) {
   try {
     const response = await fetch(url);
     const body = await response.text();
-    const output = {
+    const resultBody = {
       workerId,
       eventCode: item.eventCode,
       url: response.url,
@@ -214,16 +212,18 @@ async function handleCrawlerFetchPage(item) {
     };
     return {
       success: response.ok,
-      detail: response.ok ? "crawler-success" : `crawler-http-${response.status}`,
-      errorCode: response.ok ? null : `HTTP_${response.status}`,
-      output,
+      resultCode: response.ok ? null : `HTTP_${response.status}`,
+      result: {
+        detail: response.ok ? "crawler-success" : `crawler-http-${response.status}`,
+        ...resultBody,
+      },
     };
   } catch (error) {
     return {
       success: false,
-      detail: error instanceof Error ? error.message : String(error),
-      errorCode: "FETCH_ERROR",
-      output: {
+      resultCode: "FETCH_ERROR",
+      result: {
+        detail: error instanceof Error ? error.message : String(error),
         workerId,
         eventCode: item.eventCode,
         url,

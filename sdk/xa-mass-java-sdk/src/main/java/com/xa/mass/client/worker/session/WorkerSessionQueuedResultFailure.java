@@ -1,10 +1,8 @@
 package com.xa.mass.client.worker.session;
 
-import com.xa.mass.client.worker.ResultCorrelationRef;
-
 public record WorkerSessionQueuedResultFailure(
         String workerId,
-        ResultCorrelationRef resultCorrelationRef,
+        String resultCorrelationRef,
         Reason reason,
         Throwable cause
 ) {

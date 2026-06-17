@@ -230,7 +230,7 @@ Owner split:
 
 | Layer | Owner | Meaning |
 | --- | --- | --- |
-| worker result submit request | `WorkerResultSubmitRequest` / adapter worker frame | worker-submitted result body at SDK/server or adapter boundary; does not own retry, finality, or terminal policy |
+| worker result submission | `WorkerResultSubmission` / adapter worker frame | worker-submitted result body at SDK/server or adapter boundary; does not own retry, finality, or terminal policy |
 | transport ingress carrier | `TransportResultIngressEnvelope` | opaque payload, opaque correlation, optional partition key, diagnostics, and receive time; transport queues and relays it without task-shaped validation |
 | starter result callback projection | `TaskResultCallbackCodec`, `TaskResultCallbackCommand` | decodes opaque ingress payload/correlation and carries task result callback facts into engine-owned validation |
 | engine ingest port | `TaskResultIngestFacade`, `TaskResultIngestPort` | narrow transport-to-engine callable surface |

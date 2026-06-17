@@ -20,7 +20,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -77,11 +76,9 @@ class WebSocketWorkerSessionTest {
                 .workerGroupId("realtime-probe")
                 .attribute("region", "sg")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of(
-                        "eventCode", dispatch.eventCode(),
-                        "title", dispatch.input().requiredString("title"),
-                        "integrationProbe", "java-sdk-websocket-session"
-                )))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("""
+                        {"eventCode":"%s","title":"%s","integrationProbe":"java-sdk-websocket-session"}
+                        """.formatted(dispatch.eventCode(), dispatch.input().requiredString("title")).trim()))
                 .connectTimeout(Duration.ofSeconds(1))
                 .webSocketConnector((uri, listener) -> {
                     connectedUri.set(uri);
@@ -101,16 +98,17 @@ class WebSocketWorkerSessionTest {
             JsonNode result = OBJECT_MAPPER.readTree(webSocket.sentTexts().get(0));
             assertEquals("corr-1", result.get("resultCorrelationRef").asText());
             assertTrue(result.get("success").asBoolean());
-            assertEquals("hello", result.get("output").get("title").asText());
-            assertEquals("java-sdk-websocket-session", result.get("output").get("integrationProbe").asText());
+            JsonNode resultBody = OBJECT_MAPPER.readTree(result.get("result").asText());
+            assertEquals("hello", resultBody.get("title").asText());
+            assertEquals("java-sdk-websocket-session", resultBody.get("integrationProbe").asText());
             assertEquals(0, session.pendingResults());
         }
 
         assertFalse(observed.contains("POST /worker-api/v1/workers/ws-worker-001:online"));
         assertFalse(observed.contains("POST /worker-api/v1/workers/ws-worker-001:heartbeat"));
         assertFalse(observed.contains("POST /worker-api/v1/workers/ws-worker-001:offline"));
-        assertFalse(observed.contains("POST /worker-api/v1/workers/ws-worker-001:report-capability"));
-        assertFalse(observed.contains("POST /worker-api/v1/workers/ws-worker-001:report-state"));
+        assertFalse(observed.contains("POST /worker-api/v1/workers/ws-worker-001:report-handler-evidence"));
+        assertFalse(observed.contains("POST /worker-api/v1/workers/ws-worker-001:report-runtime-evidence"));
         assertTrue(webSocket.isOutputClosed(), "close should send a best-effort WebSocket close frame");
     }
 
@@ -132,7 +130,7 @@ class WebSocketWorkerSessionTest {
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .buildUnstarted();
 
         assertEquals(Duration.ofMillis(321), session.connectTimeout());
@@ -161,7 +159,7 @@ class WebSocketWorkerSessionTest {
                 .connectTimeout(Duration.ofMillis(654))
                 .httpClient(overrideHttpClient)
                 .objectMapper(overrideMapper)
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .buildUnstarted();
 
         assertEquals(Duration.ofMillis(654), session.connectTimeout());
@@ -177,7 +175,7 @@ class WebSocketWorkerSessionTest {
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .reconnectBackoff(Duration.ofMillis(500))
                 .maxReconnectBackoff(Duration.ofSeconds(10))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .buildUnstarted();
 
         assertEquals(Duration.ofMillis(500), session.connectionBackoff(1));
@@ -197,7 +195,7 @@ class WebSocketWorkerSessionTest {
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
                 .webSocketConnector((uri, listener) -> {
                     listenerRef.set(listener);
@@ -227,7 +225,7 @@ class WebSocketWorkerSessionTest {
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
                 .listener(new WorkerSessionListener() {
                     @Override
@@ -272,7 +270,7 @@ class WebSocketWorkerSessionTest {
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
                 .listener(new WorkerSessionListener() {
                     @Override
@@ -310,7 +308,7 @@ class WebSocketWorkerSessionTest {
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
                 .webSocketConnector((uri, listener) -> {
                     listenerRef.set(listener);
@@ -325,7 +323,7 @@ class WebSocketWorkerSessionTest {
             assertTrue(resultSent.await(2, TimeUnit.SECONDS), "failure result frame should be sent");
             JsonNode result = OBJECT_MAPPER.readTree(webSocket.sentTexts().get(0));
             assertFalse(result.get("success").asBoolean());
-            assertEquals("NO_HANDLER", result.get("errorCode").asText());
+            assertEquals("NO_HANDLER", result.get("resultCode").asText());
         }
     }
 
@@ -341,7 +339,7 @@ class WebSocketWorkerSessionTest {
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofMillis(100))
                 .listener(new WorkerSessionListener() {
                     @Override
@@ -367,7 +365,7 @@ class WebSocketWorkerSessionTest {
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "close should abandon queued result");
             assertEquals(WorkerSessionQueuedResultFailure.Reason.SESSION_CLOSED, failureRef.get().reason());
-            assertEquals("corr-close", failureRef.get().resultCorrelationRef().value());
+            assertEquals("corr-close", failureRef.get().resultCorrelationRef());
         } finally {
             session.close();
         }
@@ -385,7 +383,7 @@ class WebSocketWorkerSessionTest {
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
                 .outboundQueueCapacity(1)
                 .listener(new WorkerSessionListener() {
@@ -426,7 +424,7 @@ class WebSocketWorkerSessionTest {
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
                 .outboundQueueCapacity(1)
                 .listener(new WorkerSessionListener() {
@@ -456,7 +454,7 @@ class WebSocketWorkerSessionTest {
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "failed requeue should abandon the original result");
             assertEquals(WorkerSessionQueuedResultFailure.Reason.REQUEUE_FAILED, failureRef.get().reason());
-            assertEquals("corr-requeue-1", failureRef.get().resultCorrelationRef().value());
+            assertEquals("corr-requeue-1", failureRef.get().resultCorrelationRef());
             assertNotNull(failureRef.get().cause());
         }
     }
@@ -474,7 +472,7 @@ class WebSocketWorkerSessionTest {
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofMillis(100))
                 .reconnectBackoff(Duration.ofMillis(10))
                 .maxReconnectAttempts(1)
@@ -503,7 +501,7 @@ class WebSocketWorkerSessionTest {
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "reconnect exhaustion should abandon queued result");
             assertEquals(WorkerSessionQueuedResultFailure.Reason.RECONNECT_EXHAUSTED, failureRef.get().reason());
-            assertEquals("corr-reconnect", failureRef.get().resultCorrelationRef().value());
+            assertEquals("corr-reconnect", failureRef.get().resultCorrelationRef());
             assertFalse(session.isRunning());
         } finally {
             session.close();
@@ -524,7 +522,7 @@ class WebSocketWorkerSessionTest {
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofMillis(100))
                 .reconnectBackoff(Duration.ofMillis(10))
                 .listener(new WorkerSessionListener() {

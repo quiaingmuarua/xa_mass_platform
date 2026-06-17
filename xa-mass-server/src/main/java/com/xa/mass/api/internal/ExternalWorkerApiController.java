@@ -23,8 +23,8 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.model.WorkerStateReportRequest;
 import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.sdk.worker.PulledTaskDispatch;
-import com.xa.mass.sdk.worker.WorkerResultSubmitRequest;
+import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerResultSubmission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -315,7 +315,7 @@ public class ExternalWorkerApiController {
         requirePollingWorker(boundWorkerId, "poll");
         int maxMessages = requestBody == null || requestBody.getMaxMessages() == null ? 1 : requestBody.getMaxMessages();
         long timeoutMs = requestBody == null || requestBody.getTimeoutMs() == null ? 0L : requestBody.getTimeoutMs();
-        List<PulledTaskDispatch> items = workerClient.pollTasks(boundWorkerId, maxMessages, timeoutMs);
+        List<WorkerInvocation> items = workerClient.pollTasks(boundWorkerId, maxMessages, timeoutMs);
         return ApiResponse.success(Map.of(
                 "workerId", boundWorkerId,
                 "items", items,
@@ -328,18 +328,17 @@ public class ExternalWorkerApiController {
     public ApiResponse<Map<String, Object>> submitResult(@RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                          @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                          @PathVariable String workerId,
-                                                         @RequestBody ExternalWorkerResultSubmitApiRequest requestBody) {
+                                                         @RequestBody WorkerResultSubmissionRequest requestBody) {
         validateResultRequest(requestBody);
         PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_SUBMIT_RESULT, workerId, null, null);
         String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "submitResult");
-        boolean submitted = workerClient.submitResult(boundWorkerId, new WorkerResultSubmitRequest(
+        boolean submitted = workerClient.submitResult(boundWorkerId, new WorkerResultSubmission(
                 requireNonBlank(requestBody.getResultCorrelationRef(), "resultCorrelationRef"),
                 requestBody.isSuccess(),
-                blankToNull(requestBody.getDetail()),
-                blankToNull(requestBody.getErrorCode()),
-                requestBody.getOutput()
+                blankToNull(requestBody.getResultCode()),
+                blankToNull(requestBody.getResult())
         ));
         return ApiResponse.success(Map.of(
                 "workerId", boundWorkerId,
@@ -371,55 +370,57 @@ public class ExternalWorkerApiController {
         ));
     }
 
-    @PostMapping("/workers/{workerId}:report-capability")
-    @Operation(summary = "Report worker capability", description = "Reports a polling worker capability snapshot through the owner-backed worker control surface.")
-    public ApiResponse<WorkerCapabilityReportSnapshot> reportWorkerCapability(
+    @PostMapping("/workers/{workerId}:report-handler-evidence")
+    @Operation(summary = "Report worker handler evidence", description = "Reports a polling worker handler evidence snapshot through the owner-backed worker control surface.")
+    public ApiResponse<Map<String, Object>> reportWorkerHandlerEvidence(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @PathVariable String workerId,
-            @RequestBody ExternalWorkerCapabilityReportApiRequest requestBody) {
-        validateCapabilityReportRequest(requestBody);
-        List<WorkerEventBinding> eventBindings = toCapabilityEventBindings(requestBody.getAvailableEventCodes());
+            @RequestBody ExternalWorkerHandlerEvidenceApiRequest requestBody) {
+        validateHandlerEvidenceRequest(requestBody);
+        List<WorkerEventBinding> eventBindings = toCapabilityEventBindings(requestBody.getEventCodes());
         PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
-                apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_REPORT_CAPABILITY, workerId, null, eventBindings);
+                apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_REPORT_HANDLER_EVIDENCE, workerId, null, eventBindings);
         String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
-        requirePollingWorker(boundWorkerId, "reportCapability");
-        requireWorkerEventScope(workerPrincipal, requestBody.getAvailableEventCodes());
-        long capabilityVersion = resolveOptionalVersion(requestBody.getCapabilityVersion(), "capabilityVersion");
-        return ApiResponse.success(requireWorkerControl().reportWorkerCapability(
+        requirePollingWorker(boundWorkerId, "reportHandlerEvidence");
+        requireWorkerEventScope(workerPrincipal, requestBody.getEventCodes());
+        long evidenceVersion = resolveOptionalVersion(requestBody.getEvidenceVersion(), "evidenceVersion");
+        WorkerCapabilityReportSnapshot snapshot = requireWorkerControl().reportWorkerCapability(
                 new WorkerCapabilityReportRequest(
                         resolveWorkerId(workerId, requestBody.getWorkerId()),
-                        capabilityVersion,
-                        requestBody.getAvailableEventCodes(),
-                        requestBody.getSchedulingAttributes(),
+                        evidenceVersion,
+                        requestBody.getEventCodes(),
+                        requestBody.getAttributes(),
                         blankToNull(requestBody.getAgentVersion())
                 )
-        ));
+        );
+        return ApiResponse.success(toHandlerEvidenceResponse(snapshot));
     }
 
-    @PostMapping("/workers/{workerId}:report-state")
-    @Operation(summary = "Report worker state", description = "Reports a polling worker bounded state snapshot through the owner-backed worker control surface.")
-    public ApiResponse<WorkerStateReportSnapshot> reportWorkerState(
+    @PostMapping("/workers/{workerId}:report-runtime-evidence")
+    @Operation(summary = "Report worker runtime evidence", description = "Reports a polling worker bounded runtime evidence snapshot through the owner-backed worker control surface.")
+    public ApiResponse<Map<String, Object>> reportWorkerRuntimeEvidence(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @PathVariable String workerId,
-            @RequestBody ExternalWorkerStateReportApiRequest requestBody) {
-        validateStateReportRequest(requestBody);
+            @RequestBody ExternalWorkerRuntimeEvidenceApiRequest requestBody) {
+        validateRuntimeEvidenceRequest(requestBody);
         PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
-                apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_REPORT_STATE, workerId, null, null);
+                apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_REPORT_RUNTIME_EVIDENCE, workerId, null, null);
         String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
-        requirePollingWorker(boundWorkerId, "reportState");
-        long stateVersion = resolveOptionalVersion(requestBody.getStateVersion(), "stateVersion");
-        return ApiResponse.success(requireWorkerControl().reportWorkerState(
+        requirePollingWorker(boundWorkerId, "reportRuntimeEvidence");
+        long evidenceVersion = resolveOptionalVersion(requestBody.getEvidenceVersion(), "evidenceVersion");
+        WorkerStateReportSnapshot snapshot = requireWorkerControl().reportWorkerState(
                 new WorkerStateReportRequest(
                         resolveWorkerId(workerId, requestBody.getWorkerId()),
-                        stateVersion,
+                        evidenceVersion,
                         normalizeExternalWorkerState(requestBody.getState()),
                         blankToNull(requestBody.getReason()),
                         requestBody.getObservedAt(),
                         requestBody.getAttributes()
                 )
-        ));
+        );
+        return ApiResponse.success(toRuntimeEvidenceResponse(snapshot));
     }
 
     @PostMapping("/workers/{workerId}/commands/{commandId}:ack")
@@ -538,7 +539,7 @@ public class ExternalWorkerApiController {
         }
     }
 
-    private void validateResultRequest(ExternalWorkerResultSubmitApiRequest requestBody) {
+    private void validateResultRequest(WorkerResultSubmissionRequest requestBody) {
         if (requestBody == null) {
             throw new IllegalArgumentException("worker result request body is required");
         }
@@ -548,25 +549,57 @@ public class ExternalWorkerApiController {
         }
     }
 
-    private void validateCapabilityReportRequest(ExternalWorkerCapabilityReportApiRequest requestBody) {
+    private void validateHandlerEvidenceRequest(ExternalWorkerHandlerEvidenceApiRequest requestBody) {
         if (requestBody == null) {
-            throw new IllegalArgumentException("worker capability report request body is required");
+            throw new IllegalArgumentException("worker handler evidence request body is required");
         }
         if (requestBody.hasUnknownFields()) {
-            throw new IllegalArgumentException("Unsupported worker capability report fields: "
+            throw new IllegalArgumentException("Unsupported worker handler evidence fields: "
                     + String.join(", ", requestBody.getUnknownFieldNames()));
         }
     }
 
-    private void validateStateReportRequest(ExternalWorkerStateReportApiRequest requestBody) {
+    private void validateRuntimeEvidenceRequest(ExternalWorkerRuntimeEvidenceApiRequest requestBody) {
         if (requestBody == null) {
-            throw new IllegalArgumentException("worker state report request body is required");
+            throw new IllegalArgumentException("worker runtime evidence request body is required");
         }
         if (requestBody.hasUnknownFields()) {
-            throw new IllegalArgumentException("Unsupported worker state report fields: "
+            throw new IllegalArgumentException("Unsupported worker runtime evidence fields: "
                     + String.join(", ", requestBody.getUnknownFieldNames()));
         }
         requireNonBlank(requestBody.getState(), "state");
+    }
+
+    private Map<String, Object> toHandlerEvidenceResponse(WorkerCapabilityReportSnapshot snapshot) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", snapshot.status());
+        response.put("workerId", snapshot.workerId());
+        response.put("evidenceVersion", snapshot.capabilityVersion());
+        response.put("accepted", snapshot.accepted());
+        response.put("changed", snapshot.snapshotChanged());
+        response.put("reason", snapshot.reason());
+        return response;
+    }
+
+    private Map<String, Object> toRuntimeEvidenceResponse(WorkerStateReportSnapshot snapshot) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", snapshot.status());
+        response.put("workerId", snapshot.workerId());
+        response.put("evidenceVersion", snapshot.stateVersion());
+        response.put("accepted", snapshot.accepted());
+        response.put("changed", snapshot.projectionChanged());
+        response.put("reason", snapshot.reason());
+        if (snapshot.projection() != null) {
+            Map<String, Object> projection = new LinkedHashMap<>();
+            projection.put("workerId", snapshot.projection().workerId());
+            projection.put("evidenceVersion", snapshot.projection().stateVersion());
+            projection.put("state", snapshot.projection().state());
+            projection.put("reason", snapshot.projection().reason());
+            projection.put("observedAt", snapshot.projection().observedAt());
+            projection.put("acceptedAt", snapshot.projection().acceptedAt());
+            response.put("snapshot", projection);
+        }
+        return response;
     }
 
     private void validateCommandAcknowledgementRequest(WorkerCommandAcknowledgementApiRequest requestBody) {
@@ -629,7 +662,7 @@ public class ExternalWorkerApiController {
         }
         return eventCodes.stream()
                 .map(eventCode -> WorkerEventBinding.builder()
-                        .eventCode(requireNonBlank(eventCode, "availableEventCodes"))
+                        .eventCode(requireNonBlank(eventCode, "eventCodes"))
                         .build())
                 .toList();
     }
@@ -657,7 +690,7 @@ public class ExternalWorkerApiController {
             return;
         }
         for (String eventCode : eventCodes) {
-            String normalizedEventCode = requireNonBlank(eventCode, "availableEventCodes");
+            String normalizedEventCode = requireNonBlank(eventCode, "eventCodes");
             if (!principal.allowsEvent(normalizedEventCode)) {
                 throw new ApiForbiddenException("Worker credential event scope denied: " + normalizedEventCode);
             }

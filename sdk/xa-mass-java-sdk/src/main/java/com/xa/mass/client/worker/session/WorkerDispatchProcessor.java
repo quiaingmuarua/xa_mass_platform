@@ -1,45 +1,54 @@
 package com.xa.mass.client.worker.session;
 
-import com.xa.mass.client.payload.MassPayload;
-import com.xa.mass.client.worker.WorkerDispatchItem;
-import com.xa.mass.client.worker.ResultCorrelationRef;
-import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
-import com.xa.mass.client.worker.handler.WorkerEventInvocation;
-import com.xa.mass.client.worker.handler.WorkerInvocation;
+import com.xa.mass.client.worker.WorkerInvocation;
+import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerResult;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 
 final class WorkerDispatchProcessor {
     private final String workerId;
-    private final WorkerEventHandlerRuntime handlerRuntime;
+    private final Map<String, WorkerEventHandler> handlers;
     private final WorkerSessionListener listener;
 
-    WorkerDispatchProcessor(String workerId, WorkerEventHandlerRuntime handlerRuntime, WorkerSessionListener listener) {
+    WorkerDispatchProcessor(String workerId, Map<String, WorkerEventHandler> handlers, WorkerSessionListener listener) {
         this.workerId = requireText(workerId, "workerId");
-        this.handlerRuntime = Objects.requireNonNull(handlerRuntime, "handlerRuntime is required");
+        this.handlers = Collections.unmodifiableMap(new LinkedHashMap<>(
+                Objects.requireNonNullElse(handlers, Map.of())));
         this.listener = Objects.requireNonNull(listener, "listener is required");
     }
 
-    ProcessedDispatch process(WorkerDispatchItem item) {
-        WorkerInvocation workerInvocation = new WorkerInvocation(
-                item.eventCode(),
-                MassPayload.of(item.input()),
-                MassPayload.of(item.sharedConfig())
-        );
-        ResultCorrelationRef resultCorrelationRef = ResultCorrelationRef.of(item.resultCorrelationRef());
-        WorkerEventInvocation invocation = handlerRuntime.invoke(workerInvocation);
-        if (invocation.handlerFailed()) {
+    ProcessedDispatch process(WorkerInvocation workerInvocation) {
+        Objects.requireNonNull(workerInvocation, "workerInvocation is required");
+        String resultCorrelationRef = workerInvocation.resultCorrelationRef();
+        WorkerResult result;
+        try {
+            WorkerEventHandler handler = handlers.get(workerInvocation.eventCode());
+            if (handler == null) {
+                result = WorkerResult.failure("NO_HANDLER",
+                        "No handler registered for eventCode " + workerInvocation.eventCode());
+            } else {
+                result = handler.handle(workerInvocation);
+                if (result == null) {
+                    result = WorkerResult.failure("HANDLER_NULL_RESULT", "Handler returned null result");
+                }
+            }
+        } catch (Throwable failure) {
+            result = WorkerResult.failure("HANDLER_ERROR",
+                    failure.getClass().getName() + ": " + failure.getMessage());
             listener.onHandlerFailure(new WorkerSessionDispatchFailure(
                     workerId,
                     resultCorrelationRef,
                     workerInvocation,
-                    invocation.failure()));
+                    failure));
         }
-        return new ProcessedDispatch(resultCorrelationRef, workerInvocation, invocation.result());
+        return new ProcessedDispatch(resultCorrelationRef, workerInvocation, result);
     }
 
-    record ProcessedDispatch(ResultCorrelationRef resultCorrelationRef,
+    record ProcessedDispatch(String resultCorrelationRef,
                              WorkerInvocation invocation,
                              WorkerResult result) {
     }

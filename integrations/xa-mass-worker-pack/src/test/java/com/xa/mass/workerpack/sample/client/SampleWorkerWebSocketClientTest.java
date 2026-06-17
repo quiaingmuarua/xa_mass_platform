@@ -59,8 +59,8 @@ class SampleWorkerWebSocketClientTest {
         assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(response));
         assertNull(WsFrameTestSupport.workerId(response));
         assertTrue(response.get("success").getAsBoolean());
-        assertEquals("Executed by sample client worker-test", response.get("detail").getAsString());
         JsonObject payload = WsFrameTestSupport.payload(response);
+        assertEquals("Executed by sample client worker-test", payload.get("detail").getAsString());
         assertEquals("SUCCESS", payload.get("status").getAsString());
         assertEquals("Executed by sample client worker-test", payload.get("mockData").getAsString());
         assertTrue(payload.has("execution"));
@@ -105,7 +105,7 @@ class SampleWorkerWebSocketClientTest {
         assertEquals(1, client.sentMessages.size());
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
         assertFalse(response.get("success").getAsBoolean());
-        assertEquals("MOCK_TASK_FAILED", response.get("errorCode").getAsString());
+        assertEquals("MOCK_TASK_FAILED", response.get("resultCode").getAsString());
         assertEquals("FAILED", WsFrameTestSupport.payload(response).get("status").getAsString());
     }
 

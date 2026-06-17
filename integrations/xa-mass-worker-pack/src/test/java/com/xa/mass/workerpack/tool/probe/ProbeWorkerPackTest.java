@@ -1,9 +1,11 @@
 package com.xa.mass.workerpack.tool.probe;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.xa.mass.client.payload.MassPayload;
 import com.xa.mass.client.worker.WorkerEventBindingSpec;
 import com.xa.mass.client.worker.WorkerGroupSpec;
-import com.xa.mass.client.worker.handler.WorkerInvocation;
+import com.xa.mass.client.worker.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProbeWorkerPackTest {
+    private static final Gson GSON = new Gson();
+
     @Test
     void phoneMetadataHandlerReturnsDeterministicMetadata() throws Exception {
         WorkerResult result = handle(ProbeWorkerPack.phoneMetadataHandler(), ProbeWorkerPack.PHONE_METADATA_EVENT,
@@ -27,9 +31,10 @@ class ProbeWorkerPackTest {
                 ));
 
         assertTrue(result.success());
-        assertEquals("SG", result.output().get("region"));
-        assertEquals("VALID_E164", result.output().get("classification"));
-        assertEquals("phone-fingerprint-a", result.output().get("traceLabel"));
+        JsonObject body = resultBody(result);
+        assertEquals("SG", body.get("region").getAsString());
+        assertEquals("VALID_E164", body.get("classification").getAsString());
+        assertEquals("phone-fingerprint-a", body.get("traceLabel").getAsString());
     }
 
     @Test
@@ -38,8 +43,8 @@ class ProbeWorkerPackTest {
                 Map.of("phoneNumber", "123"));
 
         assertFalse(result.success());
-        assertEquals("PHONE_METADATA_INVALID", result.errorCode());
-        assertEquals(false, result.output().get("valid"));
+        assertEquals("PHONE_METADATA_INVALID", result.resultCode());
+        assertEquals(false, resultBody(result).get("valid").getAsBoolean());
     }
 
     @Test
@@ -48,8 +53,8 @@ class ProbeWorkerPackTest {
                 Map.of("url", "https://does-not-exist.public-probe.invalid/", "expectedOutcome", "DNS_NXDOMAIN"));
 
         assertFalse(result.success());
-        assertEquals("DNS_NXDOMAIN", result.errorCode());
-        assertEquals("does-not-exist.public-probe.invalid", result.output().get("host"));
+        assertEquals("DNS_NXDOMAIN", result.resultCode());
+        assertEquals("does-not-exist.public-probe.invalid", resultBody(result).get("host").getAsString());
     }
 
     @Test
@@ -58,8 +63,10 @@ class ProbeWorkerPackTest {
                 Map.of("csv", "id,name\n1,Ada\n2,Lin", "requiredColumns", List.of("id", "name")));
 
         assertTrue(result.success());
-        assertEquals(List.of("id", "name"), result.output().get("columns"));
-        assertEquals(2, result.output().get("rowCount"));
+        JsonObject body = resultBody(result);
+        assertEquals("id", body.getAsJsonArray("columns").get(0).getAsString());
+        assertEquals("name", body.getAsJsonArray("columns").get(1).getAsString());
+        assertEquals(2, body.get("rowCount").getAsInt());
     }
 
     @Test
@@ -68,8 +75,8 @@ class ProbeWorkerPackTest {
                 Map.of("payload", Map.of("id", "1"), "requiredFields", List.of("id", "status")));
 
         assertFalse(result.success());
-        assertEquals("SCHEMA_INVALID", result.errorCode());
-        assertEquals(List.of("status"), result.output().get("missingFields"));
+        assertEquals("SCHEMA_INVALID", result.resultCode());
+        assertEquals("status", resultBody(result).getAsJsonArray("missingFields").get(0).getAsString());
     }
 
     @Test
@@ -86,10 +93,15 @@ class ProbeWorkerPackTest {
 
     private static WorkerResult handle(WorkerEventHandler handler, String eventCode, Map<String, Object> input)
             throws Exception {
-        return handler.handle(new WorkerInvocation(
+        return handler.handle(WorkerInvocation.of(
+                "corr-" + eventCode,
                 eventCode,
                 MassPayload.of(input),
                 MassPayload.of(Map.of())));
+    }
+
+    private static JsonObject resultBody(WorkerResult result) {
+        return GSON.fromJson(result.result(), JsonObject.class);
     }
 
     private static void assertBinding(WorkerGroupSpec spec, String eventCode, List<String> projectCodes) {

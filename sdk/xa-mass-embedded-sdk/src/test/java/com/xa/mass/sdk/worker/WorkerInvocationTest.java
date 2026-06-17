@@ -12,11 +12,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class PulledTaskDispatchTest {
+class WorkerInvocationTest {
 
     @Test
     void exposesOnlySdkWorkerPullFields() {
-        Set<String> fields = Arrays.stream(PulledTaskDispatch.class.getDeclaredFields())
+        Set<String> fields = Arrays.stream(WorkerInvocation.class.getDeclaredFields())
                 .map(Field::getName)
                 .collect(Collectors.toSet());
 
@@ -34,7 +34,7 @@ class PulledTaskDispatchTest {
 
     @Test
     void normalizesMapsAndCounters() {
-        PulledTaskDispatch item = new PulledTaskDispatch(
+        WorkerInvocation item = new WorkerInvocation(
                 " corr-1 ",
                 " event-1 ",
                 Map.of("target", "a"),
@@ -49,7 +49,7 @@ class PulledTaskDispatchTest {
 
     @Test
     void requiresResultCorrelationRef() {
-        assertThrows(IllegalArgumentException.class, () -> new PulledTaskDispatch(
+        assertThrows(IllegalArgumentException.class, () -> new WorkerInvocation(
                 " ",
                 null,
                 Map.of(),

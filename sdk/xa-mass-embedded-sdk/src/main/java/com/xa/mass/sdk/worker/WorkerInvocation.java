@@ -6,19 +6,19 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * SDK/server public worker polling DTO.
+ * SDK/server public worker invocation DTO.
  */
-public final class PulledTaskDispatch {
+public final class WorkerInvocation {
 
     private final String resultCorrelationRef;
     private final String eventCode;
     private final Map<String, Object> input;
     private final Map<String, Object> sharedConfig;
 
-    public PulledTaskDispatch(String resultCorrelationRef,
-                              String eventCode,
-                              Map<String, Object> input,
-                              Map<String, Object> sharedConfig) {
+    public WorkerInvocation(String resultCorrelationRef,
+                            String eventCode,
+                            Map<String, Object> input,
+                            Map<String, Object> sharedConfig) {
         this.resultCorrelationRef = requireText(resultCorrelationRef, "resultCorrelationRef");
         this.eventCode = optionalText(eventCode);
         this.input = TransportJsonValueNormalizer.normalizeObject(input, "input");
@@ -61,7 +61,7 @@ public final class PulledTaskDispatch {
         if (this == other) {
             return true;
         }
-        if (!(other instanceof PulledTaskDispatch that)) {
+        if (!(other instanceof WorkerInvocation that)) {
             return false;
         }
         return Objects.equals(resultCorrelationRef, that.resultCorrelationRef)
@@ -77,7 +77,7 @@ public final class PulledTaskDispatch {
 
     @Override
     public String toString() {
-        return "PulledTaskDispatch{"
+        return "WorkerInvocation{"
                 + "resultCorrelationRef='" + resultCorrelationRef + '\''
                 + ", eventCode='" + eventCode + '\''
                 + '}';

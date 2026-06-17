@@ -1,13 +1,11 @@
 package com.xa.mass.scenario;
 
 import com.xa.mass.client.MassPlatform;
-import com.xa.mass.client.worker.AdapterNodeSpec;
-import com.xa.mass.client.worker.NodeGroupBindingSpec;
-import com.xa.mass.client.worker.WorkerCapabilityReport;
 import com.xa.mass.client.worker.WorkerEventBindingSpec;
 import com.xa.mass.client.worker.WorkerGroupSpec;
+import com.xa.mass.client.worker.WorkerHandlerEvidence;
+import com.xa.mass.client.worker.WorkerRuntimeEvidence;
 import com.xa.mass.client.worker.WorkerSpec;
-import com.xa.mass.client.worker.WorkerStateReport;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -22,8 +20,6 @@ final class WorkerScenarioRegistrar {
     private final ScenarioLauncherOptions options;
     private final ScenarioClientFactory clientFactory;
     private final Set<String> declaredWorkerGroups = new LinkedHashSet<>();
-    private final Set<String> registeredAdapterNodes = new LinkedHashSet<>();
-    private final Set<String> boundAdapterNodeGroups = new LinkedHashSet<>();
 
     WorkerScenarioRegistrar(ScenarioLauncherOptions options, ScenarioClientFactory clientFactory) {
         this.options = Objects.requireNonNull(options, "options is required");
@@ -48,18 +44,9 @@ final class WorkerScenarioRegistrar {
         return declaredWorkerGroups.size();
     }
 
-    int registeredAdapterNodeCount() {
-        return registeredAdapterNodes.size();
-    }
-
-    int boundAdapterNodeGroupCount() {
-        return boundAdapterNodeGroups.size();
-    }
-
     private void registerWorker(WorkerScenarioSpec spec, boolean markApiOnline) {
         String workerId = requireNonBlank(spec.workerId(), "workerId");
         String workerGroupId = requireNonBlank(spec.workerGroupId(), "workerGroupId");
-        String adapterNodeId = adapterNodeIdFor(spec);
         String adapterType = adapterTypeFor(spec);
         MassPlatform client = clientFactory.forApiKey(workerApiKey(spec));
 
@@ -69,30 +56,6 @@ final class WorkerScenarioRegistrar {
                     .eventBindings(spec.eventBindings())
                     .build());
             System.out.printf("[java-scenario-launcher] declared worker group %s%n", workerGroupId);
-        }
-
-        if (registeredAdapterNodes.add(adapterNodeId)) {
-            client.workers().registerAdapterNode(AdapterNodeSpec.builder()
-                    .adapterNodeId(adapterNodeId)
-                    .adapterType(adapterType)
-                    .endpointId(adapterNodeId)
-                    .attributes(Map.of(
-                            "launcher", "integrations/xa-mass-scenario-launcher",
-                            "transport", adapterType
-                    ))
-                    .build());
-            System.out.printf("[java-scenario-launcher] registered adapter node %s%n", adapterNodeId);
-        }
-
-        String bindingKey = adapterNodeId + "\n" + workerGroupId;
-        if (boundAdapterNodeGroups.add(bindingKey)) {
-            client.workers().bindNodeGroup(NodeGroupBindingSpec.builder()
-                    .adapterNodeId(adapterNodeId)
-                    .workerGroupId(workerGroupId)
-                    .attributes(Map.of("transport", adapterType))
-                    .build());
-            System.out.printf("[java-scenario-launcher] bound adapter node %s to group %s%n",
-                    adapterNodeId, workerGroupId);
         }
 
         client.workers().registerWorker(WorkerSpec.builder()
@@ -122,13 +85,13 @@ final class WorkerScenarioRegistrar {
                 .distinct()
                 .toList();
         client.workers().online(workerId, UUID.randomUUID().toString(), "java-scenario-launcher-api-online");
-        client.workers().reportCapability(workerId, WorkerCapabilityReport.builder()
+        client.workers().reportHandlerEvidence(workerId, WorkerHandlerEvidence.builder()
                 .workerId(workerId)
-                .availableEventCodes(eventCodes)
-                .schedulingAttributes(attributes)
+                .eventCodes(eventCodes)
+                .attributes(attributes)
                 .agentVersion("java-scenario-launcher-api-online")
                 .build());
-        client.workers().reportState(workerId, WorkerStateReport.builder()
+        client.workers().reportRuntimeEvidence(workerId, WorkerRuntimeEvidence.builder()
                 .workerId(workerId)
                 .available()
                 .reason("java-scenario-launcher-api-online")
@@ -144,13 +107,6 @@ final class WorkerScenarioRegistrar {
             result.putAll(attributes);
         }
         return result;
-    }
-
-    static String adapterNodeIdFor(WorkerScenarioSpec spec) {
-        if (spec.adapterNodeId() != null && !spec.adapterNodeId().isBlank()) {
-            return spec.adapterNodeId().trim();
-        }
-        return "sample-" + adapterTypeFor(spec) + "-node";
     }
 
     static String adapterTypeFor(WorkerScenarioSpec spec) {

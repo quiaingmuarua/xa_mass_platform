@@ -162,20 +162,15 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertFalse(items.isEmpty(), "expected task dispatch through external polling worker API");
 
         Map<String, Object> item = items.get(0);
-        assertEquals(taskId, item.get("taskId"));
-        assertPollItemHasExecutionContextButNoWorkerIdentity(item);
+        assertPollItemHasWorkerInvocationShape(item);
         assertEquals("crawler.fetch-page", item.get("eventCode"));
 
         Map<String, Object> resultResponse = exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
-                "taskId", item.get("taskId"),
-                "messageId", item.get("messageId"),
+                "resultCorrelationRef", item.get("resultCorrelationRef"),
                 "success", true,
-                "detail", "crawler-success",
-                "output", Map.of(
-                        "url", "https://example.test/page-1",
-                        "statusCode", 200,
-                        "title", "Example Page"
-                )
+                "result", """
+                        {"detail":"crawler-success","url":"https://example.test/page-1","statusCode":200,"title":"Example Page"}
+                        """.trim()
         ), workerHeaders);
         assertApiOk(resultResponse);
         assertEquals(Boolean.TRUE, responseData(resultResponse).get("submitted"));
@@ -298,9 +293,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertFalse(selectedItems.isEmpty(), "selected polling worker should receive its own assigned item");
 
         Map<String, Object> item = selectedItems.getFirst();
-        assertEquals(taskId, item.get("taskId"));
         assertEquals(selectedWorkerId, responseData(selectedPollResponse).get("workerId"));
-        assertPollItemHasExecutionContextButNoWorkerIdentity(item);
+        assertPollItemHasWorkerInvocationShape(item);
         submitSuccessfulWorkerResult(selectedWorkerId, selectedWorkerHeaders, item, "shared-route-selected-worker-success");
 
         RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
@@ -437,7 +431,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 200L
         );
 
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":report-state", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":report-runtime-evidence", HttpMethod.POST, Map.of(
                 "state", "AVAILABLE",
                 "reason", "manual resume"
         ), workerHeaders));
@@ -497,7 +491,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 presenceBody(sessionToken, "draining-online"), workerHeaders));
         waitUntil(() -> app.isWorkerReachable(workerId), "draining worker should reach transport-online state");
 
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":report-state", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":report-runtime-evidence", HttpMethod.POST, Map.of(
                 "state", "DRAINING",
                 "reason", "maintenance"
         ), workerHeaders));
@@ -514,7 +508,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
             Thread.sleep(150L);
         }
 
-        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":report-state", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":report-runtime-evidence", HttpMethod.POST, Map.of(
                 "state", "AVAILABLE",
                 "reason", "ready"
         ), workerHeaders));
@@ -531,15 +525,12 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         }
         assertFalse(resumedItems.isEmpty(), "worker should receive new work after reporting AVAILABLE");
         Map<String, Object> item = resumedItems.getFirst();
-        assertEquals(taskId, item.get("taskId"));
-        assertPollItemHasExecutionContextButNoWorkerIdentity(item);
+        assertPollItemHasWorkerInvocationShape(item);
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
-                "taskId", item.get("taskId"),
-                "messageId", item.get("messageId"),
+                "resultCorrelationRef", item.get("resultCorrelationRef"),
                 "success", true,
-                "detail", "draining-resumed-success",
-                "output", Map.of("workerId", workerId)
+                "result", "{\"detail\":\"draining-resumed-success\",\"workerId\":\"" + workerId + "\"}"
         ), workerHeaders));
 
         RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
@@ -631,20 +622,23 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                                               Map<String, Object> item,
                                               String detail) {
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
-                "taskId", item.get("taskId"),
-                "messageId", item.get("messageId"),
+                "resultCorrelationRef", item.get("resultCorrelationRef"),
                 "success", true,
-                "detail", detail,
-                "output", Map.of("workerId", workerId)
+                "result", "{\"detail\":\"" + detail + "\",\"workerId\":\"" + workerId + "\"}"
         ), workerHeaders));
     }
 
-    private static void assertPollItemHasExecutionContextButNoWorkerIdentity(Map<String, Object> item) {
+    private static void assertPollItemHasWorkerInvocationShape(Map<String, Object> item) {
         assertFalse(item.containsKey("workerId"), "poll item must not carry worker identity; worker is bound by poll path");
-        assertNotNull(item.get("messageId"));
-        assertNotNull(item.get("attemptId"));
-        assertTrue(((Number) item.get("attemptNo")).intValue() >= 1);
-        assertNotNull(item.get("batchId"));
+        assertFalse(item.containsKey("taskId"));
+        assertFalse(item.containsKey("messageId"));
+        assertFalse(item.containsKey("attemptId"));
+        assertFalse(item.containsKey("attemptNo"));
+        assertFalse(item.containsKey("batchId"));
+        assertNotNull(item.get("resultCorrelationRef"));
+        assertNotNull(item.get("eventCode"));
+        assertTrue(item.get("input") instanceof Map<?, ?>);
+        assertTrue(item.get("sharedConfig") instanceof Map<?, ?>);
     }
 
     private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {

@@ -2,9 +2,9 @@ package com.xa.mass.client.worker;
 
 import java.time.Instant;
 
-public record WorkerStateProjection(
+public record WorkerRuntimeEvidenceSnapshot(
         String workerId,
-        long stateVersion,
+        long evidenceVersion,
         String state,
         String reason,
         Instant observedAt,

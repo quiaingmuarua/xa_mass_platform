@@ -5,14 +5,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.worker.WorkerClient;
-import com.xa.mass.client.worker.WorkerDispatchItem;
-import com.xa.mass.client.worker.ResultCorrelationRef;
+import com.xa.mass.client.worker.WorkerInvocation;
 import com.xa.mass.client.worker.WorkerRegistrationResult;
 import com.xa.mass.client.worker.WorkerSpec;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
-import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
-import com.xa.mass.client.worker.handler.WorkerEventHandlers;
-import com.xa.mass.client.worker.handler.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
 
 import java.net.URI;
@@ -38,7 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class  WebSocketWorkerSession implements WorkerSession {
+public final class WebSocketWorkerSession implements WorkerSession {
     private static final ObjectMapper DEFAULT_OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final int FRAME_FAILURE_PREVIEW_LIMIT = 512;
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
@@ -54,13 +50,12 @@ public final class  WebSocketWorkerSession implements WorkerSession {
     private final Duration maxReconnectBackoff;
     private final int maxReconnectAttempts;
     private final WorkerSessionListener listener;
-    private final WorkerEventHandlers eventHandlers;
     private final WorkerDispatchProcessor dispatchProcessor;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final WebSocketConnector webSocketConnector;
     private final ScheduledExecutorService executor;
-    private final LinkedBlockingDeque<OutboundResult> outboundResults;
+    private final LinkedBlockingDeque<QueuedWebSocketResultFrame> outboundResults;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean closing = new AtomicBoolean(false);
     private final AtomicBoolean reconnectScheduled = new AtomicBoolean(false);
@@ -80,8 +75,7 @@ public final class  WebSocketWorkerSession implements WorkerSession {
         this.maxReconnectBackoff = builder.maxReconnectBackoff;
         this.maxReconnectAttempts = builder.maxReconnectAttempts;
         this.listener = builder.listener;
-        this.eventHandlers = builder.eventHandlers.build();
-        this.dispatchProcessor = new WorkerDispatchProcessor(workerId, new WorkerEventHandlerRuntime(eventHandlers), listener);
+        this.dispatchProcessor = new WorkerDispatchProcessor(workerId, builder.eventHandlers, listener);
         this.objectMapper = builder.objectMapper;
         this.httpClient = builder.httpClient;
         this.webSocketConnector = builder.webSocketConnector == null
@@ -236,7 +230,7 @@ public final class  WebSocketWorkerSession implements WorkerSession {
 
     private void resultSenderLoop() {
         while (running.get() || !outboundResults.isEmpty()) {
-            OutboundResult outbound = null;
+            QueuedWebSocketResultFrame outbound = null;
             try {
                 outbound = outboundResults.poll(200L, TimeUnit.MILLISECONDS);
                 if (outbound == null) {
@@ -282,7 +276,7 @@ public final class  WebSocketWorkerSession implements WorkerSession {
     }
 
     private void handleFrame(String frame) {
-        WorkerDispatchItem item;
+        WorkerInvocation item;
         try {
             item = decodeDispatch(frame);
         } catch (Throwable failure) {
@@ -296,12 +290,12 @@ public final class  WebSocketWorkerSession implements WorkerSession {
         enqueueResult(processed.resultCorrelationRef(), processed.invocation(), processed.result());
     }
 
-    private void enqueueResult(ResultCorrelationRef resultCorrelationRef,
+    private void enqueueResult(String resultCorrelationRef,
                                WorkerInvocation invocation,
                                WorkerResult result) {
         try {
             String frame = encodeResult(resultCorrelationRef, result);
-            if (!outboundResults.offer(new OutboundResult(resultCorrelationRef, frame))) {
+            if (!outboundResults.offer(new QueuedWebSocketResultFrame(resultCorrelationRef, frame))) {
                 IllegalStateException failure = new IllegalStateException("websocket result queue is full");
                 WorkerSessionQueuedResultFailure queuedFailure = new WorkerSessionQueuedResultFailure(
                         workerId,
@@ -316,7 +310,7 @@ public final class  WebSocketWorkerSession implements WorkerSession {
         }
     }
 
-    private void requeueOrAbandon(OutboundResult outbound, Throwable cause) {
+    private void requeueOrAbandon(QueuedWebSocketResultFrame outbound, Throwable cause) {
         if (!outboundResults.offerFirst(outbound)) {
             abandonResult(outbound,
                     WorkerSessionQueuedResultFailure.Reason.REQUEUE_FAILED,
@@ -332,7 +326,7 @@ public final class  WebSocketWorkerSession implements WorkerSession {
         return new WorkerSessionFrameFailure(workerId, preview, safeFrame.length(), cause);
     }
 
-    private WorkerDispatchItem decodeDispatch(String frame) throws JsonProcessingException {
+    private WorkerInvocation decodeDispatch(String frame) throws JsonProcessingException {
         JsonNode root = objectMapper.readTree(frame);
         String resultCorrelationRef = text(root, "resultCorrelationRef");
         if (resultCorrelationRef == null) {
@@ -341,7 +335,7 @@ public final class  WebSocketWorkerSession implements WorkerSession {
         if (root.has("success")) {
             return null;
         }
-        return new WorkerDispatchItem(
+        return new WorkerInvocation(
                 resultCorrelationRef,
                 text(root, "eventCode"),
                 objectMap(root.get("input")),
@@ -349,13 +343,12 @@ public final class  WebSocketWorkerSession implements WorkerSession {
         );
     }
 
-    private String encodeResult(ResultCorrelationRef resultCorrelationRef, WorkerResult result) throws JsonProcessingException {
+    private String encodeResult(String resultCorrelationRef, WorkerResult result) throws JsonProcessingException {
         Map<String, Object> frame = new LinkedHashMap<>();
-        frame.put("resultCorrelationRef", resultCorrelationRef.value());
+        frame.put("resultCorrelationRef", resultCorrelationRef);
         frame.put("success", result.success());
-        frame.put("detail", result.detail());
-        frame.put("errorCode", result.errorCode());
-        frame.put("output", result.output());
+        frame.put("resultCode", result.resultCode());
+        frame.put("result", result.result());
         return objectMapper.writeValueAsString(frame);
     }
 
@@ -402,13 +395,13 @@ public final class  WebSocketWorkerSession implements WorkerSession {
     }
 
     private void abandonQueuedResults(WorkerSessionQueuedResultFailure.Reason reason, Throwable cause) {
-        OutboundResult outbound;
+        QueuedWebSocketResultFrame outbound;
         while ((outbound = outboundResults.poll()) != null) {
             abandonResult(outbound, reason, cause);
         }
     }
 
-    private void abandonResult(OutboundResult outbound, WorkerSessionQueuedResultFailure.Reason reason,
+    private void abandonResult(QueuedWebSocketResultFrame outbound, WorkerSessionQueuedResultFailure.Reason reason,
                                Throwable cause) {
         listener.onQueuedResultAbandoned(new WorkerSessionQueuedResultFailure(
                 workerId,
@@ -482,7 +475,7 @@ public final class  WebSocketWorkerSession implements WorkerSession {
         private Duration maxReconnectBackoff = Duration.ofSeconds(10);
         private int maxReconnectAttempts = 10;
         private int outboundQueueCapacity = 1024;
-        private WorkerEventHandlers.Builder eventHandlers = WorkerEventHandlers.builder();
+        private Map<String, WorkerEventHandler> eventHandlers = new LinkedHashMap<>();
         private WorkerSessionListener listener = WorkerSessionListener.NOOP;
         private HttpClient httpClient;
         private ObjectMapper objectMapper = DEFAULT_OBJECT_MAPPER;
@@ -518,19 +511,21 @@ public final class  WebSocketWorkerSession implements WorkerSession {
             return this;
         }
 
-        public Builder event(String eventCode, WorkerDispatchHandler handler) {
+        public Builder event(String eventCode, WorkerEventHandler handler) {
             Objects.requireNonNull(handler, "handler is required");
-            return eventHandler(eventCode, handler::handle);
+            return eventHandler(eventCode, handler);
         }
 
         public Builder eventHandler(String eventCode, WorkerEventHandler handler) {
-            this.eventHandlers.event(requireText(eventCode, "eventCode"),
+            this.eventHandlers.put(requireText(eventCode, "eventCode"),
                     Objects.requireNonNull(handler, "handler is required"));
             return this;
         }
 
-        public Builder eventHandlers(WorkerEventHandlers eventHandlers) {
-            this.eventHandlers.events(eventHandlers);
+        public Builder eventHandlers(Map<String, WorkerEventHandler> eventHandlers) {
+            if (eventHandlers != null) {
+                eventHandlers.forEach(this::eventHandler);
+            }
             return this;
         }
 
@@ -655,7 +650,7 @@ public final class  WebSocketWorkerSession implements WorkerSession {
         }
     }
 
-    private record OutboundResult(ResultCorrelationRef resultCorrelationRef, String resultFrame) {
+    private record QueuedWebSocketResultFrame(String resultCorrelationRef, String resultFrame) {
     }
 
     private record QueuedResultTermination(WorkerSessionQueuedResultFailure.Reason reason, Throwable cause) {

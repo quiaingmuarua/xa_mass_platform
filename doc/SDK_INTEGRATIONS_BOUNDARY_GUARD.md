@@ -87,14 +87,15 @@ keys for SDK/worker-api calls.
 - Transport-specific frame shapes must not redefine event-handler,
   WorkerGroup, AdapterNode, task, result, or scheduling semantics.
 - Worker-facing invocation and result APIs must not expose task lifecycle
-  authority as worker semantics. Java SDK handlers may receive `messageId` only
-  as a read-only task-item trace handle; it has no business-routing,
-  scheduling, retry, or lifecycle authority. `taskId`, attempt ids, lease
+  authority as worker semantics. Java SDK handlers receive worker execution
+  input, not task lifecycle identity: `messageId`, `taskId`, attempt ids, lease
   tokens, transport commands, endpoint ids, and raw wire DTOs may only appear
   inside named server/embedded correlation bridges or engine/result convergence
-  internals. Do not hide a readable `messageId` behind a new public
-  result-correlation model unless that model owns a real user-visible
-  invariant beyond string validation.
+  internals. `WorkerInvocation` and result submission may carry an opaque
+  `resultCorrelationRef` token so the worker can round-trip the dispatch result
+  without owning task/message/attempt facts; that token must not become
+  business input, scheduling input, trace/read API, retry authority, or
+  lifecycle authority.
 - API-key raw secrets may appear only as seed/import material or one-time
   create responses. Durable API-key truth is hash, prefix, scopes,
   permissions, owner, status, expiry, and metadata.
@@ -109,7 +110,7 @@ keys for SDK/worker-api calls.
 | --- | --- | --- | --- |
 | Control-plane config | Allowed | projects, events/catalog, rule and policy configuration | Stable server-owned configuration may be idempotently imported. |
 | Credential bootstrap | Allowed with secret-source controls | operator credentials, API keys | Raw secrets are import material only; stored truth is credential metadata and hash/projection state. |
-| Runtime actor registration | Must use SDK or worker API | WorkerGroup, AdapterNode, NodeGroupBinding, Worker, worker online/state/capability reports | External actor and topology evidence must enter through the same registration path production workers use. |
+| Runtime actor registration | Must use SDK or worker API | WorkerGroup, AdapterNode, NodeGroupBinding, Worker, worker online, handler evidence, runtime evidence | External actor and topology evidence must enter through the same registration path production workers use. |
 | Workload injection | Must use SDK or task API | task create, item append, task result reads | Workload is caller behavior, not server initialization. |
 | Operator lifecycle command | Must use operator/server-control API | seal, approve, pause, resume, cancel, worker command requests | Control actions require the operator authorization boundary. |
 | Runtime truth | Forbidden | ready/delayed queues, leases, assignments, reservations, occupancy, candidate buckets, dispatch gates, final result rows, command status | Runtime owners derive and mutate these facts; seed/import must not precompute or restore them. |

@@ -2,7 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
-import com.xa.mass.sdk.worker.WorkerResultSubmitRequest;
+import com.xa.mass.sdk.worker.WorkerResultSubmission;
 import com.xa.mass.transport.channel.TransportResultIngressOutcome;
 import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 import org.junit.jupiter.api.AfterEach;
@@ -54,9 +54,9 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals("task-1", facade.lastTaskId);
         assertEquals("msg-1", facade.lastMessageId);
         assertTrue(facade.lastSuccess);
-        assertEquals("ok", facade.lastDetail);
+        assertNull(facade.lastDetail);
         assertNull(facade.lastErrorCode);
-        assertEquals("SUCCESS", facade.lastOutput.get("status"));
+        assertEquals("ok", facade.lastOutput.get("result"));
         assertEquals(0, facade.correlationCalls.get());
     }
 
@@ -224,26 +224,25 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals(TransportResultIngressOutcome.ACKNOWLEDGED, handled.toTransportOutcome());
     }
 
-    private static TransportResultIngressEnvelope envelope(WorkerResultSubmitRequest request) {
+    private static TransportResultIngressEnvelope envelope(WorkerResultSubmission request) {
         return CODEC.toEnvelope(request, request.resultCorrelationRef(), Map.of("adapterId", "polling"));
     }
 
-    private static WorkerResultSubmitRequest request(String taskId,
-                                                     String messageId,
-                                                     boolean success,
-                                                     String detail,
-                                                     String errorCode,
-                                                     String attemptId,
-                                                     String leaseToken,
-                                                     String traceId) {
-        return new WorkerResultSubmitRequest(
+    private static WorkerResultSubmission request(String taskId,
+                                                  String messageId,
+                                                  boolean success,
+                                                  String result,
+                                                  String resultCode,
+                                                  String attemptId,
+                                                  String leaseToken,
+                                                  String traceId) {
+        return new WorkerResultSubmission(
                 new TaskDispatchDeliveryCorrelationCodec().encode(
                         new TaskDispatchDeliveryCorrelation(taskId, messageId, attemptId, 0)
                 ),
                 success,
-                detail,
-                errorCode,
-                Map.of("status", success ? "SUCCESS" : "FAILED", "mockData", detail)
+                resultCode,
+                result
         );
     }
 

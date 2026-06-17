@@ -37,14 +37,14 @@ class WorkerSessionSpecTest {
                 .workerId("worker-1")
                 .workerGroupId("group-1")
                 .attribute("region", "sg")
-                .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of("ok", true)))
+                .event("probe.phone.metadata", dispatch -> WorkerResult.success("{\"ok\":true}"))
                 .listener(listener)
                 .build();
 
         assertEquals("worker-1", spec.workerId());
         assertEquals("group-1", spec.workerGroupId());
         assertEquals(Map.of("region", "sg"), spec.attributes());
-        assertTrue(spec.eventHandlers().find("probe.phone.metadata").isPresent());
+        assertTrue(spec.eventHandlers().containsKey("probe.phone.metadata"));
         assertEquals(listener, spec.listener());
         assertThrows(UnsupportedOperationException.class, () -> spec.attributes().put("other", "value"));
     }
@@ -55,7 +55,7 @@ class WorkerSessionSpecTest {
                 .workerId("worker-1")
                 .workerGroupId("group-1")
                 .attribute("region", "sg")
-                .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of("ok", true)))
+                .event("probe.phone.metadata", dispatch -> WorkerResult.success("{\"ok\":true}"))
                 .build();
         WorkerSessions sessions = new WorkerSessions(workerClient());
 

@@ -796,10 +796,10 @@ Notes:
 
 Behavior:
 
-- worker capability and state self-reporting belongs to the external worker
+- worker handler/runtime evidence self-reporting belongs to the external worker
   data-plane:
-  - `POST /worker-api/v1/workers/{workerId}:report-capability`
-  - `POST /worker-api/v1/workers/{workerId}:report-state`
+  - `POST /worker-api/v1/workers/{workerId}:report-handler-evidence`
+  - `POST /worker-api/v1/workers/{workerId}:report-runtime-evidence`
 - runtime worker routes are diagnostics and operator command surfaces, not
   worker self-report ingress.
 
@@ -969,7 +969,8 @@ Request body:
 
 Response notes:
 
-- returns `PulledTaskDispatch[]` in `data.items`
+- returns worker invocation items in `data.items`
+- `resultCorrelationRef` is the opaque handle to echo when submitting the result
 - `eventCode` is the worker handler identity
 - `input` is the per-item logical payload
 - `sharedConfig` is the task-level shared payload
@@ -982,36 +983,40 @@ Response notes:
 
 Request notes:
 
-- request maps onto `TaskResultReport`
-- `taskId` and `messageId` are required
-- `output` is the canonical logical callback payload
+- request maps onto SDK-owned `WorkerResultSubmission`
+- `resultCorrelationRef` is required and opaque to external workers
+- `success` is required
+- `resultCode` is an optional short failure or business-result code
+- `result` is an opaque string body; for JSON output, encode the JSON object as
+  this string instead of sending an `output` object
 
-### 6.9 Report Worker Capability
+### 6.9 Report Worker Handler Evidence
 
 - Method: `POST`
-- Path: `/worker-api/v1/workers/{workerId}:report-capability`
+- Path: `/worker-api/v1/workers/{workerId}:report-handler-evidence`
 - Status: `Implemented`
 
 Request notes:
 
 - caller must authenticate with a worker credential that includes `worker:poll`
   and binds the same `workerId`
-- `capabilityVersion` is optional; when omitted the server synthesizes one from
+- `evidenceVersion` is optional; when omitted the server synthesizes one from
   current wall-clock time
-- `availableEventCodes` must stay within the worker credential event scope
-- the report is a bounded capability snapshot, not an incremental patch
+- `eventCodes` must stay within the worker credential event scope
+- the report is bounded worker-local handler evidence, not WorkerGroup
+  capability truth and not an incremental patch
 
-### 6.10 Report Worker State
+### 6.10 Report Worker Runtime Evidence
 
 - Method: `POST`
-- Path: `/worker-api/v1/workers/{workerId}:report-state`
+- Path: `/worker-api/v1/workers/{workerId}:report-runtime-evidence`
 - Status: `Implemented`
 
 Request notes:
 
 - caller must authenticate with a worker credential that includes `worker:poll`
   and binds the same `workerId`
-- `stateVersion` is optional; when omitted the server synthesizes one from
+- `evidenceVersion` is optional; when omitted the server synthesizes one from
   current wall-clock time
 - external worker public contract currently accepts only:
   `AVAILABLE`, `DEGRADED`, `DRAINING`, `OFFLINE`
@@ -1021,7 +1026,7 @@ Request notes:
   future assignments stop, while already in-flight work continues normally
 - dispatch re-enable stays explicit in current mainline: failed or expired
   `DRAIN` command outcomes do not reopen dispatch; a later
-  `report-state(AVAILABLE)` is required
+  `report-runtime-evidence(AVAILABLE)` is required
 
 ### 6.11 Acknowledge Worker Command
 
@@ -1039,8 +1044,8 @@ Request notes:
   execution state disables future dispatches to that worker without interrupting
   already in-flight work
 - later `FAILED` or `EXPIRED` command outcomes do not re-enable dispatch on
-  their own; recovery remains an explicit worker state report via
-  `report-state(AVAILABLE)`
+  their own; recovery remains explicit worker runtime evidence via
+  `report-runtime-evidence(AVAILABLE)`
 
 ## 7. Internal Debug API
 

@@ -75,12 +75,12 @@ final class SampleWorkerTaskFrameHandler {
         JsonObject response = new JsonObject();
         response.addProperty("resultCorrelationRef", resultCorrelationRef);
         response.addProperty("success", "SUCCESS".equals(resolvedStatus));
-        response.addProperty("detail", "Executed by sample client " + workerId);
         if ("FAILED".equals(resolvedStatus)) {
-            response.addProperty("errorCode", "MOCK_TASK_FAILED");
+            response.addProperty("resultCode", "MOCK_TASK_FAILED");
         }
 
         Map<String, Object> outputMap = new LinkedHashMap<>();
+        outputMap.put("detail", "Executed by sample client " + workerId);
         outputMap.put("stepId", resolveStepId(taskMessage));
         outputMap.put("mockData", "Executed by sample client " + workerId);
         outputMap.put("status", resolvedStatus);
@@ -93,7 +93,7 @@ final class SampleWorkerTaskFrameHandler {
                 resolvedStatus
         ));
         outputMap.put("workerProfile", buildWorkerProfile(workerId));
-        response.add("output", GSON.toJsonTree(outputMap));
+        response.addProperty("result", GSON.toJson(outputMap));
 
         if (state != null && state.shouldDropTaskResponse()) {
             logger.info("[{}] Dropped sample task response for resultCorrelationRef={} due to sample state {}",
@@ -145,12 +145,12 @@ final class SampleWorkerTaskFrameHandler {
         JsonObject response = new JsonObject();
         response.addProperty("resultCorrelationRef", resultCorrelationRef(taskMessage));
         response.addProperty("success", success);
-        response.addProperty("detail", resolveCommandTaskDetail(eventCode, commandResult));
         if (!success) {
-            response.addProperty("errorCode", resolveCommandTaskErrorCode(commandResult));
+            response.addProperty("resultCode", resolveCommandTaskErrorCode(commandResult));
         }
 
         Map<String, Object> outputMap = new LinkedHashMap<>();
+        outputMap.put("detail", resolveCommandTaskDetail(eventCode, commandResult));
         outputMap.put("stepId", resolveStepId(taskMessage));
         outputMap.put("eventCode", eventCode);
         outputMap.put("status", success ? "SUCCESS" : "FAILED");
@@ -168,7 +168,7 @@ final class SampleWorkerTaskFrameHandler {
                 success ? "SUCCESS" : "FAILED"
         ));
         outputMap.put("workerProfile", buildWorkerProfile(workerId));
-        response.add("output", GSON.toJsonTree(outputMap));
+        response.addProperty("result", GSON.toJson(outputMap));
 
         return new TaskResponsePlan(
                 GSON.toJson(response),

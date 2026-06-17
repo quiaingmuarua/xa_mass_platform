@@ -33,7 +33,7 @@ class WorkerClientTest {
     }
 
     @Test
-    void workerTopologyIsGroupFirstAndKeepsAttributesExplicit() throws Exception {
+    void workerRegistrationIsGroupFirstAndKeepsAttributesExplicit() throws Exception {
         List<String> observed = new ArrayList<>();
         startServer(exchange -> {
             String method = exchange.getRequestMethod();
@@ -51,31 +51,13 @@ class WorkerClientTest {
                         """);
                 return;
             }
-            if ("POST".equals(method) && "/worker-api/v1/adapter-nodes".equals(path)) {
-                JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("phone-poll-node-sg-1", request.get("adapterNodeId").asText());
-                assertEquals("polling", request.get("adapterType").asText());
-                assertEquals("phone-poll-node-sg-1", request.get("endpointId").asText());
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"phone-poll-node-sg-1","adapterType":"polling","adapterVersion":"1.0.0","endpointId":"phone-poll-node-sg-1","enabled":true,"online":true,"attributes":{"region":"sg"}}}
-                        """);
-                return;
-            }
-            if ("POST".equals(method) && "/worker-api/v1/node-group-bindings".equals(path)) {
-                JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("phone-poll-node-sg-1", request.get("adapterNodeId").asText());
-                assertEquals("phone-device-probe", request.get("workerGroupId").asText());
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"adapterNodeId":"phone-poll-node-sg-1","workerGroupId":"phone-device-probe","pluginVersion":"1.1.0","deploymentVersion":"deploy-1","enabled":true,"draining":false,"attributes":{"region":"sg"}}}
-                        """);
-                return;
-            }
             if ("POST".equals(method) && "/worker-api/v1/workers".equals(path)) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
                 assertEquals("phone-worker-sg-001", request.get("workerId").asText());
                 assertEquals("phone-device-probe", request.get("workerGroupId").asText());
                 assertEquals("fp-android-13-sg", request.get("attributes").get("fingerprint").asText());
                 assertFalse(request.has("adapterNodeId"), "worker registration must not carry topology ids");
+                assertFalse(request.has("adapterId"), "worker registration must not carry adapter ids");
                 assertFalse(request.has("eventBindings"), "worker registration must stay group-first");
                 respond(exchange, 200, """
                         {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","workerGroupId":"phone-device-probe","transportHint":"polling"}}
@@ -92,20 +74,6 @@ class WorkerClientTest {
                 .defaultAttribute("deviceFamily", "android")
                 .defaultMaxConcurrentWork(20)
                 .build());
-        AdapterNodeRegistrationResult node = workers.registerAdapterNode(AdapterNodeSpec.builder()
-                .adapterNodeId("phone-poll-node-sg-1")
-                .adapterType("polling")
-                .adapterVersion("1.0.0")
-                .endpointId("phone-poll-node-sg-1")
-                .attribute("region", "sg")
-                .build());
-        NodeGroupBindingResult binding = workers.bindNodeGroup(NodeGroupBindingSpec.builder()
-                .adapterNodeId("phone-poll-node-sg-1")
-                .workerGroupId("phone-device-probe")
-                .pluginVersion("1.1.0")
-                .deploymentVersion("deploy-1")
-                .attribute("region", "sg")
-                .build());
         WorkerRegistrationResult worker = workers.registerWorker(WorkerSpec.builder()
                 .workerId("phone-worker-sg-001")
                 .workerGroupId("phone-device-probe")
@@ -115,13 +83,9 @@ class WorkerClientTest {
                 .build());
 
         assertEquals("phone-device-probe", group.groupId());
-        assertEquals("polling", node.adapterType());
-        assertEquals("phone-device-probe", binding.workerGroupId());
         assertEquals("polling", worker.transportHint());
         assertEquals(List.of(
                 "POST /worker-api/v1/worker-groups",
-                "POST /worker-api/v1/adapter-nodes",
-                "POST /worker-api/v1/node-group-bindings",
                 "POST /worker-api/v1/workers"
         ), observed);
     }
@@ -166,24 +130,10 @@ class WorkerClientTest {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
                 assertEquals("corr-1", request.get("resultCorrelationRef").asText());
                 assertTrue(request.get("success").asBoolean());
-                assertEquals("ok", request.get("detail").asText());
-                assertEquals("525", request.get("output").get("mcc").asText());
+                assertEquals("{\"mcc\":\"525\",\"mnc\":\"01\"}", request.get("result").asText());
+                assertFalse(request.hasNonNull("resultCode"));
                 respond(exchange, 200, """
                         {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","resultCorrelationRef":"corr-1","submitted":true}}
-                        """);
-                return;
-            }
-            if ("POST".equals(method) && "/worker-api/v1/workers/phone-worker-sg-001/commands:poll".equals(path)) {
-                assertEquals(2, OBJECT_MAPPER.readTree(body).get("maxCommands").asInt());
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","count":1,"commands":[{"commandId":"cmd-1","workerId":"phone-worker-sg-001","commandType":"PING","status":"DELIVERY_ACCEPTED","requester":"ops","reason":"check","payload":{"mode":"light"},"deliveryAttemptCount":1,"createdAt":"2026-05-20T10:00:00Z","updatedAt":"2026-05-20T10:00:01Z"}]}}
-                        """);
-                return;
-            }
-            if ("POST".equals(method) && "/worker-api/v1/workers/phone-worker-sg-001/commands/cmd-1:ack".equals(path)) {
-                assertEquals("DELIVERY_ACCEPTED", OBJECT_MAPPER.readTree(body).get("status").asText());
-                respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"code":"ACCEPTED","accepted":true,"previousStatus":"REQUESTED","currentStatus":"DELIVERY_ACCEPTED","reason":"accepted","command":{"commandId":"cmd-1","workerId":"phone-worker-sg-001","commandType":"PING","status":"DELIVERY_ACCEPTED","payload":{},"deliveryAttemptCount":1}}}
                         """);
                 return;
             }
@@ -207,24 +157,14 @@ class WorkerClientTest {
                 .maxMessages(10)
                 .timeoutMs(500L)
                 .build());
-        WorkerDispatchItem item = poll.items().getFirst();
+        WorkerInvocation item = poll.items().getFirst();
         assertEquals("probe.phone.metadata", item.eventCode());
-        assertEquals("+14155550100", item.input().get("phone"));
+        assertEquals("+14155550100", item.input().getString("phone").orElseThrow());
 
-        WorkerResultSubmitOutcome outcome = workers.submitResult("phone-worker-sg-001",
-                WorkerResultSubmitRequest.success(item.resultCorrelationRef(), "ok", Map.of(
-                        "mcc", "525",
-                        "mnc", "01"
-                )));
-        assertTrue(outcome.submitted());
+        boolean submitted = workers.submitResult("phone-worker-sg-001",
+                WorkerResultSubmission.success(item.resultCorrelationRef(), "{\"mcc\":\"525\",\"mnc\":\"01\"}"));
+        assertTrue(submitted);
 
-        WorkerCommandPollResult commands = workers.pollCommands("phone-worker-sg-001",
-                WorkerCommandPollRequest.builder().maxCommands(2).build());
-        assertEquals("cmd-1", commands.commands().getFirst().commandId());
-
-        WorkerCommandAckResult ack = workers.ackCommand("phone-worker-sg-001", "cmd-1",
-                WorkerCommandAck.deliveryAccepted("accepted"));
-        assertEquals("DELIVERY_ACCEPTED", ack.currentStatus());
         assertEquals("offline", workers.offline("phone-worker-sg-001", sessionToken, "shutdown").action());
 
         assertEquals(List.of(
@@ -232,32 +172,30 @@ class WorkerClientTest {
                 "POST /worker-api/v1/workers/phone-worker-sg-001:heartbeat",
                 "POST /worker-api/v1/workers/phone-worker-sg-001:poll",
                 "POST /worker-api/v1/workers/phone-worker-sg-001:submit-result",
-                "POST /worker-api/v1/workers/phone-worker-sg-001/commands:poll",
-                "POST /worker-api/v1/workers/phone-worker-sg-001/commands/cmd-1:ack",
                 "POST /worker-api/v1/workers/phone-worker-sg-001:offline"
         ), observed);
     }
 
     @Test
-    void capabilityAndStateReportsKeepMatchAttributesVisible() throws Exception {
+    void handlerAndRuntimeEvidenceKeepWorkerLocalFactsVisible() throws Exception {
         startServer(exchange -> {
             String path = exchange.getRequestURI().getRawPath();
             String body = readBody(exchange);
-            if ("/worker-api/v1/workers/phone-worker-sg-001:report-capability".equals(path)) {
+            if ("/worker-api/v1/workers/phone-worker-sg-001:report-handler-evidence".equals(path)) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("probe.phone.metadata", request.get("availableEventCodes").get(0).asText());
-                assertEquals("fp-android-13-sg", request.get("schedulingAttributes").get("fingerprint").asText());
+                assertEquals("probe.phone.metadata", request.get("eventCodes").get(0).asText());
+                assertEquals("fp-android-13-sg", request.get("attributes").get("fingerprint").asText());
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"phone-worker-sg-001","capabilityVersion":7,"accepted":true,"snapshotChanged":true,"reason":"updated"}}
+                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"phone-worker-sg-001","evidenceVersion":7,"accepted":true,"changed":true,"reason":"updated"}}
                         """);
                 return;
             }
-            if ("/worker-api/v1/workers/phone-worker-sg-001:report-state".equals(path)) {
+            if ("/worker-api/v1/workers/phone-worker-sg-001:report-runtime-evidence".equals(path)) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
                 assertEquals("DRAINING", request.get("state").asText());
                 assertEquals("maintenance", request.get("reason").asText());
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"phone-worker-sg-001","stateVersion":8,"accepted":true,"projectionChanged":true,"reason":"updated","projection":{"workerId":"phone-worker-sg-001","stateVersion":8,"state":"DRAINING","reason":"maintenance","observedAt":"2026-05-20T10:00:00Z","acceptedAt":"2026-05-20T10:00:01Z"}}}
+                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"phone-worker-sg-001","evidenceVersion":8,"accepted":true,"changed":true,"reason":"updated","snapshot":{"workerId":"phone-worker-sg-001","evidenceVersion":8,"state":"DRAINING","reason":"maintenance","observedAt":"2026-05-20T10:00:00Z","acceptedAt":"2026-05-20T10:00:01Z"}}}
                         """);
                 return;
             }
@@ -265,26 +203,26 @@ class WorkerClientTest {
         });
 
         WorkerClient workers = platform().workers();
-        WorkerCapabilityReportResult capability = workers.reportCapability("phone-worker-sg-001",
-                WorkerCapabilityReport.builder()
+        WorkerHandlerEvidenceResult handlerEvidence = workers.reportHandlerEvidence("phone-worker-sg-001",
+                WorkerHandlerEvidence.builder()
                         .workerId("phone-worker-sg-001")
-                        .capabilityVersion(7L)
-                        .availableEventCode("probe.phone.metadata")
-                        .schedulingAttribute("fingerprint", "fp-android-13-sg")
-                        .schedulingAttribute("region", "sg")
+                        .evidenceVersion(7L)
+                        .eventCode("probe.phone.metadata")
+                        .attribute("fingerprint", "fp-android-13-sg")
+                        .attribute("region", "sg")
                         .agentVersion("1.0.0")
                         .build());
-        WorkerStateReportResult state = workers.reportState("phone-worker-sg-001",
-                WorkerStateReport.builder()
+        WorkerRuntimeEvidenceResult runtimeEvidence = workers.reportRuntimeEvidence("phone-worker-sg-001",
+                WorkerRuntimeEvidence.builder()
                         .workerId("phone-worker-sg-001")
-                        .stateVersion(8L)
+                        .evidenceVersion(8L)
                         .draining()
                         .reason("maintenance")
                         .attribute("queueDepth", "10")
                         .build());
 
-        assertTrue(capability.accepted());
-        assertEquals("DRAINING", state.projection().state());
+        assertTrue(handlerEvidence.accepted());
+        assertEquals("DRAINING", runtimeEvidence.snapshot().state());
     }
 
     private MassPlatform platform() {

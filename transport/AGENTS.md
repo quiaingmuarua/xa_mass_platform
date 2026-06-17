@@ -122,7 +122,7 @@ entry for `transport/`.
   `DeliveryCommand` directly and sends by selected worker.
 - `DeliveryPullResult` / `PulledDeliveryMessage` are the transport-core pull
   shapes. They carry status plus opaque delivery messages only. Task-shaped
-  `PulledTaskDispatch` / `TaskPullResult` live at the SDK/server public worker
+  worker invocation/poll result DTOs live at the SDK/server public worker
   boundary, where the SDK-owned payload and correlation codecs decode them.
 - `QueuedPulledDispatch` is the current polling queue value. It carries only
   delivery id, selected worker, payload, correlation, and timing; packet, route,
@@ -183,7 +183,7 @@ Document layering inside `transport/`:
 - Do not add transport hot-path scans or model-coupled observability fields
   when logs, traces, counters, or indexed lookups can answer the question.
 - Do not reintroduce `TaskDispatchContent`, `TaskDispatchExecutionContext`,
-  task-shaped `TaskPullResult`, or task-shaped `PulledTaskDispatch` into
+  task-shaped pull result DTOs, or task-shaped worker invocation DTOs into
   `transport_api`.
 - Do not turn endpoint lease/presence evidence into a post-assignment routing
   engine. Missing selected-worker delivery evidence is infeasible delivery,

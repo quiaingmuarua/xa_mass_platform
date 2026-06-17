@@ -1,7 +1,7 @@
 package com.xa.mass.workerpack.tool.geo;
 
+import com.google.gson.Gson;
 import com.xa.mass.client.MassPlatform;
-import com.xa.mass.client.worker.AdapterNodeSpec;
 import com.xa.mass.client.worker.WorkerGroupSpec;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerResult;
@@ -16,7 +16,7 @@ import java.util.Objects;
 
 public final class GeoLookupWorkerPack {
     public static final String WORKER_GROUP_ID = "worker-pack.tools.geo";
-    public static final String DEFAULT_ADAPTER_TYPE = "polling";
+    private static final Gson RESULT_GSON = new Gson();
 
     private GeoLookupWorkerPack() {
     }
@@ -52,22 +52,30 @@ public final class GeoLookupWorkerPack {
                     .or(() -> dispatch.input().getString("city"))
                     .orElse("");
             try {
-                return WorkerResult.success("geo lookup resolved", GeoLookupTool.lookup(query, resolvedProvider));
+                return WorkerResult.success(resultBody("geo lookup resolved",
+                        GeoLookupTool.lookup(query, resolvedProvider)));
             } catch (IllegalArgumentException e) {
                 return WorkerResult.failure("INVALID_GEO_QUERY", e.getMessage());
             } catch (GeoLookupProviderException e) {
-                return WorkerResult.failure(e.errorCode(), e.getMessage(), Map.of(
+                return WorkerResult.failure(e.errorCode(), resultBody(e.getMessage(), Map.of(
                         "query", query,
                         "provider", resolvedProvider.providerId()
-                ));
+                )));
             }
         };
+    }
+
+    private static String resultBody(String detail, Map<String, Object> output) {
+        Map<String, Object> values = new LinkedHashMap<>(output == null ? Map.of() : output);
+        if (detail != null && !detail.isBlank()) {
+            values.put("detail", detail);
+        }
+        return RESULT_GSON.toJson(values);
     }
 
     public static final class Builder {
         private final MassPlatform platform;
         private String workerId;
-        private String adapterNodeId;
         private List<String> projectCodes = List.of();
         private GeoLookupProvider provider = GeoLookupTool.defaultProvider();
         private Map<String, String> attributes = defaultAttributes();
@@ -82,11 +90,6 @@ public final class GeoLookupWorkerPack {
 
         public Builder workerId(String workerId) {
             this.workerId = workerId;
-            return this;
-        }
-
-        public Builder adapterNodeId(String adapterNodeId) {
-            this.adapterNodeId = adapterNodeId;
             return this;
         }
 
@@ -133,15 +136,7 @@ public final class GeoLookupWorkerPack {
 
         public PollingWorkerSession startPolling() {
             String resolvedWorkerId = requireText(workerId, "workerId");
-            String resolvedAdapterNodeId = requireText(adapterNodeId, "adapterNodeId");
             platform.workers().declareGroup(groupSpec(projectCodes, provider));
-            platform.workers().registerAdapterNode(AdapterNodeSpec.builder()
-                    .adapterNodeId(resolvedAdapterNodeId)
-                    .adapterType(DEFAULT_ADAPTER_TYPE)
-                    .endpointId(resolvedAdapterNodeId)
-                    .attributes(attributes)
-                    .build());
-            platform.workers().bindNodeGroup(resolvedAdapterNodeId, WORKER_GROUP_ID);
             WorkerSessionSpec sessionSpec = WorkerSessionSpec.builder()
                     .workerId(resolvedWorkerId)
                     .workerGroupId(WORKER_GROUP_ID)

@@ -141,12 +141,12 @@ transport runtime as delivery feasibility, not SDK worker inspection or worker
 lifecycle truth. `routeKey` remains opaque connection/domain metadata minted
 outside transport. Assigned delivery commands expose `deliveryBucketId +
 selectedWorkerId` to transport; the current SDK/starter default derives the
-bucket from worker-group context. Polling worker responses expose
-`PulledTaskDispatch` without worker or route metadata because worker identity
-comes from the session/path context. Transport-owned delivery submitters
-offer the already assigned item to the bucket-derived delivery queue;
-selected-worker consumer evidence prevents wrong-worker delivery at
-drain/final-hop time. Worker runtime capacity, lifecycle, and multi-binding
+bucket from worker-group context. Transport-owned delivery submitters offer the
+already assigned item to the bucket-derived delivery queue; selected-worker
+consumer evidence prevents wrong-worker delivery at drain/final-hop time.
+Polling worker responses expose `WorkerInvocation`
+without worker or route metadata because worker identity comes from the
+session/path context. Worker runtime capacity, lifecycle, and multi-binding
 behavior remain owned by worker-runtime scheduling/admission, not by transport
 endpoint leasing.
 

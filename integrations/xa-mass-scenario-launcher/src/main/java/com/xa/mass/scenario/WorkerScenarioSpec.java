@@ -11,7 +11,6 @@ record WorkerScenarioSpec(
         String workerId,
         String workerKey,
         String workerGroupId,
-        String adapterNodeId,
         String adapterType,
         String transportHint,
         String startMode,

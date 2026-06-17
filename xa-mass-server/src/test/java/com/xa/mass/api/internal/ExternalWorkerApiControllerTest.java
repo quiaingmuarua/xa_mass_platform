@@ -20,7 +20,7 @@ import com.xa.mass.sdk.model.WorkerStateProjectionSnapshot;
 import com.xa.mass.sdk.model.WorkerStateReportRequest;
 import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.sdk.worker.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.WorkerInvocation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -471,7 +471,7 @@ class ExternalWorkerApiControllerTest {
     @Test
     void pollTasksReturnsTransportNeutralItems() throws Exception {
         when(workerClient.pollTasks("node-worker-1", 2, 250L)).thenReturn(List.of(
-                new PulledTaskDispatch(
+                new WorkerInvocation(
                         "corr-1",
                         "crawler.fetch-page",
                         Map.of("url", "https://example.test"),
@@ -585,8 +585,8 @@ class ExternalWorkerApiControllerTest {
         when(workerClient.submitResult(eq("node-worker-1"), argThat(report ->
                 "corr-1".equals(report.resultCorrelationRef())
                         && report.success()
-                        && "ok".equals(report.detail())
-                        && Map.of("title", "Example").equals(report.output())
+                        && report.resultCode() == null
+                        && "{\"title\":\"Example\"}".equals(report.result())
         ))).thenReturn(true);
 
         mockMvc.perform(post("/worker-api/v1/workers/{workerId}:submit-result", "node-worker-1")
@@ -596,10 +596,7 @@ class ExternalWorkerApiControllerTest {
                                 {
                                   "resultCorrelationRef": "corr-1",
                                   "success": true,
-                                  "detail": "ok",
-                                  "output": {
-                                    "title": "Example"
-                                  }
+                                  "result": "{\\"title\\":\\"Example\\"}"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -610,8 +607,8 @@ class ExternalWorkerApiControllerTest {
         verify(workerClient).submitResult(eq("node-worker-1"), argThat(report ->
                 "corr-1".equals(report.resultCorrelationRef())
                         && report.success()
-                        && "ok".equals(report.detail())
-                        && Map.of("title", "Example").equals(report.output())
+                        && report.resultCode() == null
+                        && "{\"title\":\"Example\"}".equals(report.result())
         ));
     }
 
@@ -635,24 +632,26 @@ class ExternalWorkerApiControllerTest {
     }
 
     @Test
-    void reportCapabilityDefaultsVersionAndDelegatesToWorkerControl() throws Exception {
+    void reportHandlerEvidenceDefaultsVersionAndDelegatesToWorkerControl() throws Exception {
         when(workerControl.reportWorkerCapability(any())).thenReturn(new WorkerCapabilityReportSnapshot(
                 "ACCEPTED", "node-worker-1", 1L, true, true, "updated"
         ));
 
-        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-capability", "node-worker-1")
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-handler-evidence", "node-worker-1")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
                                 {
-                                  "availableEventCodes":["crawler.fetch-page"],
-                                  "schedulingAttributes":{"country":"us"},
+                                  "eventCodes":["crawler.fetch-page"],
+                                  "attributes":{"country":"us"},
                                   "agentVersion":"1.2.3"
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.workerId").value("node-worker-1"))
+                .andExpect(jsonPath("$.data.evidenceVersion").value(1))
+                .andExpect(jsonPath("$.data.changed").value(true))
                 .andExpect(jsonPath("$.data.accepted").value(true));
 
         ArgumentCaptor<WorkerCapabilityReportRequest> captor =
@@ -665,29 +664,29 @@ class ExternalWorkerApiControllerTest {
     }
 
     @Test
-    void reportCapabilityRejectsNonPositiveVersion() throws Exception {
-        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-capability", "node-worker-1")
+    void reportHandlerEvidenceRejectsNonPositiveVersion() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-handler-evidence", "node-worker-1")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
                                 {
-                                  "capabilityVersion":0,
-                                  "availableEventCodes":["crawler.fetch-page"]
+                                  "evidenceVersion":0,
+                                  "eventCodes":["crawler.fetch-page"]
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("capabilityVersion must be greater than 0"));
+                .andExpect(jsonPath("$.msg").value("evidenceVersion must be greater than 0"));
     }
 
     @Test
-    void reportCapabilityRejectsEventScopeMismatch() throws Exception {
-        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-capability", "node-worker-1")
+    void reportHandlerEvidenceRejectsEventScopeMismatch() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-handler-evidence", "node-worker-1")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
                                 {
-                                  "availableEventCodes":["mock.reset"]
+                                  "eventCodes":["mock.reset"]
                                 }
                                 """))
                 .andExpect(status().isForbidden())
@@ -696,7 +695,7 @@ class ExternalWorkerApiControllerTest {
     }
 
     @Test
-    void reportStateDefaultsVersionAndConstrainsStateEnum() throws Exception {
+    void reportRuntimeEvidenceDefaultsVersionAndConstrainsStateEnum() throws Exception {
         when(workerControl.reportWorkerState(any())).thenReturn(new WorkerStateReportSnapshot(
                 "ACCEPTED",
                 "node-worker-1",
@@ -714,7 +713,7 @@ class ExternalWorkerApiControllerTest {
                 )
         ));
 
-        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-state", "node-worker-1")
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-runtime-evidence", "node-worker-1")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
@@ -725,7 +724,8 @@ class ExternalWorkerApiControllerTest {
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.projection.state").value("DRAINING"));
+                .andExpect(jsonPath("$.data.snapshot.state").value("DRAINING"))
+                .andExpect(jsonPath("$.data.snapshot.evidenceVersion").value(1));
 
         ArgumentCaptor<WorkerStateReportRequest> captor =
                 ArgumentCaptor.forClass(WorkerStateReportRequest.class);
@@ -737,8 +737,8 @@ class ExternalWorkerApiControllerTest {
     }
 
     @Test
-    void reportStateRejectsUnknownState() throws Exception {
-        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-state", "node-worker-1")
+    void reportRuntimeEvidenceRejectsUnknownState() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-runtime-evidence", "node-worker-1")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""

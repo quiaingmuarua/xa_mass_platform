@@ -1,6 +1,6 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.sdk.worker.WorkerResultSubmitRequest;
+import com.xa.mass.sdk.worker.WorkerResultSubmission;
 import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
@@ -17,12 +17,11 @@ class TaskResultCallbackCodecTest {
 
     @Test
     void workerResultRequestRoundTripsThroughOpaqueTransportEnvelope() {
-        WorkerResultSubmitRequest request = new WorkerResultSubmitRequest(
+        WorkerResultSubmission request = new WorkerResultSubmission(
                 correlation("task-1", "msg-1", "attempt-1"),
                 true,
-                "ok",
                 null,
-                Map.of("status", "SUCCESS")
+                "ok"
         );
 
         TransportResultIngressEnvelope envelope =
@@ -39,7 +38,7 @@ class TaskResultCallbackCodecTest {
         assertEquals("attempt-1", decoded.attemptId());
         assertEquals(null, decoded.leaseToken());
         assertEquals(null, decoded.traceId());
-        assertEquals("SUCCESS", decoded.output().get("status"));
+        assertEquals("ok", decoded.output().get("result"));
     }
 
     @Test
@@ -68,14 +67,13 @@ class TaskResultCallbackCodecTest {
     }
 
     @Test
-    void decodeAcceptsAdapterCanonicalResultPayload() {
+    void decodeAcceptsCanonicalResultPayload() {
         TransportResultIngressEnvelope envelope = TransportResultIngressEnvelope.received(
                 """
                 {
                   "resultCorrelationRef": "%s",
                   "success": true,
-                  "detail": "done",
-                  "output": {"value": "ok"}
+                  "result": "done"
                 }
                 """.formatted(correlation("task-1", "msg-1", "attempt-1")),
                 null,
@@ -87,8 +85,8 @@ class TaskResultCallbackCodecTest {
 
         assertEquals("task-1", decoded.taskId());
         assertEquals("msg-1", decoded.messageId());
-        assertEquals("done", decoded.detail());
-        assertEquals("ok", decoded.output().get("value"));
+        assertEquals(null, decoded.detail());
+        assertEquals("done", decoded.output().get("result"));
     }
 
     @Test

@@ -11,7 +11,7 @@ import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.Objects;
 
-final class PulledTaskDispatchPayloadDecoder {
+final class WorkerInvocationPayloadDecoder {
 
     private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
     private static final String EVENT_CODE_FIELD = "eventCode";
@@ -22,25 +22,25 @@ final class PulledTaskDispatchPayloadDecoder {
 
     private final Gson gson;
 
-    PulledTaskDispatchPayloadDecoder() {
+    WorkerInvocationPayloadDecoder() {
         this(new GsonBuilder().create());
     }
 
-    PulledTaskDispatchPayloadDecoder(Gson gson) {
+    WorkerInvocationPayloadDecoder(Gson gson) {
         this.gson = Objects.requireNonNull(gson, "gson");
     }
 
-    PulledTaskDispatch decode(PulledDeliveryMessage message) {
+    WorkerInvocation decode(PulledDeliveryMessage message) {
         Objects.requireNonNull(message, "message");
         return decode(message.getPayload(), message.getCorrelationRef());
     }
 
-    PulledTaskDispatch decode(String payload, String correlationRef) {
+    WorkerInvocation decode(String payload, String correlationRef) {
         JsonObject frame = gson.fromJson(requireText(payload, "payload"), JsonObject.class);
         if (frame == null) {
             throw new IllegalArgumentException("payload must be a JSON object");
         }
-        return new PulledTaskDispatch(
+        return new WorkerInvocation(
                 firstNonBlank(readString(frame, RESULT_CORRELATION_REF_FIELD), correlationRef),
                 readString(frame, EVENT_CODE_FIELD),
                 readMap(frame, INPUT_FIELD),

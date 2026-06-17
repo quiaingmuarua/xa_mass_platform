@@ -1,9 +1,9 @@
 package com.xa.mass.workerpack.tool.probe;
 
+import com.google.gson.Gson;
 import com.xa.mass.client.MassPlatform;
-import com.xa.mass.client.worker.AdapterNodeSpec;
 import com.xa.mass.client.worker.WorkerGroupSpec;
-import com.xa.mass.client.worker.handler.WorkerInvocation;
+import com.xa.mass.client.worker.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.client.worker.session.PollingWorkerSession;
@@ -28,6 +28,7 @@ public final class ProbeWorkerPack {
     public static final String PUBLIC_PROBE_GROUP_ID = "public-probe";
     public static final String DATA_QUALITY_GROUP_ID = "data-quality-probe";
     public static final String PROVIDER = "worker-pack-local-probe";
+    private static final Gson RESULT_GSON = new Gson();
 
     private ProbeWorkerPack() {
     }
@@ -85,7 +86,7 @@ public final class ProbeWorkerPack {
             output.put("provider", PROVIDER);
             copyIfPresent(output, dispatch, "defaultRegion", "requiredFingerprintProfile",
                     "requiredNetworkOperatorMccMnc");
-            return WorkerResult.success("phone metadata resolved", output);
+            return success("phone metadata resolved", output);
         };
     }
 
@@ -118,7 +119,7 @@ public final class ProbeWorkerPack {
             output.put("resolved", true);
             output.put("addresses", List.of("fixture-" + Math.abs(host.toLowerCase(Locale.ROOT).hashCode() % 250)
                     + ".local"));
-            return WorkerResult.success("url dns resolved", output);
+            return success("url dns resolved", output);
         };
     }
 
@@ -147,10 +148,10 @@ public final class ProbeWorkerPack {
             output.put("provider", PROVIDER);
             if (!missing.isEmpty()) {
                 output.put("missingColumns", missing);
-                return WorkerResult.failure("CSV_INVALID", "csv missing required columns", output);
+                return businessFailure("CSV_INVALID", "csv missing required columns", envelope, output);
             }
             output.put("classification", "CSV_VALID");
-            return WorkerResult.success("csv valid", output);
+            return success("csv valid", output);
         };
     }
 
@@ -171,10 +172,10 @@ public final class ProbeWorkerPack {
             output.put("provider", PROVIDER);
             if (!missing.isEmpty()) {
                 output.put("missingFields", missing);
-                return WorkerResult.failure("SCHEMA_INVALID", "payload missing required fields", output);
+                return businessFailure("SCHEMA_INVALID", "payload missing required fields", envelope, output);
             }
             output.put("classification", "SCHEMA_VALID");
-            return WorkerResult.success("json schema valid", output);
+            return success("json schema valid", output);
         };
     }
 
@@ -195,7 +196,19 @@ public final class ProbeWorkerPack {
         values.put("classification", errorCode);
         values.putAll(output);
         values.putIfAbsent("provider", PROVIDER);
-        return WorkerResult.failure(errorCode, detail, values);
+        return WorkerResult.failure(errorCode, resultBody(detail, values));
+    }
+
+    private static WorkerResult success(String detail, Map<String, Object> output) {
+        return WorkerResult.success(resultBody(detail, output));
+    }
+
+    private static String resultBody(String detail, Map<String, Object> output) {
+        Map<String, Object> values = new LinkedHashMap<>(output == null ? Map.of() : output);
+        if (detail != null && !detail.isBlank()) {
+            values.put("detail", detail);
+        }
+        return RESULT_GSON.toJson(values);
     }
 
     private static String firstText(WorkerInvocation dispatch, String... keys) {
@@ -311,7 +324,6 @@ public final class ProbeWorkerPack {
     public static final class PhoneDevicePollingBuilder {
         private final MassPlatform platform;
         private String workerId;
-        private String adapterNodeId;
         private List<String> projectCodes = List.of("deviceProbe");
         private Map<String, String> attributes = defaultPhoneAttributes();
         private Duration pollInterval = Duration.ofMillis(50);
@@ -323,11 +335,6 @@ public final class ProbeWorkerPack {
 
         public PhoneDevicePollingBuilder workerId(String workerId) {
             this.workerId = workerId;
-            return this;
-        }
-
-        public PhoneDevicePollingBuilder adapterNodeId(String adapterNodeId) {
-            this.adapterNodeId = adapterNodeId;
             return this;
         }
 
@@ -358,15 +365,7 @@ public final class ProbeWorkerPack {
 
         public PollingWorkerSession startPolling() {
             String resolvedWorkerId = requireText(workerId, "workerId");
-            String resolvedAdapterNodeId = requireText(adapterNodeId, "adapterNodeId");
             platform.workers().declareGroup(phoneDeviceGroupSpec(projectCodes));
-            platform.workers().registerAdapterNode(AdapterNodeSpec.builder()
-                    .adapterNodeId(resolvedAdapterNodeId)
-                    .adapterType("polling")
-                    .endpointId(resolvedAdapterNodeId)
-                    .attributes(attributes)
-                    .build());
-            platform.workers().bindNodeGroup(resolvedAdapterNodeId, PHONE_DEVICE_GROUP_ID);
             WorkerSessionSpec sessionSpec = WorkerSessionSpec.builder()
                     .workerId(resolvedWorkerId)
                     .workerGroupId(PHONE_DEVICE_GROUP_ID)
