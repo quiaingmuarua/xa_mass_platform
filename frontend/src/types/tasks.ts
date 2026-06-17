@@ -16,6 +16,7 @@ export interface TaskDetailRecord {
     taskName: string
     project: string
     status: TaskListItem['status']
+    intakeStatus: 'OPEN' | 'SEALED' | null
     terminalReason: string | null
     batchSize: number
     sharedConfig: Record<string, unknown>
@@ -87,6 +88,17 @@ export interface TaskReviewResponse {
     }
 }
 
+export interface TaskResultWindowResponse {
+    mode: 'LIVE' | 'ARCHIVE_READY'
+    taskId: string
+    taskTerminal: boolean
+    archiveReady: boolean
+    items: TaskResultPreviewItem[]
+    nextAfterSeq: number
+    hasMore: boolean
+    archiveUrl: string | null
+}
+
 export interface TaskListResponse {
     items: TaskListItem[]
     total: number
@@ -101,6 +113,7 @@ export interface TaskListQuery {
 export interface TaskActionResult {
     message: string
     newStatus?: TaskListItem['status']
+    intakeStatus?: 'OPEN' | 'SEALED' | null
     terminalReason?: string
 }
 

@@ -5,7 +5,8 @@
       "userId": "ops-admin",
       "sourceRef": "sample-crawler-fetch-page",
       "sharedConfig": {
-        "routingCode": "us"
+        "routingCode": "us",
+        "reviewMaterializationMode": "terminal"
       },
       "executionSpec": {
         "batchSize": 1
@@ -25,6 +26,7 @@
       "sourceRef": "sample-stock-quote-stream",
       "sharedConfig": {
         "routingCode": "us",
+        "reviewMaterializationMode": "terminal",
         "sourceUrl": "${MASS_BASE_URL}/api/v1/catalog/events/stock.quote.fetch"
       },
       "executionSpec": {
@@ -48,6 +50,7 @@
       "sourceRef": "sample-phone-device-probe-bulk",
       "sharedConfig": {
         "routingCode": "sg",
+        "reviewMaterializationMode": "terminal",
         "workerGroupId": "phone-device-probe",
         "requiredFingerprintProfile": "fp-sg-alpha",
         "targetWorkerAttributes": {

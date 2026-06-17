@@ -7,6 +7,7 @@ import type {
     TaskListItem,
     TaskListQuery,
     TaskListResponse,
+    TaskResultWindowResponse,
     TaskReviewResponse,
     TaskShellCreateRequest,
     TaskShellCreateResult,
@@ -71,6 +72,7 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             taskName: 'Public provider reachability batch',
             project: 'publicProbe',
             status: 'NEW',
+            intakeStatus: 'OPEN',
             terminalReason: null,
             batchSize: 20,
             sharedConfig: {
@@ -96,6 +98,7 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             taskName: 'Phone metadata fingerprint batch',
             project: 'deviceProbe',
             status: 'NEW',
+            intakeStatus: 'OPEN',
             terminalReason: null,
             batchSize: 10,
             sharedConfig: {
@@ -123,6 +126,7 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             taskName: 'Local CSV and JSON validation batch',
             project: 'dataQualityProbe',
             status: 'NEW',
+            intakeStatus: 'OPEN',
             terminalReason: null,
             batchSize: 25,
             sharedConfig: {
@@ -328,6 +332,32 @@ export async function getTaskReviewMock(
     return delay(review)
 }
 
+export async function getTaskResultsMock(
+    taskId: string,
+    limit = 12,
+): Promise<TaskResultWindowResponse> {
+    const detail = mockTaskDetails[taskId]
+    const review = mockTaskReviews[taskId]
+
+    if (!detail || !review) {
+        throw new Error(`Task results not found for ${taskId}`)
+    }
+
+    return delay({
+        mode: detail.task.status === 'TERMINAL' ? 'ARCHIVE_READY' : 'LIVE',
+        taskId,
+        taskTerminal: detail.task.status === 'TERMINAL',
+        archiveReady: detail.task.status === 'TERMINAL',
+        items: review.resultPreview.slice(0, Math.max(1, limit)),
+        nextAfterSeq: Math.min(review.resultPreview.length, Math.max(1, limit)),
+        hasMore: review.resultPreview.length > Math.max(1, limit),
+        archiveUrl:
+            detail.task.status === 'TERMINAL'
+                ? `/api/v1/tasks/${taskId}/results/archive`
+                : null,
+    })
+}
+
 export async function createTaskShellMock(
     request: TaskShellCreateRequest,
 ): Promise<TaskShellCreateResult> {
@@ -358,6 +388,7 @@ export async function createTaskShellMock(
             taskName: displayTaskName,
             project: request.project,
             status: 'NEW',
+            intakeStatus: 'OPEN',
             terminalReason: null,
             batchSize,
             sharedConfig: normalizedSharedConfig,
@@ -470,8 +501,10 @@ export async function sealTaskMock(taskId: string): Promise<TaskActionResult> {
     if (!detail) {
         throw new Error(`Task not found for ${taskId}`)
     }
+    detail.task.intakeStatus = 'SEALED'
     return delay({
         message: 'Task sealed',
+        intakeStatus: 'SEALED',
     })
 }
 
@@ -565,11 +598,13 @@ async function updateTaskStatusMock(
     if (status === 'TERMINAL') {
         listItem.terminalReason = 'MANUAL_CANCELLED'
         detail.task.terminalReason = 'MANUAL_CANCELLED'
+        detail.task.intakeStatus = 'SEALED'
     }
 
     return delay({
         message,
         newStatus: status,
+        intakeStatus: detail.task.intakeStatus,
         terminalReason: detail.task.terminalReason ?? undefined,
     })
 }

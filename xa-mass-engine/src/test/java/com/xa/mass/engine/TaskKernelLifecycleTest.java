@@ -9,6 +9,8 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.junit.jupiter.api.BeforeEach;
@@ -266,6 +268,44 @@ class TaskKernelLifecycleTest {
 
         assertTrue(taskManager.deleteTask(task.getTid()));
         assertNull(taskManager.getTask(task.getTid()));
+    }
+
+    @Test
+    void policyTerminationPreservesVisibleResultRowsUntilTaskDelete() {
+        Task task = createTask(buildRequest("terminate-preserve-results", List.of("alpha", "beta"), 0));
+        assertTrue(taskManager.approveTask(task.getTid()));
+        Task running = taskManager.getTask(task.getTid());
+        running.setStatus(TaskStatus.RUNNING);
+        assertTrue(taskManager.updateTask(running));
+
+        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
+                task.getTid(),
+                List.of(WorkerClaimTarget.workerLevel("worker-results", "batch-results", 1)),
+                1,
+                taskManager.getWorkLeaseSeconds()
+        );
+        assertEquals(1, claimed.size());
+        assertTrue(taskManager.ingestTaskResult(
+                task.getTid(),
+                claimed.getFirst().messageId(),
+                true,
+                "done",
+                null,
+                java.util.Map.of("value", "ok")
+        ));
+        assertEquals(1, taskManager.countTaskResults(task.getTid()));
+        assertTrue(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
+
+        assertTrue(taskManager.terminateTask(task.getTid(), TaskTerminalReason.MAX_RUNTIME_REACHED));
+
+        Task terminal = taskManager.getTask(task.getTid());
+        assertEquals(TaskStatus.TERMINAL, terminal.getStatus());
+        assertEquals(TaskTerminalReason.MAX_RUNTIME_REACHED, terminal.getTerminalReason());
+        assertFalse(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
+        assertEquals(1, taskManager.countTaskResults(task.getTid()));
+
+        assertTrue(taskManager.deleteTask(task.getTid()));
+        assertEquals(0, taskManager.countTaskResults(task.getTid()));
     }
 
     private Task createTask(TaskCreateSpec request) {

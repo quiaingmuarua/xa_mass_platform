@@ -34,6 +34,7 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         sharedConfig: {
             scenario: 'control-console-realistic',
             objective: 'verify public probe providers and URL reachability',
+            reviewMaterializationMode: 'terminal',
         },
         items: [
             {
@@ -62,6 +63,7 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
                 sharedConfig: {
                     scenario: 'control-console-realistic',
                     objective: 'classify DNS and URL reachability',
+                    reviewMaterializationMode: 'terminal',
                 },
                 items: [
                     {
@@ -85,6 +87,7 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
                 sharedConfig: {
                     scenario: 'control-console-realistic',
                     objective: 'verify status and latency classification',
+                    reviewMaterializationMode: 'terminal',
                 },
                 items: [
                     {
@@ -108,6 +111,7 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         sharedConfig: {
             scenario: 'control-console-realistic',
             objective: 'verify phone metadata with fingerprint-matched workers',
+            reviewMaterializationMode: 'terminal',
             workerGroupId: 'phone-device-probe',
             requiredFingerprintProfile: 'fp-android-sg-a',
         },
@@ -175,6 +179,7 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         sharedConfig: {
             scenario: 'control-console-realistic',
             objective: 'validate local CSV and JSON fixtures',
+            reviewMaterializationMode: 'terminal',
         },
         items: [
             {

@@ -4,6 +4,7 @@ import {
     createTaskShellReal,
     getTaskDetailReal,
     getTaskReviewReal,
+    getTaskResultsReal,
     invokeSyncTaskDebugReal,
     listTasksReal,
     sealTaskReal,
@@ -144,6 +145,57 @@ describe('tasks.real', () => {
         expect(review.summary.totalItems).toBe(10)
         expect(review.exports.resultUrl).toBe(
             '/internal/v1/review/tasks/task-001/result-export',
+        )
+    })
+
+    it('loads visible task results from the public result endpoint', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    mode: 'LIVE',
+                    taskId: 'task-001',
+                    taskTerminal: false,
+                    archiveReady: false,
+                    items: [
+                        {
+                            seq: 1,
+                            messageId: 'msg-001',
+                            eventCode: 'probe.phone.metadata',
+                            status: 'SUCCESS',
+                            finalReason: 'BUSINESS_SUCCESS',
+                            retryCount: 0,
+                            maxRetryCount: 1,
+                            workerId: 'phone-device-probe-poll-sg-001',
+                            batchId: 'batch-001',
+                            attemptId: 'attempt-001',
+                            startTime: '2026-06-17 14:24:00',
+                            completeTime: '2026-06-17 14:24:01',
+                            updateTime: '2026-06-17 14:24:01',
+                            errorCode: null,
+                            errorMessage: null,
+                            output: {
+                                expectedOutcome: 'VALID_OR_POSSIBLE',
+                            },
+                        },
+                    ],
+                    nextAfterSeq: 1,
+                    hasMore: false,
+                    archiveUrl: null,
+                },
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const resultWindow = await getTaskResultsReal('task-001')
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/api/v1/tasks/task-001/results?limit=12',
+            expect.any(Object),
+        )
+        expect(resultWindow.items[0].workerId).toBe(
+            'phone-device-probe-poll-sg-001',
         )
     })
 

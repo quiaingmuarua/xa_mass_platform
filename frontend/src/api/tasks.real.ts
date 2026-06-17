@@ -8,6 +8,7 @@ import type {
     TaskItemBatchAppendRequest,
     TaskListQuery,
     TaskListResponse,
+    TaskResultWindowResponse,
     TaskReviewResponse,
     TaskShellCreateRequest,
     TaskShellCreateResult,
@@ -22,6 +23,7 @@ interface TaskCommandOutcome {
     command: string
     accepted: boolean
     status?: TaskActionResult['newStatus']
+    intakeStatus?: TaskActionResult['intakeStatus']
     terminalReason?: string
     failureReason?: string
 }
@@ -121,6 +123,17 @@ export async function getTaskReviewReal(
     return requestApiData<TaskReviewResponse>(`/internal/v1/review/tasks/${taskId}`)
 }
 
+export async function getTaskResultsReal(
+    taskId: string,
+    limit = 12,
+): Promise<TaskResultWindowResponse> {
+    const searchParams = new URLSearchParams()
+    searchParams.set('limit', String(Math.max(1, limit)))
+    return requestApiData<TaskResultWindowResponse>(
+        `/api/v1/tasks/${taskId}/results?${searchParams.toString()}`,
+    )
+}
+
 export async function auditTaskReal(
     taskId: string,
     approved: boolean,
@@ -189,6 +202,7 @@ async function executeTaskCommandReal(
             ? `Task command ${outcome.command} accepted`
             : (outcome.failureReason ?? `Task command ${outcome.command} rejected`),
         newStatus: outcome.status,
+        intakeStatus: outcome.intakeStatus,
         terminalReason: outcome.terminalReason,
     }
 }
@@ -196,6 +210,7 @@ async function executeTaskCommandReal(
 function normalizeTaskRecord(task: TaskDetailRecord): TaskDetailRecord {
     return {
         ...task,
+        intakeStatus: task.intakeStatus ?? null,
         sharedConfig: task.sharedConfig ?? {},
         user: task.user ?? { name: '-' },
         createTime: normalizeDateTime(task.createTime),

@@ -6,6 +6,7 @@ import {
     createTaskShellMock,
     getTaskDetailMock,
     getTaskReviewMock,
+    getTaskResultsMock,
     invokeSyncTaskDebugMock,
     listTasksMock,
     pauseTaskMock,
@@ -24,6 +25,7 @@ import {
     downloadTaskSeedExportReal,
     getTaskDetailReal,
     getTaskReviewReal,
+    getTaskResultsReal,
     invokeSyncTaskDebugReal,
     listTasksReal,
     pauseTaskReal,
@@ -39,6 +41,7 @@ import type {
     TaskItemBatchAppendRequest,
     TaskListQuery,
     TaskListResponse,
+    TaskResultWindowResponse,
     TaskReviewResponse,
     TaskShellCreateRequest,
     TaskShellCreateResult,
@@ -72,6 +75,17 @@ export async function getTaskReview(
     }
 
     return getTaskReviewReal(taskId)
+}
+
+export async function getTaskResults(
+    taskId: string,
+    limit = 12,
+): Promise<TaskResultWindowResponse> {
+    if (getAppConfig().useMockApi) {
+        return getTaskResultsMock(taskId, limit)
+    }
+
+    return getTaskResultsReal(taskId, limit)
 }
 
 export async function createTaskShell(

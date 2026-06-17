@@ -378,7 +378,7 @@ class TaskLifecycleService {
                             trigger, "TaskManager", "task terminated: " + reason);
                     taskManager.updateTask(task);
                     taskManager.publishTaskTerminal(task);
-                    taskManager.discardTaskRuntime(taskId);
+                    taskManager.discardTaskWorkRuntime(taskId);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task terminated: " + reason, duration);
                 } else {

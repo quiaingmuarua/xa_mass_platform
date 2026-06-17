@@ -126,6 +126,9 @@ Rules:
   `reachableWorkerCountsByTransport`, `runtimeStatusCounts`, and
   `reachableUnlockedWorkerCount`, but it must not combine them into a local
   scheduler eligibility predicate.
+- task detail result previews must read public result rows from
+  `/api/v1/tasks/{taskId}/results`; server-local review rows may populate seed
+  preview and export support, but they are not the runtime result read source.
 
 ## Backend Route Guardrails For Console Needs
 

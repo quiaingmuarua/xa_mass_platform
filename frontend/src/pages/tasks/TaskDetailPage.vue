@@ -81,6 +81,16 @@
           Resume
         </el-button>
         <el-button
+          v-if="detail && canSealTask(detail.task)"
+          v-permission="'task:control'"
+          :loading="actionLoading === 'seal'"
+          type="primary"
+          plain
+          @click="handleSeal"
+        >
+          Seal intake
+        </el-button>
+        <el-button
           v-if="detail && detail.task.status !== 'TERMINAL'"
           v-permission="'task:control'"
           :loading="actionLoading === 'terminate'"
@@ -141,6 +151,10 @@
           label="Preview rows"
           :value="review.summary.previewCount"
         />
+        <MetricCard
+          label="Result rows"
+          :value="resultPreviewRows.length"
+        />
       </MetricGrid>
 
       <el-row :gutter="20">
@@ -164,6 +178,9 @@
               }}</el-descriptions-item>
               <el-descriptions-item label="Batch size">{{
                 detail.task.batchSize
+              }}</el-descriptions-item>
+              <el-descriptions-item label="Intake status">{{
+                detail.task.intakeStatus ?? '-'
               }}</el-descriptions-item>
             </el-descriptions>
           </el-card>
@@ -244,14 +261,17 @@
         <template #header>
           <div class="review-header">
             <strong>Result preview</strong>
-            <span v-if="review" class="review-caption">
-              worker attribution and result output from the latest visible attempt
+            <span v-if="resultWindow" class="review-caption">
+              {{ resultWindow.items.length }} runtime result rows
+              <template v-if="resultWindow.hasMore">
+                , more available
+              </template>
             </span>
           </div>
         </template>
         <el-table
-          v-if="review"
-          :data="review.resultPreview"
+          v-if="resultWindow || review"
+          :data="resultPreviewRows"
           stripe
           class="review-table"
         >
@@ -301,7 +321,7 @@
 
 <script setup lang="ts">
 import {ElMessage, ElMessageBox} from 'element-plus'
-import {onBeforeUnmount, onMounted, ref, watch} from 'vue'
+import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {
   auditTask,
@@ -310,8 +330,10 @@ import {
   downloadTaskSeedExport,
   getTaskDetail,
   getTaskReview,
+  getTaskResults,
   pauseTask,
   resumeTask,
+  sealTask,
   terminateTask,
 } from '@/api/tasks'
 import PageEmptyState from '@/components/PageEmptyState.vue'
@@ -321,7 +343,13 @@ import MetricCard from '@/console-kit/data/MetricCard.vue'
 import MetricGrid from '@/console-kit/data/MetricGrid.vue'
 import StatusBadge from '@/console-kit/data/StatusBadge.vue'
 import ConsolePage from '@/console-kit/layout/ConsolePage.vue'
-import type {TaskDetailResponse, TaskReviewResponse} from '@/types/tasks'
+import type {
+  TaskDetailRecord,
+  TaskDetailResponse,
+  TaskResultPreviewItem,
+  TaskResultWindowResponse,
+  TaskReviewResponse,
+} from '@/types/tasks'
 import {toErrorMessage} from '@/utils/errors'
 import ResultPayloadViewer from '@/console-kit/data/ResultPayloadViewer.vue'
 
@@ -330,10 +358,19 @@ const router = useRouter()
 const loading = ref(false)
 const detail = ref<TaskDetailResponse | null>(null)
 const review = ref<TaskReviewResponse | null>(null)
+const resultWindow = ref<TaskResultWindowResponse | null>(null)
 const errorMessage = ref('')
 const actionLoading = ref('')
 const LIVE_TASK_REFRESH_INTERVAL_MS = 2_000
 let liveTaskRefreshTimer: ReturnType<typeof window.setInterval> | null = null
+
+const resultPreviewRows = computed<TaskResultPreviewItem[]>(() => {
+  const runtimeRows = resultWindow.value?.items ?? []
+  if (runtimeRows.length > 0) {
+    return runtimeRows
+  }
+  return review.value?.resultPreview ?? []
+})
 
 function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2)
@@ -350,15 +387,18 @@ async function loadTaskDetail(options: { silent?: boolean } = {}): Promise<void>
   errorMessage.value = ''
 
   try {
-    const [taskDetail, taskReview] = await Promise.all([
+    const [taskDetail, taskReview, taskResults] = await Promise.all([
       getTaskDetail(String(route.params.taskId)),
       getTaskReview(String(route.params.taskId)),
+      getTaskResults(String(route.params.taskId)),
     ])
     detail.value = taskDetail
     review.value = taskReview
+    resultWindow.value = taskResults
   } catch (error) {
     detail.value = null
     review.value = null
+    resultWindow.value = null
     errorMessage.value = toErrorMessage(error, 'Failed to load task detail.')
   } finally {
     if (!options.silent) {
@@ -439,6 +479,10 @@ function canBlock(status: TaskDetailResponse['task']['status']): boolean {
   return status === 'READY' || status === 'RUNNING'
 }
 
+function canSealTask(task: TaskDetailRecord): boolean {
+  return task.intakeStatus === 'OPEN' && task.status !== 'TERMINAL'
+}
+
 function taskStatusTag(
   status: TaskDetailResponse['task']['status'],
 ): 'success' | 'warning' | 'danger' | 'primary' | 'info' {
@@ -507,6 +551,16 @@ async function handleResume(): Promise<void> {
     'Resume Task',
     'Resume this paused task?',
     () => resumeTask(String(route.params.taskId)),
+  )
+}
+
+async function handleSeal(): Promise<void> {
+  await runTaskAction(
+    'seal',
+    'Seal Task',
+    'Seal task intake and allow normal terminal convergence?',
+    () => sealTask(String(route.params.taskId)),
+    'info',
   )
 }
 

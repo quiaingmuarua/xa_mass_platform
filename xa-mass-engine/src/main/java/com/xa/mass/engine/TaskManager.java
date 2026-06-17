@@ -677,6 +677,10 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         taskResultRuntime.discardTask(taskId);
     }
 
+    void discardTaskWorkRuntime(String taskId) {
+        taskWorkRuntime.discardTask(taskId);
+    }
+
     ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
         return taskWorkRuntime.applyResult(result);
     }
