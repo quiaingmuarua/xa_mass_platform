@@ -95,6 +95,12 @@ entry for `transport/`.
   delivery correlation, and item timing/id facts. Task shell metadata such as
   `taskName`, `project`, and `userId`, plus adapter, queue, node, endpoint,
   connection, and session facts are not command fields.
+- Transport core changes must pass the embedded-adapter independence pressure
+  test: if a fact cannot be stably provided by a future cross-language adapter,
+  it is not a transport-core contract; if it is only needed by embedded Java
+  runtime assembly, it belongs to the embedded adapter layer; if it must cross a
+  process boundary, it must be typed queue, evidence, outcome, or result-ingress
+  data rather than Java object wiring.
 - Concrete adapters expose assigned delivery through
   `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`. Adapter metadata,
   server lifecycle, raw/manual channels, diagnostics, and pull channels are
@@ -198,7 +204,7 @@ Prefer these after transport changes:
 
 ```bash
 ./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDeliveryCommandHandoffTest,TransportDeliveryCommandBatchCodecTest,RedisTransportDeliveryCommandHandoffTest,RedisTransportDeliveryFailureChannelTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,RouteEndpointIndexTest,TransportConvergenceArchitectureGuardTest
-./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,TransportResultIngressEnvelopeTest,WebSocketInputProcessorTest,WebSocketTransportFrameCodecTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,ServerSessionManagerShutdownTest
+./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,TransportResultIngressEnvelopeTest,WebSocketInputProcessorTest,WebSocketFrameReadersTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,ServerSessionManagerShutdownTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest,PullWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 

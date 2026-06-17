@@ -1,12 +1,9 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
-import com.google.gson.JsonObject;
-import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.junit.jupiter.api.Test;
@@ -15,8 +12,6 @@ import org.mockito.ArgumentCaptor;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,16 +29,15 @@ class WebSocketTaskDispatchChannelTest {
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(true);
-        WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
         WebSocketCommandDispatchContext context = new WebSocketCommandDispatchContext(
                 "websocket",
-                endpointRegistry,
-                codec
+                endpointRegistry
         );
+        DeliveryCommand command = request();
 
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(context, deliveryService());
 
-        List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
+        List<DispatchOutcome> outcomes = publisher.dispatch(List.of(command));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
@@ -54,24 +48,7 @@ class WebSocketTaskDispatchChannelTest {
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 captor.capture());
 
-        JsonObject message = codec.parseObject(captor.getValue());
-        assertNotNull(message);
-        assertEquals("msg-1", message.get("messageId").getAsString());
-        assertEquals("worker-1", message.get(TransportPacket.PAYLOAD_WORKER_ID).getAsString());
-        assertEquals("task-1", message.get("taskId").getAsString());
-        assertEquals("crawler.fetch-page", message.get("eventCode").getAsString());
-        assertEquals("batch-0", message.get(TransportPacket.PAYLOAD_BATCH_ID).getAsString());
-        assertEquals(0, message.get(TransportPacket.PAYLOAD_RETRY_COUNT).getAsInt());
-
-        JsonObject input = message.getAsJsonObject(TransportPacket.PAYLOAD_INPUT);
-        JsonObject sharedConfig = message.getAsJsonObject(TransportPacket.PAYLOAD_SHARED_CONFIG);
-        assertNotNull(input);
-        assertNotNull(sharedConfig);
-        assertEquals("target-1", input.get("target").getAsString());
-        assertFalse(message.has(TransportPacket.PAYLOAD_PROJECT));
-        assertFalse(message.has(TransportPacket.PAYLOAD_TASK_NAME));
-        assertFalse(message.has(TransportPacket.PAYLOAD_USER_ID));
-        assertEquals("hello", sharedConfig.get("textContent").getAsString());
+        assertEquals(command.getPayload(), captor.getValue());
     }
 
     @Test
@@ -84,8 +61,7 @@ class WebSocketTaskDispatchChannelTest {
                 .thenReturn(false);
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketCommandDispatchContext(
                 "websocket",
-                endpointRegistry,
-                new WebSocketTransportFrameCodec()
+                endpointRegistry
         ), deliveryService());
 
         List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
@@ -99,8 +75,7 @@ class WebSocketTaskDispatchChannelTest {
     void returnsAdapterUnavailableWhenRuntimeContextIsIncomplete() {
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketCommandDispatchContext(
                 "websocket",
-                null,
-                new WebSocketTransportFrameCodec()
+                null
         ), deliveryService());
 
         List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));

@@ -1,7 +1,6 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 
 import java.util.Objects;
 
@@ -15,14 +14,11 @@ import java.util.Objects;
 public final class WebSocketCommandDispatchContext {
     private final String adapterId;
     private final WorkerEndpointRegistry endpointRegistry;
-    private final WebSocketTransportFrameCodec frameCodec;
 
     public WebSocketCommandDispatchContext(String adapterId,
-                                           WorkerEndpointRegistry endpointRegistry,
-                                           WebSocketTransportFrameCodec frameCodec) {
+                                           WorkerEndpointRegistry endpointRegistry) {
         this.adapterId = requireAdapterId(adapterId);
         this.endpointRegistry = endpointRegistry;
-        this.frameCodec = frameCodec;
     }
 
     public String getAdapterId() {
@@ -31,10 +27,6 @@ public final class WebSocketCommandDispatchContext {
 
     public WorkerEndpointRegistry getEndpointRegistry() {
         return endpointRegistry;
-    }
-
-    public WebSocketTransportFrameCodec getFrameCodec() {
-        return frameCodec;
     }
 
     private static String requireAdapterId(String adapterId) {

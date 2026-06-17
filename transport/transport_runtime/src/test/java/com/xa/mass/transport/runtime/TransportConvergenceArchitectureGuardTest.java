@@ -479,6 +479,28 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
+    void websocketWireSessionDoesNotReintroduceMultiOwnerCodecOrFrameRebinding() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/queue/WebSocketTransportFrameCodec.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/server/MassWebSocketServer.java")
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java")),
+                "WebSocketTransportFrameCodec",
+                "encodeCanonicalTaskDispatch",
+                "routeKeyForWorkerGroup",
+                "MassWebSocketServer",
+                "setPrettyPrinting"
+        );
+        assertSourceSliceDoesNotContain(
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/server/DispatcherInboundHandler.java"),
+                "protected void channelRead0",
+                "public void userEventTriggered",
+                "registerSession("
+        );
+    }
+
+    @Test
     void socketAssignedDeliveryUsesNarrowCommandContext() throws IOException {
         Path taskDispatchChannel = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java");
         String taskDispatchSource = Files.readString(taskDispatchChannel);

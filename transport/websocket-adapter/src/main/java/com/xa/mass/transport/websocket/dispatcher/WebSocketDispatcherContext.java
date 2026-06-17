@@ -1,8 +1,9 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
-import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
+import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
+import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
 
 import java.util.Objects;
 
@@ -12,16 +13,19 @@ import java.util.Objects;
 public final class WebSocketDispatcherContext {
     private final String adapterId;
     private final RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry;
-    private final WebSocketTransportFrameCodec frameCodec;
+    private final WebSocketJsonFrameParser frameParser;
+    private final WebSocketResultIngressFrameReader resultFrameReader;
     private final TransportResultIngressChannel resultIngressChannel;
 
     public WebSocketDispatcherContext(String adapterId,
-                                      RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry,
-                                      WebSocketTransportFrameCodec frameCodec,
-                                      TransportResultIngressChannel resultIngressChannel) {
+                                       RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry,
+                                       WebSocketJsonFrameParser frameParser,
+                                       WebSocketResultIngressFrameReader resultFrameReader,
+                                       TransportResultIngressChannel resultIngressChannel) {
         this.adapterId = requireAdapterId(adapterId);
         this.rawRouteEndpointRegistry = rawRouteEndpointRegistry;
-        this.frameCodec = frameCodec;
+        this.frameParser = Objects.requireNonNull(frameParser, "frameParser");
+        this.resultFrameReader = Objects.requireNonNull(resultFrameReader, "resultFrameReader");
         this.resultIngressChannel = resultIngressChannel;
     }
 
@@ -33,8 +37,12 @@ public final class WebSocketDispatcherContext {
         return rawRouteEndpointRegistry;
     }
 
-    public WebSocketTransportFrameCodec getFrameCodec() {
-        return frameCodec;
+    public WebSocketJsonFrameParser getFrameParser() {
+        return frameParser;
+    }
+
+    public WebSocketResultIngressFrameReader getResultFrameReader() {
+        return resultFrameReader;
     }
 
     public TransportResultIngressChannel getResultIngressChannel() {

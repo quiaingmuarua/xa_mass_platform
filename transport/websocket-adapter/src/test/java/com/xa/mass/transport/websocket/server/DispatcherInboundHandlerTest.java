@@ -2,7 +2,8 @@ package com.xa.mass.transport.websocket.server;
 
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessage;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
-import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
+import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
+import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import io.netty.channel.Channel;
@@ -42,6 +43,8 @@ class DispatcherInboundHandlerTest {
     private WebSocketInboundMessageSink inboundMessageSink;
     private AtomicReference<WebSocketInboundMessage> acceptedInboundMessage;
     private ServerSessionManager sessionManager;
+    private WebSocketJsonFrameParser frameParser;
+    private WebSocketSessionOpenFrameReader sessionOpenFrameReader;
 
     @SuppressWarnings("unchecked")
     @BeforeEach
@@ -67,8 +70,9 @@ class DispatcherInboundHandlerTest {
         acceptedInboundMessage = new AtomicReference<>();
         inboundMessageSink = acceptedInboundMessage::set;
         sessionManager = new ServerSessionManager(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
-        WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
-        handler = new DispatcherInboundHandler(codec, inboundMessageSink, sessionManager);
+        frameParser = new WebSocketJsonFrameParser();
+        sessionOpenFrameReader = new WebSocketSessionOpenFrameReader(frameParser);
+        handler = new DispatcherInboundHandler(frameParser, sessionOpenFrameReader, inboundMessageSink, sessionManager);
     }
 
     @Test
@@ -81,12 +85,21 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
-    void missingWorkerIdOrRouteKeySendsMissingFieldsError() throws Exception {
-        handler.channelRead0(ctx, frame("{\"eventCode\":\"mock.state.get\"}"));
+    void unboundSessionSendsSessionNotBoundErrorAndDoesNotRegisterFromFrameFields() throws Exception {
+        handler.channelRead0(ctx, frame("""
+                {
+                  "workerId": "worker-1",
+                  "workerGroupId": "bucket-1",
+                  "routeKey": "ws-route-1",
+                  "eventCode": "mock.state.get"
+                }
+                """));
 
         String sent = sentFrame.get();
         assertNotNull(sent);
-        assertTrue(sent.contains("MISSING_FIELDS"));
+        assertTrue(sent.contains("SESSION_NOT_BOUND"));
+        assertEquals(0, sessionManager.getWorkerConnectionCount());
+        assertNull(acceptedInboundMessage.get());
     }
 
     @Test
@@ -99,6 +112,19 @@ class DispatcherInboundHandlerTest {
 
         assertEquals(1, sessionManager.getWorkerConnectionCount());
         assertNotNull(sessionManager.getChannelContext("ws-route-1"));
+    }
+
+    @Test
+    void handshakeWithoutRouteKeyUsesInternalEndpointAddress() throws Exception {
+        handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
+                "/ws?workerId=worker-1&workerGroupId=bucket-1",
+                new DefaultHttpHeaders(),
+                null
+        ));
+
+        assertEquals(1, sessionManager.getWorkerConnectionCount());
+        assertEquals("bucket:bucket-1", sessionManager.getRouteKey(channel));
+        assertNotNull(sessionManager.getChannelContext("bucket:bucket-1"));
     }
 
     @Test
@@ -266,7 +292,8 @@ class WebSocketServerImplDisconnectTest {
                 18088,
                 10,
                 "/ws",
-                new WebSocketTransportFrameCodec(),
+                new WebSocketJsonFrameParser(),
+                new WebSocketSessionOpenFrameReader(new WebSocketJsonFrameParser()),
                 raw -> { },
                 sessionManager
         );
@@ -303,7 +330,7 @@ class WebSocketServerImplDisconnectTest {
 
     @Test
     void startFailsFastWhenRequiredWiringIsMissing() {
-        WebSocketServerImpl server = new WebSocketServerImpl(-1, 0, null, null, null, null);
+        WebSocketServerImpl server = new WebSocketServerImpl(-1, 0, null, null, null, null, null);
 
         IllegalStateException error = assertThrows(IllegalStateException.class, server::start);
 
@@ -318,7 +345,8 @@ class WebSocketServerImplDisconnectTest {
                 18088,
                 1,
                 "/ws",
-                new WebSocketTransportFrameCodec(),
+                new WebSocketJsonFrameParser(),
+                new WebSocketSessionOpenFrameReader(new WebSocketJsonFrameParser()),
                 raw -> { },
                 sessionManager
         );

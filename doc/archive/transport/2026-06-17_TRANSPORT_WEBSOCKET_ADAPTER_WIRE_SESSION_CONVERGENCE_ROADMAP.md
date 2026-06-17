@@ -1,6 +1,15 @@
 # Transport WebSocket Adapter Wire Session Convergence Roadmap
 
-Status: proposed direction document.
+Status: complete; archived after implementation on 2026-06-17.
+
+Implementation result:
+
+- assigned WebSocket dispatch now writes `DeliveryCommand.payload` directly
+- ordinary inbound text frames no longer rebind WebSocket session identity
+- `WebSocketTransportFrameCodec` and `MassWebSocketServer` were removed
+- WebSocket adapter owner docs and architecture guards were updated
+- focused compile, focused WebSocket tests, and transport architecture guard
+  passed during implementation
 
 ## Summary
 

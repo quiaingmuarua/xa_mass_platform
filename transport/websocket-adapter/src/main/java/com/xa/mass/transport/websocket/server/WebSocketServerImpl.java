@@ -1,7 +1,9 @@
 package com.xa.mass.transport.websocket.server;
 
-import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
+import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
+import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
+import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -33,7 +35,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * pipeline. It must not grow into the place where business/control payloads
  * are interpreted.
  */
-public class WebSocketServerImpl implements MassWebSocketServer {
+public class WebSocketServerImpl implements TransportServer {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketServerImpl.class);
     private static final AttributeKey<Boolean> COUNTED_CONNECTION = AttributeKey.valueOf("mass.websocket.countedConnection");
@@ -43,7 +45,8 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     private final int maxConnections;
     private final String websocketPath;
     private final ServerSessionManager sessionManager;
-    private final WebSocketTransportFrameCodec frameCodec;
+    private final WebSocketJsonFrameParser frameParser;
+    private final WebSocketSessionOpenFrameReader sessionOpenFrameReader;
     private final WebSocketInboundMessageSink inboundMessageSink;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -52,13 +55,15 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     public WebSocketServerImpl(int port,
                                int maxConnections,
                                String websocketPath,
-                               WebSocketTransportFrameCodec frameCodec,
+                               WebSocketJsonFrameParser frameParser,
+                               WebSocketSessionOpenFrameReader sessionOpenFrameReader,
                                WebSocketInboundMessageSink inboundMessageSink,
                                ServerSessionManager sessionManager) {
         this.port = port;
         this.maxConnections = maxConnections;
         this.websocketPath = websocketPath;
-        this.frameCodec = frameCodec;
+        this.frameParser = frameParser;
+        this.sessionOpenFrameReader = sessionOpenFrameReader;
         this.inboundMessageSink = inboundMessageSink;
         this.sessionManager = sessionManager;
     }
@@ -109,7 +114,12 @@ public class WebSocketServerImpl implements MassWebSocketServer {
                             true,
                             10000L));
                     pipeline.addLast(new ConnectionStatsHandler());
-                    pipeline.addLast(new DispatcherInboundHandler(frameCodec, inboundMessageSink, sessionManager));
+                    pipeline.addLast(new DispatcherInboundHandler(
+                            frameParser,
+                            sessionOpenFrameReader,
+                            inboundMessageSink,
+                            sessionManager
+                    ));
                 }
             });
 
@@ -152,14 +162,6 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         return running;
     }
 
-    @Override
-    public Channel getClientChannel(String clientId) {
-        if (sessionManager == null) {
-            return null;
-        }
-        return sessionManager.getChannel(clientId);
-    }
-
     public long getActiveConnectionCount() {
         return activeConnections.get();
     }
@@ -174,7 +176,8 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         if (websocketPath == null || websocketPath.isBlank()) {
             throw new IllegalStateException("WebSocket server requires a non-blank websocketPath");
         }
-        Objects.requireNonNull(frameCodec, "WebSocket server requires frameCodec");
+        Objects.requireNonNull(frameParser, "WebSocket server requires frameParser");
+        Objects.requireNonNull(sessionOpenFrameReader, "WebSocket server requires sessionOpenFrameReader");
         Objects.requireNonNull(inboundMessageSink, "WebSocket server requires inboundMessageSink");
         Objects.requireNonNull(sessionManager, "WebSocket server requires sessionManager");
     }

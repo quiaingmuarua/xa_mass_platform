@@ -3,10 +3,10 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
-import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.model.TransportResultIngressEnvelope;
-import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
+import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,7 +21,8 @@ import static org.mockito.Mockito.mock;
 
 class WebSocketInputProcessorTest {
 
-    private WebSocketTransportFrameCodec codec;
+    private WebSocketJsonFrameParser frameParser;
+    private WebSocketResultIngressFrameReader resultFrameReader;
     private WebSocketDispatcherContext context;
     private RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry;
     private WebSocketInputProcessor inputProcessor;
@@ -29,7 +30,8 @@ class WebSocketInputProcessorTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        codec = new WebSocketTransportFrameCodec();
+        frameParser = new WebSocketJsonFrameParser();
+        resultFrameReader = new WebSocketResultIngressFrameReader("websocket", frameParser);
         rawRouteEndpointRegistry = mock(RawWorkerRouteEndpointRegistry.class);
         context = createContext(null);
         inputProcessor = new WebSocketInputProcessor(context);
@@ -45,11 +47,11 @@ class WebSocketInputProcessorTest {
     void unsupportedFrameShapeIsIgnoredWithoutOutput() {
         JsonObject unsupportedFrame = new JsonObject();
         unsupportedFrame.addProperty("messageId", "msg-1");
-        unsupportedFrame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
-        unsupportedFrame.addProperty(TransportPacket.PAYLOAD_PROJECT, "proj");
+        unsupportedFrame.addProperty("workerId", "worker-1");
+        unsupportedFrame.addProperty("project", "proj");
         unsupportedFrame.addProperty("eventCode", "mock.state.get");
 
-        boolean result = inputProcessor.process(codec.getGson().toJson(unsupportedFrame));
+        boolean result = inputProcessor.process(frameParser.toJson(unsupportedFrame));
 
         assertTrue(result);
     }
@@ -85,11 +87,11 @@ class WebSocketInputProcessorTest {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
         frame.addProperty("taskId", "task-1");
-        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
-        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, "ok");
+        frame.addProperty("success", true);
+        frame.addProperty("detail", "ok");
 
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
-                codec.getGson().toJson(frame),
+                frameParser.toJson(frame),
                 "worker-from-handshake",
                 "route-from-handshake",
                 "endpoint-1"
@@ -114,9 +116,9 @@ class WebSocketInputProcessorTest {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
         frame.addProperty("taskId", "task-1");
-        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
-        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, "ok");
-        frame.add(TransportPacket.PAYLOAD_OUTPUT, payload("status", "SUCCESS"));
+        frame.addProperty("success", true);
+        frame.addProperty("detail", "ok");
+        frame.add("output", payload("status", "SUCCESS"));
 
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 "not-json-but-already-parsed",
@@ -145,12 +147,12 @@ class WebSocketInputProcessorTest {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
         frame.addProperty("taskId", "task-1");
-        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
+        frame.addProperty("success", true);
         frame.addProperty("routeKey", "inline-route");
-        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, "ok");
+        frame.addProperty("detail", "ok");
 
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
-                codec.getGson().toJson(frame),
+                frameParser.toJson(frame),
                 "worker-from-session",
                 "route-from-session",
                 "endpoint-1"
@@ -182,11 +184,11 @@ class WebSocketInputProcessorTest {
 
         JsonObject frame = new JsonObject();
         frame.addProperty("taskId", "task-1");
-        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
-        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, "ok");
+        frame.addProperty("success", true);
+        frame.addProperty("detail", "ok");
 
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
-                codec.getGson().toJson(frame),
+                frameParser.toJson(frame),
                 "worker-1",
                 "route-1",
                 "endpoint-1"
@@ -200,7 +202,8 @@ class WebSocketInputProcessorTest {
         return new WebSocketDispatcherContext(
                 "websocket",
                 rawRouteEndpointRegistry,
-                codec,
+                frameParser,
+                resultFrameReader,
                 taskResultIngestChannel
         );
     }
@@ -213,22 +216,22 @@ class WebSocketInputProcessorTest {
         JsonObject payload = JsonParser.parseString(envelope.getPayload()).getAsJsonObject();
         assertEquals(taskId, payload.get("taskId").getAsString());
         assertEquals(messageId, payload.get("messageId").getAsString());
-        assertEquals(success, payload.get(TransportPacket.PAYLOAD_SUCCESS).getAsBoolean());
-        assertEquals(detail, payload.get(TransportPacket.PAYLOAD_DETAIL).getAsString());
+        assertEquals(success, payload.get("success").getAsBoolean());
+        assertEquals(detail, payload.get("detail").getAsString());
     }
 
     private String canonicalTaskResultFrame(String taskId, String messageId, boolean success, String detail) {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", messageId);
-        frame.addProperty(TransportPacket.PAYLOAD_WORKER_ID, "worker-1");
-        frame.addProperty(TransportPacket.PAYLOAD_PROJECT, "proj");
+        frame.addProperty("workerId", "worker-1");
+        frame.addProperty("project", "proj");
         frame.addProperty("routeKey", "route-1");
         frame.addProperty("taskId", taskId);
-        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, success);
-        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, detail);
-        frame.add(TransportPacket.PAYLOAD_OUTPUT,
+        frame.addProperty("success", success);
+        frame.addProperty("detail", detail);
+        frame.add("output",
                 payload("status", success ? "SUCCESS" : "FAILED", "mockData", detail));
-        return codec.getGson().toJson(frame);
+        return frameParser.toJson(frame);
     }
 
     private JsonObject payload(Object... keyValues) {

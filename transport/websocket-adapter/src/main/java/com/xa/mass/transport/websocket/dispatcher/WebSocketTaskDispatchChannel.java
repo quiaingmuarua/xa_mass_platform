@@ -31,7 +31,7 @@ public final class WebSocketTaskDispatchChannel implements AdapterCommandExecuto
         if (commands == null || commands.isEmpty()) {
             return List.of();
         }
-        if (context.getEndpointRegistry() == null || context.getFrameCodec() == null) {
+        if (context.getEndpointRegistry() == null) {
             logger.warn("Skip task message publishing because dispatcher context or endpoint registry is unavailable");
             return deliveryService.sendDirect(
                     adapterId(),
@@ -44,11 +44,10 @@ public final class WebSocketTaskDispatchChannel implements AdapterCommandExecuto
                 adapterId(),
                 commands,
                 command -> {
-                    String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(command);
                     boolean sent = context.getEndpointRegistry().sendToSelectedWorker(
                             adapterId(),
                             command.getSelectedWorkerId(),
-                            rawJson
+                            command.getPayload()
                     );
                     if (!sent) {
                         logger.warn("WebSocket outbound skipped because endpoint is unavailable: selectedWorkerId={}, traceId={}",

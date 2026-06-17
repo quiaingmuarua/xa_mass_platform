@@ -17,9 +17,11 @@ truth, use [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md).
 
 - Netty server lifecycle and bind/stop
 - session registry and reachability
-- raw JSON frame parse/encode
-- handshake/session-led worker identity
-- canonical task-dispatch/task-result frame adaptation
+- adapter-local JSON frame parse/error writing
+- handshake/session-led worker identity; ordinary inbound frames do not rebind
+  session ownership
+- assigned task-dispatch payload passthrough from `DeliveryCommand.payload`
+- task-result wire recognition into opaque transport result ingress envelopes
 - transport-level online/offline/heartbeat facts
 - adapter-local reject/error responses
 - adapter-local logs, traces, and bounded diagnostics
@@ -30,7 +32,9 @@ Current code centers on:
 - `WebSocketServerImpl`
 - `DispatcherInboundHandler`
 - `ServerSessionManager`
-- `WebSocketTransportFrameCodec`
+- `WebSocketJsonFrameParser`
+- `WebSocketSessionOpenFrameReader`
+- `WebSocketResultIngressFrameReader`
 - `WebSocketInputProcessor`
 - `WebSocketOutputProcessor`
 - `WebSocketEmbeddedRuntimeSupport`
@@ -70,6 +74,11 @@ Hard rules:
 - pass one endpoint-registry instance into both server and dispatcher wiring
 - route inbound result shells into opaque `TransportResultIngressEnvelope`
   values through `TransportResultIngressChannel`
+- bind WebSocket worker session identity only during handshake/session-open;
+  normal text frames must read the channel-bound session identity and must not
+  register or rebind sessions
+- write assigned delivery frames directly from `DeliveryCommand.payload`; do
+  not route assigned dispatch through a generic task-frame codec
 - keep bootstrap defaults inside adapter-owned support code
 - do not add mutable late-binding seams like `setHandler(...)` or `registerRoute(...)`
 

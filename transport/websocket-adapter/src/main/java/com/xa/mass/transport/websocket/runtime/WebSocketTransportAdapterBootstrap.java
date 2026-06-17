@@ -13,7 +13,9 @@ import com.xa.mass.transport.websocket.dispatcher.WebSocketCommandDispatchContex
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
-import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
+import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
+import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
+import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
 import com.xa.mass.transport.websocket.session.WebSocketEndpointInspector;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
@@ -43,16 +45,20 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         ServerSessionManager endpointRegistry = resolveEndpointRegistry(context);
         WebSocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
                 new WebSocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), endpointRegistry);
-        WebSocketTransportFrameCodec frameCodec = new WebSocketTransportFrameCodec();
+        WebSocketJsonFrameParser frameParser = new WebSocketJsonFrameParser();
+        WebSocketResultIngressFrameReader resultFrameReader =
+                new WebSocketResultIngressFrameReader(config.getAdapterId(), frameParser);
+        WebSocketSessionOpenFrameReader sessionOpenFrameReader =
+                new WebSocketSessionOpenFrameReader(frameParser);
         WebSocketCommandDispatchContext commandContext = new WebSocketCommandDispatchContext(
                 config.getAdapterId(),
-                endpointRegistry,
-                frameCodec
+                endpointRegistry
         );
         WebSocketDispatcherContext dispatcherContext = new WebSocketDispatcherContext(
                 config.getAdapterId(),
                 rawRouteEndpointRegistry,
-                frameCodec,
+                frameParser,
+                resultFrameReader,
                 context.getResultIngressChannel()
         );
 
@@ -74,7 +80,11 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             contribution.addEndpointInspector(new WebSocketEndpointInspector(endpointRegistry));
         }
 
-        TransportServer transportServer = createTransportServer(dispatcherContext, endpointRegistry);
+        TransportServer transportServer = createTransportServer(
+                dispatcherContext,
+                sessionOpenFrameReader,
+                endpointRegistry
+        );
         if (transportServer != null) {
             contribution.addTransportServer(transportServer);
         }
@@ -108,6 +118,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     }
 
     private TransportServer createTransportServer(WebSocketDispatcherContext dispatcherContext,
+                                                  WebSocketSessionOpenFrameReader sessionOpenFrameReader,
                                                   ServerSessionManager sessionManager) {
         if (!config.isServerEnabled()) {
             return null;
@@ -126,7 +137,8 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 config.getServerPort(),
                 config.getMaxConnections(),
                 config.getEndpointPath(),
-                dispatcherContext.getFrameCodec(),
+                dispatcherContext.getFrameParser(),
+                sessionOpenFrameReader,
                 new WebSocketInputProcessor(dispatcherContext)::process,
                 sessionManager
         );
