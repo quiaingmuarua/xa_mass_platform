@@ -101,14 +101,12 @@ final class ExternalWorkerPublicContractSuccessScenarioAnalyzer implements Trace
                 .filter(row -> "WORKER_MATCH_ACCEPTED".equals(row.eventType()))
                 .filter(row -> target.workerId().equals(row.workerId()))
                 .anyMatch(row -> present(row.workerGroupId())
-                        && present(row.adapterNodeId())
                         && present(row.workerCandidateSource())
                         && isGroupFirstCandidateSource(row.workerCandidateSource()));
         boolean hasDispatchEventBindingEvidence = rows.stream()
                 .filter(row -> "TASK_WORK_ATTEMPT_STATUS_TRANSITION".equals(row.eventType()))
                 .filter(row -> target.workerId().equals(row.workerId()))
                 .anyMatch(row -> present(row.workerGroupId())
-                        && present(row.adapterNodeId())
                         && present(row.eventBindingKey())
                         && present(row.workerCandidateSource())
                         && isGroupFirstCandidateSource(row.workerCandidateSource()));

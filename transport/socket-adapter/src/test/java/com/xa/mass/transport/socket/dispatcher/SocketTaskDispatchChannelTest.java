@@ -1,12 +1,12 @@
 package com.xa.mass.transport.socket.dispatcher;
 
+import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
-import com.xa.mass.transport.socket.session.SocketSessionManager;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -21,34 +21,34 @@ import static org.mockito.Mockito.when;
 class SocketTaskDispatchChannelTest {
 
     @Test
-    void dispatchReturnsSentWhenSessionManagerAcceptsMessage() {
-        SocketSessionManager sessionManager = mock(SocketSessionManager.class);
-        when(sessionManager.sendToSelectedWorker(
+    void dispatchReturnsSentWhenEndpointRegistryAcceptsMessage() {
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
+        when(endpointRegistry.sendToSelectedWorker(
                 org.mockito.ArgumentMatchers.eq("socket"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(true);
-        SocketTaskDispatchChannel channel = channel(sessionManager);
+        SocketTaskDispatchChannel channel = channel(endpointRegistry);
 
         List<DispatchOutcome> outcomes = channel.dispatch(List.of(request("msg-1", "worker-1")));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
-        verify(sessionManager).sendToSelectedWorker(
+        verify(endpointRegistry).sendToSelectedWorker(
                 org.mockito.ArgumentMatchers.eq("socket"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any());
     }
 
     @Test
-    void dispatchReturnsEndpointOfflineWhenSessionManagerRejectsMessage() {
-        SocketSessionManager sessionManager = mock(SocketSessionManager.class);
-        when(sessionManager.sendToSelectedWorker(
+    void dispatchReturnsEndpointOfflineWhenEndpointRegistryRejectsMessage() {
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
+        when(endpointRegistry.sendToSelectedWorker(
                 org.mockito.ArgumentMatchers.eq("socket"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(false);
-        SocketTaskDispatchChannel channel = channel(sessionManager);
+        SocketTaskDispatchChannel channel = channel(endpointRegistry);
 
         List<DispatchOutcome> outcomes = channel.dispatch(List.of(request("msg-1", "worker-1")));
 
@@ -57,11 +57,9 @@ class SocketTaskDispatchChannelTest {
         assertTrue(outcomes.get(0).isRetryable());
     }
 
-    private SocketTaskDispatchChannel channel(SocketSessionManager sessionManager) {
+    private SocketTaskDispatchChannel channel(WorkerEndpointRegistry endpointRegistry) {
         return new SocketTaskDispatchChannel(
-                "socket",
-                sessionManager,
-                new SocketTransportFrameCodec(),
+                new SocketCommandDispatchContext("socket", endpointRegistry, new SocketTransportFrameCodec()),
                 new TransportDeliveryService(new InMemoryTransportDeliveryStore())
         );
     }

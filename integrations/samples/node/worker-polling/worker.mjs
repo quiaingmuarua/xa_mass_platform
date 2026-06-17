@@ -93,7 +93,6 @@ async function registerWorker() {
 
   const response = await post("/worker-api/v1/workers", {
     workerId,
-    adapterNodeId,
     workerGroupId,
     transportHint: "polling",
     attributes: {

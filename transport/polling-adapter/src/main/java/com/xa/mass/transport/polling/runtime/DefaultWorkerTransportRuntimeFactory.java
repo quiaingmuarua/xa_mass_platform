@@ -20,8 +20,11 @@ import java.util.List;
  */
 public final class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRuntimeFactory {
 
+    public static final String DEFAULT_ADAPTER_ID = "polling-default";
+    public static final String PROTOCOL = "polling";
+
     private static final TransportAdapterDescriptor POLLING_DESCRIPTOR =
-            new TransportAdapterDescriptor(PollingWorkerAdapter.DEFAULT_ADAPTER_ID, PollingWorkerAdapter.PROTOCOL);
+            new TransportAdapterDescriptor(DEFAULT_ADAPTER_ID, PROTOCOL);
 
     @Override
     public TransportRuntimeRegistry create(TransportResultIngressChannel resultIngressChannel,
@@ -70,9 +73,14 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
                 endpointLeaseStore,
                 deliveryService,
                 deliveryCommandConsumerRegistry,
-                PollingWorkerAdapter.DEFAULT_ADAPTER_ID
+                DEFAULT_ADAPTER_ID
         );
-        return TransportBinding.builder(pollingAdapter)
+        return TransportBinding.builder(
+                        DEFAULT_ADAPTER_ID,
+                        PROTOCOL,
+                        pollingAdapter
+                )
+                .protocol(PROTOCOL)
                 .deliveryPullChannel(pollingAdapter)
                 .build();
     }

@@ -1,10 +1,9 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
-import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.worker.WorkerAdapter;
+import com.xa.mass.transport.worker.AdapterCommandExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,34 +13,17 @@ import java.util.Objects;
 /**
  * WebSocket adapter-owned task dispatch channel.
  */
-public final class WebSocketTaskDispatchChannel implements WorkerAdapter {
-
-    public static final String DEFAULT_ADAPTER_ID = "websocket";
+public final class WebSocketTaskDispatchChannel implements AdapterCommandExecutor {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketTaskDispatchChannel.class);
 
-    private final WebSocketDispatcherContext context;
+    private final WebSocketCommandDispatchContext context;
     private final TransportDeliveryService deliveryService;
 
-    public WebSocketTaskDispatchChannel(WebSocketDispatcherContext context,
+    public WebSocketTaskDispatchChannel(WebSocketCommandDispatchContext context,
                                         TransportDeliveryService deliveryService) {
-        this.context = context;
+        this.context = Objects.requireNonNull(context, "context");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
-    }
-
-    @Override
-    public String protocol() {
-        return adapterId();
-    }
-
-    @Override
-    public String adapterId() {
-        return context != null ? context.getAdapterId() : DEFAULT_ADAPTER_ID;
-    }
-
-    @Override
-    public String transportHint() {
-        return WorkerTransportHints.REALTIME;
     }
 
     @Override
@@ -49,7 +31,7 @@ public final class WebSocketTaskDispatchChannel implements WorkerAdapter {
         if (commands == null || commands.isEmpty()) {
             return List.of();
         }
-        if (context == null || context.getEndpointRegistry() == null || context.getFrameCodec() == null) {
+        if (context.getEndpointRegistry() == null || context.getFrameCodec() == null) {
             logger.warn("Skip task message publishing because dispatcher context or endpoint registry is unavailable");
             return deliveryService.sendDirect(
                     adapterId(),
@@ -76,5 +58,9 @@ public final class WebSocketTaskDispatchChannel implements WorkerAdapter {
                 },
                 "dispatcher context or endpoint registry is unavailable"
         );
+    }
+
+    private String adapterId() {
+        return context.getAdapterId();
     }
 }

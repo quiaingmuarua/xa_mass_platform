@@ -7,7 +7,10 @@ import java.util.Objects;
  */
 public final class SocketAdapterConfig {
 
-    private String adapterId = com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel.DEFAULT_ADAPTER_ID;
+    public static final String DEFAULT_ADAPTER_ID = "socket";
+    public static final String PROTOCOL = "socket";
+
+    private String adapterId = DEFAULT_ADAPTER_ID;
     private boolean enabled = false;
     private boolean serverEnabled = false;
     private int serverPort = 18089;

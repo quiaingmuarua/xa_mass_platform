@@ -13,7 +13,6 @@ For the full boundary contract, see [CONTRACTS.md](CONTRACTS.md).
 Worker runtime owns worker truth that is not task truth:
 
 - WorkerGroup declaration state.
-- AdapterNode and NodeGroupBinding relationships.
 - Worker declaration row to runtime slot projection.
 - Worker capability report application.
 - Worker state report bounded projection.
@@ -25,6 +24,9 @@ Worker runtime owns worker truth that is not task truth:
 - Stage-1 worker candidate source, source guard, and warm/cold merge.
 - Task-local warm candidate hint storage.
 - Platform-approved worker candidate bucket policies.
+- Legacy adapter-node and node/group relation read models where still present in
+  worker registration surfaces. These are topology/control-plane evidence only;
+  they do not own event capability, final-hop delivery, or worker selection.
 
 Engine still owns task scheduling decisions. Worker runtime provides worker
 lifecycle state, admission operations, and evidence; it does not evaluate match
@@ -67,9 +69,8 @@ com.xa.mass.worker.runtime            implementation owners and assembly
 ## Worker Shape Split
 
 - `WorkerDeclarationRecord` and `WorkerDeclarationStore` live in this module as
-  the worker-runtime owned declaration port: identity, WorkerGroup/node
-  membership, adapter hints, static attributes, max concurrency, and
-  timestamps.
+  the worker-runtime owned declaration port: execution identity, WorkerGroup
+  membership, adapter hints, static attributes, max concurrency, and timestamps.
 - `WorkerRuntimeStateRecord` is current runtime evidence: heartbeat freshness,
   reachability, dispatch gate, reservation/load, and lease observations.
 - `WorkerResourceRecord` is the current composite read model. It may be used
@@ -78,7 +79,8 @@ com.xa.mass.worker.runtime            implementation owners and assembly
   compatibility supported project/event hints.
 
 WorkerGroup owns capability truth. Worker-level supported project/event fields
-are compatibility read hints only.
+are compatibility read hints only, and a worker cannot self-declare event
+capability outside the WorkerGroup event binding.
 
 Worker runtime does not own transport delivery identity:
 
@@ -94,6 +96,10 @@ Worker runtime does not own transport delivery identity:
   consume reachability evidence for scheduling views, but endpoint lease
   refresh/release must not become worker capability, state-report, command, or
   lifecycle truth.
+- raw transport identifiers such as `adapterId`, `routeKey`, `connectionId`,
+  endpoint lease ids, session handles, and delivery queue keys are not worker
+  selection inputs. If they affect scheduling, they must first be projected into
+  bounded worker-runtime evidence.
 
 ## Worker Runtime State Dimensions
 
@@ -149,9 +155,11 @@ WorkerGroup capability boundary:
 
 - WorkerGroup declares project/event capability through event bindings and
   group-level defaults such as attributes and capacity/concurrency hints.
-- Worker registration declares execution identity, group/node membership,
-  transport hints, static worker attributes, and runtime evidence.
-- Worker rows must not become the source of project/event capability truth.
+- Worker registration declares execution identity, WorkerGroup membership,
+  bounded topology evidence, transport hints, static worker attributes, and
+  runtime evidence.
+- Worker rows must not become the source of project/event capability truth, and
+  adapters cannot expand worker capability through session or endpoint evidence.
 - `eventCode` is handler/capability identity for work items. It validates
   against WorkerGroup event bindings and tells the worker which local handler
   to run; it is not a worker selector.

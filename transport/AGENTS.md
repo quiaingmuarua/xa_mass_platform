@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-06-15
+Last updated: 2026-06-17
 
 Status: current transport owner handoff.
 
@@ -17,6 +17,17 @@ entry for `transport/`.
   delivery, queue claim/ack consistency, endpoint/session evidence, and delivery
   outcomes; it does not own retry, reassign, compensation, worker lifecycle,
   worker scheduling, or task payload schema.
+- `WorkerGroup` owns event capability and the scheduling entry boundary.
+  `Worker` owns execution identity plus scheduling evidence. Adapters cannot
+  expand either capability or worker universe; they only expose final-hop
+  connectivity evidence.
+- Transport cannot choose workers. Assigned delivery may use
+  `selectedWorkerId` only as the already chosen delivery constraint and may use
+  endpoint lease evidence only to decide final-hop feasibility for that worker.
+- Engine must not select by raw transport identifiers such as `adapterId`,
+  `routeKey`, `connectionId`, endpoint lease ids, session handles, or
+  `deliveryQueueKey`. Any delivery reachability needed by scheduling must be
+  projected through worker-runtime evidence first.
 - `adapterId` is concrete transport runtime truth, not an external worker API,
   SDK worker-session, or engine/starter delivery contract. `transportHint` is
   only a coarse family.
@@ -84,6 +95,14 @@ entry for `transport/`.
   delivery correlation, and item timing/id facts. Task shell metadata such as
   `taskName`, `project`, and `userId`, plus adapter, queue, node, endpoint,
   connection, and session facts are not command fields.
+- Concrete adapters expose assigned delivery through
+  `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`. Adapter metadata,
+  server lifecycle, raw/manual channels, diagnostics, and pull channels are
+  explicit binding/contribution facts, not executor facts.
+- Concrete adapter session managers may observe protocol sessions and send to
+  selected workers, but endpoint lease / selected-worker consumer evidence is
+  projected by `TransportEndpointLeasePublisher`, and worker session-presence
+  observations are projected by `WorkerPresenceSessionPublisher`.
 - `DeliveryCommandBatch` is consumer-local handoff materialization:
   `deliveryQueueKey`, handoff-owned command references, and command items only.
   It does not carry bucket, lane, target node, adapter route, connection, or

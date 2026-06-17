@@ -2041,9 +2041,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "String workerId",
                 "String agentVersion",
                 "String workerGroupId",
-                "String adapterNodeId",
-                "String adapterId",
-                "String onlineStrategy",
+                "String transportHint",
                 "Map<String, String> attributes"
         )) {
             if (!source.contains(requiredField)) {
@@ -2057,6 +2055,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "lastHeartbeat",
                 "supportedProjects",
                 "supportedEventCodes",
+                "adapterNodeId",
+                "adapterId",
+                "onlineStrategy",
                 "maxConcurrentWork",
                 "createTime",
                 "updateTime",

@@ -72,9 +72,13 @@ Current owner vocabulary:
   - `WorkerSchedulingPolicy` = which worker universe work competes in
   - `RuntimeWorkerSelection` = which currently eligible workers are selected
     inside that universe
-- `Worker` is execution identity plus group/node membership and declared
-  scheduling/resource facts; worker rows do not own project/event capability
-  truth
+- `Worker` is execution identity plus WorkerGroup membership, topology evidence
+  where still needed, and declared scheduling/resource facts; worker rows do not
+  own project/event capability truth and cannot self-declare new event
+  capability outside WorkerGroup bindings
+- `Adapter` is a final-hop connectivity owner. It owns worker network/session
+  state, endpoint lease evidence, and local send mechanics; it does not expand
+  worker capability and does not choose a worker for assigned task delivery.
 - `Scheduling Plane` decides when task work may enter competition, dispatch,
   retry, pause, resume, or close; which worker universe it may compete in; and
   which concrete worker receives it. Current scheduling policy remains
@@ -107,6 +111,11 @@ Current owner vocabulary:
   queue/storage partition, `routeKey` is opaque connection/domain metadata, and
   `connectionId` or session token is the transport lease handle. Do not collapse
   these into worker identity or routeKey minting rules.
+- Engine worker selection must not use transport implementation identifiers
+  such as `adapterId`, `routeKey`, `connectionId`, endpoint lease ids, or
+  session handles. If reachability affects scheduling, it must be projected as
+  worker-runtime scheduling evidence rather than consumed as raw transport
+  facts.
 - `TaskWorkRuntime` is the hot-path owner for ready work, lease, retry, expiry,
   and backpressure truth
 - result apply and visible final-result ownership are runtime-first concerns;
@@ -138,7 +147,7 @@ Scheduling Plane inputs, resolved views, and constraints:
 | `ProjectSchedulingBinding` | project/workload allowed/default task policies, allowed/default worker policies, per-policy config, and quota/fairness scope | target owner boundary, not fully implemented |
 | `TaskDispatchIntent` | task-level dispatch target and constraints: project, WorkerGroup selector, route, optional target worker, optional target attributes, and future selected/inherited policy refs | current engine value contract derived from task fields and shared config; selected/inherited policy refs remain target-only |
 | `ResolvedTaskSchedulingPolicy` | resolved task-side scheduling input view: workload class, dispatch cadence, resource mode, idle-close, result-finality, dispatch lane/priority, claim/retry/backpressure inputs | current engine value contract consumed by selected task-side execution owners; not storage truth |
-| `ResolvedWorkerSchedulingPolicy` | resolved worker-side scheduling input view: WorkerGroup selector, adapter node, candidate buckets, target worker, and target attributes | current engine value contract consumed before runtime worker selection; not storage truth |
+| `ResolvedWorkerSchedulingPolicy` | resolved worker-side scheduling input view: WorkerGroup selector, worker universe constraints, candidate buckets, target worker, and target attributes | current engine value contract consumed before runtime worker selection; not storage truth and not transport adapter/session truth |
 | `WorkerGroupCapability` | external group-level capability truth: project bindings, event bindings, group defaults, and capacity hints | current worker-runtime resource truth; constrains worker scheduling resolution |
 | `Item` | executable work unit: `eventCode` plus input or `payloadRef` | current runtime work-item boundary; not worker-selection policy |
 
@@ -315,10 +324,17 @@ Lifecycle and trace detail live in:
   payload boundaries
 - `Task.project` and `Task.user` are first-class task truth; do not push them back into bags or free-form attributes
 - worker capability truth is `WorkerGroup.eventBindings`; worker registration
-  declares execution identity and group/node membership. Scheduling decisions
-  must consume explicit group selectors, group capability, worker scheduling
-  facts, and runtime load/capacity facts, not worker-level capability overrides
-  and not `WorkerContext`
+  declares execution identity, WorkerGroup membership, and bounded topology
+  evidence. Scheduling decisions must consume explicit group selectors, group
+  capability, worker scheduling facts, and runtime load/capacity facts, not
+  worker-level capability overrides and not `WorkerContext`
+- adapters cannot expand worker capability or act as scheduling owners. They
+  own final-hop connectivity, endpoint lease/session evidence, and local send
+  attempts only.
+- engine and scheduling code must not select workers by `adapterId`, `routeKey`,
+  `connectionId`, endpoint lease ids, session handles, or delivery queue keys.
+  Those are transport delivery facts; scheduling may consume only explicit
+  worker-runtime evidence derived from them.
 - task scheduling policy decides competition admission/cadence/priority/
   fairness/budget, worker scheduling policy decides resource-universe and pool
   constraints, project/workload binding decides allowed/default policies and

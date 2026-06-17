@@ -1,7 +1,5 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
-import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import org.junit.jupiter.api.Test;
@@ -44,62 +42,30 @@ class CompositeWorkerEndpointRegistryTest {
     }
 
     @Test
-    void adapterScopedOperationsRequireMatchingAdapter() {
+    void selectedWorkerOperationsRequireMatchingAdapter() {
         CompositeWorkerEndpointRegistry registry = new CompositeWorkerEndpointRegistry();
         TestRegistry websocket = new TestRegistry(
-                List.of(new WorkerEndpointSnapshot("route-a", "worker-a", true, "endpoint-a", "websocket")),
-                true,
                 true
         );
         TestRegistry socket = new TestRegistry(
-                List.of(new WorkerEndpointSnapshot("route-b", "worker-b", true, "endpoint-b", "socket")),
-                false,
                 false
         );
 
         registry.register("websocket", websocket);
         registry.register("socket", socket);
 
-        assertFalse(registry.sendToAdapterRoute("unknown", "route-a", "{\"hello\":1}"));
-        assertFalse(registry.isAdapterRouteOnline("unknown", "route-a"));
-        assertFalse(websocket.sendInvoked);
-        assertFalse(socket.sendInvoked);
-    }
-
-    @Test
-    void adapterScopedRouteOperationsBypassCrossAdapterAmbiguity() {
-        CompositeWorkerEndpointRegistry registry = new CompositeWorkerEndpointRegistry();
-        TestRegistry websocket = new TestRegistry(
-                List.of(new WorkerEndpointSnapshot("dup-route", "worker-a", true, "endpoint-a", "websocket")),
-                true,
-                true
-        );
-        TestRegistry socket = new TestRegistry(
-                List.of(new WorkerEndpointSnapshot("dup-route", "worker-b", true, "endpoint-b", "socket")),
-                false,
-                false
-        );
-
-        registry.register("websocket", websocket);
-        registry.register("socket", socket);
-
-        assertTrue(registry.isAdapterRouteOnline("websocket", "dup-route"));
-        assertTrue(registry.sendToAdapterRoute("websocket", "dup-route", "{\"hello\":1}"));
-        assertTrue(websocket.sendInvoked);
-        assertFalse(socket.sendInvoked);
+        assertFalse(registry.sendToSelectedWorker("unknown", "worker-a", "{\"hello\":1}"));
+        assertFalse(websocket.selectedWorkerSendInvoked);
+        assertFalse(socket.selectedWorkerSendInvoked);
     }
 
     @Test
     void selectedWorkerSendUsesAdapterScopedRegistryWithoutRouteFallback() {
         CompositeWorkerEndpointRegistry registry = new CompositeWorkerEndpointRegistry();
         TestRegistry websocket = new TestRegistry(
-                List.of(new WorkerEndpointSnapshot("shared-route", "worker-a", true, "endpoint-a", "websocket")),
-                true,
                 true
         );
         TestRegistry socket = new TestRegistry(
-                List.of(new WorkerEndpointSnapshot("shared-route", "worker-b", true, "endpoint-b", "socket")),
-                true,
                 true
         );
 
@@ -109,31 +75,37 @@ class CompositeWorkerEndpointRegistryTest {
         assertTrue(registry.sendToSelectedWorker("websocket", "worker-a", "{\"hello\":1}"));
         assertTrue(websocket.selectedWorkerSendInvoked);
         assertEquals("worker-a", websocket.lastSelectedWorkerId);
-        assertFalse(websocket.sendInvoked);
         assertFalse(socket.selectedWorkerSendInvoked);
     }
 
-    private static final class TestRegistry
-            implements WorkerEndpointRegistry, WorkerEndpointInspector, RawWorkerRouteEndpointRegistry {
-        private final List<WorkerEndpointSnapshot> snapshots;
-        private final boolean onlineResult;
+    @Test
+    void diagnosticsAreAggregatedByDedicatedInspectorComposite() {
+        CompositeWorkerEndpointInspector inspector = new CompositeWorkerEndpointInspector();
+        inspector.register(() -> List.of(new WorkerEndpointSnapshot(
+                "route-a",
+                "worker-a",
+                true,
+                "endpoint-a",
+                "websocket"
+        )));
+        inspector.register(() -> List.of(new WorkerEndpointSnapshot(
+                "route-b",
+                "worker-b",
+                true,
+                "endpoint-b",
+                "socket"
+        )));
+
+        assertEquals(2, inspector.listWorkerEndpoints().size());
+    }
+
+    private static final class TestRegistry implements WorkerEndpointRegistry {
         private final boolean sendResult;
-        private boolean sendInvoked;
         private boolean selectedWorkerSendInvoked;
         private String lastSelectedWorkerId;
 
-        private TestRegistry(List<WorkerEndpointSnapshot> snapshots,
-                             boolean onlineResult,
-                             boolean sendResult) {
-            this.snapshots = snapshots;
-            this.onlineResult = onlineResult;
+        private TestRegistry(boolean sendResult) {
             this.sendResult = sendResult;
-        }
-
-        @Override
-        public boolean sendToAdapterRoute(String adapterId, String routeKey, String message) {
-            sendInvoked = true;
-            return sendResult;
         }
 
         @Override
@@ -144,22 +116,12 @@ class CompositeWorkerEndpointRegistryTest {
         }
 
         @Override
-        public boolean isAdapterRouteOnline(String adapterId, String routeKey) {
-            return onlineResult;
-        }
-
-        @Override
         public int getActiveConnectionCount() {
             return 0;
         }
 
         @Override
         public void shutdown() {
-        }
-
-        @Override
-        public List<WorkerEndpointSnapshot> listWorkerEndpoints() {
-            return snapshots;
         }
     }
 }

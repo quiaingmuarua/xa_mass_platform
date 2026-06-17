@@ -3,6 +3,7 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
+import com.xa.mass.transport.worker.AdapterCommandExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -21,8 +22,8 @@ class TransportRuntimeRegistryTest {
                         mock(TransportResultIngressChannel.class),
                         new InMemoryTransportEndpointLeaseStore(),
                         List.of(
-                                canonicalRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME)),
-                                canonicalRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
+                                binding("websocket", WorkerTransportHints.REALTIME),
+                                binding("websocket", WorkerTransportHints.REALTIME)
                         )
                 )
         );
@@ -31,39 +32,35 @@ class TransportRuntimeRegistryTest {
                 error.getMessage());
     }
 
-    private static TransportBinding canonicalRouteBinding(com.xa.mass.transport.worker.WorkerAdapter adapter) {
-        return TransportBinding.builder(adapter)
-                .build();
+    @Test
+    void constructorRejectsSharedCommandExecutorAcrossAdapterBindings() {
+        AdapterCommandExecutor sharedExecutor = commands -> java.util.List.of();
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> new TransportRuntimeRegistry(
+                        mock(TransportResultIngressChannel.class),
+                        new InMemoryTransportEndpointLeaseStore(),
+                        List.of(
+                                binding("websocket", WorkerTransportHints.REALTIME, sharedExecutor),
+                                binding("socket", WorkerTransportHints.REALTIME, sharedExecutor)
+                        )
+                )
+        );
+
+        assertEquals("Adapter command executor instance is shared by adapters 'websocket' and 'socket'; "
+                        + "each adapter binding must own a distinct executor instance",
+                error.getMessage());
     }
 
-    private static final class StubWorkerAdapter implements com.xa.mass.transport.worker.WorkerAdapter {
-        private final String protocol;
-        private final String transportHint;
+    private static TransportBinding binding(String adapterId, String transportHint) {
+        return binding(adapterId, transportHint, commands -> java.util.List.of());
+    }
 
-        private StubWorkerAdapter(String protocol, String transportHint) {
-            this.protocol = protocol;
-            this.transportHint = transportHint;
-        }
-
-        @Override
-        public String protocol() {
-            return protocol;
-        }
-
-        @Override
-        public String adapterId() {
-            return protocol;
-        }
-
-        @Override
-        public String transportHint() {
-            return transportHint;
-        }
-
-        @Override
-        public java.util.List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
-                java.util.List<com.xa.mass.transport.model.DeliveryCommand> commands) {
-            return java.util.List.of();
-        }
+    private static TransportBinding binding(String adapterId,
+                                            String transportHint,
+                                            AdapterCommandExecutor commandExecutor) {
+        return TransportBinding.builder(adapterId, transportHint, commandExecutor)
+                .build();
     }
 }

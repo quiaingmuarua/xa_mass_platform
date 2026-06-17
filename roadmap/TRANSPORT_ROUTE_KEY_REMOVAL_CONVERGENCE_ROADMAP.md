@@ -1,6 +1,7 @@
 # Transport Route Key Removal Convergence Roadmap
 
-Status: proposed direction document.
+Status: active direction; adapter-command-executor prerequisite has landed,
+routeKey removal implementation has not started.
 
 ## Summary
 
@@ -52,6 +53,11 @@ owner-partition policy in this roadmap.
   assigned delivery free of routeKey. This roadmap removes the leftover session,
   packet, raw-route, and diagnostic vocabulary that still makes routeKey look
   alive.
+- `TRANSPORT_ADAPTER_COMMAND_EXECUTOR_CONVERGENCE_ROADMAP.md` has unblocked the
+  routeKey cleanup by separating assigned-delivery command execution from
+  raw/manual route channels, diagnostics, endpoint lease projection, and worker
+  presence projection. RouteKey removal should now treat adapter internals as
+  cleanup surfaces, not as the command-executor owner split.
 
 ## Current Code Observations
 

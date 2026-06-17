@@ -2,6 +2,7 @@ package com.xa.mass.starter.config;
 
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
+import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -66,7 +67,8 @@ class TransportConfigTest {
         }
 
         @Override
-        public void contribute(TransportAdapterBootstrapContext context) {
+        public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
+            return TransportAdapterContribution.empty();
         }
     }
 }

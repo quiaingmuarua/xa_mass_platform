@@ -1,7 +1,6 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.model.DeliveryCommand;
@@ -18,6 +17,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -35,12 +35,10 @@ class WebSocketTaskDispatchChannelTest {
                 any()))
                 .thenReturn(true);
         WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
-        WebSocketDispatcherContext context = new WebSocketDispatcherContext(
+        WebSocketCommandDispatchContext context = new WebSocketCommandDispatchContext(
                 "websocket",
                 endpointRegistry,
-                mock(RawWorkerRouteEndpointRegistry.class),
-                codec,
-                null
+                codec
         );
 
         WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(context, deliveryService());
@@ -84,12 +82,10 @@ class WebSocketTaskDispatchChannelTest {
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(false);
-        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketDispatcherContext(
+        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketCommandDispatchContext(
                 "websocket",
                 endpointRegistry,
-                mock(RawWorkerRouteEndpointRegistry.class),
-                new WebSocketTransportFrameCodec(),
-                null
+                new WebSocketTransportFrameCodec()
         ), deliveryService());
 
         List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
@@ -101,12 +97,10 @@ class WebSocketTaskDispatchChannelTest {
 
     @Test
     void returnsAdapterUnavailableWhenRuntimeContextIsIncomplete() {
-        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketDispatcherContext(
+        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketCommandDispatchContext(
                 "websocket",
                 null,
-                mock(RawWorkerRouteEndpointRegistry.class),
-                new WebSocketTransportFrameCodec(),
-                null
+                new WebSocketTransportFrameCodec()
         ), deliveryService());
 
         List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
@@ -117,14 +111,9 @@ class WebSocketTaskDispatchChannelTest {
     }
 
     @Test
-    void returnsAdapterUnavailableWhenRuntimeContextIsMissing() {
-        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(null, deliveryService());
-
-        List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
-
-        assertEquals(1, outcomes.size());
-        assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcomes.get(0).getStatus());
-        assertTrue(outcomes.get(0).isRetryable());
+    void constructorRejectsMissingRuntimeContext() {
+        assertThrows(NullPointerException.class,
+                () -> new WebSocketTaskDispatchChannel(null, deliveryService()));
     }
 
     private TransportDeliveryService deliveryService() {

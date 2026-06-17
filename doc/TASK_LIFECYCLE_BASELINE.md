@@ -29,7 +29,7 @@ Use with:
 | Primitive | Current meaning | Primary owner |
 | --- | --- | --- |
 | `Task` | task shell, contract, intake window, aggregate status, terminal reason, and task-level execution policy | engine lifecycle plus kernel-facing task-shell ports |
-| `Worker` | execution identity plus group/node membership and declared worker facts | `xa-mass-worker-runtime` declaration/resource owners |
+| `Worker` | execution identity plus WorkerGroup membership, bounded topology evidence, and declared worker facts | `xa-mass-worker-runtime` declaration/resource owners |
 | `Scheduling Plane` | deciding when task work may enter competition, dispatch, retry, pause, resume, or close; which worker universe it may compete in; and which concrete worker receives it. It has three first-class owners: task scheduling policy, worker scheduling policy, and runtime worker selection. Current policy remains distributed across task runtime profile, selectors, assignment policy, matching rules, backpressure, and admission | engine lifecycle and runtime queues today; future scheduling-policy catalog plus project/workload binding when implemented |
 
 Mechanism note:
@@ -116,6 +116,10 @@ Dispatch delivery identifiers have separate meanings:
   cardinality for correctness.
 - `connectionId` / session token: transport lease evidence for one concrete
   connection or polling session; it is not a worker scheduling identity.
+- adapter identifiers, endpoint lease ids, session handles, route keys, and
+  queue keys are transport implementation facts. Engine selection must not use
+  them directly; any delivery reachability needed for scheduling must be
+  projected into worker-runtime evidence first.
 
 Polling, WebSocket, and socket delivery all preserve the same rule: transport
 delivers an already selected item to an available connection/session for that
@@ -126,7 +130,7 @@ retry/compensation remains engine-owned.
 
 1. `TaskStatus`, `TaskHoldReason`, `TaskIntakeStatus`, and `TaskTerminalReason` are the current task lifecycle vocabulary. Per-item runtime state lives in `TaskWorkRuntime`; server review item/attempt statuses are materialized read-model strings, not engine lifecycle truth.
 2. `Task.contract` is the current public/runtime preset input (`SESSION | BATCH`). Engine behavior must consume resolved task scheduling policy values derived from it; ingress form must not redefine lifecycle, terminal, or retry semantics.
-3. Worker capability truth is declared through WorkerGroup/event bindings. Worker scheduling evidence participates in runtime selection inside the selected group, but worker rows must not become a second project/event capability source.
+3. Worker capability truth is declared through WorkerGroup/event bindings. Worker scheduling evidence participates in runtime selection inside the selected group, but worker rows and adapters must not become a second project/event capability source.
 4. Scheduling and worker selection are task-level orchestration decisions, but item payload is not a worker-selection policy source. Do not reintroduce per-message rule matching, worker-context lifecycle ownership, or item-level worker capability scans on the hot path.
 5. No lifecycle change is complete without:
    - code change
@@ -143,7 +147,7 @@ retry/compensation remains engine-owned.
 13. `Task.workloadClass` is the explicit task-level runtime optimization input; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing consumes resolved task scheduling policy rather than free-form `sharedConfig` semantics.
 14. Result callbacks follow the result-side lifecycle mainline: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; server review reports are emitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
 15. `eventCode` is handler/capability identity. It validates that the selected WorkerGroup supports the item's handler and tells the worker which local handler to invoke. It is not a worker selector.
-16. The architecture boundary is: task scheduling policy decides competition admission/cadence/priority/fairness/budget; worker scheduling policy decides resource-universe and pool constraints; RuntimeWorkerSelection chooses a concrete worker from live evidence/admission. Project/workload binding selects and configures allowed/default policies, task dispatch intent narrows selected policies/route/target constraints, WorkerGroup capability constrains project/event eligibility, and item decides only the event handler plus payload.
+16. The architecture boundary is: task scheduling policy decides competition admission/cadence/priority/fairness/budget; worker scheduling policy decides resource-universe and pool constraints; RuntimeWorkerSelection chooses a concrete worker from live evidence/admission. Project/workload binding selects and configures allowed/default policies, task dispatch intent narrows selected policies/route/target constraints, WorkerGroup capability constrains project/event eligibility, adapter owns only final-hop connectivity, transport delivers only to `selectedWorkerId`, and item decides only the event handler plus payload.
 
 ## 3. TaskStatus
 
@@ -358,7 +362,8 @@ not active resource ownership truth.
 
 Current engine scheduling and resource lifecycle truth comes from:
 
-- worker registration identity plus group/node membership
+- worker registration identity plus WorkerGroup membership and bounded topology
+  evidence
 - `WorkerGroup.eventBindings` capability facts
 - worker scheduling attributes / routing tags
 - process-local reachability and runtime load/capacity views

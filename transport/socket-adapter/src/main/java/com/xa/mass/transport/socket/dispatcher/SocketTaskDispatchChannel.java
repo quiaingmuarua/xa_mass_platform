@@ -1,12 +1,9 @@
 package com.xa.mass.transport.socket.dispatcher;
 
-import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
-import com.xa.mass.transport.socket.session.SocketSessionManager;
-import com.xa.mass.transport.worker.WorkerAdapter;
+import com.xa.mass.transport.worker.AdapterCommandExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,40 +13,17 @@ import java.util.Objects;
 /**
  * Adapter-owned dispatch channel for raw socket workers.
  */
-public final class SocketTaskDispatchChannel implements WorkerAdapter {
-
-    public static final String DEFAULT_ADAPTER_ID = "socket";
+public final class SocketTaskDispatchChannel implements AdapterCommandExecutor {
 
     private static final Logger logger = LoggerFactory.getLogger(SocketTaskDispatchChannel.class);
 
-    private final String adapterId;
-    private final SocketSessionManager sessionManager;
-    private final SocketTransportFrameCodec frameCodec;
+    private final SocketCommandDispatchContext context;
     private final TransportDeliveryService deliveryService;
 
-    public SocketTaskDispatchChannel(String adapterId,
-                                     SocketSessionManager sessionManager,
-                                     SocketTransportFrameCodec frameCodec,
+    public SocketTaskDispatchChannel(SocketCommandDispatchContext context,
                                      TransportDeliveryService deliveryService) {
-        this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
-        this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
-        this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
+        this.context = Objects.requireNonNull(context, "context");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
-    }
-
-    @Override
-    public String protocol() {
-        return adapterId;
-    }
-
-    @Override
-    public String adapterId() {
-        return adapterId;
-    }
-
-    @Override
-    public String transportHint() {
-        return WorkerTransportHints.REALTIME;
     }
 
     @Override
@@ -58,12 +32,12 @@ public final class SocketTaskDispatchChannel implements WorkerAdapter {
             return List.of();
         }
         return deliveryService.sendDirect(
-                adapterId,
+                adapterId(),
                 commands,
                 command -> {
-                    String rawJson = frameCodec.encodeCanonicalTaskDispatch(command);
-                    boolean sent = sessionManager.sendToSelectedWorker(
-                            adapterId,
+                    String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(command);
+                    boolean sent = context.getEndpointRegistry().sendToSelectedWorker(
+                            adapterId(),
                             command.getSelectedWorkerId(),
                             rawJson
                     );
@@ -75,5 +49,9 @@ public final class SocketTaskDispatchChannel implements WorkerAdapter {
                 },
                 "socket dispatch channel is unavailable"
         );
+    }
+
+    private String adapterId() {
+        return context.getAdapterId();
     }
 }

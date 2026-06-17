@@ -7,7 +7,7 @@ package com.xa.mass.transport.runtime;
  */
 public interface TransportAdapterBootstrap {
 
-    void contribute(TransportAdapterBootstrapContext context);
+    TransportAdapterContribution contribute(TransportAdapterBootstrapContext context);
 
     /**
      * Optional registration metadata for pre-start adapter-id resolution.

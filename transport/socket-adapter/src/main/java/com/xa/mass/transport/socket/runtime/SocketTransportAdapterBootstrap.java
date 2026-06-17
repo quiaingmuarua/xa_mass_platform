@@ -2,13 +2,17 @@ package com.xa.mass.transport.socket.runtime;
 
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
+import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.socket.dispatcher.SocketCommandDispatchContext;
 import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.server.SocketTransportServer;
+import com.xa.mass.transport.socket.session.SocketEndpointInspector;
+import com.xa.mass.transport.socket.session.SocketRawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
 
 /**
@@ -31,23 +35,38 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
     }
 
     @Override
-    public void contribute(TransportAdapterBootstrapContext context) {
+    public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
         SocketSessionManager sessionManager = resolveSessionManager(context);
+        SocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
+                new SocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionManager);
         SocketTransportFrameCodec frameCodec = new SocketTransportFrameCodec();
+        SocketCommandDispatchContext commandContext = new SocketCommandDispatchContext(
+                config.getAdapterId(),
+                sessionManager,
+                frameCodec
+        );
 
+        TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
-            context.registerTransportBinding(TransportBinding.builder(
-                    new SocketTaskDispatchChannel(
-                            config.getAdapterId(),
-                            sessionManager,
-                            frameCodec,
+            SocketTaskDispatchChannel commandExecutor = new SocketTaskDispatchChannel(
+                            commandContext,
                             context.getDeliveryService()
+                    );
+            contribution.addTransportBinding(TransportBinding.builder(
+                            config.getAdapterId(),
+                            com.xa.mass.transport.WorkerTransportHints.REALTIME,
+                            commandExecutor
                     )
-            ).build());
-            context.registerRawWorkerMessageChannel(new SocketRawWorkerMessageChannel(config.getAdapterId(), sessionManager));
+                    .protocol(SocketAdapterConfig.PROTOCOL)
+                    .build());
+            contribution.addRawWorkerMessageChannel(new SocketRawWorkerMessageChannel(
+                    config.getAdapterId(),
+                    rawRouteEndpointRegistry
+            ));
+            contribution.addEndpointInspector(new SocketEndpointInspector(sessionManager));
         }
         if (config.isServerEnabled()) {
-            context.registerTransportServer(new SocketTransportServer(
+            contribution.addTransportServer(new SocketTransportServer(
                     config.getAdapterId(),
                     config.getBindHost(),
                     config.getServerPort(),
@@ -58,6 +77,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                     context.getRuntimeTaskExecutor()
             ));
         }
+        return contribution.build();
     }
 
     private SocketSessionManager resolveSessionManager(TransportAdapterBootstrapContext context) {

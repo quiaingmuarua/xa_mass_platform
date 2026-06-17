@@ -92,6 +92,12 @@ Current mainline execution path:
   selected a concrete worker. Transport preserves that `selectedWorkerId` as a
   delivery constraint; `routeKey` is opaque connection/domain metadata and
   `deliveryQueueKey` is a queue partition, not worker-selection truth.
+- WorkerGroup owns event capability and the scheduling entry boundary. Worker
+  owns execution identity plus attributes, load, state, and scheduling evidence;
+  a worker cannot self-declare project/event capability outside its WorkerGroup.
+- Adapter owns only worker network/session/endpoint-lease state for final-hop
+  delivery. It cannot expand worker capability, and transport cannot choose a
+  different worker after engine assignment.
 
 Scheduling Plane Boundary:
 
@@ -116,6 +122,10 @@ Scheduling Plane Boundary:
   strategy owner
 - runtime worker selection happens inside an already selected WorkerGroup using
   online/presence/load/admission/draining/lease evidence
+- engine worker selection must consume WorkerGroup capability, worker
+  scheduling evidence, and admission state. It must not select by transport
+  implementation ids such as `adapterId`, `routeKey`, `connectionId`, endpoint
+  lease ids, or session handles.
 - work items do not own worker-selection policy. An item carries `eventCode`
   plus input or `payloadRef`; `eventCode` is handler/capability identity, not a
   worker selector
@@ -198,7 +208,7 @@ Current integration boundary rule:
 - `transport/polling-adapter`: polling/pull worker transport adapter
 - `transport/socket-adapter`: socket worker transport adapter
 - `transport/websocket-adapter`: WebSocket worker transport adapter
-- `xa-mass-worker-runtime`: worker-plane lifecycle/resource owner for WorkerGroup, AdapterNode, NodeGroupBinding, worker declaration ports, candidate source, scheduling evidence, admission, dispatch gates, and warm hints
+- `xa-mass-worker-runtime`: worker-plane lifecycle/resource owner for WorkerGroup capability, worker execution identity, declaration ports, candidate source, scheduling evidence, admission, dispatch gates, and warm hints; transport adapter/session ids remain final-hop delivery evidence, not scheduling identity
 - `xa-mass-engine`: lifecycle, assignment, result handling, and policy seams
 - `sdk/xa-mass-public-contract`: narrow public HTTP wire DTOs/constants shared by server and external SDKs
 - `sdk/xa-mass-java-sdk`: external Java client/session/handler SDK for task producers and external workers

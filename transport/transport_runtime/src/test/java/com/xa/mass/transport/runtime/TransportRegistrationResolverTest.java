@@ -79,7 +79,7 @@ class TransportRegistrationResolverTest {
     @Test
     void fromBindingsUsesCanonicalAdapterIdsOnly() {
         TransportRegistrationResolver resolver = TransportRegistrationResolver.fromBindings(List.of(
-                canonicalRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
+                binding("websocket", WorkerTransportHints.REALTIME)
         ));
 
         assertEquals("websocket", resolver.resolveRegistrationAdapterId("websocket", "realtime"));
@@ -113,39 +113,8 @@ class TransportRegistrationResolverTest {
                 error.getMessage());
     }
 
-    private static TransportBinding canonicalRouteBinding(com.xa.mass.transport.worker.WorkerAdapter adapter) {
-        return TransportBinding.builder(adapter)
+    private static TransportBinding binding(String adapterId, String transportHint) {
+        return TransportBinding.builder(adapterId, transportHint, commands -> java.util.List.of())
                 .build();
-    }
-
-    private static final class StubWorkerAdapter implements com.xa.mass.transport.worker.WorkerAdapter {
-        private final String protocol;
-        private final String transportHint;
-
-        private StubWorkerAdapter(String protocol, String transportHint) {
-            this.protocol = protocol;
-            this.transportHint = transportHint;
-        }
-
-        @Override
-        public String protocol() {
-            return protocol;
-        }
-
-        @Override
-        public String adapterId() {
-            return protocol;
-        }
-
-        @Override
-        public String transportHint() {
-            return transportHint;
-        }
-
-        @Override
-        public java.util.List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
-                java.util.List<com.xa.mass.transport.model.DeliveryCommand> commands) {
-            return java.util.List.of();
-        }
     }
 }

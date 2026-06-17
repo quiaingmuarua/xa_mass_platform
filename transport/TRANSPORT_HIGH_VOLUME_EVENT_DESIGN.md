@@ -1,6 +1,6 @@
 # Transport High-Volume Event Design
 
-Last updated: 2026-04-29
+Last updated: 2026-06-17
 
 Status: design/reference only, not current runtime truth.
 
@@ -39,7 +39,7 @@ engine assignment
 
 Permanent transport concepts remain:
 
-- `WorkerAdapter.dispatch(List<DeliveryCommand>)`
+- `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`
 - `DispatchOutcome`
 - `DeliveryCommand`
 - `QueuedPulledDispatch`

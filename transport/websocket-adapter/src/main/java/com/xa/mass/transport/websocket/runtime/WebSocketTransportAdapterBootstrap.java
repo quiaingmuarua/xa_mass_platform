@@ -1,6 +1,7 @@
 package com.xa.mass.transport.websocket.runtime;
 
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
+import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
@@ -8,12 +9,15 @@ import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketCommandDispatchContext;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
+import com.xa.mass.transport.websocket.session.WebSocketEndpointInspector;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
+import com.xa.mass.transport.websocket.session.WebSocketRawWorkerRouteEndpointRegistry;
 
 /**
  * Adapter-owned bootstrap for embedded WebSocket runtime contribution.
@@ -35,27 +39,46 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     }
 
     @Override
-    public void contribute(TransportAdapterBootstrapContext context) {
+    public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
         ServerSessionManager endpointRegistry = resolveEndpointRegistry(context);
-        WebSocketDispatcherContext dispatcherContext = new WebSocketDispatcherContext(
+        WebSocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
+                new WebSocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), endpointRegistry);
+        WebSocketTransportFrameCodec frameCodec = new WebSocketTransportFrameCodec();
+        WebSocketCommandDispatchContext commandContext = new WebSocketCommandDispatchContext(
                 config.getAdapterId(),
                 endpointRegistry,
-                endpointRegistry,
-                new WebSocketTransportFrameCodec(),
+                frameCodec
+        );
+        WebSocketDispatcherContext dispatcherContext = new WebSocketDispatcherContext(
+                config.getAdapterId(),
+                rawRouteEndpointRegistry,
+                frameCodec,
                 context.getResultIngressChannel()
         );
 
+        TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
-            context.registerTransportBinding(TransportBinding.builder(
-                    new WebSocketTaskDispatchChannel(dispatcherContext, context.getDeliveryService())
-            ).build());
-            context.registerRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(config.getAdapterId(), endpointRegistry));
+            WebSocketTaskDispatchChannel commandExecutor =
+                    new WebSocketTaskDispatchChannel(commandContext, context.getDeliveryService());
+            contribution.addTransportBinding(TransportBinding.builder(
+                            config.getAdapterId(),
+                            com.xa.mass.transport.WorkerTransportHints.REALTIME,
+                            commandExecutor
+                    )
+                    .protocol(WebSocketAdapterConfig.PROTOCOL)
+                    .build());
+            contribution.addRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(
+                    config.getAdapterId(),
+                    rawRouteEndpointRegistry
+            ));
+            contribution.addEndpointInspector(new WebSocketEndpointInspector(endpointRegistry));
         }
 
         TransportServer transportServer = createTransportServer(dispatcherContext, endpointRegistry);
         if (transportServer != null) {
-            context.registerTransportServer(transportServer);
+            contribution.addTransportServer(transportServer);
         }
+        return contribution.build();
     }
 
     private ServerSessionManager resolveEndpointRegistry(

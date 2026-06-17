@@ -7,11 +7,17 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 ## 0. TL;DR
 
 - XA Mass Platform is a general distributed task scheduling platform.
-- Core primitives: `Task + Worker + Scheduling Plane`.
+- Core primitives: `Task + Worker + Scheduling Plane`. `WorkerGroup` and
+  `Adapter` are boundary concepts around worker capability and final-hop
+  connectivity, not extra scheduling owners.
 - `Task`: shell, contract, intake window, runtime work, result, and terminal
   aggregate.
-- `Worker`: execution identity plus WorkerGroup/node membership and scheduling
-  facts.
+- `WorkerGroup`: capability declaration and scheduling entry boundary.
+- `Worker`: execution identity plus WorkerGroup membership, attributes, load,
+  state, and scheduling evidence. Worker rows do not own project/event
+  capability truth and cannot self-declare new event capability.
+- `Adapter`: worker network/session/endpoint-lease carrier for the final hop.
+  It does not expand worker capability and does not choose workers.
 - `Scheduling Plane`: decides when work may enter, retry, pause, resume, or
   leave dispatch competition, which worker universe it may compete in, and
   which concrete worker receives it.
@@ -71,11 +77,16 @@ Task item dispatch boundary:
 - `routeKey` is opaque connection/domain metadata and may be worker-group,
   adapter-lane, shared, or another assembly-owned rule; transport must not
   decode it or rely on it for worker correctness
-- `deliveryQueueKey` is only queue/storage/batching partitioning; a queue keyed
-  only by routeKey or deliveryQueueKey is invalid for assigned polling task
-  delivery
+- `deliveryQueueKey` is only queue/storage/batching partitioning. It may be
+  shared by many workers; assigned delivery correctness comes from the
+  command-level `selectedWorkerId` plus endpoint/session lease feasibility, not
+  from queue key uniqueness.
 - delivery infeasible for the selected worker is engine-owned retry or
   compensation input, not permission for transport to select another worker
+- engine must not select workers by transport implementation identifiers such
+  as `adapterId`, `routeKey`, `connectionId`, endpoint lease ids, or session
+  handles. If delivery reachability is needed for scheduling, expose it as
+  worker-runtime scheduling evidence instead of raw transport facts.
 
 ## 0.1 Abstraction Test
 

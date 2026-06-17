@@ -2,7 +2,6 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
-import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 
 import java.util.Objects;
@@ -12,18 +11,15 @@ import java.util.Objects;
  */
 public final class WebSocketDispatcherContext {
     private final String adapterId;
-    private final WorkerEndpointRegistry endpointRegistry;
     private final RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry;
     private final WebSocketTransportFrameCodec frameCodec;
     private final TransportResultIngressChannel resultIngressChannel;
 
     public WebSocketDispatcherContext(String adapterId,
-                                      WorkerEndpointRegistry endpointRegistry,
                                       RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry,
                                       WebSocketTransportFrameCodec frameCodec,
                                       TransportResultIngressChannel resultIngressChannel) {
         this.adapterId = requireAdapterId(adapterId);
-        this.endpointRegistry = endpointRegistry;
         this.rawRouteEndpointRegistry = rawRouteEndpointRegistry;
         this.frameCodec = frameCodec;
         this.resultIngressChannel = resultIngressChannel;
@@ -31,10 +27,6 @@ public final class WebSocketDispatcherContext {
 
     public String getAdapterId() {
         return adapterId;
-    }
-
-    public WorkerEndpointRegistry getEndpointRegistry() {
-        return endpointRegistry;
     }
 
     public RawWorkerRouteEndpointRegistry getRawRouteEndpointRegistry() {

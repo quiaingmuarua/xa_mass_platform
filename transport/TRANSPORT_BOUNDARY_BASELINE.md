@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-06-16
+Last updated: 2026-06-17
 
 Status: current transport boundary baseline.
 
@@ -23,7 +23,8 @@ Transport owns delivery mechanics for workers:
   Endpoint leases contain adapter/runtime/session facts for current delivery
   feasibility, while timestamps stay in store deadline indexes or
   policy-specific consumer evidence instead of the general view record.
-- adapter registration and adapter selection by `adapterId`
+- local adapter binding registration and final-hop adapter resolution by
+  transport-owned adapter identity
 - task dispatch delivery, queueing, draining, and dispatch outcomes
 - task result ingress queuing and relay through opaque transport envelopes
 - session-presence ingress for adapter connect/disconnect/heartbeat
@@ -42,8 +43,26 @@ Engine remains the owner of task lifecycle:
 
 Transport should stay centered on these concepts only:
 
-- `WorkerAdapter.dispatch(List<DeliveryCommand>)`: adapter dispatch SPI
-  returning `DispatchOutcome`
+- `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`: adapter command
+  execution SPI returning `DispatchOutcome`. The executor owns only the local
+  final-hop attempt. Adapter id, transport hint, protocol label, pull channel,
+  server lifecycle, diagnostics, and raw/manual side-channels are binding or
+  contribution metadata, not executor facts.
+- `TransportBinding`: explicit runtime binding for adapter id, transport hint,
+  protocol label, command executor, and optional pull channel. It must not read
+  adapter metadata back from the command executor.
+- `TransportAdapterContribution`: explicit adapter bootstrap output for
+  contributed bindings, managed adapters, servers, raw/manual channels, and
+  diagnostics. Runtime input context and adapter-produced outputs must not share
+  mutable single-slot state.
+- `TransportEndpointLeasePublisher`: runtime owner that projects adapter
+  session facts into endpoint lease evidence and handoff-private selected-worker
+  consumer evidence. Concrete adapters should not duplicate endpoint lease
+  record construction or consumer-claim projection.
+- `WorkerPresenceSessionPublisher`: runtime owner that projects adapter
+  connect/heartbeat/disconnect observations into worker session-presence
+  ingress. Concrete adapters may observe sessions, but they do not own worker
+  lifecycle truth.
 - `DispatchOutcome`: adapter-neutral delivery result, never task-lifecycle truth
   and the single retryable delivery-failure fact owner. It carries stable
   delivery identity, selected worker, opaque delivery correlation, status,
@@ -100,12 +119,14 @@ Transport should stay centered on these concepts only:
   lifecycle owner.
   Connected and heartbeat observations may refresh worker-runtime slot heartbeat
   freshness; they must not write worker resource status or dispatch gates.
-- `AdapterNodeRecord`: worker registration endpoint and logical adapter
-  deployment identity. It is not a transport runtime process id, not worker
-  capability truth, and not a worker load or lease owner.
-- `NodeGroupBindingRecord`: adapter-node to WorkerGroup hosting relation truth.
-  It gates whether one node may host or drain a group, but it must not own
-  event capability.
+- `WorkerGroup`: capability declaration and scheduling entry boundary. It owns
+  project/event capability truth through event bindings.
+- `Worker`: selected execution identity plus scheduling evidence. Worker rows
+  must not self-declare project/event capability outside WorkerGroup bindings.
+- Adapter endpoint/session evidence: transport-owned final-hop connectivity
+  state. It may prove whether the already selected worker currently has a
+  deliverable endpoint, but it must not expand worker capability or choose a
+  different worker.
 
 Avoid adding new transport model names unless they carry a distinct runtime
 behavior that cannot fit one of these concepts.
@@ -202,49 +223,55 @@ Runtime assembly keeps `TransportEndpointLeaseStore` for adapter/session writes
 and shutdown ownership. Assigned-delivery producer and listener code do not use
 endpoint lease view lookup as a routing engine.
 
-## Worker Registration Relation Baseline
+## Worker, Adapter, And Delivery Boundary
 
-The current worker registration relation model is:
+For owner decisions, the current mainline boundary is:
 
 ```text
-AdapterNode
-  -> NodeGroupBinding
-      -> WorkerGroup
-          -> Worker
+WorkerGroup capability
+  -> Worker execution identity and scheduling evidence
+      -> Adapter endpoint/session lease evidence for final-hop delivery
 ```
 
 Meanings:
 
-- `AdapterNode`: worker registration endpoint, logical adapter deployment
-  identity, callback scope, and node-level diagnostics.
-- `NodeGroupBinding`: adapter node hosts WorkerGroup relation truth.
-- `WorkerGroup`: capability cohort and `eventBindings` truth.
-- `Worker`: platform dispatchable execution identity.
+- `WorkerGroup`: event capability declaration and worker scheduling-universe
+  entry boundary.
+- `Worker`: platform dispatchable execution identity plus attributes, load,
+  state, and admission evidence.
+- `Adapter`: worker network/session/endpoint-lease carrier for local final-hop
+  delivery. It is not a capability owner and not a worker selector.
 
 Transport remains a multi-protocol worker data plane. Polling, WebSocket, and
-socket adapters are peer protocol adapters. `adapterId` is concrete adapter
-runtime identity inside transport assembly, not an external worker API or
-engine/starter delivery contract; `transportHint` is only a coarse family hint.
-External worker registration/session APIs declare `adapterNodeId` and
-`transportHint`, while transport resolves adapter/runtime evidence internally.
-`routeKey`, `connectionId`, endpoint lease ids, and `deliveryQueueKey` are
-transport-owned endpoint or queue evidence and must not leak through worker
-API, worker SDK dispatch items, diagnostics summaries, or `DispatchOutcome`.
+socket adapters are peer protocol adapters. `adapterId` is an internal concrete
+adapter binding identity used after endpoint lease resolution, not an external
+worker API, worker capability fact, or engine/starter worker-selection input;
+`transportHint` is only a coarse family hint. `routeKey`, `connectionId`,
+endpoint lease ids, session handles, and `deliveryQueueKey` are transport-owned
+endpoint or queue evidence and must not leak through worker API, worker SDK
+dispatch items, diagnostics summaries, or `DispatchOutcome`.
+
+`AdapterNode` / `NodeGroupBinding` surfaces may still appear in worker
+registration and topology read models. Treat them as control-plane relation
+evidence only. They are not transport runtime process identity, not final-hop
+delivery identity, and not event-capability truth.
 
 Owner boundaries:
 
 - `WorkerGroup.eventBindings` is the only worker capability truth.
-- `AdapterNode`, `NodeGroupBinding`, and raw capability reports must not own a
-  second event-capability model.
-- `NodeGroupBinding.enabled=false` or `draining=true` blocks new work only for
-  that adapter-node/group hosting relation; it does not delete capability.
+- Worker rows, adapter endpoint leases, adapter-node topology facts, and raw
+  capability reports must not own a second event-capability model.
+- relation-level disabled/draining evidence, where still present, may constrain
+  new work only through worker-runtime scheduling evidence; it does not delete
+  WorkerGroup capability and does not become transport delivery identity.
 - `Worker` remains the smallest schedulable execution identity. `Device`,
-  `AccountSlot`, `AdapterNode`, and transport sessions must not replace it as
+  `AccountSlot`, adapter topology, and transport sessions must not replace it as
   the scheduling subject.
-- `adapterId` and `adapterNodeId` are separate identities: transport-internal
-  adapter binding identity versus logical worker registration endpoint identity.
-  The delivery mainline no longer has a separate transport process-node
-  identity.
+- `adapterId`, `routeKey`, `connectionId`, endpoint lease ids, session handles,
+  and delivery queue keys are transport implementation facts. Engine and
+  scheduling code must not select workers by these identifiers. If delivery
+  reachability affects scheduling, it must be projected as worker-runtime
+  evidence first.
 - Attributes such as `deviceId`, `accountId`, `phoneId`, `devicePool`, `route`,
   and `region` are scheduling evidence first. They must not silently create
   device owners, account-slot lifecycle, or implicit locks.
@@ -491,7 +518,9 @@ Transport delivery addressing keeps five facts separate:
 
 - `deliveryBucketId`: opaque assigned-delivery bucket exposed at the
   engine/starter boundary; currently derived from worker-group context
-- `adapterId`: concrete adapter identity such as `polling`, `websocket`, `socket`
+- `adapterId`: transport-internal concrete adapter binding identity, used for
+  local final-hop executor/channel resolution after endpoint lease evidence is
+  known
 - `routeKey`: opaque connection address, coarse delivery-domain metadata, or
   protocol correlation value
 - `deliveryQueueKey`: runtime queue/storage address derived from
@@ -522,6 +551,9 @@ Current runtime rules:
   default implementation that drops the selected worker and falls back to
   route-only send. Route-only send is reserved for explicit raw/manual
   side-channels.
+- `adapterId` is never a worker-selection input. It may help transport resolve
+  the local adapter executor or raw/manual side-channel after a selected worker
+  and endpoint evidence already exist.
 - `WorkerEndpointRegistry` is the assigned-task selected-worker endpoint
   contract. Route-only raw/manual sends are separated behind
   `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`; assigned task

@@ -2,8 +2,8 @@ package com.xa.mass.transport.websocket.server;
 
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessage;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
+import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -66,7 +66,7 @@ class DispatcherInboundHandlerTest {
 
         acceptedInboundMessage = new AtomicReference<>();
         inboundMessageSink = acceptedInboundMessage::set;
-        sessionManager = new ServerSessionManager(WebSocketTaskDispatchChannel.DEFAULT_ADAPTER_ID);
+        sessionManager = new ServerSessionManager(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
         WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
         handler = new DispatcherInboundHandler(codec, inboundMessageSink, sessionManager);
     }
@@ -261,7 +261,7 @@ class WebSocketServerImplDisconnectTest {
     @Test
     void channelInactiveRemovesDisconnectedSessionFromSessionManager() throws Exception {
         ServerSessionManager sessionManager = org.mockito.Mockito.spy(
-                new ServerSessionManager(WebSocketTaskDispatchChannel.DEFAULT_ADAPTER_ID));
+                new ServerSessionManager(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID));
         WebSocketServerImpl server = new WebSocketServerImpl(
                 18088,
                 10,
@@ -313,7 +313,7 @@ class WebSocketServerImplDisconnectTest {
     @Test
     void channelActiveRejectsConnectionsBeyondConfiguredMax() throws Exception {
         ServerSessionManager sessionManager = org.mockito.Mockito.spy(
-                new ServerSessionManager(WebSocketTaskDispatchChannel.DEFAULT_ADAPTER_ID));
+                new ServerSessionManager(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID));
         WebSocketServerImpl server = new WebSocketServerImpl(
                 18088,
                 1,

@@ -6,8 +6,9 @@ import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.worker.WorkerAdapter;
+import com.xa.mass.transport.worker.AdapterCommandExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,7 +49,8 @@ public final class TransportDeliveryCommandListener {
             return List.of();
         }
 
-        Map<WorkerAdapter, List<DeliveryCommand>> groupedByAdapter = new LinkedHashMap<>();
+        Map<String, List<DeliveryCommand>> groupedByAdapterId = new LinkedHashMap<>();
+        Map<String, AdapterCommandExecutor> executorByAdapterId = new LinkedHashMap<>();
         Map<String, DeliveryCommand> itemByDeliveryId = new LinkedHashMap<>();
         List<DispatchOutcome> immediateOutcomes = new ArrayList<>();
         for (DeliveryCommand command : batch.items()) {
@@ -68,8 +70,8 @@ public final class TransportDeliveryCommandListener {
                     continue;
                 }
                 String adapterId = endpoint.endpointDriverId();
-                WorkerAdapter adapter = resolveAdapter(adapterId);
-                if (adapter == null) {
+                TransportBinding binding = resolveBinding(adapterId);
+                if (binding == null) {
                     DispatchOutcome outcome = DispatchOutcome.fromCommand(
                             command,
                             DispatchOutcomeStatus.UNAVAILABLE,
@@ -81,7 +83,8 @@ public final class TransportDeliveryCommandListener {
                     continue;
                 }
                 itemByDeliveryId.put(command.getCommandId(), command);
-                groupedByAdapter.computeIfAbsent(adapter, ignored -> new ArrayList<>()).add(command);
+                groupedByAdapterId.computeIfAbsent(binding.getAdapterId(), ignored -> new ArrayList<>()).add(command);
+                executorByAdapterId.putIfAbsent(binding.getAdapterId(), binding.getCommandExecutor());
             } catch (RuntimeException e) {
                 DispatchOutcome outcome = DispatchOutcome.fromCommand(
                         command,
@@ -94,18 +97,19 @@ public final class TransportDeliveryCommandListener {
             }
         }
 
-        List<AdapterDispatchGroup> groups = new ArrayList<>(groupedByAdapter.size());
-        for (Map.Entry<WorkerAdapter, List<DeliveryCommand>> entry : groupedByAdapter.entrySet()) {
+        List<AdapterDispatchGroup> groups = new ArrayList<>(groupedByAdapterId.size());
+        for (Map.Entry<String, List<DeliveryCommand>> entry : groupedByAdapterId.entrySet()) {
             groups.add(new AdapterDispatchGroup(
                     batch.deliveryQueueKey(),
                     entry.getKey(),
+                    executorByAdapterId.get(entry.getKey()),
                     Collections.unmodifiableList(entry.getValue())
             ));
         }
 
         List<DispatchOutcome> outcomes = new ArrayList<>(immediateOutcomes);
         for (DispatchGroupResult dispatchResult : dispatchGroups(groups)) {
-            logDispatchOutcomes(batch.deliveryQueueKey(), dispatchResult.adapter(), dispatchResult.outcomes());
+            logDispatchOutcomes(batch.deliveryQueueKey(), dispatchResult.adapterId(), dispatchResult.outcomes());
             for (DispatchOutcome outcome : dispatchResult.outcomes()) {
                 outcomes.add(outcome);
                 if (outcome == null || !outcome.isRetryable()) {
@@ -120,9 +124,9 @@ public final class TransportDeliveryCommandListener {
         return Collections.unmodifiableList(outcomes);
     }
 
-    private WorkerAdapter resolveAdapter(String adapterId) {
+    private TransportBinding resolveBinding(String adapterId) {
         try {
-            return transportRuntimeRegistry.resolveDispatchAdapterByAdapterId(adapterId);
+            return transportRuntimeRegistry.resolveBindingByAdapterId(adapterId);
         } catch (RuntimeException e) {
             logger.warn("Cannot resolve delivery adapter: adapterId={}, reason={}", adapterId, e.getMessage());
             return null;
@@ -149,7 +153,7 @@ public final class TransportDeliveryCommandListener {
                 submitted++;
             } catch (RejectedExecutionException e) {
                 logger.warn("Delivery executor rejected adapter batch: adapterId={}, requests={}, reason={}",
-                        adapterId(group.adapter()), group.requests().size(), e.getMessage());
+                        group.adapterId(), group.requests().size(), e.getMessage());
                 futures.add(null);
                 break;
             }
@@ -180,21 +184,21 @@ public final class TransportDeliveryCommandListener {
 
     private DispatchGroupResult dispatchGroup(AdapterDispatchGroup group) {
         try {
-            List<DispatchOutcome> outcomes = group.adapter().dispatch(group.requests());
-            return new DispatchGroupResult(group.adapter(), outcomes == null ? List.of() : outcomes);
+            List<DispatchOutcome> outcomes = group.executor().dispatch(group.requests());
+            return new DispatchGroupResult(group.adapterId(), outcomes == null ? List.of() : outcomes);
         } catch (RuntimeException e) {
             return dispatchFailedGroup(group, "delivery adapter batch failed", e);
         }
     }
 
     private DispatchGroupResult dispatchFailedGroup(AdapterDispatchGroup group, String message, Throwable error) {
-        logger.error("{}: adapterId={}, requests={}", message, adapterId(group.adapter()), group.requests().size(), error);
-        return new DispatchGroupResult(group.adapter(), adapterUnavailableOutcomes(group, error != null ? error.getMessage() : message));
+        logger.error("{}: adapterId={}, requests={}", message, group.adapterId(), group.requests().size(), error);
+        return new DispatchGroupResult(group.adapterId(), adapterUnavailableOutcomes(group, error != null ? error.getMessage() : message));
     }
 
     private DispatchGroupResult dispatchRejectedGroup(AdapterDispatchGroup group, String reason) {
-        logger.warn("{}: adapterId={}, requests={}", reason, adapterId(group.adapter()), group.requests().size());
-        return new DispatchGroupResult(group.adapter(), adapterUnavailableOutcomes(group, reason));
+        logger.warn("{}: adapterId={}, requests={}", reason, group.adapterId(), group.requests().size());
+        return new DispatchGroupResult(group.adapterId(), adapterUnavailableOutcomes(group, reason));
     }
 
     private List<DispatchOutcome> adapterUnavailableOutcomes(AdapterDispatchGroup group, String reason) {
@@ -208,7 +212,7 @@ public final class TransportDeliveryCommandListener {
         return Collections.unmodifiableList(outcomes);
     }
 
-    private void logDispatchOutcomes(String deliveryQueueKey, WorkerAdapter adapter, List<DispatchOutcome> outcomes) {
+    private void logDispatchOutcomes(String deliveryQueueKey, String adapterId, List<DispatchOutcome> outcomes) {
         if (outcomes == null || outcomes.isEmpty()) {
             return;
         }
@@ -219,14 +223,14 @@ public final class TransportDeliveryCommandListener {
             if (outcome.getStatus() == DispatchOutcomeStatus.DELIVERED
                     || outcome.getStatus() == DispatchOutcomeStatus.QUEUED) {
                 logger.debug("Transport delivery outcome: adapterId={}, deliveryQueueKey={}, deliveryId={}, selectedWorkerId={}, status={}",
-                        adapterId(adapter), deliveryQueueKey, outcome.getDeliveryId(),
+                        adapterId, deliveryQueueKey, outcome.getDeliveryId(),
                         outcome.getSelectedWorkerId(), outcome.getStatus());
                 continue;
             }
             logger.warn("Transport delivery outcome: adapterId={}, deliveryQueueKey={}, deliveryId={}, selectedWorkerId={}, status={}, retryable={}, reason={}, routedAdapter={}",
-                    adapterId(adapter), deliveryQueueKey, outcome.getDeliveryId(),
+                    adapterId, deliveryQueueKey, outcome.getDeliveryId(),
                     outcome.getSelectedWorkerId(), outcome.getStatus(), outcome.isRetryable(),
-                    outcome.getReason(), adapter != null ? adapter.adapterId() : null);
+                    outcome.getReason(), adapterId);
         }
     }
 
@@ -247,12 +251,9 @@ public final class TransportDeliveryCommandListener {
         }
     }
 
-    private static String adapterId(WorkerAdapter adapter) {
-        return adapter != null ? adapter.adapterId() : null;
-    }
-
     private record AdapterDispatchGroup(String deliveryQueueKey,
-                                        WorkerAdapter adapter,
+                                        String adapterId,
+                                        AdapterCommandExecutor executor,
                                         List<DeliveryCommand> requests) {
     }
 
@@ -262,6 +263,6 @@ public final class TransportDeliveryCommandListener {
         }
     }
 
-    private record DispatchGroupResult(WorkerAdapter adapter, List<DispatchOutcome> outcomes) {
+    private record DispatchGroupResult(String adapterId, List<DispatchOutcome> outcomes) {
     }
 }

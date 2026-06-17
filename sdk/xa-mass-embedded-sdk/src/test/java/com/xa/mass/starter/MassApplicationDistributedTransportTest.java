@@ -14,6 +14,7 @@ import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
+import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
@@ -23,7 +24,7 @@ import com.xa.mass.transport.runtime.delivery.DeliveryCommandReference;
 import com.xa.mass.transport.runtime.delivery.DeliveryQueueOffer;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
-import com.xa.mass.transport.worker.WorkerAdapter;
+import com.xa.mass.transport.worker.AdapterCommandExecutor;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
 
@@ -335,7 +336,7 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public void contribute(TransportAdapterBootstrapContext context) {
+        public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
             context.getEndpointLeaseStore().claimEndpointLease(new TransportEndpointLeaseClaim(
                     "worker-1",
                     "demo-workers",
@@ -344,12 +345,17 @@ class MassApplicationDistributedTransportTest {
                     "session-worker-1",
                     "test"
             ));
-            context.registerTransportBinding(TransportBinding.builder(adapter)
-                    .build());
+            return TransportAdapterContribution.builder()
+                    .addTransportBinding(TransportBinding.builder(
+                            adapter.adapterId(),
+                            WorkerTransportHints.REALTIME,
+                            adapter
+                    ).build())
+                    .build();
         }
     }
 
-    private static final class RecordingAdapter implements WorkerAdapter {
+    private static final class RecordingAdapter implements AdapterCommandExecutor {
         private final String adapterId;
         private final CountDownLatch dispatchLatch;
         private final List<String> dispatchedMessageIds = Collections.synchronizedList(new ArrayList<>());
@@ -360,17 +366,14 @@ class MassApplicationDistributedTransportTest {
             this.dispatchLatch = new CountDownLatch(expectedDispatches);
         }
 
-        @Override
         public String protocol() {
             return adapterId;
         }
 
-        @Override
         public String adapterId() {
             return adapterId;
         }
 
-        @Override
         public String transportHint() {
             return WorkerTransportHints.REALTIME;
         }

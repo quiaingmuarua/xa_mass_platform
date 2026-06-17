@@ -8,7 +8,7 @@ import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
-import com.xa.mass.transport.worker.WorkerAdapter;
+import com.xa.mass.transport.worker.AdapterCommandExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -24,7 +24,7 @@ class TransportDeliveryCommandListenerTest {
         TransportRuntimeRegistry registry = new TransportRuntimeRegistry(
                 (TransportResultIngressChannel) envelope -> true,
                 endpointLeaseStore,
-                List.of(TransportBinding.builder(new NoopWorkerAdapter("socket")).build())
+                List.of(TransportBinding.builder("socket", "realtime", new NoopAdapterCommandExecutor()).build())
         );
         RecordingFailureHandler failures = new RecordingFailureHandler();
         TransportDeliveryCommandListener listener = new TransportDeliveryCommandListener(
@@ -72,23 +72,7 @@ class TransportDeliveryCommandListenerTest {
         }
     }
 
-    private static final class NoopWorkerAdapter implements WorkerAdapter {
-        private final String adapterId;
-
-        private NoopWorkerAdapter(String adapterId) {
-            this.adapterId = adapterId;
-        }
-
-        @Override
-        public String protocol() {
-            return adapterId;
-        }
-
-        @Override
-        public String adapterId() {
-            return adapterId;
-        }
-
+    private static final class NoopAdapterCommandExecutor implements AdapterCommandExecutor {
         @Override
         public List<DispatchOutcome> dispatch(List<DeliveryCommand> commands) {
             return List.of();

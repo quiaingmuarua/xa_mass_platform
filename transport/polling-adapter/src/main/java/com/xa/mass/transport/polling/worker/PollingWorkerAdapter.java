@@ -1,25 +1,20 @@
 package com.xa.mass.transport.polling.worker;
 
-import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
-import com.xa.mass.transport.lease.TransportEndpointLeaseConsumerEvidence;
-import com.xa.mass.transport.lease.TransportEndpointLeaseHeartbeat;
-import com.xa.mass.transport.lease.TransportEndpointLeaseRelease;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollStatus;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.worker.WorkerAdapter;
+import com.xa.mass.transport.runtime.lease.TransportEndpointLeasePublisher;
+import com.xa.mass.transport.worker.AdapterCommandExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,49 +25,28 @@ import java.util.Objects;
  * Pull-based worker adapter for crawlers, queue consumers, and other workers
  * that do not maintain a server-push transport.
  */
-public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel {
+public class PollingWorkerAdapter implements AdapterCommandExecutor, DeliveryPullChannel {
 
     private static final Logger logger = LoggerFactory.getLogger(PollingWorkerAdapter.class);
 
     /** Maximum items held per worker inbox before new dispatches are dropped. */
     static final int MAX_INBOX_SIZE = 10_000;
 
-    public static final String PROTOCOL = "polling";
-    public static final String DEFAULT_ADAPTER_ID = "polling-default";
-
-    private final TransportEndpointLeaseStore endpointLeaseStore;
     private final TransportDeliveryService deliveryService;
-    private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
+    private final TransportEndpointLeasePublisher endpointLeasePublisher;
     private final String adapterId;
-
-    public PollingWorkerAdapter(TransportEndpointLeaseStore endpointLeaseStore,
-                                TransportDeliveryService deliveryService) {
-        this(endpointLeaseStore,
-                deliveryService,
-                NoopDeliveryCommandConsumerRegistry.INSTANCE,
-                DEFAULT_ADAPTER_ID);
-    }
 
     public PollingWorkerAdapter(TransportEndpointLeaseStore endpointLeaseStore,
                                 TransportDeliveryService deliveryService,
                                 DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
                                 String adapterId) {
-        this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
-        this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
-                ? deliveryCommandConsumerRegistry
-                : NoopDeliveryCommandConsumerRegistry.INSTANCE;
         this.adapterId = requireText(adapterId, "adapterId");
-    }
-
-    @Override
-    public String protocol() {
-        return PROTOCOL;
-    }
-
-    @Override
-    public String adapterId() {
-        return adapterId;
+        this.endpointLeasePublisher = new TransportEndpointLeasePublisher(this.adapterId);
+        this.endpointLeasePublisher.setEndpointLeaseStore(Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore"));
+        this.endpointLeasePublisher.setDeliveryCommandConsumerRegistry(deliveryCommandConsumerRegistry != null
+                ? deliveryCommandConsumerRegistry
+                : NoopDeliveryCommandConsumerRegistry.INSTANCE);
     }
 
     @Override
@@ -114,9 +88,8 @@ public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel 
                                      String deliveryBucketId,
                                      String routeKey,
                                      String connectionId,
-        String reason) {
-        TransportEndpointLeaseClaim claim = endpointLeaseClaim(workerId, deliveryBucketId, routeKey, connectionId, reason);
-        claimDeliveryConsumer(endpointLeaseStore.claimEndpointLease(claim));
+                                     String reason) {
+        endpointLeasePublisher.claim(workerId, deliveryBucketId, routeKey, connectionId, reason);
     }
 
     public void announceWorkerOffline(String workerId,
@@ -124,9 +97,7 @@ public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel 
                                       String routeKey,
                                       String connectionId,
                                       String reason) {
-        TransportEndpointLeaseRelease claim = endpointLeaseRelease(workerId, deliveryBucketId, routeKey, connectionId, reason);
-        endpointLeaseStore.releaseEndpointLease(claim);
-        releaseDeliveryConsumer(claim);
+        endpointLeasePublisher.release(workerId, deliveryBucketId, routeKey, connectionId, reason);
     }
 
     public void refreshEndpointLeaseHeartbeat(String workerId,
@@ -134,12 +105,7 @@ public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel 
                                               String routeKey,
                                               String connectionId,
                                               String reason) {
-        TransportEndpointLeaseHeartbeat heartbeat =
-                endpointLeaseHeartbeat(workerId, deliveryBucketId, routeKey, connectionId, reason);
-        endpointLeaseStore.refreshEndpointLease(heartbeat).ifPresentOrElse(
-                this::claimDeliveryConsumer,
-                () -> releaseDeliveryConsumer(heartbeat)
-        );
+        endpointLeasePublisher.refresh(workerId, deliveryBucketId, routeKey, connectionId, reason);
     }
 
     private static DeliveryPullStatus mapStatus(TransportDeliveryPollStatus status) {
@@ -162,57 +128,6 @@ public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel 
         return items.stream()
                 .map(QueuedPulledDispatch::toPulledDeliveryMessage)
                 .toList();
-    }
-
-    private void claimDeliveryConsumer(TransportEndpointLeaseConsumerEvidence evidence) {
-        deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
-                evidence.deliveryBucketId(),
-                evidence.workerId(),
-                evidence.endpointLeaseId(),
-                evidence.leaseExpireAtEpochMillis()
-        ));
-    }
-
-    private void releaseDeliveryConsumer(TransportEndpointLeaseRelease claim) {
-        deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
-                claim.deliveryBucketId(),
-                claim.workerId(),
-                claim.endpointLeaseId(),
-                0L
-        ));
-    }
-
-    private void releaseDeliveryConsumer(TransportEndpointLeaseHeartbeat heartbeat) {
-        deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
-                heartbeat.deliveryBucketId(),
-                heartbeat.workerId(),
-                heartbeat.endpointLeaseId(),
-                0L
-        ));
-    }
-
-    private TransportEndpointLeaseClaim endpointLeaseClaim(String workerId,
-                                                           String deliveryBucketId,
-                                                           String routeKey,
-                                                           String connectionId,
-                                                           String reason) {
-        return new TransportEndpointLeaseClaim(workerId, deliveryBucketId, adapterId, routeKey, connectionId, reason);
-    }
-
-    private TransportEndpointLeaseHeartbeat endpointLeaseHeartbeat(String workerId,
-                                                                   String deliveryBucketId,
-                                                                   String routeKey,
-                                                                   String connectionId,
-                                                                   String reason) {
-        return new TransportEndpointLeaseHeartbeat(workerId, deliveryBucketId, adapterId, routeKey, connectionId, reason);
-    }
-
-    private TransportEndpointLeaseRelease endpointLeaseRelease(String workerId,
-                                                               String deliveryBucketId,
-                                                               String routeKey,
-                                                               String connectionId,
-                                                               String reason) {
-        return new TransportEndpointLeaseRelease(workerId, deliveryBucketId, adapterId, routeKey, connectionId, reason);
     }
 
     private static String requireText(String value, String fieldName) {

@@ -114,7 +114,6 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
     }
 
     private WorkerEndpointInspector resolveEndpointInspector() {
-        WorkerEndpointRegistry endpointRegistry = resolveEndpointRegistry();
-        return endpointRegistry instanceof WorkerEndpointInspector inspector ? inspector : null;
+        return delegate.getEndpointInspector();
     }
 }

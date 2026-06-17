@@ -52,7 +52,7 @@ Delivery command handoff
   command.selectedWorkerId -> endpoint/session consumer evidence
 
 Final-hop adapter dispatch
-  WorkerAdapter.dispatch(List<DeliveryCommand>)
+  AdapterCommandExecutor.dispatch(List<DeliveryCommand>)
   adapter-local selectedWorkerId send
 
 Adapter/session manager

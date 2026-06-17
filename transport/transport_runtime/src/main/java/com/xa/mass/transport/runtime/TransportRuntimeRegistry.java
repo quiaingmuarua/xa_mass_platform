@@ -4,8 +4,9 @@ import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
-import com.xa.mass.transport.worker.WorkerAdapter;
+import com.xa.mass.transport.worker.AdapterCommandExecutor;
 
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +32,7 @@ public final class TransportRuntimeRegistry {
     private final List<TransportBinding> bindings;
     private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
+    private final Map<AdapterCommandExecutor, String> adapterIdByCommandExecutor;
 
     public TransportRuntimeRegistry(TransportResultIngressChannel resultIngressChannel,
                                     TransportEndpointLeaseStore endpointLeaseStore,
@@ -56,7 +58,9 @@ public final class TransportRuntimeRegistry {
         }
         this.registrationResolver = TransportRegistrationResolver.fromBindings(this.bindings);
         this.bindingByAdapterId = new LinkedHashMap<>();
+        this.adapterIdByCommandExecutor = new IdentityHashMap<>();
         for (TransportBinding binding : this.bindings) {
+            registerCommandExecutor(binding);
             registerAdapterId(binding.getAdapterId(), binding);
         }
     }
@@ -83,17 +87,17 @@ public final class TransportRuntimeRegistry {
         return resolveBinding(requestedAdapterId, transportHint).getTransportHint();
     }
 
-    public WorkerAdapter resolveDispatchAdapter(String requestedAdapterId, String transportHint) {
-        return resolveBinding(requestedAdapterId, transportHint).getWorkerAdapter();
+    public AdapterCommandExecutor resolveCommandExecutor(String requestedAdapterId, String transportHint) {
+        return resolveBinding(requestedAdapterId, transportHint).getCommandExecutor();
     }
 
-    public WorkerAdapter resolveDispatchAdapterByAdapterId(String adapterId) {
+    public TransportBinding resolveBindingByAdapterId(String adapterId) {
         TransportBinding binding = bindingByAdapterId.get(normalizeAdapterId(adapterId));
         if (binding == null) {
             throw new IllegalStateException("No runtime binding is registered for adapterId '" + adapterId
                     + "'; available adapterIds=" + availableAdapterIds());
         }
-        return binding.getWorkerAdapter();
+        return binding;
     }
 
     public ResolvedPullWorkerTransport resolvePullWorkerTransport(String workerId,
@@ -162,6 +166,17 @@ public final class TransportRuntimeRegistry {
             return null;
         }
         return adapterId.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private void registerCommandExecutor(TransportBinding binding) {
+        AdapterCommandExecutor executor = binding.getCommandExecutor();
+        String existingAdapterId = adapterIdByCommandExecutor.get(executor);
+        if (existingAdapterId != null && !existingAdapterId.equals(binding.getAdapterId())) {
+            throw new IllegalArgumentException("Adapter command executor instance is shared by adapters '"
+                    + existingAdapterId + "' and '" + binding.getAdapterId()
+                    + "'; each adapter binding must own a distinct executor instance");
+        }
+        adapterIdByCommandExecutor.put(executor, binding.getAdapterId());
     }
 
 }

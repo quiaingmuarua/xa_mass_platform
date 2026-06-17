@@ -4,7 +4,7 @@ import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
+import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
@@ -31,7 +31,7 @@ class ServerSessionManagerShutdownTest {
 
     @BeforeEach
     void setUp() {
-        manager = new ServerSessionManager(WebSocketTaskDispatchChannel.DEFAULT_ADAPTER_ID);
+        manager = new ServerSessionManager(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
     }
 
     @Test
@@ -71,7 +71,7 @@ class ServerSessionManagerShutdownTest {
         assertTrue(manager.isAdapterRouteOnline("ws-public", "route-1"));
         assertFalse(manager.isAdapterRouteOnline("websocket", "route-1"));
         assertEquals("ws-public", manager.getAdapterId());
-        assertEquals("ws-public", manager.listWorkerEndpoints().get(0).getAdapterId());
+        assertEquals("ws-public", new WebSocketEndpointInspector(manager).listWorkerEndpoints().get(0).getAdapterId());
     }
 
     @Test

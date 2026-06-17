@@ -3,8 +3,8 @@ package com.xa.mass.transport.socket.server;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.model.TransportResultIngressEnvelope;
-import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
+import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
 import org.junit.jupiter.api.Test;
 
@@ -32,7 +32,7 @@ class SocketTransportServerTest {
                 "127.0.0.1",
                 0,
                 10,
-                new SocketSessionManager(SocketTaskDispatchChannel.DEFAULT_ADAPTER_ID),
+                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID),
                 new SocketTransportFrameCodec(),
                 null,
                 executor
@@ -62,7 +62,7 @@ class SocketTransportServerTest {
     void helloFrameRegistersSocketSession() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
-                new SocketSessionManager(SocketTaskDispatchChannel.DEFAULT_ADAPTER_ID);
+                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID);
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
                 "127.0.0.1",
@@ -99,7 +99,7 @@ class SocketTransportServerTest {
     void helloFrameRouteKeyOverridesWorkerIdAsSocketAddress() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
-                new SocketSessionManager(SocketTaskDispatchChannel.DEFAULT_ADAPTER_ID);
+                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID);
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
                 "127.0.0.1",
@@ -137,7 +137,7 @@ class SocketTransportServerTest {
     void canonicalTaskResultIngressUsesBoundRouteKeyAndMessageIdTraceFallback() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
-                new SocketSessionManager(SocketTaskDispatchChannel.DEFAULT_ADAPTER_ID);
+                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID);
         AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
@@ -196,7 +196,7 @@ class SocketTransportServerTest {
                 "127.0.0.1",
                 0,
                 10,
-                new SocketSessionManager(SocketTaskDispatchChannel.DEFAULT_ADAPTER_ID),
+                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID),
                 new SocketTransportFrameCodec(),
                 null,
                 executor

@@ -25,9 +25,11 @@ import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.runtime.ManagedTransportAdapter;
+import com.xa.mass.transport.runtime.CompositeWorkerEndpointInspector;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
+import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
@@ -94,6 +96,7 @@ public class MassApplication {
     private final MassEngine engine;
     private MessageTransporter<String, TransportOutboundMessage> messageTransporter;
     private WorkerEndpointRegistry endpointRegistry;
+    private WorkerEndpointInspector endpointInspector;
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportEndpointLeaseStore endpointLeaseStore;
     private TransportDeliveryService transportDeliveryService;
@@ -250,6 +253,7 @@ public class MassApplication {
             transportServers.clear();
             startEventRuntimeTaskExecutor();
             endpointRegistry = transportRuntimeComposition.resolveWorkerEndpointRegistry();
+            endpointInspector = new CompositeWorkerEndpointInspector();
             logger.info("Worker endpoint registry initialized");
 
             messageTransporter = transportRuntimeComposition.createMessageTransporterIfConfigured();
@@ -327,8 +331,12 @@ public class MassApplication {
                             deliveryCommandConsumerRegistry,
                             transportRuntimeTaskExecutor
                     );
-                    transportAdapterBootstrap.contribute(bootstrapContext);
-                    registerTransportBootstrapContext(bootstrapContext, adapterBindings);
+                    TransportAdapterContribution contribution = transportAdapterBootstrap.contribute(bootstrapContext);
+                    if (contribution == null) {
+                        contribution = TransportAdapterContribution.empty();
+                    }
+                    contribution.validateAgainst(transportAdapterBootstrap.descriptor());
+                    registerTransportAdapterContribution(contribution, adapterBindings);
                 }
             }
 
@@ -680,14 +688,40 @@ public class MassApplication {
         }
     }
 
-    private void registerTransportBootstrapContext(TransportAdapterBootstrapContext bootstrapContext,
-                                                   List<TransportBinding> adapterBindings) {
-        if (bootstrapContext.getTransportBinding() != null) {
-            adapterBindings.add(bootstrapContext.getTransportBinding());
+    private void registerWorkerEndpointInspector(WorkerEndpointInspector inspector) {
+        if (inspector == null) {
+            return;
         }
-        registerManagedTransportAdapter(bootstrapContext.getManagedTransportAdapter());
-        registerRawWorkerMessageChannel(bootstrapContext.getRawWorkerMessageChannel());
-        registerTransportServer(bootstrapContext.getTransportServer());
+        if (endpointInspector instanceof CompositeWorkerEndpointInspector composite) {
+            composite.register(inspector);
+            return;
+        }
+        CompositeWorkerEndpointInspector composite = new CompositeWorkerEndpointInspector();
+        if (endpointInspector != null) {
+            composite.register(endpointInspector);
+        }
+        composite.register(inspector);
+        endpointInspector = composite;
+    }
+
+    private void registerTransportAdapterContribution(TransportAdapterContribution contribution,
+                                                      List<TransportBinding> adapterBindings) {
+        TransportAdapterContribution next = contribution != null
+                ? contribution
+                : TransportAdapterContribution.empty();
+        adapterBindings.addAll(next.getTransportBindings());
+        for (ManagedTransportAdapter managedTransportAdapter : next.getManagedTransportAdapters()) {
+            registerManagedTransportAdapter(managedTransportAdapter);
+        }
+        for (RawWorkerMessageChannel rawWorkerMessageChannel : next.getRawWorkerMessageChannels()) {
+            registerRawWorkerMessageChannel(rawWorkerMessageChannel);
+        }
+        for (TransportServer transportServer : next.getTransportServers()) {
+            registerTransportServer(transportServer);
+        }
+        for (WorkerEndpointInspector inspector : next.getEndpointInspectors()) {
+            registerWorkerEndpointInspector(inspector);
+        }
     }
 
     public boolean isRunning() {
@@ -911,9 +945,7 @@ public class MassApplication {
     }
 
     private String resolveRawMessageRouteKey(String workerId, String adapterId) {
-        WorkerEndpointInspector inspector = endpointRegistry instanceof WorkerEndpointInspector endpointInspector
-                ? endpointInspector
-                : null;
+        WorkerEndpointInspector inspector = endpointInspector;
         if (inspector == null || adapterId == null || adapterId.isBlank()) {
             return null;
         }
@@ -957,6 +989,10 @@ public class MassApplication {
 
     public WorkerEndpointRegistry getEndpointRegistry() {
         return endpointRegistry;
+    }
+
+    public WorkerEndpointInspector getEndpointInspector() {
+        return endpointInspector;
     }
 
     public TransportRuntimeRegistry getTransportRuntimeRegistry() {

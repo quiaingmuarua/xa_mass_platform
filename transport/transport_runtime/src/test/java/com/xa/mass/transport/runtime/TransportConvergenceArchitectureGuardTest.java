@@ -359,6 +359,202 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
+    void adapterCommandExecutorDoesNotMixAdapterMetadata() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/worker/WorkerAdapter.java")
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java")
+                ),
+                "import com.xa.mass.transport.worker.WorkerAdapter",
+                "implements WorkerAdapter",
+                "getWorkerAdapter(",
+                "resolveDispatchAdapter(",
+                "resolveCommandExecutorByAdapterId("
+        );
+
+        Path binding = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportBinding.java");
+        String bindingSource = Files.readString(binding);
+        assertTrue(bindingSource.contains("private final String adapterId;"),
+                "TransportBinding must own adapter id metadata explicitly");
+        assertTrue(bindingSource.contains("private final String transportHint;"),
+                "TransportBinding must own transport hint metadata explicitly");
+        assertTrue(bindingSource.contains("private final AdapterCommandExecutor commandExecutor;"),
+                "TransportBinding must own the command executor separately");
+        assertTrue(!bindingSource.contains("adapterId()"),
+                "TransportBinding must not read adapter id from the executor");
+        assertTrue(!bindingSource.contains("transportHint()"),
+                "TransportBinding must not read transport hint from the executor");
+
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketTaskDispatchChannel.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingWorkerAdapter.java")
+                ),
+                "public String protocol(",
+                "public String adapterId(",
+                "public String transportHint(",
+                "public static final String DEFAULT_ADAPTER_ID",
+                "public static final String PROTOCOL"
+        );
+
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/DefaultWorkerTransportRuntimeFactory.java")
+                ),
+                ".protocol(commandExecutor.protocol())",
+                ".protocol(pollingAdapter.protocol())"
+        );
+
+        Path listener = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandListener.java");
+        String listenerSource = Files.readString(listener);
+        assertTrue(!listenerSource.contains("Map<AdapterCommandExecutor"),
+                "Delivery command listener must group by adapter binding identity, not executor instance");
+        assertTrue(!listenerSource.contains("putIfAbsent(executor"),
+                "Delivery command listener must not store adapter identity by executor instance");
+    }
+
+    @Test
+    void adapterBootstrapOutputsAreExplicitContributions() throws IOException {
+        Path bootstrap = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrap.java");
+        String bootstrapSource = Files.readString(bootstrap);
+        assertTrue(bootstrapSource.contains("TransportAdapterContribution contribute(TransportAdapterBootstrapContext context)"),
+                "Adapter bootstraps must return explicit contribution output");
+
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrapContext.java")),
+                "registerTransportBinding",
+                "registerManagedTransportAdapter",
+                "registerTransportServer",
+                "registerRawWorkerMessageChannel",
+                "private TransportBinding",
+                "private ManagedTransportAdapter",
+                "private TransportServer",
+                "private RawWorkerMessageChannel"
+        );
+    }
+
+    @Test
+    void websocketAssignedDeliveryUsesNarrowCommandContext() throws IOException {
+        Path taskDispatchChannel = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketTaskDispatchChannel.java");
+        String taskDispatchSource = Files.readString(taskDispatchChannel);
+        assertTrue(taskDispatchSource.contains("WebSocketCommandDispatchContext"),
+                "WebSocket assigned delivery must use the narrow command context");
+        assertTrue(!taskDispatchSource.contains("WebSocketDispatcherContext"),
+                "WebSocket assigned delivery must not depend on the raw/result dispatcher context");
+
+        Path commandContext = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketCommandDispatchContext.java");
+        String commandContextSource = Files.readString(commandContext);
+        assertTrue(commandContextSource.contains("WorkerEndpointRegistry"),
+                "WebSocket command context may depend on selected-worker endpoint registry");
+        assertTrue(!commandContextSource.contains("RawWorkerRouteEndpointRegistry"),
+                "WebSocket command context must not depend on raw route registry");
+        assertTrue(!commandContextSource.contains("TransportResultIngressChannel"),
+                "WebSocket command context must not depend on result ingress");
+
+        Path dispatcherContext = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketDispatcherContext.java");
+        String dispatcherContextSource = Files.readString(dispatcherContext);
+        assertTrue(!dispatcherContextSource.contains("WorkerEndpointRegistry"),
+                "WebSocket raw/result dispatcher context must not own assigned-delivery selected endpoint registry");
+
+        Path sessionManager = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/ServerSessionManager.java");
+        String sessionManagerSource = Files.readString(sessionManager);
+        assertTrue(!sessionManagerSource.contains("RawWorkerRouteEndpointRegistry"),
+                "ServerSessionManager must not implement the raw route side-channel");
+        assertTrue(!sessionManagerSource.contains("WorkerEndpointInspector"),
+                "ServerSessionManager must not implement diagnostics inspector");
+        assertTrue(!sessionManagerSource.contains("listWorkerEndpoints("),
+                "ServerSessionManager must not expose diagnostics inspector methods directly");
+        Path endpointInspector = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketEndpointInspector.java");
+        assertTrue(Files.exists(endpointInspector), "WebSocket diagnostics must live in a dedicated inspector");
+    }
+
+    @Test
+    void socketAssignedDeliveryUsesNarrowCommandContext() throws IOException {
+        Path taskDispatchChannel = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java");
+        String taskDispatchSource = Files.readString(taskDispatchChannel);
+        assertTrue(taskDispatchSource.contains("SocketCommandDispatchContext"),
+                "Socket assigned delivery must use the narrow command context");
+        assertTrue(!taskDispatchSource.contains("SocketSessionManager"),
+                "Socket assigned delivery must not depend on the concrete session manager");
+
+        Path commandContext = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketCommandDispatchContext.java");
+        String commandContextSource = Files.readString(commandContext);
+        assertTrue(commandContextSource.contains("WorkerEndpointRegistry"),
+                "Socket command context may depend on selected-worker endpoint registry");
+        assertTrue(!commandContextSource.contains("RawWorkerRouteEndpointRegistry"),
+                "Socket command context must not depend on raw route registry");
+        assertTrue(!commandContextSource.contains("TransportResultIngressChannel"),
+                "Socket command context must not depend on result ingress");
+
+        Path sessionManager = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java");
+        String sessionManagerSource = Files.readString(sessionManager);
+        assertTrue(!sessionManagerSource.contains("RawWorkerRouteEndpointRegistry"),
+                "SocketSessionManager must not implement the raw route side-channel");
+        assertTrue(!sessionManagerSource.contains("WorkerEndpointInspector"),
+                "SocketSessionManager must not implement diagnostics inspector");
+        assertTrue(!sessionManagerSource.contains("listWorkerEndpoints("),
+                "SocketSessionManager must not expose diagnostics inspector methods directly");
+        Path endpointInspector = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketEndpointInspector.java");
+        assertTrue(Files.exists(endpointInspector), "Socket diagnostics must live in a dedicated inspector");
+    }
+
+    @Test
+    void endpointCompositeDoesNotOwnRawRouteOrDiagnosticsRoles() throws IOException {
+        Path endpointComposite = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointRegistry.java");
+        String endpointCompositeSource = Files.readString(endpointComposite);
+        assertTrue(!endpointCompositeSource.contains("RawWorkerRouteEndpointRegistry"),
+                "Endpoint registry composite must not own raw route side-channel");
+        assertTrue(!endpointCompositeSource.contains("WorkerEndpointInspector"),
+                "Endpoint registry composite must not own diagnostics inspector aggregation");
+        assertTrue(!endpointCompositeSource.contains("instanceof"),
+                "Endpoint registry composite must not discover side roles via instanceof");
+
+        Path inspectorComposite = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointInspector.java");
+        String inspectorCompositeSource = Files.readString(inspectorComposite);
+        assertTrue(inspectorCompositeSource.contains("implements WorkerEndpointInspector"),
+                "Endpoint diagnostics must live in the dedicated inspector composite");
+
+        Path massApplication = repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java");
+        String massApplicationSource = Files.readString(massApplication);
+        assertTrue(!massApplicationSource.contains("endpointRegistry instanceof WorkerEndpointInspector"),
+                "MassApplication must not discover endpoint diagnostics through endpoint registry side roles");
+    }
+
+    @Test
+    void concreteAdaptersDoNotOwnEndpointLeaseOrPresenceProjectionInternals() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/ServerSessionManager.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingWorkerAdapter.java")
+                ),
+                "TransportEndpointLeaseClaim",
+                "TransportEndpointLeaseHeartbeat",
+                "TransportEndpointLeaseRelease",
+                "TransportEndpointLeaseConsumerEvidence",
+                "DeliveryCommandConsumerClaim",
+                "WorkerSessionPresenceEvent",
+                "endpointLeaseStore.claimEndpointLease",
+                "endpointLeaseStore.refreshEndpointLease",
+                "endpointLeaseStore.releaseEndpointLease"
+        );
+        assertTrue(Files.exists(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease/TransportEndpointLeasePublisher.java")),
+                "Endpoint lease projection must live in a dedicated publisher");
+        assertTrue(Files.exists(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease/WorkerPresenceSessionPublisher.java")),
+                "Worker presence projection must live in a dedicated publisher");
+    }
+
+    @Test
     void taskDispatchContentAndExecutionContextModelsDoNotReappear() {
         assertPathsDoNotExist(
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TaskDispatchContent.java"),
