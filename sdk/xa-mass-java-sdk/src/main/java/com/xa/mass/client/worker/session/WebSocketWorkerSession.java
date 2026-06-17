@@ -12,7 +12,6 @@ import com.xa.mass.client.worker.handler.DispatchContext;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
 import com.xa.mass.client.worker.handler.WorkerEventHandlers;
-import com.xa.mass.client.worker.handler.WorkerEventInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
 
 import java.net.URI;
@@ -38,7 +37,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class WebSocketWorkerSession implements AutoCloseable {
+public final class  WebSocketWorkerSession implements WorkerSession {
     private static final ObjectMapper DEFAULT_OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final int FRAME_FAILURE_PREVIEW_LIMIT = 512;
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
@@ -55,7 +54,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
     private final int maxReconnectAttempts;
     private final WorkerSessionListener listener;
     private final WorkerEventHandlers eventHandlers;
-    private final WorkerEventHandlerRuntime handlerRuntime;
+    private final WorkerDispatchProcessor dispatchProcessor;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final WebSocketConnector webSocketConnector;
@@ -81,7 +80,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         this.maxReconnectAttempts = builder.maxReconnectAttempts;
         this.listener = builder.listener;
         this.eventHandlers = builder.eventHandlers.build();
-        this.handlerRuntime = new WorkerEventHandlerRuntime(eventHandlers);
+        this.dispatchProcessor = new WorkerDispatchProcessor(workerId, new WorkerEventHandlerRuntime(eventHandlers), listener);
         this.objectMapper = builder.objectMapper;
         this.httpClient = builder.httpClient;
         this.webSocketConnector = builder.webSocketConnector == null
@@ -97,6 +96,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         return new Builder(workerClient);
     }
 
+    @Override
     public WebSocketWorkerSession start() {
         WorkerSessionStartupStep lastSuccessful = null;
         try {
@@ -126,8 +126,24 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         }
     }
 
+    @Override
     public boolean isRunning() {
         return running.get();
+    }
+
+    @Override
+    public String workerId() {
+        return workerId;
+    }
+
+    @Override
+    public String workerGroupId() {
+        return workerGroupId;
+    }
+
+    @Override
+    public String transportHint() {
+        return "realtime";
     }
 
     public int pendingResults() {
@@ -271,12 +287,8 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         if (item == null) {
             return;
         }
-        DispatchContext dispatch = DispatchContext.from(item);
-        WorkerEventInvocation invocation = handlerRuntime.invoke(dispatch);
-        if (invocation.handlerFailed()) {
-            listener.onHandlerFailure(new WorkerSessionDispatchFailure(dispatch, invocation.failure()));
-        }
-        enqueueResult(dispatch, invocation.result());
+        WorkerDispatchProcessor.ProcessedDispatch processed = dispatchProcessor.process(item);
+        enqueueResult(processed.dispatch(), processed.result());
     }
 
     private void enqueueResult(DispatchContext dispatch, WorkerResult result) {

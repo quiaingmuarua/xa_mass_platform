@@ -34,6 +34,16 @@ public final class WorkerSessions {
         return PollingWorkerSession.builder(workerClient);
     }
 
+    public PollingWorkerSession.Builder polling(WorkerSessionSpec spec) {
+        WorkerSessionSpec resolved = Objects.requireNonNull(spec, "spec is required");
+        return polling()
+                .workerId(resolved.workerId())
+                .workerGroupId(resolved.workerGroupId())
+                .attributes(resolved.attributes())
+                .eventHandlers(resolved.eventHandlers())
+                .listener(resolved.listener());
+    }
+
     public WebSocketWorkerSession.Builder webSocket() {
         WebSocketWorkerSession.Builder builder = WebSocketWorkerSession.builder(workerClient)
                 .connectTimeout(connectTimeout)
@@ -42,5 +52,15 @@ public final class WorkerSessions {
             builder.httpClient(httpClient);
         }
         return builder;
+    }
+
+    public WebSocketWorkerSession.Builder webSocket(WorkerSessionSpec spec) {
+        WorkerSessionSpec resolved = Objects.requireNonNull(spec, "spec is required");
+        return webSocket()
+                .workerId(resolved.workerId())
+                .workerGroupId(resolved.workerGroupId())
+                .attributes(resolved.attributes())
+                .eventHandlers(resolved.eventHandlers())
+                .listener(resolved.listener());
     }
 }

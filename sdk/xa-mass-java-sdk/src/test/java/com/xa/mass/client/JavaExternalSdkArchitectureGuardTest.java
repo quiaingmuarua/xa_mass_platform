@@ -1,14 +1,22 @@
 package com.xa.mass.client;
 
+import com.xa.mass.client.worker.session.WorkerSession;
+import com.xa.mass.client.worker.session.WorkerSessionSpec;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -28,6 +36,7 @@ class JavaExternalSdkArchitectureGuardTest {
             "import com.xa.mass.kernel.spi.",
             "import com.xa.mass.base.",
             "import com.xa.mass.api.",
+            "import com.xa.mass.transport.",
             "import com.xa.mass.transport.runtime.",
             "import com.xa.mass.transport.websocket.",
             "import com.xa.mass.transport.socket.",
@@ -47,6 +56,7 @@ class JavaExternalSdkArchitectureGuardTest {
             "xa-mass-engine",
             "xa-mass-server",
             "xa-mass-worker-runtime",
+            "xa-mass-transport-api",
             "xa-mass-transport-websocket",
             "xa-mass-transport-socket",
             "xa-mass-transport-polling",
@@ -78,6 +88,26 @@ class JavaExternalSdkArchitectureGuardTest {
                 assertFalse(pom.contains(token), pomPath + " must not contain " + token);
             }
         }
+    }
+
+    @Test
+    void workerSessionContractStaysNarrow() {
+        Set<String> methodNames = Arrays.stream(WorkerSession.class.getDeclaredMethods())
+                .map(Method::getName)
+                .collect(Collectors.toSet());
+
+        assertEquals(Set.of("workerId", "workerGroupId", "transportHint", "start", "isRunning", "close"),
+                methodNames);
+    }
+
+    @Test
+    void workerSessionSpecContainsOnlySharedSessionFacts() {
+        Set<String> fieldNames = Arrays.stream(WorkerSessionSpec.class.getDeclaredFields())
+                .map(Field::getName)
+                .collect(Collectors.toSet());
+
+        assertEquals(Set.of("workerId", "workerGroupId", "attributes", "eventHandlers", "listener"),
+                fieldNames);
     }
 
     @Test

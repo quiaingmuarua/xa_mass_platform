@@ -29,6 +29,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-public-contract</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>${jackson.version}</version>

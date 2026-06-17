@@ -25,8 +25,9 @@ engine, worker-pack, or transport ownership.
   public worker APIs via `xa-mass-java-sdk`
 - task launcher creates tasks and appends items through public task APIs via
   `xa-mass-java-sdk`
-- worker launcher starts Java SDK `PollingWorkerSession` workers for polling
-  scenario specs and WebSocket sessions when `--websocket-url` is provided
+- worker launcher starts Java SDK `WorkerSession` instances: polling sessions
+  for polling scenario specs and WebSocket sessions when `--websocket-url` is
+  provided
 - worker launcher keeps running until the process is interrupted
 - task launcher does not register workers or start worker sessions
 - worker launcher does not create tasks

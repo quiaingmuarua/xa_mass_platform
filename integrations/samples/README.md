@@ -110,9 +110,10 @@ Every sample should remain provable through an external-process black-box test:
 
 - control-plane registration alone does not mark a realtime worker online
 - worker becomes `ONLINE` only after transport presence is established
-- polling samples report capability at startup via `:report-capability` and
-  bounded worker state via `:report-state`; both go through the public
-  `/worker-api/v1` contract
+- polling samples currently report worker-local handler availability and
+  scheduling evidence via `:report-capability`, plus bounded worker state via
+  `:report-state`; these public `/worker-api/v1` reports are not WorkerGroup
+  capability truth or WorkerSession lifecycle requirements
 - Java executable SDK proof lives in `integrations/xa-mass-scenario-launcher`;
   standalone Java sample apps are not a current product surface
 - polling samples can acknowledge operator-issued worker commands via

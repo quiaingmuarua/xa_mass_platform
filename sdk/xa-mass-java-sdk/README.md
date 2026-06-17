@@ -11,7 +11,8 @@ composition SDK.
 ## Runtime Target
 
 - Java 21 JVM process.
-- Production dependencies are JDK `HttpClient` and Jackson.
+- Production dependencies are the public contract module, JDK `HttpClient`,
+  and Jackson.
 - No Spring Boot, engine, server, embedded SDK, worker runtime, transport
   adapter, worker-pack, or `xa-mass-base` production dependency.
 - Android/device worker-host support is outside this JVM SDK module.
@@ -60,14 +61,14 @@ Current implemented surface:
   online, heartbeat, poll, submit result, command poll/ack, capability report,
   state report, and offline
 - managed polling worker session:
-  adapter/node registration, node/group binding, worker registration, online,
-  capability/state report, heartbeat, poll, handler dispatch, result submit,
-  and best-effort offline on close
+  worker registration, online, current worker-local capability/state report,
+  heartbeat, poll, handler dispatch, result submit, and best-effort offline on
+  close. WorkerGroup declaration and adapter topology setup remain explicit
+  `mass.workers()` operations outside the session.
 - managed WebSocket worker session:
-  adapter/node registration, node/group binding, realtime worker registration,
-  JDK WebSocket connection, canonical task dispatch frame handling, queued
-  result frame submission, bounded reconnect attempts, queue-full/requeue
-  failure reporting,
+  realtime worker registration, JDK WebSocket connection, canonical task
+  dispatch frame handling, queued result frame submission, bounded reconnect
+  attempts, queue-full/requeue failure reporting,
   heartbeat/frame/connection lifecycle callbacks, and queued-result terminal
   callbacks on close or reconnect exhaustion.
   Realtime worker presence is transport-owned; the session does not call
@@ -78,6 +79,12 @@ Current implemented surface:
 - transport-neutral worker handler runtime:
   event handler registry, handler invocation, deterministic handler failure
   conversion, and session-owned result sink hooks
+- common worker-session model:
+  narrow `WorkerSession` lifecycle contract and `WorkerSessionSpec` shared
+  identity/options object for `workerId`, `workerGroupId`, attributes, event
+  handlers, and listener wiring. `WorkerSession` does not expose transport
+  internals, report-capability/state policy, polling methods, reconnect
+  controls, session tokens, or result queues.
 
 Stable public entry points are:
 
@@ -93,6 +100,12 @@ prefer typed clients; raw HTTP helpers are not a compatibility promise.
 Use `MassPlatform.workerSessions()` as the stable session factory. Direct
 `new WorkerSessions(...)` construction is marked `@UnstableApi` and is reserved
 for advanced or internal wiring.
+
+`WorkerSession.transportHint()` is the public worker registration hint from
+`WorkerSpec`. Current managed sessions return `polling` for
+`PollingWorkerSession` and `realtime` for `WebSocketWorkerSession`; this value
+is not an adapter id, protocol id, route key, endpoint id, or transport runtime
+owner id.
 
 Task append ergonomics stay identity-preserving: do not add a Java SDK bulk
 append helper while `TaskAppendResult` lacks per-item message identity or an
@@ -259,17 +272,20 @@ WorkerEventHandlers handlers = WorkerEventHandlers.builder()
         })
         .build();
 
-mass.workers().declareGroup(WorkerGroupSpec.builder()
-        .groupId("phone-device-probe")
-        .bindEvent("probe.phone.metadata", List.of("probeApp"))
-        .build());
-
-try (PollingWorkerSession session = mass.workerSessions().polling()
+WorkerSessionSpec sessionSpec = WorkerSessionSpec.builder()
         .workerId("phone-worker-sg-001")
         .workerGroupId("phone-device-probe")
         .attribute("fingerprint", "fp-android-13-sg")
         .attribute("region", "sg")
         .eventHandlers(handlers)
+        .build();
+
+mass.workers().declareGroup(WorkerGroupSpec.builder()
+        .groupId("phone-device-probe")
+        .bindEvent("probe.phone.metadata", List.of("probeApp"))
+        .build());
+
+try (WorkerSession session = mass.workerSessions().polling(sessionSpec)
         .start()) {
     Thread.currentThread().join();
 }
@@ -278,10 +294,11 @@ try (PollingWorkerSession session = mass.workerSessions().polling()
 `PollingWorkerSession.start()` does not declare WorkerGroups. Group declaration
 is an explicit topology/setup operation through `mass.workers()`.
 
-`PollingWorkerSession` uses the transport-neutral
+`PollingWorkerSession` uses the SDK-owned
 `com.xa.mass.client.worker.handler` runtime internally. `WebSocketWorkerSession`
-uses the same handler runtime and routes handler results through a session-owned
-outbound frame queue. Queue-full outcomes are reported through
+uses the same handler runtime through the common session dispatch processor and
+routes handler results through a session-owned outbound frame queue.
+Queue-full outcomes are reported through
 `WorkerSessionListener.onQueuedResultDropped(...)`; queued results that cannot
 be requeued after send failure, or cannot be submitted because the session
 closes or reconnect is exhausted, are reported through

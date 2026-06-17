@@ -13,14 +13,25 @@ public record DispatchContext(
         WorkerDispatchItem rawItem
 ) {
     public static DispatchContext from(WorkerDispatchItem item) {
+        return from(item, item.workerId());
+    }
+
+    public static DispatchContext from(WorkerDispatchItem item, String workerId) {
         return new DispatchContext(
                 item.taskId(),
                 item.messageId(),
                 item.eventCode(),
-                item.workerId(),
+                firstNonBlank(item.workerId(), workerId),
                 MassPayload.of(item.input()),
                 MassPayload.of(item.sharedConfig()),
                 item
         );
+    }
+
+    private static String firstNonBlank(String primary, String fallback) {
+        if (primary != null && !primary.isBlank()) {
+            return primary.trim();
+        }
+        return fallback == null ? null : fallback.trim();
     }
 }

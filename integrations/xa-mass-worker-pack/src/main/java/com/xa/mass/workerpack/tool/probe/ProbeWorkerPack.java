@@ -7,6 +7,7 @@ import com.xa.mass.client.worker.handler.DispatchContext;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.client.worker.session.PollingWorkerSession;
+import com.xa.mass.client.worker.session.WorkerSessionSpec;
 
 import java.net.URI;
 import java.time.Duration;
@@ -366,11 +367,13 @@ public final class ProbeWorkerPack {
                     .attributes(attributes)
                     .build());
             platform.workers().bindNodeGroup(resolvedAdapterNodeId, PHONE_DEVICE_GROUP_ID);
-            return platform.workerSessions().polling()
+            WorkerSessionSpec sessionSpec = WorkerSessionSpec.builder()
                     .workerId(resolvedWorkerId)
                     .workerGroupId(PHONE_DEVICE_GROUP_ID)
                     .attributes(attributes)
                     .eventHandler(PHONE_METADATA_EVENT, phoneMetadataHandler())
+                    .build();
+            return platform.workerSessions().polling(sessionSpec)
                     .pollInterval(pollInterval)
                     .heartbeatInterval(heartbeatInterval)
                     .start();

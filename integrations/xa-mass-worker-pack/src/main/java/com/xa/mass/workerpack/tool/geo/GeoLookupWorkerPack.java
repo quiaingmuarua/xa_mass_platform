@@ -6,6 +6,7 @@ import com.xa.mass.client.worker.WorkerGroupSpec;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.client.worker.session.PollingWorkerSession;
+import com.xa.mass.client.worker.session.WorkerSessionSpec;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -141,11 +142,13 @@ public final class GeoLookupWorkerPack {
                     .attributes(attributes)
                     .build());
             platform.workers().bindNodeGroup(resolvedAdapterNodeId, WORKER_GROUP_ID);
-            return platform.workerSessions().polling()
+            WorkerSessionSpec sessionSpec = WorkerSessionSpec.builder()
                     .workerId(resolvedWorkerId)
                     .workerGroupId(WORKER_GROUP_ID)
                     .attributes(attributes)
                     .eventHandler(GeoLookupTool.EVENT_CODE, handler(provider))
+                    .build();
+            return platform.workerSessions().polling(sessionSpec)
                     .maxMessages(maxMessages)
                     .pollTimeout(pollTimeout)
                     .pollInterval(pollInterval)

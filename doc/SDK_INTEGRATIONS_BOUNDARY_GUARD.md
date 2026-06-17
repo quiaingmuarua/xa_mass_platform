@@ -73,10 +73,10 @@ keys for SDK/worker-api calls.
 - `xa-mass-server` production startup must not seed task, worker, WorkerGroup,
   AdapterNode, or NodeGroupBinding truth as a substitute for external
   registration.
-- `xa-mass-java-sdk` may depend on `transport/transport_api` for stable
-  transport-neutral contracts such as canonical worker-group route-key encoding. It
-  must not depend on `transport_runtime` or concrete adapter implementation
-  modules.
+- `xa-mass-java-sdk` must not depend on `transport/transport_api`,
+  `transport_runtime`, or concrete adapter implementation modules. External
+  worker/session contracts belong in the Java SDK or public Controller
+  contracts; transport identifiers and codecs stay out of the external SDK.
 - Do not add or extend dev-only HTTP APIs such as sample bootstrap routes to
   prepare project/rule/catalog/credential data. New-environment setup belongs
   to explicit control-plane seed/import tooling, not to SDK/integrations

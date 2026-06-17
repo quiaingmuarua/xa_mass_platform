@@ -13,7 +13,6 @@ import com.xa.mass.client.worker.handler.DispatchContext;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
 import com.xa.mass.client.worker.handler.WorkerEventHandlers;
-import com.xa.mass.client.worker.handler.WorkerEventInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.client.worker.handler.WorkerResultSink;
 
@@ -30,7 +29,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public final class PollingWorkerSession implements AutoCloseable {
+public final class PollingWorkerSession implements WorkerSession {
     private final WorkerClient workerClient;
     private final String workerId;
     private final String workerGroupId;
@@ -43,7 +42,7 @@ public final class PollingWorkerSession implements AutoCloseable {
     private final Duration maxPollBackoff;
     private final WorkerSessionListener listener;
     private final WorkerEventHandlers eventHandlers;
-    private final WorkerEventHandlerRuntime handlerRuntime;
+    private final WorkerDispatchProcessor dispatchProcessor;
     private final WorkerResultSink resultSink;
     private final ScheduledExecutorService executor;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -63,7 +62,7 @@ public final class PollingWorkerSession implements AutoCloseable {
         this.maxPollBackoff = builder.maxPollBackoff;
         this.listener = builder.listener;
         this.eventHandlers = builder.eventHandlers.build();
-        this.handlerRuntime = new WorkerEventHandlerRuntime(eventHandlers);
+        this.dispatchProcessor = new WorkerDispatchProcessor(workerId, new WorkerEventHandlerRuntime(eventHandlers), listener);
         this.resultSink = builder.resultSink == null ? this::submitResultToWorkerApi : builder.resultSink;
         this.executor = builder.executor == null
                 ? Executors.newScheduledThreadPool(2, new SessionThreadFactory(workerId))
@@ -74,6 +73,7 @@ public final class PollingWorkerSession implements AutoCloseable {
         return new Builder(workerClient);
     }
 
+    @Override
     public PollingWorkerSession start() {
         WorkerSessionStartupStep lastSuccessful = null;
         try {
@@ -125,8 +125,24 @@ public final class PollingWorkerSession implements AutoCloseable {
         }
     }
 
+    @Override
     public boolean isRunning() {
         return running.get();
+    }
+
+    @Override
+    public String workerId() {
+        return workerId;
+    }
+
+    @Override
+    public String workerGroupId() {
+        return workerGroupId;
+    }
+
+    @Override
+    public String transportHint() {
+        return "polling";
     }
 
     public String sessionToken() {
@@ -189,12 +205,8 @@ public final class PollingWorkerSession implements AutoCloseable {
     }
 
     private void handleItem(WorkerDispatchItem item) {
-        DispatchContext dispatch = DispatchContext.from(item);
-        WorkerEventInvocation invocation = handlerRuntime.invoke(dispatch);
-        if (invocation.handlerFailed()) {
-            listener.onHandlerFailure(new WorkerSessionDispatchFailure(dispatch, invocation.failure()));
-        }
-        submitResult(dispatch, invocation.result());
+        WorkerDispatchProcessor.ProcessedDispatch processed = dispatchProcessor.process(item);
+        submitResult(processed.dispatch(), processed.result());
     }
 
     private void submitResult(DispatchContext dispatch, WorkerResult result) {

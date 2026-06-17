@@ -133,7 +133,10 @@ The stable third-party worker protocol today is the polling surface:
 Polling workers receive pulled task dispatch items, execute by `eventCode`, and
 submit `TaskResultReport`. The pulled item does not carry worker identity or
 route metadata; those come from the worker session/path context. Workers may
-also proactively report bounded worker capability and state snapshots, and
+also report current worker-local handler availability/scheduling attributes
+through `:report-capability` and bounded state snapshots through
+`:report-state`; WorkerGroup declaration remains the capability truth and
+these reports are not `WorkerSession` lifecycle requirements. Workers may also
 acknowledge owner-issued worker commands. In current mainline,
 `report-state(DRAINING)` stops new dispatches to that worker but does not
 revoke or interrupt already in-flight work. Acknowledging a `DRAIN` command to
