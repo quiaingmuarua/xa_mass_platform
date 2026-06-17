@@ -190,6 +190,13 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        /**
+         * Advanced embedded Java assembly seam for replacing the local runtime
+         * binding factory.
+         *
+         * <p>This is an in-process JVM extension point, not an external worker
+         * or cross-process adapter contract.
+         */
         public TransportBuilder workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
             config.setWorkerTransportRuntimeFactory(workerTransportRuntimeFactory);
             return this;
@@ -358,6 +365,14 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        /**
+         * Advanced embedded Java assembly seam for adding a local adapter
+         * bootstrap contribution.
+         *
+         * <p>External adapters must not model themselves as Java bootstrap
+         * objects; a future external adapter path needs typed queue/evidence/
+         * outcome contracts instead.
+         */
         public TransportBuilder addSupplementalTransportAdapterBootstrap(
                 TransportAdapterBootstrap transportAdapterBootstrap) {
             config.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);

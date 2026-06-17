@@ -125,8 +125,13 @@ public final class MassSdk {
         }
 
         /**
-         * Advanced embedding seam for replacing the assembled set of worker
-         * transport bindings used by the runtime.
+         * Advanced embedded Java assembly seam for replacing the assembled set
+         * of local worker transport bindings used by this in-process runtime.
+         *
+         * <p>This is not a worker-facing API, external adapter API, or
+         * cross-process transport contract. External workers should use the
+         * public worker SDK/API paths instead of registering Java runtime
+         * objects here.
          */
         public TransportOptions workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
             delegate.workerTransportRuntimeFactory(workerTransportRuntimeFactory);
@@ -248,6 +253,13 @@ public final class MassSdk {
             return this;
         }
 
+        /**
+         * Advanced embedded Java assembly seam for adding a local adapter
+         * bootstrap to this in-process runtime.
+         *
+         * <p>This accepts Java runtime objects and therefore must not be used as
+         * the contract shape for future external or cross-language adapters.
+         */
         public TransportOptions addSupplementalTransportAdapterBootstrap(
                 TransportAdapterBootstrap transportAdapterBootstrap) {
             delegate.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);

@@ -5,6 +5,7 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.transport.polling.runtime.DefaultWorkerTransportRuntimeFactory;
+import com.xa.mass.transport.polling.runtime.PollingTransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
@@ -344,6 +345,13 @@ public class TransportRuntimeComposition {
 
     private List<BootstrapCandidate> bootstrapCandidates() {
         List<BootstrapCandidate> candidates = new ArrayList<>();
+        if (workerTransportRuntimeFactory == null) {
+            candidates.add(new BootstrapCandidate(
+                    new PollingTransportAdapterBootstrap(),
+                    true,
+                    true
+            ));
+        }
         candidates.add(new BootstrapCandidate(
                 resolvePrimaryTransportAdapterBootstrap(),
                 primaryTransportAdapterBootstrap != null

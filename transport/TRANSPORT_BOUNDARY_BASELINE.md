@@ -43,11 +43,12 @@ Engine remains the owner of task lifecycle:
 
 Transport should stay centered on these concepts only:
 
-- `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`: adapter command
-  execution SPI returning `DispatchOutcome`. The executor owns only the local
-  final-hop attempt. Adapter id, transport hint, protocol label, pull channel,
-  server lifecycle, diagnostics, and raw/manual side-channels are binding or
-  contribution metadata, not executor facts.
+- `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`: embedded Java
+  adapter command execution callback returning `DispatchOutcome`. The executor
+  owns only the local final-hop attempt and lives with runtime embedded adapter
+  support, not in `transport_api`. Adapter id, transport hint, protocol label,
+  pull channel, server lifecycle, diagnostics, and raw/manual side-channels are
+  binding or contribution metadata, not executor facts.
 - `TransportBinding`: explicit runtime binding for adapter id, transport hint,
   protocol label, command executor, and optional pull channel. It must not read
   adapter metadata back from the command executor.
@@ -99,6 +100,11 @@ Transport should stay centered on these concepts only:
   derived only from the assigned delivery bucket. Handoff implementations own
   selected-worker consumer evidence, bucket queue ready references, bucket
   queue inflight references, ack/requeue, and endpoint lease validation.
+- `TransportDeliveryCommandBatchListener`: narrow core callback used by the
+  handoff pump after a batch is materialized. The embedded Java implementation
+  is `TransportDeliveryCommandListener`; it bridges endpoint lease evidence to
+  local adapter command executors and is not part of transport-neutral command
+  or queue storage shape.
 - `DeliveryPullResult`: explicit transport pull-path status plus delivered
   `PulledDeliveryMessage` items. Task-shaped `TaskPullResult` and
   `PulledTaskDispatch` live at the SDK/server public worker boundary, not in
@@ -150,7 +156,6 @@ lifecycle state.
 
 `transport_api` owns stable contracts used across adapters and runtime:
 
-- adapter SPI
 - transport-neutral dispatch/result/session-presence interfaces
 - endpoint registry contracts
 - transport-neutral models that adapters must exchange with runtime
@@ -158,6 +163,7 @@ lifecycle state.
 
 `transport_runtime` owns runtime-only coordination:
 
+- embedded Java adapter command callback and binding assembly
 - adapter binding and registration resolution
 - canonical adapter-id resolution; old aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not adapter identities
 - canonical transport-hint resolution; adapter labels such as `websocket`,
@@ -170,7 +176,9 @@ lifecycle state.
 - result ingress envelope queueing, buffering, and runtime logging; result
   payload decoding, correlation, and lease/attempt validation live in
   SDK/starter or engine-owned result code
-- adapter dispatch from already resolved delivery-command batches
+- core delivery-command handoff pumping through a narrow batch-listener
+  callback; embedded Java adapter dispatch from already resolved
+  delivery-command batches lives in runtime embedded-support
 - engine-to-transport delivery-command handoff queue/store ownership after
   assignment; current embedded default wiring is an in-memory
   `TransportDeliveryCommandHandoff`, while split runtimes use Redis

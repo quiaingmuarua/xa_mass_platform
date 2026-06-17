@@ -14,7 +14,7 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollStatus;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.lease.TransportEndpointLeasePublisher;
-import com.xa.mass.transport.worker.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

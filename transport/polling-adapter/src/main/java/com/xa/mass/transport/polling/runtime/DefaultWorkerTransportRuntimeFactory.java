@@ -2,8 +2,6 @@ package com.xa.mass.transport.polling.runtime;
 
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
-import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
@@ -11,20 +9,16 @@ import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Default embedded transport runtime: always provide the polling worker binding
- * and merge any additional adapter bindings assembled by runtime composition.
+ * Default embedded transport runtime registry factory.
+ *
+ * <p>Adapter bindings, including the default polling binding, are contributed
+ * by runtime-composition bootstraps before this factory creates the local
+ * runtime registry.
  */
 public final class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRuntimeFactory {
-
-    public static final String DEFAULT_ADAPTER_ID = "polling-default";
-    public static final String PROTOCOL = "polling";
-
-    private static final TransportAdapterDescriptor POLLING_DESCRIPTOR =
-            new TransportAdapterDescriptor(DEFAULT_ADAPTER_ID, PROTOCOL);
 
     @Override
     public TransportRuntimeRegistry create(TransportResultIngressChannel resultIngressChannel,
@@ -44,44 +38,14 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
                                            TransportDeliveryService deliveryService,
                                            DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
                                            List<TransportBinding> adapterBindings) {
-        List<TransportBinding> bindings = new ArrayList<>(1 + (adapterBindings == null ? 0 : adapterBindings.size()));
-        bindings.add(pollingBinding(
-                endpointLeaseStore,
-                deliveryService,
-                deliveryCommandConsumerRegistry
-        ));
-        if (adapterBindings != null && !adapterBindings.isEmpty()) {
-            bindings.addAll(adapterBindings);
-        }
+        List<TransportBinding> bindings = adapterBindings == null
+                ? List.of()
+                : List.copyOf(adapterBindings);
         return new TransportRuntimeRegistry(
                 resultIngressChannel,
                 endpointLeaseStore,
                 deliveryCommandConsumerRegistry,
                 bindings
         );
-    }
-
-    @Override
-    public List<TransportAdapterDescriptor> registrationDescriptors() {
-        return List.of(POLLING_DESCRIPTOR);
-    }
-
-    private static TransportBinding pollingBinding(TransportEndpointLeaseStore endpointLeaseStore,
-                                                   TransportDeliveryService deliveryService,
-                                                   DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry) {
-        PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(
-                endpointLeaseStore,
-                deliveryService,
-                deliveryCommandConsumerRegistry,
-                DEFAULT_ADAPTER_ID
-        );
-        return TransportBinding.builder(
-                        DEFAULT_ADAPTER_ID,
-                        PROTOCOL,
-                        pollingAdapter
-                )
-                .protocol(PROTOCOL)
-                .deliveryPullChannel(pollingAdapter)
-                .build();
     }
 }

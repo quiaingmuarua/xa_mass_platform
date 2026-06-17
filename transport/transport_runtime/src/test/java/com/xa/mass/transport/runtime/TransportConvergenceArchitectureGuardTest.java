@@ -361,6 +361,7 @@ class TransportConvergenceArchitectureGuardTest {
     @Test
     void adapterCommandExecutorDoesNotMixAdapterMetadata() throws IOException {
         assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/worker/AdapterCommandExecutor.java"),
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/worker/WorkerAdapter.java")
         );
         assertNoProductionSourceContains(
@@ -372,6 +373,7 @@ class TransportConvergenceArchitectureGuardTest {
                         repoRoot().resolve("transport/websocket-adapter/src/main/java"),
                         repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java")
                 ),
+                "import com.xa.mass.transport.worker.AdapterCommandExecutor",
                 "import com.xa.mass.transport.worker.WorkerAdapter",
                 "implements WorkerAdapter",
                 "getWorkerAdapter(",
@@ -415,7 +417,7 @@ class TransportConvergenceArchitectureGuardTest {
                 ".protocol(pollingAdapter.protocol())"
         );
 
-        Path listener = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandListener.java");
+        Path listener = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/embedded/TransportDeliveryCommandListener.java");
         String listenerSource = Files.readString(listener);
         assertTrue(!listenerSource.contains("Map<AdapterCommandExecutor"),
                 "Delivery command listener must group by adapter binding identity, not executor instance");
@@ -441,6 +443,76 @@ class TransportConvergenceArchitectureGuardTest {
                 "private TransportServer",
                 "private RawWorkerMessageChannel"
         );
+    }
+
+    @Test
+    void coreDeliveryAndLeasePackagesDoNotImportEmbeddedAdapterAssembly() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease")
+                ),
+                "TransportAdapterBootstrap",
+                "TransportAdapterContribution",
+                "TransportBinding",
+                "TransportRuntimeRegistry",
+                "ManagedTransportAdapter",
+                "CompositeWorkerEndpointRegistry",
+                "CompositeWorkerEndpointInspector",
+                "RawWorkerMessageChannel",
+                "AdapterCommandExecutor"
+        );
+    }
+
+    @Test
+    void pollingAdapterBindingUsesBootstrapContributionPath() throws IOException {
+        Path pollingBootstrap = repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingTransportAdapterBootstrap.java");
+        assertTrue(Files.exists(pollingBootstrap),
+                "Polling adapter must have the same bootstrap contribution owner as other embedded adapters");
+
+        Path defaultFactory = repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/DefaultWorkerTransportRuntimeFactory.java");
+        String factorySource = Files.readString(defaultFactory);
+        assertTrue(!factorySource.contains("new PollingWorkerAdapter"),
+                "Default runtime factory must not create the polling adapter binding");
+        assertTrue(!factorySource.contains("pollingBinding("),
+                "Default runtime factory must not keep a polling binding helper");
+        assertTrue(!factorySource.contains("registrationDescriptors()"),
+                "Default runtime factory must not own polling registration metadata");
+
+        Path composition = repoRoot().resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/TransportRuntimeComposition.java");
+        String compositionSource = Files.readString(composition);
+        assertTrue(compositionSource.contains("new PollingTransportAdapterBootstrap()"),
+                "TransportRuntimeComposition must install the default polling adapter through bootstrap contribution");
+    }
+
+    @Test
+    void embeddedJavaAdapterAssemblySeamsStayOutOfExternalSurfaces() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-public-contract/src/main/java"),
+                        repoRoot().resolve("xa-mass-server/src/main/java"),
+                        repoRoot().resolve("integrations")
+                ),
+                "TransportAdapterBootstrap",
+                "TransportBinding",
+                "TransportRuntimeRegistry",
+                "WorkerTransportRuntimeFactory",
+                "AdapterCommandExecutor"
+        );
+
+        String facadeSource = Files.readString(repoRoot().resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java"));
+        assertTrue(facadeSource.contains("Advanced embedded Java assembly seam"),
+                "MassSdk advanced transport hooks must be documented as embedded Java assembly");
+
+        String builderSource = Files.readString(repoRoot().resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/builder/MassApplicationBuilder.java"));
+        assertTrue(builderSource.contains("Advanced embedded Java assembly seam"),
+                "MassApplicationBuilder advanced transport hooks must be documented as embedded Java assembly");
     }
 
     @Test
@@ -601,7 +673,7 @@ class TransportConvergenceArchitectureGuardTest {
     @Test
     void deliveryCommandListenerDoesNotResolveRouteOwnerEndpointForAssignedDelivery() throws IOException {
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandListener.java")),
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/embedded/TransportDeliveryCommandListener.java")),
                 "WorkerDispatchRouteOwnerView",
                 "endpointForSelectedWorker",
                 "RouteConsumerEndpoint",

@@ -37,6 +37,10 @@ Global boundary guard:
   server operator/API-key routes. `xa-mass-java-sdk` consumes API keys; it must
   not grow username/password operator login or API-key lifecycle helpers.
 - In-process JVM embedding callers should start from `xa-mass-embedded-sdk`.
+- `xa-mass-embedded-sdk` may expose advanced embedded Java transport assembly
+  seams such as local adapter bootstraps or runtime factories. Those are
+  in-process JVM extension points only; they are not external worker APIs,
+  server worker APIs, or future cross-language adapter contracts.
 - Public HTTP wire DTOs belong in `xa-mass-public-contract` only when the owning
   Controller method and route role are documented by
   `xa-mass-public-contract`.

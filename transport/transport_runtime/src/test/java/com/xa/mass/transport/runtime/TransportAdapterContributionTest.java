@@ -4,7 +4,7 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.worker.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

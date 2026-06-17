@@ -3,7 +3,7 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.worker.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

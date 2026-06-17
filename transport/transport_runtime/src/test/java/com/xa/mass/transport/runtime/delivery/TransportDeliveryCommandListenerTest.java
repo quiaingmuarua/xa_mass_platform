@@ -7,8 +7,9 @@ import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
+import com.xa.mass.transport.runtime.embedded.TransportDeliveryCommandListener;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
-import com.xa.mass.transport.worker.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

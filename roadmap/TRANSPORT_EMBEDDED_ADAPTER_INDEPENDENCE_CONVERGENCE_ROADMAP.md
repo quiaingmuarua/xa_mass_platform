@@ -1,6 +1,8 @@
 # Transport Embedded Adapter Independence Convergence Roadmap
 
-Status: proposed direction document.
+Status: mainline complete; residual diagnostics, raw/manual side-channel, and
+optional module-split decisions remain active follow-up, not current core
+blockers.
 
 ## Summary
 
@@ -34,7 +36,7 @@ This is a design constraint, not an external-adapter implementation roadmap.
   mechanics and embedded Java adapter assembly.
 - Core delivery-executor mechanics live around:
   `TransportDeliveryCommandHandoff`, `DeliveryQueueOffer`,
-  `DeliveryCommandBatch`, `TransportDeliveryCommandListener`,
+  `DeliveryCommandBatch`, `TransportDeliveryCommandBatchListener`,
   `TransportAssignedDeliverySubmitter`, `TransportEndpointLeaseStore`,
   `DeliveryCommandConsumerRegistry`, `DispatchOutcome`,
   `TransportDeliveryFailureHandler`, and result ingress envelopes.
@@ -44,7 +46,7 @@ This is a design constraint, not an external-adapter implementation roadmap.
   `TransportRuntimeRegistry`, `TransportRegistrationResolver`,
   `AdapterCommandExecutor`, `ManagedTransportAdapter`,
   `CompositeWorkerEndpointRegistry`, `CompositeWorkerEndpointInspector`,
-  and `RawWorkerMessageChannel`.
+  `TransportDeliveryCommandListener`, and `RawWorkerMessageChannel`.
 - `MassApplication` and `TransportRuntimeComposition` assemble both sets in
   one embedded SDK startup path. This is acceptable for the current embedded
   runtime, but it makes it easy for embedded-only facts to drift into core
@@ -53,9 +55,20 @@ This is a design constraint, not an external-adapter implementation roadmap.
   mainline and made `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`
   the local Java final-hop execution seam. That seam is still an embedded Java
   callback, not a cross-process transport contract.
+- `AdapterCommandExecutor` now lives in runtime embedded-support rather than
+  `transport_api`. `transport_api` remains the transport-neutral contract
+  module.
 - `TransportBinding` now owns adapter id, transport hint, protocol label, and
   executor binding metadata explicitly. The executor implementation should not
   own adapter metadata.
+- Polling now contributes its default binding through
+  `PollingTransportAdapterBootstrap`; `DefaultWorkerTransportRuntimeFactory`
+  only builds the local registry from contributed bindings.
+- `MassSdk.TransportOptions` exposes advanced Java assembly seams such as
+  `workerTransportRuntimeFactory(...)` and
+  `addSupplementalTransportAdapterBootstrap(...)`. These are documented as
+  embedded-only Java extension points and must not become the mental model for
+  future external adapters.
 - Endpoint leases and delivery-command consumer evidence are already closer to
   a future process-boundary shape: they are typed evidence keyed by
   `deliveryBucketId + selectedWorkerId` and endpoint lease identifiers rather
@@ -138,6 +151,10 @@ The external-adapter pressure test is mandatory for future transport changes:
 Target mental model:
 
 ```text
+transport_api
+  neutral queue / evidence / outcome / result-ingress contracts only
+  no Java callback or embedded adapter assembly contract
+
 transport-runtime-core
   DeliveryCommand / DeliveryQueueOffer / DeliveryCommandBatch
   TransportDeliveryCommandHandoff
@@ -156,6 +173,7 @@ embedded-java-adapter-support
   TransportRuntimeRegistry
   TransportRegistrationResolver
   AdapterCommandExecutor
+  PollingTransportAdapterBootstrap
   CompositeWorkerEndpointRegistry / Inspector
   ManagedTransportAdapter
   RawWorkerMessageChannel
@@ -192,9 +210,11 @@ slice.
 Do not start by designing an external adapter RPC protocol or by moving classes
 into new Maven modules.
 
-Start with owner inventory and source guards. The first executable slice should
-make it impossible for core delivery models to depend on embedded Java adapter
-assembly, while preserving the current embedded Java runtime behavior.
+Start with owner inventory, then move the embedded Java callback owner out of
+`transport_api`, then collapse the polling adapter assembly path onto the same
+bootstrap contribution mechanism as WebSocket and Socket. Source guards come
+after those owners are explicit; otherwise they will either encode the wrong
+owner or require broad exceptions.
 
 ## TEAI-0 Inventory And Classification
 
@@ -216,11 +236,14 @@ Classification:
 
 | Class family | Current examples | Target owner |
 | --- | --- | --- |
-| Delivery handoff core | `TransportDeliveryCommandHandoff`, `DeliveryQueueOffer`, `DeliveryCommandBatch`, `TransportDeliveryCommandListener` | transport core |
+| Delivery handoff core | `TransportDeliveryCommandHandoff`, `DeliveryQueueOffer`, `DeliveryCommandBatch`, `TransportDeliveryCommandBatchListener` | transport core |
 | Polling pull store core/flavor boundary | `TransportDeliveryStore`, `QueuedPulledDispatch`, Redis/in-memory store | transport core with polling flavor entry |
 | Endpoint evidence core | `TransportEndpointLeaseStore`, `TransportEndpointLeasePublisher`, `DeliveryCommandConsumerRegistry` | transport core |
 | Result ingress core | `TransportResultIngressEnvelopeCodec`, inbox channels/pumps | transport core |
-| Embedded Java assembly | `TransportAdapterBootstrap`, `TransportAdapterContribution`, `TransportBinding`, `TransportRuntimeRegistry` | embedded Java adapter support |
+| Embedded Java callback | `AdapterCommandExecutor` in runtime embedded-support | embedded Java adapter support |
+| Embedded Java assembly | `TransportAdapterBootstrap`, `TransportAdapterContribution`, `TransportBinding`, `TransportRuntimeRegistry`, `TransportDeliveryCommandListener` | embedded Java adapter support |
+| Polling adapter assembly | `PollingTransportAdapterBootstrap` contributes polling binding; `DefaultWorkerTransportRuntimeFactory` creates registry only | embedded Java adapter support |
+| SDK embedded assembly surface | `MassSdk.TransportOptions.workerTransportRuntimeFactory`, `addSupplementalTransportAdapterBootstrap` | embedded-only JVM extension points |
 | Embedded Java local endpoint utilities | `CompositeWorkerEndpointRegistry`, `CompositeWorkerEndpointInspector`, `RouteEndpointIndex` | embedded Java adapter support |
 | Raw/manual side-channel | `RawWorkerMessageChannel` | embedded diagnostics/manual side-channel |
 | Legacy packet helper | `TransportPacketFactory` | review; keep only if result/event wire owner still needs it |
@@ -245,7 +268,128 @@ rg -n "TransportAdapterBootstrap|TransportBinding|TransportRuntimeRegistry|Adapt
 rg -n "TransportDeliveryCommandHandoff|TransportEndpointLeaseStore|DeliveryCommandConsumerRegistry|TransportResultIngressEnvelope|DispatchOutcome" transport/transport_runtime/src/main/java sdk/xa-mass-embedded-sdk/src/main/java
 ```
 
-## TEAI-1 Package-Level Owner Separation
+## TEAI-1 AdapterCommandExecutor Owner Move
+
+Goal:
+
+Move the local Java callback contract out of `transport_api` so it is not
+mistaken for a process-boundary or cross-language adapter contract.
+
+Scope:
+
+- Move `AdapterCommandExecutor` from
+  `transport/transport_api/src/main/java/com/xa/mass/transport/worker` to an
+  embedded-support owner package under `transport_runtime`, for example
+  `com.xa.mass.transport.runtime.embedded`.
+- Update `TransportBinding`, `TransportRuntimeRegistry`,
+  `TransportDeliveryCommandListener`, and concrete adapters to import the new
+  owner.
+- Do not leave a compatibility alias or deprecated copy in `transport_api`.
+- Keep `DeliveryCommand` and `DispatchOutcome` in their current neutral owner;
+  only the Java callback seam moves.
+
+Acceptance:
+
+- `transport_api` no longer contains or exports `AdapterCommandExecutor`.
+- Production code no longer imports
+  `com.xa.mass.transport.worker.AdapterCommandExecutor`.
+- `TransportDeliveryCommandListener` is explicitly documented as the embedded
+  Java bridge that maps endpoint evidence to a local adapter callback; core
+  handoff/store/producers still do not depend on the callback.
+- Existing WebSocket, Socket, and Polling embedded adapters still compile and
+  dispatch through the moved callback.
+
+Verification candidates:
+
+```bash
+rg -n "com\\.xa\\.mass\\.transport\\.worker\\.AdapterCommandExecutor|interface AdapterCommandExecutor" transport sdk xa-mass-server
+./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests test-compile
+./mvnw -q -pl transport/transport_api,transport/transport_runtime -am test -Dtest=TransportConvergenceArchitectureGuardTest,TransportDeliveryCommandListenerTest,TransportRuntimeRegistryTest -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+## TEAI-2 Polling Bootstrap Convergence
+
+Goal:
+
+Remove polling as the hidden second embedded adapter assembly path.
+
+Scope:
+
+- Introduce `PollingTransportAdapterBootstrap` or equivalent polling bootstrap
+  contribution owner.
+- Make polling contribute `TransportBinding` and `DeliveryPullChannel` through
+  `TransportAdapterContribution`, like WebSocket and Socket.
+- Stop `DefaultWorkerTransportRuntimeFactory` from unconditionally adding the
+  polling binding in `create()`.
+- Keep polling behavior and default embedded runtime behavior unchanged by
+  having `TransportRuntimeComposition` include the polling bootstrap by default.
+- Do not introduce an external adapter protocol or polling-specific core
+  exception.
+
+Acceptance:
+
+- WebSocket, Socket, and Polling embedded adapters use the same bootstrap
+  contribution mechanism.
+- `WorkerTransportRuntimeFactory` no longer owns polling binding creation. If
+  it remains, it only aggregates already contributed bindings into
+  `TransportRuntimeRegistry`.
+- `TransportRuntimeComposition` is the single owner of the default embedded
+  adapter set.
+- `registrationDescriptors()` for polling come from the polling bootstrap path,
+  not a factory-mounted special case.
+- Existing polling pull/session tests and distributed embedded runtime tests
+  pass.
+
+Verification candidates:
+
+```bash
+rg -n "new PollingWorkerAdapter|pollingBinding\\(|registrationDescriptors\\(" transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/DefaultWorkerTransportRuntimeFactory.java
+rg -n "new PollingTransportAdapterBootstrap\\(" sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/TransportRuntimeComposition.java
+./mvnw -q -pl transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=PollingWorkerAdapterTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest,TransportConfigTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests test-compile
+```
+
+## TEAI-3 SDK Embedded-Only Assembly Surface
+
+Goal:
+
+Classify SDK/starter Java assembly seams so they do not become the mental model
+for future external adapters.
+
+Scope:
+
+- `MassSdk.TransportOptions.workerTransportRuntimeFactory(...)`
+- `MassSdk.TransportOptions.addSupplementalTransportAdapterBootstrap(...)`
+- `MassApplicationBuilder.TransportBuilder` equivalents
+- `TransportConfig` / `TransportRuntimeComposition` storage of those seams
+- SDK README / integration docs if these methods remain public
+
+Decision:
+
+These seams may remain only as advanced embedded Java assembly APIs. They are
+not worker-facing APIs, external adapter APIs, or process-boundary contracts.
+If that classification is not acceptable, move them inward to starter/internal
+assembly in this roadmap instead of wrapping them.
+
+Acceptance:
+
+- Public SDK docs and method comments label these APIs as embedded Java
+  assembly extension points, not external adapter integration points.
+- Worker-facing SDK APIs do not expose `TransportAdapterBootstrap`,
+  `TransportBinding`, `TransportRuntimeRegistry`, or `AdapterCommandExecutor`.
+- If the public `MassSdk` facade keeps these methods, guards ensure they do not
+  appear in external worker client surfaces or server worker APIs.
+- If they are moved inward, all in-repo callers are migrated and no deprecated
+  aliases remain.
+
+Verification candidates:
+
+```bash
+rg -n "workerTransportRuntimeFactory\\(|addSupplementalTransportAdapterBootstrap\\(|TransportAdapterBootstrap|TransportRuntimeRegistry|AdapterCommandExecutor" sdk xa-mass-server integrations -g "*.java" -g "*.md"
+./mvnw -q -pl sdk/xa-mass-embedded-sdk,xa-mass-server -am test -Dtest=MassSdkTest,TransportConfigTest,MassApplicationDistributedTransportTest -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+## TEAI-4 Package-Level Owner Separation
 
 Goal:
 
@@ -304,7 +448,7 @@ Verification candidates:
 ./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests test-compile
 ```
 
-## TEAI-2 Core Contract Shape Guard
+## TEAI-5 Core Contract Shape Guard
 
 Goal:
 
@@ -370,7 +514,7 @@ Verification candidates:
 ./mvnw -q -pl transport/transport_runtime -am test -Dtest=TransportConvergenceArchitectureGuardTest
 ```
 
-## TEAI-3 Embedded Java Adapter Assembly Narrowing
+## TEAI-6 Embedded Java Adapter Assembly Narrowing
 
 Goal:
 
@@ -379,7 +523,7 @@ Make embedded Java adapter assembly clearly optional to transport core.
 Scope:
 
 - Review `TransportRuntimeRegistry`, `TransportBinding`,
-  `TransportRegistrationResolver`, `WorkerTransportRuntimeFactory`, and
+  `TransportRegistrationResolver`, any remaining `WorkerTransportRuntimeFactory`, and
   `TransportAdapterBootstrap*`.
 - Keep `AdapterCommandExecutor` as embedded Java local callback only.
 - Ensure the delivery listener uses adapter binding only after endpoint
@@ -405,7 +549,7 @@ Verification candidates:
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassApplicationDistributedTransportTest,MassApplicationStopOrderTest,TransportConfigTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-## TEAI-4 Diagnostics And Raw Side-Channel Containment
+## TEAI-7 Diagnostics And Raw Side-Channel Containment
 
 Goal:
 
@@ -435,7 +579,7 @@ Verification candidates:
 ./mvnw -q -pl transport/transport_runtime,sdk/xa-mass-embedded-sdk -am test -Dtest=TransportConvergenceArchitectureGuardTest,MassSdkTest#sessionDiagnosticsHideTransportInternalIds -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-## TEAI-5 Optional Module Split Decision
+## TEAI-8 Optional Module Split Decision
 
 Goal:
 
@@ -444,7 +588,7 @@ split.
 
 Decision gate:
 
-Only consider a module split after TEAI-1 through TEAI-4 prove stable import
+Only consider a module split after TEAI-1 through TEAI-7 prove stable import
 direction.
 
 Possible target modules:
@@ -459,11 +603,13 @@ Do not split if it only moves files while preserving the same dependencies.
 
 Acceptance:
 
-- A module split proposal names exact packages, artifacts, dependencies, and
-  callers.
-- It proves the split reduces dependency direction, not just file size.
-- It includes Maven test-compile proof for SDK, server, and all adapters.
-- If rejected, document why package/guard separation is sufficient.
+- Current decision: no Maven module split in this roadmap. Package-level owner
+  separation plus source guards is sufficient for the embedded Java independence
+  boundary at the current code size.
+- A future module split proposal must name exact packages, artifacts,
+  dependencies, and callers.
+- It must prove the split reduces dependency direction, not just file size.
+- It must include Maven test-compile proof for SDK, server, and all adapters.
 
 Verification candidates:
 
@@ -480,6 +626,13 @@ This roadmap can be marked complete only when:
 - Every production class in `transport_runtime` is classified as core,
   embedded-support, diagnostics/raw side-channel, storage implementation, or
   residue.
+- `AdapterCommandExecutor` is no longer exported from `transport_api`; it is an
+  embedded Java adapter support contract.
+- Polling uses the same bootstrap contribution path as WebSocket and Socket,
+  with no factory-mounted binding special case.
+- SDK/starter embedded Java assembly seams are explicitly classified as
+  embedded-only APIs or moved inward; they are not documented as external
+  adapter integration points.
 - Core delivery/evidence/result code has guards preventing imports of embedded
   Java adapter assembly.
 - Embedded Java adapter support is allowed to depend on core contracts, but
@@ -496,11 +649,14 @@ This roadmap can be marked complete only when:
 ## Suggested Implementation Order
 
 1. TEAI-0 inventory.
-2. TEAI-2 pressure-test guard and doc constraint.
-3. TEAI-1 package/import separation where low-risk.
-4. TEAI-3 embedded Java adapter assembly narrowing.
-5. TEAI-4 diagnostics/raw containment.
-6. TEAI-5 module split decision only if import direction proves it is worth
+2. TEAI-1 `AdapterCommandExecutor` owner move.
+3. TEAI-2 polling bootstrap convergence.
+4. TEAI-3 SDK embedded-only surface classification.
+5. TEAI-5 pressure-test guard and doc constraint.
+6. TEAI-4 package/import separation where low-risk.
+7. TEAI-6 embedded Java adapter assembly narrowing.
+8. TEAI-7 diagnostics/raw containment.
+9. TEAI-8 module split decision only if import direction proves it is worth
    the churn.
 
 ## Verification Set
@@ -514,7 +670,7 @@ Focused proof:
 Adapter proof:
 
 ```bash
-./mvnw -q -pl transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter -am test -Dtest=WebSocketTaskDispatchChannelTest,WebSocketInputProcessorTest,WebSocketOutputProcessorTest,DispatcherInboundHandlerTest,ServerSessionManagerShutdownTest,WebSocketTransportFrameCodecTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter -am test -Dtest=WebSocketTaskDispatchChannelTest,WebSocketInputProcessorTest,WebSocketOutputProcessorTest,DispatcherInboundHandlerTest,ServerSessionManagerShutdownTest,WebSocketFrameReadersTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Assembly proof:
@@ -530,13 +686,18 @@ Longer compile guard:
 ./mvnw -q -pl xa-mass-testing -am -DskipTests compile
 ```
 
-## Open Decisions
+## Residual Follow-Up Decisions
 
 - Whether package-level separation is enough, or whether a later Maven module
-  split is worth the dependency churn.
+  split is worth the dependency churn. Current answer for this roadmap is:
+  package/guard separation is enough; a module split needs a separate proposal.
 - Whether `TransportPacketFactory` should remain in `transport_runtime` for
-  result/system-event wire shapes or move to concrete adapter/wire owners.
+  result/system-event wire shapes or move to concrete adapter/wire owners. This
+  is not a blocker for embedded adapter independence because assigned delivery
+  no longer depends on `TransportPacket`.
 - Whether raw/manual worker messaging remains a supported embedded diagnostic
   side-channel or is removed in a later route-key-removal slice.
-- Whether `WorkerTransportRuntimeFactory` is embedded-support only or remains
-  a general runtime assembly seam after polling is fully separated.
+- Whether `WorkerTransportRuntimeFactory` remains useful after polling moves to
+  bootstrap contribution. Current answer for this roadmap is: it may survive as
+  embedded-support registry assembly only, not as transport-core or
+  external-adapter contract.

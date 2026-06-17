@@ -121,7 +121,7 @@ import com.xa.mass.transport.lease.TransportEndpointLeaseRelease;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
-import com.xa.mass.transport.worker.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
@@ -672,7 +672,8 @@ class MassSdkTest {
         }
 
         assertEquals("ws-public", adapterBootstrap(runtimeComposition, "ws-public").descriptor().getAdapterId());
-        assertEquals("ws-public", contribution.getTransportBindings().get(0).getProtocol());
+        assertEquals("ws-public", contribution.getTransportBindings().get(0).getAdapterId());
+        assertEquals("websocket", contribution.getTransportBindings().get(0).getProtocol());
         assertEquals("ws-public", contribution.getRawWorkerMessageChannels().get(0).adapterId());
         assertEquals("ws-public",
                 runtimeComposition.resolveRegistrationAdapterId("ws-public", WorkerTransportHints.REALTIME));
@@ -703,7 +704,8 @@ class MassSdkTest {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
 
-        assertEquals("socket-edge", contribution.getTransportBindings().get(0).getProtocol());
+        assertEquals("socket-edge", contribution.getTransportBindings().get(0).getAdapterId());
+        assertEquals("socket", contribution.getTransportBindings().get(0).getProtocol());
         assertEquals("socket-edge", contribution.getRawWorkerMessageChannels().get(0).adapterId());
         assertEquals("socket-edge",
                 runtimeComposition.resolveRegistrationAdapterId("socket-edge", WorkerTransportHints.REALTIME));
@@ -918,7 +920,7 @@ class MassSdkTest {
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        Assertions.assertEquals(2, runtimeComposition.resolveTransportAdapterBootstraps().size());
+        Assertions.assertEquals(3, runtimeComposition.resolveTransportAdapterBootstraps().size());
     }
 
     @Test
@@ -944,7 +946,7 @@ class MassSdkTest {
         assertThrows(AssertionError.class, () -> adapterBootstrap(runtimeComposition, "socket"));
         assertNotNull(adapterBootstrap(runtimeComposition, "ws-internal"));
         assertNotNull(adapterBootstrap(runtimeComposition, "socket-edge"));
-        assertEquals(3, runtimeComposition.resolveTransportAdapterBootstraps().size());
+        assertEquals(4, runtimeComposition.resolveTransportAdapterBootstraps().size());
     }
 
     @Test
@@ -3300,13 +3302,8 @@ class MassSdkTest {
         assertMissingMethod(TransportRuntimeComposition.class, "getTransportEndpointPath");
         assertMissingMethod(TransportRuntimeComposition.class, "getMaxConnections");
         Assertions.assertThrows(NoSuchMethodException.class, () -> TransportServerFactoryContext.class.getDeclaredMethod("getFrameCodec"));
-        Assertions.assertThrows(NoSuchMethodException.class, () -> TransportServerFactoryContext.class.getDeclaredConstructor(
-                WorkerEndpointRegistry.class,
-                com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec.class,
-                java.util.function.Consumer.class,
-                int.class,
-                String.class
-        ));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec"));
         Assertions.assertThrows(ClassNotFoundException.class,
                 () -> Class.forName("com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext"));
     }

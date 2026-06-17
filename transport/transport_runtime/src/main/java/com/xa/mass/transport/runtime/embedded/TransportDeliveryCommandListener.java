@@ -1,4 +1,4 @@
-package com.xa.mass.transport.runtime.delivery;
+package com.xa.mass.transport.runtime.embedded;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
@@ -8,7 +8,10 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.worker.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandBatchListener;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,9 +26,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * Delivers command batches to local adapters.
+ * Embedded Java bridge from transport-owned command batches to local adapter
+ * command executors.
  */
-public final class TransportDeliveryCommandListener {
+public final class TransportDeliveryCommandListener implements TransportDeliveryCommandBatchListener {
 
     private static final Logger logger = LoggerFactory.getLogger(TransportDeliveryCommandListener.class);
 
@@ -44,6 +48,7 @@ public final class TransportDeliveryCommandListener {
         this.runtimeTaskExecutor = runtimeTaskExecutor;
     }
 
+    @Override
     public List<DispatchOutcome> onDeliveryCommandBatch(DeliveryCommandBatch batch) {
         if (batch == null || batch.items().isEmpty()) {
             return List.of();

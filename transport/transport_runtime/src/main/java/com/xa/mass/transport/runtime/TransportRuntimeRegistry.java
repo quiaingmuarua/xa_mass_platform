@@ -4,7 +4,7 @@ import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
-import com.xa.mass.transport.worker.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;

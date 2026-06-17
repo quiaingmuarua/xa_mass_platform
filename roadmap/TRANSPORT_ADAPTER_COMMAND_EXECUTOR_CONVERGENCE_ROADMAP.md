@@ -514,7 +514,7 @@ exist and be listed here.
 WebSocket proof:
 
 ```bash
-./mvnw -q -pl transport/websocket-adapter -am test -Dtest=WebSocketTaskDispatchChannelTest,WebSocketInputProcessorTest,WebSocketOutputProcessorTest,DispatcherInboundHandlerTest,ServerSessionManagerShutdownTest,WebSocketTransportFrameCodecTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl transport/websocket-adapter -am test -Dtest=WebSocketTaskDispatchChannelTest,WebSocketInputProcessorTest,WebSocketOutputProcessorTest,DispatcherInboundHandlerTest,ServerSessionManagerShutdownTest,WebSocketFrameReadersTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Socket proof:

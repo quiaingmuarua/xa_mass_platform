@@ -3,7 +3,7 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
-import com.xa.mass.transport.worker.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

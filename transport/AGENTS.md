@@ -11,7 +11,8 @@ entry for `transport/`.
 
 - `transport` is a product subsystem, not a WebSocket utility folder.
 - `transport_api` owns transport-neutral contracts.
-- `transport_runtime` owns shared runtime assembly and delivery semantics.
+- `transport_runtime` owns shared runtime assembly, embedded Java adapter
+  support, and delivery semantics.
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
 - `transport` is a pure delivery executor. It owns correct assigned-worker
   delivery, queue claim/ack consistency, endpoint/session evidence, and delivery
@@ -101,10 +102,10 @@ entry for `transport/`.
   runtime assembly, it belongs to the embedded adapter layer; if it must cross a
   process boundary, it must be typed queue, evidence, outcome, or result-ingress
   data rather than Java object wiring.
-- Concrete adapters expose assigned delivery through
-  `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`. Adapter metadata,
-  server lifecycle, raw/manual channels, diagnostics, and pull channels are
-  explicit binding/contribution facts, not executor facts.
+- Concrete embedded Java adapters expose assigned delivery through runtime
+  embedded-support `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`.
+  Adapter metadata, server lifecycle, raw/manual channels, diagnostics, and
+  pull channels are explicit binding/contribution facts, not executor facts.
 - Concrete adapter session managers may observe protocol sessions and send to
   selected workers, but endpoint lease / selected-worker consumer evidence is
   projected by `TransportEndpointLeasePublisher`, and worker session-presence
@@ -113,11 +114,12 @@ entry for `transport/`.
   `deliveryQueueKey`, handoff-owned command references, and command items only.
   It does not carry bucket, lane, target node, adapter route, connection, or
   endpoint lease facts.
-- `TransportDeliveryCommandListener` consumes bucket-queue handoff references,
-  reads `deliveryBucketId + selectedWorkerId` endpoint lease evidence for
-  final-hop feasibility, then resolves the local adapter from that endpoint
-  lease. The final-hop adapter SPI consumes `DeliveryCommand` directly and
-  sends by selected worker.
+- Runtime embedded-support `TransportDeliveryCommandListener` consumes
+  bucket-queue handoff references, reads `deliveryBucketId + selectedWorkerId`
+  endpoint lease evidence for final-hop feasibility, then resolves the local
+  adapter from that endpoint lease. Core handoff pumping depends only on the
+  narrow batch-listener callback; the final-hop adapter SPI consumes
+  `DeliveryCommand` directly and sends by selected worker.
 - `DeliveryPullResult` / `PulledDeliveryMessage` are the transport-core pull
   shapes. They carry status plus opaque delivery messages only. Task-shaped
   `PulledTaskDispatch` / `TaskPullResult` live at the SDK/server public worker
@@ -157,7 +159,7 @@ Document layering inside `transport/`:
   - owns transport-neutral contracts only
 - `transport/transport_runtime`
   - artifact: `xa-mass-transport-runtime`
-  - owns shared runtime assembly
+  - owns shared runtime assembly and embedded Java adapter support
 - `transport/polling-adapter`
   - artifact: `xa-mass-transport-polling`
   - owns polling/pull worker behavior

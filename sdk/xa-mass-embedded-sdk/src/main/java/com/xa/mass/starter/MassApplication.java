@@ -38,7 +38,7 @@ import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.TransportResultIngressInboxPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoffPump;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandListener;
+import com.xa.mass.transport.runtime.embedded.TransportDeliveryCommandListener;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;

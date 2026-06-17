@@ -11,7 +11,7 @@ import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
-import com.xa.mass.transport.polling.runtime.DefaultWorkerTransportRuntimeFactory;
+import com.xa.mass.transport.polling.runtime.PollingTransportAdapterBootstrap;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -148,7 +148,7 @@ class PollingWorkerAdapterTest {
                 endpointLeaseStore,
                 deliveryService(),
                 NoopDeliveryCommandConsumerRegistry.INSTANCE,
-                DefaultWorkerTransportRuntimeFactory.DEFAULT_ADAPTER_ID
+                PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID
         );
     }
 

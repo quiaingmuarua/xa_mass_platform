@@ -21,7 +21,7 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
-import com.xa.mass.transport.worker.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
 

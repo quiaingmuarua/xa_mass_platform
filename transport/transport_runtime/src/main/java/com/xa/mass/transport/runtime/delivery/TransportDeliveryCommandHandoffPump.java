@@ -16,13 +16,13 @@ public final class TransportDeliveryCommandHandoffPump {
     private static final long POLL_TIMEOUT_MILLIS = 250L;
 
     private final TransportDeliveryCommandHandoff handoff;
-    private final TransportDeliveryCommandListener listener;
+    private final TransportDeliveryCommandBatchListener listener;
     private final RuntimeTaskExecutor executor;
     private volatile boolean running;
     private Future<?> drainLoop;
 
     public TransportDeliveryCommandHandoffPump(TransportDeliveryCommandHandoff handoff,
-                                               TransportDeliveryCommandListener listener,
+                                               TransportDeliveryCommandBatchListener listener,
                                                RuntimeTaskExecutor executor) {
         this.handoff = Objects.requireNonNull(handoff, "handoff");
         this.listener = Objects.requireNonNull(listener, "listener");

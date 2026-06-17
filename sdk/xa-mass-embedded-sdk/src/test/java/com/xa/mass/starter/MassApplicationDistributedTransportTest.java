@@ -24,7 +24,7 @@ import com.xa.mass.transport.runtime.delivery.DeliveryCommandReference;
 import com.xa.mass.transport.runtime.delivery.DeliveryQueueOffer;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
-import com.xa.mass.transport.worker.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
 

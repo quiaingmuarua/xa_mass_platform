@@ -1,7 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.DeliveryPullChannel;
-import com.xa.mass.transport.worker.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 
 import java.util.Objects;
 
