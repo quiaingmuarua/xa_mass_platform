@@ -20,16 +20,16 @@ class WorkerDispatchProcessorTest {
                 "worker-1",
                 new WorkerEventHandlerRuntime(WorkerEventHandlers.builder()
                         .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of(
-                                "worker", dispatch.workerId())))
+                                "eventCode", dispatch.eventCode())))
                         .build()),
                 WorkerSessionListener.NOOP);
 
         WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
 
-        assertEquals("task-1", processed.dispatch().taskId());
-        assertEquals("message-1", processed.dispatch().messageId());
+        assertEquals("corr-1", processed.resultCorrelationRef().value());
+        assertEquals("probe.phone.metadata", processed.invocation().eventCode());
         assertTrue(processed.result().success());
-        assertEquals("worker-1", processed.result().output().get("worker"));
+        assertEquals("probe.phone.metadata", processed.result().output().get("eventCode"));
     }
 
     @Test
@@ -53,22 +53,15 @@ class WorkerDispatchProcessorTest {
         WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
 
         assertNotNull(observed.get());
-        assertEquals("message-1", observed.get().dispatch().messageId());
+        assertEquals("corr-1", observed.get().resultCorrelationRef().value());
         assertEquals("handler failed", observed.get().cause().getMessage());
         assertEquals("HANDLER_ERROR", processed.result().errorCode());
     }
 
     private static WorkerDispatchItem dispatch() {
         return new WorkerDispatchItem(
-                "task-1",
-                "message-1",
+                "corr-1",
                 "probe.phone.metadata",
-                "probe-task",
-                "demo",
-                "user-1",
-                0,
-                null,
-                "batch-1",
                 Map.of(),
                 Map.of());
     }

@@ -126,7 +126,7 @@ Current implemented surface:
 - `fault.result.late(delayPastLeaseMs=N)` adds worker-side delay before normal
   result submit; the harness is responsible for choosing a delay that lands
   after the scenario lease boundary.
-- `fault.result.identity(kind=wrongTask|wrongMessage|wrongWorker|wrongLease)`
+- `fault.result.identity(kind=wrongCorrelation|wrongWorker|wrongLease)`
   mutates result correlation fields before normal result submit.
 - `fault.transport.disconnect(phase=before_receive|after_receive|before_result|after_result)`
   closes the sample worker connection around normal task result submission.

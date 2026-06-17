@@ -359,7 +359,7 @@ public final class SampleCommandRoutes {
 
     private static Map<String, Object> faultResultIdentity(JsonObject request, CommandContext context) {
         String workerId = requireWorkerId(request);
-        String kind = stringValue(request, "kind", "wrongMessage");
+        String kind = stringValue(request, "kind", "wrongCorrelation");
         SampleWorkerFaultProfile.ResultIdentityKind identityKind;
         try {
             identityKind = SampleWorkerFaultProfile.ResultIdentityKind.valueOf(
@@ -368,7 +368,7 @@ public final class SampleCommandRoutes {
         } catch (IllegalArgumentException e) {
             throw new CommandException(
                     ErrorCode.PARSE_ERROR,
-                    "fault.result.identity kind must be wrongTask, wrongMessage, wrongWorker, or wrongLease"
+                    "fault.result.identity kind must be wrongCorrelation, wrongWorker, or wrongLease"
             );
         }
         SampleClientState state = stateRegistry(context).getOrCreate(workerId);

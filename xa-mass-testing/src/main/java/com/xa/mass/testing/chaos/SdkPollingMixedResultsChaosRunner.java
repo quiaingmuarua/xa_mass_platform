@@ -312,11 +312,11 @@ public final class SdkPollingMixedResultsChaosRunner {
                                 Map.of(
                                         "workerId", workerId,
                                         "shouldFail", shouldFail,
-                                        "messageId", item.getMessageId()
+                                        "resultCorrelationRef", item.getResultCorrelationRef()
                                 )
                         );
                         ChaosSupport.require(accepted,
-                                "result submission should be accepted for message " + item.getMessageId());
+                                "result submission should be accepted for " + item.getResultCorrelationRef());
                         if (shouldFail) {
                             failedResults.incrementAndGet();
                         } else {

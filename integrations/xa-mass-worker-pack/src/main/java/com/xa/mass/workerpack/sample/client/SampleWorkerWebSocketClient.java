@@ -89,7 +89,8 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
                 return;
             }
             if (taskFrameHandler.isTaskResultFrame(frame)) {
-                logger.debug("[{}] Ignoring inbound canonical task result frame {}", workerId, readString(frame, "messageId"));
+                logger.debug("[{}] Ignoring inbound canonical task result frame {}",
+                        workerId, readString(frame, "resultCorrelationRef"));
                 return;
             }
             if (commandFrameHandler.isWorkerCommandFrame(frame)) {
@@ -115,7 +116,7 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
         }
         sendTaskResponse(
                 plan.responseJson(),
-                plan.messageId(),
+                plan.resultCorrelationRef(),
                 plan.delayMillis(),
                 plan.disconnectWorkerId(),
                 plan.duplicateCount(),
@@ -201,7 +202,7 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
     }
 
     private void sendTaskResponse(String responseJson,
-                                  String messageId,
+                                  String resultCorrelationRef,
                                   long delayMillis,
                                   String disconnectWorkerId,
                                   int duplicateCount,
@@ -209,35 +210,39 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
                                   SampleWorkerFaultProfile.DisconnectPhase disconnectPhase) {
         if (delayMillis <= 0L) {
             if (disconnectBeforeResult(disconnectPhase)) {
-                disconnectForFaultPhase(disconnectPhase, messageId);
+                disconnectForFaultPhase(disconnectPhase, resultCorrelationRef);
                 return;
             }
             send(responseJson);
-            logger.debug("[{}] Sent sample task response for messageId: {}", workerId, messageId);
-            sendDuplicateTaskResponses(responseJson, messageId, duplicateCount, duplicateGapMillis);
-            disconnectAfterResultForFaultPhase(disconnectPhase, messageId);
+            logger.debug("[{}] Sent sample task response for resultCorrelationRef: {}", workerId, resultCorrelationRef);
+            sendDuplicateTaskResponses(responseJson, resultCorrelationRef, duplicateCount, duplicateGapMillis);
+            disconnectAfterResultForFaultPhase(disconnectPhase, resultCorrelationRef);
             disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             return;
         }
 
-        logger.info("[{}] Scheduling sample task response for messageId={} after {} ms", workerId, messageId, delayMillis);
+        logger.info("[{}] Scheduling sample task response for resultCorrelationRef={} after {} ms",
+                workerId, resultCorrelationRef, delayMillis);
         taskResponseScheduler.schedule(() -> {
             if (!isOpen()) {
-                logger.warn("[{}] Skip delayed task response because client is disconnected. messageId={}", workerId, messageId);
+                logger.warn("[{}] Skip delayed task response because client is disconnected. resultCorrelationRef={}",
+                        workerId, resultCorrelationRef);
                 return;
             }
             try {
                 if (disconnectBeforeResult(disconnectPhase)) {
-                    disconnectForFaultPhase(disconnectPhase, messageId);
+                    disconnectForFaultPhase(disconnectPhase, resultCorrelationRef);
                     return;
                 }
                 send(responseJson);
-                logger.debug("[{}] Sent delayed sample task response for messageId: {}", workerId, messageId);
-                sendDuplicateTaskResponses(responseJson, messageId, duplicateCount, duplicateGapMillis);
-                disconnectAfterResultForFaultPhase(disconnectPhase, messageId);
+                logger.debug("[{}] Sent delayed sample task response for resultCorrelationRef: {}",
+                        workerId, resultCorrelationRef);
+                sendDuplicateTaskResponses(responseJson, resultCorrelationRef, duplicateCount, duplicateGapMillis);
+                disconnectAfterResultForFaultPhase(disconnectPhase, resultCorrelationRef);
                 disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             } catch (Exception e) {
-                logger.warn("[{}] Failed to send delayed sample task response for messageId={}: {}", workerId, messageId, e.getMessage());
+                logger.warn("[{}] Failed to send delayed sample task response for resultCorrelationRef={}: {}",
+                        workerId, resultCorrelationRef, e.getMessage());
             }
         }, delayMillis, TimeUnit.MILLISECONDS);
     }
@@ -248,35 +253,42 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
                 || phase == SampleWorkerFaultProfile.DisconnectPhase.BEFORE_RESULT;
     }
 
-    private void disconnectAfterResultForFaultPhase(SampleWorkerFaultProfile.DisconnectPhase phase, String messageId) {
+    private void disconnectAfterResultForFaultPhase(SampleWorkerFaultProfile.DisconnectPhase phase,
+                                                    String resultCorrelationRef) {
         if (phase == SampleWorkerFaultProfile.DisconnectPhase.AFTER_RESULT) {
-            disconnectForFaultPhase(phase, messageId);
+            disconnectForFaultPhase(phase, resultCorrelationRef);
         }
     }
 
-    private void disconnectForFaultPhase(SampleWorkerFaultProfile.DisconnectPhase phase, String messageId) {
+    private void disconnectForFaultPhase(SampleWorkerFaultProfile.DisconnectPhase phase, String resultCorrelationRef) {
         if (phase == null || phase == SampleWorkerFaultProfile.DisconnectPhase.NONE) {
             return;
         }
-        logger.info("[{}] Closing worker connection for fault transport phase {} messageId={}",
-                workerId, phase, messageId);
+        logger.info("[{}] Closing worker connection for fault transport phase {} resultCorrelationRef={}",
+                workerId, phase, resultCorrelationRef);
         closeConnection();
     }
 
-    private void sendDuplicateTaskResponses(String responseJson, String messageId, int duplicateCount, long duplicateGapMillis) {
+    private void sendDuplicateTaskResponses(String responseJson,
+                                            String resultCorrelationRef,
+                                            int duplicateCount,
+                                            long duplicateGapMillis) {
         int boundedDuplicateCount = Math.max(0, duplicateCount);
         for (int duplicateIndex = 1; duplicateIndex <= boundedDuplicateCount; duplicateIndex++) {
             long delay = Math.max(0L, duplicateGapMillis) * duplicateIndex;
             taskResponseScheduler.schedule(() -> {
                 if (!isOpen()) {
-                    logger.warn("[{}] Skip duplicate task response because client is disconnected. messageId={}", workerId, messageId);
+                    logger.warn("[{}] Skip duplicate task response because client is disconnected. resultCorrelationRef={}",
+                            workerId, resultCorrelationRef);
                     return;
                 }
                 try {
                     send(responseJson);
-                    logger.debug("[{}] Sent duplicate sample task response for messageId: {}", workerId, messageId);
+                    logger.debug("[{}] Sent duplicate sample task response for resultCorrelationRef: {}",
+                            workerId, resultCorrelationRef);
                 } catch (Exception e) {
-                    logger.warn("[{}] Failed to send duplicate sample task response for messageId={}: {}", workerId, messageId, e.getMessage());
+                    logger.warn("[{}] Failed to send duplicate sample task response for resultCorrelationRef={}: {}",
+                            workerId, resultCorrelationRef, e.getMessage());
                 }
             }, delay, TimeUnit.MILLISECONDS);
         }

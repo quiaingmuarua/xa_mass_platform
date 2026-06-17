@@ -3117,7 +3117,7 @@ class MassSdkTest {
                     }
             );
             assertNotNull(dispatchItem);
-            Assertions.assertEquals(task.getTaskId(), dispatchItem.getTaskId());
+            Assertions.assertNotNull(dispatchItem.getResultCorrelationRef());
             Assertions.assertEquals("https://example.test/page-1", dispatchItem.getInput().get("url"));
             Assertions.assertEquals("pull", dispatchItem.getSharedConfig().get("mode"));
 

@@ -335,20 +335,15 @@ public class ExternalWorkerApiController {
         String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "submitResult");
         boolean submitted = workerClient.submitResult(boundWorkerId, new WorkerResultSubmitRequest(
-                requireNonBlank(requestBody.getTaskId(), "taskId"),
-                requireNonBlank(requestBody.getMessageId(), "messageId"),
+                requireNonBlank(requestBody.getResultCorrelationRef(), "resultCorrelationRef"),
                 requestBody.isSuccess(),
                 blankToNull(requestBody.getDetail()),
                 blankToNull(requestBody.getErrorCode()),
-                requestBody.getOutput(),
-                null,
-                null,
-                null
+                requestBody.getOutput()
         ));
         return ApiResponse.success(Map.of(
                 "workerId", boundWorkerId,
-                "taskId", requestBody.getTaskId().trim(),
-                "messageId", requestBody.getMessageId().trim(),
+                "resultCorrelationRef", requestBody.getResultCorrelationRef().trim(),
                 "submitted", submitted
             ));
     }

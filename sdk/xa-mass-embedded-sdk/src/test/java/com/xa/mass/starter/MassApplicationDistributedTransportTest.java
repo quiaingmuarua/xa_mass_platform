@@ -4,8 +4,6 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
-import com.xa.mass.sdk.worker.TaskDispatchDeliveryCorrelationCodec;
-import com.xa.mass.sdk.worker.TaskDispatchPayloadCodec;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
@@ -191,7 +189,7 @@ class MassApplicationDistributedTransportTest {
                 commandId,
                 "demo-workers",
                 workerId,
-                new TaskDispatchPayloadCodec().encode(context(), binding, workerId),
+                new TaskDispatchPayloadEncoder().encode(context(), binding, workerId),
                 new TaskDispatchDeliveryCorrelationCodec().encode(context(), binding),
                 0L,
                 System.currentTimeMillis()
@@ -206,8 +204,8 @@ class MassApplicationDistributedTransportTest {
         return batch == null
                 ? List.of()
                 : batch.commands().stream()
-                .map(command -> new TaskDispatchPayloadCodec().decode(command.getPayload(), command.getCorrelationRef())
-                        .getMessageId())
+                .map(command -> new TaskDispatchDeliveryCorrelationCodec().decode(command.getCorrelationRef())
+                        .messageId())
                 .toList();
     }
 
@@ -380,10 +378,11 @@ class MassApplicationDistributedTransportTest {
 
         @Override
         public List<DispatchOutcome> dispatch(List<DeliveryCommand> commands) {
-            TaskDispatchPayloadCodec codec = new TaskDispatchPayloadCodec();
             List<DispatchOutcome> outcomes = new ArrayList<>();
             for (DeliveryCommand command : commands) {
-                dispatchedMessageIds.add(codec.decode(command.getPayload(), command.getCorrelationRef()).getMessageId());
+                dispatchedMessageIds.add(new TaskDispatchDeliveryCorrelationCodec()
+                        .decode(command.getCorrelationRef())
+                        .messageId());
                 dispatchedWorkerIds.add(command.getSelectedWorkerId());
                 outcomes.add(DispatchOutcome.delivered(command));
                 dispatchLatch.countDown();

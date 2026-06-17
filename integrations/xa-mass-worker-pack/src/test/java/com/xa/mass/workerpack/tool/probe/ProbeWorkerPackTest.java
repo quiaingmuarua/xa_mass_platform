@@ -1,9 +1,9 @@
 package com.xa.mass.workerpack.tool.probe;
 
-import com.xa.mass.client.worker.WorkerDispatchItem;
+import com.xa.mass.client.payload.MassPayload;
 import com.xa.mass.client.worker.WorkerEventBindingSpec;
 import com.xa.mass.client.worker.WorkerGroupSpec;
-import com.xa.mass.client.worker.handler.DispatchContext;
+import com.xa.mass.client.worker.handler.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import org.junit.jupiter.api.Test;
@@ -86,19 +86,10 @@ class ProbeWorkerPackTest {
 
     private static WorkerResult handle(WorkerEventHandler handler, String eventCode, Map<String, Object> input)
             throws Exception {
-        return handler.handle(DispatchContext.from(new WorkerDispatchItem(
-                "task-1",
-                "msg-1",
+        return handler.handle(new WorkerInvocation(
                 eventCode,
-                null,
-                "deviceProbe",
-                "agent",
-                0,
-                "worker-1",
-                null,
-                input,
-                Map.of()
-        )));
+                MassPayload.of(input),
+                MassPayload.of(Map.of())));
     }
 
     private static void assertBinding(WorkerGroupSpec spec, String eventCode, List<String> projectCodes) {

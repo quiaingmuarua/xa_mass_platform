@@ -1,10 +1,10 @@
 package com.xa.mass.client.worker.session;
 
-import com.xa.mass.client.worker.handler.DispatchContext;
+import com.xa.mass.client.worker.ResultCorrelationRef;
 
 public record WorkerSessionQueuedResultFailure(
         String workerId,
-        DispatchContext dispatch,
+        ResultCorrelationRef resultCorrelationRef,
         Reason reason,
         Throwable cause
 ) {

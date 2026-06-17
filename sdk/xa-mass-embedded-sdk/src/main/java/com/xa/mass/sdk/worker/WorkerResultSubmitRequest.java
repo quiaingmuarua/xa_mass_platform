@@ -7,48 +7,25 @@ import java.util.Map;
 /**
  * Embedded SDK worker result submit command.
  */
-public record WorkerResultSubmitRequest(String taskId,
-                                        String messageId,
+public record WorkerResultSubmitRequest(String resultCorrelationRef,
                                         boolean success,
                                         String detail,
                                         String errorCode,
-                                        Map<String, Object> output,
-                                        String attemptId,
-                                        String leaseToken,
-                                        String traceId) {
+                                        Map<String, Object> output) {
 
     public WorkerResultSubmitRequest {
-        taskId = requireText(taskId, "taskId");
-        messageId = requireText(messageId, "messageId");
+        resultCorrelationRef = requireText(resultCorrelationRef, "resultCorrelationRef");
         detail = normalize(detail);
         errorCode = normalize(errorCode);
         output = TransportJsonValueNormalizer.normalizeObject(output, "output");
-        attemptId = normalize(attemptId);
-        leaseToken = normalize(leaseToken);
-        traceId = normalize(traceId);
     }
 
-    public static WorkerResultSubmitRequest of(String taskId,
-                                               String messageId,
+    public static WorkerResultSubmitRequest of(String resultCorrelationRef,
                                                boolean success,
                                                String detail,
                                                String errorCode,
                                                Map<String, Object> output) {
-        return new WorkerResultSubmitRequest(taskId, messageId, success, detail, errorCode, output, null, null, null);
-    }
-
-    public WorkerResultSubmitRequest withAttemptId(String attemptId) {
-        return new WorkerResultSubmitRequest(
-                taskId,
-                messageId,
-                success,
-                detail,
-                errorCode,
-                output,
-                attemptId,
-                leaseToken,
-                traceId
-        );
+        return new WorkerResultSubmitRequest(resultCorrelationRef, success, detail, errorCode, output);
     }
 
     private static String requireText(String value, String fieldName) {

@@ -99,7 +99,7 @@ class PollingWorkerSessionTest {
             if ("/worker-api/v1/workers/phone-worker-sg-001:poll".equals(path)) {
                 if (firstPoll.getAndSet(false)) {
                     respond(exchange, 200, """
-                            {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","total":1,"items":[{"taskId":"task-1","messageId":"msg-1","eventCode":"probe.phone.metadata","project":"probeApp","workerId":"phone-worker-sg-001","input":{"phone":"+14155550100"},"sharedConfig":{"routingCode":"sg"}}]}}
+                            {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","total":1,"items":[{"resultCorrelationRef":"corr-1","eventCode":"probe.phone.metadata","input":{"phone":"+14155550100"},"sharedConfig":{"routingCode":"sg"}}]}}
                             """);
                 } else {
                     respond(exchange, 200, """
@@ -110,12 +110,13 @@ class PollingWorkerSessionTest {
             }
             if ("/worker-api/v1/workers/phone-worker-sg-001:submit-result".equals(path)) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
+                assertEquals("corr-1", request.get("resultCorrelationRef").asText());
                 assertTrue(request.get("success").asBoolean());
                 assertEquals("+14155550100", request.get("output").get("phone").asText());
                 assertEquals("525", request.get("output").get("mcc").asText());
                 resultSubmitted.countDown();
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","taskId":"task-1","messageId":"msg-1","submitted":true}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","resultCorrelationRef":"corr-1","submitted":true}}
                         """);
                 return;
             }
@@ -292,7 +293,7 @@ class PollingWorkerSessionTest {
             if (path.endsWith(":poll")) {
                 if (firstPoll.getAndSet(false)) {
                     respond(exchange, 200, """
-                            {"code":0,"msg":"ok","data":{"workerId":"worker-1","total":1,"items":[{"taskId":"task-1","messageId":"msg-1","eventCode":"probe.phone.metadata","workerId":"worker-1","input":{"phone":"+14155550100"},"sharedConfig":{}}]}}
+                            {"code":0,"msg":"ok","data":{"workerId":"worker-1","total":1,"items":[{"resultCorrelationRef":"corr-1","eventCode":"probe.phone.metadata","input":{"phone":"+14155550100"},"sharedConfig":{}}]}}
                             """);
                 } else {
                     respond(exchange, 200, """
@@ -314,7 +315,8 @@ class PollingWorkerSessionTest {
                 .eventHandler("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of(
                         "phone", dispatch.input().requiredString("phone")
                 )))
-                .resultSink((dispatch, result) -> {
+                .resultSink((resultCorrelationRef, result) -> {
+                    assertEquals("corr-1", resultCorrelationRef.value());
                     reportedResult.set(result);
                     resultReported.countDown();
                 })
@@ -369,7 +371,7 @@ class PollingWorkerSessionTest {
             if (path.endsWith(":poll")) {
                 if (firstPoll.getAndSet(false)) {
                     respond(exchange, 200, """
-                            {"code":0,"msg":"ok","data":{"workerId":"worker-1","total":1,"items":[{"taskId":"task-1","messageId":"msg-1","eventCode":"probe.phone.metadata","workerId":"worker-1","input":{},"sharedConfig":{}}]}}
+                            {"code":0,"msg":"ok","data":{"workerId":"worker-1","total":1,"items":[{"resultCorrelationRef":"corr-1","eventCode":"probe.phone.metadata","input":{},"sharedConfig":{}}]}}
                             """);
                 } else {
                     respond(exchange, 200, """
@@ -380,12 +382,13 @@ class PollingWorkerSessionTest {
             }
             if (path.endsWith(":submit-result")) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
+                assertEquals("corr-1", request.get("resultCorrelationRef").asText());
                 assertFalse(request.get("success").asBoolean());
                 assertEquals("HANDLER_ERROR", request.get("errorCode").asText());
                 assertEquals(MassPayloadException.class.getName(), request.get("output").get("exception").asText());
                 failedResultSubmitted.countDown();
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","taskId":"task-1","messageId":"msg-1","submitted":true}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","resultCorrelationRef":"corr-1","submitted":true}}
                         """);
                 return;
             }

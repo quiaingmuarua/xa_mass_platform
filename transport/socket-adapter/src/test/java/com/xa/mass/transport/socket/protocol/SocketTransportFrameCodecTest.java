@@ -6,6 +6,7 @@ import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SocketTransportFrameCodecTest {
@@ -27,8 +28,7 @@ class SocketTransportFrameCodecTest {
     @Test
     void canonicalTaskResultEncodesOpaquePayload() {
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", "msg-1");
-        frame.addProperty("taskId", "task-1");
+        frame.addProperty("resultCorrelationRef", "corr-1");
         frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
         frame.addProperty(TransportPacket.PAYLOAD_DETAIL, "completed");
         JsonObject output = new JsonObject();
@@ -37,8 +37,9 @@ class SocketTransportFrameCodecTest {
 
         JsonObject payload = JsonParser.parseString(codec.encodeCanonicalTaskResultPayload(frame)).getAsJsonObject();
 
-        assertEquals("task-1", payload.get("taskId").getAsString());
-        assertEquals("msg-1", payload.get("messageId").getAsString());
+        assertEquals("corr-1", payload.get("resultCorrelationRef").getAsString());
+        assertFalse(payload.has("taskId"));
+        assertFalse(payload.has("messageId"));
         assertTrue(payload.get(TransportPacket.PAYLOAD_SUCCESS).getAsBoolean());
         assertEquals("completed", payload.get(TransportPacket.PAYLOAD_DETAIL).getAsString());
         assertEquals("SUCCESS", payload.getAsJsonObject(TransportPacket.PAYLOAD_OUTPUT).get("status").getAsString());

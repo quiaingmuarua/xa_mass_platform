@@ -9,8 +9,6 @@ import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
-import com.xa.mass.starter.TaskResultCallbackCodec;
-import com.xa.mass.starter.TaskResultCallbackCommand;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -40,7 +38,8 @@ class PullWorkerSessionTest {
 
         assertEquals(TaskPullStatus.DELIVERED, result.getStatus());
         assertEquals("group-1", session.workerGroupId());
-        assertEquals(List.of("msg-1"), result.getItems().stream().map(PulledTaskDispatch::getMessageId).toList());
+        assertEquals(List.of(correlation("msg-1", "attempt-msg-1")),
+                result.getItems().stream().map(PulledTaskDispatch::getResultCorrelationRef).toList());
     }
 
     @Test
@@ -54,7 +53,8 @@ class PullWorkerSessionTest {
 
         List<PulledTaskDispatch> items = session.poll(3, 100L);
 
-        assertEquals(List.of("msg-1", "msg-2"), items.stream().map(PulledTaskDispatch::getMessageId).toList());
+        assertEquals(List.of(correlation("msg-1", "attempt-msg-1"), correlation("msg-2", "attempt-msg-2")),
+                items.stream().map(PulledTaskDispatch::getResultCorrelationRef).toList());
     }
 
     @Test
@@ -66,15 +66,10 @@ class PullWorkerSessionTest {
                 new InMemoryTransportEndpointLeaseStore());
 
         PulledTaskDispatch item = new PulledTaskDispatch(
-                "task-1",
-                "msg-1",
+                correlation("msg-1", "attempt-1"),
                 "crawler.fetch-page",
                 Map.of("target", "target-1"),
-                Map.of(),
-                "attempt-1",
-                1,
-                0,
-                "batch-1"
+                Map.of()
         );
 
         session.submitResult(item, true, "ok");
@@ -82,11 +77,8 @@ class PullWorkerSessionTest {
         var captured = org.mockito.ArgumentCaptor.forClass(TransportResultIngressEnvelope.class);
         verify(resultIngestChannel).ingest(captured.capture());
         assertEquals(routeKey(), captured.getValue().diagnostic("routeKey"));
-        assertEquals("msg-1", captured.getValue().getPartitionKey());
-        TaskResultCallbackCommand command = new TaskResultCallbackCodec().decode(captured.getValue());
-        assertEquals("task-1", command.taskId());
-        assertEquals("msg-1", command.messageId());
-        assertEquals("attempt-1", command.attemptId());
+        assertEquals(item.getResultCorrelationRef(), captured.getValue().getPartitionKey());
+        assertTrue(captured.getValue().getPayload().contains("\"resultCorrelationRef\":\"" + item.getResultCorrelationRef() + "\""));
     }
 
     @Test
@@ -97,15 +89,14 @@ class PullWorkerSessionTest {
         PullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
 
-        session.submitResult("task-1", "msg-1", true, "ok", null, Map.of());
+        String resultCorrelationRef = correlation("msg-1", "attempt-1");
+        session.submitResult(resultCorrelationRef, true, "ok", null, Map.of());
 
         var captured = org.mockito.ArgumentCaptor.forClass(TransportResultIngressEnvelope.class);
         verify(resultIngestChannel).ingest(captured.capture());
         assertEquals(routeKey(), captured.getValue().diagnostic("routeKey"));
-        assertEquals("msg-1", captured.getValue().getPartitionKey());
-        TaskResultCallbackCommand command = new TaskResultCallbackCodec().decode(captured.getValue());
-        assertEquals("task-1", command.taskId());
-        assertEquals("msg-1", command.messageId());
+        assertEquals(resultCorrelationRef, captured.getValue().getPartitionKey());
+        assertTrue(captured.getValue().getPayload().contains("\"resultCorrelationRef\":\"" + resultCorrelationRef + "\""));
     }
 
     @Test
@@ -221,15 +212,10 @@ class PullWorkerSessionTest {
 
     private static PulledTaskDispatch item(String messageId) {
         return new PulledTaskDispatch(
-                "task-1",
-                messageId,
+                correlation(messageId, "attempt-" + messageId),
                 "crawler.fetch-page",
                 Map.of("target", "target-1"),
-                Map.of(),
-                "attempt-" + messageId,
-                1,
-                0,
-                "batch-1"
+                Map.of()
         );
     }
 
@@ -239,20 +225,18 @@ class PullWorkerSessionTest {
                 "worker-1",
                 """
                 {
-                  "messageId": "%s",
-                  "workerId": "worker-1",
-                  "taskId": "task-1",
+                  "resultCorrelationRef": "%s",
                   "eventCode": "crawler.fetch-page",
-                  "retryCount": 0,
-                  "batchId": "batch-1",
                   "input": {"target": "target-1"},
                   "sharedConfig": {}
                 }
-                """.formatted(messageId),
-                new TaskDispatchDeliveryCorrelationCodec().encode(
-                        new TaskDispatchDeliveryCorrelation("task-1", messageId, "attempt-" + messageId, 1)
-                ),
+                """.formatted(correlation(messageId, "attempt-" + messageId)),
+                correlation(messageId, "attempt-" + messageId),
                 1L
         );
+    }
+
+    private static String correlation(String messageId, String attemptId) {
+        return "corr-" + messageId + "-" + attemptId;
     }
 }

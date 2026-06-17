@@ -472,15 +472,10 @@ class ExternalWorkerApiControllerTest {
     void pollTasksReturnsTransportNeutralItems() throws Exception {
         when(workerClient.pollTasks("node-worker-1", 2, 250L)).thenReturn(List.of(
                 new PulledTaskDispatch(
-                        "task-1",
-                        "msg-1",
+                        "corr-1",
                         "crawler.fetch-page",
                         Map.of("url", "https://example.test"),
-                        Map.of("timeoutMs", 1000),
-                        "attempt-1",
-                        1,
-                        0,
-                        "batch-1"
+                        Map.of("timeoutMs", 1000)
                 )
         ));
 
@@ -496,6 +491,7 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].resultCorrelationRef").value("corr-1"))
                 .andExpect(jsonPath("$.data.items[0].eventCode").value("crawler.fetch-page"))
                 .andExpect(jsonPath("$.data.items[0].input.url").value("https://example.test"));
     }
@@ -587,8 +583,7 @@ class ExternalWorkerApiControllerTest {
     @Test
     void submitResultMapsRequestToTransportReport() throws Exception {
         when(workerClient.submitResult(eq("node-worker-1"), argThat(report ->
-                "task-1".equals(report.taskId())
-                        && "msg-1".equals(report.messageId())
+                "corr-1".equals(report.resultCorrelationRef())
                         && report.success()
                         && "ok".equals(report.detail())
                         && Map.of("title", "Example").equals(report.output())
@@ -599,8 +594,7 @@ class ExternalWorkerApiControllerTest {
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
                                 {
-                                  "taskId": "task-1",
-                                  "messageId": "msg-1",
+                                  "resultCorrelationRef": "corr-1",
                                   "success": true,
                                   "detail": "ok",
                                   "output": {
@@ -614,8 +608,7 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.submitted").value(true));
 
         verify(workerClient).submitResult(eq("node-worker-1"), argThat(report ->
-                "task-1".equals(report.taskId())
-                        && "msg-1".equals(report.messageId())
+                "corr-1".equals(report.resultCorrelationRef())
                         && report.success()
                         && "ok".equals(report.detail())
                         && Map.of("title", "Example").equals(report.output())

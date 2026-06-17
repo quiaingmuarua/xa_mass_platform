@@ -3,38 +3,34 @@ package com.xa.mass.client.worker;
 import java.util.Map;
 
 public record WorkerResultSubmitRequest(
-        String taskId,
-        String messageId,
+        String resultCorrelationRef,
         boolean success,
         String detail,
         String errorCode,
         Map<String, Object> output
 ) {
     public WorkerResultSubmitRequest {
+        resultCorrelationRef = requireText(resultCorrelationRef, "resultCorrelationRef");
         output = WorkerRequestSupport.copyObjectMap(output);
     }
 
-    public static WorkerResultSubmitRequest success(String taskId,
-                                                    String messageId,
+    public static WorkerResultSubmitRequest success(String resultCorrelationRef,
                                                     String detail,
                                                     Map<String, Object> output) {
         return builder()
-                .taskId(taskId)
-                .messageId(messageId)
+                .resultCorrelationRef(resultCorrelationRef)
                 .success(true)
                 .detail(detail)
                 .output(output)
                 .build();
     }
 
-    public static WorkerResultSubmitRequest failure(String taskId,
-                                                    String messageId,
+    public static WorkerResultSubmitRequest failure(String resultCorrelationRef,
                                                     String errorCode,
                                                     String detail,
                                                     Map<String, Object> output) {
         return builder()
-                .taskId(taskId)
-                .messageId(messageId)
+                .resultCorrelationRef(resultCorrelationRef)
                 .success(false)
                 .errorCode(errorCode)
                 .detail(detail)
@@ -47,8 +43,7 @@ public record WorkerResultSubmitRequest(
     }
 
     public static final class Builder {
-        private String taskId;
-        private String messageId;
+        private String resultCorrelationRef;
         private boolean success;
         private String detail;
         private String errorCode;
@@ -57,13 +52,8 @@ public record WorkerResultSubmitRequest(
         private Builder() {
         }
 
-        public Builder taskId(String taskId) {
-            this.taskId = taskId;
-            return this;
-        }
-
-        public Builder messageId(String messageId) {
-            this.messageId = messageId;
+        public Builder resultCorrelationRef(String resultCorrelationRef) {
+            this.resultCorrelationRef = resultCorrelationRef;
             return this;
         }
 
@@ -93,7 +83,14 @@ public record WorkerResultSubmitRequest(
         }
 
         public WorkerResultSubmitRequest build() {
-            return new WorkerResultSubmitRequest(taskId, messageId, success, detail, errorCode, output);
+            return new WorkerResultSubmitRequest(resultCorrelationRef, success, detail, errorCode, output);
         }
+    }
+
+    private static String requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " is required");
+        }
+        return value.trim();
     }
 }

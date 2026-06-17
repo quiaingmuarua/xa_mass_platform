@@ -88,7 +88,7 @@ class RuntimeTaskResultIngestChannelTest {
         RecordingResultIngestFacade facade = new RecordingResultIngestFacade(TaskResultCorrelation.workerLevel(
                 "task-3",
                 "msg-3",
-                null,
+                "attempt-3",
                 "lease-3",
                 "worker-3",
                 "batch-3"
@@ -101,8 +101,8 @@ class RuntimeTaskResultIngestChannelTest {
                 true,
                 "ok",
                 null,
+                "attempt-3",
                 null,
-                "lease-3",
                 null
         )));
 
@@ -225,7 +225,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     private static TransportResultIngressEnvelope envelope(WorkerResultSubmitRequest request) {
-        return CODEC.toEnvelope(request, request.messageId(), Map.of("adapterId", "polling"));
+        return CODEC.toEnvelope(request, request.resultCorrelationRef(), Map.of("adapterId", "polling"));
     }
 
     private static WorkerResultSubmitRequest request(String taskId,
@@ -237,15 +237,13 @@ class RuntimeTaskResultIngestChannelTest {
                                                      String leaseToken,
                                                      String traceId) {
         return new WorkerResultSubmitRequest(
-                taskId,
-                messageId,
+                new TaskDispatchDeliveryCorrelationCodec().encode(
+                        new TaskDispatchDeliveryCorrelation(taskId, messageId, attemptId, 0)
+                ),
                 success,
                 detail,
                 errorCode,
-                Map.of("status", success ? "SUCCESS" : "FAILED", "mockData", detail),
-                attemptId,
-                leaseToken,
-                traceId
+                Map.of("status", success ? "SUCCESS" : "FAILED", "mockData", detail)
         );
     }
 

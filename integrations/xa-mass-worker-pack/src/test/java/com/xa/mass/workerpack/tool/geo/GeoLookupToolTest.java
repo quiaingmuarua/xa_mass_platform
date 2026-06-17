@@ -1,9 +1,9 @@
 package com.xa.mass.workerpack.tool.geo;
 
-import com.xa.mass.client.worker.WorkerDispatchItem;
+import com.xa.mass.client.payload.MassPayload;
 import com.xa.mass.client.worker.WorkerEventBindingSpec;
 import com.xa.mass.client.worker.WorkerGroupSpec;
-import com.xa.mass.client.worker.handler.DispatchContext;
+import com.xa.mass.client.worker.handler.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import org.junit.jupiter.api.Test;
 
@@ -41,19 +41,10 @@ class GeoLookupToolTest {
 
     @Test
     void handlerConvertsDispatchPayloadIntoWorkerResult() throws Exception {
-        WorkerResult result = GeoLookupWorkerPack.handler().handle(DispatchContext.from(new WorkerDispatchItem(
-                "task-1",
-                "msg-1",
+        WorkerResult result = GeoLookupWorkerPack.handler().handle(new WorkerInvocation(
                 GeoLookupTool.EVENT_CODE,
-                null,
-                "workerPackApp",
-                "agent",
-                0,
-                "worker-1",
-                null,
-                Map.of("query", "Singapore"),
-                Map.of()
-        )));
+                MassPayload.of(Map.of("query", "Singapore")),
+                MassPayload.of(Map.of())));
 
         assertTrue(result.success());
         assertEquals("SG", result.output().get("countryCode"));
@@ -62,19 +53,10 @@ class GeoLookupToolTest {
 
     @Test
     void handlerReturnsStructuredFailureForMissingQuery() throws Exception {
-        WorkerResult result = GeoLookupWorkerPack.handler().handle(DispatchContext.from(new WorkerDispatchItem(
-                "task-1",
-                "msg-1",
+        WorkerResult result = GeoLookupWorkerPack.handler().handle(new WorkerInvocation(
                 GeoLookupTool.EVENT_CODE,
-                null,
-                "workerPackApp",
-                "agent",
-                0,
-                "worker-1",
-                null,
-                Map.of(),
-                Map.of()
-        )));
+                MassPayload.of(Map.of()),
+                MassPayload.of(Map.of())));
 
         assertFalse(result.success());
         assertEquals("INVALID_GEO_QUERY", result.errorCode());
@@ -94,19 +76,10 @@ class GeoLookupToolTest {
             }
         };
 
-        WorkerResult result = GeoLookupWorkerPack.handler(provider).handle(DispatchContext.from(new WorkerDispatchItem(
-                "task-1",
-                "msg-1",
+        WorkerResult result = GeoLookupWorkerPack.handler(provider).handle(new WorkerInvocation(
                 GeoLookupTool.EVENT_CODE,
-                null,
-                "workerPackApp",
-                "agent",
-                0,
-                "worker-1",
-                null,
-                Map.of("query", "Singapore"),
-                Map.of()
-        )));
+                MassPayload.of(Map.of("query", "Singapore")),
+                MassPayload.of(Map.of())));
 
         assertFalse(result.success());
         assertEquals("GEO_PROVIDER_TIMEOUT", result.errorCode());

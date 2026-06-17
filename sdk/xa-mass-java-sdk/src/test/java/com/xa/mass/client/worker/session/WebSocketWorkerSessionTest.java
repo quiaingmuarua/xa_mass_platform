@@ -78,7 +78,7 @@ class WebSocketWorkerSessionTest {
                 .attribute("region", "sg")
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of(
-                        "workerId", dispatch.workerId(),
+                        "eventCode", dispatch.eventCode(),
                         "title", dispatch.input().requiredString("title"),
                         "integrationProbe", "java-sdk-websocket-session"
                 )))
@@ -94,13 +94,12 @@ class WebSocketWorkerSessionTest {
             assertEquals("workerId=ws-worker-001&workerGroupId=realtime-probe", connectedUri.get().getRawQuery());
 
             listenerRef.get().onText(webSocket, """
-                    {"messageId":"msg-1","taskId":"task-1","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{"title":"hello"},"sharedConfig":{"routingCode":"sg"}}
+                    {"resultCorrelationRef":"corr-1","eventCode":"probe.realtime.metadata","input":{"title":"hello"},"sharedConfig":{"routingCode":"sg"}}
                     """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertTrue(resultSent.await(2, TimeUnit.SECONDS), "result frame should be sent");
             JsonNode result = OBJECT_MAPPER.readTree(webSocket.sentTexts().get(0));
-            assertEquals("msg-1", result.get("messageId").asText());
-            assertEquals("task-1", result.get("taskId").asText());
+            assertEquals("corr-1", result.get("resultCorrelationRef").asText());
             assertTrue(result.get("success").asBoolean());
             assertEquals("hello", result.get("output").get("title").asText());
             assertEquals("java-sdk-websocket-session", result.get("output").get("integrationProbe").asText());
@@ -320,7 +319,7 @@ class WebSocketWorkerSessionTest {
                 })
                 .start()) {
             listenerRef.get().onText(webSocket, """
-                    {"messageId":"msg-2","taskId":"task-2","eventCode":"probe.unknown","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                    {"resultCorrelationRef":"corr-2","eventCode":"probe.unknown","input":{},"sharedConfig":{}}
                     """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertTrue(resultSent.await(2, TimeUnit.SECONDS), "failure result frame should be sent");
@@ -361,14 +360,14 @@ class WebSocketWorkerSessionTest {
             listenerRef.get().onClose(webSocket, 1006, "test-disconnect").toCompletableFuture()
                     .get(1, TimeUnit.SECONDS);
             listenerRef.get().onText(webSocket, """
-                    {"messageId":"msg-close","taskId":"task-close","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                    {"resultCorrelationRef":"corr-close","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
                     """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             session.close();
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "close should abandon queued result");
             assertEquals(WorkerSessionQueuedResultFailure.Reason.SESSION_CLOSED, failureRef.get().reason());
-            assertEquals("msg-close", failureRef.get().dispatch().messageId());
+            assertEquals("corr-close", failureRef.get().resultCorrelationRef().value());
         } finally {
             session.close();
         }
@@ -404,7 +403,7 @@ class WebSocketWorkerSessionTest {
                 .start()) {
             for (int i = 1; i <= 3; i++) {
                 listenerRef.get().onText(webSocket, """
-                        {"messageId":"msg-%d","taskId":"task-drop","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                        {"resultCorrelationRef":"corr-%d","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
                         """.formatted(i), true).toCompletableFuture().get(1, TimeUnit.SECONDS);
             }
 
@@ -444,20 +443,20 @@ class WebSocketWorkerSessionTest {
                 })
                 .start()) {
             listenerRef.get().onText(webSocket, """
-                    {"messageId":"msg-requeue-1","taskId":"task-requeue","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                    {"resultCorrelationRef":"corr-requeue-1","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
                     """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertTrue(sendStarted.await(2, TimeUnit.SECONDS), "first send should be in progress");
 
             listenerRef.get().onText(webSocket, """
-                    {"messageId":"msg-requeue-2","taskId":"task-requeue","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                    {"resultCorrelationRef":"corr-requeue-2","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
                     """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             allowFailure.countDown();
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "failed requeue should abandon the original result");
             assertEquals(WorkerSessionQueuedResultFailure.Reason.REQUEUE_FAILED, failureRef.get().reason());
-            assertEquals("msg-requeue-1", failureRef.get().dispatch().messageId());
+            assertEquals("corr-requeue-1", failureRef.get().resultCorrelationRef().value());
             assertNotNull(failureRef.get().cause());
         }
     }
@@ -499,12 +498,12 @@ class WebSocketWorkerSessionTest {
             listenerRef.get().onClose(webSocket, 1006, "test-disconnect").toCompletableFuture()
                     .get(1, TimeUnit.SECONDS);
             listenerRef.get().onText(webSocket, """
-                    {"messageId":"msg-reconnect","taskId":"task-reconnect","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                    {"resultCorrelationRef":"corr-reconnect","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
                     """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "reconnect exhaustion should abandon queued result");
             assertEquals(WorkerSessionQueuedResultFailure.Reason.RECONNECT_EXHAUSTED, failureRef.get().reason());
-            assertEquals("msg-reconnect", failureRef.get().dispatch().messageId());
+            assertEquals("corr-reconnect", failureRef.get().resultCorrelationRef().value());
             assertFalse(session.isRunning());
         } finally {
             session.close();
@@ -533,7 +532,7 @@ class WebSocketWorkerSessionTest {
                     public void onConnectionRecovered(String workerId) {
                         if ("ws-worker-001".equals(workerId)) {
                             listenerRef.get().onText(secondSocket, """
-                                    {"messageId":"msg-recovered","taskId":"task-recovered","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                                    {"resultCorrelationRef":"corr-recovered","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
                                     """, true);
                             recovered.countDown();
                         }
@@ -558,7 +557,7 @@ class WebSocketWorkerSessionTest {
             assertTrue(recoveryResultSent.await(2, TimeUnit.SECONDS),
                     "recovery callback should see the live replacement socket");
             JsonNode result = OBJECT_MAPPER.readTree(secondSocket.sentTexts().get(0));
-            assertEquals("msg-recovered", result.get("messageId").asText());
+            assertEquals("corr-recovered", result.get("resultCorrelationRef").asText());
             assertEquals(2, connectAttempts.get());
             assertTrue(session.isRunning());
         } finally {

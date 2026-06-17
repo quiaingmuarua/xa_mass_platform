@@ -79,6 +79,12 @@ Current implemented surface:
 - transport-neutral worker handler runtime:
   event handler registry, handler invocation, deterministic handler failure
   conversion, and session-owned result sink hooks
+- worker handler invocation is payload-first:
+  handlers receive `WorkerInvocation` with `eventCode`, `input`, and
+  `sharedConfig` only. Result association is carried by the SDK/session as an
+  opaque `resultCorrelationRef`; worker handlers and public worker result
+  requests must not depend on task ids, message ids, attempt ids, transport
+  commands, or raw wire DTOs.
 - common worker-session model:
   narrow `WorkerSession` lifecycle contract and `WorkerSessionSpec` shared
   identity/options object for `workerId`, `workerGroupId`, attributes, event
@@ -298,6 +304,10 @@ is an explicit topology/setup operation through `mass.workers()`.
 `com.xa.mass.client.worker.handler` runtime internally. `WebSocketWorkerSession`
 uses the same handler runtime through the common session dispatch processor and
 routes handler results through a session-owned outbound frame queue.
+Both managed sessions keep result correlation opaque to handlers. Worker
+business code should read only `dispatch.eventCode()`, `dispatch.input()`, and
+`dispatch.sharedConfig()`; it should not use task/message identity as worker API
+state.
 Queue-full outcomes are reported through
 `WorkerSessionListener.onQueuedResultDropped(...)`; queued results that cannot
 be requeued after send failure, or cannot be submitted because the session

@@ -102,6 +102,7 @@ public final class SdkPollingSchedulingSoakRunner {
         private final SoakMetrics metrics = new SoakMetrics();
         private final AtomicBoolean stopRequested = new AtomicBoolean(false);
         private final List<String> failures = Collections.synchronizedList(new ArrayList<>());
+        private final ConcurrentHashMap<Integer, String> taskIdByIndex = new ConcurrentHashMap<>();
         private final List<String> eventCodes;
         private final String runId;
 
@@ -312,6 +313,7 @@ public final class SdkPollingSchedulingSoakRunner {
                         app.pullWorker(workerId),
                         config,
                         metrics,
+                        taskIdByIndex,
                         stopRequested,
                         failures
                 );
@@ -384,6 +386,7 @@ public final class SdkPollingSchedulingSoakRunner {
                             "eventCode", eventCode
                     ))
                     .build());
+            taskIdByIndex.put(taskIndex, task.getTaskId());
             app.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
                     .eventCode(eventCode)
                     .items(buildItems(taskIndex, eventCode))
@@ -709,6 +712,7 @@ public final class SdkPollingSchedulingSoakRunner {
         private final PullWorkerSession session;
         private final SoakConfig config;
         private final SoakMetrics metrics;
+        private final Map<Integer, String> taskIdByIndex;
         private final AtomicBoolean stopRequested;
         private final List<String> failures;
         private final AtomicBoolean running = new AtomicBoolean(true);
@@ -719,12 +723,14 @@ public final class SdkPollingSchedulingSoakRunner {
                                        PullWorkerSession session,
                                        SoakConfig config,
                                        SoakMetrics metrics,
+                                       Map<Integer, String> taskIdByIndex,
                                        AtomicBoolean stopRequested,
                                        List<String> failures) {
             this.workerId = workerId;
             this.session = session;
             this.config = config;
             this.metrics = metrics;
+            this.taskIdByIndex = taskIdByIndex;
             this.stopRequested = stopRequested;
             this.failures = failures;
             this.processingExecutor = Executors.newThreadPerTaskExecutor(
@@ -758,7 +764,7 @@ public final class SdkPollingSchedulingSoakRunner {
                         continue;
                     }
                     for (PulledTaskDispatch item : items) {
-                        metrics.recordReceivedItem(workerId, item.getTaskId());
+                        metrics.recordReceivedItem(workerId, taskIdFor(item), item.getResultCorrelationRef());
                         processingExecutor.submit(() -> process(item));
                     }
                 } catch (InterruptedException e) {
@@ -785,7 +791,7 @@ public final class SdkPollingSchedulingSoakRunner {
                 boolean success = isExpectedSuccess(globalSeq, config.failureEveryNth());
                 Map<String, Object> output = new LinkedHashMap<>();
                 output.put("workerId", workerId);
-                output.put("messageId", item.getMessageId());
+                output.put("resultCorrelationRef", item.getResultCorrelationRef());
                 output.put("globalSeq", globalSeq);
                 output.put("success", success);
                 boolean accepted = session.submitResult(
@@ -797,14 +803,14 @@ public final class SdkPollingSchedulingSoakRunner {
                 );
                 if (!accepted) {
                     failures.add("result rejected worker=" + workerId
-                            + " taskId=" + item.getTaskId() + " messageId=" + item.getMessageId());
+                            + " resultCorrelationRef=" + item.getResultCorrelationRef());
                 }
                 metrics.recordResult(workerId, success, System.nanoTime() - started);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (RuntimeException e) {
-                failures.add("worker " + workerId + " process failed messageId="
-                        + item.getMessageId() + ": " + e.getMessage());
+                failures.add("worker " + workerId + " process failed resultCorrelationRef="
+                        + item.getResultCorrelationRef() + ": " + e.getMessage());
             } finally {
                 metrics.endProcessing();
             }
@@ -815,7 +821,15 @@ public final class SdkPollingSchedulingSoakRunner {
             if (value instanceof Number number) {
                 return number.longValue();
             }
-            return Math.abs((long) item.getMessageId().hashCode());
+            return Math.abs((long) item.getResultCorrelationRef().hashCode());
+        }
+
+        private String taskIdFor(PulledTaskDispatch item) {
+            Object value = item.getInput().get("taskIndex");
+            if (value instanceof Number number) {
+                return taskIdByIndex.get(number.intValue());
+            }
+            return null;
         }
 
         private int deterministicJitterMillis(PulledTaskDispatch item) {
@@ -826,10 +840,7 @@ public final class SdkPollingSchedulingSoakRunner {
             int hash = Objects.hash(
                     config.processingJitterSeed(),
                     workerId,
-                    item.getTaskId(),
-                    item.getMessageId(),
-                    item.getAttemptId(),
-                    item.getRetryCount()
+                    item.getResultCorrelationRef()
             );
             return Math.floorMod(hash, jitterBound + 1);
         }
@@ -991,8 +1002,8 @@ public final class SdkPollingSchedulingSoakRunner {
             maxReceivedBatch.accumulate(batchSize);
         }
 
-        private void recordReceivedItem(String workerId, String taskId) {
-            byWorker(workerId).recordReceivedItem(taskId);
+        private void recordReceivedItem(String workerId, String taskId, String resultCorrelationRef) {
+            byWorker(workerId).recordReceivedItem(taskId, resultCorrelationRef);
         }
 
         private void beginProcessing() {
@@ -1045,6 +1056,7 @@ public final class SdkPollingSchedulingSoakRunner {
         private final LongAdder totalProcessingNanos = new LongAdder();
         private final LongAccumulator maxReceivedBatch = new LongAccumulator(Long::max, 0);
         private final AtomicReference<String> firstTaskId = new AtomicReference<>();
+        private final AtomicReference<String> firstCorrelationRef = new AtomicReference<>();
 
         private void recordPoll(int batchSize) {
             pollCycles.increment();
@@ -1064,9 +1076,12 @@ public final class SdkPollingSchedulingSoakRunner {
             totalProcessingNanos.add(processingNanos);
         }
 
-        private void recordReceivedItem(String taskId) {
+        private void recordReceivedItem(String taskId, String resultCorrelationRef) {
             if (taskId != null && !taskId.isBlank()) {
                 firstTaskId.compareAndSet(null, taskId);
+            }
+            if (resultCorrelationRef != null && !resultCorrelationRef.isBlank()) {
+                firstCorrelationRef.compareAndSet(null, resultCorrelationRef);
             }
         }
 
@@ -1079,7 +1094,8 @@ public final class SdkPollingSchedulingSoakRunner {
                     failedResults.sum(),
                     maxReceivedBatch.get(),
                     nanosToMillis(totalProcessingNanos.sum()),
-                    firstTaskId.get()
+                    firstTaskId.get(),
+                    firstCorrelationRef.get()
             );
         }
     }
@@ -1115,7 +1131,8 @@ public final class SdkPollingSchedulingSoakRunner {
                                          long failedResults,
                                          long maxReceivedBatch,
                                          double totalProcessingMillis,
-                                         String firstTaskId) {
+                                         String firstTaskId,
+                                         String firstCorrelationRef) {
     }
 
     private record SoakReport(String runId,

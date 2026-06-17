@@ -907,9 +907,9 @@ public final class SdkTransportLoadRunner {
         int concurrent = metrics.onProcessingStart();
         try {
             maybeSleep(config.processingDelayMillis());
-            String messageId = item.getMessageId();
+            String resultCorrelationRef = item.getResultCorrelationRef();
             int attemptNo = deliveryAttempts
-                    .computeIfAbsent(messageId, ignored -> new AtomicInteger())
+                    .computeIfAbsent(resultCorrelationRef, ignored -> new AtomicInteger())
                     .incrementAndGet();
             int seq = readSeq(item.getInput());
             boolean syntheticRetry = shouldInjectRetry(config, seq, attemptNo);
@@ -927,7 +927,7 @@ public final class SdkTransportLoadRunner {
                     )
             );
             metrics.onProcessingComplete(System.nanoTime() - startNanos, concurrent, submitted);
-            require(submitted, "result submission should succeed for " + messageId);
+            require(submitted, "result submission should succeed for " + resultCorrelationRef);
         } finally {
             metrics.onProcessingFinish();
         }
@@ -942,9 +942,9 @@ public final class SdkTransportLoadRunner {
         int concurrent = metrics.onProcessingStart();
         try {
             maybeSleep(config.processingDelayMillis());
-            String messageId = readString(frame, "messageId");
+            String resultCorrelationRef = readString(frame, "resultCorrelationRef");
             int attemptNo = deliveryAttempts
-                    .computeIfAbsent(messageId, ignored -> new AtomicInteger())
+                    .computeIfAbsent(resultCorrelationRef, ignored -> new AtomicInteger())
                     .incrementAndGet();
             int seq = readSeq(readObject(frame, "input"));
             boolean syntheticRetry = shouldInjectRetry(config, seq, attemptNo);
@@ -962,7 +962,7 @@ public final class SdkTransportLoadRunner {
                     )
             );
             metrics.onProcessingComplete(System.nanoTime() - startNanos, concurrent, submitted);
-            require(submitted, "websocket result submission should succeed for " + messageId);
+            require(submitted, "websocket result submission should succeed for " + resultCorrelationRef);
         } finally {
             metrics.onProcessingFinish();
         }
@@ -1023,8 +1023,8 @@ public final class SdkTransportLoadRunner {
 
     private static boolean isTaskDispatchFrame(JsonObject frame) {
         return frame != null
-                && readString(frame, "taskId") != null
-                && readString(frame, "messageId") != null
+                && readString(frame, "resultCorrelationRef") != null
+                && readString(frame, "eventCode") != null
                 && !hasBoolean(frame, "success")
                 && !isResponseFrame(frame);
     }
@@ -1053,10 +1053,7 @@ public final class SdkTransportLoadRunner {
                                           String detail,
                                           Map<String, Object> output) {
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", readString(taskFrame, "messageId"));
-        frame.addProperty("workerId", readString(taskFrame, "workerId"));
-        frame.addProperty("taskId", readString(taskFrame, "taskId"));
-        frame.addProperty("project", readString(taskFrame, "project"));
+        frame.addProperty("resultCorrelationRef", readString(taskFrame, "resultCorrelationRef"));
         frame.addProperty("success", success);
         frame.addProperty("detail", detail);
         frame.add("output", FRAME_GSON.toJsonTree(output != null ? output : Map.of()));

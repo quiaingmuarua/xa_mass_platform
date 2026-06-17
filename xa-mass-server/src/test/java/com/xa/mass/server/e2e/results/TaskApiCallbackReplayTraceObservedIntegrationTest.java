@@ -88,8 +88,7 @@ public class TaskApiCallbackReplayTraceObservedIntegrationTest extends AbstractT
             assertTrue(terminalSnapshot.activeLeases().isEmpty());
 
             replayConflictingTaskResult(
-                    taskId,
-                    WsFrameTestSupport.messageId(firstDispatch),
+                    WsFrameTestSupport.resultCorrelationRef(firstDispatch),
                     "FAILED",
                     "replayed-conflict"
             );
@@ -120,16 +119,13 @@ public class TaskApiCallbackReplayTraceObservedIntegrationTest extends AbstractT
         }
     }
 
-    private void replayConflictingTaskResult(String taskId, String messageId, String status, String detail) throws Exception {
+    private void replayConflictingTaskResult(String resultCorrelationRef, String status, String detail) throws Exception {
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ReplayWebSocketClient client = new ReplayWebSocketClient(uri, "us", "replay-worker");
         try {
             assertClientConnects(client, "replay WebSocket client failed to connect");
             client.sendMessage(WsFrameTestSupport.buildTaskResult(
-                    messageId,
-                    "demoApp",
-                    "replay-worker",
-                    taskId,
+                    resultCorrelationRef,
                     status,
                     detail
             ));

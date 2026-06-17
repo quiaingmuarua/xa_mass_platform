@@ -56,9 +56,8 @@ class SampleWorkerWebSocketClientTest {
         assertTrue(client.awaitSentCount(1, 1000L));
         assertEquals(1, client.sentMessages.size());
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertEquals("msg-1", WsFrameTestSupport.messageId(response));
-        assertEquals("worker-test", WsFrameTestSupport.workerId(response));
-        assertEquals("task-1", WsFrameTestSupport.taskId(response));
+        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(response));
+        assertNull(WsFrameTestSupport.workerId(response));
         assertTrue(response.get("success").getAsBoolean());
         assertEquals("Executed by sample client worker-test", response.get("detail").getAsString());
         JsonObject payload = WsFrameTestSupport.payload(response);
@@ -69,11 +68,8 @@ class SampleWorkerWebSocketClientTest {
         JsonObject execution = payload.getAsJsonObject("execution");
         assertFalse(execution.has("adapterId"));
         assertEquals("realtime", execution.get("transportHint").getAsString());
-        assertEquals("task-1", execution.get("taskId").getAsString());
-        assertEquals("msg-1", execution.get("messageId").getAsString());
-        assertEquals("demoApp", execution.get("project").getAsString());
+        assertEquals("corr-1", execution.get("resultCorrelationRef").getAsString());
         assertEquals(1, execution.get("stepCount").getAsInt());
-        assertEquals(0, execution.get("retryCount").getAsInt());
         long startedAt = execution.get("startedAtEpochMs").getAsLong();
         long finishedAt = execution.get("finishedAtEpochMs").getAsLong();
         long durationMs = execution.get("durationMs").getAsLong();
@@ -212,9 +208,9 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(3, 1000L));
         assertEquals(3, client.sentMessages.size());
-        assertEquals("msg-1", WsFrameTestSupport.messageId(WsFrameTestSupport.parse(client.sentMessages.get(0))));
-        assertEquals("msg-1", WsFrameTestSupport.messageId(WsFrameTestSupport.parse(client.sentMessages.get(1))));
-        assertEquals("msg-1", WsFrameTestSupport.messageId(WsFrameTestSupport.parse(client.sentMessages.get(2))));
+        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(WsFrameTestSupport.parse(client.sentMessages.get(0))));
+        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(WsFrameTestSupport.parse(client.sentMessages.get(1))));
+        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(WsFrameTestSupport.parse(client.sentMessages.get(2))));
     }
 
     @Test
@@ -233,7 +229,7 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertEquals("msg-1", WsFrameTestSupport.messageId(response));
+        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(response));
         assertTrue(WsFrameTestSupport.payload(response).getAsJsonObject("execution")
                 .get("durationMs").getAsLong() >= 120L);
     }
@@ -243,7 +239,7 @@ class SampleWorkerWebSocketClientTest {
         CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         stateRegistry.getOrCreate("worker-test").setFaultProfile(
                 SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.MALFORMED_RESULT, 42L)
-                        .malformedResultKind(SampleWorkerFaultProfile.MalformedResultKind.MISSING_MESSAGE_ID)
+                        .malformedResultKind(SampleWorkerFaultProfile.MalformedResultKind.MISSING_CORRELATION_REF)
                         .build()
         );
 
@@ -251,9 +247,7 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertNull(WsFrameTestSupport.messageId(response));
-        assertEquals("worker-test", WsFrameTestSupport.workerId(response));
-        assertEquals("task-1", WsFrameTestSupport.taskId(response));
+        assertNull(WsFrameTestSupport.resultCorrelationRef(response));
     }
 
     @Test
@@ -277,7 +271,7 @@ class SampleWorkerWebSocketClientTest {
         CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         stateRegistry.getOrCreate("worker-test").setFaultProfile(
                 SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.WRONG_IDENTITY, 42L)
-                        .resultIdentityKind(SampleWorkerFaultProfile.ResultIdentityKind.WRONG_MESSAGE)
+                        .resultIdentityKind(SampleWorkerFaultProfile.ResultIdentityKind.WRONG_CORRELATION)
                         .build()
         );
 
@@ -285,9 +279,7 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertEquals("wrong-msg-1", WsFrameTestSupport.messageId(response));
-        assertEquals("worker-test", WsFrameTestSupport.workerId(response));
-        assertEquals("task-1", WsFrameTestSupport.taskId(response));
+        assertEquals("wrong-corr-1", WsFrameTestSupport.resultCorrelationRef(response));
     }
 
     @Test
@@ -318,7 +310,7 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         assertTrue(client.awaitClosed(1000L));
-        assertEquals("msg-1", WsFrameTestSupport.messageId(WsFrameTestSupport.parse(client.sentMessages.get(0))));
+        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(WsFrameTestSupport.parse(client.sentMessages.get(0))));
     }
 
     @Test
@@ -576,11 +568,11 @@ class SampleWorkerWebSocketClientTest {
             steps.add(step);
             payload.add("steps", steps);
         }
-        String raw = WsFrameTestSupport.buildTaskDispatch("msg-1", "demoApp", "worker-test", "task-1", eventCode, payload);
+        String raw = WsFrameTestSupport.buildTaskDispatch("corr-1", eventCode, payload);
         if (!response) {
             return raw;
         }
-        return WsFrameTestSupport.buildTaskResult("msg-1", "demoApp", "worker-test", "task-1", "SUCCESS", "prebuilt");
+        return WsFrameTestSupport.buildTaskResult("corr-1", "SUCCESS", "prebuilt");
     }
 
     private JsonObject workerCommandFrame(String commandId, String workerId, String commandType) {

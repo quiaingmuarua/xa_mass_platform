@@ -13,8 +13,7 @@ import java.util.Map;
  */
 public final class WebSocketResultIngressFrameReader {
 
-    private static final String MESSAGE_ID_FIELD = "messageId";
-    private static final String TASK_ID_FIELD = "taskId";
+    private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
     private static final String EVENT_CODE_FIELD = "eventCode";
     private static final String ROUTE_KEY_FIELD = "routeKey";
     private static final String TRACE_ID_FIELD = "traceId";
@@ -31,16 +30,14 @@ public final class WebSocketResultIngressFrameReader {
     public boolean isResultFrame(JsonObject frame) {
         return frame != null
                 && parser.readString(frame, EVENT_CODE_FIELD) == null
-                && parser.readString(frame, TASK_ID_FIELD) != null
-                && parser.readString(frame, MESSAGE_ID_FIELD) != null
+                && parser.readString(frame, RESULT_CORRELATION_REF_FIELD) != null
                 && parser.readBoolean(frame, SUCCESS_FIELD) != null;
     }
 
     public TransportResultIngressEnvelope toEnvelope(JsonObject frame, WebSocketInboundMessage inboundMessage) {
-        String taskId = parser.readString(frame, TASK_ID_FIELD);
-        String messageId = parser.readString(frame, MESSAGE_ID_FIELD);
-        if (taskId == null || messageId == null) {
-            throw new IllegalArgumentException("taskId/messageId are required");
+        String resultCorrelationRef = parser.readString(frame, RESULT_CORRELATION_REF_FIELD);
+        if (resultCorrelationRef == null) {
+            throw new IllegalArgumentException(RESULT_CORRELATION_REF_FIELD + " is required");
         }
         if (parser.readBoolean(frame, SUCCESS_FIELD) == null) {
             throw new IllegalArgumentException(SUCCESS_FIELD + " is required");
@@ -51,18 +48,18 @@ public final class WebSocketResultIngressFrameReader {
         );
         String traceId = WebSocketStringValues.firstNonBlank(
                 parser.readString(frame, TRACE_ID_FIELD),
-                messageId
+                resultCorrelationRef
         );
         return TransportResultIngressEnvelope.received(
                 parser.toJson(frame),
                 null,
-                messageId,
+                resultCorrelationRef,
                 diagnostics(routeKey, traceId)
         );
     }
 
-    public String messageId(JsonObject frame) {
-        return parser.readString(frame, MESSAGE_ID_FIELD);
+    public String resultCorrelationRef(JsonObject frame) {
+        return parser.readString(frame, RESULT_CORRELATION_REF_FIELD);
     }
 
     public String traceId(JsonObject frame) {

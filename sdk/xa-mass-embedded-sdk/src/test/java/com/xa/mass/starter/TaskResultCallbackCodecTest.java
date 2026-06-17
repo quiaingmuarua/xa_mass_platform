@@ -18,15 +18,11 @@ class TaskResultCallbackCodecTest {
     @Test
     void workerResultRequestRoundTripsThroughOpaqueTransportEnvelope() {
         WorkerResultSubmitRequest request = new WorkerResultSubmitRequest(
-                "task-1",
-                "msg-1",
+                correlation("task-1", "msg-1", "attempt-1"),
                 true,
                 "ok",
                 null,
-                Map.of("status", "SUCCESS"),
-                "attempt-1",
-                "lease-1",
-                "trace-1"
+                Map.of("status", "SUCCESS")
         );
 
         TransportResultIngressEnvelope envelope =
@@ -36,11 +32,13 @@ class TaskResultCallbackCodecTest {
         assertEquals("partition-1", envelope.getPartitionKey());
         assertEquals("polling", envelope.diagnostic("adapterId"));
         assertFalse(envelope.getPayload().contains("adapterId"));
+        assertFalse(envelope.getPayload().contains("taskId"));
+        assertFalse(envelope.getPayload().contains("messageId"));
         assertEquals("task-1", decoded.taskId());
         assertEquals("msg-1", decoded.messageId());
         assertEquals("attempt-1", decoded.attemptId());
-        assertEquals("lease-1", decoded.leaseToken());
-        assertEquals("trace-1", decoded.traceId());
+        assertEquals(null, decoded.leaseToken());
+        assertEquals(null, decoded.traceId());
         assertEquals("SUCCESS", decoded.output().get("status"));
     }
 
@@ -48,18 +46,24 @@ class TaskResultCallbackCodecTest {
     void decodeUsesDiagnosticTraceWhenCorrelationOmitsTrace() {
         TransportResultIngressEnvelope envelope = TransportResultIngressEnvelope.received(
                 """
-                {"taskId":"task-1","messageId":"msg-1","success":false,"message":"failed"}
-                """,
+                {
+                  "resultCorrelationRef": "%s",
+                  "success": false,
+                  "message": "failed"
+                }
+                """.formatted(correlation("task-1", "msg-1", "attempt-1")),
                 """
-                {"attemptId":"attempt-1","leaseToken":"lease-1"}
+                {"leaseToken":"lease-1"}
                 """,
-                "msg-1",
+                "partition-1",
                 Map.of("traceId", "diagnostic-trace")
         );
 
         TaskResultCallbackCommand decoded = codec.decode(envelope);
 
         assertEquals("failed", decoded.detail());
+        assertEquals("attempt-1", decoded.attemptId());
+        assertEquals("lease-1", decoded.leaseToken());
         assertEquals("diagnostic-trace", decoded.traceId());
     }
 
@@ -68,15 +72,14 @@ class TaskResultCallbackCodecTest {
         TransportResultIngressEnvelope envelope = TransportResultIngressEnvelope.received(
                 """
                 {
-                  "taskId": "task-1",
-                  "messageId": "msg-1",
+                  "resultCorrelationRef": "%s",
                   "success": true,
                   "detail": "done",
                   "output": {"value": "ok"}
                 }
-                """,
+                """.formatted(correlation("task-1", "msg-1", "attempt-1")),
                 null,
-                "msg-1",
+                "partition-1",
                 null
         );
 
@@ -99,7 +102,7 @@ class TaskResultCallbackCodecTest {
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> codec.decode(envelope));
 
-        assertEquals("result callback payload requires taskId, messageId, and success", error.getMessage());
+        assertEquals("result callback payload requires resultCorrelationRef", error.getMessage());
     }
 
     @Test
@@ -120,5 +123,11 @@ class TaskResultCallbackCodecTest {
         );
 
         assertEquals("output.output contains unsupported non-JSON value type: java.lang.Object", error.getMessage());
+    }
+
+    private static String correlation(String taskId, String messageId, String attemptId) {
+        return new TaskDispatchDeliveryCorrelationCodec().encode(
+                new TaskDispatchDeliveryCorrelation(taskId, messageId, attemptId, 0)
+        );
     }
 }

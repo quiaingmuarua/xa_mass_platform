@@ -6,12 +6,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.worker.WorkerClient;
 import com.xa.mass.client.worker.WorkerDispatchItem;
+import com.xa.mass.client.worker.ResultCorrelationRef;
 import com.xa.mass.client.worker.WorkerRegistrationResult;
 import com.xa.mass.client.worker.WorkerSpec;
-import com.xa.mass.client.worker.handler.DispatchContext;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
 import com.xa.mass.client.worker.handler.WorkerEventHandlers;
+import com.xa.mass.client.worker.handler.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
 
 import java.net.URI;
@@ -260,7 +261,11 @@ public final class  WebSocketWorkerSession implements WorkerSession {
             } catch (Throwable failure) {
                 Throwable cause = unwrap(failure);
                 if (outbound != null) {
-                    listener.onSubmitFailure(new WorkerSessionDispatchFailure(outbound.dispatch(), cause));
+                    listener.onSubmitFailure(new WorkerSessionDispatchFailure(
+                            workerId,
+                            outbound.resultCorrelationRef(),
+                            null,
+                            cause));
                     requeueOrAbandon(outbound, cause);
                 }
                 webSocket.set(null);
@@ -288,24 +293,26 @@ public final class  WebSocketWorkerSession implements WorkerSession {
             return;
         }
         WorkerDispatchProcessor.ProcessedDispatch processed = dispatchProcessor.process(item);
-        enqueueResult(processed.dispatch(), processed.result());
+        enqueueResult(processed.resultCorrelationRef(), processed.invocation(), processed.result());
     }
 
-    private void enqueueResult(DispatchContext dispatch, WorkerResult result) {
+    private void enqueueResult(ResultCorrelationRef resultCorrelationRef,
+                               WorkerInvocation invocation,
+                               WorkerResult result) {
         try {
-            String frame = encodeResult(dispatch, result);
-            if (!outboundResults.offer(new OutboundResult(dispatch, frame))) {
+            String frame = encodeResult(resultCorrelationRef, result);
+            if (!outboundResults.offer(new OutboundResult(resultCorrelationRef, frame))) {
                 IllegalStateException failure = new IllegalStateException("websocket result queue is full");
                 WorkerSessionQueuedResultFailure queuedFailure = new WorkerSessionQueuedResultFailure(
                         workerId,
-                        dispatch,
+                        resultCorrelationRef,
                         WorkerSessionQueuedResultFailure.Reason.QUEUE_FULL,
                         failure);
                 listener.onQueuedResultDropped(queuedFailure);
                 throw failure;
             }
         } catch (Throwable failure) {
-            listener.onSubmitFailure(new WorkerSessionDispatchFailure(dispatch, failure));
+            listener.onSubmitFailure(new WorkerSessionDispatchFailure(workerId, resultCorrelationRef, invocation, failure));
         }
     }
 
@@ -327,33 +334,24 @@ public final class  WebSocketWorkerSession implements WorkerSession {
 
     private WorkerDispatchItem decodeDispatch(String frame) throws JsonProcessingException {
         JsonNode root = objectMapper.readTree(frame);
-        String taskId = text(root, "taskId");
-        String messageId = text(root, "messageId");
-        if (taskId == null || messageId == null) {
+        String resultCorrelationRef = text(root, "resultCorrelationRef");
+        if (resultCorrelationRef == null) {
             return null;
         }
         if (root.has("success")) {
             return null;
         }
         return new WorkerDispatchItem(
-                taskId,
-                messageId,
+                resultCorrelationRef,
                 text(root, "eventCode"),
-                text(root, "taskName"),
-                text(root, "project"),
-                text(root, "userId"),
-                root.path("retryCount").asInt(0),
-                firstNonBlank(text(root, "workerId"), workerId),
-                text(root, "batchId"),
                 objectMap(root.get("input")),
                 objectMap(root.get("sharedConfig"))
         );
     }
 
-    private String encodeResult(DispatchContext dispatch, WorkerResult result) throws JsonProcessingException {
+    private String encodeResult(ResultCorrelationRef resultCorrelationRef, WorkerResult result) throws JsonProcessingException {
         Map<String, Object> frame = new LinkedHashMap<>();
-        frame.put("messageId", dispatch.messageId());
-        frame.put("taskId", dispatch.taskId());
+        frame.put("resultCorrelationRef", resultCorrelationRef.value());
         frame.put("success", result.success());
         frame.put("detail", result.detail());
         frame.put("errorCode", result.errorCode());
@@ -414,7 +412,7 @@ public final class  WebSocketWorkerSession implements WorkerSession {
                                Throwable cause) {
         listener.onQueuedResultAbandoned(new WorkerSessionQueuedResultFailure(
                 workerId,
-                outbound.dispatch(),
+                outbound.resultCorrelationRef(),
                 reason,
                 cause));
     }
@@ -467,10 +465,6 @@ public final class  WebSocketWorkerSession implements WorkerSession {
             throw new IllegalArgumentException(fieldName + " is required");
         }
         return value.trim();
-    }
-
-    private static String firstNonBlank(String primary, String fallback) {
-        return primary == null || primary.isBlank() ? fallback : primary.trim();
     }
 
     private static String encodeQuery(String value) {
@@ -661,7 +655,7 @@ public final class  WebSocketWorkerSession implements WorkerSession {
         }
     }
 
-    private record OutboundResult(DispatchContext dispatch, String resultFrame) {
+    private record OutboundResult(ResultCorrelationRef resultCorrelationRef, String resultFrame) {
     }
 
     private record QueuedResultTermination(WorkerSessionQueuedResultFailure.Reason reason, Throwable cause) {

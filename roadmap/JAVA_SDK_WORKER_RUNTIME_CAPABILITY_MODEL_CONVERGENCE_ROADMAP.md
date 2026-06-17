@@ -50,12 +50,11 @@ Current code facts verified from `sdk/xa-mass-java-sdk`:
 - `PollingWorkerSession` currently owns heartbeat scheduling directly inside
   its session implementation. There is no common worker runtime maintenance
   loop model for heartbeat now or future worker-initiated reports.
-- Java external SDK `WorkerDispatchItem` is still task-shaped:
-  `taskId`, `messageId`, `taskName`, `project`, `userId`, retry/batch fields,
-  `workerId`, `input`, and `sharedConfig`.
-- `DispatchContext` is handler-facing today, but it still exposes task-shaped
-  fields and `rawItem`. That leaks the worker-api wire DTO into business handler
-  code and keeps task vocabulary in the worker execution context.
+- Java external SDK `WorkerDispatchItem` has been narrowed to worker wire
+  payload plus opaque `resultCorrelationRef`. It is not handler-facing.
+- `DispatchContext` has been removed. Handler-facing execution now uses
+  `WorkerInvocation(eventCode, input, sharedConfig)`, with result correlation
+  kept opaque in the session/runtime path.
 - Transport `DeliveryCommand` is already the assigned-delivery transport intent:
   `deliveryBucketId`, `selectedWorkerId`, opaque `payload`, and
   `correlationRef`. It belongs to transport/adapters. Java worker runtime and
@@ -305,11 +304,12 @@ Forbidden model drift:
 - Do not let tests preserve task-shaped worker invocation vocabulary as a second
   public API.
 
-Current `WorkerDispatchItem` and `DispatchContext` are therefore transitional
-sites, not target shapes. Their full convergence is intentionally split into
-`EXTERNAL_WORKER_INVOCATION_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md` because it
-touches handler APIs, Java SDK wire DTOs, server external-worker HTTP wire,
-result correlation, protocol sessions, integrations, and guards.
+`WorkerDispatchItem` is therefore a wire/protocol DTO, not the handler model.
+The old `DispatchContext` convergence was completed by the archived
+`doc/archive/sdk/2026-06-17_EXTERNAL_WORKER_INVOCATION_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md`;
+future JWR slices must preserve the payload-first `WorkerInvocation` and opaque
+`resultCorrelationRef` boundary instead of recreating task-shaped worker
+context.
 
 ## Non-Goals
 
@@ -357,7 +357,7 @@ Scope:
 - `WorkerEventHandlers`
 - `WorkerEventHandlerRuntime`
 - `WorkerDispatchItem`
-- `DispatchContext`
+- `WorkerInvocation`
 - `PollingWorkerSession`
 - `WebSocketWorkerSession`
 - `WorkerSession*` listener/failure/startup types
@@ -374,9 +374,8 @@ Acceptance:
   stale/superseded docs.
 - Inventory explicitly records that current `WorkerSessionSpec` carries worker
   definition facts and is not the target model.
-- Inventory explicitly records that current `WorkerDispatchItem` and
-  `DispatchContext` carry task-shaped fields and are not the target
-  handler-facing worker invocation model.
+- Inventory explicitly records that `WorkerDispatchItem` is a wire/protocol DTO
+  and `WorkerInvocation` is the handler-facing worker invocation model.
 - Inventory names all current implicit `start()` side effects:
   registration, presence, capability report, state report, heartbeat, poll,
   connection, result sender.
@@ -386,7 +385,7 @@ Acceptance:
 Verification candidates:
 
 ```bash
-rg -n "registerWorker|online\\(|heartbeat\\(|offline\\(|reportCapability|reportState|pollCommands|ackCommand|submitResult|WorkerSessionSpec|WorkerDispatchItem|DispatchContext|PollingWorkerSession|WebSocketWorkerSession" sdk/xa-mass-java-sdk/src/main/java integrations -g "*.java"
+rg -n "registerWorker|online\\(|heartbeat\\(|offline|reportCapability|reportState|pollCommands|ackCommand|submitResult|WorkerSessionSpec|WorkerDispatchItem|WorkerInvocation|PollingWorkerSession|WebSocketWorkerSession" sdk/xa-mass-java-sdk/src/main/java integrations -g "*.java"
 ```
 
 ## JWR-1 Worker Runtime Definition Contract
@@ -425,24 +424,24 @@ rg -n "adapterId|adapterNodeId|routeKey|connectionId|endpointLease|deliveryQueue
 
 ## JWR-2 Worker Invocation Payload Boundary Dependency
 
-Goal: keep the worker runtime capability roadmap aligned with payload-first
-handler invocation without under-scoping the `DispatchContext` convergence.
+Goal: keep the worker runtime capability roadmap aligned with the completed
+payload-first handler invocation and opaque result-correlation boundary.
 
-The executable payload/correlation work is owned by:
+The executable payload/correlation work was owned by:
 
 ```text
-EXTERNAL_WORKER_INVOCATION_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md
+doc/archive/sdk/2026-06-17_EXTERNAL_WORKER_INVOCATION_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md
 ```
 
-That roadmap owns:
+That roadmap has landed:
 
-- `DispatchContext`
-- `WorkerDispatchItem`
-- handler-facing worker invocation shape
-- runtime-internal result correlation
+- `DispatchContext` removal
+- `WorkerDispatchItem` containment as wire/protocol DTO
+- handler-facing `WorkerInvocation(eventCode, input, sharedConfig)`
+- opaque `ResultCorrelationRef`
 - polling and WebSocket result submission correlation
 - Java SDK worker handler migration
-- server external worker API wire classification
+- server external worker API wire migration to `resultCorrelationRef`
 - scenario launcher and worker-pack integration migration
 - guards that prevent task-shaped handler context or transport
   `DeliveryCommand` from entering Java SDK worker handlers
@@ -452,9 +451,9 @@ Acceptance in this roadmap:
 - JWR implementation does not add new task-shaped handler context fields.
 - JWR implementation does not introduce `DeliveryCommand` into Java external
   worker SDK runtime or handler contracts.
-- Before JWR-4 moves common runtime execution, the invocation payload roadmap
-  must be at least WIP-1/WIP-2 complete or explicitly kept as a blocking
-  dependency in the implementation plan.
+- Before JWR-4 moves common runtime execution, it must reuse
+  `WorkerInvocation` and `ResultCorrelationRef`; it must not recreate
+  `DispatchContext` or task-shaped result correlation.
 - JWR docs and examples reference the dedicated payload roadmap instead of
   duplicating its detailed field-level work.
 
@@ -731,7 +730,7 @@ rg -n "adapterId|adapterNodeId|routeKey|connectionId|endpointLease|deliveryQueue
 1. JWR-0 inventory.
 2. JWR-1 worker runtime definition contract.
 3. JWR-2 dependency gate on
-   `EXTERNAL_WORKER_INVOCATION_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md`.
+   `doc/archive/sdk/2026-06-17_EXTERNAL_WORKER_INVOCATION_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md`.
 4. JWR-3 explicit registration and evidence boundary.
 5. JWR-4 common runtime core and protocol driver SPI.
 6. JWR-5 worker runtime maintenance loop.

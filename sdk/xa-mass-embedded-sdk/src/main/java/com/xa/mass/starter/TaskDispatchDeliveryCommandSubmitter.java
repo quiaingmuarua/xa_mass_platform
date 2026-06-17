@@ -9,8 +9,6 @@ import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
-import com.xa.mass.sdk.worker.TaskDispatchDeliveryCorrelationCodec;
-import com.xa.mass.sdk.worker.TaskDispatchPayloadCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +27,7 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
 
     private final TransportAssignedDeliverySubmitter assignedDeliverySubmitter;
     private final TransportDeliveryFailureHandler failureHandler;
-    private final TaskDispatchPayloadCodec payloadCodec = new TaskDispatchPayloadCodec();
+    private final TaskDispatchPayloadEncoder payloadEncoder = new TaskDispatchPayloadEncoder();
     private final TaskDispatchDeliveryCorrelationCodec correlationCodec = new TaskDispatchDeliveryCorrelationCodec();
 
     TaskDispatchDeliveryCommandSubmitter(TransportAssignedDeliverySubmitter assignedDeliverySubmitter,
@@ -69,12 +67,13 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
                                       TaskDispatchBinding binding,
                                       String deliveryBucketId,
                                       String selectedWorkerId) {
+        String correlationRef = correlationCodec.encode(task, binding);
         return new DeliveryCommand(
                 UUID.randomUUID().toString(),
                 deliveryBucketId,
                 selectedWorkerId,
-                payloadCodec.encode(task, binding, selectedWorkerId),
-                correlationCodec.encode(task, binding),
+                payloadEncoder.encode(task, binding, correlationRef),
+                correlationRef,
                 0L,
                 System.currentTimeMillis()
         );

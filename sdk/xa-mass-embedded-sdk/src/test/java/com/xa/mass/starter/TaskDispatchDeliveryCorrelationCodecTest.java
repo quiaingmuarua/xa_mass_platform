@@ -1,4 +1,4 @@
-package com.xa.mass.sdk.worker;
+package com.xa.mass.starter;
 
 import org.junit.jupiter.api.Test;
 

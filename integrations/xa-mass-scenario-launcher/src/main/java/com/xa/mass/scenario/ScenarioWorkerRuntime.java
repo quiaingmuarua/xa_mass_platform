@@ -2,7 +2,7 @@ package com.xa.mass.scenario;
 
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.WorkerEventBindingSpec;
-import com.xa.mass.client.worker.handler.DispatchContext;
+import com.xa.mass.client.worker.handler.WorkerInvocation;
 import com.xa.mass.client.worker.session.PollingWorkerSession;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.client.worker.session.WebSocketWorkerSession;
@@ -144,7 +144,7 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
         return builder.build();
     }
 
-    private WorkerResult handleDispatch(WorkerScenarioSpec spec, DispatchContext dispatch) {
+    private WorkerResult handleDispatch(WorkerScenarioSpec spec, WorkerInvocation dispatch) {
         idleTracker.markActivity();
         Map<String, Object> output = new LinkedHashMap<>();
         output.put("workerId", spec.workerId());
@@ -206,16 +206,14 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
 
         @Override
         public void onHandlerFailure(WorkerSessionDispatchFailure failure) {
-            System.err.printf("[java-scenario-launcher] worker handler failed workerId=%s taskId=%s messageId=%s error=%s%n",
-                    failure.dispatch().workerId(), failure.dispatch().taskId(),
-                    failure.dispatch().messageId(), failure.cause().getMessage());
+            System.err.printf("[java-scenario-launcher] worker handler failed workerId=%s resultCorrelationRef=%s error=%s%n",
+                    failure.workerId(), failure.resultCorrelationRef().value(), failure.cause().getMessage());
         }
 
         @Override
         public void onSubmitFailure(WorkerSessionDispatchFailure failure) {
-            System.err.printf("[java-scenario-launcher] worker submit failed workerId=%s taskId=%s messageId=%s error=%s%n",
-                    failure.dispatch().workerId(), failure.dispatch().taskId(),
-                    failure.dispatch().messageId(), failure.cause().getMessage());
+            System.err.printf("[java-scenario-launcher] worker submit failed workerId=%s resultCorrelationRef=%s error=%s%n",
+                    failure.workerId(), failure.resultCorrelationRef().value(), failure.cause().getMessage());
         }
 
         @Override

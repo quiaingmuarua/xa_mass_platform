@@ -21,15 +21,10 @@ class PulledTaskDispatchTest {
                 .collect(Collectors.toSet());
 
         assertEquals(Set.of(
-                "taskId",
-                "messageId",
+                "resultCorrelationRef",
                 "eventCode",
                 "input",
-                "sharedConfig",
-                "attemptId",
-                "attemptNo",
-                "retryCount",
-                "batchId"
+                "sharedConfig"
         ), fields);
         assertFalse(fields.contains("routeKey"));
         assertFalse(fields.contains("transportPayload"));
@@ -40,51 +35,25 @@ class PulledTaskDispatchTest {
     @Test
     void normalizesMapsAndCounters() {
         PulledTaskDispatch item = new PulledTaskDispatch(
-                " task-1 ",
-                " msg-1 ",
+                " corr-1 ",
                 " event-1 ",
                 Map.of("target", "a"),
-                null,
-                " attempt-1 ",
-                -1,
-                -2,
-                " batch-1 "
+                null
         );
 
-        assertEquals("task-1", item.getTaskId());
-        assertEquals("msg-1", item.getMessageId());
+        assertEquals("corr-1", item.getResultCorrelationRef());
         assertEquals("event-1", item.getEventCode());
         assertEquals(Map.of("target", "a"), item.getInput());
         assertEquals(Map.of(), item.getSharedConfig());
-        assertEquals("attempt-1", item.getAttemptId());
-        assertEquals(0, item.getAttemptNo());
-        assertEquals(0, item.getRetryCount());
-        assertEquals("batch-1", item.getBatchId());
     }
 
     @Test
-    void requiresTaskAndMessageIdentity() {
+    void requiresResultCorrelationRef() {
         assertThrows(IllegalArgumentException.class, () -> new PulledTaskDispatch(
                 " ",
-                "msg-1",
                 null,
                 Map.of(),
-                Map.of(),
-                null,
-                0,
-                0,
-                null
-        ));
-        assertThrows(IllegalArgumentException.class, () -> new PulledTaskDispatch(
-                "task-1",
-                " ",
-                null,
-                Map.of(),
-                Map.of(),
-                null,
-                0,
-                0,
-                null
+                Map.of()
         ));
     }
 }

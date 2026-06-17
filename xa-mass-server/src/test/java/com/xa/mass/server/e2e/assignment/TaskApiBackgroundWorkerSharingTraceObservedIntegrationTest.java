@@ -159,10 +159,7 @@ class TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest extends Abstrac
 
         private void sendSuccess(JsonObject taskMessage, String detail) throws Exception {
             sendMessage(WsFrameTestSupport.buildTaskResult(
-                    WsFrameTestSupport.messageId(taskMessage),
-                    WsFrameTestSupport.project(taskMessage),
-                    getWorkerId(),
-                    WsFrameTestSupport.taskId(taskMessage),
+                    WsFrameTestSupport.resultCorrelationRef(taskMessage),
                     "SUCCESS",
                     detail
             ));

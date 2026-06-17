@@ -24,8 +24,7 @@ public final class SocketTransportFrameCodec {
     private static final String WORKER_GROUP_ID_FIELD = "workerGroupId";
     private static final String ROUTE_KEY_FIELD = "routeKey";
     private static final String TRACE_ID_FIELD = "traceId";
-    private static final String TASK_ID_FIELD = "taskId";
-    private static final String MESSAGE_ID_FIELD = "messageId";
+    private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
     private static final String EVENT_CODE_FIELD = "eventCode";
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
     }.getType();
@@ -75,8 +74,8 @@ public final class SocketTransportFrameCodec {
         return readString(frame, TRACE_ID_FIELD);
     }
 
-    public String extractMessageId(JsonObject frame) {
-        return readString(frame, MESSAGE_ID_FIELD);
+    public String extractResultCorrelationRef(JsonObject frame) {
+        return readString(frame, RESULT_CORRELATION_REF_FIELD);
     }
 
     public String extractEventCode(JsonObject frame) {
@@ -86,8 +85,8 @@ public final class SocketTransportFrameCodec {
     public boolean isCanonicalTaskResult(JsonObject frame) {
         return frame != null
                 && extractEventCode(frame) == null
-                && readString(frame, TASK_ID_FIELD) != null
-                && extractMessageId(frame) != null
+                && readString(frame, RESULT_CORRELATION_REF_FIELD) != null
+                && extractResultCorrelationRef(frame) != null
                 && hasBoolean(frame, TransportPacket.PAYLOAD_SUCCESS);
     }
 
@@ -99,10 +98,9 @@ public final class SocketTransportFrameCodec {
     }
 
     public String encodeCanonicalTaskResultPayload(JsonObject frame) {
-        String taskId = readString(frame, TASK_ID_FIELD);
-        String messageId = extractMessageId(frame);
-        if (taskId == null || messageId == null) {
-            throw new IllegalArgumentException("taskId/messageId are required");
+        String resultCorrelationRef = readString(frame, RESULT_CORRELATION_REF_FIELD);
+        if (resultCorrelationRef == null) {
+            throw new IllegalArgumentException(RESULT_CORRELATION_REF_FIELD + " is required");
         }
         Boolean success = readBoolean(frame, TransportPacket.PAYLOAD_SUCCESS);
         if (success == null) {

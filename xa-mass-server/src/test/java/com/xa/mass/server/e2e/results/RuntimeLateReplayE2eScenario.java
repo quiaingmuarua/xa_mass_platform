@@ -79,10 +79,7 @@ abstract class RuntimeLateReplayE2eScenario extends ReviewReadModelSampleE2eTest
                 );
                 try {
                     replayClient.sendMessage(WsFrameTestSupport.buildTaskResult(
-                            WsFrameTestSupport.messageId(firstDispatch),
-                            WsFrameTestSupport.project(firstDispatch),
-                            CHAOS_WORKER_ID,
-                            WsFrameTestSupport.taskId(firstDispatch),
+                            WsFrameTestSupport.resultCorrelationRef(firstDispatch),
                             "FAILED",
                             "stale-runtime-replay"
                     ));

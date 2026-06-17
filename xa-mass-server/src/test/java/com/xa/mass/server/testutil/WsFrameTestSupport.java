@@ -16,46 +16,24 @@ public final class WsFrameTestSupport {
         return GSON.fromJson(rawJson, JsonObject.class);
     }
 
-    public static String buildTaskDispatch(String messageId,
-                                           String project,
-                                           String workerId,
-                                           String taskId,
-                                           JsonObject input) {
-        return buildTaskDispatch(messageId, project, workerId, taskId, "mock.task.dispatch", input);
+    public static String buildTaskDispatch(String resultCorrelationRef, JsonObject input) {
+        return buildTaskDispatch(resultCorrelationRef, "mock.task.dispatch", input);
     }
 
-    public static String buildTaskDispatch(String messageId,
-                                           String project,
-                                           String workerId,
-                                           String taskId,
-                                           String eventCode,
-                                           JsonObject input) {
+    public static String buildTaskDispatch(String resultCorrelationRef, String eventCode, JsonObject input) {
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", messageId);
-        frame.addProperty("workerId", workerId);
-        frame.addProperty("project", project);
+        frame.addProperty("resultCorrelationRef", resultCorrelationRef);
         frame.addProperty("eventCode", eventCode);
-        frame.addProperty("taskId", taskId);
-        frame.addProperty("taskName", "mock-task");
-        frame.addProperty("retryCount", 0);
         frame.add("input", input != null ? input : new JsonObject());
         frame.add("sharedConfig", new JsonObject());
         return GSON.toJson(frame);
     }
 
-    public static String buildTaskResult(String messageId,
-                                         String project,
-                                         String workerId,
-                                         String taskId,
-                                         String status,
-                                         String detail) {
-        return buildTaskResult(messageId, project, workerId, taskId, status, detail, null);
+    public static String buildTaskResult(String resultCorrelationRef, String status, String detail) {
+        return buildTaskResult(resultCorrelationRef, status, detail, null);
     }
 
-    public static String buildTaskResult(String messageId,
-                                         String project,
-                                         String workerId,
-                                         String taskId,
+    public static String buildTaskResult(String resultCorrelationRef,
                                          String status,
                                          String detail,
                                          String errorCode) {
@@ -66,10 +44,7 @@ public final class WsFrameTestSupport {
             output.addProperty("errorCode", errorCode);
         }
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", messageId);
-        frame.addProperty("workerId", workerId);
-        frame.addProperty("taskId", taskId);
-        frame.addProperty("project", project);
+        frame.addProperty("resultCorrelationRef", resultCorrelationRef);
         frame.addProperty("success", "SUCCESS".equalsIgnoreCase(status));
         frame.addProperty("detail", detail);
         if (errorCode != null) {
@@ -81,7 +56,7 @@ public final class WsFrameTestSupport {
 
     public static boolean isTask(JsonObject frame) {
         return frame != null
-                && readString(frame, "taskId") != null
+                && readString(frame, "resultCorrelationRef") != null
                 && !isResponse(frame)
                 && !hasBoolean(frame, "success");
     }
@@ -93,8 +68,8 @@ public final class WsFrameTestSupport {
                 && frame.get("response").getAsBoolean();
     }
 
-    public static String messageId(JsonObject frame) {
-        return readString(frame, "messageId");
+    public static String resultCorrelationRef(JsonObject frame) {
+        return readString(frame, "resultCorrelationRef");
     }
 
     public static String project(JsonObject frame) {
@@ -113,10 +88,6 @@ public final class WsFrameTestSupport {
 
     public static String workerId(JsonObject frame) {
         return readString(frame, "workerId");
-    }
-
-    public static String taskId(JsonObject frame) {
-        return readString(frame, "taskId");
     }
 
     public static JsonObject payloadFromMap(Map<String, ?> map) {

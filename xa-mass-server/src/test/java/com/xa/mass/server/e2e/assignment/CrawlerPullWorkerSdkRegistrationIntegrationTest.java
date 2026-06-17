@@ -131,7 +131,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
             assertFalse(items.isEmpty(), "Expected crawler task dispatch via polling");
 
             PulledTaskDispatch item = items.get(0);
-            assertEquals(task.getTaskId(), item.getTaskId());
+            assertFalse(item.getResultCorrelationRef().isBlank());
             assertEquals("https://example.test/page-1", item.getInput().get("url"));
 
             assertTrue(session.submitResult(

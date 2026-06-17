@@ -158,18 +158,18 @@ class WorkerClientTest {
                 assertEquals(10, request.get("maxMessages").asInt());
                 assertEquals(500, request.get("timeoutMs").asLong());
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","total":1,"items":[{"taskId":"task-1","messageId":"msg-1","eventCode":"probe.phone.metadata","taskName":"probe-task","project":"probeApp","userId":"agent","retryCount":0,"workerId":"phone-worker-sg-001","batchId":"batch-1","input":{"phone":"+14155550100"},"sharedConfig":{"routingCode":"sg"}}]}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","total":1,"items":[{"resultCorrelationRef":"corr-1","eventCode":"probe.phone.metadata","input":{"phone":"+14155550100"},"sharedConfig":{"routingCode":"sg"}}]}}
                         """);
                 return;
             }
             if ("POST".equals(method) && "/worker-api/v1/workers/phone-worker-sg-001:submit-result".equals(path)) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("task-1", request.get("taskId").asText());
+                assertEquals("corr-1", request.get("resultCorrelationRef").asText());
                 assertTrue(request.get("success").asBoolean());
                 assertEquals("ok", request.get("detail").asText());
                 assertEquals("525", request.get("output").get("mcc").asText());
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","taskId":"task-1","messageId":"msg-1","submitted":true}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","resultCorrelationRef":"corr-1","submitted":true}}
                         """);
                 return;
             }
@@ -212,7 +212,7 @@ class WorkerClientTest {
         assertEquals("+14155550100", item.input().get("phone"));
 
         WorkerResultSubmitOutcome outcome = workers.submitResult("phone-worker-sg-001",
-                WorkerResultSubmitRequest.success(item.taskId(), item.messageId(), "ok", Map.of(
+                WorkerResultSubmitRequest.success(item.resultCorrelationRef(), "ok", Map.of(
                         "mcc", "525",
                         "mnc", "01"
                 )));

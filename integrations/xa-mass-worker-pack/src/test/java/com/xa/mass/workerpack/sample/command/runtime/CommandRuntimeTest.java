@@ -197,7 +197,7 @@ class CommandRuntimeTest {
         JsonObject identityRequest = new JsonObject();
         identityRequest.addProperty("event", "fault.result.identity");
         identityRequest.addProperty("workerId", "worker-fault-identity");
-        identityRequest.addProperty("kind", "wrongMessage");
+        identityRequest.addProperty("kind", "wrongCorrelation");
 
         CommandResponse<?> identityResponse = SampleCommandRuntime.dispatch(identityRequest);
 
@@ -205,7 +205,7 @@ class CommandRuntimeTest {
         Map<?, ?> state = (Map<?, ?>) ((Map<?, ?>) identityResponse.getData()).get("state");
         Map<?, ?> faultProfile = (Map<?, ?>) state.get("faultProfile");
         assertEquals("WRONG_IDENTITY", faultProfile.get("profile"));
-        assertEquals("WRONG_MESSAGE", faultProfile.get("resultIdentityKind"));
+        assertEquals("WRONG_CORRELATION", faultProfile.get("resultIdentityKind"));
     }
 
     @Test

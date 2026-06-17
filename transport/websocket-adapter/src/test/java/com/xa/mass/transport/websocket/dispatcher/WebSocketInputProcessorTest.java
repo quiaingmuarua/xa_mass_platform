@@ -65,14 +65,14 @@ class WebSocketInputProcessorTest {
         });
         inputProcessor = new WebSocketInputProcessor(context);
 
-        boolean result = inputProcessor.process(canonicalTaskResultFrame("task-1", "msg-1", true, "ok"));
+        boolean result = inputProcessor.process(canonicalTaskResultFrame("corr-1", true, "ok"));
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
         assertEquals("websocket", capturedEnvelope.get().diagnostic("adapterId"));
         assertEquals("route-1", capturedEnvelope.get().diagnostic("routeKey"));
-        assertEquals("msg-1", capturedEnvelope.get().getPartitionKey());
-        assertPayload(capturedEnvelope.get(), "task-1", "msg-1", true, "ok");
+        assertEquals("corr-1", capturedEnvelope.get().getPartitionKey());
+        assertPayload(capturedEnvelope.get(), "corr-1", true, "ok");
     }
 
     @Test
@@ -85,8 +85,7 @@ class WebSocketInputProcessorTest {
         inputProcessor = new WebSocketInputProcessor(context);
 
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", "msg-1");
-        frame.addProperty("taskId", "task-1");
+        frame.addProperty("resultCorrelationRef", "corr-1");
         frame.addProperty("success", true);
         frame.addProperty("detail", "ok");
 
@@ -100,8 +99,8 @@ class WebSocketInputProcessorTest {
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
         assertEquals("route-from-handshake", capturedEnvelope.get().diagnostic("routeKey"));
-        assertEquals("msg-1", capturedEnvelope.get().getPartitionKey());
-        assertPayload(capturedEnvelope.get(), "task-1", "msg-1", true, "ok");
+        assertEquals("corr-1", capturedEnvelope.get().getPartitionKey());
+        assertPayload(capturedEnvelope.get(), "corr-1", true, "ok");
     }
 
     @Test
@@ -114,8 +113,7 @@ class WebSocketInputProcessorTest {
         inputProcessor = new WebSocketInputProcessor(context);
 
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", "msg-1");
-        frame.addProperty("taskId", "task-1");
+        frame.addProperty("resultCorrelationRef", "corr-1");
         frame.addProperty("success", true);
         frame.addProperty("detail", "ok");
         frame.add("output", payload("status", "SUCCESS"));
@@ -131,8 +129,8 @@ class WebSocketInputProcessorTest {
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
         assertEquals("route-from-session", capturedEnvelope.get().diagnostic("routeKey"));
-        assertEquals("msg-1", capturedEnvelope.get().getPartitionKey());
-        assertPayload(capturedEnvelope.get(), "task-1", "msg-1", true, "ok");
+        assertEquals("corr-1", capturedEnvelope.get().getPartitionKey());
+        assertPayload(capturedEnvelope.get(), "corr-1", true, "ok");
     }
 
     @Test
@@ -145,8 +143,7 @@ class WebSocketInputProcessorTest {
         inputProcessor = new WebSocketInputProcessor(context);
 
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", "msg-1");
-        frame.addProperty("taskId", "task-1");
+        frame.addProperty("resultCorrelationRef", "corr-1");
         frame.addProperty("success", true);
         frame.addProperty("routeKey", "inline-route");
         frame.addProperty("detail", "ok");
@@ -168,13 +165,13 @@ class WebSocketInputProcessorTest {
         context = createContext(envelope -> false);
         inputProcessor = new WebSocketInputProcessor(context);
 
-        boolean result = inputProcessor.process(canonicalTaskResultFrame("task-1", "msg-1", true, "ok"));
+        boolean result = inputProcessor.process(canonicalTaskResultFrame("corr-1", true, "ok"));
 
         assertFalse(result);
     }
 
     @Test
-    void canonicalTaskResultWithoutMessageIdIsRejectedWithoutIngest() {
+    void canonicalTaskResultWithoutCorrelationRefIsRejectedWithoutIngest() {
         AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
         context = createContext(envelope -> {
             capturedEnvelope.set(envelope);
@@ -183,7 +180,6 @@ class WebSocketInputProcessorTest {
         inputProcessor = new WebSocketInputProcessor(context);
 
         JsonObject frame = new JsonObject();
-        frame.addProperty("taskId", "task-1");
         frame.addProperty("success", true);
         frame.addProperty("detail", "ok");
 
@@ -209,24 +205,21 @@ class WebSocketInputProcessorTest {
     }
 
     private void assertPayload(TransportResultIngressEnvelope envelope,
-                               String taskId,
-                               String messageId,
+                               String resultCorrelationRef,
                                boolean success,
                                String detail) {
         JsonObject payload = JsonParser.parseString(envelope.getPayload()).getAsJsonObject();
-        assertEquals(taskId, payload.get("taskId").getAsString());
-        assertEquals(messageId, payload.get("messageId").getAsString());
+        assertEquals(resultCorrelationRef, payload.get("resultCorrelationRef").getAsString());
+        assertFalse(payload.has("taskId"));
+        assertFalse(payload.has("messageId"));
         assertEquals(success, payload.get("success").getAsBoolean());
         assertEquals(detail, payload.get("detail").getAsString());
     }
 
-    private String canonicalTaskResultFrame(String taskId, String messageId, boolean success, String detail) {
+    private String canonicalTaskResultFrame(String resultCorrelationRef, boolean success, String detail) {
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", messageId);
-        frame.addProperty("workerId", "worker-1");
-        frame.addProperty("project", "proj");
+        frame.addProperty("resultCorrelationRef", resultCorrelationRef);
         frame.addProperty("routeKey", "route-1");
-        frame.addProperty("taskId", taskId);
         frame.addProperty("success", success);
         frame.addProperty("detail", detail);
         frame.add("output",

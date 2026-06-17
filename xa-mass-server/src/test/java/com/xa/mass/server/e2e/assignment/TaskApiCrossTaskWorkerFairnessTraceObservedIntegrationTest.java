@@ -102,7 +102,7 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
             );
 
             assertApiOk(approveTask(bulkTaskId));
-            List<JsonObject> bulkDispatches = awaitDispatchesForTask(clients, bulkTaskId, 20, 8, TimeUnit.SECONDS);
+            List<JsonObject> bulkDispatches = awaitDispatchesForTargetPrefix(clients, "bulk-target-", 20, 8, TimeUnit.SECONDS);
             Set<String> bulkWorkers = workerIds(bulkDispatches);
             assertEquals(20, bulkDispatches.size());
             assertEquals(20, bulkWorkers.size());
@@ -115,9 +115,9 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
                     250L);
 
             assertApiOk(approveTask(interactiveTaskId));
-            JsonObject interactiveDispatch = awaitFirstDispatchForTask(clients, interactiveTaskId, 5, TimeUnit.SECONDS);
+            JsonObject interactiveDispatch = awaitFirstDispatchForTarget(clients, "interactive-target", 5, TimeUnit.SECONDS);
             assertNotNull(interactiveDispatch, "interactive task should dispatch while bulk backlog remains active");
-            String interactiveWorker = WsFrameTestSupport.workerId(interactiveDispatch);
+            String interactiveWorker = receivedWorkerId(interactiveDispatch);
             assertFalse(bulkWorkers.contains(interactiveWorker),
                     "interactive task should use worker capacity left outside the bulk budget");
             waitForRuntimeTaskSnapshot(interactiveTaskId,
@@ -162,22 +162,22 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
     private Set<String> workerIds(List<JsonObject> dispatches) {
         Set<String> workerIds = new LinkedHashSet<>();
         for (JsonObject dispatch : dispatches) {
-            workerIds.add(WsFrameTestSupport.workerId(dispatch));
+            workerIds.add(receivedWorkerId(dispatch));
         }
         return workerIds;
     }
 
-    private List<JsonObject> awaitDispatchesForTask(List<ManualAckWebSocketClient> clients,
-                                                    String taskId,
-                                                    int expectedCount,
-                                                    long timeout,
-                                                    TimeUnit unit) throws InterruptedException {
+    private List<JsonObject> awaitDispatchesForTargetPrefix(List<ManualAckWebSocketClient> clients,
+                                                            String targetPrefix,
+                                                            int expectedCount,
+                                                            long timeout,
+                                                            TimeUnit unit) throws InterruptedException {
         long deadline = System.nanoTime() + unit.toNanos(timeout);
         List<JsonObject> dispatches = new ArrayList<>();
         while (System.nanoTime() < deadline && dispatches.size() < expectedCount) {
             for (ManualAckWebSocketClient client : clients) {
                 JsonObject dispatch = client.pollTask(25, TimeUnit.MILLISECONDS);
-                if (dispatch != null && taskId.equals(WsFrameTestSupport.taskId(dispatch))) {
+                if (dispatch != null && target(dispatch).startsWith(targetPrefix)) {
                     dispatches.add(dispatch);
                     if (dispatches.size() == expectedCount) {
                         return dispatches;
@@ -188,15 +188,15 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
         return dispatches;
     }
 
-    private JsonObject awaitFirstDispatchForTask(List<ManualAckWebSocketClient> clients,
-                                                 String taskId,
-                                                 long timeout,
-                                                 TimeUnit unit) throws InterruptedException {
+    private JsonObject awaitFirstDispatchForTarget(List<ManualAckWebSocketClient> clients,
+                                                   String expectedTarget,
+                                                   long timeout,
+                                                   TimeUnit unit) throws InterruptedException {
         long deadline = System.nanoTime() + unit.toNanos(timeout);
         while (System.nanoTime() < deadline) {
             for (ManualAckWebSocketClient client : clients) {
                 JsonObject dispatch = client.pollTask(25, TimeUnit.MILLISECONDS);
-                if (dispatch != null && taskId.equals(WsFrameTestSupport.taskId(dispatch))) {
+                if (dispatch != null && expectedTarget.equals(target(dispatch))) {
                     return dispatch;
                 }
             }
@@ -207,7 +207,7 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
     private void sendSuccessFor(JsonObject dispatch,
                                 List<ManualAckWebSocketClient> clients,
                                 String detail) throws Exception {
-        String workerId = WsFrameTestSupport.workerId(dispatch);
+        String workerId = receivedWorkerId(dispatch);
         for (ManualAckWebSocketClient client : clients) {
             if (client.getWorkerId().equals(workerId)) {
                 client.sendSuccess(dispatch, detail);
@@ -226,6 +226,18 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
                 bulkTaskId + "," + interactiveTaskId);
     }
 
+    private static String target(JsonObject dispatch) {
+        JsonObject payload = WsFrameTestSupport.payload(dispatch);
+        if (payload == null || !payload.has("target") || payload.get("target").isJsonNull()) {
+            return "";
+        }
+        return payload.get("target").getAsString();
+    }
+
+    private static String receivedWorkerId(JsonObject dispatch) {
+        return dispatch.get("_receivedByWorkerId").getAsString();
+    }
+
     private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
@@ -240,6 +252,7 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
             try {
                 JsonObject frame = WsFrameTestSupport.parse(message);
                 if (frame != null && WsFrameTestSupport.isTask(frame) && !WsFrameTestSupport.isResponse(frame)) {
+                    frame.addProperty("_receivedByWorkerId", getWorkerId());
                     taskQueue.offer(frame);
                     return;
                 }
@@ -255,10 +268,7 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
 
         private void sendSuccess(JsonObject taskMessage, String detail) throws Exception {
             sendMessage(WsFrameTestSupport.buildTaskResult(
-                    WsFrameTestSupport.messageId(taskMessage),
-                    WsFrameTestSupport.project(taskMessage),
-                    getWorkerId(),
-                    WsFrameTestSupport.taskId(taskMessage),
+                    WsFrameTestSupport.resultCorrelationRef(taskMessage),
                     "SUCCESS",
                     detail
             ));

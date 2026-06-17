@@ -1,4 +1,4 @@
-package com.xa.mass.sdk.worker;
+package com.xa.mass.starter;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -12,7 +12,7 @@ import java.util.Objects;
 /**
  * Starter-owned opaque correlation codec for transport delivery outcomes.
  */
-public final class TaskDispatchDeliveryCorrelationCodec {
+final class TaskDispatchDeliveryCorrelationCodec {
 
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
@@ -20,7 +20,7 @@ public final class TaskDispatchDeliveryCorrelationCodec {
 
     private final Gson gson;
 
-    public TaskDispatchDeliveryCorrelationCodec() {
+    TaskDispatchDeliveryCorrelationCodec() {
         this(new GsonBuilder().create());
     }
 
@@ -39,7 +39,7 @@ public final class TaskDispatchDeliveryCorrelationCodec {
         ));
     }
 
-    public String encode(TaskDispatchDeliveryCorrelation correlation) {
+    String encode(TaskDispatchDeliveryCorrelation correlation) {
         Objects.requireNonNull(correlation, "correlation");
         String json = gson.toJson(new CorrelationRecord(
                 VERSION,
@@ -51,7 +51,7 @@ public final class TaskDispatchDeliveryCorrelationCodec {
         return ENCODER.encodeToString(json.getBytes(StandardCharsets.UTF_8));
     }
 
-    public TaskDispatchDeliveryCorrelation decode(String correlationRef) {
+    TaskDispatchDeliveryCorrelation decode(String correlationRef) {
         if (correlationRef == null || correlationRef.isBlank()) {
             throw new IllegalArgumentException("correlationRef must not be blank");
         }

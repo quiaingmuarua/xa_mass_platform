@@ -133,10 +133,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractSampleE2eTest {
 
         private void sendResult(JsonObject dispatchFrame, String status, String detail) throws Exception {
             sendMessage(WsFrameTestSupport.buildTaskResult(
-                    WsFrameTestSupport.messageId(dispatchFrame),
-                    WsFrameTestSupport.project(dispatchFrame),
-                    getWorkerId(),
-                    WsFrameTestSupport.taskId(dispatchFrame),
+                    WsFrameTestSupport.resultCorrelationRef(dispatchFrame),
                     status,
                     detail
             ));

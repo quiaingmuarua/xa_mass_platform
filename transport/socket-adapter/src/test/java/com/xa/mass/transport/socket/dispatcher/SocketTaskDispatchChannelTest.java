@@ -64,13 +64,13 @@ class SocketTaskDispatchChannelTest {
         );
     }
 
-    private DeliveryCommand request(String messageId, String workerId) {
+    private DeliveryCommand request(String correlationSuffix, String workerId) {
         return new DeliveryCommand(
-                "delivery-" + messageId,
+                "delivery-" + correlationSuffix,
                 "bucket-1",
                 workerId,
-                "{\"messageId\":\"" + messageId + "\"}",
-                "corr-" + messageId,
+                "{\"resultCorrelationRef\":\"corr-" + correlationSuffix + "\"}",
+                "corr-" + correlationSuffix,
                 0L,
                 1L
         );

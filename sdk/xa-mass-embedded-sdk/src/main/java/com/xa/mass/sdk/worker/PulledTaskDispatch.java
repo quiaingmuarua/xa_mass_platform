@@ -10,42 +10,23 @@ import java.util.Objects;
  */
 public final class PulledTaskDispatch {
 
-    private final String taskId;
-    private final String messageId;
+    private final String resultCorrelationRef;
     private final String eventCode;
     private final Map<String, Object> input;
     private final Map<String, Object> sharedConfig;
-    private final String attemptId;
-    private final int attemptNo;
-    private final int retryCount;
-    private final String batchId;
 
-    public PulledTaskDispatch(String taskId,
-                              String messageId,
+    public PulledTaskDispatch(String resultCorrelationRef,
                               String eventCode,
                               Map<String, Object> input,
-                              Map<String, Object> sharedConfig,
-                              String attemptId,
-                              int attemptNo,
-                              int retryCount,
-                              String batchId) {
-        this.taskId = requireText(taskId, "taskId");
-        this.messageId = requireText(messageId, "messageId");
+                              Map<String, Object> sharedConfig) {
+        this.resultCorrelationRef = requireText(resultCorrelationRef, "resultCorrelationRef");
         this.eventCode = optionalText(eventCode);
         this.input = TransportJsonValueNormalizer.normalizeObject(input, "input");
         this.sharedConfig = TransportJsonValueNormalizer.normalizeObject(sharedConfig, "sharedConfig");
-        this.attemptId = optionalText(attemptId);
-        this.attemptNo = Math.max(0, attemptNo);
-        this.retryCount = Math.max(0, retryCount);
-        this.batchId = optionalText(batchId);
     }
 
-    public String getTaskId() {
-        return taskId;
-    }
-
-    public String getMessageId() {
-        return messageId;
+    public String getResultCorrelationRef() {
+        return resultCorrelationRef;
     }
 
     public String getEventCode() {
@@ -58,22 +39,6 @@ public final class PulledTaskDispatch {
 
     public Map<String, Object> getSharedConfig() {
         return sharedConfig;
-    }
-
-    public String getAttemptId() {
-        return attemptId;
-    }
-
-    public int getAttemptNo() {
-        return attemptNo;
-    }
-
-    public int getRetryCount() {
-        return retryCount;
-    }
-
-    public String getBatchId() {
-        return batchId;
     }
 
     private static String requireText(String value, String fieldName) {
@@ -99,32 +64,22 @@ public final class PulledTaskDispatch {
         if (!(other instanceof PulledTaskDispatch that)) {
             return false;
         }
-        return attemptNo == that.attemptNo
-                && retryCount == that.retryCount
-                && Objects.equals(taskId, that.taskId)
-                && Objects.equals(messageId, that.messageId)
+        return Objects.equals(resultCorrelationRef, that.resultCorrelationRef)
                 && Objects.equals(eventCode, that.eventCode)
                 && Objects.equals(input, that.input)
-                && Objects.equals(sharedConfig, that.sharedConfig)
-                && Objects.equals(attemptId, that.attemptId)
-                && Objects.equals(batchId, that.batchId);
+                && Objects.equals(sharedConfig, that.sharedConfig);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(taskId, messageId, eventCode, input, sharedConfig, attemptId, attemptNo, retryCount, batchId);
+        return Objects.hash(resultCorrelationRef, eventCode, input, sharedConfig);
     }
 
     @Override
     public String toString() {
         return "PulledTaskDispatch{"
-                + "taskId='" + taskId + '\''
-                + ", messageId='" + messageId + '\''
+                + "resultCorrelationRef='" + resultCorrelationRef + '\''
                 + ", eventCode='" + eventCode + '\''
-                + ", attemptId='" + attemptId + '\''
-                + ", attemptNo=" + attemptNo
-                + ", retryCount=" + retryCount
-                + ", batchId='" + batchId + '\''
                 + '}';
     }
 }

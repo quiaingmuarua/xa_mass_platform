@@ -15,8 +15,8 @@ class SampleWorkerFaultProfileTest {
         SampleWorkerFaultProfile profile = SampleWorkerFaultProfile.disabled();
 
         assertFalse(profile.enabled());
-        assertEquals(0L, profile.resolveDelayMillis("worker", "task", "msg", 1));
-        assertFalse(profile.shouldDropResult("worker", "task", "msg", 1));
+        assertEquals(0L, profile.resolveDelayMillis("worker", "corr", 1));
+        assertFalse(profile.shouldDropResult("worker", "corr", 1));
         assertEquals(0, profile.duplicateResultCount());
         assertEquals(0L, profile.lateResultDelayMillis());
         assertEquals(SampleWorkerFaultProfile.StallMode.OFF, profile.stallMode());
@@ -69,8 +69,8 @@ class SampleWorkerFaultProfileTest {
 
         assertTrue(malformed.enabled());
         assertEquals(SampleWorkerFaultProfile.ProfileName.MALFORMED_RESULT, malformed.profileName());
-        assertEquals(SampleWorkerFaultProfile.MalformedResultKind.MISSING_MESSAGE_ID, malformed.malformedResultKind());
-        assertEquals("MISSING_MESSAGE_ID", malformed.toMap().get("malformedResultKind"));
+        assertEquals(SampleWorkerFaultProfile.MalformedResultKind.MISSING_CORRELATION_REF, malformed.malformedResultKind());
+        assertEquals("MISSING_CORRELATION_REF", malformed.toMap().get("malformedResultKind"));
     }
 
     @Test
@@ -93,8 +93,8 @@ class SampleWorkerFaultProfileTest {
 
         assertTrue(identity.enabled());
         assertEquals(SampleWorkerFaultProfile.ProfileName.WRONG_IDENTITY, identity.profileName());
-        assertEquals(SampleWorkerFaultProfile.ResultIdentityKind.WRONG_MESSAGE, identity.resultIdentityKind());
-        assertEquals("WRONG_MESSAGE", identity.toMap().get("resultIdentityKind"));
+        assertEquals(SampleWorkerFaultProfile.ResultIdentityKind.WRONG_CORRELATION, identity.resultIdentityKind());
+        assertEquals("WRONG_CORRELATION", identity.toMap().get("resultIdentityKind"));
     }
 
     @Test
@@ -111,8 +111,8 @@ class SampleWorkerFaultProfileTest {
     void profileDelayAndDropDecisionsAreDeterministicBySeedAndIdentity() {
         SampleWorkerFaultProfile profile = SampleWorkerFaultProfile.fromProfile("SLOW", 7L);
 
-        long first = profile.resolveDelayMillis("worker", "task", "msg", 1);
-        long second = profile.resolveDelayMillis("worker", "task", "msg", 1);
+        long first = profile.resolveDelayMillis("worker", "corr", 1);
+        long second = profile.resolveDelayMillis("worker", "corr", 1);
 
         assertEquals(first, second);
         assertTrue(first >= profile.minDelayMillis());
@@ -124,6 +124,6 @@ class SampleWorkerFaultProfileTest {
                 )
                 .resultDrop(SampleWorkerFaultProfile.ResultDropMode.PERCENT, 100)
                 .build();
-        assertTrue(dropProfile.shouldDropResult("worker", "task", "msg", 1));
+        assertTrue(dropProfile.shouldDropResult("worker", "corr", 1));
     }
 }

@@ -3,7 +3,7 @@ package com.xa.mass.workerpack.tool.probe;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.AdapterNodeSpec;
 import com.xa.mass.client.worker.WorkerGroupSpec;
-import com.xa.mass.client.worker.handler.DispatchContext;
+import com.xa.mass.client.worker.handler.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.client.worker.session.PollingWorkerSession;
@@ -198,7 +198,7 @@ public final class ProbeWorkerPack {
         return WorkerResult.failure(errorCode, detail, values);
     }
 
-    private static String firstText(DispatchContext dispatch, String... keys) {
+    private static String firstText(WorkerInvocation dispatch, String... keys) {
         for (String key : keys) {
             String value = dispatch.input().getString(key).map(String::trim).orElse("");
             if (!value.isBlank()) {
@@ -208,13 +208,13 @@ public final class ProbeWorkerPack {
         return "";
     }
 
-    private static void copyIfPresent(Map<String, Object> output, DispatchContext dispatch, String... keys) {
+    private static void copyIfPresent(Map<String, Object> output, WorkerInvocation dispatch, String... keys) {
         for (String key : keys) {
             dispatch.input().get(key).ifPresent(value -> output.put(key, value));
         }
     }
 
-    private static List<String> stringList(DispatchContext dispatch, String key) {
+    private static List<String> stringList(WorkerInvocation dispatch, String key) {
         Object raw = dispatch.input().get(key).orElse(List.of());
         if (raw instanceof List<?> values) {
             return values.stream()
@@ -268,7 +268,7 @@ public final class ProbeWorkerPack {
     }
 
     private record ProbeEnvelope(String expectedOutcome, String traceLabel, long timeoutMs, long sleepMs) {
-        static ProbeEnvelope from(DispatchContext dispatch) {
+        static ProbeEnvelope from(WorkerInvocation dispatch) {
             return new ProbeEnvelope(
                     dispatch.input().getString("expectedOutcome").orElse("SUCCESS"),
                     dispatch.input().getString("traceLabel").orElse(""),
@@ -292,7 +292,7 @@ public final class ProbeWorkerPack {
             return output;
         }
 
-        private static long longValue(DispatchContext dispatch, String key, long fallback) {
+        private static long longValue(WorkerInvocation dispatch, String key, long fallback) {
             return dispatch.input().get(key)
                     .map(value -> {
                         if (value instanceof Number number) {

@@ -34,7 +34,7 @@ public class PullWorkerSession {
     private final String routeKey;
     private final String connectionId;
     private final DeliveryPullChannel deliveryPullChannel;
-    private final TaskDispatchPayloadCodec payloadCodec;
+    private final PulledTaskDispatchPayloadDecoder payloadDecoder;
     private final TransportResultIngressChannel resultIngressChannel;
     private final TaskResultCallbackCodec resultCallbackCodec;
     private final TransportEndpointLeaseStore endpointLeaseStore;
@@ -82,7 +82,7 @@ public class PullWorkerSession {
         this.routeKey = CanonicalWorkerGroupRouteKeyCodec.encode(this.workerGroupId);
         this.connectionId = requireText(connectionId, "connectionId");
         this.deliveryPullChannel = Objects.requireNonNull(deliveryPullChannel, "deliveryPullChannel");
-        this.payloadCodec = new TaskDispatchPayloadCodec();
+        this.payloadDecoder = new PulledTaskDispatchPayloadDecoder();
         this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
         this.resultCallbackCodec = new TaskResultCallbackCodec();
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
@@ -203,7 +203,7 @@ public class PullWorkerSession {
                 timeoutMillis
         );
         return TaskPullResult.of(mapStatus(result.getStatus()), result.getItems().stream()
-                .map(payloadCodec::decode)
+                .map(payloadDecoder::decode)
                 .toList());
     }
 
@@ -227,15 +227,11 @@ public class PullWorkerSession {
                                 Map<String, Object> output) {
         Objects.requireNonNull(item, "item");
         WorkerResultSubmitRequest request = new WorkerResultSubmitRequest(
-                item.getTaskId(),
-                item.getMessageId(),
+                item.getResultCorrelationRef(),
                 success,
                 detail,
                 errorCode,
-                output,
-                item.getAttemptId(),
-                null,
-                null
+                output
         );
         return submitResult(request);
     }
@@ -244,20 +240,18 @@ public class PullWorkerSession {
         Objects.requireNonNull(request, "request");
         return resultIngressChannel.ingest(resultCallbackCodec.toEnvelope(
                 request,
-                request.messageId(),
+                request.resultCorrelationRef(),
                 diagnostics(null)
         ));
     }
 
-    public boolean submitResult(String taskId,
-                                String messageId,
+    public boolean submitResult(String resultCorrelationRef,
                                 boolean success,
                                 String detail,
                                 String errorCode,
                                 Map<String, Object> output) {
         return submitResult(WorkerResultSubmitRequest.of(
-                taskId,
-                messageId,
+                resultCorrelationRef,
                 success,
                 detail,
                 errorCode,

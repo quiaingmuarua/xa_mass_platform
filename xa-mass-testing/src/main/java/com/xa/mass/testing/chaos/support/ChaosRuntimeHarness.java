@@ -261,6 +261,22 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         return taskWorkRuntime.activeLeases(taskId);
     }
 
+    public String waitForSingleActiveLeaseMessageId(String taskId,
+                                                    int timeoutSeconds,
+                                                    String failureMessage) throws Exception {
+        ChaosSupport.waitForCondition(
+                () -> !taskWorkRuntime.activeLeases(taskId).isEmpty(),
+                timeoutSeconds,
+                failureMessage
+        );
+        List<ActiveLeaseRecord> leases = taskWorkRuntime.activeLeases(taskId);
+        ChaosSupport.require(!leases.isEmpty(), failureMessage);
+        String messageId = leases.getFirst().messageId();
+        ChaosSupport.require(messageId != null && !messageId.isBlank(),
+                "active lease should expose runtime message id for task=" + taskId);
+        return messageId;
+    }
+
     public Optional<RecentFinalWorkReceipt> recentFinalReceipt(String taskId, String messageId) {
         return taskWorkRuntime.getRecentFinalReceipt(taskId, messageId);
     }

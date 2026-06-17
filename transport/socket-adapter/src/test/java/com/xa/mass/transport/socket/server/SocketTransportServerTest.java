@@ -134,7 +134,7 @@ class SocketTransportServerTest {
     }
 
     @Test
-    void canonicalTaskResultIngressUsesBoundRouteKeyAndMessageIdTraceFallback() throws Exception {
+    void canonicalTaskResultIngressUsesBoundRouteKeyAndCorrelationTraceFallback() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
                 new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID);
@@ -165,7 +165,7 @@ class SocketTransportServerTest {
                 writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"workerGroupId\":\"bucket-1\",\"routeKey\":\"socket-route-9\"}");
                 writer.newLine();
                 writer.write("""
-                        {"messageId":"msg-1","taskId":"task-1","success":true,"detail":"ok","output":{"status":"SUCCESS"}}
+                        {"resultCorrelationRef":"corr-1","success":true,"detail":"ok","output":{"status":"SUCCESS"}}
                         """.trim());
                 writer.newLine();
                 writer.flush();
@@ -174,10 +174,11 @@ class SocketTransportServerTest {
                         "canonical socket result should be ingested");
                 assertEquals("socket", capturedEnvelope.get().diagnostic("adapterId"));
                 assertEquals("socket-route-9", capturedEnvelope.get().diagnostic("routeKey"));
-                assertEquals("msg-1", capturedEnvelope.get().diagnostic("traceId"));
-                assertEquals("msg-1", capturedEnvelope.get().getPartitionKey());
-                assertTrue(capturedEnvelope.get().getPayload().contains("\"taskId\":\"task-1\""));
-                assertTrue(capturedEnvelope.get().getPayload().contains("\"messageId\":\"msg-1\""));
+                assertEquals("corr-1", capturedEnvelope.get().diagnostic("traceId"));
+                assertEquals("corr-1", capturedEnvelope.get().getPartitionKey());
+                assertTrue(capturedEnvelope.get().getPayload().contains("\"resultCorrelationRef\":\"corr-1\""));
+                assertFalse(capturedEnvelope.get().getPayload().contains("\"taskId\""));
+                assertFalse(capturedEnvelope.get().getPayload().contains("\"messageId\""));
             }
         } finally {
             server.stop();

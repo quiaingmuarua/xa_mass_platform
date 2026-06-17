@@ -91,8 +91,7 @@ public class SampleClientState {
     }
 
     public synchronized boolean shouldDropFaultProfileResult(String workerId,
-                                                            String taskId,
-                                                            String messageId,
+                                                            String resultCorrelationRef,
                                                             int attempt) {
         if (!faultProfile.enabled()) {
             return false;
@@ -104,7 +103,7 @@ public class SampleClientState {
             faultResultDropOnceConsumed = true;
             return true;
         }
-        return faultProfile.shouldDropResult(workerId, taskId, messageId, attempt);
+        return faultProfile.shouldDropResult(workerId, resultCorrelationRef, attempt);
     }
 
     public synchronized void reset() {

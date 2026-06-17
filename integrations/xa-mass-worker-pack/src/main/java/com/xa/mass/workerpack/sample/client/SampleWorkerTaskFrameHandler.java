@@ -48,16 +48,17 @@ final class SampleWorkerTaskFrameHandler {
             return null;
         }
         if (isTaskResultFrame(taskMessage)) {
-            logger.debug("[{}] Ignoring canonical task result frame for messageId: {}", workerId, extractMessageId(taskMessage));
+            logger.debug("[{}] Ignoring canonical task result frame for resultCorrelationRef: {}",
+                    workerId, resultCorrelationRef(taskMessage));
             return null;
         }
         if (!isTaskDispatchFrame(taskMessage)) {
             return null;
         }
-        String taskId = readString(taskMessage, "taskId");
-        if (taskId == null || taskId.isBlank()) {
-            logger.info("[{}] Received task dispatch without taskId, skipping task-result callback. messageId={}",
-                    workerId, extractMessageId(taskMessage));
+        String resultCorrelationRef = resultCorrelationRef(taskMessage);
+        if (resultCorrelationRef == null || resultCorrelationRef.isBlank()) {
+            logger.info("[{}] Received task dispatch without resultCorrelationRef, skipping task-result callback",
+                    workerId);
             return null;
         }
         String eventCode = readString(taskMessage, "eventCode");
@@ -72,17 +73,7 @@ final class SampleWorkerTaskFrameHandler {
         long finishedAtEpochMillis = startedAtEpochMillis + delayMillis;
 
         JsonObject response = new JsonObject();
-        response.addProperty("messageId", extractMessageId(taskMessage));
-        response.addProperty("workerId", workerId);
-        response.addProperty("taskId", taskId);
-        String project = readString(taskMessage, "project");
-        if (project != null) {
-            response.addProperty("project", project);
-        }
-        Integer retryCount = readInt(taskMessage, "retryCount");
-        if (retryCount != null) {
-            response.addProperty("retryCount", retryCount);
-        }
+        response.addProperty("resultCorrelationRef", resultCorrelationRef);
         response.addProperty("success", "SUCCESS".equals(resolvedStatus));
         response.addProperty("detail", "Executed by sample client " + workerId);
         if ("FAILED".equals(resolvedStatus)) {
@@ -105,23 +96,22 @@ final class SampleWorkerTaskFrameHandler {
         response.add("output", GSON.toJsonTree(outputMap));
 
         if (state != null && state.shouldDropTaskResponse()) {
-            logger.info("[{}] Dropped sample task response for messageId={} due to sample state {}",
-                    workerId, extractMessageId(taskMessage), state.snapshot());
+            logger.info("[{}] Dropped sample task response for resultCorrelationRef={} due to sample state {}",
+                    workerId, resultCorrelationRef, state.snapshot());
             return null;
         }
         if (state != null && state.getFaultProfile().shouldStallWithoutResult()) {
-            logger.info("[{}] Stalled sample task response for messageId={} due to fault profile {}",
-                    workerId, extractMessageId(taskMessage), state.getFaultProfile().toMap());
+            logger.info("[{}] Stalled sample task response for resultCorrelationRef={} due to fault profile {}",
+                    workerId, resultCorrelationRef, state.getFaultProfile().toMap());
             return null;
         }
         if (state != null && state.shouldDropFaultProfileResult(
                 workerId,
-                taskId,
-                extractMessageId(taskMessage),
-                retryCount == null ? 0 : retryCount
+                resultCorrelationRef,
+                0
         )) {
-            logger.info("[{}] Dropped sample task response for messageId={} due to fault profile {}",
-                    workerId, extractMessageId(taskMessage), state.getFaultProfile().toMap());
+            logger.info("[{}] Dropped sample task response for resultCorrelationRef={} due to fault profile {}",
+                    workerId, resultCorrelationRef, state.getFaultProfile().toMap());
             return null;
         }
         int duplicateCount = state == null ? 0 : state.getFaultProfile().duplicateResultCount();
@@ -132,7 +122,7 @@ final class SampleWorkerTaskFrameHandler {
         }
         return new TaskResponsePlan(
                 GSON.toJson(response),
-                extractMessageId(taskMessage),
+                resultCorrelationRef,
                 delayMillis,
                 null,
                 duplicateCount,
@@ -153,17 +143,7 @@ final class SampleWorkerTaskFrameHandler {
         long finishedAtEpochMillis = startedAtEpochMillis + delayMillis;
 
         JsonObject response = new JsonObject();
-        response.addProperty("messageId", extractMessageId(taskMessage));
-        response.addProperty("workerId", workerId);
-        response.addProperty("taskId", readString(taskMessage, "taskId"));
-        String project = readString(taskMessage, "project");
-        if (project != null) {
-            response.addProperty("project", project);
-        }
-        Integer retryCount = readInt(taskMessage, "retryCount");
-        if (retryCount != null) {
-            response.addProperty("retryCount", retryCount);
-        }
+        response.addProperty("resultCorrelationRef", resultCorrelationRef(taskMessage));
         response.addProperty("success", success);
         response.addProperty("detail", resolveCommandTaskDetail(eventCode, commandResult));
         if (!success) {
@@ -192,7 +172,7 @@ final class SampleWorkerTaskFrameHandler {
 
         return new TaskResponsePlan(
                 GSON.toJson(response),
-                extractMessageId(taskMessage),
+                resultCorrelationRef(taskMessage),
                 delayMillis,
                 resolveDisconnectWorkerId(commandResult),
                 0,
@@ -230,12 +210,7 @@ final class SampleWorkerTaskFrameHandler {
         commandRequest.addProperty("event", eventCode);
         commandRequest.addProperty("eventCode", eventCode);
         commandRequest.addProperty("workerId", workerId);
-        commandRequest.addProperty("taskId", readString(taskMessage, "taskId"));
-        commandRequest.addProperty("requestMsgId", extractMessageId(taskMessage));
-        String project = readString(taskMessage, "project");
-        if (project != null) {
-            commandRequest.addProperty("project", project);
-        }
+        commandRequest.addProperty("resultCorrelationRef", resultCorrelationRef(taskMessage));
         JsonObject input = extractCommandPayload(taskMessage);
         for (Map.Entry<String, JsonElement> entry : input.entrySet()) {
             commandRequest.add(entry.getKey(), entry.getValue().deepCopy());
@@ -256,7 +231,7 @@ final class SampleWorkerTaskFrameHandler {
     }
 
     private long resolveCommandTaskResponseDelayMillis(JsonObject taskMessage, String workerId) {
-        int stableHash = Objects.hash(workerId, extractMessageId(taskMessage), readString(taskMessage, "project"), "sample-command");
+        int stableHash = Objects.hash(workerId, resultCorrelationRef(taskMessage), "sample-command");
         long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
         return DEFAULT_TASK_RESPONSE_BASE_DELAY_MS + jitter;
     }
@@ -322,7 +297,7 @@ final class SampleWorkerTaskFrameHandler {
         if (state != null && state.getTaskResponseDelayMillis() > 0L) {
             return state.getTaskResponseDelayMillis();
         }
-        int stableHash = Objects.hash(workerId, extractMessageId(taskMessage), readString(taskMessage, "project"), stepCount);
+        int stableHash = Objects.hash(workerId, resultCorrelationRef(taskMessage), stepCount);
         long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
         long failurePenalty = "FAILED".equals(taskStatus) ? 10L : 0L;
         long baseDelay = DEFAULT_TASK_RESPONSE_BASE_DELAY_MS
@@ -332,12 +307,10 @@ final class SampleWorkerTaskFrameHandler {
         if (state == null || !state.getFaultProfile().enabled()) {
             return baseDelay;
         }
-        Integer retryCount = readInt(taskMessage, "retryCount");
         long faultDelay = state.getFaultProfile().resolveDelayMillis(
                 workerId,
-                readString(taskMessage, "taskId"),
-                extractMessageId(taskMessage),
-                retryCount == null ? 0 : retryCount
+                resultCorrelationRef(taskMessage),
+                0
         );
         return baseDelay
                 + faultDelay
@@ -348,20 +321,18 @@ final class SampleWorkerTaskFrameHandler {
     boolean isTaskDispatchFrame(JsonObject taskMessage) {
         return taskMessage != null
                 && !isTaskResultFrame(taskMessage)
-                && readString(taskMessage, "taskId") != null
-                && extractMessageId(taskMessage) != null;
+                && readString(taskMessage, "eventCode") != null
+                && resultCorrelationRef(taskMessage) != null;
     }
 
     boolean isTaskResultFrame(JsonObject taskMessage) {
         return taskMessage != null
-                && readString(taskMessage, "taskId") != null
-                && extractMessageId(taskMessage) != null
+                && resultCorrelationRef(taskMessage) != null
                 && readBoolean(taskMessage, "success");
     }
 
     private String resolveStepId(JsonObject taskMessage) {
-        String batchId = readString(taskMessage, "batchId");
-        return batchId != null ? batchId : firstNonBlank(extractMessageId(taskMessage), "step-0-default");
+        return firstNonBlank(resultCorrelationRef(taskMessage), "step-0-default");
     }
 
     private Map<String, Object> buildExecutionSnapshot(JsonObject taskMessage,
@@ -379,11 +350,8 @@ final class SampleWorkerTaskFrameHandler {
         execution.put("durationMs", delayMillis);
         execution.put("stepCount", stepCount);
         execution.put("taskStatus", taskStatus);
-        execution.put("retryCount", readInt(taskMessage, "retryCount") == null ? 0 : readInt(taskMessage, "retryCount"));
-        execution.put("project", readString(taskMessage, "project"));
         execution.put("eventCode", readString(taskMessage, "eventCode"));
-        execution.put("messageId", extractMessageId(taskMessage));
-        execution.put("taskId", readString(taskMessage, "taskId"));
+        execution.put("resultCorrelationRef", resultCorrelationRef(taskMessage));
         return execution;
     }
 
@@ -424,8 +392,8 @@ final class SampleWorkerTaskFrameHandler {
         }
     }
 
-    private String extractMessageId(JsonObject object) {
-        return readString(object, "messageId");
+    private String resultCorrelationRef(JsonObject object) {
+        return readString(object, "resultCorrelationRef");
     }
 
     private JsonObject readJsonObject(JsonObject object, String field) {
@@ -461,7 +429,7 @@ final class SampleWorkerTaskFrameHandler {
             return;
         }
         switch (malformedKind) {
-            case MISSING_MESSAGE_ID -> response.remove("messageId");
+            case MISSING_CORRELATION_REF -> response.remove("resultCorrelationRef");
             case INVALID_STATUS -> response.add("success", new JsonObject());
             case INVALID_PAYLOAD -> response.addProperty("output", "not-an-object");
             case NONE -> {
@@ -474,8 +442,8 @@ final class SampleWorkerTaskFrameHandler {
             return;
         }
         switch (identityKind) {
-            case WRONG_TASK -> response.addProperty("taskId", "wrong-" + readString(response, "taskId"));
-            case WRONG_MESSAGE -> response.addProperty("messageId", "wrong-" + readString(response, "messageId"));
+            case WRONG_CORRELATION -> response.addProperty("resultCorrelationRef",
+                    "wrong-" + readString(response, "resultCorrelationRef"));
             case WRONG_WORKER -> response.addProperty("workerId", "wrong-" + readString(response, "workerId"));
             case WRONG_LEASE -> response.addProperty("leaseId", "wrong-lease");
             case NONE -> {
@@ -484,7 +452,7 @@ final class SampleWorkerTaskFrameHandler {
     }
 
     record TaskResponsePlan(String responseJson,
-                            String messageId,
+                            String resultCorrelationRef,
                             long delayMillis,
                             String disconnectWorkerId,
                             int duplicateCount,

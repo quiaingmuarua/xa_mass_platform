@@ -20,8 +20,7 @@ import java.util.Objects;
  */
 public final class TaskResultCallbackCodec {
 
-    private static final String TASK_ID_FIELD = "taskId";
-    private static final String MESSAGE_ID_FIELD = "messageId";
+    private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
     private static final String MESSAGE_FIELD = "message";
     private static final String ATTEMPT_ID_FIELD = "attemptId";
     private static final String LEASE_TOKEN_FIELD = "leaseToken";
@@ -30,40 +29,28 @@ public final class TaskResultCallbackCodec {
     }.getType();
 
     private final Gson gson;
+    private final TaskDispatchDeliveryCorrelationCodec deliveryCorrelationCodec;
 
     public TaskResultCallbackCodec() {
-        this(new GsonBuilder().create());
+        this(new GsonBuilder().create(), new TaskDispatchDeliveryCorrelationCodec());
     }
 
     TaskResultCallbackCodec(Gson gson) {
+        this(gson, new TaskDispatchDeliveryCorrelationCodec());
+    }
+
+    TaskResultCallbackCodec(Gson gson, TaskDispatchDeliveryCorrelationCodec deliveryCorrelationCodec) {
         this.gson = Objects.requireNonNull(gson, "gson");
+        this.deliveryCorrelationCodec = Objects.requireNonNull(deliveryCorrelationCodec, "deliveryCorrelationCodec");
     }
 
     public TransportResultIngressEnvelope toEnvelope(WorkerResultSubmitRequest request,
                                                      String partitionKey,
                                                      Map<String, String> diagnostics) {
         Objects.requireNonNull(request, "request");
-        TaskResultCallbackCommand command = new TaskResultCallbackCommand(
-                request.taskId(),
-                request.messageId(),
-                request.success(),
-                request.detail(),
-                request.errorCode(),
-                request.output(),
-                request.attemptId(),
-                request.leaseToken(),
-                request.traceId()
-        );
-        return toEnvelope(command, partitionKey, diagnostics);
-    }
-
-    public TransportResultIngressEnvelope toEnvelope(TaskResultCallbackCommand command,
-                                                     String partitionKey,
-                                                     Map<String, String> diagnostics) {
-        Objects.requireNonNull(command, "command");
         return TransportResultIngressEnvelope.received(
-                encodePayload(command),
-                encodeCorrelation(command),
+                encodeWorkerResultRequestPayload(request),
+                null,
                 partitionKey,
                 diagnostics
         );
@@ -74,6 +61,7 @@ public final class TaskResultCallbackCodec {
         TaskResultCallbackCommand payload = decodePayload(envelope.getPayload());
         CorrelationRecord correlation = decodeCorrelation(envelope.getCorrelation());
         String traceId = firstNonBlank(correlation.traceId(), envelope.diagnostic(TRACE_ID_FIELD));
+        String attemptId = firstNonBlank(correlation.attemptId(), payload.attemptId());
         return new TaskResultCallbackCommand(
                 payload.taskId(),
                 payload.messageId(),
@@ -81,46 +69,55 @@ public final class TaskResultCallbackCodec {
                 payload.detail(),
                 payload.errorCode(),
                 payload.output(),
-                correlation.attemptId(),
+                attemptId,
                 correlation.leaseToken(),
                 traceId
         );
     }
 
-    private String encodePayload(TaskResultCallbackCommand command) {
-        PayloadRecord payload = new PayloadRecord(
-                command.taskId(),
-                command.messageId(),
-                command.success(),
-                command.detail(),
-                command.errorCode(),
-                command.output()
-        );
+    private String encodeWorkerResultRequestPayload(WorkerResultSubmitRequest request) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty(RESULT_CORRELATION_REF_FIELD, request.resultCorrelationRef());
+        payload.addProperty(TransportPacket.PAYLOAD_SUCCESS, request.success());
+        addOptionalProperty(payload, TransportPacket.PAYLOAD_DETAIL, request.detail());
+        addOptionalProperty(payload, TransportPacket.PAYLOAD_ERROR_CODE, request.errorCode());
+        payload.add(TransportPacket.PAYLOAD_OUTPUT, gson.toJsonTree(request.output()));
         return gson.toJson(payload);
     }
 
-    private String encodeCorrelation(TaskResultCallbackCommand command) {
-        if (command.attemptId() == null && command.leaseToken() == null && command.traceId() == null) {
-            return null;
+    private static void addOptionalProperty(JsonObject object, String field, String value) {
+        if (value != null && !value.isBlank()) {
+            object.addProperty(field, value.trim());
         }
-        return gson.toJson(new CorrelationRecord(command.attemptId(), command.leaseToken(), command.traceId()));
     }
 
     private TaskResultCallbackCommand decodePayload(String payloadJson) {
         JsonObject payload = parseObject(payloadJson, "payload");
-        String taskId = readString(payload, TASK_ID_FIELD);
-        String messageId = readString(payload, MESSAGE_ID_FIELD);
         Boolean success = readBoolean(payload, TransportPacket.PAYLOAD_SUCCESS);
-        if (taskId == null || messageId == null || success == null) {
-            throw new IllegalArgumentException("result callback payload requires taskId, messageId, and success");
+        if (success == null) {
+            throw new IllegalArgumentException("result callback payload requires success");
         }
+        String resultCorrelationRef = readString(payload, RESULT_CORRELATION_REF_FIELD);
+        if (resultCorrelationRef == null) {
+            throw new IllegalArgumentException("result callback payload requires resultCorrelationRef");
+        }
+        TaskDispatchDeliveryCorrelation deliveryCorrelation = deliveryCorrelationCodec.decode(resultCorrelationRef);
         String detail = firstNonBlank(
                 readString(payload, TransportPacket.PAYLOAD_DETAIL),
                 readString(payload, MESSAGE_FIELD)
         );
         String errorCode = readString(payload, TransportPacket.PAYLOAD_ERROR_CODE);
         Map<String, Object> output = readObject(payload, TransportPacket.PAYLOAD_OUTPUT);
-        return new TaskResultCallbackCommand(taskId, messageId, success, detail, errorCode, output, null, null, null);
+        return new TaskResultCallbackCommand(
+                deliveryCorrelation.taskId(),
+                deliveryCorrelation.messageId(),
+                success,
+                detail,
+                errorCode,
+                output,
+                deliveryCorrelation.attemptId(),
+                null,
+                null);
     }
 
     private CorrelationRecord decodeCorrelation(String correlationJson) {
@@ -190,14 +187,6 @@ public final class TaskResultCallbackCodec {
             return second;
         }
         return null;
-    }
-
-    private record PayloadRecord(String taskId,
-                                 String messageId,
-                                 boolean success,
-                                 String detail,
-                                 String errorCode,
-                                 Map<String, Object> output) {
     }
 
     private record CorrelationRecord(String attemptId,

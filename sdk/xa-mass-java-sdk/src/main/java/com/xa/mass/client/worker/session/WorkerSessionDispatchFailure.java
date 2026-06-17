@@ -1,9 +1,12 @@
 package com.xa.mass.client.worker.session;
 
-import com.xa.mass.client.worker.handler.DispatchContext;
+import com.xa.mass.client.worker.ResultCorrelationRef;
+import com.xa.mass.client.worker.handler.WorkerInvocation;
 
 public record WorkerSessionDispatchFailure(
-        DispatchContext dispatch,
+        String workerId,
+        ResultCorrelationRef resultCorrelationRef,
+        WorkerInvocation invocation,
         Throwable cause
 ) {
 }

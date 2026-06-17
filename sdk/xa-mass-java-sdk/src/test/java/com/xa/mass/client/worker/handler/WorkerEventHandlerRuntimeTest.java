@@ -15,7 +15,7 @@ class WorkerEventHandlerRuntimeTest {
     void invokesHandlerRegisteredForEventCode() {
         WorkerEventHandlers handlers = WorkerEventHandlers.builder()
                 .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of(
-                        "workerId", dispatch.workerId()
+                        "eventCode", dispatch.eventCode()
                 )))
                 .build();
 
@@ -23,7 +23,7 @@ class WorkerEventHandlerRuntimeTest {
 
         assertFalse(invocation.handlerFailed());
         assertTrue(invocation.result().success());
-        assertEquals("worker-1", invocation.result().output().get("workerId"));
+        assertEquals("probe.phone.metadata", invocation.result().output().get("eventCode"));
     }
 
     @Test
@@ -66,15 +66,7 @@ class WorkerEventHandlerRuntimeTest {
         assertEquals(IllegalStateException.class.getName(), exception.result().output().get("exception"));
     }
 
-    private static DispatchContext dispatch(String eventCode) {
-        return new DispatchContext(
-                "task-1",
-                "message-1",
-                eventCode,
-                "worker-1",
-                null,
-                null,
-                null
-        );
+    private static WorkerInvocation dispatch(String eventCode) {
+        return new WorkerInvocation(eventCode, null, null);
     }
 }

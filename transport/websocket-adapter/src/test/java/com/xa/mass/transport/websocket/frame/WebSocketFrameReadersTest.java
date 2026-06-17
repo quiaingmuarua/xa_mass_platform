@@ -56,15 +56,13 @@ class WebSocketFrameReadersTest {
     void resultReaderRecognizesOnlyResultFramesAndBuildsOpaqueEnvelope() {
         WebSocketResultIngressFrameReader reader = new WebSocketResultIngressFrameReader("websocket", parser);
         JsonObject unsupported = new JsonObject();
-        unsupported.addProperty("messageId", "msg-1");
-        unsupported.addProperty("taskId", "task-1");
+        unsupported.addProperty("resultCorrelationRef", "corr-1");
         unsupported.addProperty("eventCode", "mock.state.get");
         unsupported.addProperty("success", true);
         assertFalse(reader.isResultFrame(unsupported));
 
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", "msg-1");
-        frame.addProperty("taskId", "task-1");
+        frame.addProperty("resultCorrelationRef", "corr-1");
         frame.addProperty("routeKey", "inline-route");
         frame.addProperty("success", true);
         frame.addProperty("detail", "ok");
@@ -78,9 +76,11 @@ class WebSocketFrameReadersTest {
 
         assertEquals("websocket", envelope.diagnostic("adapterId"));
         assertEquals("inline-route", envelope.diagnostic("routeKey"));
-        assertEquals("msg-1", envelope.getPartitionKey());
+        assertEquals("corr-1", envelope.getPartitionKey());
         JsonObject payload = JsonParser.parseString(envelope.getPayload()).getAsJsonObject();
-        assertEquals("task-1", payload.get("taskId").getAsString());
+        assertEquals("corr-1", payload.get("resultCorrelationRef").getAsString());
+        assertFalse(payload.has("taskId"));
+        assertFalse(payload.has("messageId"));
         assertTrue(payload.get("success").getAsBoolean());
     }
 

@@ -1,7 +1,7 @@
 package com.xa.mass.client.worker.handler;
 
 public record WorkerEventInvocation(
-        DispatchContext dispatch,
+        WorkerInvocation invocation,
         WorkerResult result,
         Throwable failure
 ) {

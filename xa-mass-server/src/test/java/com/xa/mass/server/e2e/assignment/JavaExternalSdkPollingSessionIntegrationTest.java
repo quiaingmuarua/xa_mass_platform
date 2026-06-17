@@ -87,7 +87,7 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
                             "url", phoneUri.toString(),
                             "mcc", "525",
                             "mnc", "01",
-                            "workerId", dispatch.workerId()
+                            "workerId", workerId
                     ));
                 })
                 .maxMessages(4)

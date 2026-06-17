@@ -117,9 +117,14 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         config.timeoutSeconds(),
                         "chaos polling worker should claim one dispatch and stall without a result"
                 );
-                String messageId = activeChaosWorker.stalledMessageId();
-                ChaosSupport.require(messageId != null && !messageId.isBlank(),
-                        "chaos polling worker should retain the stalled runtime message id");
+                String stalledCorrelationRef = activeChaosWorker.stalledCorrelationRef();
+                ChaosSupport.require(stalledCorrelationRef != null && !stalledCorrelationRef.isBlank(),
+                        "chaos polling worker should retain the stalled dispatch correlation ref");
+                String messageId = runtime.waitForSingleActiveLeaseMessageId(
+                        task.getTaskId(),
+                        config.timeoutSeconds(),
+                        "chaos polling worker should create one active runtime lease"
+                );
                 runtime.waitForActiveAttemptOnWorker(
                         task.getTaskId(),
                         messageId,
@@ -291,9 +296,9 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
             return successfulResults.get();
         }
 
-        private String stalledMessageId() {
+        private String stalledCorrelationRef() {
             PulledTaskDispatch item = stalledDispatch.get();
-            return item != null ? item.getMessageId() : null;
+            return item != null ? item.getResultCorrelationRef() : null;
         }
 
         private WorkerRuntimeSnapshot snapshot() {

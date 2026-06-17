@@ -105,9 +105,14 @@ public final class SdkPollingRedisRestartRecoveryChaosRunner {
                         config.timeoutSeconds(),
                         "chaos polling worker should claim one dispatch before Redis runtime restart"
                 );
-                String messageId = activeChaosWorker.stalledMessageId();
-                ChaosSupport.require(messageId != null && !messageId.isBlank(),
-                        "chaos polling worker should retain the stalled runtime message id");
+                String stalledCorrelationRef = activeChaosWorker.stalledCorrelationRef();
+                ChaosSupport.require(stalledCorrelationRef != null && !stalledCorrelationRef.isBlank(),
+                        "chaos polling worker should retain the stalled dispatch correlation ref");
+                String messageId = runtime.waitForSingleActiveLeaseMessageId(
+                        task.getTaskId(),
+                        config.timeoutSeconds(),
+                        "chaos polling worker should create one active runtime lease before Redis runtime restart"
+                );
                 runtime.waitForActiveAttemptOnWorker(
                         task.getTaskId(),
                         messageId,
@@ -278,9 +283,9 @@ public final class SdkPollingRedisRestartRecoveryChaosRunner {
             return successfulResults.get();
         }
 
-        private String stalledMessageId() {
+        private String stalledCorrelationRef() {
             PulledTaskDispatch item = stalledDispatch.get();
-            return item != null ? item.getMessageId() : null;
+            return item != null ? item.getResultCorrelationRef() : null;
         }
 
         private WorkerRuntimeSnapshot snapshot() {

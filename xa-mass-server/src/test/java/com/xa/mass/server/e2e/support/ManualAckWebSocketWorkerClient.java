@@ -55,10 +55,7 @@ public class ManualAckWebSocketWorkerClient extends SampleWorkerWebSocketClient 
 
     public void sendResult(JsonObject taskFrame, String status, String detail) throws Exception {
         sendMessage(WsFrameTestSupport.buildTaskResult(
-                WsFrameTestSupport.messageId(taskFrame),
-                WsFrameTestSupport.project(taskFrame),
-                getWorkerId(),
-                WsFrameTestSupport.taskId(taskFrame),
+                WsFrameTestSupport.resultCorrelationRef(taskFrame),
                 status,
                 detail
         ));

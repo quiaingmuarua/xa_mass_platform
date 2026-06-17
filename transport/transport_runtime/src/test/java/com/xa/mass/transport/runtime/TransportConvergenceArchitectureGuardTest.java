@@ -798,6 +798,60 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
+    void workerInvocationSurfacesExposeOnlyOpaqueResultCorrelation() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/DispatchContext.java")
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerDispatchItem.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerResultSubmitRequest.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerInvocation.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerResultSink.java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/PulledTaskDispatch.java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/WorkerResultSubmitRequest.java"),
+                        repoRoot().resolve("xa-mass-server/src/main/java/com/xa/mass/api/model/worker/ExternalWorkerResultSubmitApiRequest.java")
+                ),
+                "taskId",
+                "messageId",
+                "attemptId",
+                "attemptNo",
+                "retryCount",
+                "batchId",
+                "workerId",
+                "taskName",
+                "project",
+                "userId",
+                "DispatchContext"
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerInvocation.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerResultSink.java")
+                ),
+                "WorkerDispatchItem"
+        );
+    }
+
+    @Test
+    void workerResultIngressPayloadDoesNotAcceptTaskShapedIdentity() throws IOException {
+        Path codec = repoRoot().resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/TaskResultCallbackCodec.java");
+        assertNoProductionSourceContains(
+                List.of(codec),
+                "TASK_ID_FIELD",
+                "MESSAGE_ID_FIELD",
+                "PayloadRecord",
+                "toEnvelope(TaskResultCallbackCommand",
+                "readString(payload, \"taskId\")",
+                "readString(payload, \"messageId\")"
+        );
+        String source = Files.readString(codec);
+        assertTrue(source.contains("result callback payload requires resultCorrelationRef"),
+                "Worker result ingress payload must require opaque resultCorrelationRef");
+    }
+
+    @Test
     void sdkFacingPullWorkerSessionDoesNotExposeTransportOwnerIdGetters() throws IOException {
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/PullWorkerSession.java")),

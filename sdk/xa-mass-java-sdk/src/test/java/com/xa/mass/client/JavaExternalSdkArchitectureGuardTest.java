@@ -127,6 +127,63 @@ class JavaExternalSdkArchitectureGuardTest {
     }
 
     @Test
+    void workerInvocationSurfacesExposeOnlyPayloadAndOpaqueCorrelation() throws IOException {
+        assertFalse(Files.exists(Path.of(
+                        "src/main/java/com/xa/mass/client/worker/handler/DispatchContext.java")),
+                "DispatchContext must not remain as a compatibility alias");
+
+        assertNoProductionSourceContains(
+                List.of(WORKER_HANDLER_SOURCE),
+                "taskId",
+                "messageId",
+                "taskName",
+                "project",
+                "userId",
+                "attemptId",
+                "attemptNo",
+                "retryCount",
+                "batchId",
+                "rawItem",
+                "DeliveryCommand",
+                "WorkerDispatchItem",
+                "endpoint",
+                "connectionId",
+                "sessionHandle"
+        );
+
+        assertNoProductionSourceContains(
+                List.of(
+                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerDispatchItem.java"),
+                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerResultSubmitRequest.java"),
+                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerResultSubmitOutcome.java")
+                ),
+                "taskId",
+                "messageId",
+                "taskName",
+                "project",
+                "userId",
+                "attemptId",
+                "attemptNo",
+                "retryCount",
+                "batchId",
+                "DispatchContext",
+                "DeliveryCommand"
+        );
+
+        assertNoProductionSourceContains(
+                List.of(Path.of("src/main/java/com/xa/mass/client/worker/session")),
+                "DispatchContext",
+                ".taskId(",
+                ".messageId(",
+                ".attemptId(",
+                ".attemptNo(",
+                ".retryCount(",
+                ".batchId(",
+                "DeliveryCommand"
+        );
+    }
+
+    @Test
     void integrationsProductionCodeDoesNotHardcodePublicPlatformRouteLiteralsOutsideSdk() throws IOException {
         Path repoRoot = resolveRepoRoot();
         Path integrationsRoot = repoRoot.resolve("integrations");
@@ -179,5 +236,29 @@ class JavaExternalSdkArchitectureGuardTest {
             }
         }
         throw new IllegalStateException("Repo root not found from cwd=" + current);
+    }
+
+    private static void assertNoProductionSourceContains(List<Path> roots, String... forbiddenTokens) throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path root : roots) {
+            if (!Files.exists(root)) {
+                continue;
+            }
+            try (var paths = Files.walk(root)) {
+                List<Path> javaFiles = paths
+                        .filter(path -> path.toString().endsWith(".java"))
+                        .filter(path -> !hasPathSegment(path, "target"))
+                        .toList();
+                for (Path javaFile : javaFiles) {
+                    String source = Files.readString(javaFile);
+                    for (String forbiddenToken : forbiddenTokens) {
+                        if (source.contains(forbiddenToken)) {
+                            violations.add(javaFile + " contains " + forbiddenToken);
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(), "Forbidden Java external SDK residue: " + violations);
     }
 }

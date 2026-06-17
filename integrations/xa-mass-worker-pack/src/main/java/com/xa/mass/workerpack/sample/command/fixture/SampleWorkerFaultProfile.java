@@ -60,15 +60,14 @@ public final class SampleWorkerFaultProfile {
 
     public enum MalformedResultKind {
         NONE,
-        MISSING_MESSAGE_ID,
+        MISSING_CORRELATION_REF,
         INVALID_STATUS,
         INVALID_PAYLOAD
     }
 
     public enum ResultIdentityKind {
         NONE,
-        WRONG_TASK,
-        WRONG_MESSAGE,
+        WRONG_CORRELATION,
         WRONG_WORKER,
         WRONG_LEASE
     }
@@ -143,8 +142,8 @@ public final class SampleWorkerFaultProfile {
                     .duplicateResult(1, 25L)
                     .build();
             case FLAKY_TRANSPORT -> builder.disconnectPhase(DisconnectPhase.BEFORE_RESULT).build();
-            case MALFORMED_RESULT -> builder.malformedResultKind(MalformedResultKind.MISSING_MESSAGE_ID).build();
-            case WRONG_IDENTITY -> builder.resultIdentityKind(ResultIdentityKind.WRONG_MESSAGE).build();
+            case MALFORMED_RESULT -> builder.malformedResultKind(MalformedResultKind.MISSING_CORRELATION_REF).build();
+            case WRONG_IDENTITY -> builder.resultIdentityKind(ResultIdentityKind.WRONG_CORRELATION).build();
             case NOISY -> builder
                     .delay(20L, 250L, DelayDistribution.UNIFORM)
                     .resultDrop(ResultDropMode.PERCENT, 10)
@@ -221,7 +220,7 @@ public final class SampleWorkerFaultProfile {
         return disconnectPhase;
     }
 
-    public long resolveDelayMillis(String workerId, String taskId, String messageId, int attempt) {
+    public long resolveDelayMillis(String workerId, String resultCorrelationRef, int attempt) {
         if (!enabled || delayDistribution == DelayDistribution.NONE || maxDelayMillis <= 0L) {
             return 0L;
         }
@@ -229,17 +228,17 @@ public final class SampleWorkerFaultProfile {
             return minDelayMillis;
         }
         long range = maxDelayMillis - minDelayMillis + 1L;
-        return minDelayMillis + stablePositiveHash(workerId, taskId, messageId, attempt, "delay") % range;
+        return minDelayMillis + stablePositiveHash(workerId, resultCorrelationRef, attempt, "delay") % range;
     }
 
-    public boolean shouldDropResult(String workerId, String taskId, String messageId, int attempt) {
+    public boolean shouldDropResult(String workerId, String resultCorrelationRef, int attempt) {
         if (!enabled) {
             return false;
         }
         return switch (resultDropMode) {
             case OFF -> false;
             case ONCE, ALWAYS -> true;
-            case PERCENT -> stablePositiveHash(workerId, taskId, messageId, attempt, "drop") % 100 < resultDropPercent;
+            case PERCENT -> stablePositiveHash(workerId, resultCorrelationRef, attempt, "drop") % 100 < resultDropPercent;
         };
     }
 
@@ -275,8 +274,8 @@ public final class SampleWorkerFaultProfile {
         return map;
     }
 
-    private long stablePositiveHash(String workerId, String taskId, String messageId, int attempt, String salt) {
-        return Integer.toUnsignedLong(Objects.hash(seed, workerId, taskId, messageId, attempt, salt));
+    private long stablePositiveHash(String workerId, String resultCorrelationRef, int attempt, String salt) {
+        return Integer.toUnsignedLong(Objects.hash(seed, workerId, resultCorrelationRef, attempt, salt));
     }
 
     public static final class Builder {

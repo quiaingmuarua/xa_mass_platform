@@ -1,11 +1,11 @@
-package com.xa.mass.sdk.worker;
+package com.xa.mass.starter;
 
-public record TaskDispatchDeliveryCorrelation(String taskId,
-                                              String messageId,
-                                              String attemptId,
-                                              int attemptNo) {
+record TaskDispatchDeliveryCorrelation(String taskId,
+                                       String messageId,
+                                       String attemptId,
+                                       int attemptNo) {
 
-    public TaskDispatchDeliveryCorrelation {
+    TaskDispatchDeliveryCorrelation {
         taskId = requireText(taskId, "taskId");
         messageId = requireText(messageId, "messageId");
         attemptId = optionalText(attemptId);

@@ -1,10 +1,9 @@
-package com.xa.mass.sdk.worker;
+package com.xa.mass.starter;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
-import com.xa.mass.transport.channel.PulledDeliveryMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -12,54 +11,31 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-class TaskDispatchPayloadCodecTest {
+class TaskDispatchPayloadEncoderTest {
 
-    private final TaskDispatchPayloadCodec payloadCodec = new TaskDispatchPayloadCodec();
+    private final TaskDispatchPayloadEncoder payloadEncoder = new TaskDispatchPayloadEncoder();
     private final TaskDispatchDeliveryCorrelationCodec correlationCodec = new TaskDispatchDeliveryCorrelationCodec();
 
     @Test
     void encodesWorkerFramePayloadOutsideTransportCore() {
         TaskDispatchBinding binding = binding();
+        String correlationRef = correlationCodec.encode(context(), binding);
 
-        String payload = payloadCodec.encode(context(), binding, binding.workerId());
+        String payload = payloadEncoder.encode(context(), binding, correlationRef);
         JsonObject frame = new Gson().fromJson(payload, JsonObject.class);
 
-        assertEquals("msg-1", frame.get("messageId").getAsString());
-        assertEquals("worker-1", frame.get("workerId").getAsString());
-        assertEquals("task-1", frame.get("taskId").getAsString());
+        assertEquals(correlationRef, frame.get("resultCorrelationRef").getAsString());
         assertEquals("crawler.fetch-page", frame.get("eventCode").getAsString());
         assertEquals("target-1", frame.getAsJsonObject("input").get("target").getAsString());
         assertEquals("fast", frame.getAsJsonObject("sharedConfig").get("mode").getAsString());
-        assertEquals("batch-1", frame.get("batchId").getAsString());
-        assertEquals(2, frame.get("retryCount").getAsInt());
+        assertFalse(frame.has("taskId"));
+        assertFalse(frame.has("messageId"));
+        assertFalse(frame.has("workerId"));
+        assertFalse(frame.has("batchId"));
+        assertFalse(frame.has("retryCount"));
         assertFalse(frame.has("routeKey"));
         assertFalse(frame.has("connectionId"));
         assertFalse(frame.has("deliveryQueueKey"));
-    }
-
-    @Test
-    void decodesOpaquePulledDeliveryMessageIntoSdkTaskDispatch() {
-        TaskDispatchBinding binding = binding();
-        String payload = payloadCodec.encode(context(), binding, binding.workerId());
-        String correlationRef = correlationCodec.encode(context(), binding);
-
-        PulledTaskDispatch decoded = payloadCodec.decode(new PulledDeliveryMessage(
-                "delivery-1",
-                "worker-1",
-                payload,
-                correlationRef,
-                10L
-        ));
-
-        assertEquals("task-1", decoded.getTaskId());
-        assertEquals("msg-1", decoded.getMessageId());
-        assertEquals("crawler.fetch-page", decoded.getEventCode());
-        assertEquals("target-1", decoded.getInput().get("target"));
-        assertEquals("fast", decoded.getSharedConfig().get("mode"));
-        assertEquals("attempt-1", decoded.getAttemptId());
-        assertEquals(3, decoded.getAttemptNo());
-        assertEquals(2, decoded.getRetryCount());
-        assertEquals("batch-1", decoded.getBatchId());
     }
 
     private static TaskDispatchContext context() {

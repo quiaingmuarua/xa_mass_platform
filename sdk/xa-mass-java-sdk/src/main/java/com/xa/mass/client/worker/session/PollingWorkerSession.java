@@ -7,12 +7,13 @@ import com.xa.mass.client.worker.WorkerPollRequest;
 import com.xa.mass.client.worker.WorkerPollResult;
 import com.xa.mass.client.worker.WorkerRegistrationResult;
 import com.xa.mass.client.worker.WorkerResultSubmitRequest;
+import com.xa.mass.client.worker.ResultCorrelationRef;
 import com.xa.mass.client.worker.WorkerSpec;
 import com.xa.mass.client.worker.WorkerStateReport;
-import com.xa.mass.client.worker.handler.DispatchContext;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
 import com.xa.mass.client.worker.handler.WorkerEventHandlers;
+import com.xa.mass.client.worker.handler.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.client.worker.handler.WorkerResultSink;
 
@@ -206,21 +207,20 @@ public final class PollingWorkerSession implements WorkerSession {
 
     private void handleItem(WorkerDispatchItem item) {
         WorkerDispatchProcessor.ProcessedDispatch processed = dispatchProcessor.process(item);
-        submitResult(processed.dispatch(), processed.result());
+        submitResult(processed.resultCorrelationRef(), processed.invocation(), processed.result());
     }
 
-    private void submitResult(DispatchContext dispatch, WorkerResult result) {
+    private void submitResult(ResultCorrelationRef resultCorrelationRef, WorkerInvocation invocation, WorkerResult result) {
         try {
-            resultSink.submit(dispatch, result);
+            resultSink.submit(resultCorrelationRef, result);
         } catch (Throwable failure) {
-            listener.onSubmitFailure(new WorkerSessionDispatchFailure(dispatch, failure));
+            listener.onSubmitFailure(new WorkerSessionDispatchFailure(workerId, resultCorrelationRef, invocation, failure));
         }
     }
 
-    private void submitResultToWorkerApi(DispatchContext dispatch, WorkerResult result) {
+    private void submitResultToWorkerApi(ResultCorrelationRef resultCorrelationRef, WorkerResult result) {
         workerClient.submitResult(workerId, new WorkerResultSubmitRequest(
-                dispatch.taskId(),
-                dispatch.messageId(),
+                resultCorrelationRef.value(),
                 result.success(),
                 result.detail(),
                 result.errorCode(),
