@@ -144,7 +144,7 @@ class TransportRegistrationResolverTest {
 
         @Override
         public java.util.List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
-                java.util.List<com.xa.mass.transport.model.AdapterDispatchRequest> requests) {
+                java.util.List<com.xa.mass.transport.model.DeliveryCommand> commands) {
             return java.util.List.of();
         }
     }

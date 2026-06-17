@@ -10,7 +10,6 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
@@ -377,13 +376,13 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests) {
+        public List<DispatchOutcome> dispatch(List<DeliveryCommand> commands) {
             TaskDispatchPayloadCodec codec = new TaskDispatchPayloadCodec();
             List<DispatchOutcome> outcomes = new ArrayList<>();
-            for (AdapterDispatchRequest request : requests) {
-                dispatchedMessageIds.add(codec.decode(request.payload(), request.correlationRef()).getMessageId());
-                dispatchedWorkerIds.add(request.selectedWorkerId());
-                outcomes.add(DispatchOutcome.delivered(request));
+            for (DeliveryCommand command : commands) {
+                dispatchedMessageIds.add(codec.decode(command.getPayload(), command.getCorrelationRef()).getMessageId());
+                dispatchedWorkerIds.add(command.getSelectedWorkerId());
+                outcomes.add(DispatchOutcome.delivered(command));
                 dispatchLatch.countDown();
             }
             return List.copyOf(outcomes);

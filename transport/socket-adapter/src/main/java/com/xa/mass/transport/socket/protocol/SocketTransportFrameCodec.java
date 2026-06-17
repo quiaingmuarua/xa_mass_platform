@@ -6,7 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.packet.TransportPacket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,11 +91,11 @@ public final class SocketTransportFrameCodec {
                 && hasBoolean(frame, TransportPacket.PAYLOAD_SUCCESS);
     }
 
-    public String encodeCanonicalTaskDispatch(AdapterDispatchRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("request must not be null");
+    public String encodeCanonicalTaskDispatch(DeliveryCommand command) {
+        if (command == null) {
+            throw new IllegalArgumentException("command must not be null");
         }
-        return request.payload();
+        return command.getPayload();
     }
 
     public String encodeCanonicalTaskResultPayload(JsonObject frame) {

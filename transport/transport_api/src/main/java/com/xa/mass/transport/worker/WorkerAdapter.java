@@ -1,7 +1,7 @@
 package com.xa.mass.transport.worker;
 
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 
 import java.util.List;
@@ -23,7 +23,7 @@ import java.util.List;
  */
 public interface WorkerAdapter {
 
-    List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests);
+    List<DispatchOutcome> dispatch(List<DeliveryCommand> commands);
 
     /**
      * Returns the adapter's implementation/protocol label.

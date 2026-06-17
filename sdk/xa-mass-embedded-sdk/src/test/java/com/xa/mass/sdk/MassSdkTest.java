@@ -3628,8 +3628,8 @@ class MassSdkTest {
 
         @Override
         public List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
-                List<com.xa.mass.transport.model.AdapterDispatchRequest> requests) {
-            return requests == null ? List.of() : requests.stream()
+                List<com.xa.mass.transport.model.DeliveryCommand> commands) {
+            return commands == null ? List.of() : commands.stream()
                     .map(com.xa.mass.transport.model.DispatchOutcome::delivered)
                     .toList();
         }
@@ -3665,8 +3665,8 @@ class MassSdkTest {
 
         @Override
         public List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
-                List<com.xa.mass.transport.model.AdapterDispatchRequest> requests) {
-            return requests == null ? List.of() : requests.stream()
+                List<com.xa.mass.transport.model.DeliveryCommand> commands) {
+            return commands == null ? List.of() : commands.stream()
                     .map(com.xa.mass.transport.model.DispatchOutcome::delivered)
                     .toList();
         }

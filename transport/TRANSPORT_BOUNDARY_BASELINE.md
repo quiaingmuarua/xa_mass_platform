@@ -42,7 +42,7 @@ Engine remains the owner of task lifecycle:
 
 Transport should stay centered on these concepts only:
 
-- `WorkerAdapter.dispatch(List<AdapterDispatchRequest>)`: adapter dispatch SPI
+- `WorkerAdapter.dispatch(List<DeliveryCommand>)`: adapter dispatch SPI
   returning `DispatchOutcome`
 - `DispatchOutcome`: adapter-neutral delivery result, never task-lifecycle truth
   and the single retryable delivery-failure fact owner. It carries stable
@@ -60,11 +60,6 @@ Transport should stay centered on these concepts only:
   handoff-owned command references when the backing store needs ack, and
   minimal `DeliveryCommand` items. It does not carry delivery bucket, lane,
   target node, route, connection, or lease facts.
-- `AdapterDispatchRequest`: runtime-owned final-hop dispatch request. It is
-  created after handoff reference claim and carries one selected-worker command:
-  delivery id, selected worker, opaque payload, opaque correlation, and timing.
-  WebSocket/socket final-hop sends by selected worker; adapter selection and
-  connection handles stay inside adapter runtime/session managers.
 - `QueuedPulledDispatch`: current polling queue value and pull DTO source. It
   carries delivery id, selected worker, payload, correlation, and timing only;
   it does not serialize packets, routeKey, endpoint evidence, deliveryQueueKey,
@@ -447,7 +442,7 @@ such as task name, project, and user id must not be copied into
 
 `TransportPacket` remains the internal flat transport envelope for result and
 worker-system-event shapes, while task-dispatch wire frames are assembled at
-final-hop delivery from `AdapterDispatchRequest`. Starter-side command
+final-hop delivery from `DeliveryCommand`. Starter-side command
 construction must not create a packet-backed delivery command. The
 delivery-command handoff codec and polling queue codec must not serialize a
 generic task-dispatch `TransportPacket` as the item payload.
@@ -612,9 +607,9 @@ Dispatch is also a hot path. Delivery-command handoff queues store
 bucket-scoped command payloads plus handoff-owned command references. They
 must not deep-copy worker pull DTOs, endpoint leases, or generic task-dispatch
 `TransportPacket` payloads as the handoff item shape. Adapter delivery receives
-`AdapterDispatchRequest` with selected-worker opaque payload and an
-adapter-private selector; polling queue delivery should converge to opaque
-pulled delivery messages. Retryable dispatch outcomes must carry delivery id,
+`DeliveryCommand` with selected-worker opaque payload and an adapter-private
+selector; polling queue delivery should converge to opaque pulled delivery
+messages. Retryable dispatch outcomes must carry delivery id,
 `selectedWorkerId`, opaque correlation, status, retryability, reason, and time;
 transport trace ids are diagnostics and must not double as compensation keys.
 

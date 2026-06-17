@@ -1,6 +1,5 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
@@ -91,7 +90,7 @@ class TransportDeliveryCommandListenerTest {
         }
 
         @Override
-        public List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests) {
+        public List<DispatchOutcome> dispatch(List<DeliveryCommand> commands) {
             return List.of();
         }
     }

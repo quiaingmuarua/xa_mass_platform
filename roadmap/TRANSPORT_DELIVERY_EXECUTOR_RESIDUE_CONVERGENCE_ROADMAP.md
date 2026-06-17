@@ -51,12 +51,9 @@ Delivery command handoff
   command store / ready refs / inflight refs
   command.selectedWorkerId -> endpoint/session consumer evidence
 
-Final-hop adapter request
-  deliveryId
-  selectedWorkerId
-  opaque worker payload
-  opaque delivery correlation
-  createdAtEpochMillis
+Final-hop adapter dispatch
+  WorkerAdapter.dispatch(List<DeliveryCommand>)
+  adapter-local selectedWorkerId send
 
 Adapter/session manager
   selectedWorkerId -> active local session
@@ -66,7 +63,7 @@ The assigned task delivery mainline must not carry `routeKey`,
 `connectionId`, `transportNodeId`, `AdapterEndpoint`, or endpoint lease
 records. Those facts may remain inside endpoint-lease/raw-route/session
 internals, but not in the assigned task delivery command, handoff, listener,
-or adapter task request.
+or final-hop adapter SPI.
 
 Payload opacity is already completed by
 `doc/archive/transport/2026-06-15_TRANSPORT_OPAQUE_DELIVERY_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md`.
@@ -92,10 +89,9 @@ implementation.
 - `RedisTransportRouteOwnerStore` and old route-owner selected-worker lookup
   contracts have been deleted. Endpoint lease storage is bucket-worker scoped
   and must not re-enter assigned delivery lookup.
-- `AdapterDispatchRequest` no longer carries `adapterId` or `AdapterEndpoint`.
-  It is still part of the final-hop request surface and now carries
-  `deliveryBucketId` so polling pull storage can derive the same bucket queue
-  as assigned delivery.
+- The duplicate final-hop request DTO has been removed. The final-hop adapter
+  SPI now consumes `DeliveryCommand` directly, so the assigned delivery item has
+  one model across handoff, listener grouping, direct-send, and polling enqueue.
 - `TransportDeliveryService` mixes two concerns:
   direct push adapter delivery counters and polling worker inbox queueing. Its
   polling queue key now derives from the request `deliveryBucketId`, but the
@@ -204,7 +200,7 @@ Actions:
   - `DeliveryCommandConsumerProjectingRouteOwnerStore`
   - `TransportDeliveryService`
   - `TransportDeliveryStore`
-  - `AdapterDispatchRequest`
+  - removed final-hop request DTO residue
   - `AdapterEndpoint`
   - `TransportEndpointLeaseStore`
   - websocket/socket/polling task dispatch adapters
@@ -304,31 +300,26 @@ Guards:
 - `DeliveryCommandConsumerProjectingRouteOwnerStore` must not exist in main
   source.
 
-## Phase 2 - Remove `AdapterEndpoint` From Assigned Task Dispatch Requests
+## Phase 2 - Remove Final-Hop Request DTO From Assigned Task Dispatch
 
-Goal: make the adapter task request the smallest final-hop send intent.
+Status: completed in the current work tree; keep this phase as guard context,
+not as active implementation work.
 
-Target request shape:
-
-```java
-record AdapterDispatchRequest(
-    String deliveryId,
-    String selectedWorkerId,
-    String payload,
-    String correlationRef,
-    long createdAtEpochMillis
-) {}
-```
+Goal: make `DeliveryCommand` the single smallest assigned delivery intent across
+handoff, listener grouping, adapter final-hop dispatch, direct-send outcomes,
+and polling enqueue.
 
 The concrete adapter/driver id belongs to listener-side grouping after endpoint
 lease resolution, not each item. Route address and session handle belong inside
-adapter/session internals.
+adapter/session internals. Adapters receive the already selected worker
+constraint through `DeliveryCommand.selectedWorkerId`.
 
 Actions:
 
-- Keep `AdapterEndpoint` out of `AdapterDispatchRequest`.
-- Keep per-item `adapterId` out of `AdapterDispatchRequest`; listener grouping
-  owns the driver id.
+- Delete the final-hop request DTO instead of preserving a second copy of
+  `DeliveryCommand` fields.
+- Keep per-item `adapterId` out of `DeliveryCommand`; listener grouping owns
+  the driver id.
 - Change websocket/socket task dispatch channels to log only delivery id,
   selected worker, and outcome reason for assigned task dispatch.
 - Remove `TransportDeliveryService.sendDirect(...)` route-key validation.
@@ -340,8 +331,11 @@ Actions:
 
 Acceptance:
 
-- Assigned task dispatch request does not expose `routeKey`, `connectionId`, or
-  `transportNodeId`.
+- `WorkerAdapter.dispatch(...)`, `TransportDeliveryService`, and
+  `TransportDeliverySender` consume `DeliveryCommand` directly.
+- The removed final-hop request DTO does not exist in main or test source.
+- `DeliveryCommand` does not expose `routeKey`, `connectionId`,
+  `transportNodeId`, `adapterId`, or endpoint lease facts.
 - WebSocket and socket assigned delivery still call selected-worker send APIs.
 - Polling adapter enqueue still isolates by selected worker and does not need
   route/session endpoint facts.
@@ -356,12 +350,10 @@ Focused tests:
 
 Guards:
 
-- `AdapterDispatchRequest` must not contain:
-  - `adapterId`
-  - `AdapterEndpoint`
-  - `routeKey`
-  - `connectionId`
-  - `transportNodeId`
+- Removed final-hop request DTO symbol must not reappear in transport or SDK
+  Java source.
+- `DeliveryCommand` must not contain `adapterId`, `AdapterEndpoint`, `routeKey`,
+  `connectionId`, or `transportNodeId`.
 - Assigned task dispatch channels must not call `sendToAdapterRoute(`.
 
 ## Phase 3 - Align In-Memory And Redis Handoff Claim/Ack/Requeue Semantics

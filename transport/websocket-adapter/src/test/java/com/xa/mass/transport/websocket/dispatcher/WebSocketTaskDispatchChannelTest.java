@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.packet.TransportPacket;
@@ -131,8 +131,8 @@ class WebSocketTaskDispatchChannelTest {
         return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
     }
 
-    private AdapterDispatchRequest request() {
-        return new AdapterDispatchRequest(
+    private DeliveryCommand request() {
+        return new DeliveryCommand(
                 "delivery-msg-1",
                 "bucket-1",
                 "worker-1",
@@ -149,6 +149,7 @@ class WebSocketTaskDispatchChannelTest {
                 }
                 """,
                 "corr-msg-1",
+                0L,
                 1L
         );
     }

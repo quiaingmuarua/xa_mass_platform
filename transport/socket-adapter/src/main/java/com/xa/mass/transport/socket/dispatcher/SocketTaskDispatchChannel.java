@@ -1,7 +1,7 @@
 package com.xa.mass.transport.socket.dispatcher;
 
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -53,23 +53,23 @@ public final class SocketTaskDispatchChannel implements WorkerAdapter {
     }
 
     @Override
-    public List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests) {
-        if (requests == null || requests.isEmpty()) {
+    public List<DispatchOutcome> dispatch(List<DeliveryCommand> commands) {
+        if (commands == null || commands.isEmpty()) {
             return List.of();
         }
         return deliveryService.sendDirect(
                 adapterId,
-                requests,
-                request -> {
-                    String rawJson = frameCodec.encodeCanonicalTaskDispatch(request);
+                commands,
+                command -> {
+                    String rawJson = frameCodec.encodeCanonicalTaskDispatch(command);
                     boolean sent = sessionManager.sendToSelectedWorker(
                             adapterId,
-                            request.selectedWorkerId(),
+                            command.getSelectedWorkerId(),
                             rawJson
                     );
                     if (!sent) {
                         logger.warn("Socket outbound skipped because endpoint is unavailable: selectedWorkerId={}, traceId={}",
-                                request.selectedWorkerId(), null);
+                                command.getSelectedWorkerId(), null);
                     }
                     return sent;
                 },

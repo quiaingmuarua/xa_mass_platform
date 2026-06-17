@@ -26,7 +26,7 @@ High-volume transport should stay on this mainline:
 
 ```text
 engine assignment
-  -> DeliveryCommand / AdapterDispatchRequest
+  -> DeliveryCommand
   -> TransportDeliveryCommandListener
   -> TransportDeliveryService
   -> TransportDeliveryStore
@@ -39,9 +39,9 @@ engine assignment
 
 Permanent transport concepts remain:
 
-- `WorkerAdapter.dispatch(List<AdapterDispatchRequest>)`
+- `WorkerAdapter.dispatch(List<DeliveryCommand>)`
 - `DispatchOutcome`
-- `AdapterDispatchRequest`
+- `DeliveryCommand`
 - `QueuedPulledDispatch`
 - `TransportDeliveryService`
 - `TransportDeliveryStore`

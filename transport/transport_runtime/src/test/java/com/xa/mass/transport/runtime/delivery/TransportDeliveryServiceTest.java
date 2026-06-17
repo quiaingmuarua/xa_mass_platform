@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import org.junit.jupiter.api.Test;
@@ -249,20 +249,21 @@ class TransportDeliveryServiceTest {
         return outcomes.stream().map(DispatchOutcome::getStatus).toList();
     }
 
-    private AdapterDispatchRequest request(String messageId, String workerId) {
+    private DeliveryCommand request(String messageId, String workerId) {
         return request("delivery-" + messageId, BUCKET, messageId, workerId);
     }
 
-    private AdapterDispatchRequest request(String deliveryId,
-                                           String deliveryBucketId,
-                                           String messageId,
-                                           String workerId) {
-        return new AdapterDispatchRequest(
+    private DeliveryCommand request(String deliveryId,
+                                    String deliveryBucketId,
+                                    String messageId,
+                                    String workerId) {
+        return new DeliveryCommand(
                 deliveryId,
                 deliveryBucketId,
                 workerId,
                 "{\"messageId\":\"" + messageId + "\"}",
                 "corr-" + messageId,
+                0L,
                 1L
         );
     }

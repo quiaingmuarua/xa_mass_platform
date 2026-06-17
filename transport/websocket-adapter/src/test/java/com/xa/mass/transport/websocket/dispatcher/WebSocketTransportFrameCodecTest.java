@@ -3,7 +3,7 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,7 +27,7 @@ class WebSocketTransportFrameCodecTest {
 
     @Test
     void encodesCanonicalTaskDispatch() {
-        AdapterDispatchRequest request = new AdapterDispatchRequest(
+        DeliveryCommand command = new DeliveryCommand(
                 "delivery-1",
                 "bucket-1",
                 "worker-1",
@@ -42,10 +42,11 @@ class WebSocketTransportFrameCodecTest {
                 }
                 """,
                 "corr-1",
+                0L,
                 1L
         );
 
-        JsonObject frame = codec.parseObject(codec.encodeCanonicalTaskDispatch(request));
+        JsonObject frame = codec.parseObject(codec.encodeCanonicalTaskDispatch(command));
 
         assertNotNull(frame);
         assertEquals("msg-1", frame.get("messageId").getAsString());

@@ -1,7 +1,6 @@
 package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
 
@@ -26,16 +25,6 @@ public final class QueuedPulledDispatch {
         this.payload = requireText(payload, "payload");
         this.correlationRef = requireText(correlationRef, "correlationRef");
         this.createdAtEpochMillis = Math.max(0L, createdAtEpochMillis);
-    }
-
-    public static QueuedPulledDispatch from(AdapterDispatchRequest request) {
-        return new QueuedPulledDispatch(
-                request.deliveryId(),
-                request.selectedWorkerId(),
-                request.payload(),
-                request.correlationRef(),
-                request.createdAtEpochMillis()
-        );
     }
 
     public static QueuedPulledDispatch from(DeliveryCommand command) {

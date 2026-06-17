@@ -1,7 +1,7 @@
 package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
 
 import java.util.ArrayList;
@@ -35,13 +35,13 @@ public final class TransportDeliveryService {
         this.deliveryStore = Objects.requireNonNull(deliveryStore, "deliveryStore");
     }
 
-    public List<DispatchOutcome> enqueue(String adapterId, List<AdapterDispatchRequest> requests) {
-        if (requests == null || requests.isEmpty()) {
+    public List<DispatchOutcome> enqueue(String adapterId, List<DeliveryCommand> commands) {
+        if (commands == null || commands.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = new ArrayList<>(requests.size());
-        for (AdapterDispatchRequest request : requests) {
-            if (request == null) {
+        List<DispatchOutcome> outcomes = new ArrayList<>(commands.size());
+        for (DeliveryCommand command : commands) {
+            if (command == null) {
                 outcomes.add(DispatchOutcome.invalid(
                         null,
                         null,
@@ -52,17 +52,17 @@ public final class TransportDeliveryService {
             }
             String deliveryQueueKey;
             try {
-                deliveryQueueKey = resolveDeliveryQueueKey(request.deliveryBucketId());
+                deliveryQueueKey = resolveDeliveryQueueKey(command.getDeliveryBucketId());
             } catch (RuntimeException e) {
                 outcomes.add(DispatchOutcome.invalid(
-                        request,
+                        command,
                         e.getMessage() == null || e.getMessage().isBlank()
                                 ? "delivery bucket id is invalid for transport queue addressing"
                                 : e.getMessage()
                 ));
                 continue;
             }
-            outcomes.add(deliveryStore.enqueue(adapterId, deliveryQueueKey, QueuedPulledDispatch.from(request)));
+            outcomes.add(deliveryStore.enqueue(adapterId, deliveryQueueKey, QueuedPulledDispatch.from(command)));
         }
         return Collections.unmodifiableList(outcomes);
     }
@@ -123,16 +123,16 @@ public final class TransportDeliveryService {
     }
 
     public List<DispatchOutcome> sendDirect(String adapterId,
-                                            List<AdapterDispatchRequest> requests,
+                                            List<DeliveryCommand> commands,
                                             TransportDeliverySender sender,
                                             String unavailableReason) {
-        if (requests == null || requests.isEmpty()) {
+        if (commands == null || commands.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = new ArrayList<>(requests.size());
-        for (AdapterDispatchRequest request : requests) {
+        List<DispatchOutcome> outcomes = new ArrayList<>(commands.size());
+        for (DeliveryCommand command : commands) {
             DirectDeliveryCounters adapterCounters = directCounters(adapterId);
-            if (request == null) {
+            if (command == null) {
                 directInvalidItems.incrementAndGet();
                 adapterCounters.invalidItems.incrementAndGet();
                 outcomes.add(DispatchOutcome.invalid(null, "request must not be null"));
@@ -141,24 +141,24 @@ public final class TransportDeliveryService {
             if (sender == null) {
                 directUnavailableItems.incrementAndGet();
                 adapterCounters.unavailableItems.incrementAndGet();
-                outcomes.add(DispatchOutcome.unavailable(request, unavailableReason));
+                outcomes.add(DispatchOutcome.unavailable(command, unavailableReason));
                 continue;
             }
             try {
-                boolean sent = sender.send(request);
+                boolean sent = sender.send(command);
                 if (sent) {
                     directSentItems.incrementAndGet();
                     adapterCounters.sentItems.incrementAndGet();
-                    outcomes.add(DispatchOutcome.delivered(request));
+                    outcomes.add(DispatchOutcome.delivered(command));
                 } else {
                     directOfflineItems.incrementAndGet();
                     adapterCounters.offlineItems.incrementAndGet();
-                    outcomes.add(DispatchOutcome.noEndpoint(request, "endpoint is unavailable"));
+                    outcomes.add(DispatchOutcome.noEndpoint(command, "endpoint is unavailable"));
                 }
             } catch (RuntimeException e) {
                 directFailedItems.incrementAndGet();
                 adapterCounters.failedItems.incrementAndGet();
-                outcomes.add(DispatchOutcome.failed(request, e.getMessage(), true));
+                outcomes.add(DispatchOutcome.failed(command, e.getMessage(), true));
             }
         }
         return Collections.unmodifiableList(outcomes);

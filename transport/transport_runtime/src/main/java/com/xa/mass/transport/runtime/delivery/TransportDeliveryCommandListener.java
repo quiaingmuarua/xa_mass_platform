@@ -3,7 +3,6 @@ package com.xa.mass.transport.runtime.delivery;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
@@ -49,8 +48,8 @@ public final class TransportDeliveryCommandListener {
             return List.of();
         }
 
-        Map<WorkerAdapter, List<AdapterDispatchRequest>> groupedByAdapter = new LinkedHashMap<>();
-        Map<String, ResolvedDispatchCommand> itemByDeliveryId = new LinkedHashMap<>();
+        Map<WorkerAdapter, List<DeliveryCommand>> groupedByAdapter = new LinkedHashMap<>();
+        Map<String, DeliveryCommand> itemByDeliveryId = new LinkedHashMap<>();
         List<DispatchOutcome> immediateOutcomes = new ArrayList<>();
         for (DeliveryCommand command : batch.items()) {
             try {
@@ -81,9 +80,8 @@ public final class TransportDeliveryCommandListener {
                     handleRetryableFailure(outcome);
                     continue;
                 }
-                AdapterDispatchRequest request = toRequest(command);
-                itemByDeliveryId.put(request.deliveryId(), new ResolvedDispatchCommand(command));
-                groupedByAdapter.computeIfAbsent(adapter, ignored -> new ArrayList<>()).add(request);
+                itemByDeliveryId.put(command.getCommandId(), command);
+                groupedByAdapter.computeIfAbsent(adapter, ignored -> new ArrayList<>()).add(command);
             } catch (RuntimeException e) {
                 DispatchOutcome outcome = DispatchOutcome.fromCommand(
                         command,
@@ -97,7 +95,7 @@ public final class TransportDeliveryCommandListener {
         }
 
         List<AdapterDispatchGroup> groups = new ArrayList<>(groupedByAdapter.size());
-        for (Map.Entry<WorkerAdapter, List<AdapterDispatchRequest>> entry : groupedByAdapter.entrySet()) {
+        for (Map.Entry<WorkerAdapter, List<DeliveryCommand>> entry : groupedByAdapter.entrySet()) {
             groups.add(new AdapterDispatchGroup(
                     batch.deliveryQueueKey(),
                     entry.getKey(),
@@ -113,8 +111,8 @@ public final class TransportDeliveryCommandListener {
                 if (outcome == null || !outcome.isRetryable()) {
                     continue;
                 }
-                ResolvedDispatchCommand item = itemByDeliveryId.get(outcome.getDeliveryId());
-                if (item != null) {
+                DeliveryCommand command = itemByDeliveryId.get(outcome.getDeliveryId());
+                if (command != null) {
                     handleRetryableFailure(outcome);
                 }
             }
@@ -129,17 +127,6 @@ public final class TransportDeliveryCommandListener {
             logger.warn("Cannot resolve delivery adapter: adapterId={}, reason={}", adapterId, e.getMessage());
             return null;
         }
-    }
-
-    private AdapterDispatchRequest toRequest(DeliveryCommand command) {
-        return new AdapterDispatchRequest(
-                command.getCommandId(),
-                command.getDeliveryBucketId(),
-                command.getSelectedWorkerId(),
-                command.getPayload(),
-                command.getCorrelationRef(),
-                command.getCreatedAtEpochMillis()
-        );
     }
 
     private List<DispatchGroupResult> dispatchGroups(List<AdapterDispatchGroup> groups) {
@@ -212,9 +199,9 @@ public final class TransportDeliveryCommandListener {
 
     private List<DispatchOutcome> adapterUnavailableOutcomes(AdapterDispatchGroup group, String reason) {
         List<DispatchOutcome> outcomes = new ArrayList<>(group.requests().size());
-        for (AdapterDispatchRequest request : group.requests()) {
+        for (DeliveryCommand command : group.requests()) {
             outcomes.add(DispatchOutcome.unavailable(
-                    request,
+                    command,
                     reason
             ));
         }
@@ -266,10 +253,7 @@ public final class TransportDeliveryCommandListener {
 
     private record AdapterDispatchGroup(String deliveryQueueKey,
                                         WorkerAdapter adapter,
-                                        List<AdapterDispatchRequest> requests) {
-    }
-
-    private record ResolvedDispatchCommand(DeliveryCommand command) {
+                                        List<DeliveryCommand> requests) {
     }
 
     private static final class DeliveryFailureEmissionException extends RuntimeException {

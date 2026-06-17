@@ -91,8 +91,8 @@ entry for `transport/`.
 - `TransportDeliveryCommandListener` consumes bucket-queue handoff references,
   reads `deliveryBucketId + selectedWorkerId` endpoint lease evidence for
   final-hop feasibility, then resolves the local adapter from that endpoint
-  lease. `AdapterDispatchRequest` is the final-hop adapter request and sends by
-  selected worker.
+  lease. The final-hop adapter SPI consumes `DeliveryCommand` directly and
+  sends by selected worker.
 - `DeliveryPullResult` / `PulledDeliveryMessage` are the transport-core pull
   shapes. They carry status plus opaque delivery messages only. Task-shaped
   `PulledTaskDispatch` / `TaskPullResult` live at the SDK/server public worker
@@ -102,8 +102,8 @@ entry for `transport/`.
   endpoint, taskName/project/userId, and deliveryQueueKey are not serialized in
   the Redis queue value.
 - Queue mechanics may live under `platform_infra`; transport still owns
-  `DeliveryCommand`, `DeliveryCommandBatch`, `AdapterDispatchRequest`,
-  `QueuedPulledDispatch`, `TransportDeliveryStore`, and `DispatchOutcome`.
+  `DeliveryCommand`, `DeliveryCommandBatch`, `QueuedPulledDispatch`,
+  `TransportDeliveryStore`, and `DispatchOutcome`.
   `DispatchOutcome` is the single delivery-failure fact owner; failure inbox
   events wrap the outcome instead of maintaining group/item snapshot copies.
   `DispatchOutcome` reports only delivery identity, selected worker, opaque

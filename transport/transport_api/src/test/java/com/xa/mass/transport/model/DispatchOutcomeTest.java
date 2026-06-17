@@ -15,9 +15,9 @@ class DispatchOutcomeTest {
 
     @Test
     void deliveredCopiesOnlyStableDeliveryIdentityAndCorrelation() {
-        AdapterDispatchRequest request = request();
+        DeliveryCommand command = command();
 
-        DispatchOutcome outcome = DispatchOutcome.delivered(request);
+        DispatchOutcome outcome = DispatchOutcome.delivered(command);
 
         assertEquals("delivery-1", outcome.getDeliveryId());
         assertEquals("worker-1", outcome.getSelectedWorkerId());
@@ -30,15 +30,15 @@ class DispatchOutcomeTest {
 
     @Test
     void factoryMethodsSetRetryabilityDefaults() {
-        AdapterDispatchRequest request = request();
+        DeliveryCommand command = command();
 
         assertFalse(DispatchOutcome.queued("delivery-1", "worker-1", "corr-1").isRetryable());
-        assertTrue(DispatchOutcome.noEndpoint(request, "offline").isRetryable());
+        assertTrue(DispatchOutcome.noEndpoint(command, "offline").isRetryable());
         assertTrue(DispatchOutcome.backpressure("delivery-1", "worker-1", "corr-1", "full").isRetryable());
-        assertFalse(DispatchOutcome.invalid(request, "bad").isRetryable());
-        assertTrue(DispatchOutcome.unavailable(request, "missing").isRetryable());
-        assertFalse(DispatchOutcome.failed(request, "bad frame", false).isRetryable());
-        assertTrue(DispatchOutcome.failed(request, "io", true).isRetryable());
+        assertFalse(DispatchOutcome.invalid(command, "bad").isRetryable());
+        assertTrue(DispatchOutcome.unavailable(command, "missing").isRetryable());
+        assertFalse(DispatchOutcome.failed(command, "bad frame", false).isRetryable());
+        assertTrue(DispatchOutcome.failed(command, "io", true).isRetryable());
     }
 
     @Test
@@ -101,13 +101,14 @@ class DispatchOutcomeTest {
         assertFalse(methods.contains("getAttemptNo"));
     }
 
-    private AdapterDispatchRequest request() {
-        return new AdapterDispatchRequest(
+    private DeliveryCommand command() {
+        return new DeliveryCommand(
                 "delivery-1",
                 "bucket-1",
                 "worker-1",
                 "{\"messageId\":\"msg-1\"}",
                 "corr-1",
+                0L,
                 10L
         );
     }

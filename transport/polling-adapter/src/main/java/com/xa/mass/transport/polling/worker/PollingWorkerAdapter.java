@@ -5,7 +5,7 @@ import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
 import com.xa.mass.transport.lease.TransportEndpointLeaseConsumerEvidence;
@@ -76,11 +76,11 @@ public class PollingWorkerAdapter implements WorkerAdapter, DeliveryPullChannel 
     }
 
     @Override
-    public List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests) {
-        if (requests == null || requests.isEmpty()) {
+    public List<DispatchOutcome> dispatch(List<DeliveryCommand> commands) {
+        if (commands == null || commands.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = deliveryService.enqueue(adapterId, requests);
+        List<DispatchOutcome> outcomes = deliveryService.enqueue(adapterId, commands);
         for (DispatchOutcome outcome : outcomes) {
             if (outcome.isRetryable()) {
                 logger.warn("Polling delivery rejected: selectedWorkerId={}, deliveryId={}, status={}, reason={}",

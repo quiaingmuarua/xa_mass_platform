@@ -331,6 +331,34 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
+    void removedAdapterRequestModelDoesNotReappear() throws IOException {
+        String removedRequestModel = "AdapterDispatch" + "Request";
+        String removedRequestFactory = "from" + "Request(";
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java"),
+                        repoRoot().resolve("transport/transport_api/src/test/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/test/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/test/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/test/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/test/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/test/java")
+                ),
+                removedRequestModel,
+                removedRequestFactory
+        );
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model")
+                        .resolve("AdapterDispatch" + "Request.java")
+        );
+    }
+
+    @Test
     void taskDispatchContentAndExecutionContextModelsDoNotReappear() {
         assertPathsDoNotExist(
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TaskDispatchContent.java"),

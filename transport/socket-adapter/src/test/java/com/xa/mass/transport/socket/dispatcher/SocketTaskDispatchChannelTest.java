@@ -1,6 +1,6 @@
 package com.xa.mass.transport.socket.dispatcher;
 
-import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
@@ -66,13 +66,14 @@ class SocketTaskDispatchChannelTest {
         );
     }
 
-    private AdapterDispatchRequest request(String messageId, String workerId) {
-        return new AdapterDispatchRequest(
+    private DeliveryCommand request(String messageId, String workerId) {
+        return new DeliveryCommand(
                 "delivery-" + messageId,
                 "bucket-1",
                 workerId,
                 "{\"messageId\":\"" + messageId + "\"}",
                 "corr-" + messageId,
+                0L,
                 1L
         );
     }

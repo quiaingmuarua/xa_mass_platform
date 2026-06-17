@@ -1,7 +1,7 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.worker.WorkerAdapter;
@@ -45,32 +45,32 @@ public final class WebSocketTaskDispatchChannel implements WorkerAdapter {
     }
 
     @Override
-    public List<DispatchOutcome> dispatch(List<AdapterDispatchRequest> requests) {
-        if (requests == null || requests.isEmpty()) {
+    public List<DispatchOutcome> dispatch(List<DeliveryCommand> commands) {
+        if (commands == null || commands.isEmpty()) {
             return List.of();
         }
         if (context == null || context.getEndpointRegistry() == null || context.getFrameCodec() == null) {
             logger.warn("Skip task message publishing because dispatcher context or endpoint registry is unavailable");
             return deliveryService.sendDirect(
                     adapterId(),
-                    requests,
+                    commands,
                     null,
                     "dispatcher context or endpoint registry is unavailable"
             );
         }
         return deliveryService.sendDirect(
                 adapterId(),
-                requests,
-                request -> {
-                    String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(request);
+                commands,
+                command -> {
+                    String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(command);
                     boolean sent = context.getEndpointRegistry().sendToSelectedWorker(
                             adapterId(),
-                            request.selectedWorkerId(),
+                            command.getSelectedWorkerId(),
                             rawJson
                     );
                     if (!sent) {
                         logger.warn("WebSocket outbound skipped because endpoint is unavailable: selectedWorkerId={}, traceId={}",
-                                request.selectedWorkerId(), null);
+                                command.getSelectedWorkerId(), null);
                     }
                     return sent;
                 },

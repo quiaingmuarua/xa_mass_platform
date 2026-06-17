@@ -31,8 +31,8 @@ public final class DispatchOutcome {
         this.occurredAtEpochMillis = Math.max(0L, occurredAtEpochMillis);
     }
 
-    public static DispatchOutcome delivered(AdapterDispatchRequest request) {
-        return fromRequest(request, DispatchOutcomeStatus.DELIVERED, false, null);
+    public static DispatchOutcome delivered(DeliveryCommand command) {
+        return fromCommand(command, DispatchOutcomeStatus.DELIVERED, false, null);
     }
 
     public static DispatchOutcome queued(String deliveryId,
@@ -48,8 +48,8 @@ public final class DispatchOutcome {
         );
     }
 
-    public static DispatchOutcome noEndpoint(AdapterDispatchRequest request, String reason) {
-        return fromRequest(request, DispatchOutcomeStatus.NO_ENDPOINT, true, reason);
+    public static DispatchOutcome noEndpoint(DeliveryCommand command, String reason) {
+        return fromCommand(command, DispatchOutcomeStatus.NO_ENDPOINT, true, reason);
     }
 
     public static DispatchOutcome backpressure(String deliveryId,
@@ -80,23 +80,22 @@ public final class DispatchOutcome {
         );
     }
 
-    public static DispatchOutcome invalid(AdapterDispatchRequest request, String reason) {
-        return fromRequest(request, DispatchOutcomeStatus.INVALID, false, reason);
+    public static DispatchOutcome invalid(DeliveryCommand command, String reason) {
+        return fromCommand(command, DispatchOutcomeStatus.INVALID, false, reason);
     }
 
-    public static DispatchOutcome unavailable(AdapterDispatchRequest request, String reason) {
-        return fromRequest(request, DispatchOutcomeStatus.UNAVAILABLE, true, reason);
+    public static DispatchOutcome unavailable(DeliveryCommand command, String reason) {
+        return fromCommand(command, DispatchOutcomeStatus.UNAVAILABLE, true, reason);
     }
 
     public static DispatchOutcome fromCommand(DeliveryCommand command,
                                               DispatchOutcomeStatus status,
                                               boolean retryable,
                                               String reason) {
-        Objects.requireNonNull(command, "command");
         return new DispatchOutcome(
-                command.getCommandId(),
-                command.getSelectedWorkerId(),
-                command.getCorrelationRef(),
+                command != null ? command.getCommandId() : null,
+                command != null ? command.getSelectedWorkerId() : null,
+                command != null ? command.getCorrelationRef() : null,
                 status,
                 retryable,
                 reason,
@@ -104,29 +103,14 @@ public final class DispatchOutcome {
         );
     }
 
-    public static DispatchOutcome failed(AdapterDispatchRequest request,
+    public static DispatchOutcome failed(DeliveryCommand command,
                                          String reason,
                                          boolean retryable) {
-        return fromRequest(request, DispatchOutcomeStatus.FAILED, retryable, reason);
+        return fromCommand(command, DispatchOutcomeStatus.FAILED, retryable, reason);
     }
 
-    public static DispatchOutcome shutdown(AdapterDispatchRequest request, String reason) {
-        return fromRequest(request, DispatchOutcomeStatus.SHUTDOWN, true, reason);
-    }
-
-    private static DispatchOutcome fromRequest(AdapterDispatchRequest request,
-                                               DispatchOutcomeStatus status,
-                                               boolean retryable,
-                                               String reason) {
-        return new DispatchOutcome(
-                request != null ? request.deliveryId() : null,
-                request != null ? request.selectedWorkerId() : null,
-                request != null ? request.correlationRef() : null,
-                status,
-                retryable,
-                reason,
-                System.currentTimeMillis()
-        );
+    public static DispatchOutcome shutdown(DeliveryCommand command, String reason) {
+        return fromCommand(command, DispatchOutcomeStatus.SHUTDOWN, true, reason);
     }
 
     private static DispatchOutcome basic(String deliveryId,

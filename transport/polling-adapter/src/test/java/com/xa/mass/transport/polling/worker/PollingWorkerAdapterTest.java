@@ -2,7 +2,7 @@ package com.xa.mass.transport.polling.worker;
 
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
-import com.xa.mass.transport.model.AdapterDispatchRequest;
+import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
@@ -68,7 +68,7 @@ class PollingWorkerAdapterTest {
     @Test
     void dispatchReportsBackpressureWhenWorkerInboxIsFull() {
         PollingWorkerAdapter adapter = adapter();
-        List<AdapterDispatchRequest> items = new ArrayList<>();
+        List<DeliveryCommand> items = new ArrayList<>();
         for (int i = 0; i < PollingWorkerAdapter.MAX_INBOX_SIZE + 1; i++) {
             items.add(request("msg-" + i, "worker-1"));
         }
@@ -157,17 +157,18 @@ class PollingWorkerAdapterTest {
         );
     }
 
-    private AdapterDispatchRequest request(String messageId, String workerId) {
+    private DeliveryCommand request(String messageId, String workerId) {
         return request("delivery-" + messageId, messageId, workerId);
     }
 
-    private AdapterDispatchRequest request(String deliveryId, String messageId, String workerId) {
-        return new AdapterDispatchRequest(
+    private DeliveryCommand request(String deliveryId, String messageId, String workerId) {
+        return new DeliveryCommand(
                 deliveryId,
                 BUCKET,
                 workerId,
                 payload(messageId),
                 "corr-" + messageId,
+                0L,
                 1L
         );
     }
