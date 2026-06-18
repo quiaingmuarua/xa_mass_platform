@@ -235,7 +235,7 @@ Goal: make the actual caller and guard surface explicit before moving code.
 Scope:
 
 - Keep
-  `TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_INVENTORY.md`
+  `2026-06-18_TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_INVENTORY.md`
   current while implementing this roadmap.
 - Classify all production `WorkerEndpointRegistry` callers:
   - assigned-delivery final-hop
@@ -431,9 +431,9 @@ Scope:
 - Update `transport/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md`.
 - Update `doc/PROOF_REGISTRY.md`.
 - Update or supersede:
-  - `TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`
-  - `TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`
-  - `TRANSPORT_ADAPTER_COMMAND_EXECUTOR_CONVERGENCE_ROADMAP.md`
+  - `2026-06-18_TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`
+  - `2026-06-18_TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`
+  - `2026-06-18_TRANSPORT_ADAPTER_COMMAND_EXECUTOR_CONVERGENCE_ROADMAP.md`
 - Run a residue scan for:
   - `WorkerEndpointRegistry`
   - `CompositeWorkerEndpointRegistry`

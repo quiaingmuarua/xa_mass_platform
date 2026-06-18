@@ -1,14 +1,14 @@
 # Transport Adapter Command Executor Convergence Roadmap
 
 Status: mainline complete and superseded for push final-hop/session details by
-`TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_ROADMAP.md`.
+`2026-06-18_TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_ROADMAP.md`.
 Retained only as executor-boundary historical context until archive. Do not
 use lower endpoint-registry or verification references as current contracts.
 
 Polling adapter internal role splitting after this mainline has landed and was
 archived with the polling capability roadmap. Remaining WebSocket/socket
 session-manager decomposition is tracked by
-`TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`. This
+`2026-06-18_TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`. This
 roadmap keeps the executor boundary context; it no longer owns concrete adapter
 internal capability decomposition.
 
@@ -195,9 +195,9 @@ create owner boundaries, not forwarding wrappers.
 
 ## Relationship To Existing Roadmaps
 
-- `TRANSPORT_ROUTE_KEY_REMOVAL_CONVERGENCE_ROADMAP.md` should depend on this
-  roadmap. Removing routeKey before adapter role separation risks hiding the
-  same route/address concept under a new name.
+- Later route-key cleanup should depend on the current transport baseline.
+  Removing routeKey before adapter role separation risks hiding the same
+  route/address concept under a new name.
 - `TRANSPORT_NODE_ID_REMOVAL_CONVERGENCE_ROADMAP.md` remains a separate internal
   id roadmap. This roadmap may reduce adapter/node id exposure, but it should
   not absorb node-id removal as a completion requirement.

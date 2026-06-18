@@ -1,13 +1,13 @@
 # Transport Push Adapter Session Capability Convergence Roadmap
 
 Status: superseded by
-`TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_ROADMAP.md`.
+`2026-06-18_TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_ROADMAP.md`.
 Retained only as historical push-adapter session notes until archive.
 Do not treat lower current-code observations or verification commands in this
 file as current contracts.
 
 WebSocket implementation detail is now tracked by
-`TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
+`2026-06-18_TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 This file remains the push-adapter umbrella and Socket follow-up holder.
 
 ## Summary
@@ -109,7 +109,7 @@ umbrella closes.
 ## PSA-0 Inventory And Proof Boundaries
 
 WebSocket note: the concrete WebSocket implementation is owned in more detail
-by `TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
+by `2026-06-18_TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 Keep this umbrella section as the cross-adapter checklist and Socket reminder.
 
 Goal: classify WebSocket/socket session-manager roles before any rewrite.

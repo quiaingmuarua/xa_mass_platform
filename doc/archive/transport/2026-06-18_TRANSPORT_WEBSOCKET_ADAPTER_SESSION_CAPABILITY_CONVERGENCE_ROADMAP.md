@@ -1,7 +1,7 @@
 # Transport WebSocket Adapter Session Capability Convergence Roadmap
 
 Status: superseded by
-`TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_ROADMAP.md`.
+`2026-06-18_TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_ROADMAP.md`.
 Retained only as historical WebSocket-session execution notes until archive.
 Do not treat lower current-code observations or verification commands in this
 file as current contracts.
@@ -40,15 +40,15 @@ route/session concepts back into assigned delivery.
 
 ## Relationship To Other Roadmaps
 
-- `TRANSPORT_ADAPTER_COMMAND_EXECUTOR_CONVERGENCE_ROADMAP.md` owns the completed
+- `2026-06-18_TRANSPORT_ADAPTER_COMMAND_EXECUTOR_CONVERGENCE_ROADMAP.md` owns the completed
   command-executor boundary context. This roadmap owns the WebSocket internal
   session-capability split below that boundary.
-- `TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md` remains the
+- `2026-06-18_TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md` remains the
   umbrella for push adapters. This WebSocket roadmap is the first concrete
   implementation track; Socket should follow after this shape is proven.
-- `TRANSPORT_ROUTE_KEY_REMOVAL_CONVERGENCE_ROADMAP.md` owns route-key removal.
-  This roadmap may isolate route-key usage behind adapter-local session/raw
-  roles, but it must not remove or rename routeKey as its first move.
+- Current transport baseline owns route-key cleanup rules. This roadmap may
+  isolate route-key usage behind adapter-local session/raw roles, but it must
+  not remove or rename routeKey as its first move.
 
 ## Before Convergence
 

@@ -62,9 +62,9 @@ first polling slice must include the SDK `PullWorkerSession` production path.
 
 | Roadmap | Relationship |
 | --- | --- |
-| `TRANSPORT_ADAPTER_COMMAND_EXECUTOR_CONVERGENCE_ROADMAP.md` | Mainline executor boundary is landed; this inventory tracks concrete adapter internal residuals after that work. |
-| `TRANSPORT_EMBEDDED_ADAPTER_INDEPENDENCE_CONVERGENCE_ROADMAP.md` | Provides the embedded Java adapter independence pressure test. This inventory does not implement external adapters. |
-| `TRANSPORT_ROUTE_KEY_REMOVAL_CONVERGENCE_ROADMAP.md` | Route-key removal should be easier after concrete adapter capabilities stop mixing command execution with route/raw/session concerns. |
+| `2026-06-18_TRANSPORT_ADAPTER_COMMAND_EXECUTOR_CONVERGENCE_ROADMAP.md` | Mainline executor boundary is landed; this inventory tracks concrete adapter internal residuals after that work. |
+| Transport baseline embedded-adapter pressure test | Provides the embedded Java adapter independence rule. This inventory does not implement external adapters. |
+| Transport baseline route-key cleanup | Route-key removal should be easier after concrete adapter capabilities stop mixing command execution with route/raw/session concerns. |
 
 ## Decisions
 

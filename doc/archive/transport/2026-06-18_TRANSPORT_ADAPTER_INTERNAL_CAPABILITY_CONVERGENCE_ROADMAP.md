@@ -1,7 +1,7 @@
 # Transport Adapter Internal Capability Convergence Roadmap
 
 Status: complete; polling capability split landed, push-adapter alignment is
-tracked by `TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
+tracked by `2026-06-18_TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 
 ## Summary
 
@@ -38,10 +38,10 @@ session path.
 
 ## Why Separate From Existing Roadmaps
 
-`TRANSPORT_ADAPTER_COMMAND_EXECUTOR_CONVERGENCE_ROADMAP.md` established the
+`2026-06-18_TRANSPORT_ADAPTER_COMMAND_EXECUTOR_CONVERGENCE_ROADMAP.md` established the
 outer executor boundary and moved adapter metadata out of executor facts.
-`TRANSPORT_EMBEDDED_ADAPTER_INDEPENDENCE_CONVERGENCE_ROADMAP.md` established
-that embedded Java adapter wiring must not become transport-core truth.
+The current transport baseline establishes that embedded Java adapter wiring
+must not become transport-core truth.
 
 This roadmap starts after those decisions:
 
@@ -458,7 +458,7 @@ Goal: use the polling split to define the later WebSocket/socket
 session-manager split without changing push adapter behavior yet.
 
 Status: split into
-`TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
+`2026-06-18_TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 
 Scope:
 
@@ -481,7 +481,7 @@ Acceptance:
 - WebSocket/socket alignment work is classified before any push session-manager
   rewrite starts.
 - Push adapter session-manager work is tracked in
-  `TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
+  `2026-06-18_TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 - Assigned delivery remains selected-worker only.
 - Raw/manual side-channels remain outside command executors.
 - Any later split has its own focused proof commands and does not depend on
@@ -549,7 +549,7 @@ This roadmap can be marked complete only when:
 - WebSocket/socket have either been aligned to the same capability vocabulary or
   explicitly tracked in a follow-up roadmap with current evidence. Current
   follow-up:
-  `TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
+  `2026-06-18_TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 - Transport owner docs and proof registry match current code.
 - Residue scan finds no tests or docs preserving the old polling multi-role
   object as the desired shape.
@@ -565,7 +565,7 @@ This roadmap can be marked complete only when:
 5. PAC-3: classify WebSocket/socket alignment and decide whether to continue in
    this roadmap or split a push-adapter session-manager roadmap. This has been
    split into
-   `TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
+   `2026-06-18_TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 
 PAC-3 is intentionally after the polling split. WebSocket/socket should be
 analyzed early, but they should not be the first edit surface.

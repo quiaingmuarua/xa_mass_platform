@@ -1,7 +1,7 @@
 # Transport Push Adapter Final-Hop Boundary Inventory
 
 Status: post-implementation inventory for
-`TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_ROADMAP.md`.
+`2026-06-18_TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_ROADMAP.md`.
 
 ## Scope
 
