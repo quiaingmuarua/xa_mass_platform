@@ -319,6 +319,9 @@ result can later emit terminal `Kind.QUEUED_RESULT_ABANDONED`, including
 Frame/protocol failures expose bounded `framePreview` and `frameLength` in the
 event context rather than the complete raw frame. The preview can still contain
 payload fragments, so do not log it blindly in production.
+`WorkerRuntimeFailureEvent.context()` is diagnostic-only; use `kind`, `reason`,
+`resultCorrelationRef`, `consecutiveFailures`, `errorType`, and `errorMessage`
+as the stable event data.
 
 Managed WebSocket worker runtime:
 
@@ -372,7 +375,7 @@ PollingWorkerRuntime runtime = mass.workerRuntimes().polling(worker)
                 System.err.printf("worker runtime failure kind=%s reason=%s error=%s%n",
                         failure.kind(),
                         failure.reason(),
-                        failure.cause() == null ? failure.detail() : failure.cause().getMessage());
+                        failure.errorMessage());
             }
         })
         .start();

@@ -216,7 +216,7 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
                     failure.reason(),
                     failure.consecutiveFailures(),
                     failure.resultCorrelationRef(),
-                    failure.cause() == null ? failure.detail() : failure.cause().getMessage());
+                    failure.errorMessage());
         }
     }
 }

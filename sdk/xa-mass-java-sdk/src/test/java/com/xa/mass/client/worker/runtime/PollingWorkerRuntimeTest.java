@@ -30,7 +30,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -323,7 +322,7 @@ class PollingWorkerRuntimeTest {
             assertTrue(failedResultSubmitted.await(2, TimeUnit.SECONDS), "failed result should be submitted");
         }
 
-        assertInstanceOf(MassPayloadException.class, handlerFailure.get().cause());
+        assertEquals(MassPayloadException.class.getName(), handlerFailure.get().errorType());
     }
 
     @Test

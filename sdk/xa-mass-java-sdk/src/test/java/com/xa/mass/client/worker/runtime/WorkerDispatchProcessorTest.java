@@ -49,7 +49,8 @@ class WorkerDispatchProcessorTest {
         assertEquals(WorkerRuntimeFailureEvent.Kind.HANDLER, observed.get().kind());
         assertEquals("HANDLER_ERROR", observed.get().reason());
         assertEquals("corr-1", observed.get().resultCorrelationRef());
-        assertEquals("handler failed", observed.get().cause().getMessage());
+        assertEquals(IllegalStateException.class.getName(), observed.get().errorType());
+        assertEquals("handler failed", observed.get().errorMessage());
         assertEquals("HANDLER_ERROR", processed.result().resultCode());
     }
 

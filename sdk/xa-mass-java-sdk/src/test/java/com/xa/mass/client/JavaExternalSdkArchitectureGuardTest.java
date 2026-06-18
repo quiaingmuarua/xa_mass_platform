@@ -3,6 +3,7 @@ package com.xa.mass.client;
 import com.xa.mass.client.worker.runtime.WorkerRuntime;
 import com.xa.mass.client.worker.runtime.WorkerRuntimeFailureEvent;
 import com.xa.mass.client.worker.runtime.WorkerRuntimeListener;
+import com.xa.mass.client.worker.runtime.WorkerRuntimeStartupException;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
 import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
 import com.xa.mass.client.worker.runtime.WebSocketWorkerRuntime;
@@ -147,10 +148,12 @@ class JavaExternalSdkArchitectureGuardTest {
 
         assertEquals(Set.of("onFailure", "onConnectionRecovered"), methodNames);
         assertEquals(Set.of("workerId", "kind", "reason", "resultCorrelationRef",
-                        "consecutiveFailures", "detail", "cause", "context"),
+                        "consecutiveFailures", "errorType", "errorMessage", "context"),
                 Arrays.stream(WorkerRuntimeFailureEvent.class.getRecordComponents())
                         .map(component -> component.getName())
                         .collect(Collectors.toSet()));
+        assertEquals(0, WorkerRuntimeStartupException.class.getConstructors().length,
+                "startup exception must not expose a public Throwable-based construction path");
 
         for (String deletedFailureModel : List.of(
                 "WorkerRuntimeConnectionFailure.java",

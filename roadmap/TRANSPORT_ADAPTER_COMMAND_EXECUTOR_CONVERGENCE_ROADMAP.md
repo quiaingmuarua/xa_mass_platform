@@ -3,6 +3,11 @@
 Status: mainline complete after adapter metadata cleanup; retained as
 route-key-removal handoff context until owner archive.
 
+Adapter-internal residual role splitting after this mainline is tracked by
+`TRANSPORT_ADAPTER_INTERNAL_CAPABILITY_CONVERGENCE_ROADMAP.md`. This roadmap
+keeps the executor boundary context; it no longer owns polling/websocket/socket
+internal capability decomposition.
+
 ## Summary
 
 The outer transport dispatch boundary is now much cleaner than the concrete

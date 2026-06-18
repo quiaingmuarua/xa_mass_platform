@@ -12,8 +12,8 @@ public record WorkerRuntimeFailureEvent(
         String reason,
         String resultCorrelationRef,
         Integer consecutiveFailures,
-        String detail,
-        Throwable cause,
+        String errorType,
+        String errorMessage,
         Map<String, String> context
 ) {
     public WorkerRuntimeFailureEvent {
@@ -23,103 +23,103 @@ public record WorkerRuntimeFailureEvent(
         context = Map.copyOf(Objects.requireNonNullElse(context, Map.of()));
     }
 
-    public static WorkerRuntimeFailureEvent startup(String workerId,
-                                                    WorkerRuntimeStartupStep failedStep,
-                                                    WorkerRuntimeStartupStep lastSuccessfulStep,
-                                                    Throwable cause) {
+    static WorkerRuntimeFailureEvent startup(String workerId,
+                                             WorkerRuntimeStartupStep failedStep,
+                                             WorkerRuntimeStartupStep lastSuccessfulStep,
+                                             Throwable cause) {
         return new WorkerRuntimeFailureEvent(
                 workerId,
                 Kind.STARTUP,
                 failedStep == null ? "STARTUP_FAILED" : failedStep.name(),
                 null,
                 null,
-                message(cause),
-                cause,
+                errorType(cause),
+                errorMessage(cause),
                 context(
                         "failedStep", failedStep == null ? null : failedStep.name(),
                         "lastSuccessfulStep", lastSuccessfulStep == null ? null : lastSuccessfulStep.name()));
     }
 
-    public static WorkerRuntimeFailureEvent handler(String workerId,
-                                                    String resultCorrelationRef,
-                                                    WorkerInvocation invocation,
-                                                    Throwable cause) {
+    static WorkerRuntimeFailureEvent handler(String workerId,
+                                             String resultCorrelationRef,
+                                             WorkerInvocation invocation,
+                                             Throwable cause) {
         return new WorkerRuntimeFailureEvent(
                 workerId,
                 Kind.HANDLER,
                 "HANDLER_ERROR",
                 resultCorrelationRef,
                 null,
-                message(cause),
-                cause,
+                errorType(cause),
+                errorMessage(cause),
                 context("eventCode", invocation == null ? null : invocation.eventCode()));
     }
 
-    public static WorkerRuntimeFailureEvent submit(String workerId,
-                                                   String resultCorrelationRef,
-                                                   WorkerInvocation invocation,
-                                                   Throwable cause) {
+    static WorkerRuntimeFailureEvent submit(String workerId,
+                                            String resultCorrelationRef,
+                                            WorkerInvocation invocation,
+                                            Throwable cause) {
         return new WorkerRuntimeFailureEvent(
                 workerId,
                 Kind.SUBMIT,
                 "SUBMIT_FAILED",
                 resultCorrelationRef,
                 null,
-                message(cause),
-                cause,
+                errorType(cause),
+                errorMessage(cause),
                 context("eventCode", invocation == null ? null : invocation.eventCode()));
     }
 
-    public static WorkerRuntimeFailureEvent queuedResultDropped(String workerId,
-                                                                String resultCorrelationRef,
-                                                                String reason,
-                                                                Throwable cause) {
+    static WorkerRuntimeFailureEvent queuedResultDropped(String workerId,
+                                                         String resultCorrelationRef,
+                                                         String reason,
+                                                         Throwable cause) {
         return queuedResult(workerId, Kind.QUEUED_RESULT_DROPPED, resultCorrelationRef, reason, cause);
     }
 
-    public static WorkerRuntimeFailureEvent queuedResultAbandoned(String workerId,
-                                                                  String resultCorrelationRef,
-                                                                  String reason,
-                                                                  Throwable cause) {
+    static WorkerRuntimeFailureEvent queuedResultAbandoned(String workerId,
+                                                           String resultCorrelationRef,
+                                                           String reason,
+                                                           Throwable cause) {
         return queuedResult(workerId, Kind.QUEUED_RESULT_ABANDONED, resultCorrelationRef, reason, cause);
     }
 
-    public static WorkerRuntimeFailureEvent poll(String workerId, int consecutiveFailures, Throwable cause) {
+    static WorkerRuntimeFailureEvent poll(String workerId, int consecutiveFailures, Throwable cause) {
         return retryable(workerId, Kind.POLL, "POLL_FAILED", consecutiveFailures, cause);
     }
 
-    public static WorkerRuntimeFailureEvent heartbeat(String workerId, int consecutiveFailures, Throwable cause) {
+    static WorkerRuntimeFailureEvent heartbeat(String workerId, int consecutiveFailures, Throwable cause) {
         return retryable(workerId, Kind.HEARTBEAT, "HEARTBEAT_FAILED", consecutiveFailures, cause);
     }
 
-    public static WorkerRuntimeFailureEvent connection(String workerId, int consecutiveFailures, Throwable cause) {
+    static WorkerRuntimeFailureEvent connection(String workerId, int consecutiveFailures, Throwable cause) {
         return retryable(workerId, Kind.CONNECTION, "CONNECTION_FAILED", consecutiveFailures, cause);
     }
 
-    public static WorkerRuntimeFailureEvent frame(String workerId, String framePreview, int frameLength,
-                                                  Throwable cause) {
+    static WorkerRuntimeFailureEvent frame(String workerId, String framePreview, int frameLength,
+                                           Throwable cause) {
         return new WorkerRuntimeFailureEvent(
                 workerId,
                 Kind.FRAME,
                 "FRAME_DECODE_FAILED",
                 null,
                 null,
-                message(cause),
-                cause,
+                errorType(cause),
+                errorMessage(cause),
                 context(
                         "framePreview", framePreview,
                         "frameLength", Integer.toString(frameLength)));
     }
 
-    public static WorkerRuntimeFailureEvent shutdown(String workerId, Throwable cause) {
+    static WorkerRuntimeFailureEvent shutdown(String workerId, Throwable cause) {
         return new WorkerRuntimeFailureEvent(
                 workerId,
                 Kind.SHUTDOWN,
                 "SHUTDOWN_FAILED",
                 null,
                 null,
-                message(cause),
-                cause,
+                errorType(cause),
+                errorMessage(cause),
                 Map.of());
     }
 
@@ -144,8 +144,8 @@ public record WorkerRuntimeFailureEvent(
                 requireText(reason, "reason"),
                 resultCorrelationRef,
                 null,
-                message(cause),
-                cause,
+                errorType(cause),
+                errorMessage(cause),
                 Map.of());
     }
 
@@ -157,8 +157,8 @@ public record WorkerRuntimeFailureEvent(
                 reason,
                 null,
                 consecutiveFailures,
-                message(cause),
-                cause,
+                errorType(cause),
+                errorMessage(cause),
                 Map.of());
     }
 
@@ -180,7 +180,11 @@ public record WorkerRuntimeFailureEvent(
         return result;
     }
 
-    private static String message(Throwable cause) {
+    private static String errorType(Throwable cause) {
+        return cause == null ? null : cause.getClass().getName();
+    }
+
+    private static String errorMessage(Throwable cause) {
         return cause == null ? null : cause.getMessage();
     }
 

@@ -95,7 +95,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
             WorkerRuntimeFailureEvent startupFailure =
                     WorkerRuntimeFailureEvent.startup(workerId, failedStep, lastSuccessful, unwrap(failure));
             listener.onFailure(startupFailure);
-            throw new WorkerRuntimeStartupException(startupFailure);
+            throw new WorkerRuntimeStartupException(startupFailure, unwrap(failure));
         }
     }
 

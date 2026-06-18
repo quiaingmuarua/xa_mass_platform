@@ -213,6 +213,9 @@ For realtime paths:
 - frame/protocol failures expose bounded `framePreview` plus `frameLength` in
   event context, not the complete raw frame; previews can still contain payload
   fragments
+- event context is diagnostic-only; worker code should use event `kind`,
+  `reason`, `resultCorrelationRef`, `consecutiveFailures`, `errorType`, and
+  `errorMessage` as stable data
 - WebSocket result idempotency under reconnect, malformed frame flood ceilings,
   socket session ownership, and Android host support remain open hardening
   topics rather than stable public protocol promises

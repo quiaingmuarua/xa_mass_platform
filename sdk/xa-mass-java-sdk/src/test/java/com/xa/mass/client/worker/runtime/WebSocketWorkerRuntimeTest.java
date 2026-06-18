@@ -243,7 +243,7 @@ class WebSocketWorkerRuntimeTest {
             assertEquals(WorkerRuntimeFailureEvent.Kind.FRAME, frameFailure.get().kind());
             assertEquals("{not-json", frameFailure.get().context().get("framePreview"));
             assertEquals(Integer.toString("{not-json".length()), frameFailure.get().context().get("frameLength"));
-            assertNotNull(frameFailure.get().cause());
+            assertNotNull(frameFailure.get().errorType());
             assertEquals(null, connectionFailure.get(), "frame decode failure must not be connection failure");
             assertTrue(webSocket.sentTexts().isEmpty());
         }
@@ -283,7 +283,7 @@ class WebSocketWorkerRuntimeTest {
             assertEquals(512, frameFailure.get().context().get("framePreview").length());
             assertEquals(frame.substring(0, 512), frameFailure.get().context().get("framePreview"));
             assertEquals(Integer.toString(frame.length()), frameFailure.get().context().get("frameLength"));
-            assertNotNull(frameFailure.get().cause());
+            assertNotNull(frameFailure.get().errorType());
         }
     }
 
@@ -439,7 +439,7 @@ class WebSocketWorkerRuntimeTest {
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "failed requeue should abandon the original result");
             assertEquals("REQUEUE_FAILED", failureRef.get().reason());
             assertEquals("corr-requeue-1", failureRef.get().resultCorrelationRef());
-            assertNotNull(failureRef.get().cause());
+            assertNotNull(failureRef.get().errorType());
         }
     }
 

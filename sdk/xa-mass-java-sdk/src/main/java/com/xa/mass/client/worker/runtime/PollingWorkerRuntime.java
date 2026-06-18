@@ -85,7 +85,7 @@ public final class PollingWorkerRuntime implements WorkerRuntime {
             WorkerRuntimeFailureEvent startupFailure =
                     WorkerRuntimeFailureEvent.startup(workerId, failedStep, lastSuccessful, failure);
             listener.onFailure(startupFailure);
-            throw new WorkerRuntimeStartupException(startupFailure);
+            throw new WorkerRuntimeStartupException(startupFailure, failure);
         }
     }
 

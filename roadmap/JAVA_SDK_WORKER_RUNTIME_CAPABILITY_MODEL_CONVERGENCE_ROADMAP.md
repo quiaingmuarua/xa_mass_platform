@@ -102,8 +102,10 @@ Current code facts verified after JWR-1/JWR-2/JWR-3/JWR-4/JWR-5/JWR-6 landed:
 - `WorkerRuntimeListener` is a broad diagnostic callback sink, but failure
   reporting is now one public model:
   `WorkerRuntimeFailureEvent(kind, reason, resultCorrelationRef,
-  consecutiveFailures, detail, cause, context)`. Dedicated public failure
-  records such as heartbeat/frame/poll/connection failure have been removed.
+  consecutiveFailures, errorType, errorMessage, context)`. Dedicated public
+  failure records such as heartbeat/frame/poll/connection failure have been
+  removed. `context` is diagnostic-only and must not become control-flow
+  contract.
 - Scenario launcher and worker-pack have been migrated to
   `WorkerRuntimeDefinition` plus explicit `WorkerSpec` registration.
 - `WorkerRuntimeStartupStep.REGISTER_WORKER` has been removed; registration

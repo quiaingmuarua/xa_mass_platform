@@ -66,7 +66,8 @@ Status: current inventory for
 - `WorkerRuntimeListener` is a broad diagnostic sink, but failure reporting is
   one public `WorkerRuntimeFailureEvent` model. Dedicated heartbeat, frame,
   poll, connection, dispatch, queued-result, and startup failure records have
-  been removed.
+  been removed. The event is data-shaped with `errorType` / `errorMessage`;
+  `context` is diagnostic-only.
 - Worker command intake/ack remains deferred. The deleted Java SDK command DTOs
   must not be reintroduced before a worker-control owner decision.
 
