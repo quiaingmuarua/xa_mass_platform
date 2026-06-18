@@ -1,6 +1,6 @@
-package com.xa.mass.client.worker.session;
+package com.xa.mass.client.worker.runtime;
 
-public record WorkerSessionQueuedResultFailure(
+public record WorkerRuntimeQueuedResultFailure(
         String workerId,
         String resultCorrelationRef,
         Reason reason,

@@ -1,4 +1,4 @@
-package com.xa.mass.client.worker.session;
+package com.xa.mass.client.worker.runtime;
 
 import com.xa.mass.client.worker.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
@@ -12,9 +12,9 @@ import java.util.Objects;
 final class WorkerDispatchProcessor {
     private final String workerId;
     private final Map<String, WorkerEventHandler> handlers;
-    private final WorkerSessionListener listener;
+    private final WorkerRuntimeListener listener;
 
-    WorkerDispatchProcessor(String workerId, Map<String, WorkerEventHandler> handlers, WorkerSessionListener listener) {
+    WorkerDispatchProcessor(String workerId, Map<String, WorkerEventHandler> handlers, WorkerRuntimeListener listener) {
         this.workerId = requireText(workerId, "workerId");
         this.handlers = Collections.unmodifiableMap(new LinkedHashMap<>(
                 Objects.requireNonNullElse(handlers, Map.of())));
@@ -39,7 +39,7 @@ final class WorkerDispatchProcessor {
         } catch (Throwable failure) {
             result = WorkerResult.failure("HANDLER_ERROR",
                     failure.getClass().getName() + ": " + failure.getMessage());
-            listener.onHandlerFailure(new WorkerSessionDispatchFailure(
+            listener.onHandlerFailure(new WorkerRuntimeDispatchFailure(
                     workerId,
                     resultCorrelationRef,
                     workerInvocation,

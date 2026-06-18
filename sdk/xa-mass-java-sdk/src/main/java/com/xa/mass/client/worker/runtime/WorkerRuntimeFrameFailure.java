@@ -1,6 +1,6 @@
-package com.xa.mass.client.worker.session;
+package com.xa.mass.client.worker.runtime;
 
-public record WorkerSessionFrameFailure(
+public record WorkerRuntimeFrameFailure(
         String workerId,
         String framePreview,
         int frameLength,

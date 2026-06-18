@@ -7,7 +7,7 @@ import com.xa.mass.contract.task.TaskContract;
 import com.xa.mass.contract.task.TaskCreateRequest;
 import com.xa.mass.contract.task.TaskExecutionSpec;
 import com.xa.mass.contract.task.TaskItemBatch;
-import com.xa.mass.client.worker.session.PollingWorkerSession;
+import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -76,7 +76,7 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
         MassPlatform otherWorkerMass = platform(otherWorkerKey);
         MassPlatform taskApiClient = platform(taskApiKey);
 
-        try (PollingWorkerSession matched = ProbeWorkerPack.phoneDevicePolling(matchedWorkerMass)
+        try (PollingWorkerRuntime matched = ProbeWorkerPack.phoneDevicePolling(matchedWorkerMass)
                 .workerId(matchedWorkerId)
                 .attribute("fingerprintProfile", "fp-android-sg-a")
                 .attribute("fingerprintHash", "sha256:dev-fp-android-sg-a-001")
@@ -85,7 +85,7 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
                 .pollInterval(Duration.ofMillis(50))
                 .heartbeatInterval(Duration.ofMillis(100))
                 .startPolling();
-             PollingWorkerSession other = ProbeWorkerPack.phoneDevicePolling(otherWorkerMass)
+             PollingWorkerRuntime other = ProbeWorkerPack.phoneDevicePolling(otherWorkerMass)
                      .workerId(otherWorkerId)
                      .attribute("fingerprintProfile", "fp-android-sg-b")
                      .attribute("fingerprintHash", "sha256:dev-fp-android-sg-b-002")

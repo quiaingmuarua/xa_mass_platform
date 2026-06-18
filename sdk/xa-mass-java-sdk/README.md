@@ -34,7 +34,7 @@ auth headers.
 
 Worker API keys may be bound by server credential attributes. When the
 authenticated principal has `attributes.workerId`, worker registration,
-presence, polling, result submit, state/capability report, command ack, and
+presence, polling, result submit, handler evidence, runtime evidence, and
 offline calls must use that same worker id.
 
 ## Scope
@@ -58,58 +58,57 @@ Current implemented surface:
   adapter node registration, WorkerGroup declaration, node/group binding, and
   worker execution identity registration
 - direct polling worker calls:
-  online, heartbeat, poll, submit result, command poll/ack, capability report,
-  state report, and offline
-- managed polling worker session:
-  worker registration, online, current worker-local capability/state report,
-  heartbeat, poll, handler dispatch, result submit, and best-effort offline on
-  close. WorkerGroup declaration and adapter topology setup remain explicit
-  `mass.workers()` operations outside the session.
-- managed WebSocket worker session:
-  realtime worker registration, JDK WebSocket connection, canonical task
-  dispatch frame handling, queued result frame submission, bounded reconnect
-  attempts, queue-full/requeue failure reporting,
+  online, heartbeat, poll, submit result, handler evidence, runtime evidence,
+  and offline
+- managed polling worker runtime:
+  online, heartbeat, poll, handler dispatch, result submit, and best-effort
+  offline on close. WorkerGroup declaration and worker registration remain
+  explicit `mass.workers()` operations outside the runtime.
+- managed WebSocket worker runtime:
+  JDK WebSocket connection, canonical task dispatch frame handling, queued
+  result frame submission, bounded reconnect attempts, queue-full/requeue
+  failure reporting,
   heartbeat/frame/connection lifecycle callbacks, and queued-result terminal
   callbacks on close or reconnect exhaustion.
-  Realtime worker presence is transport-owned; the session does not call
-  polling-only online, heartbeat, capability report, state report, or offline
-  APIs. Polling is the stable third-party worker protocol; WebSocket is an
-  implemented JVM session and internal staging validation path while its wire
-  shape continues hardening.
+  Realtime worker presence is transport-owned; the runtime does not call
+  polling-only online, heartbeat, handler evidence, runtime evidence, or
+  offline APIs. Polling is the stable third-party worker protocol; WebSocket is
+  an implemented JVM runtime and internal staging validation path while its
+  wire shape continues hardening.
 - transport-neutral worker handler runtime:
   event handler registry, handler invocation, deterministic handler failure
-  conversion, and session-owned result sink hooks
+  conversion, and runtime-owned result sink hooks
 - worker handler invocation is payload-first:
   handlers receive `WorkerInvocation` with opaque `resultCorrelationRef`,
   `eventCode`, `input`, and `sharedConfig`. Result association is a submit
   token that must only be round-tripped; worker handlers and public worker
   result requests must not depend on task ids, message ids, attempt ids,
   transport commands, or raw wire DTOs.
-- common worker-session model:
-  narrow `WorkerSession` lifecycle contract and `WorkerSessionSpec` shared
-  identity/options object for `workerId`, `workerGroupId`, attributes, event
-  handlers, and listener wiring. `WorkerSession` does not expose transport
-  internals, handler/runtime evidence policy, polling methods, reconnect
-  controls, session tokens, or result queues.
+- common worker-runtime definition model:
+  `WorkerRuntimeDefinition` owns `workerId`, `workerGroupId`, attributes, and
+  event handlers once. Polling and WebSocket runtimes are protocol runtimes over
+  that definition. `WorkerRuntime` does not expose transport internals,
+  handler/runtime evidence policy, polling methods, reconnect controls, session
+  tokens, or result queues.
 
 Stable public entry points are:
 
 - `MassPlatform.builder()`
 - `mass.tasks()`
 - `mass.workers()`
-- `mass.workerSessions()`
+- `mass.workerRuntimes()`
 
 `mass.http()` and `com.xa.mass.client.http.*` are advanced unstable escape
 hatches for diagnostics and temporary route coverage. External callers should
 prefer typed clients; raw HTTP helpers are not a compatibility promise.
 
-Use `MassPlatform.workerSessions()` as the stable session factory. Direct
-`new WorkerSessions(...)` construction is marked `@UnstableApi` and is reserved
+Use `MassPlatform.workerRuntimes()` as the stable runtime factory. Direct
+`new WorkerRuntimes(...)` construction is marked `@UnstableApi` and is reserved
 for advanced or internal wiring.
 
-`WorkerSession.transportHint()` is the public worker registration hint from
-`WorkerSpec`. Current managed sessions return `polling` for
-`PollingWorkerSession` and `realtime` for `WebSocketWorkerSession`; this value
+`WorkerRuntime.transportHint()` is the public worker registration hint from
+`WorkerSpec`. Current managed runtimes return `polling` for
+`PollingWorkerRuntime` and `realtime` for `WebSocketWorkerRuntime`; this value
 is not an adapter id, protocol id, route key, endpoint id, or transport runtime
 owner id.
 
@@ -123,13 +122,13 @@ helper must return identity-preserving receipts, must work against one existing
 task, and must not create one task per item or auto-seal unless the method name
 explicitly says it seals.
 
-Realtime session hardening current truth:
+Realtime runtime hardening current truth:
 
-- polling remains the stable first external worker session
-- Java SDK WebSocket is an implemented JVM session and internal staging
-  validation path; socket is not yet a first-class Java SDK session
+- polling remains the stable first external worker runtime
+- Java SDK WebSocket is an implemented JVM runtime and internal staging
+  validation path; socket is not yet a first-class Java SDK runtime
 - Android host support is not part of the pure Java SDK
-- do not introduce a shared `RealtimeWorkerSession` abstraction until at least
+- do not introduce a shared `RealtimeWorkerRuntime` abstraction until at least
   two realtime transports share a proven public lifecycle
 - frame/protocol failures report through listener callbacks and do not
   increment connection-failure counters
@@ -145,10 +144,10 @@ Realtime session hardening current truth:
 - close sends a best-effort WebSocket close frame before terminal result
   abandonment
 - platform `connectTimeout`, `HttpClient`, and `ObjectMapper` defaults flow
-  into WebSocket session builders unless explicitly overridden
+  into WebSocket runtime builders unless explicitly overridden
 
 Open realtime hardening topics remain WebSocket result idempotency under
-reconnect, malformed frame flood ceilings, socket session ownership, and
+reconnect, malformed frame flood ceilings, socket runtime ownership, and
 worker-pack convergence as an SDK consumer rather than an SDK dependency.
 
 Public readiness is current for local/internal staging. Public registry
@@ -166,7 +165,7 @@ fixtures before its worker launcher registers workers and publishes explicit
 worker evidence, while its task launcher submits scenario tasks through
 SDK-backed external calls.
 
-For the short task-producer plus worker-session onboarding path, use
+For the short task-producer plus worker-runtime onboarding path, use
 [EXTERNAL_SDK_QUICKSTART.md](./EXTERNAL_SDK_QUICKSTART.md).
 
 ## Example
@@ -251,25 +250,23 @@ WorkerPollResult poll = mass.workers().poll("phone-worker-sg-001",
         WorkerPollRequest.builder().maxMessages(10).timeoutMs(500L).build());
 ```
 
-Normal worker registration and `WorkerSession` helpers use `workerId`,
+Normal worker registration and `WorkerRuntime` helpers use `workerId`,
 `workerGroupId`, worker attributes, and `transportHint`; they do not carry
 adapter-node topology ids.
 
-Managed polling worker session:
+Managed polling worker runtime:
 
 ```java
-WorkerSessionSpec sessionSpec = WorkerSessionSpec.builder()
+WorkerRuntimeDefinition worker = WorkerRuntimeDefinition.builder()
         .workerId("phone-worker-sg-001")
         .workerGroupId("phone-device-probe")
         .attribute("fingerprint", "fp-android-13-sg")
         .attribute("region", "sg")
         .event("probe.phone.metadata", dispatch -> {
             String phone = dispatch.input().requiredString("phone");
-            return WorkerResult.success(Map.of(
-                    "phone", phone,
-                    "mcc", "525",
-                    "mnc", "01"
-            ));
+            return WorkerResult.success("""
+                    {"phone":"%s","mcc":"525","mnc":"01"}
+                    """.formatted(phone).trim());
         })
         .build();
 
@@ -278,28 +275,42 @@ mass.workers().declareGroup(WorkerGroupSpec.builder()
         .bindEvent("probe.phone.metadata", List.of("probeApp"))
         .build());
 
-try (WorkerSession session = mass.workerSessions().polling(sessionSpec)
+mass.workers().registerWorker(WorkerSpec.polling(worker));
+
+try (WorkerRuntime runtime = mass.workerRuntimes().polling(worker)
         .start()) {
     Thread.currentThread().join();
 }
 ```
 
-`PollingWorkerSession.start()` does not declare WorkerGroups. Group declaration
-is an explicit topology/setup operation through `mass.workers()`.
+`PollingWorkerRuntime.start()` does not declare WorkerGroups and does not
+register workers. Group declaration and worker registration are explicit setup
+operations through `mass.workers()`.
 
-`PollingWorkerSession` and `WebSocketWorkerSession` use the same session
+Worker-local evidence reporting is explicit runtime behavior, not a hidden
+startup side effect:
+
+```java
+WorkerRuntime runtime = mass.workerRuntimes().polling(worker)
+        .start();
+
+runtime.reporter().reportHandlerEvidence();
+runtime.reporter().reportAvailable("ready");
+```
+
+`PollingWorkerRuntime` and `WebSocketWorkerRuntime` use the same runtime
 dispatch processor and route handler results through their protocol-specific
-result-submit mechanism. Both managed sessions expose result correlation only
+result-submit mechanism. Both managed runtimes expose result correlation only
 as an opaque submit token; worker business code must not interpret it as task
 identity or lifecycle state.
 Queue-full outcomes are reported through
-`WorkerSessionListener.onQueuedResultDropped(...)`; queued results that cannot
-be requeued after send failure, or cannot be submitted because the session
+`WorkerRuntimeListener.onQueuedResultDropped(...)`; queued results that cannot
+be requeued after send failure, or cannot be submitted because the runtime
 closes or reconnect is exhausted, are reported through
-`WorkerSessionListener.onQueuedResultAbandoned(...)`. WebSocket close uses a
+`WorkerRuntimeListener.onQueuedResultAbandoned(...)`. WebSocket close uses a
 best-effort close frame and then drains or abandons queued results according to
-the session terminal reason.
-Session lifecycle callbacks distinguish poll failure, heartbeat failure,
+the runtime terminal reason.
+Runtime lifecycle callbacks distinguish poll failure, heartbeat failure,
 connection failure, connection recovery, frame/protocol failure, handler
 failure, submit failure, queued-result drop, and queued-result abandonment.
 Heartbeat failures are reported only through `onHeartbeatFailure(...)`, not as
@@ -310,49 +321,63 @@ Frame/protocol failures expose a bounded `framePreview` and `frameLength`
 rather than the complete raw frame. The preview can still contain payload
 fragments, so do not log it blindly in production.
 
-Managed WebSocket worker session:
+Managed WebSocket worker runtime:
 
 ```java
 mass.workers().declareGroup(WorkerGroupSpec.builder()
         .groupId("realtime-crawler")
         .bindEvent("crawler.fetch-page", List.of("crawlerApp"))
         .build());
+```
 
-try (WebSocketWorkerSession session = mass.workerSessions().webSocket()
+WebSocket uses the same worker definition shape:
+
+```java
+WorkerRuntimeDefinition worker = WorkerRuntimeDefinition.builder()
         .workerId("crawler-ws-001")
         .workerGroupId("realtime-crawler")
+        .event("crawler.fetch-page", dispatch -> WorkerResult.success("""
+                {"url":"%s"}
+                """.formatted(dispatch.input().requiredString("url")).trim()))
+        .build();
+
+mass.workers().registerWorker(WorkerSpec.realtime(worker));
+
+try (WebSocketWorkerRuntime runtime = mass.workerRuntimes().webSocket(worker)
         .endpoint(URI.create("ws://localhost:18088/ws"))
         .maxReconnectAttempts(10)
-        .event("crawler.fetch-page", dispatch -> WorkerResult.success(Map.of(
-                "url", dispatch.input().requiredString("url")
-        )))
         .start()) {
     Thread.currentThread().join();
 }
 ```
 
-`WebSocketWorkerSession.start()` does not declare WorkerGroups. Group
-declaration remains an explicit topology/setup operation through
-`mass.workers()`.
+`WebSocketWorkerRuntime.start()` does not declare WorkerGroups and does not
+register workers. Group declaration and worker registration are explicit setup
+operations through `mass.workers()`.
 
 Lifecycle callbacks:
 
 ```java
-PollingWorkerSession session = mass.workerSessions().polling()
+WorkerRuntimeDefinition worker = WorkerRuntimeDefinition.builder()
         .workerId("phone-worker-sg-001")
         .workerGroupId("phone-device-probe")
-        .listener(new WorkerSessionListener() {
+        .event("probe.phone.metadata", dispatch -> WorkerResult.success("{}"))
+        .build();
+
+mass.workers().registerWorker(WorkerSpec.polling(worker));
+
+PollingWorkerRuntime runtime = mass.workerRuntimes().polling(worker)
+        .listener(new WorkerRuntimeListener() {
             @Override
-            public void onHandlerFailure(WorkerSessionDispatchFailure failure) {
+            public void onHandlerFailure(WorkerRuntimeDispatchFailure failure) {
                 System.err.println(failure.cause().getMessage());
             }
 
             @Override
-            public void onSubmitFailure(WorkerSessionDispatchFailure failure) {
+            public void onSubmitFailure(WorkerRuntimeDispatchFailure failure) {
                 System.err.println(failure.cause().getMessage());
             }
         })
-        .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of()))
         .start();
 ```
 

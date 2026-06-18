@@ -1,10 +1,13 @@
-package com.xa.mass.client.worker.session;
+package com.xa.mass.client.worker.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xa.mass.client.MassPlatform;
+import com.xa.mass.client.worker.WorkerRuntimeDefinition;
+import com.xa.mass.client.worker.WorkerSpec;
+import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -34,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class WebSocketWorkerSessionTest {
+class WebSocketWorkerRuntimeTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
 
     private HttpServer server;
@@ -71,14 +74,16 @@ class WebSocketWorkerSessionTest {
             respond(exchange, 404, "unexpected " + method + " " + path);
         });
 
-        try (WebSocketWorkerSession session = platform().workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
-                .attribute("region", "sg")
-                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("""
+        MassPlatform mass = platform();
+        WorkerRuntimeDefinition definition = realtimeDefinition(dispatch -> WorkerResult.success("""
                         {"eventCode":"%s","title":"%s","integrationProbe":"java-sdk-websocket-session"}
                         """.formatted(dispatch.eventCode(), dispatch.input().requiredString("title")).trim()))
+                .attribute("region", "sg")
+                .build();
+        mass.workers().registerWorker(WorkerSpec.realtime(definition));
+
+        try (WebSocketWorkerRuntime session = mass.workerRuntimes().webSocket(definition)
+                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .connectTimeout(Duration.ofSeconds(1))
                 .webSocketConnector((uri, listener) -> {
                     connectedUri.set(uri);
@@ -126,11 +131,8 @@ class WebSocketWorkerSessionTest {
                 .objectMapper(platformMapper)
                 .build();
 
-        WebSocketWorkerSession session = platform.workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        WebSocketWorkerRuntime session = platform.workerRuntimes().webSocket(realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .buildUnstarted();
 
         assertEquals(Duration.ofMillis(321), session.connectTimeout());
@@ -152,14 +154,11 @@ class WebSocketWorkerSessionTest {
                 .objectMapper(platformMapper)
                 .build();
 
-        WebSocketWorkerSession session = platform.workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        WebSocketWorkerRuntime session = platform.workerRuntimes().webSocket(realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .connectTimeout(Duration.ofMillis(654))
                 .httpClient(overrideHttpClient)
                 .objectMapper(overrideMapper)
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .buildUnstarted();
 
         assertEquals(Duration.ofMillis(654), session.connectTimeout());
@@ -169,13 +168,10 @@ class WebSocketWorkerSessionTest {
 
     @Test
     void reconnectBackoffReachesConfiguredMaximum() {
-        WebSocketWorkerSession session = WebSocketWorkerSession.builder(dummyWorkerClient())
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        WebSocketWorkerRuntime session = WebSocketWorkerRuntime.builder(dummyWorkerClient(), realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
                 .reconnectBackoff(Duration.ofMillis(500))
                 .maxReconnectBackoff(Duration.ofSeconds(10))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .buildUnstarted();
 
         assertEquals(Duration.ofMillis(500), session.connectionBackoff(1));
@@ -191,11 +187,8 @@ class WebSocketWorkerSessionTest {
         RecordingWebSocket webSocket = new RecordingWebSocket(resultSent);
         startRealtimeControlPlaneServer();
 
-        try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        try (WebSocketWorkerRuntime ignored = platform().workerRuntimes().webSocket(realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
                 .webSocketConnector((uri, listener) -> {
                     listenerRef.set(listener);
@@ -216,26 +209,23 @@ class WebSocketWorkerSessionTest {
     void invalidFrameReportsFrameFailureWithoutConnectionFailure() throws Exception {
         CountDownLatch frameFailed = new CountDownLatch(1);
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerSessionFrameFailure> frameFailure = new AtomicReference<>();
-        AtomicReference<WorkerSessionConnectionFailure> connectionFailure = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFrameFailure> frameFailure = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeConnectionFailure> connectionFailure = new AtomicReference<>();
         RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
         startRealtimeControlPlaneServer();
 
-        try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        try (WebSocketWorkerRuntime ignored = platform().workerRuntimes().webSocket(realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
-                .listener(new WorkerSessionListener() {
+                .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onFrameFailure(WorkerSessionFrameFailure failure) {
+                    public void onFrameFailure(WorkerRuntimeFrameFailure failure) {
                         frameFailure.set(failure);
                         frameFailed.countDown();
                     }
 
                     @Override
-                    public void onConnectionFailure(WorkerSessionConnectionFailure failure) {
+                    public void onConnectionFailure(WorkerRuntimeConnectionFailure failure) {
                         connectionFailure.set(failure);
                     }
                 })
@@ -262,19 +252,16 @@ class WebSocketWorkerSessionTest {
     void invalidLongFrameReportsBoundedFramePreview() throws Exception {
         CountDownLatch frameFailed = new CountDownLatch(1);
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerSessionFrameFailure> frameFailure = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFrameFailure> frameFailure = new AtomicReference<>();
         RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
         startRealtimeControlPlaneServer();
 
-        try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        try (WebSocketWorkerRuntime ignored = platform().workerRuntimes().webSocket(realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
-                .listener(new WorkerSessionListener() {
+                .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onFrameFailure(WorkerSessionFrameFailure failure) {
+                    public void onFrameFailure(WorkerRuntimeFrameFailure failure) {
                         frameFailure.set(failure);
                         frameFailed.countDown();
                     }
@@ -304,11 +291,8 @@ class WebSocketWorkerSessionTest {
         RecordingWebSocket webSocket = new RecordingWebSocket(resultSent);
         startRealtimeControlPlaneServer();
 
-        try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        try (WebSocketWorkerRuntime ignored = platform().workerRuntimes().webSocket(realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
                 .webSocketConnector((uri, listener) -> {
                     listenerRef.set(listener);
@@ -331,19 +315,16 @@ class WebSocketWorkerSessionTest {
     void closeAbandonsQueuedResultWhenSocketIsUnavailable() throws Exception {
         CountDownLatch abandoned = new CountDownLatch(1);
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerSessionQueuedResultFailure> failureRef = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeQueuedResultFailure> failureRef = new AtomicReference<>();
         RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
         startRealtimeControlPlaneServer();
 
-        WebSocketWorkerSession session = platform().workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        WebSocketWorkerRuntime session = platform().workerRuntimes().webSocket(realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofMillis(100))
-                .listener(new WorkerSessionListener() {
+                .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onQueuedResultAbandoned(WorkerSessionQueuedResultFailure failure) {
+                    public void onQueuedResultAbandoned(WorkerRuntimeQueuedResultFailure failure) {
                         failureRef.set(failure);
                         abandoned.countDown();
                     }
@@ -364,7 +345,7 @@ class WebSocketWorkerSessionTest {
             session.close();
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "close should abandon queued result");
-            assertEquals(WorkerSessionQueuedResultFailure.Reason.SESSION_CLOSED, failureRef.get().reason());
+            assertEquals(WorkerRuntimeQueuedResultFailure.Reason.SESSION_CLOSED, failureRef.get().reason());
             assertEquals("corr-close", failureRef.get().resultCorrelationRef());
         } finally {
             session.close();
@@ -375,20 +356,17 @@ class WebSocketWorkerSessionTest {
     void fullQueueDropsResultWithSpecificCallback() throws Exception {
         CountDownLatch dropped = new CountDownLatch(1);
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerSessionQueuedResultFailure> failureRef = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeQueuedResultFailure> failureRef = new AtomicReference<>();
         BlockingWebSocket webSocket = new BlockingWebSocket();
         startRealtimeControlPlaneServer();
 
-        try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        try (WebSocketWorkerRuntime ignored = platform().workerRuntimes().webSocket(realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
                 .outboundQueueCapacity(1)
-                .listener(new WorkerSessionListener() {
+                .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onQueuedResultDropped(WorkerSessionQueuedResultFailure failure) {
+                    public void onQueuedResultDropped(WorkerRuntimeQueuedResultFailure failure) {
                         failureRef.set(failure);
                         dropped.countDown();
                     }
@@ -406,7 +384,7 @@ class WebSocketWorkerSessionTest {
             }
 
             assertTrue(dropped.await(2, TimeUnit.SECONDS), "full queue should drop a result");
-            assertEquals(WorkerSessionQueuedResultFailure.Reason.QUEUE_FULL, failureRef.get().reason());
+            assertEquals(WorkerRuntimeQueuedResultFailure.Reason.QUEUE_FULL, failureRef.get().reason());
         }
     }
 
@@ -416,20 +394,17 @@ class WebSocketWorkerSessionTest {
         CountDownLatch sendStarted = new CountDownLatch(1);
         CountDownLatch allowFailure = new CountDownLatch(1);
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerSessionQueuedResultFailure> failureRef = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeQueuedResultFailure> failureRef = new AtomicReference<>();
         CoordinatedFailingWebSocket webSocket = new CoordinatedFailingWebSocket(sendStarted, allowFailure);
         startRealtimeControlPlaneServer();
 
-        try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        try (WebSocketWorkerRuntime ignored = platform().workerRuntimes().webSocket(realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofSeconds(1))
                 .outboundQueueCapacity(1)
-                .listener(new WorkerSessionListener() {
+                .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onQueuedResultAbandoned(WorkerSessionQueuedResultFailure failure) {
+                    public void onQueuedResultAbandoned(WorkerRuntimeQueuedResultFailure failure) {
                         failureRef.set(failure);
                         abandoned.countDown();
                     }
@@ -453,7 +428,7 @@ class WebSocketWorkerSessionTest {
             allowFailure.countDown();
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "failed requeue should abandon the original result");
-            assertEquals(WorkerSessionQueuedResultFailure.Reason.REQUEUE_FAILED, failureRef.get().reason());
+            assertEquals(WorkerRuntimeQueuedResultFailure.Reason.REQUEUE_FAILED, failureRef.get().reason());
             assertEquals("corr-requeue-1", failureRef.get().resultCorrelationRef());
             assertNotNull(failureRef.get().cause());
         }
@@ -464,21 +439,18 @@ class WebSocketWorkerSessionTest {
         CountDownLatch abandoned = new CountDownLatch(1);
         AtomicInteger connectAttempts = new AtomicInteger();
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerSessionQueuedResultFailure> failureRef = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeQueuedResultFailure> failureRef = new AtomicReference<>();
         RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
         startRealtimeControlPlaneServer();
 
-        WebSocketWorkerSession session = platform().workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        WebSocketWorkerRuntime session = platform().workerRuntimes().webSocket(realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofMillis(100))
                 .reconnectBackoff(Duration.ofMillis(10))
                 .maxReconnectAttempts(1)
-                .listener(new WorkerSessionListener() {
+                .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onQueuedResultAbandoned(WorkerSessionQueuedResultFailure failure) {
+                    public void onQueuedResultAbandoned(WorkerRuntimeQueuedResultFailure failure) {
                         failureRef.set(failure);
                         abandoned.countDown();
                     }
@@ -500,7 +472,7 @@ class WebSocketWorkerSessionTest {
                     """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "reconnect exhaustion should abandon queued result");
-            assertEquals(WorkerSessionQueuedResultFailure.Reason.RECONNECT_EXHAUSTED, failureRef.get().reason());
+            assertEquals(WorkerRuntimeQueuedResultFailure.Reason.RECONNECT_EXHAUSTED, failureRef.get().reason());
             assertEquals("corr-reconnect", failureRef.get().resultCorrelationRef());
             assertFalse(session.isRunning());
         } finally {
@@ -518,14 +490,11 @@ class WebSocketWorkerSessionTest {
         RecordingWebSocket secondSocket = new RecordingWebSocket(recoveryResultSent);
         startRealtimeControlPlaneServer();
 
-        WebSocketWorkerSession session = platform().workerSessions().webSocket()
-                .workerId("ws-worker-001")
-                .workerGroupId("realtime-probe")
+        WebSocketWorkerRuntime session = platform().workerRuntimes().webSocket(realtimeDefinition())
                 .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
-                .event("probe.realtime.metadata", dispatch -> WorkerResult.success("{}"))
                 .connectTimeout(Duration.ofMillis(100))
                 .reconnectBackoff(Duration.ofMillis(10))
-                .listener(new WorkerSessionListener() {
+                .listener(new WorkerRuntimeListener() {
                     @Override
                     public void onConnectionRecovered(String workerId) {
                         if ("ws-worker-001".equals(workerId)) {
@@ -575,6 +544,17 @@ class WebSocketWorkerSessionTest {
                 .baseUrl("http://localhost:8088")
                 .build()
                 .workers();
+    }
+
+    private static WorkerRuntimeDefinition realtimeDefinition() {
+        return realtimeDefinition(dispatch -> WorkerResult.success("{}")).build();
+    }
+
+    private static WorkerRuntimeDefinition.Builder realtimeDefinition(WorkerEventHandler handler) {
+        return WorkerRuntimeDefinition.builder()
+                .workerId("ws-worker-001")
+                .workerGroupId("realtime-probe")
+                .event("probe.realtime.metadata", handler);
     }
 
     private void startRealtimeControlPlaneServer() throws IOException {

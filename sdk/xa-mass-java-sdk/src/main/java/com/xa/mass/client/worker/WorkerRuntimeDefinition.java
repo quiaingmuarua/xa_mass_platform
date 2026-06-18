@@ -1,4 +1,4 @@
-package com.xa.mass.client.worker.session;
+package com.xa.mass.client.worker;
 
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 
@@ -6,20 +6,22 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
-public final class WorkerSessionSpec {
+/**
+ * Protocol-neutral Java SDK definition for one managed external worker runtime.
+ */
+public final class WorkerRuntimeDefinition {
     private final String workerId;
     private final String workerGroupId;
     private final Map<String, String> attributes;
     private final Map<String, WorkerEventHandler> eventHandlers;
-    private final WorkerSessionListener listener;
 
-    private WorkerSessionSpec(Builder builder) {
+    private WorkerRuntimeDefinition(Builder builder) {
         this.workerId = requireText(builder.workerId, "workerId");
         this.workerGroupId = requireText(builder.workerGroupId, "workerGroupId");
         this.attributes = Collections.unmodifiableMap(new LinkedHashMap<>(builder.attributes));
         this.eventHandlers = Collections.unmodifiableMap(new LinkedHashMap<>(builder.eventHandlers));
-        this.listener = builder.listener;
     }
 
     public static Builder builder() {
@@ -42,11 +44,11 @@ public final class WorkerSessionSpec {
         return eventHandlers;
     }
 
-    public WorkerSessionListener listener() {
-        return listener;
+    public Set<String> eventCodes() {
+        return eventHandlers.keySet();
     }
 
-    private static String requireText(String value, String fieldName) {
+    static String requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " is required");
         }
@@ -58,7 +60,6 @@ public final class WorkerSessionSpec {
         private String workerGroupId;
         private Map<String, String> attributes = new LinkedHashMap<>();
         private Map<String, WorkerEventHandler> eventHandlers = new LinkedHashMap<>();
-        private WorkerSessionListener listener = WorkerSessionListener.NOOP;
 
         private Builder() {
         }
@@ -79,12 +80,11 @@ public final class WorkerSessionSpec {
         }
 
         public Builder attribute(String key, String value) {
-            this.attributes.put(key, value);
+            this.attributes.put(requireText(key, "attribute key"), value);
             return this;
         }
 
         public Builder event(String eventCode, WorkerEventHandler handler) {
-            Objects.requireNonNull(handler, "handler is required");
             return eventHandler(eventCode, handler);
         }
 
@@ -101,13 +101,8 @@ public final class WorkerSessionSpec {
             return this;
         }
 
-        public Builder listener(WorkerSessionListener listener) {
-            this.listener = listener == null ? WorkerSessionListener.NOOP : listener;
-            return this;
-        }
-
-        public WorkerSessionSpec build() {
-            return new WorkerSessionSpec(this);
+        public WorkerRuntimeDefinition build() {
+            return new WorkerRuntimeDefinition(this);
         }
     }
 }

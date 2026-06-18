@@ -5,16 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.WorkerEventBindingSpec;
 import com.xa.mass.client.worker.WorkerInvocation;
-import com.xa.mass.client.worker.session.PollingWorkerSession;
+import com.xa.mass.client.worker.WorkerRuntimeDefinition;
+import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
 import com.xa.mass.client.worker.handler.WorkerResult;
-import com.xa.mass.client.worker.session.WebSocketWorkerSession;
-import com.xa.mass.client.worker.session.WorkerSession;
-import com.xa.mass.client.worker.session.WorkerSessionConnectionFailure;
-import com.xa.mass.client.worker.session.WorkerSessionDispatchFailure;
-import com.xa.mass.client.worker.session.WorkerSessionListener;
-import com.xa.mass.client.worker.session.WorkerSessionPollFailure;
-import com.xa.mass.client.worker.session.WorkerSessionSpec;
-import com.xa.mass.client.worker.session.WorkerSessionStartupFailure;
+import com.xa.mass.client.worker.runtime.WebSocketWorkerRuntime;
+import com.xa.mass.client.worker.runtime.WorkerRuntime;
+import com.xa.mass.client.worker.runtime.WorkerRuntimeConnectionFailure;
+import com.xa.mass.client.worker.runtime.WorkerRuntimeDispatchFailure;
+import com.xa.mass.client.worker.runtime.WorkerRuntimeListener;
+import com.xa.mass.client.worker.runtime.WorkerRuntimePollFailure;
+import com.xa.mass.client.worker.runtime.WorkerRuntimeStartupFailure;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -35,7 +35,7 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
     private final ScenarioLauncherOptions options;
     private final ScenarioClientFactory clientFactory;
     private final ScenarioIdleTracker idleTracker;
-    private final List<WorkerSession> sessions = new ArrayList<>();
+    private final List<WorkerRuntime> sessions = new ArrayList<>();
     private final CountDownLatch shutdownLatch = new CountDownLatch(1);
     private final AtomicBoolean closing = new AtomicBoolean(false);
 
@@ -70,7 +70,7 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
         if (!closing.compareAndSet(false, true)) {
             return;
         }
-        for (WorkerSession session : sessions) {
+        for (WorkerRuntime session : sessions) {
             try {
                 session.close();
             } catch (Exception e) {
@@ -106,39 +106,40 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
                 .toList();
     }
 
-    private WorkerSession startPollingSession(WorkerScenarioSpec spec) {
+    private WorkerRuntime startPollingSession(WorkerScenarioSpec spec) {
         String workerId = requireNonBlank(spec.workerId(), "workerId");
         String workerGroupId = requireNonBlank(spec.workerGroupId(), "workerGroupId");
         MassPlatform client = clientFactory.forApiKey(workerApiKey(spec));
-        PollingWorkerSession.Builder builder = client.workerSessions().polling(sessionSpec(spec, workerId, workerGroupId))
+        PollingWorkerRuntime.Builder builder = client.workerRuntimes().polling(runtimeDefinition(spec, workerId, workerGroupId))
                 .pollInterval(POLL_INTERVAL)
                 .pollTimeout(POLL_TIMEOUT)
                 .heartbeatInterval(HEARTBEAT_INTERVAL)
-                .maxMessages(10);
-        PollingWorkerSession session = builder.start();
+                .maxMessages(10)
+                .listener(new LoggingWorkerRuntimeListener());
+        PollingWorkerRuntime session = builder.start();
         System.out.printf("[java-scenario-launcher] started polling worker session %s%n", workerId);
         idleTracker.markActivity();
         return session;
     }
 
-    private WorkerSession startWebSocketSession(WorkerScenarioSpec spec) {
+    private WorkerRuntime startWebSocketSession(WorkerScenarioSpec spec) {
         String workerId = requireNonBlank(spec.workerId(), "workerId");
         String workerGroupId = requireNonBlank(spec.workerGroupId(), "workerGroupId");
         MassPlatform client = clientFactory.forApiKey(workerApiKey(spec));
-        WebSocketWorkerSession.Builder builder = client.workerSessions().webSocket(sessionSpec(spec, workerId, workerGroupId))
-                .endpoint(options.webSocketUrl());
-        WebSocketWorkerSession session = builder.start();
+        WebSocketWorkerRuntime.Builder builder = client.workerRuntimes().webSocket(runtimeDefinition(spec, workerId, workerGroupId))
+                .endpoint(options.webSocketUrl())
+                .listener(new LoggingWorkerRuntimeListener());
+        WebSocketWorkerRuntime session = builder.start();
         System.out.printf("[java-scenario-launcher] started websocket worker session %s%n", workerId);
         idleTracker.markActivity();
         return session;
     }
 
-    private WorkerSessionSpec sessionSpec(WorkerScenarioSpec spec, String workerId, String workerGroupId) {
-        WorkerSessionSpec.Builder builder = WorkerSessionSpec.builder()
+    private WorkerRuntimeDefinition runtimeDefinition(WorkerScenarioSpec spec, String workerId, String workerGroupId) {
+        WorkerRuntimeDefinition.Builder builder = WorkerRuntimeDefinition.builder()
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)
-                .attributes(spec.attributes())
-                .listener(new LoggingWorkerSessionListener());
+                .attributes(spec.attributes());
         for (WorkerEventBindingSpec binding : spec.eventBindings() == null ? List.<WorkerEventBindingSpec>of() : spec.eventBindings()) {
             if (binding.eventCode() != null && !binding.eventCode().isBlank()) {
                 builder.event(binding.eventCode(), dispatch -> handleDispatch(spec, dispatch));
@@ -209,33 +210,33 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
         return value;
     }
 
-    private static final class LoggingWorkerSessionListener implements WorkerSessionListener {
+    private static final class LoggingWorkerRuntimeListener implements WorkerRuntimeListener {
         @Override
-        public void onStartupFailure(WorkerSessionStartupFailure failure) {
+        public void onStartupFailure(WorkerRuntimeStartupFailure failure) {
             System.err.printf("[java-scenario-launcher] worker startup failed workerId=%s step=%s error=%s%n",
                     failure.workerId(), failure.failedStep(), failure.cause().getMessage());
         }
 
         @Override
-        public void onHandlerFailure(WorkerSessionDispatchFailure failure) {
+        public void onHandlerFailure(WorkerRuntimeDispatchFailure failure) {
             System.err.printf("[java-scenario-launcher] worker handler failed workerId=%s resultCorrelationRef=%s error=%s%n",
                     failure.workerId(), failure.resultCorrelationRef(), failure.cause().getMessage());
         }
 
         @Override
-        public void onSubmitFailure(WorkerSessionDispatchFailure failure) {
+        public void onSubmitFailure(WorkerRuntimeDispatchFailure failure) {
             System.err.printf("[java-scenario-launcher] worker submit failed workerId=%s resultCorrelationRef=%s error=%s%n",
                     failure.workerId(), failure.resultCorrelationRef(), failure.cause().getMessage());
         }
 
         @Override
-        public void onPollFailure(WorkerSessionPollFailure failure) {
+        public void onPollFailure(WorkerRuntimePollFailure failure) {
             System.err.printf("[java-scenario-launcher] worker poll failed workerId=%s consecutiveFailures=%d error=%s%n",
                     failure.workerId(), failure.consecutiveFailures(), failure.cause().getMessage());
         }
 
         @Override
-        public void onConnectionFailure(WorkerSessionConnectionFailure failure) {
+        public void onConnectionFailure(WorkerRuntimeConnectionFailure failure) {
             System.err.printf("[java-scenario-launcher] worker websocket connection failed workerId=%s consecutiveFailures=%d error=%s%n",
                     failure.workerId(), failure.consecutiveFailures(), failure.cause().getMessage());
         }

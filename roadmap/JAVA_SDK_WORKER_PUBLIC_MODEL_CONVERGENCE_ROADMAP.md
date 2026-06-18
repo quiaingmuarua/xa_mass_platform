@@ -1,7 +1,12 @@
 # Java SDK Worker Public Model Convergence Roadmap
 
-Status: mainline complete for Java SDK public worker model; payload-shape and
-lower-level worker-control/runtime naming residues remain separate follow-ups.
+Status: superseded historical record. Mainline Java SDK public worker model
+cleanup has landed; current worker runtime naming, reporter, protocol-driver,
+and command-ability follow-up are owned by
+`JAVA_SDK_WORKER_RUNTIME_CAPABILITY_MODEL_CONVERGENCE_ROADMAP.md`.
+
+Do not execute this roadmap's old verification commands without refreshing
+test names against current code.
 
 ## Summary
 
@@ -19,7 +24,7 @@ Target rule:
 
 ```text
 Every public worker SDK model must be one of:
-  current worker execution/session contract,
+  current worker runtime/execution contract,
   current WorkerGroup/worker declaration contract,
   current opaque result-submit contract,
   explicitly owned worker-control contract,
@@ -39,7 +44,8 @@ result is submitted.
 
 ## Current Code Observations
 
-Before this roadmap, Java SDK public models included these mixed groups:
+Before this roadmap and before the worker-runtime naming convergence, Java SDK
+public models included these mixed groups:
 
 - worker execution/session:
   `WorkerSession`, `PollingWorkerSession`, `WebSocketWorkerSession`,
@@ -107,9 +113,9 @@ Related active direction:
 
 - `JAVA_SDK_WORKER_RUNTIME_CAPABILITY_MODEL_CONVERGENCE_ROADMAP.md` owns the
   larger worker runtime ability model.
-- `EXTERNAL_WORKER_CAPABILITY_EVIDENCE_API_CONVERGENCE_ROADMAP.md` owns any
-  deeper worker-control/runtime evidence naming beyond the external Java SDK
-  surface.
+- `EXTERNAL_WORKER_CAPABILITY_EVIDENCE_API_CONVERGENCE_ROADMAP.md` is now
+  superseded historical context; current deeper worker-control/runtime evidence
+  naming belongs to JWR-6 in the worker runtime capability roadmap.
 - `doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md` already states that worker-facing
   invocation/result APIs must not expose task lifecycle authority.
 
@@ -531,9 +537,9 @@ Acceptance:
   owned by an explicit reporter/maintenance component and are configured as
   such. They are not modeled as scheduled platform tasks and are not bundled
   into dispatch intake.
-- If worker-local evidence remains supported, the route/model is renamed or
-  replaced by the owner chosen in
-  `EXTERNAL_WORKER_CAPABILITY_EVIDENCE_API_CONVERGENCE_ROADMAP.md`.
+- If worker-local evidence remains supported, the route/model follows the
+  `reportHandlerEvidence(...)` / `reportRuntimeEvidence(...)` naming already in
+  current Java SDK code, with future reporter shape owned by JWR-6.
 - No old `WorkerCapabilityReport*` compatibility alias remains after callers
   migrate.
 

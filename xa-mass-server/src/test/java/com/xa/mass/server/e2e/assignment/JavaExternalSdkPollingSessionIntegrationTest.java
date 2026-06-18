@@ -8,7 +8,9 @@ import com.xa.mass.contract.task.TaskItemBatch;
 import com.xa.mass.client.task.TaskResultReadRequest;
 import com.xa.mass.client.task.TaskResultWindow;
 import com.xa.mass.client.worker.WorkerGroupSpec;
-import com.xa.mass.client.worker.session.PollingWorkerSession;
+import com.xa.mass.client.worker.WorkerRuntimeDefinition;
+import com.xa.mass.client.worker.WorkerSpec;
+import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
@@ -74,7 +76,7 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
                 .defaultMaxConcurrentWork(4)
                 .build());
 
-        try (PollingWorkerSession ignored = workerMass.workerSessions().polling()
+        WorkerRuntimeDefinition worker = WorkerRuntimeDefinition.builder()
                 .workerId(workerId)
                 .workerGroupId("java-sdk-phone-probe")
                 .attribute("region", "sg")
@@ -86,6 +88,10 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
                     return WorkerResult.success("{\"url\":\"" + phoneUri + "\",\"mcc\":\"525\",\"mnc\":\"01\",\"workerId\":\""
                             + workerId + "\"}");
                 })
+                .build();
+        workerMass.workers().registerWorker(WorkerSpec.polling(worker));
+
+        try (PollingWorkerRuntime ignored = workerMass.workerRuntimes().polling(worker)
                 .maxMessages(4)
                 .pollTimeout(Duration.ofMillis(250))
                 .pollInterval(Duration.ofMillis(50))

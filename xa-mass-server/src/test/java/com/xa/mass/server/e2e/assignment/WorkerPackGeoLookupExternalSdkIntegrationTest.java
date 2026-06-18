@@ -7,7 +7,7 @@ import com.xa.mass.contract.task.TaskContract;
 import com.xa.mass.contract.task.TaskCreateRequest;
 import com.xa.mass.contract.task.TaskExecutionSpec;
 import com.xa.mass.contract.task.TaskItemBatch;
-import com.xa.mass.client.worker.session.PollingWorkerSession;
+import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -71,7 +71,7 @@ class WorkerPackGeoLookupExternalSdkIntegrationTest extends AbstractSampleE2eTes
         MassPlatform workerMass = platform(workerKey);
         MassPlatform taskApiClient = platform(taskApiKey);
 
-        try (PollingWorkerSession ignored = GeoLookupWorkerPack.builder(workerMass)
+        try (PollingWorkerRuntime ignored = GeoLookupWorkerPack.builder(workerMass)
                 .workerId(workerId)
                 .projectCodes(List.of("workerPackApp"))
                 .attribute("routingTags", "global")

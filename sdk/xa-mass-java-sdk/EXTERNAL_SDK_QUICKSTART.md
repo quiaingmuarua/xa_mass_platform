@@ -3,7 +3,7 @@
 Status: current cross-module external Java SDK quickstart.
 
 Use this file for the shortest current truth about repo-external Java clients:
-task producers, worker topology registration, and worker sessions. Keep Node
+task producers, worker topology registration, and worker runtimes. Keep Node
 sample startup details in `integrations/samples/node/*/README.md`. Java
 executable SDK usage is owned by `integrations/xa-mass-scenario-launcher`. SDK
 product module ownership is summarized in `../README.md`; integration module
@@ -15,17 +15,17 @@ ownership is summarized in `../../integrations/README.md`.
   exposed to Java callers through `mass.tasks()`.
 - Public repo-external worker data-plane contract: versioned HTTP under `/worker-api/v1/**`,
   exposed to Java callers through `mass.workers()` and
-  `mass.workerSessions()`.
+  `mass.workerRuntimes()`.
 - Shared repo-external control-plane registration: declare WorkerGroup through
   `POST /worker-api/v1/worker-groups`, then register Worker identity through
   `POST /worker-api/v1/workers`.
 - Realtime adapters (`websocket`, `socket`) are active cross-language validation paths, but their wire shapes are adapter-local compatibility seams, not the stable public worker protocol commitment.
-- External worker/session callers declare `workerGroupId + transportHint`.
+- External worker runtime callers declare `workerGroupId + transportHint`.
   Concrete transport runtime ids such as `adapterId`, `routeKey`,
   `connectionId`, endpoint lease ids, and `deliveryQueueKey` are transport
-  internals, not stable Java SDK worker contracts. Worker sessions declare
+  internals, not stable Java SDK worker contracts. Worker runtimes declare
   `workerGroupId`; explicit adapter-node and node-group binding APIs are
-  topology/admin bootstrap only, not the worker registration or session
+  topology/admin bootstrap only, not the worker registration or runtime
   identity.
 - `eventCode` is the global capability identity.
 - Task shell creation enters through `POST /api/v1/tasks`, then work items are appended through `POST /api/v1/tasks/{taskId}/items`.
@@ -108,7 +108,8 @@ Keep these rules:
 
 - server credentials may bind an API key to one worker through
   `attributes.workerId`; when present, every worker registration, presence,
-  poll, result, report, command ack, and offline call must use that worker id
+  poll, result, handler-evidence, runtime-evidence, and offline call must use
+  that worker id
 - registration is not equivalent to being online
 - transport presence is not equivalent to matching eligibility
 - engine scheduling remains the only path that gives task work
@@ -133,12 +134,12 @@ The stable third-party worker protocol today is the polling surface:
 Polling workers receive worker invocation items, execute by `eventCode`, and
 submit `WorkerResultSubmission` with the opaque `resultCorrelationRef` from
 that item. The pulled item does not carry worker identity, task lifecycle
-identity, or route metadata; those come from the worker session/path context
+identity, or route metadata; those come from the worker runtime/path context
 or stay inside runtime correlation. Workers may also report current
 worker-local handler availability/scheduling attributes
 through `:report-handler-evidence` and bounded runtime evidence through
 `:report-runtime-evidence`; WorkerGroup declaration remains the capability truth and
-these reports are not `WorkerSession` lifecycle requirements. Workers may also
+these reports are not `WorkerRuntime` lifecycle requirements. Workers may also
 acknowledge owner-issued worker commands. In current mainline,
 `report-runtime-evidence(DRAINING)` stops new dispatches to that worker but does not
 revoke or interrupt already in-flight work. Acknowledging a `DRAIN` command to

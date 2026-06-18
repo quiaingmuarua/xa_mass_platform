@@ -1,12 +1,16 @@
 package com.xa.mass.client;
 
-import com.xa.mass.client.worker.session.WorkerSession;
-import com.xa.mass.client.worker.session.WorkerSessionSpec;
+import com.xa.mass.client.worker.runtime.WorkerRuntime;
+import com.xa.mass.client.worker.WorkerRuntimeDefinition;
+import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
+import com.xa.mass.client.worker.runtime.WebSocketWorkerRuntime;
+import com.xa.mass.client.worker.runtime.WorkerRuntimeStartupStep;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -91,23 +95,101 @@ class JavaExternalSdkArchitectureGuardTest {
     }
 
     @Test
-    void workerSessionContractStaysNarrow() {
-        Set<String> methodNames = Arrays.stream(WorkerSession.class.getDeclaredMethods())
+    void workerRuntimeContractStaysNarrow() {
+        Set<String> methodNames = Arrays.stream(WorkerRuntime.class.getDeclaredMethods())
                 .map(Method::getName)
                 .collect(Collectors.toSet());
 
-        assertEquals(Set.of("workerId", "workerGroupId", "transportHint", "start", "isRunning", "close"),
+        assertEquals(Set.of("workerId", "workerGroupId", "transportHint", "reporter", "start", "isRunning", "close"),
                 methodNames);
     }
 
     @Test
-    void workerSessionSpecContainsOnlySharedSessionFacts() {
-        Set<String> fieldNames = Arrays.stream(WorkerSessionSpec.class.getDeclaredFields())
+    void workerRuntimeDefinitionContainsOnlyWorkerAbilityFacts() {
+        Set<String> fieldNames = Arrays.stream(WorkerRuntimeDefinition.class.getDeclaredFields())
                 .map(Field::getName)
                 .collect(Collectors.toSet());
 
-        assertEquals(Set.of("workerId", "workerGroupId", "attributes", "eventHandlers", "listener"),
+        assertEquals(Set.of("workerId", "workerGroupId", "attributes", "eventHandlers"),
                 fieldNames);
+        assertFalse(Files.exists(Path.of(
+                        "src/main/java/com/xa/mass/client/worker/session/WorkerSessionSpec.java")),
+                "WorkerSessionSpec must not remain as a public worker ability owner");
+    }
+
+    @Test
+    void protocolRuntimeBuildersDoNotOwnWorkerAbilityMutationMethods() {
+        assertNoPublicDeclaredMethods(PollingWorkerRuntime.Builder.class,
+                "workerId",
+                "workerGroupId",
+                "attribute",
+                "attributes",
+                "event",
+                "eventHandler",
+                "eventHandlers");
+        assertNoPublicDeclaredMethods(WebSocketWorkerRuntime.Builder.class,
+                "workerId",
+                "workerGroupId",
+                "attribute",
+                "attributes",
+                "event",
+                "eventHandler",
+                "eventHandlers");
+    }
+
+    @Test
+    void managedWorkerRuntimesDoNotHideRegistrationOrEvidenceReporting() throws IOException {
+        Set<String> startupSteps = Arrays.stream(WorkerRuntimeStartupStep.values())
+                .map(Enum::name)
+                .collect(Collectors.toSet());
+        assertFalse(startupSteps.contains("REGISTER_WORKER"),
+                "registration failure must not be reported as managed runtime startup failure");
+
+        assertNoProductionSourceContains(
+                List.of(
+                        Path.of("src/main/java/com/xa/mass/client/worker/runtime/PollingWorkerRuntime.java"),
+                        Path.of("src/main/java/com/xa/mass/client/worker/runtime/WebSocketWorkerRuntime.java")
+                ),
+                "registerWorker(",
+                "reportHandlerEvidence(",
+                "reportRuntimeEvidence(",
+                "reportCapability",
+                "reportState",
+                "REGISTER_WORKER"
+        );
+    }
+
+    @Test
+    void protocolDriversDoNotOwnWorkerAbilityFactsOrEvidenceReporting() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        Path.of("src/main/java/com/xa/mass/client/worker/runtime/PollingWorkerProtocolDriver.java"),
+                        Path.of("src/main/java/com/xa/mass/client/worker/runtime/WebSocketWorkerProtocolDriver.java")
+                ),
+                "WorkerRuntimeDefinition",
+                "WorkerEventHandler",
+                "eventHandlers",
+                "attributes",
+                "registerWorker(",
+                "reportHandlerEvidence(",
+                "reportRuntimeEvidence(",
+                "reportCapability",
+                "reportState"
+        );
+    }
+
+    @Test
+    void workerRuntimeShellDoesNotKeepSessionCompatibilityAliases() {
+        for (String deletedRuntimeShell : List.of(
+                "WorkerSession.java",
+                "WorkerSessions.java",
+                "PollingWorkerSession.java",
+                "WebSocketWorkerSession.java"
+        )) {
+            assertFalse(Files.exists(Path.of("src/main/java/com/xa/mass/client/worker/session")
+                            .resolve(deletedRuntimeShell)),
+                    deletedRuntimeShell + " must not remain as a worker runtime compatibility alias");
+        }
     }
 
     @Test
@@ -118,8 +200,8 @@ class JavaExternalSdkArchitectureGuardTest {
                     .toList();
             for (Path javaFile : javaFiles) {
                 String source = Files.readString(javaFile);
-                assertFalse(source.contains("import com.xa.mass.client.worker.session."),
-                        javaFile + " must not import worker session types");
+                assertFalse(source.contains("import com.xa.mass.client.worker.runtime."),
+                        javaFile + " must not import worker runtime types");
                 assertFalse(source.contains("import com.xa.mass.transport."),
                         javaFile + " must not import transport types");
             }
@@ -195,7 +277,7 @@ class JavaExternalSdkArchitectureGuardTest {
         );
 
         assertNoProductionSourceContains(
-                List.of(Path.of("src/main/java/com/xa/mass/client/worker/session")),
+                List.of(Path.of("src/main/java/com/xa/mass/client/worker/runtime")),
                 "DispatchContext",
                 "WorkerDispatchHandler",
                 "WorkerResultSink",
@@ -332,6 +414,19 @@ class JavaExternalSdkArchitectureGuardTest {
             }
         }
         throw new IllegalStateException("Repo root not found from cwd=" + current);
+    }
+
+    private static void assertNoPublicDeclaredMethods(Class<?> type, String... forbiddenMethodNames) {
+        Set<String> forbidden = Set.of(forbiddenMethodNames);
+        Set<String> publicDeclaredMethods = Arrays.stream(type.getDeclaredMethods())
+                .filter(method -> Modifier.isPublic(method.getModifiers()))
+                .map(Method::getName)
+                .collect(Collectors.toSet());
+
+        for (String forbiddenMethod : forbidden) {
+            assertFalse(publicDeclaredMethods.contains(forbiddenMethod),
+                    type.getName() + " must not expose worker ability setter " + forbiddenMethod);
+        }
     }
 
     private static void assertNoProductionSourceContains(List<Path> roots, String... forbiddenTokens) throws IOException {

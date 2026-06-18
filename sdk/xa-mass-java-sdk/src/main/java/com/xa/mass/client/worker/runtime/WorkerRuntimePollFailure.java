@@ -1,6 +1,6 @@
-package com.xa.mass.client.worker.session;
+package com.xa.mass.client.worker.runtime;
 
-public record WorkerSessionPollFailure(
+public record WorkerRuntimePollFailure(
         String workerId,
         int consecutiveFailures,
         Throwable cause

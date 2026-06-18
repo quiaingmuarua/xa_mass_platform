@@ -1,6 +1,6 @@
-package com.xa.mass.client.worker.session;
+package com.xa.mass.client.worker.runtime;
 
-public record WorkerSessionHeartbeatFailure(
+public record WorkerRuntimeConnectionFailure(
         String workerId,
         int consecutiveFailures,
         Throwable cause

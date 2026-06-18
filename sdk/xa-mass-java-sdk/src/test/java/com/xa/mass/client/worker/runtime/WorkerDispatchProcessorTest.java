@@ -1,4 +1,4 @@
-package com.xa.mass.client.worker.session;
+package com.xa.mass.client.worker.runtime;
 
 import com.xa.mass.client.worker.WorkerInvocation;
 import com.xa.mass.client.worker.handler.WorkerResult;
@@ -17,7 +17,7 @@ class WorkerDispatchProcessorTest {
         WorkerDispatchProcessor processor = new WorkerDispatchProcessor(
                 "worker-1",
                 Map.of("probe.phone.metadata", dispatch -> WorkerResult.success(dispatch.eventCode())),
-                WorkerSessionListener.NOOP);
+                WorkerRuntimeListener.NOOP);
 
         WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
 
@@ -29,10 +29,10 @@ class WorkerDispatchProcessorTest {
 
     @Test
     void reportsHandlerFailureThroughSessionListener() {
-        AtomicReference<WorkerSessionDispatchFailure> observed = new AtomicReference<>();
-        WorkerSessionListener listener = new WorkerSessionListener() {
+        AtomicReference<WorkerRuntimeDispatchFailure> observed = new AtomicReference<>();
+        WorkerRuntimeListener listener = new WorkerRuntimeListener() {
             @Override
-            public void onHandlerFailure(WorkerSessionDispatchFailure failure) {
+            public void onHandlerFailure(WorkerRuntimeDispatchFailure failure) {
                 observed.set(failure);
             }
         };
@@ -53,13 +53,13 @@ class WorkerDispatchProcessorTest {
 
     @Test
     void missingHandlerReturnsStructuredFailureWithoutHandlerFailureCallback() {
-        AtomicReference<WorkerSessionDispatchFailure> observed = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeDispatchFailure> observed = new AtomicReference<>();
         WorkerDispatchProcessor processor = new WorkerDispatchProcessor(
                 "worker-1",
                 Map.of(),
-                new WorkerSessionListener() {
+                new WorkerRuntimeListener() {
                     @Override
-                    public void onHandlerFailure(WorkerSessionDispatchFailure failure) {
+                    public void onHandlerFailure(WorkerRuntimeDispatchFailure failure) {
                         observed.set(failure);
                     }
                 });
@@ -75,7 +75,7 @@ class WorkerDispatchProcessorTest {
         WorkerDispatchProcessor processor = new WorkerDispatchProcessor(
                 "worker-1",
                 Map.of("probe.phone.metadata", dispatch -> null),
-                WorkerSessionListener.NOOP);
+                WorkerRuntimeListener.NOOP);
 
         WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
 

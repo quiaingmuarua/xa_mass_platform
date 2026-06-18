@@ -42,7 +42,7 @@ public final class ScenarioWorkerLauncherMain {
                     System.out.println("[java-scenario-worker-launcher] no worker sessions started");
                     return;
                 }
-                System.out.printf("[java-scenario-worker-launcher] running workerSessions=%d%n", startedWorkers);
+                System.out.printf("[java-scenario-worker-launcher] running workerRuntimes=%d%n", startedWorkers);
                 workerRuntime.awaitShutdown();
             }
         } catch (MassClientException e) {

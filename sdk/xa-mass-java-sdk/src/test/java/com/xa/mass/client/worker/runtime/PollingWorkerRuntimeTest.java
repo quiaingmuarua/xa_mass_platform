@@ -1,10 +1,13 @@
-package com.xa.mass.client.worker.session;
+package com.xa.mass.client.worker.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xa.mass.client.MassPlatform;
+import com.xa.mass.client.worker.WorkerRuntimeDefinition;
+import com.xa.mass.client.worker.WorkerSpec;
+import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.payload.MassPayloadException;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import org.junit.jupiter.api.AfterEach;
@@ -31,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class PollingWorkerSessionTest {
+class PollingWorkerRuntimeTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
 
     private HttpServer server;
@@ -116,17 +119,18 @@ class PollingWorkerSessionTest {
             respond(exchange, 404, "unexpected " + method + " " + path);
         });
 
-        PollingWorkerSession session = platform().workerSessions().polling()
-                .workerId("phone-worker-sg-001")
-                .workerGroupId("phone-device-probe")
-                .attribute("region", "sg")
-                .attribute("fingerprint", "fp-android-13-sg")
-                .event("probe.phone.metadata", dispatch -> {
+        MassPlatform mass = platform();
+        WorkerRuntimeDefinition definition = workerDefinition("phone-worker-sg-001", "phone-device-probe", dispatch -> {
                     String phone = dispatch.input().requiredString("phone");
                     return WorkerResult.success("""
                             {"phone":"%s","mcc":"525","mnc":"01"}
                             """.formatted(phone).trim());
                 })
+                .attribute("region", "sg")
+                .attribute("fingerprint", "fp-android-13-sg")
+                .build();
+        mass.workers().registerWorker(WorkerSpec.polling(definition));
+        PollingWorkerRuntime session = mass.workerRuntimes().polling(definition)
                 .maxMessages(5)
                 .pollInterval(Duration.ofMillis(20))
                 .heartbeatInterval(Duration.ofMillis(50))
@@ -145,43 +149,40 @@ class PollingWorkerSessionTest {
     @Test
     void startupFailureStopsBeforeHeartbeatAndPollAndReportsLastSuccessfulStep() throws Exception {
         List<String> observed = new ArrayList<>();
-        AtomicReference<WorkerSessionStartupFailure> failureRef = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeStartupFailure> failureRef = new AtomicReference<>();
         startServer(exchange -> {
             String path = exchange.getRequestURI().getRawPath();
             observed.add(exchange.getRequestMethod() + " " + path);
             readBody(exchange);
-            if ("/worker-api/v1/workers".equals(path)) {
-                respond(exchange, 500, "register failed");
+            if ("/worker-api/v1/workers/worker-1:online".equals(path)) {
+                respond(exchange, 500, "online failed");
                 return;
             }
             respond(exchange, 404, "unexpected");
         });
 
-        WorkerSessionListener listener = new WorkerSessionListener() {
+        WorkerRuntimeListener listener = new WorkerRuntimeListener() {
             @Override
-            public void onStartupFailure(WorkerSessionStartupFailure failure) {
+            public void onStartupFailure(WorkerRuntimeStartupFailure failure) {
                 failureRef.set(failure);
             }
         };
 
-        WorkerSessionStartupException exception = assertThrows(WorkerSessionStartupException.class,
-                () -> platform().workerSessions().polling()
-                        .workerId("worker-1")
-                        .workerGroupId("group-1")
-                        .event("probe.phone.metadata", dispatch -> WorkerResult.success("{}"))
+        WorkerRuntimeStartupException exception = assertThrows(WorkerRuntimeStartupException.class,
+                () -> platform().workerRuntimes().polling(workerDefinition("worker-1", "group-1"))
                         .listener(listener)
                         .start());
 
-        assertEquals(WorkerSessionStartupStep.REGISTER_WORKER, exception.failure().failedStep());
+        assertEquals(WorkerRuntimeStartupStep.ONLINE, exception.failure().failedStep());
         assertEquals(null, exception.failure().lastSuccessfulStep());
         assertEquals(exception.failure(), failureRef.get());
-        assertEquals(List.of("POST /worker-api/v1/workers"), observed);
+        assertEquals(List.of("POST /worker-api/v1/workers/worker-1:online"), observed);
     }
 
     @Test
     void heartbeatFailureUsesDedicatedCallbackAndDoesNotReportPollFailure() throws Exception {
         CountDownLatch heartbeatFailed = new CountDownLatch(1);
-        AtomicReference<WorkerSessionHeartbeatFailure> heartbeatFailure = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeHeartbeatFailure> heartbeatFailure = new AtomicReference<>();
         AtomicBoolean pollFailureReported = new AtomicBoolean(false);
         AtomicInteger heartbeatAttempts = new AtomicInteger();
         startServer(exchange -> {
@@ -213,23 +214,20 @@ class PollingWorkerSessionTest {
             respond(exchange, 404, "unexpected " + path);
         });
 
-        WorkerSessionListener listener = new WorkerSessionListener() {
+        WorkerRuntimeListener listener = new WorkerRuntimeListener() {
             @Override
-            public void onHeartbeatFailure(WorkerSessionHeartbeatFailure failure) {
+            public void onHeartbeatFailure(WorkerRuntimeHeartbeatFailure failure) {
                 heartbeatFailure.set(failure);
                 heartbeatFailed.countDown();
             }
 
             @Override
-            public void onPollFailure(WorkerSessionPollFailure failure) {
+            public void onPollFailure(WorkerRuntimePollFailure failure) {
                 pollFailureReported.set(true);
             }
         };
 
-        try (PollingWorkerSession ignored = platform().workerSessions().polling()
-                .workerId("worker-1")
-                .workerGroupId("group-1")
-                .event("probe.phone.metadata", dispatch -> WorkerResult.success("{}"))
+        try (PollingWorkerRuntime ignored = platform().workerRuntimes().polling(workerDefinition("worker-1", "group-1"))
                 .pollInterval(Duration.ofMillis(20))
                 .heartbeatInterval(Duration.ofMillis(20))
                 .listener(listener)
@@ -246,7 +244,7 @@ class PollingWorkerSessionTest {
     @Test
     void handlerPayloadExceptionSubmitsStructuredFailedResult() throws Exception {
         CountDownLatch failedResultSubmitted = new CountDownLatch(1);
-        AtomicReference<WorkerSessionDispatchFailure> handlerFailure = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeDispatchFailure> handlerFailure = new AtomicReference<>();
         AtomicBoolean firstPoll = new AtomicBoolean(true);
         startServer(exchange -> {
             String path = exchange.getRequestURI().getRawPath();
@@ -302,20 +300,18 @@ class PollingWorkerSessionTest {
             respond(exchange, 404, "unexpected");
         });
 
-        WorkerSessionListener listener = new WorkerSessionListener() {
+        WorkerRuntimeListener listener = new WorkerRuntimeListener() {
             @Override
-            public void onHandlerFailure(WorkerSessionDispatchFailure failure) {
+            public void onHandlerFailure(WorkerRuntimeDispatchFailure failure) {
                 handlerFailure.set(failure);
             }
         };
 
-        try (PollingWorkerSession ignored = platform().workerSessions().polling()
-                .workerId("worker-1")
-                .workerGroupId("group-1")
-                .event("probe.phone.metadata", dispatch -> {
+        try (PollingWorkerRuntime ignored = platform().workerRuntimes().polling(workerDefinition("worker-1", "group-1",
+                dispatch -> {
                     dispatch.input().requiredUri("url");
                     return WorkerResult.success("{}");
-                })
+                }).build())
                 .pollInterval(Duration.ofMillis(20))
                 .heartbeatInterval(Duration.ofMillis(50))
                 .listener(listener)
@@ -339,6 +335,19 @@ class PollingWorkerSessionTest {
                 .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
                 .apiKey("mass_sk_worker")
                 .build();
+    }
+
+    private static WorkerRuntimeDefinition workerDefinition(String workerId, String workerGroupId) {
+        return workerDefinition(workerId, workerGroupId, dispatch -> WorkerResult.success("{}")).build();
+    }
+
+    private static WorkerRuntimeDefinition.Builder workerDefinition(String workerId,
+                                                                    String workerGroupId,
+                                                                    WorkerEventHandler handler) {
+        return WorkerRuntimeDefinition.builder()
+                .workerId(workerId)
+                .workerGroupId(workerGroupId)
+                .event("probe.phone.metadata", handler);
     }
 
     private void startServer(Handler handler) throws IOException {

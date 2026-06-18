@@ -78,8 +78,8 @@ by external actors; server startup does not seed privileged workers.
 `GeoLookupProvider` owns provider lookup. `DeterministicGeoLookupProvider`
 keeps CI deterministic, while `GeoLookupWorkerPack` owns the external Java SDK
 bootstrap: it declares the worker group, adapter node, node binding, worker
-identity, online state, polling session, and result reporting through
-`MassPlatform` / `PollingWorkerSession`.
+identity, online state, polling runtime, and result reporting through
+`MassPlatform` / `PollingWorkerRuntime`.
 
 `ProbeWorkerPack` carries scenario-derived local probe capabilities:
 
@@ -138,10 +138,10 @@ Current implemented surface:
 
 Not yet implemented:
 
-- capacity flap behavior; current public capability report does not own
+- capacity flap behavior; current public worker evidence report does not own
   `maxConcurrentWork`, so this should wait for an explicit capacity owner
   surface instead of faking it through attributes
-- applying fault profiles to capability report behavior
+- applying fault profiles to worker evidence report behavior
 - matrix runner selection by scenario id
 
 Those belong to the worker-fault roadmap and should be added through normal

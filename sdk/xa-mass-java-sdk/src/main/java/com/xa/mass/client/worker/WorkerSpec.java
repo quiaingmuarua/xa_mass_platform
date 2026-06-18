@@ -16,6 +16,14 @@ public record WorkerSpec(
         return new Builder();
     }
 
+    public static WorkerSpec polling(WorkerRuntimeDefinition definition) {
+        return builder().definition(definition).polling().build();
+    }
+
+    public static WorkerSpec realtime(WorkerRuntimeDefinition definition) {
+        return builder().definition(definition).realtime().build();
+    }
+
     public static final class Builder {
         private String workerId;
         private String workerGroupId;
@@ -32,6 +40,14 @@ public record WorkerSpec(
 
         public Builder workerGroupId(String workerGroupId) {
             this.workerGroupId = workerGroupId;
+            return this;
+        }
+
+        public Builder definition(WorkerRuntimeDefinition definition) {
+            WorkerRuntimeDefinition resolved = java.util.Objects.requireNonNull(definition, "definition is required");
+            this.workerId = resolved.workerId();
+            this.workerGroupId = resolved.workerGroupId();
+            this.attributes = new java.util.LinkedHashMap<>(resolved.attributes());
             return this;
         }
 

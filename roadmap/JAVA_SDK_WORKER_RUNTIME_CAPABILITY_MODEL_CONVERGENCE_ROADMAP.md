@@ -1,25 +1,35 @@
 # Java SDK Worker Runtime Capability Model Convergence Roadmap
 
-Status: proposed direction document.
+Status: mainline complete; worker command ability remains an explicitly
+deferred decision. Archive after a final portfolio-level roadmap residue pass.
 
 ## Summary
 
-The Java external SDK currently exposes polling and WebSocket worker sessions as
-two concrete classes. Both classes are long-running worker runtimes in practice:
-they register a worker, maintain presence or connectivity, receive dispatch,
-invoke event handlers, submit results, run runtime maintenance loops, and report
-worker-local evidence. The network model differs, but the worker abilities are
-the same.
+The Java external SDK now has a much cleaner worker public model:
 
-The previous `WorkerSession` convergence only made a narrow lifecycle shell. It
-did not establish a common owner for worker abilities, so polling and WebSocket
-could still keep separate capability, registration, reporting, command, and
-runtime semantics. This roadmap supersedes that shell-first direction.
+- `WorkerInvocation(resultCorrelationRef, eventCode, input, sharedConfig)` is
+  the single worker invocation item.
+- `WorkerResult(success, resultCode, result)` is the handler output.
+- `WorkerResultSubmission(resultCorrelationRef, success, resultCode, result)`
+  is the result-submit fact.
+- old Java SDK worker topology DTOs, command poll/ack DTOs,
+  `WorkerDispatchItem`, `ResultCorrelationRef`, `WorkerEventHandlers`,
+  `WorkerEventHandlerRuntime`, and handler-package `WorkerInvocation` have been
+  removed.
+- worker-local evidence is explicit through
+  `reportHandlerEvidence(...)` and `reportRuntimeEvidence(...)`, not hidden
+  capability/state reporting during session start.
+
+That cleanup made this roadmap narrower and more executable. The next remaining
+problem is no longer public DTO bloat or hidden worker registration; it is
+worker runtime orchestration: protocol classes still own protocol loops,
+dispatch execution wiring, result-submit mechanics, maintenance scheduling, and
+lifecycle callback taxonomy directly.
 
 Target principle:
 
 ```text
-WorkerRuntime owns worker abilities.
+Worker runtime owns worker abilities.
 Protocol drivers own only network exchange mechanics.
 Event handlers own business execution.
 Server / worker-runtime own platform worker truth and evidence application.
@@ -29,49 +39,90 @@ Polling workers are not one-shot pull clients. WebSocket workers are not a
 separate capability class. Both are background worker runtimes with different
 protocol drivers.
 
-## Current Code Observations
+## Current Facts
 
-Current code facts verified from `sdk/xa-mass-java-sdk`:
+Current code facts verified after JWR-1/JWR-2/JWR-3/JWR-4/JWR-5/JWR-6 landed:
 
-- `PollingWorkerSession.start()` currently performs:
-  `registerWorker -> online -> reportCapability -> reportState ->
-  heartbeat loop -> poll loop`.
-- `WebSocketWorkerSession.start()` currently performs:
-  `registerWorker -> connect WebSocket -> result sender loop`.
-- `WorkerSessionSpec` currently carries `workerId`, `workerGroupId`,
-  `attributes`, event handlers, and listener. That makes a session-shaped DTO
-  carry worker definition facts.
-- `WorkerClient` already exposes separate routes for:
-  worker registration, presence, poll, submit result, command poll/ack,
-  capability report, and state report.
-- `WorkerCommandPollResult`, `WorkerCommandAck`, and related DTOs exist, but
-  managed worker sessions do not yet model command intake/ack as a common worker
-  runtime ability.
-- `PollingWorkerSession` currently owns heartbeat scheduling directly inside
-  its session implementation. There is no common worker runtime maintenance
-  loop model for heartbeat now or future worker-initiated reports.
-- Java external SDK `WorkerDispatchItem` has been narrowed to worker wire
-  payload plus opaque `resultCorrelationRef`. It is not handler-facing.
-- `DispatchContext` has been removed. Handler-facing execution now uses
-  `WorkerInvocation(eventCode, input, sharedConfig)`, with result correlation
-  kept opaque in the session/runtime path.
-- Transport `DeliveryCommand` is already the assigned-delivery transport intent:
-  `deliveryBucketId`, `selectedWorkerId`, opaque `payload`, and
-  `correlationRef`. It belongs to transport/adapters. Java worker runtime and
-  handlers should not understand or depend on `DeliveryCommand`.
-- `WorkerEventHandlerRuntime` is already protocol-neutral and can remain the
-  business-handler invocation component.
-- `WorkerSessionListener` is a broad union callback sink. It is useful as
-  current observability, but it is not proof of a clean worker runtime event
-  taxonomy.
+- `WorkerClient` exposes:
+  `registerWorker`, `online`, `heartbeat`, `offline`, `poll`,
+  `submitResult`, `reportHandlerEvidence`, and `reportRuntimeEvidence`.
+- `WorkerClient` no longer exposes `registerAdapterNode`, `bindNodeGroup`,
+  `reportCapability`, `reportState`, `pollCommands`, or `ackCommand`.
+- `WorkerRuntimeDefinition` is the protocol-neutral Java SDK worker ability
+  model: `workerId`, `workerGroupId`, attributes, and event handlers.
+- `WorkerSpec.polling(definition)` and `WorkerSpec.realtime(definition)` map the
+  same definition to explicit worker registration specs.
+- `WorkerRuntimes.polling(definition)` and
+  `WorkerRuntimes.webSocket(definition)` build protocol runtimes over the same
+  definition.
+- `WorkerRuntime` is the public managed worker runtime shell:
+  `workerId`, `workerGroupId`, `transportHint`, `reporter`, `start`,
+  `isRunning`, and `close`.
+- `WorkerRuntimeReporter` is the explicit worker-local evidence/report owner.
+  It publishes handler evidence from `WorkerRuntimeDefinition` and runtime
+  evidence through `WorkerClient`.
+- `WorkerSessionSpec` has been removed and is not a public compatibility alias.
+- `PollingWorkerRuntime.start()` no longer registers the worker. It performs:
+  `online -> heartbeat loop -> poll loop`.
+- `WebSocketWorkerRuntime.start()` no longer registers the worker. It performs:
+  `connect WebSocket -> result sender loop`.
+- `PollingWorkerRuntime.start()` no longer publishes handler/runtime evidence.
+- `WebSocketWorkerRuntime.start()` no longer publishes handler/runtime
+  evidence.
+- `online`, `heartbeat`, and `offline` remain legitimate session-presence APIs.
+  They should not be collapsed into eligibility or evidence-report cleanup.
+- `PollingWorkerRuntime.Builder` and `WebSocketWorkerRuntime.Builder` no longer
+  expose public worker ability setters. They retain protocol/session options
+  such as poll interval, endpoint, reconnect settings, listener, and executor.
+- `WorkerDispatchProcessor` is already the common invocation processor:
+  `WorkerInvocation -> WorkerEventHandler -> WorkerResult`.
+- `PollingWorkerRuntime` uses `WorkerDispatchProcessor`, then submits
+  `WorkerResultSubmission` through the worker HTTP API.
+- `WebSocketWorkerRuntime` uses `WorkerDispatchProcessor`, then encodes a
+  WebSocket result frame.
+- `PollingWorkerProtocolDriver` owns polling worker-api exchange:
+  `online`, `heartbeat`, `poll`, `submitResult`, and `offline`.
+- `WebSocketWorkerProtocolDriver` owns WebSocket connect URI construction,
+  connector selection, and dispatch/result frame codec.
+- `PollingWorkerRuntime` uses package-private `WorkerRuntimeMaintenanceLoop`
+  for heartbeat upkeep.
+- WebSocket runtime still owns reconnect policy, queued result handling, result
+  sender loop, and lifecycle callbacks.
+- Polling runtime still owns poll loop scheduling, poll backoff, handler
+  dispatch orchestration, and lifecycle callbacks.
+- `WorkerRuntimeListener` remains a broad diagnostic callback sink. It is
+  useful for current observability but is not proof of a clean worker runtime
+  event taxonomy.
+- Scenario launcher and worker-pack have been migrated to
+  `WorkerRuntimeDefinition` plus explicit `WorkerSpec` registration.
+- `WorkerRuntimeStartupStep.REGISTER_WORKER` has been removed; registration
+  failure is no longer classified as managed runtime startup failure.
+- `EXTERNAL_WORKER_CAPABILITY_EVIDENCE_API_CONVERGENCE_ROADMAP.md` is now
+  superseded historical context. Current Java SDK code uses
+  `reportHandlerEvidence(...)` and `reportRuntimeEvidence(...)`; future
+  reporter decisions belong to this roadmap's JWR-6 slice.
+- `sdk/xa-mass-java-sdk/README.md` examples use the current
+  `WorkerResult.success(String)` / `WorkerResult.failure(resultCode, result)`
+  shape.
 
 Representative current files:
 
-- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/session/PollingWorkerSession.java`
-- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/session/WebSocketWorkerSession.java`
-- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/session/WorkerSessionSpec.java`
 - `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerClient.java`
-- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerEventHandlerRuntime.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerInvocation.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerResultSubmission.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerRuntimeDefinition.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerSpec.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/PollingWorkerRuntime.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/PollingWorkerProtocolDriver.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WebSocketWorkerRuntime.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WebSocketWorkerProtocolDriver.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WebSocketConnector.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerDispatchProcessor.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntime.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntimeMaintenanceLoop.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntimeReporter.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntimes.java`
+- `sdk/xa-mass-java-sdk/src/test/java/com/xa/mass/client/JavaExternalSdkArchitectureGuardTest.java`
 
 ## Owner Review
 
@@ -81,11 +132,10 @@ Java external SDK owns the external worker runtime experience:
 worker runtime construction
 worker-local handler registry
 dispatch intake orchestration
-worker command intake and ack orchestration
 result submission orchestration
 runtime maintenance loop orchestration
 worker-local event/evidence publishing API
-lifecycle callbacks and failure reporting
+lifecycle callbacks and bounded failure reporting
 ```
 
 Server and worker-runtime own platform truth:
@@ -110,17 +160,18 @@ connection/session evidence
 
 The Java SDK must not treat protocol choice as worker capability ownership.
 Protocol-specific implementations may decide how to exchange messages, but they
-must not own `workerGroupId`, worker attributes, handler catalog, command
-handling, or event/evidence reporting semantics.
+must not own `workerGroupId`, worker attributes, handler catalog, evidence
+policy, or runtime maintenance semantics.
 
-Worker handlers should receive the decoded worker invocation payload, not
-transport delivery commands or task lifecycle records. The SDK runtime may keep
-correlation data internally so it can submit results, but that correlation is
-not handler-facing worker capability truth.
+Worker handlers receive decoded worker invocation payload, not transport
+delivery commands or task lifecycle records. The SDK runtime may keep the
+minimum correlation needed to submit results, but that correlation is not
+task/message/attempt identity and must not become scheduling, retry, lifecycle,
+or business-input authority.
 
 ## Boundary Decision
 
-Replace the shell-first `WorkerSession` direction with a worker-runtime
+Replace the shell-first `WorkerSessionSpec` direction with a worker runtime
 capability model.
 
 Target public concepts:
@@ -131,18 +182,17 @@ WorkerRuntimeDefinition
   workerGroupId
   attributes
   eventHandlers
-  commandHandlers
 
-WorkerRegistrationSpec
-  WorkerRuntimeDefinition identity/declaration facts
+WorkerSpec
+  explicit registration projection from WorkerRuntimeDefinition
   transport mode hint
 
 WorkerRuntime
-  start / running / report / drain / close
+  start / running / reporter / close
   owns common runtime orchestration
 
-WorkerRuntimeTransport
-  polling or websocket protocol driver selection/options
+WorkerRuntimes
+  polling or websocket protocol runtime selection/options
 ```
 
 Target internal concepts:
@@ -152,24 +202,35 @@ WorkerProtocolDriver
   protocol exchange only
   no worker capability ownership
 
-WorkerRuntimeCore
-  protocol payload + internal correlation -> worker invocation -> handler -> result
-  command -> command handler -> ack
-  maintenance task -> event/evidence/report
-  runtime event/evidence -> reporter
+WorkerDispatchProcessor
+  current common invocation processor
+  may be retained or renamed only if the owner meaning improves
 
-WorkerRuntimeMaintenanceTask
+WorkerRuntimeMaintenanceLoop
   scheduled runtime upkeep only
   heartbeat first
   future worker-initiated evidence/report later
   never schedules platform tasks
 
-WorkerEventReporter
+WorkerRuntimeReporter
   explicit worker-local event/evidence publishing
 ```
 
-The names may change during implementation if a better local naming pattern is
-found, but the owner split must not change.
+Do not start by adding a new `WorkerRuntimeCore` wrapper around
+`WorkerDispatchProcessor` unless it protects a real lifecycle/protocol seam.
+The current processor already owns common handler invocation. The next useful
+seam is around runtime definition, registration timing, protocol exchange, and
+maintenance ownership.
+
+Do not reintroduce a second public worker ability owner beside
+`WorkerRuntimeDefinition`. The definition pivot has replaced
+`WorkerSessionSpec`; future runtime shell work must preserve that single owner
+instead of recreating worker ability setters on protocol-specific builders.
+
+Worker command intake/ack is a real worker ability, but it is not part of the
+next executable Java SDK slice. The old Java SDK command poll/ack surface has
+been deleted and must not be reintroduced by this roadmap until worker-control
+ownership defines a clean command contract.
 
 ## Target Public Shape
 
@@ -181,11 +242,10 @@ WorkerRuntimeDefinition worker = WorkerRuntimeDefinition.builder()
         .workerId("wkr-1")
         .workerGroupId("phone-device-probe")
         .attribute("region", "sg")
-        .onEvent("probe.phone.metadata", handler)
-        .onCommand("drain", drainHandler)
+        .event("probe.phone.metadata", handler)
         .build();
 
-mass.workers().register(WorkerRegistrationSpec.polling(worker));
+mass.workers().registerWorker(WorkerSpec.polling(worker));
 
 WorkerRuntime runtime = mass.workerRuntimes()
         .polling(worker)
@@ -205,31 +265,34 @@ WorkerRuntime runtime = mass.workerRuntimes()
 Explicit worker-local evidence publishing is not hidden in `start()`:
 
 ```java
-runtime.report(WorkerRuntimeEvent.available("ready"));
-runtime.report(WorkerRuntimeEvent.handlerAvailability(worker.eventCodes()));
-runtime.drain("operator-request");
+runtime.reporter().reportHandlerEvidence();
+runtime.reporter().reportAvailable("ready");
+runtime.reporter().reportDraining("operator-request");
 ```
 
-The runtime may publish protocol-required presence or heartbeat, but
-`reportCapability` and state/evidence publication must be explicit policy, not
-an accidental side effect of starting a session.
+The runtime may publish session presence and heartbeat for freshness. That is
+not WorkerGroup capability truth and not worker-local handler evidence. Handler
+evidence and bounded runtime evidence remain explicit caller/policy actions.
 
-Handler invocation should be payload-first:
+Handler invocation stays payload-first:
 
 ```java
-worker.onEvent("probe.phone.metadata", invocation -> {
+WorkerRuntimeDefinition worker = WorkerRuntimeDefinition.builder()
+        .workerId("wkr-1")
+        .workerGroupId("phone-device-probe")
+        .event("probe.phone.metadata", invocation -> {
     MassPayload input = invocation.input();
     MassPayload sharedConfig = invocation.sharedConfig();
     return WorkerResult.success(...);
-});
+})
+        .build();
 ```
 
 `taskId`, `messageId`, attempt, batch, retry, transport delivery id,
-`DeliveryCommand`, route, adapter, and endpoint details are not handler-facing
-facts. The runtime keeps the minimum internal correlation needed to submit a
-result.
+`DeliveryCommand`, route, adapter, endpoint, and session internals are not
+handler-facing facts.
 
-Runtime maintenance is a worker-runtime concern, not platform task scheduling:
+Runtime maintenance is local worker upkeep, not platform task scheduling:
 
 ```java
 WorkerRuntime runtime = mass.workerRuntimes()
@@ -247,20 +310,21 @@ hidden protocol-specific startup side effects.
 
 Use this taxonomy to classify every public or internal method before moving it:
 
-| Ability | Owner | Examples | Protocol Responsibility |
+| Ability | Owner | Current Examples | Protocol Responsibility |
 | --- | --- | --- | --- |
-| Declaration / registration | server + worker-runtime contract, invoked by SDK caller | `registerWorker`, group membership, transport mode hint, static attributes | none |
-| Runtime init | Java SDK runtime | build handlers, command handlers, listener, result sink | create driver instance |
+| Declaration / registration | server + worker-runtime contract, invoked by SDK caller | `WorkerSpec`, `WorkerClient.registerWorker(...)` | none |
+| Session presence | worker-runtime presence ingress, invoked by SDK runtime | `online`, `heartbeat`, `offline` | send freshness evidence |
+| Runtime init | Java SDK runtime | build handlers, listener, result sink | create driver instance |
 | Dispatch intake | Java SDK runtime orchestrates, driver exchanges | polling loop, WebSocket frame receive | receive/poll bytes or DTOs |
-| Dispatch execution | Java SDK runtime | `eventCode -> handler -> WorkerResult` | none |
-| Result submit | Java SDK runtime orchestrates, driver exchanges | `submit-result`, result frame send | send result |
-| Worker command intake / ack | Java SDK runtime | poll/receive command, command handler, ack | receive/send command messages |
-| Runtime maintenance loop | Java SDK runtime | heartbeat timer, future worker evidence report timer | send protocol report when asked |
-| Worker event/evidence report | Java SDK runtime API, server applies | heartbeat, state, handler availability, load, offline, custom runtime events | send report |
+| Dispatch execution | Java SDK runtime | `WorkerDispatchProcessor`, `eventCode -> handler -> WorkerResult` | none |
+| Result submit | Java SDK runtime orchestrates, driver exchanges | HTTP `submit-result`, WebSocket result frame | send result |
+| Runtime maintenance loop | Java SDK runtime | heartbeat timer, future worker evidence report timer | send report when asked |
+| Worker event/evidence report | Java SDK runtime API, server applies | `WorkerRuntimeReporter`, handler evidence, runtime evidence, availability, load | send report |
 | Lifecycle control | Java SDK runtime | start, drain, stop, close | close protocol resources |
+| Worker command intake / ack | worker-control owner, future Java SDK runtime ability | no current Java SDK public command surface | deferred |
 
-Heartbeat may be implemented through the same event/evidence reporter, but
-presence freshness must remain separate from WorkerGroup capability truth.
+Presence freshness must remain separate from WorkerGroup capability truth and
+worker-local evidence truth.
 
 ## Model Budget And DTO Boundary
 
@@ -274,7 +338,7 @@ runtime owner boundary
 protocol driver boundary
 ```
 
-Same-JVM worker runtime layers must pass domain objects or typed values, not
+Same-JVM worker runtime layers should pass domain objects or typed values, not
 serialize/deserialize through repeated wrapper models.
 
 Allowed worker-runtime model families:
@@ -282,33 +346,33 @@ Allowed worker-runtime model families:
 | Model Family | Owner | Purpose |
 | --- | --- | --- |
 | `WorkerRuntimeDefinition` | Java SDK worker runtime | worker ability truth |
-| worker protocol input DTO | current worker-api/protocol boundary | raw worker delivery message, temporary until narrowed |
-| worker invocation context | Java SDK handler boundary | event code plus business payload only |
-| runtime correlation record | Java SDK runtime internal | result submission correlation, not handler-facing |
-| `WorkerResult` / submit request | handler output and worker-api boundary | result publication |
-| `WorkerRuntimeEvent` | Java SDK runtime/reporting boundary | worker-local evidence/report |
-| `WorkerCommand` / ack | worker command boundary | command handling and acknowledgement |
+| `WorkerSpec` | Java SDK worker registration boundary | declaration facts plus transport mode hint |
+| worker protocol input DTO | current worker-api/protocol boundary | raw worker delivery message |
+| `WorkerInvocation` | Java SDK handler/direct-poll boundary | result token plus event code and business payload |
+| runtime correlation record | Java SDK runtime internal | result submission correlation, not task lifecycle truth |
+| `WorkerResult` / `WorkerResultSubmission` | handler output and worker-api boundary | result publication |
+| `WorkerRuntimeReporter` | Java SDK runtime/reporting boundary | worker-local evidence/report |
 
 Forbidden model drift:
 
-- Do not introduce `RuntimeDispatchEnvelope`, `ProtocolDispatchCommand`,
-  `WorkerSessionDispatch`, or similar same-process dispatch wrappers unless
-  they replace a real external/public boundary.
+- Do not reintroduce `WorkerDispatchItem`, `DispatchContext`,
+  `ResultCorrelationRef`, `WorkerEventHandlers`, `WorkerEventInvocation`, or
+  `WorkerEventHandlerRuntime`.
 - Do not expose `DeliveryCommand` to Java external worker SDK callers or
   handlers. `DeliveryCommand` is transport/adapter delivery intent.
 - Do not keep `taskId`, `messageId`, `taskName`, `project`, `userId`, attempt,
-  batch, retry, `rawItem`, route, adapter, endpoint, or session fields in the
+  batch, retry, `rawItem`, route, adapter, endpoint, or session fields in
   handler-facing context.
 - Do not JSON serialize/deserialize between SDK runtime layers to create fake
   separation.
-- Do not let tests preserve task-shaped worker invocation vocabulary as a second
-  public API.
+- Do not reintroduce Java SDK public worker command DTOs as a shortcut for the
+  future command runtime ability.
+- Do not let tests preserve task-shaped worker invocation vocabulary as a
+  second public API.
 
-`WorkerDispatchItem` is therefore a wire/protocol DTO, not the handler model.
-The old `DispatchContext` convergence was completed by the archived
-`doc/archive/sdk/2026-06-17_EXTERNAL_WORKER_INVOCATION_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md`;
-future JWR slices must preserve the payload-first `WorkerInvocation` and opaque
-`resultCorrelationRef` boundary instead of recreating task-shaped worker
+The Java SDK public worker model convergence already landed the payload-first
+`WorkerInvocation` and opaque `resultCorrelationRef` boundary. Future JWR
+slices must preserve that shape instead of recreating task-shaped worker
 context.
 
 ## Non-Goals
@@ -317,219 +381,250 @@ context.
 - Do not redefine WorkerGroup capability truth.
 - Do not move Java SDK code into `xa-mass-worker-runtime`.
 - Do not introduce transport internals such as adapter id, route key,
-  connection id, endpoint lease id, delivery queue key, or transport node id into
-  the public worker runtime model.
+  connection id, endpoint lease id, delivery queue key, or transport node id
+  into the public worker runtime model.
 - Do not build a cross-language adapter protocol in this roadmap. The model
   should be pressure-tested by that future, but this roadmap targets embedded
   Java SDK worker runtimes.
 - Do not build a platform task scheduler or cron system. Runtime maintenance
   loops only perform local worker upkeep such as heartbeat and worker-initiated
   reports.
-- Do not preserve the current `WorkerSessionSpec` shape as a compatibility
-  alias if the new model lands. This repo has no internal compatibility burden
-  for superseded pre-release paths.
+- Do not preserve `WorkerSessionSpec` as a compatibility alias after in-repo
+  callers are migrated to the runtime definition shape.
+- Do not reintroduce Java SDK public worker command poll/ack until the
+  worker-control owner defines a successor contract.
 
 ## Do Not Start With
 
-Do not start by making `WorkerSession` smaller or by renaming
-`PollingWorkerSession` / `WebSocketWorkerSession`.
+Do not start by making `WorkerRuntime` smaller or by renaming
+`PollingWorkerRuntime` / `WebSocketWorkerRuntime`.
 
 That repeats the previous mistake: it changes the visible lifecycle shell while
-leaving capability ownership split by protocol. Start with inventory and the
-worker ability model, then move concrete protocol implementations under it.
+leaving capability ownership split by protocol. Start with the worker runtime
+definition and registration boundary, then move concrete protocol
+implementations under it.
 
-Also do not start by adding another polling-only scheduled executor abstraction.
-Heartbeat and later active reports must be classified as worker runtime
-maintenance, so WebSocket can reuse the same semantic owner even if the wire
-mechanics differ.
+Also do not start by introducing a same-module `WorkerRuntimeCore` wrapper that
+only forwards to `WorkerDispatchProcessor`. The real current split is:
 
-## JWR-0 Inventory And Classification
+```text
+definition / registration / maintenance / protocol exchange
+```
 
-Goal: classify current Java SDK worker session APIs by worker ability.
+not handler invocation.
+
+## JWR-0 Inventory Refresh And Current-Fact Lock
+
+Goal: update the roadmap inventory baseline after Java SDK public model
+convergence.
 
 Scope:
 
 - `WorkerClient`
 - `WorkerSpec`
-- `WorkerCapabilityReport`
-- `WorkerStateReport`
-- `WorkerCommand*`
-- `WorkerEventHandlers`
-- `WorkerEventHandlerRuntime`
-- `WorkerDispatchItem`
+- `WorkerHandlerEvidence`
+- `WorkerRuntimeEvidence`
 - `WorkerInvocation`
-- `PollingWorkerSession`
-- `WebSocketWorkerSession`
-- `WorkerSession*` listener/failure/startup types
+- `WorkerResultSubmission`
+- `WorkerDispatchProcessor`
+- `PollingWorkerRuntime`
+- `WebSocketWorkerRuntime`
+- `WorkerSessionSpec`
+- `WorkerRuntimes`
+- `WorkerRuntime*` listener/failure/startup types
 - current scheduled loops: heartbeat, poll, reconnect, result sender
 - scenario launcher and worker-pack callers
 - public SDK docs and examples
+- Java SDK architecture guard
+- stale external worker evidence roadmap/docs
 
 Acceptance:
 
-- Add `JAVA_SDK_WORKER_RUNTIME_CAPABILITY_MODEL_CONVERGENCE_INVENTORY.md`.
-- Every current worker-session method and builder field is classified into the
-  ability taxonomy above.
-- Inventory separates public API, implementation detail, test fixture, and
-  stale/superseded docs.
-- Inventory explicitly records that current `WorkerSessionSpec` carries worker
-  definition facts and is not the target model.
-- Inventory explicitly records that `WorkerDispatchItem` is a wire/protocol DTO
-  and `WorkerInvocation` is the handler-facing worker invocation model.
-- Inventory names all current implicit `start()` side effects:
-  registration, presence, capability report, state report, heartbeat, poll,
-  connection, result sender.
+- Add or update
+  `JAVA_SDK_WORKER_RUNTIME_CAPABILITY_MODEL_CONVERGENCE_INVENTORY.md`.
+- Inventory records that public DTO cleanup already landed and is no longer
+  this roadmap's executable work.
+- Inventory records that `WorkerSessionSpec` has been replaced by
+  `WorkerRuntimeDefinition` and must not return as a compatibility alias.
+- Inventory records current `start()` side effects:
+  presence, heartbeat, poll, connection, result sender, and explicit absence of
+  hidden registration.
+- Inventory explicitly records that hidden handler/runtime evidence reporting
+  is already removed from session start.
+- Inventory distinguishes session presence from worker-local evidence reports.
 - Inventory distinguishes runtime maintenance loops from platform tasks and
   from protocol receive/send loops.
+- Inventory classifies command runtime ability as deferred because the Java SDK
+  public command DTOs were removed.
+- Inventory records that README examples use `WorkerResult.success(String)` /
+  `WorkerResult.failure(resultCode, result)`.
+- Inventory records that
+  `EXTERNAL_WORKER_CAPABILITY_EVIDENCE_API_CONVERGENCE_ROADMAP.md` is
+  superseded historical context and that JWR-6 owns future
+  `reportHandlerEvidence(...)` / `reportRuntimeEvidence(...)` reporter
+  decisions.
 
 Verification candidates:
 
 ```bash
-rg -n "registerWorker|online\\(|heartbeat\\(|offline|reportCapability|reportState|pollCommands|ackCommand|submitResult|WorkerSessionSpec|WorkerDispatchItem|WorkerInvocation|PollingWorkerSession|WebSocketWorkerSession" sdk/xa-mass-java-sdk/src/main/java integrations -g "*.java"
+rg -n "registerWorker|online\\(|heartbeat\\(|offline|reportHandlerEvidence|reportRuntimeEvidence|submitResult|WorkerSessionSpec|WorkerInvocation|WorkerDispatchProcessor|PollingWorkerRuntime|WebSocketWorkerRuntime" sdk/xa-mass-java-sdk/src/main/java integrations -g "*.java"
+rg -n "WorkerDispatchItem|DispatchContext|ResultCorrelationRef|WorkerEventHandlerRuntime|pollCommands|ackCommand|reportCapability|reportState|WorkerResult.success\\(Map" sdk/xa-mass-java-sdk/src/main/java sdk/xa-mass-java-sdk/README.md -g "*.java" -g "*.md"
 ```
 
-## JWR-1 Worker Runtime Definition Contract
+## JWR-1 Worker Runtime Definition And Public Owner Pivot
 
-Goal: establish one Java SDK owner for worker abilities.
+Goal: establish one Java SDK owner for worker runtime ability facts and keep the
+old session-shaped public owner removed.
 
 Scope:
 
-- Add `WorkerRuntimeDefinition` or equivalent.
-- Add event handler and command handler registration to that definition.
-- Add tests that prove the definition is protocol-neutral.
+- Add or preserve `WorkerRuntimeDefinition` or equivalent.
+- Keep worker ability facts in that definition:
+  `workerId`, `workerGroupId`, attributes, event handlers, listener policy if
+  it remains definition-owned.
+- Keep public `WorkerSessionSpec` construction sites removed. Do not leave
+  `WorkerRuntimeDefinition` and any session-shaped replacement as two live
+  public ways to describe the same worker ability.
+- Keep command handler registration out of this first slice.
+- Add tests proving the definition is protocol-neutral.
 - Add or adjust public docs to say polling and WebSocket workers have the same
   worker ability model.
+- Update scenario launcher and worker-pack call sites that construct
+  `WorkerSessionSpec`.
 
 Acceptance:
 
 - Worker ability facts are modeled once:
-  `workerId`, `workerGroupId`, attributes, event handlers, command handlers.
-- Protocol-specific builder classes no longer own independent copies of worker
-  ability facts except as transitional construction delegates within the same
-  slice.
+  `workerId`, `workerGroupId`, attributes, event handlers.
+- `WorkerSessionSpec` is removed and not kept as package-private transitional
+  glue, wrapper, or compatibility alias.
+- Protocol-specific builder classes no longer independently own worker ability
+  facts except as private construction delegates inside this slice.
 - `WorkerRuntimeDefinition` does not include endpoint URL, poll interval,
-  reconnect settings, adapter id, route key, session token, or result queue
-  capacity.
+  reconnect settings, adapter id, route key, session token, result queue
+  capacity, or command handlers.
 - WorkerGroup capability truth is not redefined by event handler registration.
   Handler registration is worker-local execution ability and optional evidence.
 - A guard or reflection test fails if transport-internal identifiers enter the
   definition.
+- Public examples show one worker definition reused by polling and WebSocket.
+- Scenario launcher no longer treats polling and WebSocket workers as different
+  capability owners.
+- Worker-pack helpers do not duplicate worker ability fields across protocols.
+- `sdk/xa-mass-java-sdk/README.md` uses
+  `WorkerResult.success(String)` / `WorkerResult.failure(resultCode, result)`.
 
 Verification candidates:
 
 ```bash
-./mvnw -q -pl sdk/xa-mass-java-sdk -am test -Dtest=JavaExternalSdkArchitectureGuardTest,WorkerRuntimeDefinitionTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl sdk/xa-mass-java-sdk test -Dtest=JavaExternalSdkArchitectureGuardTest,WorkerRuntimeDefinitionTest,WorkerClientTest,PollingWorkerRuntimeTest,WebSocketWorkerRuntimeTest
+./mvnw -q -pl integrations/xa-mass-scenario-launcher,integrations/xa-mass-worker-pack -am -DskipTests compile
 rg -n "adapterId|adapterNodeId|routeKey|connectionId|endpointLease|deliveryQueueKey|TransportAdapterBootstrap" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker -g "*.java"
+rg -n "WorkerSessionSpec|WorkerResult.success\\(Map" sdk/xa-mass-java-sdk/README.md integrations sdk/xa-mass-java-sdk/src/main/java -g "*.java" -g "*.md"
 ```
 
-## JWR-2 Worker Invocation Payload Boundary Dependency
+## JWR-2 Explicit Registration Boundary
 
-Goal: keep the worker runtime capability roadmap aligned with the completed
-payload-first handler invocation and opaque result-correlation boundary.
-
-The executable payload/correlation work was owned by:
-
-```text
-doc/archive/sdk/2026-06-17_EXTERNAL_WORKER_INVOCATION_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md
-```
-
-That roadmap has landed:
-
-- `DispatchContext` removal
-- `WorkerDispatchItem` containment as wire/protocol DTO
-- handler-facing `WorkerInvocation(eventCode, input, sharedConfig)`
-- opaque `ResultCorrelationRef`
-- polling and WebSocket result submission correlation
-- Java SDK worker handler migration
-- server external worker API wire migration to `resultCorrelationRef`
-- scenario launcher and worker-pack integration migration
-- guards that prevent task-shaped handler context or transport
-  `DeliveryCommand` from entering Java SDK worker handlers
-
-Acceptance in this roadmap:
-
-- JWR implementation does not add new task-shaped handler context fields.
-- JWR implementation does not introduce `DeliveryCommand` into Java external
-  worker SDK runtime or handler contracts.
-- Before JWR-4 moves common runtime execution, it must reuse
-  `WorkerInvocation` and `ResultCorrelationRef`; it must not recreate
-  `DispatchContext` or task-shaped result correlation.
-- JWR docs and examples reference the dedicated payload roadmap instead of
-  duplicating its detailed field-level work.
-
-## JWR-3 Explicit Registration And Evidence Boundary
-
-Goal: remove hidden registration and worker-local evidence reporting from
-runtime start.
+Goal: remove hidden worker registration from runtime start while preserving
+session presence management.
 
 Scope:
 
-- Add `WorkerRegistrationSpec` or narrow existing `WorkerSpec` usage so callers
-  explicitly register workers before runtime start.
-- Move `reportCapability` and `reportState` out of `PollingWorkerSession.start()`.
-- Keep presence/heartbeat classification explicit:
-  protocol-required presence may remain runtime-managed, but capability/state
-  evidence policy must be caller-visible or configured through an explicit
-  `WorkerEventReporter`.
+- Use the existing `WorkerSpec` registration boundary so callers explicitly
+  register workers before runtime start. Do not add a same-shape
+  `WorkerRegistrationSpec` unless a later boundary proves it carries different
+  ownership.
+- Retarget `PollingWorkerRuntime.start()` and `WebSocketWorkerRuntime.start()`
+  so they do not call `WorkerClient.registerWorker(...)`.
+- Keep `online`, `heartbeat`, and `offline` classification explicit:
+  session freshness may remain runtime-managed.
+- Keep handler/runtime evidence explicit through `WorkerClient` or future
+  reporter APIs. Do not move evidence reporting back into `start()`.
 - Update integration tests and examples to register first, then start runtime.
+- Remove registration from runtime startup failure taxonomy.
 
 Acceptance:
 
-- `PollingWorkerSession.start()` or its replacement no longer calls
-  `registerWorker`, `reportCapability`, or `reportState`.
-- `WebSocketWorkerSession.start()` or its replacement no longer calls
+- `PollingWorkerRuntime.start()` or its replacement no longer calls
   `registerWorker`.
-- Public docs show registration as a separate action.
-- Current `:report-capability` usage is either explicit caller code or owned by
-  `EXTERNAL_WORKER_CAPABILITY_EVIDENCE_API_CONVERGENCE_ROADMAP.md`; it is not a
-  hidden runtime start side effect.
-- Tests cover start without implicit registration/reporting.
+- `WebSocketWorkerRuntime.start()` or its replacement no longer calls
+  `registerWorker`.
+- `PollingWorkerRuntime.start()` may still call `online` and start heartbeat;
+  that is session presence, not capability/evidence reporting.
+- Public docs show registration as a separate action before runtime start.
+- Tests cover start without implicit registration.
+- `WorkerRuntimeStartupStep.REGISTER_WORKER` is removed or no longer reachable
+  from runtime startup failure callbacks.
+- Registration failures are reported by the explicit registration API, not as
+  `WorkerRuntimeStartupFailure`.
+- Guards distinguish forbidden hidden registration from allowed presence
+  freshness.
 
 Verification candidates:
 
 ```bash
-rg -n "registerWorker|reportCapability|reportState" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/session -g "*.java"
-./mvnw -q -pl sdk/xa-mass-java-sdk -am test -Dtest=PollingWorkerSessionTest,WebSocketWorkerSessionTest,WorkerClientTest -Dsurefire.failIfNoSpecifiedTests=false
+rg -n "registerWorker" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime -g "*.java"
+rg -n "REGISTER_WORKER|WorkerRuntimeStartupStep.REGISTER_WORKER" sdk/xa-mass-java-sdk/src/main/java sdk/xa-mass-java-sdk/src/test/java -g "*.java"
+rg -n "reportCapability|reportState|pollCommands|ackCommand" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker -g "*.java"
+./mvnw -q -pl sdk/xa-mass-java-sdk test -Dtest=PollingWorkerRuntimeTest,WebSocketWorkerRuntimeTest,WorkerClientTest,JavaExternalSdkArchitectureGuardTest
 ./mvnw -q -pl xa-mass-server -am test -Dtest=JavaExternalSdkPollingSessionIntegrationTest,ExternalWorkerRealtimeRegistrationIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-## JWR-4 Common Worker Runtime Core And Protocol Driver SPI
+## JWR-3 Runtime Shell And Driver API Cleanup
 
-Goal: make protocol-specific classes implement network exchange only.
+Goal: clean up the public runtime shell after JWR-1 has moved worker ability
+ownership to `WorkerRuntimeDefinition`.
 
 Scope:
 
-- Introduce package-private `WorkerProtocolDriver`.
-- Introduce package-private `WorkerRuntimeCore`.
-- Move common dispatch execution and result submission orchestration into the
-  core.
-- Keep protocol drivers responsible for:
-  polling/receiving dispatch, sending results, publishing reports, command
-  poll/receive, command ack, and protocol resource close.
-
-Target internal shape:
-
-```java
-interface WorkerProtocolDriver extends AutoCloseable {
-    void start(WorkerProtocolContext context);
-    void requestDispatch();
-    void submitResult(WorkerResultEnvelope result);
-    void report(WorkerRuntimeEvent event);
-    void ackCommand(WorkerCommandAckEnvelope ack);
-    void close();
-}
-```
-
-The actual method names can be refined during implementation. The required
-boundary is that the driver has no handler catalog, worker group membership
-truth, worker attributes ownership, or capability policy.
+- Add `MassPlatform.workerRuntimes()` or equivalent only if it materially
+  improves public owner clarity.
+- Decide whether concrete `PollingWorkerRuntime` / `WebSocketWorkerRuntime`
+  remain public temporary protocol runtime classes or become internal protocol
+  drivers behind `WorkerRuntime` builders.
+- Replace public docs that center concrete protocol session classes with the
+  runtime shell if that shell lands.
 
 Acceptance:
 
-- Polling and WebSocket dispatch execution use one common processor/core.
-- Polling and WebSocket result submission use one common runtime outcome path,
-  with protocol-specific send mechanics below it.
-- Protocol drivers do not inspect or own handler registration.
+- Public examples do not teach protocol-specific sessions as separate worker
+  ability owners.
+- Concrete polling/WebSocket classes, if still public, are documented as
+  protocol runtimes over the same `WorkerRuntimeDefinition`, not separate
+  worker definition models.
+- No `WorkerSessionSpec` compatibility alias remains from JWR-1.
+
+Verification candidates:
+
+```bash
+./mvnw -q -pl integrations/xa-mass-scenario-launcher,integrations/xa-mass-worker-pack -am -DskipTests compile
+./mvnw -q -pl sdk/xa-mass-java-sdk test -Dtest=WorkerClientTest,PollingWorkerRuntimeTest,WebSocketWorkerRuntimeTest,JavaExternalSdkArchitectureGuardTest
+rg -n "WorkerSessionSpec|PollingWorkerRuntime|WebSocketWorkerRuntime" sdk/xa-mass-java-sdk/README.md integrations -g "*.java" -g "*.md"
+```
+
+## JWR-4 Protocol Driver And Runtime Orchestration Split
+
+Goal: make protocol-specific classes own network exchange while shared runtime
+code owns invocation/result semantics.
+
+Scope:
+
+- Introduce package-private protocol-driver seams only where they protect real
+  lifecycle/protocol boundaries.
+- Keep or rename `WorkerDispatchProcessor` as the common invocation processor.
+- Move duplicated result-submission outcome handling only where polling and
+  WebSocket genuinely share the same lifecycle semantics.
+- Keep protocol drivers responsible for:
+  polling/receiving dispatch, sending results, reconnect/backoff mechanics,
+  protocol resource close, and protocol frame/codecs.
+
+Acceptance:
+
+- Polling and WebSocket dispatch execution continue to use one common
+  invocation processor.
+- Protocol-specific classes do not inspect or own handler registration beyond
+  receiving a runtime definition during construction.
+- Protocol drivers own protocol exchange, not worker ability facts.
 - Tests prove both polling and WebSocket route a dispatch through the same
   handler invocation semantics.
 - There is no same-module wrapper that only forwards calls without protecting a
@@ -538,8 +633,8 @@ Acceptance:
 Verification candidates:
 
 ```bash
-./mvnw -q -pl sdk/xa-mass-java-sdk -am test -Dtest=WorkerEventHandlerRuntimeTest,WorkerRuntimeCoreTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
-rg -n "new WorkerEventHandlerRuntime|handlerRuntime.invoke|submitResult\\(" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/session -g "*.java"
+./mvnw -q -pl sdk/xa-mass-java-sdk test -Dtest=WorkerDispatchProcessorTest,PollingWorkerRuntimeTest,WebSocketWorkerRuntimeTest,JavaExternalSdkArchitectureGuardTest
+rg -n "new WorkerDispatchProcessor|submitResult\\(|encodeResult|decodeDispatch|workerId\\(|workerGroupId\\(" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime -g "*.java"
 ```
 
 ## JWR-5 Worker Runtime Maintenance Loop
@@ -549,47 +644,31 @@ maintenance, not protocol-private loops and not platform tasks.
 
 Scope:
 
-- Add package-private `WorkerRuntimeMaintenanceTask`,
-  `WorkerRuntimeMaintenanceLoop`, or equivalent.
+- Preserve package-private `WorkerRuntimeMaintenanceLoop` or equivalent.
 - Initial task: heartbeat/session freshness.
 - Later-compatible task shape: worker-local evidence/report publication.
-- Keep scheduling policy minimal: fixed interval, optional initial delay, bounded
-  failure callback. No cron semantics, no task scheduling, no retry strategy
-  beyond local loop error handling.
+- Keep scheduling policy minimal: fixed interval, optional initial delay,
+  bounded failure callback. No cron semantics, no platform task scheduling, no
+  retry strategy beyond local loop error handling.
 - The maintenance loop invokes the runtime reporter/driver; it does not call
   worker handlers and does not enqueue platform work.
 
-Target internal shape:
-
-```java
-interface WorkerRuntimeMaintenanceTask {
-    String name();
-    Duration interval();
-    void run(WorkerRuntimeContext context) throws Exception;
-}
-```
-
-The final names can change. The required contract is that a maintenance task is
-local worker upkeep only.
-
 Acceptance:
 
-- Polling heartbeat is represented as a runtime maintenance task or is clearly
-  prepared to move into that model in the same slice.
+- Polling heartbeat is represented as a runtime maintenance task.
 - No class named or documented as task/job/scheduler is introduced for this
   feature unless it is explicitly scoped as worker runtime maintenance.
 - Maintenance tasks cannot execute event handlers or create platform tasks.
-- Maintenance tasks publish through `WorkerEventReporter` / protocol driver
-  abstractions instead of calling protocol-specific HTTP/WebSocket clients
-  directly.
-- Tests prove the heartbeat maintenance task runs independently from dispatch
-  intake and does not consume or submit task items.
+- Maintenance tasks publish through presence/reporter abstractions instead of
+  direct protocol-specific calls where a shared abstraction is useful.
+- Tests prove heartbeat maintenance runs independently from dispatch intake and
+  does not consume or submit task items.
 
 Verification candidates:
 
 ```bash
-./mvnw -q -pl sdk/xa-mass-java-sdk -am test -Dtest=WorkerRuntimeMaintenanceLoopTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
-rg -n "ScheduledExecutorService|scheduleWithFixedDelay|heartbeat" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/session -g "*.java"
+./mvnw -q -pl sdk/xa-mass-java-sdk test -Dtest=WorkerRuntimeMaintenanceLoopTest,PollingWorkerRuntimeTest,WebSocketWorkerRuntimeTest
+rg -n "ScheduledExecutorService|scheduleWithFixedDelay|heartbeat" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime -g "*.java"
 ```
 
 ## JWR-6 Worker Event Reporter
@@ -598,96 +677,71 @@ Goal: classify and expose worker active reporting as a worker runtime ability.
 
 Scope:
 
-- Add `WorkerRuntimeEvent` / `WorkerEventReporter` or equivalent.
+- Preserve `WorkerRuntimeReporter` or equivalent if it protects a real
+  public/runtime boundary.
+- Keep `EXTERNAL_WORKER_CAPABILITY_EVIDENCE_API_CONVERGENCE_ROADMAP.md`
+  superseded/historical. Do not execute it as a second active evidence roadmap.
 - Map current public APIs into typed event categories:
-  presence heartbeat, state/readiness, handler availability, load/attributes
-  evidence, offline/drain, custom runtime event if needed.
+  presence heartbeat, runtime state/readiness, handler availability,
+  load/attributes evidence, offline/drain, custom runtime event if needed.
 - Decide which events are runtime-managed maintenance policy and which require
   explicit caller invocation.
-- Keep `reportCapability` naming under the external capability evidence
-  roadmap; do not promote it as the generic event model name.
+- Keep `reportHandlerEvidence` and `reportRuntimeEvidence` naming aligned with
+  the external evidence API. Do not reintroduce `reportCapability` /
+  `reportState` names in Java SDK public worker runtime.
 
 Acceptance:
 
 - Worker active reports are not hidden in `start()`.
 - Heartbeat/presence is documented as session freshness, not capability truth.
-- Heartbeat may be emitted by the maintenance loop, but the reporter owns the
-  event shape.
+- Heartbeat may be emitted by the maintenance loop; handler/runtime evidence
+  reports are emitted through `WorkerRuntimeReporter`.
 - State/readiness reports are explicit or policy-configured, not protocol-owned.
 - Handler availability report, if supported, is derived from
   `WorkerRuntimeDefinition` but is not WorkerGroup capability truth.
-- Tests prove polling and WebSocket can use the same reporter interface even if
-  one protocol has a narrower implementation in this slice.
+- Active roadmap/docs no longer describe `:report-capability` or
+  `WorkerCapabilityReport` as the current evidence model.
+- Tests prove polling and WebSocket can use the same reporter interface if the
+  interface lands in this slice.
 
 Verification candidates:
 
 ```bash
-./mvnw -q -pl sdk/xa-mass-java-sdk -am test -Dtest=WorkerEventReporterTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
-rg -n "reportCapability|reportState|heartbeat|offline|drain" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker -g "*.java"
+./mvnw -q -pl sdk/xa-mass-java-sdk test -Dtest=WorkerRuntimeReporterTest,PollingWorkerRuntimeTest,WebSocketWorkerRuntimeTest,JavaExternalSdkArchitectureGuardTest
+rg -n "reportCapability|reportState|reportHandlerEvidence|reportRuntimeEvidence|heartbeat|offline|drain" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker -g "*.java"
+rg -n "report-capability|WorkerCapabilityReport|reportCapability" roadmap sdk xa-mass-server xa-mass-worker-runtime integrations -g "*.java" -g "*.md"
 ```
 
-## JWR-7 Worker Command Runtime Ability
+## JWR-7 Worker Command Runtime Ability - Deferred
 
-Goal: make worker command intake and ack a common runtime ability instead of an
-HTTP polling side feature.
+Goal: keep worker command intake/ack visible as a future worker ability without
+reintroducing the deleted Java SDK public command surface prematurely.
 
 Scope:
 
-- Add command handler registration to `WorkerRuntimeDefinition`.
-- Add command processor and ack outcome model.
-- Polling driver uses current `pollCommands` / `ackCommand`.
-- WebSocket driver maps command frames if the protocol supports them; if not,
-  record a protocol limitation without changing the common worker ability model.
+- Inventory current server/embedded worker-control command owner.
+- Decide whether external Java SDK managed runtimes should receive platform
+  commands at all in the next product slice.
+- If yes, define a successor command contract under worker-control ownership
+  before adding Java SDK runtime handlers.
+- If no, document command intake as out of scope for Java SDK worker runtime
+  v1.
 
 Acceptance:
 
-- Command handling is defined once at the worker runtime level.
-- Protocol-specific drivers only receive/send command messages.
-- `WorkerCommand*` DTOs are not copied into a second protocol-specific model
-  unless the wire codec genuinely requires it.
-- Tests cover command handler success, rejection/failure, and ack emission.
+- Java SDK public command DTOs are not reintroduced in this roadmap before the
+  worker-control owner decision.
+- `WorkerRuntimeDefinition` first slice does not include command handlers.
+- Any future command handler model is protocol-neutral and does not copy old
+  `WorkerCommand*` DTOs into a new package.
 
 Verification candidates:
 
 ```bash
-./mvnw -q -pl sdk/xa-mass-java-sdk -am test -Dtest=WorkerCommandRuntimeTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
+rg -n "WorkerCommand|pollCommands|ackCommand|onCommand|commandHandlers" sdk/xa-mass-java-sdk/src/main/java roadmap/JAVA_SDK_WORKER_RUNTIME_CAPABILITY_MODEL_CONVERGENCE_ROADMAP.md -g "*.java" -g "*.md"
 ```
 
-## JWR-8 Public API And Adopter Migration
-
-Goal: move public users from concrete protocol session ownership to worker
-runtime ownership.
-
-Scope:
-
-- Add `MassPlatform.workerRuntimes()` or equivalent.
-- Migrate scenario launcher and worker-pack to:
-  `register definition -> start runtime`.
-- Replace public docs that center `WorkerSessionSpec` with
-  `WorkerRuntimeDefinition`.
-- Decide whether concrete `PollingWorkerSession` / `WebSocketWorkerSession`
-  remain public temporary protocol runtime classes or are folded behind
-  `WorkerRuntime` builders.
-
-Acceptance:
-
-- Public examples show one worker definition reused by polling and WebSocket.
-- Scenario launcher no longer treats polling and WebSocket workers as different
-  capability owners.
-- Worker-pack helpers do not duplicate worker ability fields across protocols.
-- `WorkerSessionSpec` is removed or marked as superseded and no production
-  caller depends on it.
-- No compatibility alias remains if all in-repo callers are migrated.
-
-Verification candidates:
-
-```bash
-./mvnw -q -pl integrations/xa-mass-scenario-launcher,integrations/xa-mass-worker-pack -am -DskipTests compile
-./mvnw -q -pl sdk/xa-mass-java-sdk -am test -Dtest=WorkerClientTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest,JavaExternalSdkArchitectureGuardTest -Dsurefire.failIfNoSpecifiedTests=false
-rg -n "WorkerSessionSpec|PollingWorkerSession|WebSocketWorkerSession" sdk/xa-mass-java-sdk/README.md integrations -g "*.java" -g "*.md"
-```
-
-## JWR-9 Guards, Docs, And Residue
+## JWR-8 Guards, Docs, And Residue
 
 Goal: prevent the old protocol-owned capability model from returning.
 
@@ -696,54 +750,63 @@ Scope:
 - Update `sdk/README.md`.
 - Update `sdk/xa-mass-java-sdk/README.md`.
 - Update `doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md`.
+- Archive or supersede stale external worker evidence roadmap docs that still
+  describe `report-capability` as current.
 - Add architecture guard checks for:
   definition field allowlist, protocol-driver import boundaries, no implicit
-  registration/reporting in runtime start, and no transport internals in public
-  worker runtime contracts.
-- Archive or supersede stale `WorkerSession` direction docs after residue scan.
+  registration in runtime start, no hidden handler/runtime evidence reporting
+  in runtime start, and no transport internals in public worker runtime
+  contracts.
+- Archive or supersede stale `WorkerRuntime` direction docs after residue scan.
 
 Acceptance:
 
 - Public SDK docs say polling and WebSocket workers are the same worker runtime
   ability model with different protocol drivers.
 - Active roadmaps do not describe `WorkerSessionSpec` as the target shape.
+- Active roadmaps do not describe `:report-capability` /
+  `WorkerCapabilityReport` as the current Java SDK evidence model.
+- README examples use `WorkerResult.success(String)` and do not preserve
+  old `WorkerResult.success(Map.of(...))` examples.
 - Architecture guard fails if public worker runtime contracts expose
   transport-internal identifiers.
 - Architecture guard fails if protocol driver classes own worker definition
   facts.
-- Architecture guard references the dedicated invocation payload roadmap for
-  handler-facing task-field, `rawItem`, and transport `DeliveryCommand`
-  residue.
+- Architecture guard references the completed Java SDK public worker model
+  convergence for handler-facing task-field, `rawItem`, and transport
+  `DeliveryCommand` residue.
 - Source scans show `start()` no longer performs hidden registration or
-  capability/state evidence reporting.
+  handler/runtime evidence reporting.
 
 Verification candidates:
 
 ```bash
-./mvnw -q -pl sdk/xa-mass-java-sdk -am test -Dtest=JavaExternalSdkArchitectureGuardTest,WorkerRuntimeDefinitionTest,WorkerRuntimeCoreTest,WorkerEventReporterTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl sdk/xa-mass-java-sdk test -Dtest=JavaExternalSdkArchitectureGuardTest,WorkerRuntimeDefinitionTest,WorkerDispatchProcessorTest
 rg -n "WorkerSessionSpec|reportCapability|reportState|registerWorker" roadmap sdk/xa-mass-java-sdk/README.md sdk/README.md doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md -g "*.md"
 rg -n "adapterId|adapterNodeId|routeKey|connectionId|endpointLease|deliveryQueueKey|TransportAdapterBootstrap" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker -g "*.java"
 ```
 
 ## Suggested Implementation Order
 
-1. JWR-0 inventory.
-2. JWR-1 worker runtime definition contract.
-3. JWR-2 dependency gate on
-   `doc/archive/sdk/2026-06-17_EXTERNAL_WORKER_INVOCATION_PAYLOAD_BOUNDARY_CONVERGENCE_ROADMAP.md`.
-4. JWR-3 explicit registration and evidence boundary.
-5. JWR-4 common runtime core and protocol driver SPI.
-6. JWR-5 worker runtime maintenance loop.
-7. JWR-6 worker event reporter.
-8. JWR-7 worker command runtime ability.
-9. JWR-8 public API/adopter migration.
-10. JWR-9 guards/docs/residue.
+1. JWR-0 inventory refresh and current-fact lock. Landed.
+2. JWR-1 worker runtime definition and public owner pivot. Landed.
+3. JWR-2 explicit registration boundary. Landed.
+4. JWR-3 runtime shell and driver API cleanup. Landed.
+5. JWR-5 worker runtime maintenance loop. Landed for polling heartbeat.
+6. JWR-6 worker runtime reporter. Landed as `WorkerRuntimeReporter`.
+7. JWR-4 protocol driver and runtime orchestration split. Landed for polling
+   worker-api exchange and WebSocket connect/frame exchange.
+8. JWR-7 worker command runtime ability decision. Deferred by owner decision;
+   do not reintroduce command DTOs until worker-control owns a successor
+   contract.
+9. JWR-8 final guards/docs/residue. Landed for Java external SDK and direct
+   JWR companion docs; portfolio-wide roadmap archive cleanup remains follow-up.
 
-JWR-5 can start with heartbeat only. JWR-6 and JWR-7 can be implemented after
-JWR-4 if reporting or command proof is too broad for the first runtime-core
-slice. They must remain visible in this roadmap because maintenance, active
-reporting, and commands are part of the worker ability model, not
-protocol-local features.
+JWR-5 can start with heartbeat only. JWR-6 can be implemented after JWR-2 or
+JWR-5 depending on whether evidence/reporting becomes a public caller need
+before the driver split. JWR-7 must remain deferred until worker-control owner
+truth is settled; it should not block runtime definition or registration
+cleanup.
 
 ## Roadmap Completion Criteria
 
@@ -751,35 +814,49 @@ This roadmap can be marked complete only when:
 
 - Polling and WebSocket workers share one worker runtime definition model.
 - Worker ability facts are not owned by protocol-specific builders/classes.
-- The dedicated worker invocation payload boundary roadmap is complete or
-  explicitly marked mainline-unblocked before this roadmap is archived.
+- `WorkerSessionSpec` is not a second public worker ability owner or
+  compatibility alias.
+- Java SDK public worker model convergence remains enforced:
+  no `WorkerDispatchItem`, `DispatchContext`, `ResultCorrelationRef`,
+  `WorkerEventHandlers`, `WorkerEventHandlerRuntime`, public task-shaped
+  handler context, or transport `DeliveryCommand` imports.
 - `DeliveryCommand` remains transport/adapter-owned and is not imported or
   exposed by Java external worker SDK runtime/handler contracts.
-- Worker runtime start no longer hides registration or capability/state
-  evidence reporting.
-- Worker runtime maintenance loops are modeled as local upkeep and do not become
-  platform task scheduling.
-- Worker active reporting has an explicit owner and public shape.
-- Worker command intake/ack is classified as a common runtime ability or a
-  documented protocol limitation under the common model.
+- Worker runtime start no longer hides worker registration.
+- Registration failure is not reported as a runtime startup step after
+  registration is made explicit.
+- Worker runtime start does not hide handler/runtime evidence reporting.
+- Session presence/heartbeat is documented as freshness evidence, not
+  WorkerGroup capability truth.
+- Worker runtime maintenance loops are modeled as local upkeep and do not
+  become platform task scheduling.
+- Worker active reporting has an explicit owner and public shape if it remains
+  in Java SDK runtime.
+- Worker command intake/ack is either classified as a deferred worker-control
+  follow-up or implemented through a successor common runtime contract.
 - Protocol drivers are internal network exchange implementations, not worker
   capability owners.
 - Public docs and examples present polling and WebSocket as the same background
   worker runtime with different protocol drivers.
+- Public docs and examples use the current `WorkerResult.success(String)` /
+  `WorkerResult.failure(resultCode, result)` shape.
+- Active evidence roadmaps/docs use `reportHandlerEvidence(...)` /
+  `reportRuntimeEvidence(...)` wording or are archived as superseded.
 - Java SDK architecture guards prevent transport-internal identifiers from
   entering public worker runtime contracts.
 - In-repo adopters compile against the final shape.
-- Stale `WorkerSession` direction docs are archived or explicitly marked
+- Stale `WorkerRuntime` direction docs are archived or explicitly marked
   superseded.
 
 ## Open Decisions
 
 - Final naming: `WorkerRuntimeDefinition` vs `WorkerDefinition`.
-- Whether `WorkerRuntime` should expose `report(...)` directly or expose a
-  separate `WorkerEventReporter`.
-- Whether registration should use a new `WorkerRegistrationSpec` or narrow the
-  existing `WorkerSpec` public name.
-- Whether protocol-specific concrete classes remain public during convergence or
-  become package-private driver implementations immediately after callers move.
-- Whether WebSocket command intake exists in the current wire protocol or should
-  be documented as a protocol limitation in JWR-7.
+- Whether `WorkerRuntime` should later expose direct `report(...)` / `drain(...)`
+  convenience methods. Current code uses `WorkerRuntime.reporter()` and
+  `WorkerRuntimeReporter`.
+- Whether `WorkerSpec` should be renamed later remains a naming cleanup only;
+  this roadmap does not add a parallel `WorkerRegistrationSpec`.
+- Whether protocol-specific concrete classes remain public during convergence
+  or become package-private driver implementations after callers move.
+- Whether command intake belongs in Java SDK managed worker runtime v1, and if
+  so, what worker-control successor contract owns it.

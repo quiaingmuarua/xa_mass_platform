@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.http.MassHttpClient;
 import com.xa.mass.client.task.TaskClient;
 import com.xa.mass.client.worker.WorkerClient;
-import com.xa.mass.client.worker.session.WorkerSessions;
+import com.xa.mass.client.worker.runtime.WorkerRuntimes;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -18,7 +18,7 @@ public final class MassPlatform {
     private final MassHttpClient httpClient;
     private final TaskClient taskClient;
     private final WorkerClient workerClient;
-    private final WorkerSessions workerSessions;
+    private final WorkerRuntimes workerRuntimes;
 
     private MassPlatform(Builder builder) {
         this.baseUri = normalizeBaseUri(builder.baseUri);
@@ -41,7 +41,7 @@ public final class MassPlatform {
         );
         this.taskClient = new TaskClient(httpClient);
         this.workerClient = new WorkerClient(httpClient);
-        this.workerSessions = new WorkerSessions(workerClient, connectTimeout, client, objectMapper);
+        this.workerRuntimes = new WorkerRuntimes(workerClient, connectTimeout, client, objectMapper);
     }
 
     public static Builder builder() {
@@ -60,7 +60,7 @@ public final class MassPlatform {
         return requestTimeout;
     }
 
-    @UnstableApi("Raw HTTP escape hatch; prefer tasks(), workers(), and workerSessions().")
+    @UnstableApi("Raw HTTP escape hatch; prefer tasks(), workers(), and workerRuntimes().")
     public MassHttpClient http() {
         return httpClient;
     }
@@ -73,8 +73,8 @@ public final class MassPlatform {
         return workerClient;
     }
 
-    public WorkerSessions workerSessions() {
-        return workerSessions;
+    public WorkerRuntimes workerRuntimes() {
+        return workerRuntimes;
     }
 
     private static URI normalizeBaseUri(URI baseUri) {

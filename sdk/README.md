@@ -53,7 +53,7 @@ Global boundary guard:
 - Do not make `xa-mass-java-sdk` depend on engine, server, base, transport
   implementations, worker-pack, or embedded SDK modules.
 - `xa-mass-java-sdk` must not depend on `transport/transport_api`,
-  `transport_runtime`, or concrete adapter modules. External worker/session
+  `transport_runtime`, or concrete adapter modules. External worker/runtime
   contracts belong in the Java SDK or public Controller contracts.
 - Do not put control-plane internals, review materialization models,
   diagnostics, bootstrap fixtures, transport frames, or embedded runtime

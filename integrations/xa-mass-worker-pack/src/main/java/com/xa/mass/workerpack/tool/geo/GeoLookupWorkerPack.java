@@ -3,10 +3,11 @@ package com.xa.mass.workerpack.tool.geo;
 import com.google.gson.Gson;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.WorkerGroupSpec;
+import com.xa.mass.client.worker.WorkerRuntimeDefinition;
+import com.xa.mass.client.worker.WorkerSpec;
 import com.xa.mass.client.worker.handler.WorkerEventHandler;
 import com.xa.mass.client.worker.handler.WorkerResult;
-import com.xa.mass.client.worker.session.PollingWorkerSession;
-import com.xa.mass.client.worker.session.WorkerSessionSpec;
+import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -134,16 +135,17 @@ public final class GeoLookupWorkerPack {
             return this;
         }
 
-        public PollingWorkerSession startPolling() {
+        public PollingWorkerRuntime startPolling() {
             String resolvedWorkerId = requireText(workerId, "workerId");
             platform.workers().declareGroup(groupSpec(projectCodes, provider));
-            WorkerSessionSpec sessionSpec = WorkerSessionSpec.builder()
+            WorkerRuntimeDefinition definition = WorkerRuntimeDefinition.builder()
                     .workerId(resolvedWorkerId)
                     .workerGroupId(WORKER_GROUP_ID)
                     .attributes(attributes)
                     .eventHandler(GeoLookupTool.EVENT_CODE, handler(provider))
                     .build();
-            return platform.workerSessions().polling(sessionSpec)
+            platform.workers().registerWorker(WorkerSpec.polling(definition));
+            return platform.workerRuntimes().polling(definition)
                     .maxMessages(maxMessages)
                     .pollTimeout(pollTimeout)
                     .pollInterval(pollInterval)
