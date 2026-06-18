@@ -4,7 +4,7 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
-import com.xa.mass.transport.websocket.session.ServerSessionManager;
+import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.epoll.Epoll;
@@ -44,7 +44,7 @@ public class WebSocketServerImpl implements TransportServer {
     private final int port;
     private final int maxConnections;
     private final String websocketPath;
-    private final ServerSessionManager sessionManager;
+    private final WebSocketServerSessionHandle sessionHandle;
     private final WebSocketJsonFrameParser frameParser;
     private final WebSocketSessionOpenFrameReader sessionOpenFrameReader;
     private final WebSocketInboundMessageSink inboundMessageSink;
@@ -58,14 +58,14 @@ public class WebSocketServerImpl implements TransportServer {
                                WebSocketJsonFrameParser frameParser,
                                WebSocketSessionOpenFrameReader sessionOpenFrameReader,
                                WebSocketInboundMessageSink inboundMessageSink,
-                               ServerSessionManager sessionManager) {
+                               WebSocketServerSessionHandle sessionHandle) {
         this.port = port;
         this.maxConnections = maxConnections;
         this.websocketPath = websocketPath;
         this.frameParser = frameParser;
         this.sessionOpenFrameReader = sessionOpenFrameReader;
         this.inboundMessageSink = inboundMessageSink;
-        this.sessionManager = sessionManager;
+        this.sessionHandle = sessionHandle;
     }
 
     @Override
@@ -118,7 +118,7 @@ public class WebSocketServerImpl implements TransportServer {
                             frameParser,
                             sessionOpenFrameReader,
                             inboundMessageSink,
-                            sessionManager
+                            sessionHandle
                     ));
                 }
             });
@@ -179,7 +179,7 @@ public class WebSocketServerImpl implements TransportServer {
         Objects.requireNonNull(frameParser, "WebSocket server requires frameParser");
         Objects.requireNonNull(sessionOpenFrameReader, "WebSocket server requires sessionOpenFrameReader");
         Objects.requireNonNull(inboundMessageSink, "WebSocket server requires inboundMessageSink");
-        Objects.requireNonNull(sessionManager, "WebSocket server requires sessionManager");
+        Objects.requireNonNull(sessionHandle, "WebSocket server requires sessionHandle");
     }
 
     private class ConnectionStatsHandler extends ChannelInboundHandlerAdapter {
@@ -207,8 +207,8 @@ public class WebSocketServerImpl implements TransportServer {
             logger.debug("Connection closed: {}, total={}", ctx.channel().remoteAddress(), count);
             // Remove the session before propagating channelInactive so worker offline state
             // and future dispatch decisions observe the closed channel consistently.
-            if (sessionManager != null) {
-                sessionManager.removeSession(ctx.channel());
+            if (sessionHandle != null) {
+                sessionHandle.removeSession(ctx.channel());
             }
             super.channelInactive(ctx);
         }

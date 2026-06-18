@@ -22,11 +22,9 @@ import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
-import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.BarrierClaim;
@@ -42,10 +40,10 @@ import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
-import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionOwner;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
 import com.xa.mass.runtime.api.TaskResultFinalDraft;
 import com.xa.mass.runtime.api.TaskResultRepairCandidate;
@@ -155,7 +153,6 @@ public final class TaskFlowLoadModelRunner {
                 WorkerResourceQueryRuntime workerResourceQueryRuntime = workerManager;
                 WorkerAdmissionRuntime workerAdmissionRuntime = workerManager;
                 WorkerSchedulingViewRuntime workerSchedulingViewRuntime = workerManager;
-                WorkerWarmHintRuntime workerWarmHintRuntime = workerManager;
                 AssignmentRecordService recordService = new AssignmentRecordService();
                 CallbackMetrics callbackMetrics = new CallbackMetrics();
                 ReleaseMetrics releaseMetrics = new ReleaseMetrics();
@@ -269,22 +266,20 @@ public final class TaskFlowLoadModelRunner {
                     }
                 };
 
-                TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(
-                        workerResourceQueryRuntime,
-                        workerAdmissionRuntime,
-                        workerSchedulingViewRuntime);
+                WorkerSelectionRuntime workerSelectionRuntime = new WorkerSelectionOwner(
+                        PerfWorkerMatchingSupport.deterministicCandidateRuntime(workerResourceQueryRuntime),
+                        workerSchedulingViewRuntime,
+                        workerAdmissionRuntime);
                 SimpleTaskDispatchBinder dispatchBinder =
                         new SimpleTaskDispatchBinder(
                                 assignmentRuntimePort,
-                                workerAdmissionRuntime,
+                                workerSelectionRuntime,
                                 recordService,
                                 dispatchListener
                         );
                 TaskWorkerAssignListener workerAssignListener =
                         new TaskWorkerAssignListener(
-                                matchingStrategy,
-                                workerAdmissionRuntime,
-                                workerWarmHintRuntime,
+                                workerSelectionRuntime,
                                 dispatchBinder,
                                 assignmentRuntimePort,
                                 taskEvents
@@ -296,7 +291,7 @@ public final class TaskFlowLoadModelRunner {
                         new MeasuredTaskResourceReleaseListener(
                                 leaseMaintenancePort,
                                 dispatchWakeupPort,
-                                workerAdmissionRuntime,
+                                workerSelectionRuntime,
                                 releaseMetrics
                         );
 
@@ -606,61 +601,14 @@ public final class TaskFlowLoadModelRunner {
         }
     }
 
-    private static final class DeterministicMatchingStrategy implements TaskWorkerMatchingStrategy {
-        private final WorkerResourceQueryRuntime workerResourceQueryRuntime;
-        private final WorkerAdmissionRuntime workerAdmissionRuntime;
-        private final WorkerSchedulingViewRuntime workerSchedulingViewRuntime;
-
-        private DeterministicMatchingStrategy(WorkerResourceQueryRuntime workerResourceQueryRuntime,
-                                              WorkerAdmissionRuntime workerAdmissionRuntime,
-                                              WorkerSchedulingViewRuntime workerSchedulingViewRuntime) {
-            this.workerResourceQueryRuntime = Objects.requireNonNull(workerResourceQueryRuntime, "workerResourceQueryRuntime");
-            this.workerAdmissionRuntime = Objects.requireNonNull(workerAdmissionRuntime, "workerAdmissionRuntime");
-            this.workerSchedulingViewRuntime = Objects.requireNonNull(workerSchedulingViewRuntime,
-                    "workerSchedulingViewRuntime");
-        }
-
-        @Override
-        public List<WorkerSchedulingCandidate> matchWorkers(Task task, int maxWorkerCount) {
-            List<String> workerGroupSelector = TaskSharedConfig.workerGroupSelector(task);
-            if (workerGroupSelector.isEmpty()) {
-                return List.of();
-            }
-            List<WorkerSchedulingCandidate> matched = new ArrayList<>();
-            for (WorkerResourceRecord worker : workerResourceQueryRuntime.workers()) {
-                if (matched.size() >= maxWorkerCount) {
-                    break;
-                }
-                if (!PerfWorkerMatchingSupport.workerAvailable(workerSchedulingViewRuntime, worker)
-                        || !workerGroupSelector.contains(worker.workerGroupId())
-                        || !PerfWorkerMatchingSupport.supportsProject(
-                                workerSchedulingViewRuntime,
-                                worker,
-                                task.getProject())) {
-                    continue;
-                }
-                WorkerSchedulingCandidate candidate =
-                        PerfWorkerMatchingSupport.tryReserveCandidate(
-                                workerAdmissionRuntime,
-                                workerSchedulingViewRuntime,
-                                task,
-                                worker);
-                if (candidate != null) {
-                    matched.add(candidate);
-                }
-            }
-            return matched;
-        }
-    }
-
     private static final class MeasuredTaskResourceReleaseListener extends TaskResourceReleaseListener {
         private final ReleaseMetrics metrics;
 
         private MeasuredTaskResourceReleaseListener(TaskLeaseMaintenancePort leaseMaintenancePort,
                                                     TaskDispatchWakeupPort dispatchWakeupPort,
-                                                    WorkerAdmissionRuntime workerAdmissionRuntime,
+                                                    WorkerSelectionRuntime workerSelectionRuntime,
                                                     ReleaseMetrics metrics) {
-            super(leaseMaintenancePort, dispatchWakeupPort, workerAdmissionRuntime);
+            super(leaseMaintenancePort, dispatchWakeupPort, workerSelectionRuntime);
             this.metrics = metrics;
         }
 

@@ -19,7 +19,7 @@ import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
-import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
@@ -34,7 +34,7 @@ import com.xa.mass.trace.operator.TraceValidateResponse;
 import com.xa.mass.trace.operator.TraceOperatorService;
 import com.xa.mass.trace.sink.JsonlExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.sdk.worker.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.WorkerInvocation;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -709,7 +709,7 @@ public final class SdkPollingSchedulingSoakRunner {
 
     private static final class SimulatedPollingWorker implements AutoCloseable {
         private final String workerId;
-        private final PullWorkerSession session;
+        private final EmbeddedPullWorkerSession session;
         private final SoakConfig config;
         private final SoakMetrics metrics;
         private final Map<Integer, String> taskIdByIndex;
@@ -720,7 +720,7 @@ public final class SdkPollingSchedulingSoakRunner {
         private Thread pollThread;
 
         private SimulatedPollingWorker(String workerId,
-                                       PullWorkerSession session,
+                                       EmbeddedPullWorkerSession session,
                                        SoakConfig config,
                                        SoakMetrics metrics,
                                        Map<Integer, String> taskIdByIndex,
@@ -752,7 +752,7 @@ public final class SdkPollingSchedulingSoakRunner {
         private void runLoop() {
             while (running.get()) {
                 try {
-                    List<PulledTaskDispatch> items = session.poll(config.pollBatchSize());
+                    List<WorkerInvocation> items = session.poll(config.pollBatchSize());
                     metrics.recordPoll(workerId, items == null ? 0 : items.size());
                     if (items == null || items.isEmpty()) {
                         if (stopRequested.get()) {
@@ -763,7 +763,7 @@ public final class SdkPollingSchedulingSoakRunner {
                         }
                         continue;
                     }
-                    for (PulledTaskDispatch item : items) {
+                    for (WorkerInvocation item : items) {
                         metrics.recordReceivedItem(workerId, taskIdFor(item), item.getResultCorrelationRef());
                         processingExecutor.submit(() -> process(item));
                     }
@@ -776,7 +776,7 @@ public final class SdkPollingSchedulingSoakRunner {
             }
         }
 
-        private void process(PulledTaskDispatch item) {
+        private void process(WorkerInvocation item) {
             long started = System.nanoTime();
             metrics.beginProcessing();
             try {
@@ -797,9 +797,8 @@ public final class SdkPollingSchedulingSoakRunner {
                 boolean accepted = session.submitResult(
                         item,
                         success,
-                        success ? "polling-soak-success" : "polling-soak-failure",
                         success ? null : "SOAK_SYNTHETIC_FAILURE",
-                        output
+                        output.toString()
                 );
                 if (!accepted) {
                     failures.add("result rejected worker=" + workerId
@@ -816,7 +815,7 @@ public final class SdkPollingSchedulingSoakRunner {
             }
         }
 
-        private long globalSeq(PulledTaskDispatch item) {
+        private long globalSeq(WorkerInvocation item) {
             Object value = item.getInput().get("globalSeq");
             if (value instanceof Number number) {
                 return number.longValue();
@@ -824,7 +823,7 @@ public final class SdkPollingSchedulingSoakRunner {
             return Math.abs((long) item.getResultCorrelationRef().hashCode());
         }
 
-        private String taskIdFor(PulledTaskDispatch item) {
+        private String taskIdFor(WorkerInvocation item) {
             Object value = item.getInput().get("taskIndex");
             if (value instanceof Number number) {
                 return taskIdByIndex.get(number.intValue());
@@ -832,7 +831,7 @@ public final class SdkPollingSchedulingSoakRunner {
             return null;
         }
 
-        private int deterministicJitterMillis(PulledTaskDispatch item) {
+        private int deterministicJitterMillis(WorkerInvocation item) {
             int jitterBound = config.processingJitterMillis();
             if (jitterBound <= 0) {
                 return 0;

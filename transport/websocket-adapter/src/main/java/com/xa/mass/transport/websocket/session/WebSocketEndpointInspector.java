@@ -11,14 +11,14 @@ import java.util.Objects;
  */
 public final class WebSocketEndpointInspector implements WorkerEndpointInspector {
 
-    private final ServerSessionManager sessionManager;
+    private final WebSocketSessionStore sessionStore;
 
-    public WebSocketEndpointInspector(ServerSessionManager sessionManager) {
-        this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
+    public WebSocketEndpointInspector(WebSocketSessionStore sessionStore) {
+        this.sessionStore = Objects.requireNonNull(sessionStore, "sessionStore");
     }
 
     @Override
     public List<WorkerEndpointSnapshot> listWorkerEndpoints() {
-        return sessionManager.listEndpointSnapshots();
+        return sessionStore.endpointSnapshots();
     }
 }

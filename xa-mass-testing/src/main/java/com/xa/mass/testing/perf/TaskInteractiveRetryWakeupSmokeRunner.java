@@ -23,11 +23,9 @@ import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
-import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
@@ -35,10 +33,10 @@ import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
-import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionOwner;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
@@ -54,7 +52,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -112,7 +109,6 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             WorkerResourceQueryRuntime workerResourceQueryRuntime = workerManager;
             WorkerAdmissionRuntime workerAdmissionRuntime = workerManager;
             WorkerSchedulingViewRuntime workerSchedulingViewRuntime = workerManager;
-            WorkerWarmHintRuntime workerWarmHintRuntime = workerManager;
             AssignmentRecordService recordService = new AssignmentRecordService();
             RetryTiming timing = new RetryTiming();
             ExecutorService bulkCallbackExecutor = Executors.newFixedThreadPool(config.bulkCallbackThreads(), r -> {
@@ -152,31 +148,30 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 }
             };
 
-            TaskWorkerMatchingStrategy matchingStrategy =
-                    new LaneAwareMatchingStrategy(
+            WorkerSelectionRuntime workerSelectionRuntime = new WorkerSelectionOwner(
+                    PerfWorkerMatchingSupport.laneAwareCandidateRuntime(
                             workerResourceQueryRuntime,
-                            workerAdmissionRuntime,
-                            workerSchedulingViewRuntime,
-                            config.reservedInteractiveWorkers());
+                            workloadByTaskId,
+                            config.reservedInteractiveWorkers()),
+                    workerSchedulingViewRuntime,
+                    workerAdmissionRuntime);
             SimpleTaskDispatchBinder dispatchBinder =
                     new SimpleTaskDispatchBinder(
                             assignmentRuntimePort,
-                            workerAdmissionRuntime,
+                            workerSelectionRuntime,
                             recordService,
                             dispatchListener
                     );
             TaskWorkerAssignListener workerAssignListener =
                     new TaskWorkerAssignListener(
-                            matchingStrategy,
-                            workerAdmissionRuntime,
-                            workerWarmHintRuntime,
+                            workerSelectionRuntime,
                             dispatchBinder,
                             assignmentRuntimePort,
                             taskEvents
                     );
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             TaskResourceReleaseListener releaseListener =
-                    new TaskResourceReleaseListener(leaseMaintenancePort, dispatchWakeupPort, workerAdmissionRuntime);
+                    new TaskResourceReleaseListener(leaseMaintenancePort, dispatchWakeupPort, workerSelectionRuntime);
             RuntimeReadyDispatchPump runtimeReadyDispatchPump = new RuntimeReadyDispatchPump(
                     recoveryPort,
                     workerAssignListener::onTaskAssign,
@@ -419,78 +414,6 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             Path reportPath = reportDir.resolve("task-interactive-retry-wakeup-smoke-" + timestamp + ".json");
             Files.writeString(reportPath, toJson(report), StandardCharsets.UTF_8);
             return reportPath;
-        }
-    }
-
-    private static final class LaneAwareMatchingStrategy implements TaskWorkerMatchingStrategy {
-        private final WorkerResourceQueryRuntime workerResourceQueryRuntime;
-        private final WorkerAdmissionRuntime workerAdmissionRuntime;
-        private final WorkerSchedulingViewRuntime workerSchedulingViewRuntime;
-        private final int reservedInteractiveWorkers;
-
-        private LaneAwareMatchingStrategy(WorkerResourceQueryRuntime workerResourceQueryRuntime,
-                                          WorkerAdmissionRuntime workerAdmissionRuntime,
-                                          WorkerSchedulingViewRuntime workerSchedulingViewRuntime,
-                                          int reservedInteractiveWorkers) {
-            this.workerResourceQueryRuntime = Objects.requireNonNull(workerResourceQueryRuntime, "workerResourceQueryRuntime");
-            this.workerAdmissionRuntime = Objects.requireNonNull(workerAdmissionRuntime, "workerAdmissionRuntime");
-            this.workerSchedulingViewRuntime = Objects.requireNonNull(workerSchedulingViewRuntime,
-                    "workerSchedulingViewRuntime");
-            this.reservedInteractiveWorkers = Math.max(reservedInteractiveWorkers, 0);
-        }
-
-        @Override
-        public List<WorkerSchedulingCandidate> matchWorkers(Task task, int maxWorkerCount) {
-            List<String> workerGroupSelector = TaskSharedConfig.workerGroupSelector(task);
-            if (workerGroupSelector.isEmpty()) {
-                return List.of();
-            }
-            List<WorkerSchedulingCandidate> matched = new ArrayList<>();
-            for (WorkerResourceRecord worker : workerResourceQueryRuntime.workers()) {
-                if (matched.size() >= maxWorkerCount) {
-                    break;
-                }
-                if (task.getExecutionSpec().getWorkloadClass() == TaskWorkloadClass.BULK
-                        && isReservedInteractiveWorker(worker)) {
-                    continue;
-                }
-                if (!PerfWorkerMatchingSupport.workerAvailable(workerSchedulingViewRuntime, worker)
-                        || !workerGroupSelector.contains(worker.workerGroupId())
-                        || !PerfWorkerMatchingSupport.supportsProject(
-                                workerSchedulingViewRuntime,
-                                worker,
-                                task.getProject())) {
-                    continue;
-                }
-                WorkerSchedulingCandidate candidate =
-                        PerfWorkerMatchingSupport.tryReserveCandidate(
-                                workerAdmissionRuntime,
-                                workerSchedulingViewRuntime,
-                                task,
-                                worker);
-                if (candidate != null) {
-                    matched.add(candidate);
-                }
-            }
-            return matched;
-        }
-
-        private boolean isReservedInteractiveWorker(WorkerResourceRecord worker) {
-            if (reservedInteractiveWorkers <= 0 || worker == null || worker.workerId() == null) {
-                return false;
-            }
-            String workerId = worker.workerId();
-            int dash = workerId.lastIndexOf('-');
-            if (dash < 0 || dash == workerId.length() - 1) {
-                return false;
-            }
-            try {
-                int workerIndex = Integer.parseInt(workerId.substring(dash + 1));
-                int totalWorkers = workerResourceQueryRuntime.workers().size();
-                return workerIndex >= Math.max(totalWorkers - reservedInteractiveWorkers, 0);
-            } catch (NumberFormatException ignored) {
-                return false;
-            }
         }
     }
 

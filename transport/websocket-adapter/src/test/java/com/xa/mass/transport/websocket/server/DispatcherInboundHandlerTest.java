@@ -5,7 +5,10 @@ import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
-import com.xa.mass.transport.websocket.session.ServerSessionManager;
+import com.xa.mass.transport.websocket.session.WebSocketSessionController;
+import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
+import com.xa.mass.transport.websocket.session.WebSocketSessionRefreshLoop;
+import com.xa.mass.transport.websocket.session.WebSocketSessionStore;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
@@ -42,7 +45,8 @@ class DispatcherInboundHandlerTest {
     private AtomicReference<String> sentFrame;
     private WebSocketInboundMessageSink inboundMessageSink;
     private AtomicReference<WebSocketInboundMessage> acceptedInboundMessage;
-    private ServerSessionManager sessionManager;
+    private WebSocketSessionController sessionController;
+    private WebSocketSessionStore sessionStore;
     private WebSocketJsonFrameParser frameParser;
     private WebSocketSessionOpenFrameReader sessionOpenFrameReader;
 
@@ -69,10 +73,10 @@ class DispatcherInboundHandlerTest {
 
         acceptedInboundMessage = new AtomicReference<>();
         inboundMessageSink = acceptedInboundMessage::set;
-        sessionManager = new ServerSessionManager(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
+        sessionController = newSessionController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
         frameParser = new WebSocketJsonFrameParser();
         sessionOpenFrameReader = new WebSocketSessionOpenFrameReader(frameParser);
-        handler = new DispatcherInboundHandler(frameParser, sessionOpenFrameReader, inboundMessageSink, sessionManager);
+        handler = new DispatcherInboundHandler(frameParser, sessionOpenFrameReader, inboundMessageSink, sessionController);
     }
 
     @Test
@@ -98,7 +102,7 @@ class DispatcherInboundHandlerTest {
         String sent = sentFrame.get();
         assertNotNull(sent);
         assertTrue(sent.contains("SESSION_NOT_BOUND"));
-        assertEquals(0, sessionManager.getWorkerConnectionCount());
+        assertEquals(0, sessionStore.activeConnectionCount());
         assertNull(acceptedInboundMessage.get());
     }
 
@@ -110,8 +114,8 @@ class DispatcherInboundHandlerTest {
                 null
         ));
 
-        assertEquals(1, sessionManager.getWorkerConnectionCount());
-        assertNotNull(sessionManager.getChannelContext("ws-route-1"));
+        assertEquals(1, sessionStore.activeConnectionCount());
+        assertNotNull(sessionController.getChannelContext("ws-route-1"));
     }
 
     @Test
@@ -122,9 +126,9 @@ class DispatcherInboundHandlerTest {
                 null
         ));
 
-        assertEquals(1, sessionManager.getWorkerConnectionCount());
-        assertEquals("bucket:bucket-1", sessionManager.getRouteKey(channel));
-        assertNotNull(sessionManager.getChannelContext("bucket:bucket-1"));
+        assertEquals(1, sessionStore.activeConnectionCount());
+        assertEquals("bucket:bucket-1", sessionController.getEndpointAddress(channel));
+        assertNotNull(sessionController.getChannelContext("bucket:bucket-1"));
     }
 
     @Test
@@ -154,8 +158,8 @@ class DispatcherInboundHandlerTest {
         assertEquals("ws-route-1", acceptedInboundMessage.get().getRouteKey());
         assertEquals("test-ch", acceptedInboundMessage.get().getEndpointId());
         assertNotNull(acceptedInboundMessage.get().getParsedFrame());
-        assertEquals(1, sessionManager.getWorkerConnectionCount());
-        assertNotNull(sessionManager.getChannelContext("ws-route-1"));
+        assertEquals(1, sessionStore.activeConnectionCount());
+        assertNotNull(sessionController.getChannelContext("ws-route-1"));
     }
 
     @Test
@@ -182,8 +186,8 @@ class DispatcherInboundHandlerTest {
         assertNull(sentFrame.get());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
         assertEquals("ws-route-11", acceptedInboundMessage.get().getRouteKey());
-        assertNotNull(sessionManager.getChannelContext("ws-route-11"));
-        assertNull(sessionManager.getChannelContext("worker-1"));
+        assertNotNull(sessionController.getChannelContext("ws-route-11"));
+        assertNull(sessionController.getChannelContext("worker-1"));
     }
 
     @Test
@@ -194,11 +198,11 @@ class DispatcherInboundHandlerTest {
                 null
         ));
 
-        assertEquals(1, sessionManager.getWorkerConnectionCount());
-        assertNotNull(sessionManager.getChannelContext("ws-route-9"));
-        assertNull(sessionManager.getChannelContext("worker-1"));
-        assertEquals("worker-1", sessionManager.getWorkerId(channel));
-        assertEquals("ws-route-9", sessionManager.getRouteKey(channel));
+        assertEquals(1, sessionStore.activeConnectionCount());
+        assertNotNull(sessionController.getChannelContext("ws-route-9"));
+        assertNull(sessionController.getChannelContext("worker-1"));
+        assertEquals("worker-1", sessionController.getWorkerId(channel));
+        assertEquals("ws-route-9", sessionController.getEndpointAddress(channel));
     }
 
     @Test
@@ -227,7 +231,7 @@ class DispatcherInboundHandlerTest {
         assertNotNull(accepted);
         assertTrue(accepted.contains("\"eventCode\": \"mock.state.get\"")
                 || accepted.contains("\"eventCode\":\"mock.state.get\""));
-        assertNotNull(sessionManager.getChannelContext("ws-route-1"));
+        assertNotNull(sessionController.getChannelContext("ws-route-1"));
     }
 
     @Test
@@ -280,14 +284,23 @@ class DispatcherInboundHandlerTest {
     private TextWebSocketFrame frame(String text) {
         return new TextWebSocketFrame(text);
     }
+
+    private WebSocketSessionController newSessionController(String adapterId) {
+        sessionStore = new WebSocketSessionStore(adapterId);
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(adapterId);
+        WebSocketSessionRefreshLoop refreshLoop =
+                new WebSocketSessionRefreshLoop(adapterId, sessionStore, evidenceDriver);
+        return new WebSocketSessionController(sessionStore, evidenceDriver, refreshLoop);
+    }
 }
 
 class WebSocketServerImplDisconnectTest {
 
+    private WebSocketSessionStore sessionStore;
+
     @Test
     void channelInactiveRemovesDisconnectedSessionFromSessionManager() throws Exception {
-        ServerSessionManager sessionManager = org.mockito.Mockito.spy(
-                new ServerSessionManager(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID));
+        WebSocketSessionController sessionController = newSessionController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
         WebSocketServerImpl server = new WebSocketServerImpl(
                 18088,
                 10,
@@ -295,7 +308,7 @@ class WebSocketServerImplDisconnectTest {
                 new WebSocketJsonFrameParser(),
                 new WebSocketSessionOpenFrameReader(new WebSocketJsonFrameParser()),
                 raw -> { },
-                sessionManager
+                sessionController
         );
 
         Channel channel = mock(Channel.class);
@@ -311,21 +324,20 @@ class WebSocketServerImplDisconnectTest {
         when(ctx.fireChannelActive()).thenReturn(ctx);
         when(ctx.fireChannelInactive()).thenReturn(ctx);
 
-        sessionManager.addSession("bucket-1", "worker-1", "worker-1", channel, ctx);
+        sessionController.addSession("bucket-1", "worker-1", "worker-1", channel, ctx);
 
         ChannelInboundHandlerAdapter handler = newConnectionStatsHandler(server);
         handler.channelActive(ctx);
         assertEquals(1L, server.getActiveConnectionCount());
-        assertEquals(1, sessionManager.getWorkerConnectionCount());
+        assertEquals(1, sessionStore.activeConnectionCount());
 
         handler.channelInactive(ctx);
 
-        verify(sessionManager).removeSession(channel);
         assertEquals(0L, server.getActiveConnectionCount());
-        assertEquals(0, sessionManager.getWorkerConnectionCount());
-        assertNull(sessionManager.getChannel("worker-1"));
-        assertNull(sessionManager.getWorkerId(channel));
-        assertNull(sessionManager.getRouteKey(channel));
+        assertEquals(0, sessionStore.activeConnectionCount());
+        assertNull(sessionStore.activeRecordForEndpointAddress("worker-1"));
+        assertNull(sessionController.getWorkerId(channel));
+        assertNull(sessionController.getEndpointAddress(channel));
     }
 
     @Test
@@ -339,8 +351,7 @@ class WebSocketServerImplDisconnectTest {
 
     @Test
     void channelActiveRejectsConnectionsBeyondConfiguredMax() throws Exception {
-        ServerSessionManager sessionManager = org.mockito.Mockito.spy(
-                new ServerSessionManager(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID));
+        WebSocketSessionController sessionController = newSessionController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
         WebSocketServerImpl server = new WebSocketServerImpl(
                 18088,
                 1,
@@ -348,7 +359,7 @@ class WebSocketServerImplDisconnectTest {
                 new WebSocketJsonFrameParser(),
                 new WebSocketSessionOpenFrameReader(new WebSocketJsonFrameParser()),
                 raw -> { },
-                sessionManager
+                sessionController
         );
 
         Channel countedChannel = mock(Channel.class);
@@ -378,7 +389,15 @@ class WebSocketServerImplDisconnectTest {
 
         assertEquals(1L, server.getActiveConnectionCount());
         verify(rejectedCtx).close();
-        verify(sessionManager, never()).removeSession(rejectedChannel);
+        assertEquals(0, sessionStore.activeConnectionCount());
+    }
+
+    private WebSocketSessionController newSessionController(String adapterId) {
+        sessionStore = new WebSocketSessionStore(adapterId);
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(adapterId);
+        WebSocketSessionRefreshLoop refreshLoop =
+                new WebSocketSessionRefreshLoop(adapterId, sessionStore, evidenceDriver);
+        return new WebSocketSessionController(sessionStore, evidenceDriver, refreshLoop);
     }
 
     private ChannelInboundHandlerAdapter newConnectionStatsHandler(WebSocketServerImpl server) throws Exception {

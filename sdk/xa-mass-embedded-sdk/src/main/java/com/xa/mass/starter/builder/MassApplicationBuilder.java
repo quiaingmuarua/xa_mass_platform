@@ -21,7 +21,6 @@ import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
-import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryCommandHandoff;
@@ -33,6 +32,7 @@ import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
+import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -453,7 +453,7 @@ public class MassApplicationBuilder {
         }
 
         public WebSocketAdapterBuilder transportServerFactory(
-                TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
+                TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory) {
             config.setTransportServerFactory(transportServerFactory);
             return this;
         }

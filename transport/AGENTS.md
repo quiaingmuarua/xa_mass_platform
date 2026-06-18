@@ -106,10 +106,13 @@ entry for `transport/`.
   embedded-support `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`.
   Adapter metadata, server lifecycle, raw/manual channels, diagnostics, and
   pull channels are explicit binding/contribution facts, not executor facts.
-- Concrete adapter session managers may observe protocol sessions and send to
-  selected workers, but endpoint lease / selected-worker consumer evidence is
-  projected by `TransportEndpointLeasePublisher`, and worker session-presence
-  observations are projected by `WorkerPresenceSessionPublisher`.
+- Concrete adapters may observe protocol sessions and send to selected workers,
+  but endpoint lease / selected-worker consumer evidence is projected by
+  `TransportEndpointLeasePublisher`, and worker session-presence observations
+  are projected by `WorkerPresenceSessionPublisher`. WebSocket now splits this
+  into explicit session store, server handle, selected-worker sender/registry,
+  evidence driver, and refresh-loop roles. Socket still carries the older
+  session-manager shape until the push-adapter follow-up lands.
 - `DeliveryCommandBatch` is consumer-local handoff materialization:
   `deliveryQueueKey`, handoff-owned command references, and command items only.
   It does not carry bucket, lane, target node, adapter route, connection, or
@@ -206,7 +209,7 @@ Prefer these after transport changes:
 
 ```bash
 ./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDeliveryCommandHandoffTest,TransportDeliveryCommandBatchCodecTest,RedisTransportDeliveryCommandHandoffTest,RedisTransportDeliveryFailureChannelTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,RouteEndpointIndexTest,TransportConvergenceArchitectureGuardTest
-./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,TransportResultIngressEnvelopeTest,WebSocketInputProcessorTest,WebSocketFrameReadersTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,ServerSessionManagerShutdownTest
+./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,TransportResultIngressEnvelopeTest,WebSocketInputProcessorTest,WebSocketFrameReadersTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,WebSocketSessionControllerTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest,EmbeddedPullWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 

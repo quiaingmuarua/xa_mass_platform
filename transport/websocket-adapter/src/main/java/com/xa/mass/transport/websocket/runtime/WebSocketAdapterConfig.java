@@ -1,6 +1,5 @@
 package com.xa.mass.transport.websocket.runtime;
 
-import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.TransportServerFactory;
 
 import java.util.Objects;
@@ -19,7 +18,7 @@ public final class WebSocketAdapterConfig {
     private int serverPort = 8080;
     private int maxConnections = 1000;
     private String endpointPath = "/ws";
-    private TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
+    private TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory;
 
     public WebSocketAdapterConfig() {
     }
@@ -86,12 +85,12 @@ public final class WebSocketAdapterConfig {
         this.endpointPath = Objects.requireNonNull(endpointPath, "endpointPath");
     }
 
-    public TransportServerFactory<TransportServerFactoryContext> getTransportServerFactory() {
+    public TransportServerFactory<WebSocketServerFactoryContext> getTransportServerFactory() {
         return transportServerFactory;
     }
 
     public void setTransportServerFactory(
-            TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
+            TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory) {
         this.transportServerFactory = transportServerFactory;
     }
 }

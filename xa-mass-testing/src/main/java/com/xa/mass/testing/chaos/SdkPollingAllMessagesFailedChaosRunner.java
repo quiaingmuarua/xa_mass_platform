@@ -10,10 +10,10 @@ import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
-import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.sink.ExecutionEventType;
-import com.xa.mass.sdk.worker.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.WorkerInvocation;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -216,7 +216,7 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
 
     private static final class AlwaysFailWorkerDriver implements AutoCloseable {
         private final String workerId;
-        private final PullWorkerSession session;
+        private final EmbeddedPullWorkerSession session;
         private final ChaosConfig config;
         private final AtomicBoolean running = new AtomicBoolean(false);
         private final AtomicBoolean connected = new AtomicBoolean(false);
@@ -228,7 +228,7 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
         private final CountDownLatch stopped = new CountDownLatch(1);
         private Thread pollThread;
 
-        private AlwaysFailWorkerDriver(String workerId, PullWorkerSession session, ChaosConfig config) {
+        private AlwaysFailWorkerDriver(String workerId, EmbeddedPullWorkerSession session, ChaosConfig config) {
             this.workerId = workerId;
             this.session = session;
             this.config = config;
@@ -255,21 +255,21 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
         private void runLoop() {
             try {
                 while (running.get()) {
-                    List<PulledTaskDispatch> items = session.poll(1, 0L);
+                    List<WorkerInvocation> items = session.poll(1, 0L);
                     pollCycles.incrementAndGet();
                     if (items == null || items.isEmpty()) {
                         emptyPollCycles.incrementAndGet();
                         Thread.sleep(20L);
                         continue;
                     }
-                    for (PulledTaskDispatch item : items) {
+                    for (WorkerInvocation item : items) {
                         receivedDispatches.incrementAndGet();
                         ChaosSupport.maybeSleep(config.processingDelayMillis());
                         boolean accepted = session.submitResult(
                                 item,
                                 false,
-                                "chaos-always-fail",
-                                Map.of("workerId", workerId, "forcedFailure", true)
+                                "CHAOS_ALWAYS_FAIL",
+                                Map.of("workerId", workerId, "forcedFailure", true).toString()
                         );
                         ChaosSupport.require(accepted,
                                 "failure result submission should be accepted for worker " + workerId);

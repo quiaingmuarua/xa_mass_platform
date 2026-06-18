@@ -1,6 +1,6 @@
 # WebSocket Adapter Boundary Baseline
 
-Last updated: 2026-04-29
+Last updated: 2026-06-18
 
 Status: current WebSocket adapter boundary baseline.
 
@@ -31,7 +31,15 @@ Current code centers on:
 
 - `WebSocketServerImpl`
 - `DispatcherInboundHandler`
-- `ServerSessionManager`
+- `WebSocketSessionStore`
+- `WebSocketSessionController`
+- `WebSocketServerSessionHandle`
+- `WebSocketSelectedWorkerSender`
+- `WebSocketSelectedWorkerRegistry`
+- `WebSocketSessionEvidenceDriver`
+- `WebSocketSessionRefreshLoop`
+- `WebSocketRawWorkerRouteEndpointRegistry`
+- `WebSocketEndpointInspector`
 - `WebSocketJsonFrameParser`
 - `WebSocketSessionOpenFrameReader`
 - `WebSocketResultIngressFrameReader`
@@ -71,7 +79,13 @@ Hard rules:
 ## Wiring Rules
 
 - construct codec, channels, endpoint registry, and processors before start
-- pass one endpoint-registry instance into both server and dispatcher wiring
+- keep server-facing session control separate from assigned-delivery endpoint
+  registry wiring
+- pass `WebSocketServerSessionHandle` to server/inbound wiring
+- register only `WebSocketSelectedWorkerRegistry` with the runtime-owned
+  selected-worker endpoint registry sink
+- keep `WebSocketSessionStore`, `WebSocketSessionEvidenceDriver`, and
+  `WebSocketSessionRefreshLoop` as separate adapter-local roles
 - route inbound result shells into opaque `TransportResultIngressEnvelope`
   values through `TransportResultIngressChannel`
 - bind WebSocket worker session identity only during handshake/session-open;
@@ -79,6 +93,8 @@ Hard rules:
   register or rebind sessions
 - write assigned delivery frames directly from `DeliveryCommand.payload`; do
   not route assigned dispatch through a generic task-frame codec
+- raw/manual route sending and endpoint diagnostics are explicit side roles
+  backed by session store snapshots; they are not assigned-delivery fallbacks
 - keep bootstrap defaults inside adapter-owned support code
 - do not add mutable late-binding seams like `setHandler(...)` or `registerRoute(...)`
 

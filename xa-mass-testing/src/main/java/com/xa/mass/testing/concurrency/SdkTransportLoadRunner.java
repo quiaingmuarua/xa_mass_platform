@@ -20,7 +20,7 @@ import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
-import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
@@ -31,7 +31,7 @@ import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.sdk.worker.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.WorkerInvocation;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
@@ -74,7 +74,7 @@ import java.util.concurrent.atomic.LongAdder;
  * SDK-native workers, and drives the runtime through either:
  *
  * <ul>
- *   <li>`polling`: real {@link PullWorkerSession} polling/result submission</li>
+ *   <li>`polling`: real {@link EmbeddedPullWorkerSession} polling/result submission</li>
  *   <li>`websocket`: real WebSocket-adapter scheduling/result callbacks</li>
  *   <li>`socket`: real raw socket-adapter scheduling/result callbacks</li>
  * </ul>
@@ -625,7 +625,7 @@ public final class SdkTransportLoadRunner {
 
     private static final class PollingWorkerDriver implements WorkerDriver {
         private final String workerId;
-        private final PullWorkerSession session;
+        private final EmbeddedPullWorkerSession session;
         private final LoadConfig config;
         private final RuntimeMetrics metrics;
         private final AtomicBoolean stopRequested;
@@ -636,7 +636,7 @@ public final class SdkTransportLoadRunner {
         private Thread pollThread;
 
         private PollingWorkerDriver(String workerId,
-                                    PullWorkerSession session,
+                                    EmbeddedPullWorkerSession session,
                                     LoadConfig config,
                                     RuntimeMetrics metrics,
                                     AtomicBoolean stopRequested,
@@ -661,7 +661,7 @@ public final class SdkTransportLoadRunner {
         private void runLoop() {
             try {
                 while (running.get()) {
-                    List<PulledTaskDispatch> items = session.poll(config.pollBatchSize());
+                    List<WorkerInvocation> items = session.poll(config.pollBatchSize());
                     metrics.recordReceiveBatch(items == null ? 0 : items.size());
                     if (items == null || items.isEmpty()) {
                         if (stopRequested.get()) {
@@ -670,9 +670,9 @@ public final class SdkTransportLoadRunner {
                         Thread.sleep(20L);
                         continue;
                     }
-                    for (PulledTaskDispatch item : items) {
+                    for (WorkerInvocation item : items) {
                         processingExecutor.submit(() -> processTaskDispatch(item, workerId, config, metrics, deliveryAttempts,
-                                (success, detail, output) -> session.submitResult(item, success, detail, output)));
+                                (success, detail, output) -> submitPollingResult(session, item, success, detail, output)));
                     }
                 }
             } catch (InterruptedException e) {
@@ -898,7 +898,24 @@ public final class SdkTransportLoadRunner {
         boolean submit(boolean success, String detail, Map<String, Object> output);
     }
 
-    private static void processTaskDispatch(PulledTaskDispatch item,
+    private static boolean submitPollingResult(EmbeddedPullWorkerSession session,
+                                               WorkerInvocation item,
+                                               boolean success,
+                                               String detail,
+                                               Map<String, Object> output) {
+        String resultCode = success ? null : normalizeResultCode(detail);
+        String result = FRAME_GSON.toJson(output != null ? output : Map.of());
+        return session.submitResult(item, success, resultCode, result);
+    }
+
+    private static String normalizeResultCode(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "SYNTHETIC_FAILURE";
+        }
+        return detail.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_");
+    }
+
+    private static void processTaskDispatch(WorkerInvocation item,
                                             String workerId,
                                             LoadConfig config,
                                             RuntimeMetrics metrics,

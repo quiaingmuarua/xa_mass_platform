@@ -10,10 +10,10 @@ import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
-import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.sink.ExecutionEventType;
-import com.xa.mass.sdk.worker.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.WorkerInvocation;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -252,7 +252,7 @@ public final class SdkPollingMixedResultsChaosRunner {
 
     private static final class MixedResultWorkerDriver implements AutoCloseable {
         private final String workerId;
-        private final PullWorkerSession session;
+        private final EmbeddedPullWorkerSession session;
         private final ChaosConfig config;
         private final AtomicBoolean running = new AtomicBoolean(false);
         private final AtomicBoolean connected = new AtomicBoolean(false);
@@ -265,7 +265,7 @@ public final class SdkPollingMixedResultsChaosRunner {
         private final CountDownLatch stopped = new CountDownLatch(1);
         private Thread pollThread;
 
-        private MixedResultWorkerDriver(String workerId, PullWorkerSession session, ChaosConfig config) {
+        private MixedResultWorkerDriver(String workerId, EmbeddedPullWorkerSession session, ChaosConfig config) {
             this.workerId = workerId;
             this.session = session;
             this.config = config;
@@ -293,14 +293,14 @@ public final class SdkPollingMixedResultsChaosRunner {
         private void runLoop() {
             try {
                 while (running.get()) {
-                    List<PulledTaskDispatch> items = session.poll(1, 0L);
+                    List<WorkerInvocation> items = session.poll(1, 0L);
                     pollCycles.incrementAndGet();
                     if (items == null || items.isEmpty()) {
                         emptyPollCycles.incrementAndGet();
                         Thread.sleep(20L);
                         continue;
                     }
-                    for (PulledTaskDispatch item : items) {
+                    for (WorkerInvocation item : items) {
                         receivedDispatches.incrementAndGet();
                         ChaosSupport.maybeSleep(config.processingDelayMillis());
 
@@ -308,12 +308,12 @@ public final class SdkPollingMixedResultsChaosRunner {
                         boolean accepted = session.submitResult(
                                 item,
                                 !shouldFail,
-                                shouldFail ? "chaos-mixed-fail" : "ok",
+                                shouldFail ? "CHAOS_MIXED_FAIL" : null,
                                 Map.of(
                                         "workerId", workerId,
                                         "shouldFail", shouldFail,
                                         "resultCorrelationRef", item.getResultCorrelationRef()
-                                )
+                                ).toString()
                         );
                         ChaosSupport.require(accepted,
                                 "result submission should be accepted for " + item.getResultCorrelationRef());
@@ -331,7 +331,7 @@ public final class SdkPollingMixedResultsChaosRunner {
             }
         }
 
-        private static boolean isShouldFail(PulledTaskDispatch item) {
+        private static boolean isShouldFail(WorkerInvocation item) {
             Map<String, Object> input = item.getInput();
             if (input == null) {
                 return false;

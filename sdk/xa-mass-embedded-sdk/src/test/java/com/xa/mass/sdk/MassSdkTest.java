@@ -54,7 +54,7 @@ import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
-import com.xa.mass.transport.websocket.session.ServerSessionManager;
+import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.CredentialPrincipalProfile;
 import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
@@ -106,7 +106,6 @@ import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
@@ -222,13 +221,13 @@ class MassSdkTest {
 
     @Test
     void customTransportServerFactoryOverridesBundledWebSocketAdapter() {
-        AtomicReference<TransportServerFactoryContext> capturedContext = new AtomicReference<>();
+        AtomicReference<WebSocketServerFactoryContext> capturedContext = new AtomicReference<>();
         AtomicBoolean started = new AtomicBoolean(false);
         AtomicBoolean stopped = new AtomicBoolean(false);
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("transport-input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("transport-output", TransportOutboundMessage.class);
 
-        TransportServerFactory<TransportServerFactoryContext> factory = context -> {
+        TransportServerFactory<WebSocketServerFactoryContext> factory = context -> {
             capturedContext.set(context);
             return new TransportServer() {
                 @Override
@@ -266,7 +265,7 @@ class MassSdkTest {
             assertNotNull(capturedContext.get());
             Assertions.assertEquals(19092, capturedContext.get().getPort());
             Assertions.assertEquals("/custom-transport", capturedContext.get().getEndpointPath());
-            assertNotNull(capturedContext.get().getEndpointRegistry());
+            assertNotNull(capturedContext.get().getSessionHandle());
         } finally {
             app.stop();
         }
@@ -738,37 +737,7 @@ class MassSdkTest {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
 
-        assertTrue(error.getMessage().contains("WebSocket-managed endpoint registry"));
-    }
-
-    @Test
-    void bundledWebSocketTransportBootstrapRejectsMismatchedSessionRegistryAdapterId() {
-        TransportConfig config = new TransportConfig();
-        config.getBundledWebSocketAdapterConfig().setAdapterId("ws-public");
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
-                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
-
-        IllegalStateException error;
-        try {
-            error = assertThrows(
-                    IllegalStateException.class,
-                    () -> adapterBootstrap(runtimeComposition, "ws-public").contribute(
-                            new TransportAdapterBootstrapContext(
-                                    new ServerSessionManager("websocket"),
-                                    mock(TransportResultIngressChannel.class),
-                                    NoopWorkerPresenceIngress.INSTANCE,
-                                    new InMemoryTransportEndpointLeaseStore(),
-                                    deliveryService(),
-                                    runtimeTaskExecutor
-                            )
-                    )
-            );
-        } finally {
-            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
-        }
-
-        assertTrue(error.getMessage().contains("endpoint registry adapterId 'ws-public'"));
+        assertTrue(error.getMessage().contains("composite selected-worker endpoint registry"));
     }
 
     @Test
@@ -3298,7 +3267,12 @@ class MassSdkTest {
         assertMissingMethod(TransportRuntimeComposition.class, "getTransportServerPort");
         assertMissingMethod(TransportRuntimeComposition.class, "getTransportEndpointPath");
         assertMissingMethod(TransportRuntimeComposition.class, "getMaxConnections");
-        Assertions.assertThrows(NoSuchMethodException.class, () -> TransportServerFactoryContext.class.getDeclaredMethod("getFrameCodec"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.runtime.TransportServerFactoryContext"));
+        Assertions.assertThrows(NoSuchMethodException.class,
+                () -> WebSocketServerFactoryContext.class.getDeclaredMethod("getEndpointRegistry"));
+        Assertions.assertThrows(NoSuchMethodException.class,
+                () -> WebSocketServerFactoryContext.class.getDeclaredMethod("getFrameCodec"));
         Assertions.assertThrows(ClassNotFoundException.class,
                 () -> Class.forName("com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec"));
         Assertions.assertThrows(ClassNotFoundException.class,

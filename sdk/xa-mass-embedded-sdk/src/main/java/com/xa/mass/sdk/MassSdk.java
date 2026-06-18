@@ -15,11 +15,11 @@ import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
-import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.TransportServerFactory;
+import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
 
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -316,7 +316,7 @@ public final class MassSdk {
         }
 
         public WebSocketAdapterOptions transportServerFactory(
-                TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
+                TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory) {
             delegate.transportServerFactory(transportServerFactory);
             return this;
         }

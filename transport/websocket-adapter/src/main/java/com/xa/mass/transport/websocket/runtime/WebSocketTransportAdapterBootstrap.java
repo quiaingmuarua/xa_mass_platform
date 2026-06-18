@@ -5,7 +5,6 @@ import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
-import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
@@ -18,8 +17,14 @@ import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
 import com.xa.mass.transport.websocket.session.WebSocketEndpointInspector;
-import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import com.xa.mass.transport.websocket.session.WebSocketRawWorkerRouteEndpointRegistry;
+import com.xa.mass.transport.websocket.session.WebSocketSelectedWorkerRegistry;
+import com.xa.mass.transport.websocket.session.WebSocketSelectedWorkerSender;
+import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
+import com.xa.mass.transport.websocket.session.WebSocketSessionController;
+import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
+import com.xa.mass.transport.websocket.session.WebSocketSessionRefreshLoop;
+import com.xa.mass.transport.websocket.session.WebSocketSessionStore;
 
 /**
  * Adapter-owned bootstrap for embedded WebSocket runtime contribution.
@@ -42,9 +47,27 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
     @Override
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
-        ServerSessionManager endpointRegistry = resolveEndpointRegistry(context);
+        WebSocketSessionStore sessionStore = new WebSocketSessionStore(config.getAdapterId());
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(config.getAdapterId());
+        evidenceDriver.setEndpointLeaseStore(context.getEndpointLeaseStore());
+        evidenceDriver.setDeliveryCommandConsumerRegistry(context.getDeliveryCommandConsumerRegistry());
+        evidenceDriver.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
+        WebSocketSessionRefreshLoop refreshLoop =
+                new WebSocketSessionRefreshLoop(config.getAdapterId(), sessionStore, evidenceDriver);
+        WebSocketSessionController sessionController = new WebSocketSessionController(
+                sessionStore,
+                evidenceDriver,
+                refreshLoop
+        );
+        WebSocketSelectedWorkerSender selectedWorkerSender = new WebSocketSelectedWorkerSender(sessionStore);
+        WebSocketSelectedWorkerRegistry selectedWorkerRegistry = new WebSocketSelectedWorkerRegistry(
+                config.getAdapterId(),
+                sessionStore,
+                selectedWorkerSender,
+                sessionController
+        );
         WebSocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
-                new WebSocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), endpointRegistry);
+                new WebSocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionStore);
         WebSocketJsonFrameParser frameParser = new WebSocketJsonFrameParser();
         WebSocketResultIngressFrameReader resultFrameReader =
                 new WebSocketResultIngressFrameReader(config.getAdapterId(), frameParser);
@@ -52,7 +75,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 new WebSocketSessionOpenFrameReader(frameParser);
         WebSocketCommandDispatchContext commandContext = new WebSocketCommandDispatchContext(
                 config.getAdapterId(),
-                endpointRegistry
+                selectedWorkerRegistry
         );
         WebSocketDispatcherContext dispatcherContext = new WebSocketDispatcherContext(
                 config.getAdapterId(),
@@ -64,6 +87,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
+            registerSelectedWorkerRegistry(context, selectedWorkerRegistry);
             WebSocketTaskDispatchChannel commandExecutor =
                     new WebSocketTaskDispatchChannel(commandContext, context.getDeliveryService());
             contribution.addTransportBinding(TransportBinding.builder(
@@ -77,13 +101,13 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                     config.getAdapterId(),
                     rawRouteEndpointRegistry
             ));
-            contribution.addEndpointInspector(new WebSocketEndpointInspector(endpointRegistry));
+            contribution.addEndpointInspector(new WebSocketEndpointInspector(sessionStore));
         }
 
         TransportServer transportServer = createTransportServer(
                 dispatcherContext,
                 sessionOpenFrameReader,
-                endpointRegistry
+                sessionController
         );
         if (transportServer != null) {
             contribution.addTransportServer(transportServer);
@@ -91,43 +115,26 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         return contribution.build();
     }
 
-    private ServerSessionManager resolveEndpointRegistry(
-            TransportAdapterBootstrapContext context) {
-        if (context.getEndpointRegistry() instanceof ServerSessionManager sessionManager) {
-            if (!config.getAdapterId().equalsIgnoreCase(sessionManager.getAdapterId())) {
-                throw new IllegalStateException("WebSocket transport requires endpoint registry adapterId '"
-                        + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
-            }
-            sessionManager.setEndpointLeaseStore(context.getEndpointLeaseStore());
-            sessionManager.setDeliveryCommandConsumerRegistry(context.getDeliveryCommandConsumerRegistry());
-            sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
-            return sessionManager;
-        }
+    private void registerSelectedWorkerRegistry(TransportAdapterBootstrapContext context,
+                                                WebSocketSelectedWorkerRegistry selectedWorkerRegistry) {
         if (context.getEndpointRegistry() instanceof CompositeWorkerEndpointRegistry composite) {
-            ServerSessionManager sessionManager =
-                    composite.getOrRegister(
-                            config.getAdapterId(),
-                            () -> new ServerSessionManager(config.getAdapterId())
-            );
-            sessionManager.setEndpointLeaseStore(context.getEndpointLeaseStore());
-            sessionManager.setDeliveryCommandConsumerRegistry(context.getDeliveryCommandConsumerRegistry());
-            sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
-            return sessionManager;
+            composite.register(config.getAdapterId(), selectedWorkerRegistry);
+            return;
         }
-        throw new IllegalStateException("WebSocket transport requires a WebSocket-managed endpoint registry");
+        throw new IllegalStateException("WebSocket transport requires a composite selected-worker endpoint registry");
     }
 
     private TransportServer createTransportServer(WebSocketDispatcherContext dispatcherContext,
                                                   WebSocketSessionOpenFrameReader sessionOpenFrameReader,
-                                                  ServerSessionManager sessionManager) {
+                                                  WebSocketServerSessionHandle sessionHandle) {
         if (!config.isServerEnabled()) {
             return null;
         }
-        TransportServerFactory<TransportServerFactoryContext> transportServerFactory =
+        TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory =
                 config.getTransportServerFactory();
         if (transportServerFactory != null) {
-            return transportServerFactory.create(new TransportServerFactoryContext(
-                    sessionManager,
+            return transportServerFactory.create(new WebSocketServerFactoryContext(
+                    sessionHandle,
                     new WebSocketInputProcessor(dispatcherContext)::process,
                     config.getServerPort(),
                     config.getEndpointPath()
@@ -140,7 +147,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 dispatcherContext.getFrameParser(),
                 sessionOpenFrameReader,
                 new WebSocketInputProcessor(dispatcherContext)::process,
-                sessionManager
+                sessionHandle
         );
     }
 

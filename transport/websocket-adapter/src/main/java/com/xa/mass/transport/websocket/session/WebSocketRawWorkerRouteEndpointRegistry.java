@@ -13,12 +13,12 @@ import java.util.Objects;
 public final class WebSocketRawWorkerRouteEndpointRegistry implements RawWorkerRouteEndpointRegistry {
 
     private final String adapterId;
-    private final ServerSessionManager sessionManager;
+    private final WebSocketSessionStore sessionStore;
 
     public WebSocketRawWorkerRouteEndpointRegistry(String adapterId,
-                                                   ServerSessionManager sessionManager) {
+                                                   WebSocketSessionStore sessionStore) {
         this.adapterId = requireAdapterId(adapterId);
-        this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
+        this.sessionStore = Objects.requireNonNull(sessionStore, "sessionStore");
     }
 
     @Override
@@ -26,7 +26,11 @@ public final class WebSocketRawWorkerRouteEndpointRegistry implements RawWorkerR
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return sessionManager.sendToRoute(routeKey, message);
+        for (WebSocketSessionRecord record : sessionStore.activeRecordsForEndpointAddress(routeKey)) {
+            record.send(message);
+            return true;
+        }
+        return false;
     }
 
     @Override
@@ -34,7 +38,7 @@ public final class WebSocketRawWorkerRouteEndpointRegistry implements RawWorkerR
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return sessionManager.isAdapterRouteOnline(this.adapterId, routeKey);
+        return sessionStore.hasActiveEndpointAddress(routeKey);
     }
 
     private boolean matchesAdapter(String adapterId) {

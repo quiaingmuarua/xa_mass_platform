@@ -16,7 +16,7 @@ import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
-import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
@@ -352,7 +352,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         WorkerRegistrationSpineSupport.bindNodeGroup(app, adapterNodeId, workerGroupId);
     }
 
-    public PullWorkerSession pullWorker(String workerId) {
+    public EmbeddedPullWorkerSession pullWorker(String workerId) {
         return app.pullWorker(workerId);
     }
 

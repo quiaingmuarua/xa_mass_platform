@@ -1,7 +1,7 @@
 package com.xa.mass.testing.chaos;
 
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.testing.chaos.support.ChaosProofAssertions;
 import com.xa.mass.testing.chaos.support.ChaosTraceArtifacts;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
@@ -12,7 +12,7 @@ import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
-import com.xa.mass.sdk.worker.PulledTaskDispatch;
+import com.xa.mass.sdk.worker.WorkerInvocation;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -246,7 +246,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
 
     private static final class PollingWorkerDriver implements AutoCloseable {
         private final String workerId;
-        private final PullWorkerSession session;
+        private final EmbeddedPullWorkerSession session;
         private final ChaosConfig config;
         private final WorkerMode mode;
         private final AtomicBoolean running = new AtomicBoolean(false);
@@ -258,12 +258,12 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
         private final AtomicInteger receivedDispatches = new AtomicInteger();
         private final AtomicInteger stalledDispatches = new AtomicInteger();
         private final AtomicInteger successfulResults = new AtomicInteger();
-        private final AtomicReference<PulledTaskDispatch> stalledDispatch = new AtomicReference<>();
+        private final AtomicReference<WorkerInvocation> stalledDispatch = new AtomicReference<>();
         private final CountDownLatch stopped = new CountDownLatch(1);
         private Thread pollThread;
 
         private PollingWorkerDriver(String workerId,
-                                    PullWorkerSession session,
+                                    EmbeddedPullWorkerSession session,
                                     ChaosConfig config,
                                     WorkerMode mode) {
             this.workerId = workerId;
@@ -297,7 +297,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
         }
 
         private String stalledCorrelationRef() {
-            PulledTaskDispatch item = stalledDispatch.get();
+            WorkerInvocation item = stalledDispatch.get();
             return item != null ? item.getResultCorrelationRef() : null;
         }
 
@@ -317,14 +317,14 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
         private void runLoop() {
             try {
                 while (running.get()) {
-                    List<PulledTaskDispatch> items = session.poll(1, 0L);
+                    List<WorkerInvocation> items = session.poll(1, 0L);
                     pollCycles.incrementAndGet();
                     if (items == null || items.isEmpty()) {
                         emptyPollCycles.incrementAndGet();
                         Thread.sleep(20L);
                         continue;
                     }
-                    for (PulledTaskDispatch item : items) {
+                    for (WorkerInvocation item : items) {
                         receivedDispatches.incrementAndGet();
                         if (mode == WorkerMode.STALL_WITHOUT_RESULT && stallBudgetConsumed.compareAndSet(false, true)) {
                             stalledDispatch.set(item);
@@ -342,17 +342,17 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
             }
         }
 
-        private void processNormally(PulledTaskDispatch item) {
+        private void processNormally(WorkerInvocation item) {
             ChaosSupport.maybeSleep(config.processingDelayMillis());
             boolean accepted = session.submitResult(
                     item,
                     true,
-                    "ok",
+                    null,
                     Map.of(
                             "workerId", workerId,
                             "mode", mode.name(),
                             "receivedDispatches", receivedDispatches.get()
-                    )
+                    ).toString()
             );
             ChaosSupport.require(accepted, "polling result submission should be accepted for worker " + workerId);
             successfulResults.incrementAndGet();

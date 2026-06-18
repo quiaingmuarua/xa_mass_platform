@@ -6,7 +6,7 @@ import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionIdentity;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
-import com.xa.mass.transport.websocket.session.ServerSessionManager;
+import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -21,7 +21,7 @@ import java.util.Objects;
 
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
-    private final ServerSessionManager sessionManager;
+    private final WebSocketServerSessionHandle sessionHandle;
     private final WebSocketJsonFrameParser frameParser;
     private final WebSocketSessionOpenFrameReader sessionOpenFrameReader;
     private final WebSocketInboundMessageSink inboundMessageSink;
@@ -29,8 +29,8 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
     public DispatcherInboundHandler(WebSocketJsonFrameParser frameParser,
                                     WebSocketSessionOpenFrameReader sessionOpenFrameReader,
                                     WebSocketInboundMessageSink inboundMessageSink,
-                                    ServerSessionManager sessionManager) {
-        this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
+                                    WebSocketServerSessionHandle sessionHandle) {
+        this.sessionHandle = Objects.requireNonNull(sessionHandle, "sessionHandle");
         this.frameParser = Objects.requireNonNull(frameParser, "frameParser");
         this.sessionOpenFrameReader = Objects.requireNonNull(sessionOpenFrameReader, "sessionOpenFrameReader");
         this.inboundMessageSink = Objects.requireNonNull(inboundMessageSink, "inboundMessageSink");
@@ -50,9 +50,9 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 return;
             }
 
-            String workerId = sessionManager.getWorkerId(ctx.channel());
-            String workerGroupId = sessionManager.getDeliveryBucketId(ctx.channel());
-            String routeKey = sessionManager.getRouteKey(ctx.channel());
+            String workerId = sessionHandle.getWorkerId(ctx.channel());
+            String workerGroupId = sessionHandle.getDeliveryBucketId(ctx.channel());
+            String routeKey = sessionHandle.getEndpointAddress(ctx.channel());
             if (workerId == null) {
                 sendError(ctx, "SESSION_NOT_BOUND", "WebSocket session is not bound to a worker");
                 return;
@@ -137,15 +137,15 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 || workerId == null || workerId.isBlank()) {
             return;
         }
-        String existingWorkerGroupId = sessionManager.getDeliveryBucketId(ctx.channel());
-        String existingWorkerId = sessionManager.getWorkerId(ctx.channel());
-        String existingRouteKey = sessionManager.getRouteKey(ctx.channel());
+        String existingWorkerGroupId = sessionHandle.getDeliveryBucketId(ctx.channel());
+        String existingWorkerId = sessionHandle.getWorkerId(ctx.channel());
+        String existingRouteKey = sessionHandle.getEndpointAddress(ctx.channel());
         if (workerGroupId.equals(existingWorkerGroupId)
                 && workerId.equals(existingWorkerId)
                 && routeKey.equals(existingRouteKey)
-                && sessionManager.getChannelContext(routeKey) != null) {
+                && sessionHandle.getChannelContext(routeKey) != null) {
             return;
         }
-        sessionManager.addSession(workerGroupId, routeKey, workerId, ctx.channel(), ctx);
+        sessionHandle.addSession(workerGroupId, routeKey, workerId, ctx.channel(), ctx);
     }
 }

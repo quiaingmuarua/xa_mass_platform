@@ -1,6 +1,6 @@
 # Transport Push Adapter Session Capability Convergence Roadmap
 
-Status: proposed umbrella follow-up after polling adapter capability split.
+Status: active umbrella; WebSocket shape implemented, Socket follow-up remains.
 
 WebSocket implementation detail is now tracked by
 `TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
@@ -17,10 +17,10 @@ PollingSessionEvidenceDriver
 ```
 
 WebSocket and Socket assigned-delivery executors are already narrow enough for
-the current command path, but their session managers still combine selected
-worker session indexing, final-hop send, endpoint lease projection, worker
-session-presence projection, refresh-loop ownership, raw/manual route
-side-channels, and diagnostics.
+the current command path. WebSocket now uses explicit session store,
+selected-worker sender/registry, evidence driver, refresh loop, server handle,
+raw side-channel, and diagnostics roles. Socket still carries the older broad
+session-manager shape and should follow the WebSocket-proven split.
 
 This roadmap tracks the push-adapter follow-up so the polling roadmap can close
 without pretending WebSocket/socket session managers have been rewritten. The
@@ -33,15 +33,15 @@ should follow after the WebSocket shape is proven.
   by `selectedWorkerId` through `WorkerEndpointRegistry.sendToSelectedWorker`.
 - `SocketTaskDispatchChannel` implements `AdapterCommandExecutor` and sends by
   `selectedWorkerId` after socket frame encoding.
-- `ServerSessionManager` implements `WorkerEndpointRegistry`, owns session
-  indexes, selected-worker send, endpoint lease publisher wiring,
-  worker-presence publisher wiring, endpoint lease refresh-loop scheduling, and
-  shutdown/replacement behavior.
+- WebSocket no longer has `ServerSessionManager`; assigned delivery uses
+  `WebSocketSelectedWorkerRegistry` / `WebSocketSelectedWorkerSender`, server
+  wiring uses `WebSocketServerSessionHandle`, and session evidence uses
+  `WebSocketSessionEvidenceDriver`.
 - `SocketSessionManager` mirrors the same broad session-owner shape for socket
   workers.
 - Raw/manual route side-channels and diagnostics are already in dedicated
-  wrapper classes, but those wrappers still delegate into the broad session
-  managers.
+  classes. In WebSocket they are backed by `WebSocketSessionStore`; in Socket
+  they still delegate into the broad session manager.
 - Push adapter bootstrap creates a command executor plus server/raw/diagnostic
   contributions, while the session manager remains the shared object behind
   several roles.
@@ -97,17 +97,18 @@ manager.
 
 ## PSA-0 Inventory And Proof Boundaries
 
-WebSocket note: this inventory is owned in more detail by
-`TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
+WebSocket note: the concrete WebSocket implementation is owned in more detail
+by `TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 Keep this umbrella section as the cross-adapter checklist and Socket reminder.
 
 Goal: classify WebSocket/socket session-manager roles before any rewrite.
 
 Scope:
 
-- Inventory `ServerSessionManager` and `SocketSessionManager` methods by role:
-  selected-worker send, session store, endpoint evidence, presence evidence,
-  refresh loop, shutdown/replacement, raw/manual send, diagnostics.
+- Inventory `SocketSessionManager` methods by role: selected-worker send,
+  session store, endpoint evidence, presence evidence, refresh loop,
+  shutdown/replacement, raw/manual send, diagnostics. Use the WebSocket split
+  as the reference shape.
 - Separate production usage from tests.
 - Identify which behavior tests must stay green before and after the split.
 
@@ -183,7 +184,7 @@ Acceptance:
 ## Verification Candidates
 
 ```bash
-./mvnw -q -pl transport/websocket-adapter,transport/socket-adapter -am test -Dtest=WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,DispatcherInboundHandlerTest,ServerSessionManagerShutdownTest,SocketSessionManagerTest,SocketTransportServerTest,WebSocketFrameReadersTest,SocketTransportFrameCodecTest
+./mvnw -q -pl transport/websocket-adapter,transport/socket-adapter -am test -Dtest=WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,DispatcherInboundHandlerTest,WebSocketSessionControllerTest,SocketSessionManagerTest,SocketTransportServerTest,WebSocketFrameReadersTest,SocketTransportFrameCodecTest
 ./mvnw -q -pl transport/transport_runtime -am test -Dtest=TransportConvergenceArchitectureGuardTest,CompositeWorkerEndpointRegistryTest,RouteEndpointIndexTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk,xa-mass-server -am test -Dtest=MassApplicationDistributedTransportTest,ExternalWorkerRealtimeRegistrationIntegrationTest
 ```
