@@ -124,9 +124,9 @@ class WebSocketSessionControllerTest {
         manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-1", firstChannel);
         manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-2", secondChannel);
 
-        assertEquals(firstChannel, sessionStore.activeRecordForWorker("worker-1").channel());
-        assertEquals(secondChannel, sessionStore.activeRecordForWorker("worker-2").channel());
-        assertEquals(2, sessionStore.activeRecordsForEndpointAddress("group-route").size());
+        assertEquals(firstChannel, sessionStore.activeChannelForWorker("worker-1"));
+        assertEquals(secondChannel, sessionStore.activeChannelForWorker("worker-2"));
+        assertEquals(2, sessionStore.activeChannelsForEndpointAddress("group-route").size());
     }
 
     @Test
@@ -142,7 +142,7 @@ class WebSocketSessionControllerTest {
         manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "worker-1", secondChannel);
 
         assertEquals(1, sessionStore.activeConnectionCount());
-        assertEquals(secondChannel, sessionStore.activeRecordForEndpointAddress("worker-1").channel());
+        assertEquals(secondChannel, sessionStore.activeChannelForEndpointAddress("worker-1"));
         verify(firstChannel).close();
         assertEquals(List.of(
                 "connected:worker-1:websocket:worker-1:worker-1-old:websocket connected:worker-1-old",
@@ -179,12 +179,12 @@ class WebSocketSessionControllerTest {
         manager.addSession(DELIVERY_BUCKET_ID, "route-new", "worker-1", secondChannel);
 
         assertEquals(1, sessionStore.activeConnectionCount());
-        assertNull(sessionStore.activeRecordForEndpointAddress("route-old"));
-        assertEquals(secondChannel, sessionStore.activeRecordForEndpointAddress("route-new").channel());
+        assertNull(sessionStore.activeChannelForEndpointAddress("route-old"));
+        assertEquals(secondChannel, sessionStore.activeChannelForEndpointAddress("route-new"));
         assertEquals("route-new", endpoint(endpointLeaseStore, "worker-1").endpointAddress());
         verify(firstChannel).close();
 
-        assertEquals(secondChannel, sessionStore.activeRecordForWorker("worker-1").channel());
+        assertEquals(secondChannel, sessionStore.activeChannelForWorker("worker-1"));
     }
 
     @Test
@@ -199,7 +199,7 @@ class WebSocketSessionControllerTest {
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", firstChannel);
 
-        assertEquals(secondChannel, sessionStore.activeRecordForEndpointAddress("route-1").channel());
+        assertEquals(secondChannel, sessionStore.activeChannelForEndpointAddress("route-1"));
         assertEquals("worker-1-new", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
         verify(firstChannel).close();
     }
@@ -277,7 +277,7 @@ class WebSocketSessionControllerTest {
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
         evidenceDriver.setEndpointLeaseStore(secondStore);
-        evidenceDriver.projectActiveSessions(sessionStore.activeRecords(), "websocket endpoint lease store replaced");
+        evidenceDriver.projectActiveSessions(sessionStore.activeSessionSnapshots(), "websocket endpoint lease store replaced");
 
         assertTrue(hasEndpoint(secondStore, "worker-1"));
         assertEquals("route-1", endpoint(secondStore, "worker-1").endpointAddress());

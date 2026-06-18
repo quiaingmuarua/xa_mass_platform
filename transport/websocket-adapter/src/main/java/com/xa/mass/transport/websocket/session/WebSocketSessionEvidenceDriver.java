@@ -34,65 +34,65 @@ public final class WebSocketSessionEvidenceDriver {
         return endpointLeasePublisher.getLeaseMillis();
     }
 
-    public void connected(WebSocketSessionRecord record, String reason) {
+    public void connected(WebSocketSessionStore.SessionSnapshot session, String reason) {
         workerPresencePublisher.sessionConnected(
-                record.workerId(),
-                record.endpointAddress(),
-                record.sessionHandle(),
+                session.workerId(),
+                session.endpointAddress(),
+                session.sessionHandle(),
                 reason,
-                record.sessionHandle()
+                session.sessionHandle()
         );
         endpointLeasePublisher.claim(
-                record.workerId(),
-                record.deliveryBucketId(),
-                record.endpointAddress(),
-                record.sessionHandle(),
+                session.workerId(),
+                session.deliveryBucketId(),
+                session.endpointAddress(),
+                session.sessionHandle(),
                 reason
         );
     }
 
-    public void heartbeat(WebSocketSessionRecord record, String reason) {
+    public void heartbeat(WebSocketSessionStore.SessionSnapshot session, String reason) {
         workerPresencePublisher.sessionHeartbeat(
-                record.workerId(),
-                record.endpointAddress(),
-                record.sessionHandle(),
+                session.workerId(),
+                session.endpointAddress(),
+                session.sessionHandle(),
                 reason,
-                record.sessionHandle()
+                session.sessionHandle()
         );
         endpointLeasePublisher.refresh(
-                record.workerId(),
-                record.deliveryBucketId(),
-                record.endpointAddress(),
-                record.sessionHandle(),
+                session.workerId(),
+                session.deliveryBucketId(),
+                session.endpointAddress(),
+                session.sessionHandle(),
                 reason
         );
     }
 
-    public void disconnected(WebSocketSessionRecord record, String reason) {
+    public void disconnected(WebSocketSessionStore.SessionSnapshot session, String reason) {
         workerPresencePublisher.sessionDisconnected(
-                record.workerId(),
-                record.endpointAddress(),
-                record.sessionHandle(),
+                session.workerId(),
+                session.endpointAddress(),
+                session.sessionHandle(),
                 reason,
-                record.sessionHandle()
+                session.sessionHandle()
         );
         endpointLeasePublisher.release(
-                record.workerId(),
-                record.deliveryBucketId(),
-                record.endpointAddress(),
-                record.sessionHandle(),
+                session.workerId(),
+                session.deliveryBucketId(),
+                session.endpointAddress(),
+                session.sessionHandle(),
                 reason
         );
     }
 
-    public void projectActiveSessions(List<WebSocketSessionRecord> records, String reason) {
-        for (WebSocketSessionRecord record : records) {
-            if (record != null && record.isActive()) {
+    public void projectActiveSessions(List<WebSocketSessionStore.SessionSnapshot> sessions, String reason) {
+        for (WebSocketSessionStore.SessionSnapshot session : sessions) {
+            if (session != null) {
                 endpointLeasePublisher.claim(
-                        record.workerId(),
-                        record.deliveryBucketId(),
-                        record.endpointAddress(),
-                        record.sessionHandle(),
+                        session.workerId(),
+                        session.deliveryBucketId(),
+                        session.endpointAddress(),
+                        session.sessionHandle(),
                         reason
                 );
             }

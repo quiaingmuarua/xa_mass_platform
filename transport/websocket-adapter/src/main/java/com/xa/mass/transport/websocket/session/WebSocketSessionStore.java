@@ -13,9 +13,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class WebSocketSessionStore {
 
     private final String adapterId;
-    private final Map<String, WebSocketSessionRecord> recordsByWorkerId = new LinkedHashMap<>();
-    private final Map<Channel, WebSocketSessionRecord> recordsByChannel = new LinkedHashMap<>();
-    private final Map<String, LinkedHashMap<String, WebSocketSessionRecord>> recordsByEndpointAddress = new LinkedHashMap<>();
+    private final Map<String, Entry> recordsByWorkerId = new LinkedHashMap<>();
+    private final Map<Channel, Entry> recordsByChannel = new LinkedHashMap<>();
+    private final Map<String, LinkedHashMap<String, Entry>> recordsByEndpointAddress = new LinkedHashMap<>();
     private final Set<Channel> retiredChannels = ConcurrentHashMap.newKeySet();
 
     public WebSocketSessionStore(String adapterId) {
@@ -30,18 +30,18 @@ public final class WebSocketSessionStore {
         String normalizedEndpointAddress = requireText(endpointAddress, "endpointAddress");
         String normalizedWorkerId = requireText(workerId, "workerId");
         if (retiredChannels.contains(channel)) {
-            return new BindResult(null, null, true, true, 0);
+            return new BindResult(null, null, null, true, true, 0);
         }
-        WebSocketSessionRecord existingChannelRecord = recordsByChannel.get(channel);
-        if (existingChannelRecord != null
-                && normalizedEndpointAddress.equals(existingChannelRecord.endpointAddress())
-                && normalizedWorkerId.equals(existingChannelRecord.workerId())
-                && existingChannelRecord.isActive()) {
-            return new BindResult(existingChannelRecord, null, true, false, 0);
+        Entry existingChannelEntry = recordsByChannel.get(channel);
+        if (existingChannelEntry != null
+                && normalizedEndpointAddress.equals(existingChannelEntry.endpointAddress())
+                && normalizedWorkerId.equals(existingChannelEntry.workerId())
+                && existingChannelEntry.isActive()) {
+            return new BindResult(existingChannelEntry.snapshot(), null, null, true, false, 0);
         }
 
-        WebSocketSessionRecord replacedWorkerRecord = activeRecordForWorker(normalizedWorkerId, channel);
-        WebSocketSessionRecord currentRecord = new WebSocketSessionRecord(
+        Entry replacedWorkerEntry = activeEntryForWorker(normalizedWorkerId, channel);
+        Entry currentEntry = new Entry(
                 normalizedDeliveryBucketId,
                 normalizedEndpointAddress,
                 normalizedWorkerId,
@@ -49,34 +49,41 @@ public final class WebSocketSessionStore {
         );
 
         int activeCountDelta = 0;
-        if (existingChannelRecord != null) {
-            removeRecord(existingChannelRecord, false);
+        if (existingChannelEntry != null) {
+            removeEntry(existingChannelEntry, false);
         } else {
             activeCountDelta++;
         }
 
-        putRecord(currentRecord);
+        putEntry(currentEntry);
 
-        if (replacedWorkerRecord != null) {
-            removeRecord(replacedWorkerRecord, true);
-            retiredChannels.add(replacedWorkerRecord.channel());
+        if (replacedWorkerEntry != null) {
+            removeEntry(replacedWorkerEntry, true);
+            retiredChannels.add(replacedWorkerEntry.channel());
             activeCountDelta--;
         }
-        return new BindResult(currentRecord, replacedWorkerRecord, false, false, activeCountDelta);
+        return new BindResult(
+                currentEntry.snapshot(),
+                snapshotOrNull(replacedWorkerEntry),
+                replacedWorkerEntry == null ? null : replacedWorkerEntry.channel(),
+                false,
+                false,
+                activeCountDelta
+        );
     }
 
     public synchronized RemoveResult remove(Channel channel) {
-        WebSocketSessionRecord removed = recordsByChannel.get(channel);
+        Entry removed = recordsByChannel.get(channel);
         if (removed == null) {
             boolean retired = retiredChannels.remove(channel);
             return new RemoveResult(null, false, retired, 0);
         }
-        removeRecord(removed, true);
-        return new RemoveResult(removed, true, false, -1);
+        removeEntry(removed, true);
+        return new RemoveResult(removed.snapshot(), true, false, -1);
     }
 
-    public synchronized List<WebSocketSessionRecord> clear() {
-        List<WebSocketSessionRecord> active = activeRecords();
+    public synchronized List<SessionRef> clear() {
+        List<SessionRef> active = activeSessionRefs();
         recordsByWorkerId.clear();
         recordsByChannel.clear();
         recordsByEndpointAddress.clear();
@@ -84,54 +91,55 @@ public final class WebSocketSessionStore {
         return active;
     }
 
-    public synchronized WebSocketSessionRecord activeRecordForWorker(String workerId) {
+    public synchronized Channel activeChannelForWorker(String workerId) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null) {
             return null;
         }
-        WebSocketSessionRecord record = recordsByWorkerId.get(normalizedWorkerId);
-        return record != null && record.isActive() ? record : null;
+        Entry entry = recordsByWorkerId.get(normalizedWorkerId);
+        return entry != null && entry.isActive() ? entry.channel() : null;
     }
 
     public synchronized boolean hasActiveEndpointAddress(String endpointAddress) {
-        return activeRecordForEndpointAddress(endpointAddress) != null;
+        return activeChannelForEndpointAddress(endpointAddress) != null;
     }
 
-    public synchronized WebSocketSessionRecord activeRecordForEndpointAddress(String endpointAddress) {
-        List<WebSocketSessionRecord> records = activeRecordsForEndpointAddress(endpointAddress);
-        return records.isEmpty() ? null : records.getFirst();
+    public synchronized Channel activeChannelForEndpointAddress(String endpointAddress) {
+        List<Channel> channels = activeChannelsForEndpointAddress(endpointAddress);
+        return channels.isEmpty() ? null : channels.getFirst();
     }
 
-    public synchronized List<WebSocketSessionRecord> activeRecordsForEndpointAddress(String endpointAddress) {
+    public synchronized List<Channel> activeChannelsForEndpointAddress(String endpointAddress) {
         String normalizedEndpointAddress = normalizeNullable(endpointAddress);
         if (normalizedEndpointAddress == null) {
             return List.of();
         }
-        LinkedHashMap<String, WebSocketSessionRecord> records = recordsByEndpointAddress.get(normalizedEndpointAddress);
+        LinkedHashMap<String, Entry> records = recordsByEndpointAddress.get(normalizedEndpointAddress);
         if (records == null || records.isEmpty()) {
             return List.of();
         }
-        List<WebSocketSessionRecord> active = new ArrayList<>();
-        for (WebSocketSessionRecord record : records.values()) {
-            if (record != null && record.isActive()) {
-                active.add(record);
+        List<Channel> active = new ArrayList<>();
+        for (Entry entry : records.values()) {
+            if (entry != null && entry.isActive()) {
+                active.add(entry.channel());
             }
         }
         return List.copyOf(active);
     }
 
-    public synchronized List<WebSocketSessionRecord> activeRecords() {
-        List<WebSocketSessionRecord> records = new ArrayList<>();
-        for (WebSocketSessionRecord record : recordsByChannel.values()) {
-            if (record != null && record.isActive()) {
-                records.add(record);
+    public synchronized List<SessionSnapshot> activeSessionSnapshots() {
+        List<SessionSnapshot> records = new ArrayList<>();
+        for (Entry entry : recordsByChannel.values()) {
+            if (entry != null && entry.isActive()) {
+                records.add(entry.snapshot());
             }
         }
         return List.copyOf(records);
     }
 
-    public synchronized WebSocketSessionRecord recordForChannel(Channel channel) {
-        return recordsByChannel.get(channel);
+    public synchronized String workerIdForChannel(Channel channel) {
+        Entry entry = recordsByChannel.get(channel);
+        return entry != null && entry.isActive() ? entry.workerId() : null;
     }
 
     public synchronized int activeConnectionCount() {
@@ -144,7 +152,7 @@ public final class WebSocketSessionStore {
 
     public synchronized List<WorkerEndpointSnapshot> endpointSnapshots() {
         List<WorkerEndpointSnapshot> snapshots = new ArrayList<>();
-        for (WebSocketSessionRecord record : recordsByChannel.values()) {
+        for (Entry record : recordsByChannel.values()) {
             snapshots.add(new WorkerEndpointSnapshot(
                     record.endpointAddress(),
                     record.workerId(),
@@ -156,44 +164,58 @@ public final class WebSocketSessionStore {
         return List.copyOf(snapshots);
     }
 
-    private WebSocketSessionRecord activeRecordForWorker(String workerId, Channel excludedChannel) {
-        WebSocketSessionRecord record = recordsByWorkerId.get(workerId);
-        if (record == null || record.channel() == excludedChannel || !record.isActive()) {
+    private List<SessionRef> activeSessionRefs() {
+        List<SessionRef> refs = new ArrayList<>();
+        for (Entry entry : recordsByChannel.values()) {
+            if (entry != null && entry.isActive()) {
+                refs.add(new SessionRef(entry.snapshot(), entry.channel()));
+            }
+        }
+        return List.copyOf(refs);
+    }
+
+    private Entry activeEntryForWorker(String workerId, Channel excludedChannel) {
+        Entry entry = recordsByWorkerId.get(workerId);
+        if (entry == null || entry.channel() == excludedChannel || !entry.isActive()) {
             return null;
         }
-        return record;
+        return entry;
     }
 
-    private void putRecord(WebSocketSessionRecord record) {
-        recordsByWorkerId.put(record.workerId(), record);
-        recordsByChannel.put(record.channel(), record);
+    private void putEntry(Entry entry) {
+        recordsByWorkerId.put(entry.workerId(), entry);
+        recordsByChannel.put(entry.channel(), entry);
         recordsByEndpointAddress
-                .computeIfAbsent(record.endpointAddress(), ignored -> new LinkedHashMap<>())
-                .put(record.workerId(), record);
+                .computeIfAbsent(entry.endpointAddress(), ignored -> new LinkedHashMap<>())
+                .put(entry.workerId(), entry);
     }
 
-    private void removeRecord(WebSocketSessionRecord record, boolean removeChannel) {
-        if (record == null) {
+    private void removeEntry(Entry entry, boolean removeChannel) {
+        if (entry == null) {
             return;
         }
-        WebSocketSessionRecord currentWorkerRecord = recordsByWorkerId.get(record.workerId());
-        if (currentWorkerRecord == record) {
-            recordsByWorkerId.remove(record.workerId());
+        Entry currentWorkerEntry = recordsByWorkerId.get(entry.workerId());
+        if (currentWorkerEntry == entry) {
+            recordsByWorkerId.remove(entry.workerId());
         }
-        LinkedHashMap<String, WebSocketSessionRecord> endpointRecords =
-                recordsByEndpointAddress.get(record.endpointAddress());
+        LinkedHashMap<String, Entry> endpointRecords =
+                recordsByEndpointAddress.get(entry.endpointAddress());
         if (endpointRecords != null) {
-            WebSocketSessionRecord currentEndpointRecord = endpointRecords.get(record.workerId());
-            if (currentEndpointRecord == record) {
-                endpointRecords.remove(record.workerId());
+            Entry currentEndpointEntry = endpointRecords.get(entry.workerId());
+            if (currentEndpointEntry == entry) {
+                endpointRecords.remove(entry.workerId());
             }
             if (endpointRecords.isEmpty()) {
-                recordsByEndpointAddress.remove(record.endpointAddress());
+                recordsByEndpointAddress.remove(entry.endpointAddress());
             }
         }
         if (removeChannel) {
-            recordsByChannel.remove(record.channel());
+            recordsByChannel.remove(entry.channel());
         }
+    }
+
+    private static SessionSnapshot snapshotOrNull(Entry record) {
+        return record == null ? null : record.snapshot();
     }
 
     private static String normalizeNullable(String value) {
@@ -208,16 +230,63 @@ public final class WebSocketSessionStore {
         return normalized;
     }
 
-    public record BindResult(WebSocketSessionRecord currentRecord,
-                             WebSocketSessionRecord replacedWorkerRecord,
-                             boolean unchanged,
-                             boolean ignoredRetiredChannel,
-                             int activeCountDelta) {
+    record BindResult(SessionSnapshot currentSnapshot,
+                      SessionSnapshot replacedSnapshot,
+                      Channel replacedChannel,
+                      boolean unchanged,
+                      boolean ignoredRetiredChannel,
+                      int activeCountDelta) {
     }
 
-    public record RemoveResult(WebSocketSessionRecord removedRecord,
-                               boolean removedCurrent,
-                               boolean retiredChannel,
-                               int activeCountDelta) {
+    record RemoveResult(SessionSnapshot removedSnapshot,
+                        boolean removedCurrent,
+                        boolean retiredChannel,
+                        int activeCountDelta) {
+    }
+
+    record SessionRef(SessionSnapshot snapshot, Channel channel) {
+    }
+
+    record SessionSnapshot(String deliveryBucketId,
+                           String endpointAddress,
+                           String workerId,
+                           String sessionHandle) {
+
+        SessionSnapshot {
+            deliveryBucketId = requireText(deliveryBucketId, "deliveryBucketId");
+            endpointAddress = requireText(endpointAddress, "endpointAddress");
+            workerId = requireText(workerId, "workerId");
+            sessionHandle = requireText(sessionHandle, "sessionHandle");
+        }
+    }
+
+    private record Entry(String deliveryBucketId,
+                         String endpointAddress,
+                         String workerId,
+                         Channel channel) {
+
+        private Entry {
+            deliveryBucketId = requireText(deliveryBucketId, "deliveryBucketId");
+            endpointAddress = requireText(endpointAddress, "endpointAddress");
+            workerId = requireText(workerId, "workerId");
+            java.util.Objects.requireNonNull(channel, "channel");
+        }
+
+        private String sessionHandle() {
+            return channel.id().asShortText();
+        }
+
+        private boolean isActive() {
+            return channel != null && channel.isActive();
+        }
+
+        private SessionSnapshot snapshot() {
+            return new SessionSnapshot(
+                    deliveryBucketId,
+                    endpointAddress,
+                    workerId,
+                    sessionHandle()
+            );
+        }
     }
 }

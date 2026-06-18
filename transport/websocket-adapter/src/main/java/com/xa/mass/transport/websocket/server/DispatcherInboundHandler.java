@@ -6,7 +6,6 @@ import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionIdentity;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
-import com.xa.mass.transport.websocket.session.WebSocketServerSession;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
 import io.netty.channel.ChannelHandlerContext;
@@ -51,12 +50,11 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 return;
             }
 
-            WebSocketServerSession session = sessionHandle.currentSession(ctx.channel());
-            if (session == null) {
+            String workerId = sessionHandle.currentWorkerId(ctx.channel());
+            if (workerId == null) {
                 sendError(ctx, "SESSION_NOT_BOUND", "WebSocket session is not bound to a worker");
                 return;
             }
-            String workerId = session.workerId();
             org.slf4j.MDC.put("event", "channelRead0");
             org.slf4j.MDC.put("workerId", workerId);
             String eventCode = frameParser.readString(frame, "eventCode");
@@ -82,7 +80,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             inboundMessageSink.accept(WebSocketInboundMessage.of(
                     raw,
                     workerId,
-                    session.sessionHandle(),
+                    ctx.channel().id().asShortText(),
                     frame
             ));
         } catch (Exception e) {

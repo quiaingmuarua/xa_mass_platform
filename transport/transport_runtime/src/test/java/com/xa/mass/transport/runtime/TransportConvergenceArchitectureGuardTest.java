@@ -571,11 +571,15 @@ class TransportConvergenceArchitectureGuardTest {
     void websocketAssignedDeliveryOwnsFinalHopWithoutEndpointRegistryWrapper() throws IOException {
         Path taskDispatchChannel = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketTaskDispatchChannel.java");
         String taskDispatchSource = Files.readString(taskDispatchChannel);
-        assertTrue(taskDispatchSource.contains("WebSocketSessionStore"),
-                "WebSocket assigned delivery executor must read the adapter-local session store");
-        assertTrue(taskDispatchSource.contains("TextWebSocketFrame")
-                        && taskDispatchSource.contains("record.channel().writeAndFlush"),
-                "WebSocket assigned delivery executor must own the final-hop frame send attempt");
+        assertTrue(taskDispatchSource.contains("WebSocketSessionController"),
+                "WebSocket assigned delivery executor must call the adapter-local session controller");
+        assertTrue(taskDispatchSource.contains("sendTextToWorker("),
+                "WebSocket assigned delivery executor must dispatch by selected worker only");
+        assertTrue(!taskDispatchSource.contains("WebSocketSessionStore")
+                        && !taskDispatchSource.contains("WebSocketSessionRecord")
+                        && !taskDispatchSource.contains("TextWebSocketFrame")
+                        && !taskDispatchSource.contains("io.netty"),
+                "WebSocket assigned delivery executor must not read session rows or Netty channels directly");
         assertTrue(!taskDispatchSource.contains("WorkerEndpointRegistry"),
                 "WebSocket assigned delivery must not route through the generic endpoint-registry wrapper");
         assertTrue(!taskDispatchSource.contains("TransportDeliveryService")
@@ -620,24 +624,21 @@ class TransportConvergenceArchitectureGuardTest {
                         && !sessionControllerSource.contains("setDeliveryCommandConsumerRegistry(")
                         && !sessionControllerSource.contains("setWorkerPresenceIngress("),
                 "WebSocket session controller must not own endpoint lease or presence wiring setters");
-        assertTrue(!sessionControllerSource.contains("sendToSelectedWorker("),
-                "WebSocket session controller must not own selected-worker final-hop send");
+        assertTrue(sessionControllerSource.contains("sendTextToWorker(")
+                        && sessionControllerSource.contains("TextWebSocketFrame"),
+                "WebSocket session controller owns the adapter-local selected-worker final-hop send");
         String serverSessionHandleSource = Files.readString(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketServerSessionHandle.java"));
-        assertTrue(serverSessionHandleSource.contains("WebSocketServerSession currentSession(Channel channel)"),
-                "WebSocket server session handle should expose one bounded current-session view");
+        assertTrue(serverSessionHandleSource.contains("String currentWorkerId(Channel channel)"),
+                "WebSocket server session handle should expose only bounded current-worker lookup");
         assertTrue(!serverSessionHandleSource.contains("getWorkerId(")
                         && !serverSessionHandleSource.contains("getEndpointAddress(")
                         && !serverSessionHandleSource.contains("getDeliveryBucketId(")
                         && !serverSessionHandleSource.contains("getChannelContext(")
                         && !serverSessionHandleSource.contains("ChannelHandlerContext"),
                 "WebSocket server session handle must not expose route/bucket/channel-context index getters");
-        String serverSessionSource = Files.readString(repoRoot().resolve(
+        assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketServerSession.java"));
-        assertTrue(!serverSessionSource.contains("endpointAddress")
-                        && !serverSessionSource.contains("routeKey")
-                        && !serverSessionSource.contains("deliveryBucketId"),
-                "WebSocket server session view must not expose endpoint address, route, or delivery bucket metadata");
         String sessionStoreSource = Files.readString(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionStore.java"));
         assertTrue(!sessionStoreSource.contains("sendToSelectedWorker(")
@@ -648,15 +649,18 @@ class TransportConvergenceArchitectureGuardTest {
                 "WebSocket session store must keep direct worker/channel/endpoint indexes instead of a route-oriented wrapper");
         assertTrue(!sessionStoreSource.contains("ChannelHandlerContext"),
                 "WebSocket session store must not retain unused Netty handler context");
-        String sessionRecordSource = Files.readString(repoRoot().resolve(
+        assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionRecord.java"));
-        assertTrue(!sessionRecordSource.contains("TextWebSocketFrame")
-                        && !sessionRecordSource.contains("writeAndFlush(")
-                        && !sessionRecordSource.contains("void send(")
-                        && !sessionRecordSource.contains("closeIfActive("),
-                "WebSocket session record must remain an index record, not a send/close behavior owner");
-        assertTrue(!sessionRecordSource.contains("ChannelHandlerContext"),
-                "WebSocket session record must not retain unused Netty handler context");
+        assertPathsDoNotExist(repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidence.java"));
+        assertTrue(sessionStoreSource.contains("record SessionSnapshot(")
+                        && !sessionStoreSource.contains("WebSocketSessionEvidence"),
+                "WebSocket session evidence should stay a store-internal snapshot, not a top-level adapter model");
+        String sessionEvidenceDriverSource = Files.readString(repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceDriver.java"));
+        assertTrue(!sessionEvidenceDriverSource.contains("Channel")
+                        && !sessionEvidenceDriverSource.contains("TextWebSocketFrame"),
+                "WebSocket session evidence driver must consume narrow evidence, not Netty channel/session rows");
         String inboundMessageSource = Files.readString(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketInboundMessage.java"));
         assertTrue(!inboundMessageSource.contains("routeKey")

@@ -11,5 +11,5 @@ public interface WebSocketServerSessionHandle {
 
     void removeSession(Channel channel);
 
-    WebSocketServerSession currentSession(Channel channel);
+    String currentWorkerId(Channel channel);
 }

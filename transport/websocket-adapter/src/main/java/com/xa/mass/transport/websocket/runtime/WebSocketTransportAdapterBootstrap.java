@@ -56,7 +56,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 refreshLoop
         );
         WebSocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
-                new WebSocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionStore);
+                new WebSocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionController);
         WebSocketJsonFrameParser frameParser = new WebSocketJsonFrameParser();
         WebSocketResultIngressFrameReader resultFrameReader =
                 new WebSocketResultIngressFrameReader(config.getAdapterId(), frameParser);
@@ -73,7 +73,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
             WebSocketTaskDispatchChannel commandExecutor =
-                    new WebSocketTaskDispatchChannel(sessionStore);
+                    new WebSocketTaskDispatchChannel(sessionController);
             contribution.addTransportBinding(TransportBinding.builder(
                             config.getAdapterId(),
                             com.xa.mass.transport.WorkerTransportHints.REALTIME,

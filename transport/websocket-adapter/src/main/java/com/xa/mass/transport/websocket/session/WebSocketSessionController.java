@@ -1,6 +1,7 @@
 package com.xa.mass.transport.websocket.session;
 
 import io.netty.channel.Channel;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,18 +40,18 @@ public final class WebSocketSessionController implements WebSocketServerSessionH
                     endpointAddress);
             return;
         }
-        WebSocketSessionRecord current = result.currentRecord();
+        WebSocketSessionStore.SessionSnapshot current = result.currentSnapshot();
         logger.info("Connected: endpointAddress={} workerId={} channelId={} totalRoutes={}",
                 current.endpointAddress(), current.workerId(), current.sessionHandle(), store.activeConnectionCount());
         if (store.hasActiveEndpointAddress(current.endpointAddress())) {
             evidenceDriver.connected(current, "websocket connected");
         }
-        WebSocketSessionRecord replaced = result.replacedWorkerRecord();
+        WebSocketSessionStore.SessionSnapshot replaced = result.replacedSnapshot();
         if (replaced != null) {
             logger.warn("Existing channel for endpointAddress={} workerId={} found. Replacing session.",
                     replaced.endpointAddress(), replaced.workerId());
             evidenceDriver.disconnected(replaced, "websocket session replaced");
-            closeIfActive(replaced);
+            closeIfActive(result.replacedChannel());
         }
         refreshLoop.ensureRunning();
     }
@@ -62,7 +63,7 @@ public final class WebSocketSessionController implements WebSocketServerSessionH
             logger.debug("Ignoring disconnect for retired WebSocket channel: {}", channel.id().asShortText());
             return;
         }
-        WebSocketSessionRecord removed = result.removedRecord();
+        WebSocketSessionStore.SessionSnapshot removed = result.removedSnapshot();
         if (removed == null) {
             logger.warn("Attempted to remove session for a channel not in index: {}", channel.id().asShortText());
             return;
@@ -80,26 +81,44 @@ public final class WebSocketSessionController implements WebSocketServerSessionH
     public synchronized void shutdown() {
         logger.info("Shutting down websocket session controller, closing {} endpoint connections...", store.routeCount());
         refreshLoop.cancel();
-        List<WebSocketSessionRecord> records = store.clear();
-        for (WebSocketSessionRecord record : records) {
-            if (record.isActive()) {
-                evidenceDriver.disconnected(record, "websocket adapter shutdown");
-                closeIfActive(record);
-            }
+        List<WebSocketSessionStore.SessionRef> records = store.clear();
+        for (WebSocketSessionStore.SessionRef record : records) {
+            evidenceDriver.disconnected(record.snapshot(), "websocket adapter shutdown");
+            closeIfActive(record.channel());
         }
         refreshLoop.shutdown();
         logger.info("WebSocket session controller shutdown complete.");
     }
 
     @Override
-    public WebSocketServerSession currentSession(Channel channel) {
-        WebSocketSessionRecord record = store.recordForChannel(channel);
-        return record != null && record.isActive() ? WebSocketServerSession.from(record) : null;
+    public String currentWorkerId(Channel channel) {
+        return store.workerIdForChannel(channel);
     }
 
-    private static void closeIfActive(WebSocketSessionRecord record) {
-        if (record != null && record.isActive()) {
-            record.channel().close();
+    public boolean sendTextToWorker(String workerId, String message) {
+        Channel channel = store.activeChannelForWorker(workerId);
+        if (channel == null) {
+            return false;
+        }
+        channel.writeAndFlush(new TextWebSocketFrame(message));
+        return true;
+    }
+
+    public boolean sendTextToEndpointAddress(String endpointAddress, String message) {
+        for (Channel channel : store.activeChannelsForEndpointAddress(endpointAddress)) {
+            channel.writeAndFlush(new TextWebSocketFrame(message));
+            return true;
+        }
+        return false;
+    }
+
+    public boolean hasEndpointAddress(String endpointAddress) {
+        return store.hasActiveEndpointAddress(endpointAddress);
+    }
+
+    private static void closeIfActive(Channel channel) {
+        if (channel != null && channel.isActive()) {
+            channel.close();
         }
     }
 

@@ -104,6 +104,14 @@ belong to `xa-mass-trace`.
 - `routeKey`, `adapterId`, `connectionId`, endpoint lease ids, session handles,
   and delivery queue keys are transport implementation facts. Engine worker
   selection must not consume them directly.
+- `Transport` owns delivery-executor mechanics: minimal assigned delivery
+  commands, delivery queues/stores, endpoint lease evidence, result ingress,
+  and delivery outcomes. It does not own worker capability, worker selection,
+  retry policy, or task lifecycle mutation.
+- `Adapter` owns one protocol endpoint/session driver and final-hop send/read
+  behavior. An adapter may be embedded today or remote later, but it remains a
+  connectivity owner; adapter identity, route keys, session handles, and
+  endpoint leases must not become worker API or Scheduling Plane inputs.
 - `WorkerContext` is retired compatibility vocabulary. Do not reintroduce it as
   worker capability, resource lifecycle, SDK, server, storage, trace, or engine
   scheduling truth.
@@ -147,6 +155,9 @@ Worker, adapter, and transport boundaries:
 - adapters own final-hop connectivity, endpoint lease/session evidence, and
   local send attempts only. They cannot expand capability and cannot choose
   workers for assigned task delivery.
+- transport core must stay process-boundary ready: facts that a future remote
+  adapter cannot provide through typed delivery, lease, result, or diagnostics
+  contracts belong in embedded adapter support, not in transport-neutral APIs.
 - transport receives already selected work and delivers to the selected worker.
   Delivery infeasible for the selected worker is engine-owned retry or
   compensation input, not permission for transport to select another worker.

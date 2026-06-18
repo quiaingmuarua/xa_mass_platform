@@ -1,7 +1,6 @@
 package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 
 import java.util.Objects;
 
@@ -14,12 +13,12 @@ import java.util.Objects;
 public final class WebSocketRawWorkerRouteEndpointRegistry implements RawWorkerRouteEndpointRegistry {
 
     private final String adapterId;
-    private final WebSocketSessionStore sessionStore;
+    private final WebSocketSessionController sessionController;
 
     public WebSocketRawWorkerRouteEndpointRegistry(String adapterId,
-                                                   WebSocketSessionStore sessionStore) {
+                                                   WebSocketSessionController sessionController) {
         this.adapterId = requireAdapterId(adapterId);
-        this.sessionStore = Objects.requireNonNull(sessionStore, "sessionStore");
+        this.sessionController = Objects.requireNonNull(sessionController, "sessionController");
     }
 
     @Override
@@ -27,11 +26,7 @@ public final class WebSocketRawWorkerRouteEndpointRegistry implements RawWorkerR
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        for (WebSocketSessionRecord record : sessionStore.activeRecordsForEndpointAddress(routeKey)) {
-            record.channel().writeAndFlush(new TextWebSocketFrame(message));
-            return true;
-        }
-        return false;
+        return sessionController.sendTextToEndpointAddress(routeKey, message);
     }
 
     @Override
@@ -39,7 +34,7 @@ public final class WebSocketRawWorkerRouteEndpointRegistry implements RawWorkerR
         if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return sessionStore.hasActiveEndpointAddress(routeKey);
+        return sessionController.hasEndpointAddress(routeKey);
     }
 
     private boolean matchesAdapter(String adapterId) {

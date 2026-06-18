@@ -5,7 +5,6 @@ import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
-import com.xa.mass.transport.websocket.session.WebSocketServerSession;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
 import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
 import com.xa.mass.transport.websocket.session.WebSocketSessionRefreshLoop;
@@ -116,7 +115,7 @@ class DispatcherInboundHandlerTest {
         ));
 
         assertEquals(1, sessionStore.activeConnectionCount());
-        assertNotNull(sessionController.currentSession(channel));
+        assertEquals("worker-1", sessionController.currentWorkerId(channel));
     }
 
     @Test
@@ -128,9 +127,8 @@ class DispatcherInboundHandlerTest {
         ));
 
         assertEquals(1, sessionStore.activeConnectionCount());
-        WebSocketServerSession session = sessionController.currentSession(channel);
-        assertNotNull(session);
-        assertNotNull(sessionStore.activeRecordForEndpointAddress("bucket:bucket-1"));
+        assertEquals("worker-1", sessionController.currentWorkerId(channel));
+        assertNotNull(sessionStore.activeChannelForEndpointAddress("bucket:bucket-1"));
     }
 
     @Test
@@ -160,7 +158,7 @@ class DispatcherInboundHandlerTest {
         assertEquals("test-ch", acceptedInboundMessage.get().getEndpointId());
         assertNotNull(acceptedInboundMessage.get().getParsedFrame());
         assertEquals(1, sessionStore.activeConnectionCount());
-        assertNotNull(sessionStore.activeRecordForEndpointAddress("ws-route-1"));
+        assertNotNull(sessionStore.activeChannelForEndpointAddress("ws-route-1"));
     }
 
     @Test
@@ -186,8 +184,8 @@ class DispatcherInboundHandlerTest {
 
         assertNull(sentFrame.get());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
-        assertNotNull(sessionStore.activeRecordForEndpointAddress("ws-route-11"));
-        assertNull(sessionStore.activeRecordForEndpointAddress("worker-1"));
+        assertNotNull(sessionStore.activeChannelForEndpointAddress("ws-route-11"));
+        assertNull(sessionStore.activeChannelForEndpointAddress("worker-1"));
     }
 
     @Test
@@ -199,11 +197,9 @@ class DispatcherInboundHandlerTest {
         ));
 
         assertEquals(1, sessionStore.activeConnectionCount());
-        WebSocketServerSession session = sessionController.currentSession(channel);
-        assertNotNull(session);
-        assertEquals("worker-1", session.workerId());
-        assertNotNull(sessionStore.activeRecordForEndpointAddress("ws-route-9"));
-        assertNull(sessionStore.activeRecordForEndpointAddress("worker-1"));
+        assertEquals("worker-1", sessionController.currentWorkerId(channel));
+        assertNotNull(sessionStore.activeChannelForEndpointAddress("ws-route-9"));
+        assertNull(sessionStore.activeChannelForEndpointAddress("worker-1"));
     }
 
     @Test
@@ -232,7 +228,7 @@ class DispatcherInboundHandlerTest {
         assertNotNull(accepted);
         assertTrue(accepted.contains("\"eventCode\": \"mock.state.get\"")
                 || accepted.contains("\"eventCode\":\"mock.state.get\""));
-        assertNotNull(sessionStore.activeRecordForEndpointAddress("ws-route-1"));
+        assertNotNull(sessionStore.activeChannelForEndpointAddress("ws-route-1"));
     }
 
     @Test
@@ -335,8 +331,8 @@ class WebSocketServerImplDisconnectTest {
 
         assertEquals(0L, server.getActiveConnectionCount());
         assertEquals(0, sessionStore.activeConnectionCount());
-        assertNull(sessionStore.activeRecordForEndpointAddress("worker-1"));
-        assertNull(sessionController.currentSession(channel));
+        assertNull(sessionStore.activeChannelForEndpointAddress("worker-1"));
+        assertNull(sessionController.currentWorkerId(channel));
     }
 
     @Test

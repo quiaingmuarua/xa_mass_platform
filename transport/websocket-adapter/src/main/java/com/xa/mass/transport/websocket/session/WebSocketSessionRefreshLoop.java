@@ -71,8 +71,8 @@ public final class WebSocketSessionRefreshLoop {
 
     private void refreshActiveSessions() {
         try {
-            for (WebSocketSessionRecord record : store.activeRecords()) {
-                evidenceDriver.heartbeat(record, "websocket session keepalive");
+            for (WebSocketSessionStore.SessionSnapshot session : store.activeSessionSnapshots()) {
+                evidenceDriver.heartbeat(session, "websocket session keepalive");
             }
         } catch (Exception e) {
             logger.warn("WebSocket session evidence refresh failed: {}", e.getMessage(), e);

@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-06-17
+Last updated: 2026-06-18
 
 Status: current transport owner handoff.
 
@@ -14,6 +14,16 @@ entry for `transport/`.
 - `transport_runtime` owns shared runtime assembly, embedded Java adapter
   support, and delivery semantics.
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
+- Transport core and adapter are different layers. Transport core owns minimal
+  assigned-delivery commands, delivery queues/stores, endpoint lease evidence,
+  result ingress, and delivery outcomes. A concrete adapter owns protocol
+  server/client I/O, local session indexes, protocol frames, and final-hop send
+  attempts for already selected workers.
+- Current adapters are embedded Java modules, but the transport boundary should
+  stay compatible with future remote adapter processes. Java-only object wiring
+  belongs to embedded adapter support; cross-process facts must be typed
+  delivery commands, endpoint lease evidence, result ingress envelopes,
+  delivery outcomes, diagnostics, or lifecycle observations.
 - `transport` is a pure delivery executor. It owns correct assigned-worker
   delivery, queue claim/ack consistency, endpoint/session evidence, and delivery
   outcomes; it does not own retry, reassign, compensation, worker lifecycle,
@@ -30,8 +40,10 @@ entry for `transport/`.
   `deliveryQueueKey`. Any delivery reachability needed by scheduling must be
   projected through worker-runtime evidence first.
 - `adapterId` is concrete transport runtime truth, not an external worker API,
-  SDK worker-session, or engine/starter delivery contract. `transportHint` is
-  only a coarse family.
+  SDK worker-session, engine/starter delivery contract, or worker-selection
+  input. It identifies a concrete adapter binding only after transport has
+  endpoint evidence for the already selected worker. `transportHint` is only a
+  coarse family.
 - `deliveryBucketId` is the engine/starter to transport assigned-delivery
   bucket. At the current boundary it is derived from worker-group context, but
   transport treats it as an opaque delivery-domain id, not as worker scheduling,
@@ -108,6 +120,10 @@ entry for `transport/`.
   embedded-support `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`.
   Adapter metadata, server lifecycle, raw/manual channels, diagnostics, and
   pull channels are explicit binding/contribution facts, not executor facts.
+- `AdapterCommandExecutor` is the embedded Java final-hop SPI, not the
+  transport-neutral remote adapter contract. Do not make transport core depend
+  on executor-local connection/session classes, late-bound handler setters, or
+  adapter-owned registries.
 - Concrete adapters may observe protocol sessions and send to selected workers,
   but endpoint lease / selected-worker consumer evidence is projected by
   `TransportEndpointLeasePublisher`, and worker session-presence observations

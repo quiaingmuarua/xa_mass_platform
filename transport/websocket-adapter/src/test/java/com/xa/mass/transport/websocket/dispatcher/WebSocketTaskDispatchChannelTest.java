@@ -3,6 +3,9 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.websocket.session.WebSocketSessionController;
+import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
+import com.xa.mass.transport.websocket.session.WebSocketSessionRefreshLoop;
 import com.xa.mass.transport.websocket.session.WebSocketSessionStore;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelId;
@@ -23,11 +26,11 @@ class WebSocketTaskDispatchChannelTest {
 
     @Test
     void publishesDispatchItemsDirectlyToSessionStoreEndpoint() {
-        WebSocketSessionStore sessionStore = sessionStoreWithWorker("worker-1");
+        SessionFixture fixture = sessionWithWorker("worker-1");
         DeliveryCommand command = request();
 
         WebSocketTaskDispatchChannel publisher =
-                new WebSocketTaskDispatchChannel(sessionStore);
+                new WebSocketTaskDispatchChannel(fixture.controller());
 
         List<DispatchOutcome> outcomes = publisher.dispatch(List.of(command));
 
@@ -35,21 +38,30 @@ class WebSocketTaskDispatchChannelTest {
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
 
         ArgumentCaptor<TextWebSocketFrame> captor = ArgumentCaptor.forClass(TextWebSocketFrame.class);
-        verify(sessionStore.activeRecordForWorker("worker-1").channel()).writeAndFlush(captor.capture());
+        verify(fixture.channel()).writeAndFlush(captor.capture());
 
         assertEquals(command.getPayload(), captor.getValue().text());
+        fixture.controller().shutdown();
     }
 
     @Test
     void returnsEndpointOfflineWhenSessionStoreHasNoWorker() {
+        WebSocketSessionStore sessionStore = new WebSocketSessionStore("websocket");
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver("websocket");
+        WebSocketSessionController controller = new WebSocketSessionController(
+                sessionStore,
+                evidenceDriver,
+                new WebSocketSessionRefreshLoop("websocket", sessionStore, evidenceDriver)
+        );
         WebSocketTaskDispatchChannel publisher =
-                new WebSocketTaskDispatchChannel(new WebSocketSessionStore("websocket"));
+                new WebSocketTaskDispatchChannel(controller);
 
         List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcomes.get(0).getStatus());
         assertTrue(outcomes.get(0).isRetryable());
+        controller.shutdown();
     }
 
     @Test
@@ -58,10 +70,20 @@ class WebSocketTaskDispatchChannelTest {
                 () -> new WebSocketTaskDispatchChannel(null));
     }
 
-    private WebSocketSessionStore sessionStoreWithWorker(String workerId) {
+    private SessionFixture sessionWithWorker(String workerId) {
         WebSocketSessionStore sessionStore = new WebSocketSessionStore("websocket");
-        sessionStore.bind("bucket-1", "route-1", workerId, mockActiveChannel(workerId));
-        return sessionStore;
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver("websocket");
+        WebSocketSessionController controller = new WebSocketSessionController(
+                sessionStore,
+                evidenceDriver,
+                new WebSocketSessionRefreshLoop("websocket", sessionStore, evidenceDriver)
+        );
+        Channel channel = mockActiveChannel(workerId);
+        controller.addSession("bucket-1", "route-1", workerId, channel);
+        return new SessionFixture(controller, channel);
+    }
+
+    private record SessionFixture(WebSocketSessionController controller, Channel channel) {
     }
 
     private Channel mockActiveChannel(String idText) {

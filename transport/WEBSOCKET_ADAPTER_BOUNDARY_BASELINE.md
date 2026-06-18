@@ -78,16 +78,20 @@ Hard rules:
 
 - construct codec, command executor, session store/controller, and processors
   before start
-- `WebSocketSessionStore` owns low-level session indexes and selected-worker
-  channel lookup only
+- `WebSocketSessionStore` owns low-level session indexes and private session
+  entries only. It must not expose a public session record that carries Netty
+  send behavior.
 - WebSocket assigned-delivery local lookup is worker-id-only:
-  `DeliveryCommand.selectedWorkerId` -> `WebSocketSessionStore` active record
-  -> channel write. `deliveryBucketId` is upstream queue/evidence context, not
-  a WebSocket session lookup dimension.
-- `WebSocketTaskDispatchChannel` owns assigned-delivery final-hop frame write
-  and `DispatchOutcome` production
-- `WebSocketSessionController` is a server/session orchestration object only;
-  it must not implement `WorkerEndpointRegistry` or own selected-worker send
+  `DeliveryCommand.selectedWorkerId` -> `WebSocketSessionController`
+  `sendTextToWorker(...)` -> store channel lookup -> Netty frame write.
+  `deliveryBucketId` is upstream queue/evidence context, not a WebSocket
+  session lookup dimension.
+- `WebSocketTaskDispatchChannel` owns assigned-delivery command execution and
+  `DispatchOutcome` production. It must not import Netty, session store, or
+  session record types.
+- `WebSocketSessionController` is the adapter-local session mutation and send
+  coordinator. It may own selected-worker text send, but must not implement
+  `WorkerEndpointRegistry` or expose broad session records.
 - pass `WebSocketServerSessionHandle` to server/inbound wiring, not the broader
   runtime registry surface; do not add assigned-delivery lookup methods to that
   handle

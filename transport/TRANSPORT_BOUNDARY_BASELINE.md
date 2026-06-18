@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-06-17
+Last updated: 2026-06-18
 
 Status: current transport boundary baseline.
 
@@ -39,6 +39,17 @@ Engine remains the owner of task lifecycle:
 - `TaskMsg` status transitions, retry, release, and terminal policy
 - lifecycle security decisions that mutate task state
 
+Transport core and concrete adapters are separate layers. Transport core owns
+the assigned-delivery executor contract, delivery queue/store mechanics,
+endpoint lease plane, result ingress inboxes, and delivery outcomes. Concrete
+adapters own protocol I/O, local session indexes, protocol frame parsing and
+writing, session evidence observation, and final-hop send attempts for already
+selected workers. Current embedded Java adapters are one deployment shape, not
+the transport contract. Facts that a future remote adapter process cannot
+provide through typed delivery commands, endpoint lease evidence, result
+ingress envelopes, delivery outcomes, diagnostics, or lifecycle observations
+must stay in embedded adapter support rather than transport-neutral APIs.
+
 ## Stable Concepts
 
 Transport should stay centered on these concepts only:
@@ -48,7 +59,9 @@ Transport should stay centered on these concepts only:
   owns only the local final-hop attempt and lives with runtime embedded adapter
   support, not in `transport_api`. Adapter id, transport hint, protocol label,
   pull channel, server lifecycle, diagnostics, and raw/manual side-channels are
-  binding or contribution metadata, not executor facts.
+  binding or contribution metadata, not executor facts. This SPI is not the
+  remote-adapter contract; transport core must not require executor-local
+  connection/session classes or adapter-owned registries.
 - `TransportBinding`: explicit runtime binding for adapter id, transport hint,
   protocol label, command executor, optional pull channel, and pull-session
   evidence driver. A pull-capable binding must provide both the pull channel
@@ -225,6 +238,13 @@ Concrete adapters own protocol I/O only:
   consumer evidence
 - calls into runtime delivery and result-ingest contracts
 - accept/read/write loops submitted through the runtime executor context when they block
+
+Adapter process identity is intentionally narrow. `adapterId` identifies a
+concrete transport binding for final-hop executor/channel resolution after
+endpoint evidence exists. It is not a worker API field, not a queue selector,
+not a route-key mint rule, and not a Scheduling Plane input. Future remote
+adapter registration may make that identity process-scoped, but it still must
+remain connectivity evidence rather than worker capability or assignment truth.
 
 Transport-owned final-hop delivery submitters do not read endpoint/session
 target hints after worker selection has already produced concrete bindings.
