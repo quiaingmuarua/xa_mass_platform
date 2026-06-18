@@ -61,6 +61,13 @@ Current code facts verified after JWR-1/JWR-2/JWR-3/JWR-4/JWR-5/JWR-6 landed:
 - `WorkerRuntimeReporter` is the explicit worker-local evidence/report owner.
   It publishes handler evidence from `WorkerRuntimeDefinition` and runtime
   evidence through `WorkerClient`.
+- `WorkerRuntimeContext` is the package-private common runtime derivation
+  owner for polling and WebSocket runtimes. It derives worker identity,
+  immutable attributes/handlers, listener, executor, dispatch processor, and
+  reporter from `WorkerRuntimeDefinition` plus runtime-common options.
+- `WorkerRuntimeOptions` is package-private runtime-common wiring only:
+  listener and executor. It does not own polling interval, endpoint,
+  reconnect, queue, or protocol-specific settings.
 - `WorkerSessionSpec` has been removed and is not a public compatibility alias.
 - `PollingWorkerRuntime.start()` no longer registers the worker. It performs:
   `online -> heartbeat loop -> poll loop`.
@@ -76,10 +83,12 @@ Current code facts verified after JWR-1/JWR-2/JWR-3/JWR-4/JWR-5/JWR-6 landed:
   such as poll interval, endpoint, reconnect settings, listener, and executor.
 - `WorkerDispatchProcessor` is already the common invocation processor:
   `WorkerInvocation -> WorkerEventHandler -> WorkerResult`.
-- `PollingWorkerRuntime` uses `WorkerDispatchProcessor`, then submits
+- `PollingWorkerRuntime` gets `WorkerDispatchProcessor` and
+  `WorkerRuntimeReporter` from `WorkerRuntimeContext`, then submits
   `WorkerResultSubmission` through the worker HTTP API.
-- `WebSocketWorkerRuntime` uses `WorkerDispatchProcessor`, then encodes a
-  WebSocket result frame.
+- `WebSocketWorkerRuntime` gets `WorkerDispatchProcessor` and
+  `WorkerRuntimeReporter` from `WorkerRuntimeContext`, then encodes a WebSocket
+  result frame.
 - `PollingWorkerProtocolDriver` owns polling worker-api exchange:
   `online`, `heartbeat`, `poll`, `submitResult`, and `offline`.
 - `WebSocketWorkerProtocolDriver` owns WebSocket connect URI construction,
@@ -90,9 +99,11 @@ Current code facts verified after JWR-1/JWR-2/JWR-3/JWR-4/JWR-5/JWR-6 landed:
   sender loop, and lifecycle callbacks.
 - Polling runtime still owns poll loop scheduling, poll backoff, handler
   dispatch orchestration, and lifecycle callbacks.
-- `WorkerRuntimeListener` remains a broad diagnostic callback sink. It is
-  useful for current observability but is not proof of a clean worker runtime
-  event taxonomy.
+- `WorkerRuntimeListener` is a broad diagnostic callback sink, but failure
+  reporting is now one public model:
+  `WorkerRuntimeFailureEvent(kind, reason, resultCorrelationRef,
+  consecutiveFailures, detail, cause, context)`. Dedicated public failure
+  records such as heartbeat/frame/poll/connection failure have been removed.
 - Scenario launcher and worker-pack have been migrated to
   `WorkerRuntimeDefinition` plus explicit `WorkerSpec` registration.
 - `WorkerRuntimeStartupStep.REGISTER_WORKER` has been removed; registration
@@ -119,7 +130,9 @@ Representative current files:
 - `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WebSocketConnector.java`
 - `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerDispatchProcessor.java`
 - `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntime.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntimeContext.java`
 - `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntimeMaintenanceLoop.java`
+- `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntimeOptions.java`
 - `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntimeReporter.java`
 - `sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntimes.java`
 - `sdk/xa-mass-java-sdk/src/test/java/com/xa/mass/client/JavaExternalSdkArchitectureGuardTest.java`
@@ -205,6 +218,16 @@ WorkerProtocolDriver
 WorkerDispatchProcessor
   current common invocation processor
   may be retained or renamed only if the owner meaning improves
+
+WorkerRuntimeContext
+  package-private common runtime derivation
+  owns worker identity copy, immutable attributes/handlers, listener,
+  executor, dispatch processor, and reporter wiring
+  does not own protocol options
+
+WorkerRuntimeOptions
+  package-private common listener/executor wiring
+  no polling interval, endpoint, reconnect, queue, or protocol fields
 
 WorkerRuntimeMaintenanceLoop
   scheduled runtime upkeep only
@@ -556,7 +579,7 @@ Acceptance:
 - `WorkerRuntimeStartupStep.REGISTER_WORKER` is removed or no longer reachable
   from runtime startup failure callbacks.
 - Registration failures are reported by the explicit registration API, not as
-  `WorkerRuntimeStartupFailure`.
+  worker runtime startup failure events.
 - Guards distinguish forbidden hidden registration from allowed presence
   freshness.
 
@@ -781,7 +804,7 @@ Acceptance:
 Verification candidates:
 
 ```bash
-./mvnw -q -pl sdk/xa-mass-java-sdk test -Dtest=JavaExternalSdkArchitectureGuardTest,WorkerRuntimeDefinitionTest,WorkerDispatchProcessorTest
+./mvnw -q -pl sdk/xa-mass-java-sdk test -Dtest=JavaExternalSdkArchitectureGuardTest,WorkerRuntimeDefinitionTest,WorkerRuntimeContextTest,WorkerDispatchProcessorTest
 rg -n "WorkerSessionSpec|reportCapability|reportState|registerWorker" roadmap sdk/xa-mass-java-sdk/README.md sdk/README.md doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md -g "*.md"
 rg -n "adapterId|adapterNodeId|routeKey|connectionId|endpointLease|deliveryQueueKey|TransportAdapterBootstrap" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker -g "*.java"
 ```
@@ -796,10 +819,13 @@ rg -n "adapterId|adapterNodeId|routeKey|connectionId|endpointLease|deliveryQueue
 6. JWR-6 worker runtime reporter. Landed as `WorkerRuntimeReporter`.
 7. JWR-4 protocol driver and runtime orchestration split. Landed for polling
    worker-api exchange and WebSocket connect/frame exchange.
-8. JWR-7 worker command runtime ability decision. Deferred by owner decision;
+8. Common runtime fact derivation has landed as package-private
+   `WorkerRuntimeContext` / `WorkerRuntimeOptions`; protocol options remain in
+   concrete runtime builders.
+9. JWR-7 worker command runtime ability decision. Deferred by owner decision;
    do not reintroduce command DTOs until worker-control owns a successor
    contract.
-9. JWR-8 final guards/docs/residue. Landed for Java external SDK and direct
+10. JWR-8 final guards/docs/residue. Landed for Java external SDK and direct
    JWR companion docs; portfolio-wide roadmap archive cleanup remains follow-up.
 
 JWR-5 can start with heartbeat only. JWR-6 can be implemented after JWR-2 or
@@ -836,6 +862,10 @@ This roadmap can be marked complete only when:
   follow-up or implemented through a successor common runtime contract.
 - Protocol drivers are internal network exchange implementations, not worker
   capability owners.
+- Polling and WebSocket runtime shells use package-private
+  `WorkerRuntimeContext` for common worker identity, immutable ability facts,
+  listener/executor wiring, dispatch processor, and reporter wiring; they do
+  not directly reconstruct those facts from `WorkerRuntimeDefinition`.
 - Public docs and examples present polling and WebSocket as the same background
   worker runtime with different protocol drivers.
 - Public docs and examples use the current `WorkerResult.success(String)` /

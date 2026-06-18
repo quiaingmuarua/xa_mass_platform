@@ -10,15 +10,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -30,10 +26,8 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
     private static final ObjectMapper DEFAULT_OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final int FRAME_FAILURE_PREVIEW_LIMIT = 512;
 
-    private final WorkerClient workerClient;
     private final String workerId;
     private final String workerGroupId;
-    private final Map<String, String> attributes;
     private final Duration connectTimeout;
     private final Duration reconnectBackoff;
     private final Duration maxReconnectBackoff;
@@ -53,17 +47,20 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
     private final AtomicReference<QueuedResultTermination> queuedResultTermination = new AtomicReference<>();
 
     private WebSocketWorkerRuntime(Builder builder) {
-        this.workerClient = builder.workerClient;
-        this.workerId = requireText(builder.workerId, "workerId");
-        this.workerGroupId = requireText(builder.workerGroupId, "workerGroupId");
-        this.attributes = Map.copyOf(builder.attributes);
+        WorkerRuntimeContext context = new WorkerRuntimeContext(
+                builder.workerClient,
+                builder.definition,
+                new WorkerRuntimeOptions(builder.listener, builder.executor),
+                "xa-mass-websocket-worker-");
+        this.workerId = context.workerId();
+        this.workerGroupId = context.workerGroupId();
         this.connectTimeout = builder.connectTimeout;
         this.reconnectBackoff = builder.reconnectBackoff;
         this.maxReconnectBackoff = builder.maxReconnectBackoff;
         this.maxReconnectAttempts = builder.maxReconnectAttempts;
-        this.listener = builder.listener;
-        this.dispatchProcessor = new WorkerDispatchProcessor(workerId, builder.eventHandlers, listener);
-        this.reporter = new WorkerRuntimeReporter(workerClient, builder.definition);
+        this.listener = context.listener();
+        this.dispatchProcessor = context.dispatchProcessor();
+        this.reporter = context.reporter();
         this.protocolDriver = new WebSocketWorkerProtocolDriver(
                 workerId,
                 workerGroupId,
@@ -72,9 +69,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
                 builder.httpClient,
                 builder.objectMapper,
                 builder.webSocketConnector);
-        this.executor = builder.executor == null
-                ? Executors.newScheduledThreadPool(2, new SessionThreadFactory(workerId))
-                : builder.executor;
+        this.executor = context.executor();
         this.outboundResults = new LinkedBlockingDeque<>(builder.outboundQueueCapacity);
     }
 
@@ -97,9 +92,9 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
             running.set(false);
             executor.shutdownNow();
             WorkerRuntimeStartupStep failedStep = nextWebSocketStep(lastSuccessful);
-            WorkerRuntimeStartupFailure startupFailure =
-                    new WorkerRuntimeStartupFailure(workerId, failedStep, lastSuccessful, unwrap(failure));
-            listener.onStartupFailure(startupFailure);
+            WorkerRuntimeFailureEvent startupFailure =
+                    WorkerRuntimeFailureEvent.startup(workerId, failedStep, lastSuccessful, unwrap(failure));
+            listener.onFailure(startupFailure);
             throw new WorkerRuntimeStartupException(startupFailure);
         }
     }
@@ -152,14 +147,14 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
         }
         closing.set(true);
         queuedResultTermination.compareAndSet(null, new QueuedResultTermination(
-                WorkerRuntimeQueuedResultFailure.Reason.SESSION_CLOSED,
+                "SESSION_CLOSED",
                 new IllegalStateException("websocket session closed before queued result was sent")));
         WebSocket socket = webSocket.getAndSet(null);
         if (socket != null) {
             try {
                 socket.sendClose(WebSocket.NORMAL_CLOSURE, "websocket-session-close");
             } catch (Throwable failure) {
-                listener.onShutdownFailure(workerId, failure);
+                listener.onFailure(WorkerRuntimeFailureEvent.shutdown(workerId, failure));
             }
         }
         executor.shutdown();
@@ -194,7 +189,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
         } catch (Throwable failure) {
             int failures = consecutiveConnectionFailures.incrementAndGet();
             Throwable cause = unwrap(failure);
-            listener.onConnectionFailure(new WorkerRuntimeConnectionFailure(workerId, failures, cause));
+            listener.onFailure(WorkerRuntimeFailureEvent.connection(workerId, failures, cause));
             if (reconnectAttemptsExhausted(failures)) {
                 stopAfterReconnectExhausted(cause);
                 return;
@@ -241,7 +236,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
             } catch (Throwable failure) {
                 Throwable cause = unwrap(failure);
                 if (outbound != null) {
-                    listener.onSubmitFailure(new WorkerRuntimeDispatchFailure(
+                    listener.onFailure(WorkerRuntimeFailureEvent.submit(
                             workerId,
                             outbound.resultCorrelationRef(),
                             null,
@@ -250,7 +245,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
                 }
                 webSocket.set(null);
                 int failures = consecutiveConnectionFailures.incrementAndGet();
-                listener.onConnectionFailure(new WorkerRuntimeConnectionFailure(workerId, failures, cause));
+                listener.onFailure(WorkerRuntimeFailureEvent.connection(workerId, failures, cause));
                 if (reconnectAttemptsExhausted(failures)) {
                     stopAfterReconnectExhausted(cause);
                     return;
@@ -266,7 +261,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
         try {
             item = protocolDriver.decodeDispatchFrame(frame);
         } catch (Throwable failure) {
-            listener.onFrameFailure(frameFailure(frame, failure));
+            listener.onFailure(frameFailure(frame, failure));
             return;
         }
         if (item == null) {
@@ -283,33 +278,32 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
             String frame = protocolDriver.encodeResultFrame(resultCorrelationRef, result);
             if (!outboundResults.offer(new QueuedWebSocketResultFrame(resultCorrelationRef, frame))) {
                 IllegalStateException failure = new IllegalStateException("websocket result queue is full");
-                WorkerRuntimeQueuedResultFailure queuedFailure = new WorkerRuntimeQueuedResultFailure(
+                listener.onFailure(WorkerRuntimeFailureEvent.queuedResultDropped(
                         workerId,
                         resultCorrelationRef,
-                        WorkerRuntimeQueuedResultFailure.Reason.QUEUE_FULL,
-                        failure);
-                listener.onQueuedResultDropped(queuedFailure);
+                        "QUEUE_FULL",
+                        failure));
                 throw failure;
             }
         } catch (Throwable failure) {
-            listener.onSubmitFailure(new WorkerRuntimeDispatchFailure(workerId, resultCorrelationRef, invocation, failure));
+            listener.onFailure(WorkerRuntimeFailureEvent.submit(workerId, resultCorrelationRef, invocation, failure));
         }
     }
 
     private void requeueOrAbandon(QueuedWebSocketResultFrame outbound, Throwable cause) {
         if (!outboundResults.offerFirst(outbound)) {
             abandonResult(outbound,
-                    WorkerRuntimeQueuedResultFailure.Reason.REQUEUE_FAILED,
+                    "REQUEUE_FAILED",
                     cause);
         }
     }
 
-    private WorkerRuntimeFrameFailure frameFailure(String frame, Throwable cause) {
+    private WorkerRuntimeFailureEvent frameFailure(String frame, Throwable cause) {
         String safeFrame = frame == null ? "" : frame;
         String preview = safeFrame.length() <= FRAME_FAILURE_PREVIEW_LIMIT
                 ? safeFrame
                 : safeFrame.substring(0, FRAME_FAILURE_PREVIEW_LIMIT);
-        return new WorkerRuntimeFrameFailure(workerId, preview, safeFrame.length(), cause);
+        return WorkerRuntimeFailureEvent.frame(workerId, preview, safeFrame.length(), cause);
     }
 
     Duration connectionBackoff(int consecutiveFailures) {
@@ -325,14 +319,14 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
 
     private void stopAfterReconnectExhausted(Throwable cause) {
         queuedResultTermination.compareAndSet(null, new QueuedResultTermination(
-                WorkerRuntimeQueuedResultFailure.Reason.RECONNECT_EXHAUSTED, cause));
+                "RECONNECT_EXHAUSTED", cause));
         running.set(false);
         closing.set(true);
         WebSocket socket = webSocket.getAndSet(null);
         if (socket != null) {
             socket.abort();
         }
-        abandonQueuedResults(WorkerRuntimeQueuedResultFailure.Reason.RECONNECT_EXHAUSTED, cause);
+        abandonQueuedResults("RECONNECT_EXHAUSTED", cause);
     }
 
     private QueuedResultTermination queuedResultTermination() {
@@ -341,20 +335,19 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
             return termination;
         }
         return new QueuedResultTermination(
-                WorkerRuntimeQueuedResultFailure.Reason.SESSION_CLOSED,
+                "SESSION_CLOSED",
                 new IllegalStateException("websocket session closed before queued result was sent"));
     }
 
-    private void abandonQueuedResults(WorkerRuntimeQueuedResultFailure.Reason reason, Throwable cause) {
+    private void abandonQueuedResults(String reason, Throwable cause) {
         QueuedWebSocketResultFrame outbound;
         while ((outbound = outboundResults.poll()) != null) {
             abandonResult(outbound, reason, cause);
         }
     }
 
-    private void abandonResult(QueuedWebSocketResultFrame outbound, WorkerRuntimeQueuedResultFailure.Reason reason,
-                               Throwable cause) {
-        listener.onQueuedResultAbandoned(new WorkerRuntimeQueuedResultFailure(
+    private void abandonResult(QueuedWebSocketResultFrame outbound, String reason, Throwable cause) {
+        listener.onFailure(WorkerRuntimeFailureEvent.queuedResultAbandoned(
                 workerId,
                 outbound.resultCorrelationRef(),
                 reason,
@@ -387,26 +380,15 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
         return failure;
     }
 
-    private static String requireText(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + " is required");
-        }
-        return value.trim();
-    }
-
     public static final class Builder {
         private final WorkerClient workerClient;
         private final WorkerRuntimeDefinition definition;
-        private final String workerId;
-        private final String workerGroupId;
-        private final Map<String, String> attributes;
         private URI endpoint;
         private Duration connectTimeout = Duration.ofSeconds(10);
         private Duration reconnectBackoff = Duration.ofMillis(500);
         private Duration maxReconnectBackoff = Duration.ofSeconds(10);
         private int maxReconnectAttempts = 10;
         private int outboundQueueCapacity = 1024;
-        private final Map<String, com.xa.mass.client.worker.handler.WorkerEventHandler> eventHandlers;
         private WorkerRuntimeListener listener = WorkerRuntimeListener.NOOP;
         private HttpClient httpClient;
         private ObjectMapper objectMapper = DEFAULT_OBJECT_MAPPER;
@@ -415,12 +397,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
 
         private Builder(WorkerClient workerClient, WorkerRuntimeDefinition definition) {
             this.workerClient = Objects.requireNonNull(workerClient, "workerClient is required");
-            WorkerRuntimeDefinition resolved = Objects.requireNonNull(definition, "definition is required");
-            this.definition = resolved;
-            this.workerId = resolved.workerId();
-            this.workerGroupId = resolved.workerGroupId();
-            this.attributes = new LinkedHashMap<>(resolved.attributes());
-            this.eventHandlers = new LinkedHashMap<>(resolved.eventHandlers());
+            this.definition = Objects.requireNonNull(definition, "definition is required");
         }
 
         public Builder endpoint(URI endpoint) {
@@ -538,7 +515,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
         public void onError(WebSocket socket, Throwable error) {
             clearSocketIfCurrent(generation, socket);
             int failures = consecutiveConnectionFailures.incrementAndGet();
-            listener.onConnectionFailure(new WorkerRuntimeConnectionFailure(workerId, failures, error));
+            listener.onFailure(WorkerRuntimeFailureEvent.connection(workerId, failures, error));
             scheduleReconnect();
         }
     }
@@ -552,23 +529,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
     private record QueuedWebSocketResultFrame(String resultCorrelationRef, String resultFrame) {
     }
 
-    private record QueuedResultTermination(WorkerRuntimeQueuedResultFailure.Reason reason, Throwable cause) {
+    private record QueuedResultTermination(String reason, Throwable cause) {
     }
 
-    private static final class SessionThreadFactory implements ThreadFactory {
-        private final String workerId;
-        private final AtomicInteger counter = new AtomicInteger();
-
-        private SessionThreadFactory(String workerId) {
-            this.workerId = workerId;
-        }
-
-        @Override
-        public Thread newThread(Runnable runnable) {
-            Thread thread = new Thread(runnable,
-                    "xa-mass-websocket-worker-" + workerId + "-" + counter.incrementAndGet());
-            thread.setDaemon(true);
-            return thread;
-        }
-    }
 }

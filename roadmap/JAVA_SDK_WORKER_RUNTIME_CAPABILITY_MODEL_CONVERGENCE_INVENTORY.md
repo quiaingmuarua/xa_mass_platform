@@ -18,6 +18,13 @@ Status: current inventory for
 - `WorkerRuntimeReporter` is the explicit worker-local evidence/report owner.
   It publishes handler evidence from `WorkerRuntimeDefinition` and runtime
   evidence through `WorkerClient`.
+- `WorkerRuntimeContext` is the package-private common runtime derivation
+  owner for polling and WebSocket runtimes. It derives worker identity,
+  immutable attributes/handlers, listener, executor, dispatch processor, and
+  reporter from `WorkerRuntimeDefinition` plus runtime-common options.
+- `WorkerRuntimeOptions` is package-private runtime-common wiring only:
+  listener and executor. It does not contain polling interval, endpoint,
+  reconnect, queue, or other protocol-specific settings.
 - `PollingWorkerProtocolDriver` owns polling worker-api exchange:
   `online`, `heartbeat`, `poll`, `submitResult`, and `offline`.
 - `WebSocketWorkerProtocolDriver` owns WebSocket connect URI construction,
@@ -44,6 +51,9 @@ Status: current inventory for
   `reportRuntimeEvidence(...)` explicitly when callers ask for it.
 - Polling heartbeat is now scheduled through package-private
   `WorkerRuntimeMaintenanceLoop`.
+- Polling and WebSocket runtimes now read common worker/runtime facts from
+  `WorkerRuntimeContext`; protocol-specific options remain on their concrete
+  builders and drivers.
 
 ## Remaining Runtime Coupling
 
@@ -53,8 +63,10 @@ Status: current inventory for
   runtime.
 - WebSocket still owns reconnect policy, queued result handling, result sender
   loop, and lifecycle callbacks inside the concrete runtime.
-- `WorkerRuntimeListener` is a broad diagnostic sink, not a clean runtime event
-  taxonomy.
+- `WorkerRuntimeListener` is a broad diagnostic sink, but failure reporting is
+  one public `WorkerRuntimeFailureEvent` model. Dedicated heartbeat, frame,
+  poll, connection, dispatch, queued-result, and startup failure records have
+  been removed.
 - Worker command intake/ack remains deferred. The deleted Java SDK command DTOs
   must not be reintroduced before a worker-control owner decision.
 

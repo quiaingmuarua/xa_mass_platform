@@ -67,9 +67,9 @@ Current implemented surface:
 - managed WebSocket worker runtime:
   JDK WebSocket connection, canonical task dispatch frame handling, queued
   result frame submission, bounded reconnect attempts, queue-full/requeue
-  failure reporting,
-  heartbeat/frame/connection lifecycle callbacks, and queued-result terminal
-  callbacks on close or reconnect exhaustion.
+  failure reporting through `WorkerRuntimeFailureEvent`, connection recovery
+  callback, and queued-result terminal failure events on close or reconnect
+  exhaustion.
   Realtime worker presence is transport-owned; the runtime does not call
   polling-only online, heartbeat, handler evidence, runtime evidence, or
   offline APIs. Polling is the stable third-party worker protocol; WebSocket is
@@ -130,17 +130,19 @@ Realtime runtime hardening current truth:
 - Android host support is not part of the pure Java SDK
 - do not introduce a shared `RealtimeWorkerRuntime` abstraction until at least
   two realtime transports share a proven public lifecycle
-- frame/protocol failures report through listener callbacks and do not
-  increment connection-failure counters
-- frame/protocol failure callbacks expose bounded `framePreview` plus
+- frame/protocol failures report as `WorkerRuntimeFailureEvent.Kind.FRAME` and
+  do not increment connection-failure counters
+- frame/protocol failure event context exposes bounded `framePreview` plus
   `frameLength`, not the complete raw frame
 - successful reconnect reports `onConnectionRecovered(workerId)`
 - queued-result close, reconnect exhaustion, and send-failure requeue failure
-  terminal outcomes report through `onQueuedResultAbandoned(...)`; requeue
-  failure uses `REQUEUE_FAILED`
-- `onSubmitFailure(...)` is an attempt-level callback; a queued result may
-  still later report a terminal `onQueuedResultAbandoned(...)`
-- queue-full outcomes report through `onQueuedResultDropped(...)`
+  terminal outcomes report as
+  `WorkerRuntimeFailureEvent.Kind.QUEUED_RESULT_ABANDONED`; requeue failure
+  uses `REQUEUE_FAILED`
+- `WorkerRuntimeFailureEvent.Kind.SUBMIT` is an attempt-level signal; a queued
+  result may still later report a terminal queued-result abandoned event
+- queue-full outcomes report as
+  `WorkerRuntimeFailureEvent.Kind.QUEUED_RESULT_DROPPED`
 - close sends a best-effort WebSocket close frame before terminal result
   abandonment
 - platform `connectTimeout`, `HttpClient`, and `ObjectMapper` defaults flow
@@ -303,23 +305,20 @@ dispatch processor and route handler results through their protocol-specific
 result-submit mechanism. Both managed runtimes expose result correlation only
 as an opaque submit token; worker business code must not interpret it as task
 identity or lifecycle state.
-Queue-full outcomes are reported through
-`WorkerRuntimeListener.onQueuedResultDropped(...)`; queued results that cannot
-be requeued after send failure, or cannot be submitted because the runtime
-closes or reconnect is exhausted, are reported through
-`WorkerRuntimeListener.onQueuedResultAbandoned(...)`. WebSocket close uses a
-best-effort close frame and then drains or abandons queued results according to
-the runtime terminal reason.
-Runtime lifecycle callbacks distinguish poll failure, heartbeat failure,
-connection failure, connection recovery, frame/protocol failure, handler
-failure, submit failure, queued-result drop, and queued-result abandonment.
-Heartbeat failures are reported only through `onHeartbeatFailure(...)`, not as
-poll failures. `onSubmitFailure(...)` is an attempt-level signal; a queued
-result can later emit terminal `onQueuedResultAbandoned(...)`, including
+Runtime failures are reported through one callback:
+`WorkerRuntimeListener.onFailure(WorkerRuntimeFailureEvent)`. The event `kind`
+distinguishes poll failure, heartbeat failure, connection failure,
+frame/protocol failure, handler failure, submit failure, queued-result drop,
+queued-result abandonment, startup failure, and shutdown failure. Successful
+WebSocket reconnect still reports `onConnectionRecovered(workerId)` because it
+is not a failure.
+Heartbeat failures use `WorkerRuntimeFailureEvent.Kind.HEARTBEAT`, not
+`POLL`. Submit failures use `Kind.SUBMIT` as an attempt-level signal; a queued
+result can later emit terminal `Kind.QUEUED_RESULT_ABANDONED`, including
 `REQUEUE_FAILED` after the same failed send attempt.
-Frame/protocol failures expose a bounded `framePreview` and `frameLength`
-rather than the complete raw frame. The preview can still contain payload
-fragments, so do not log it blindly in production.
+Frame/protocol failures expose bounded `framePreview` and `frameLength` in the
+event context rather than the complete raw frame. The preview can still contain
+payload fragments, so do not log it blindly in production.
 
 Managed WebSocket worker runtime:
 
@@ -369,13 +368,11 @@ mass.workers().registerWorker(WorkerSpec.polling(worker));
 PollingWorkerRuntime runtime = mass.workerRuntimes().polling(worker)
         .listener(new WorkerRuntimeListener() {
             @Override
-            public void onHandlerFailure(WorkerRuntimeDispatchFailure failure) {
-                System.err.println(failure.cause().getMessage());
-            }
-
-            @Override
-            public void onSubmitFailure(WorkerRuntimeDispatchFailure failure) {
-                System.err.println(failure.cause().getMessage());
+            public void onFailure(WorkerRuntimeFailureEvent failure) {
+                System.err.printf("worker runtime failure kind=%s reason=%s error=%s%n",
+                        failure.kind(),
+                        failure.reason(),
+                        failure.cause() == null ? failure.detail() : failure.cause().getMessage());
             }
         })
         .start();

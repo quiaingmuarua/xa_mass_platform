@@ -29,10 +29,10 @@ class WorkerDispatchProcessorTest {
 
     @Test
     void reportsHandlerFailureThroughSessionListener() {
-        AtomicReference<WorkerRuntimeDispatchFailure> observed = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> observed = new AtomicReference<>();
         WorkerRuntimeListener listener = new WorkerRuntimeListener() {
             @Override
-            public void onHandlerFailure(WorkerRuntimeDispatchFailure failure) {
+            public void onFailure(WorkerRuntimeFailureEvent failure) {
                 observed.set(failure);
             }
         };
@@ -46,6 +46,8 @@ class WorkerDispatchProcessorTest {
         WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
 
         assertNotNull(observed.get());
+        assertEquals(WorkerRuntimeFailureEvent.Kind.HANDLER, observed.get().kind());
+        assertEquals("HANDLER_ERROR", observed.get().reason());
         assertEquals("corr-1", observed.get().resultCorrelationRef());
         assertEquals("handler failed", observed.get().cause().getMessage());
         assertEquals("HANDLER_ERROR", processed.result().resultCode());
@@ -53,13 +55,13 @@ class WorkerDispatchProcessorTest {
 
     @Test
     void missingHandlerReturnsStructuredFailureWithoutHandlerFailureCallback() {
-        AtomicReference<WorkerRuntimeDispatchFailure> observed = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> observed = new AtomicReference<>();
         WorkerDispatchProcessor processor = new WorkerDispatchProcessor(
                 "worker-1",
                 Map.of(),
                 new WorkerRuntimeListener() {
                     @Override
-                    public void onHandlerFailure(WorkerRuntimeDispatchFailure failure) {
+                    public void onFailure(WorkerRuntimeFailureEvent failure) {
                         observed.set(failure);
                     }
                 });

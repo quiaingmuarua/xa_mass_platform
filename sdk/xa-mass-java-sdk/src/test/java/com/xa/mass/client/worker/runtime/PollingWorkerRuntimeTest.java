@@ -149,7 +149,7 @@ class PollingWorkerRuntimeTest {
     @Test
     void startupFailureStopsBeforeHeartbeatAndPollAndReportsLastSuccessfulStep() throws Exception {
         List<String> observed = new ArrayList<>();
-        AtomicReference<WorkerRuntimeStartupFailure> failureRef = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> failureRef = new AtomicReference<>();
         startServer(exchange -> {
             String path = exchange.getRequestURI().getRawPath();
             observed.add(exchange.getRequestMethod() + " " + path);
@@ -163,7 +163,7 @@ class PollingWorkerRuntimeTest {
 
         WorkerRuntimeListener listener = new WorkerRuntimeListener() {
             @Override
-            public void onStartupFailure(WorkerRuntimeStartupFailure failure) {
+            public void onFailure(WorkerRuntimeFailureEvent failure) {
                 failureRef.set(failure);
             }
         };
@@ -173,16 +173,17 @@ class PollingWorkerRuntimeTest {
                         .listener(listener)
                         .start());
 
-        assertEquals(WorkerRuntimeStartupStep.ONLINE, exception.failure().failedStep());
-        assertEquals(null, exception.failure().lastSuccessfulStep());
+        assertEquals(WorkerRuntimeFailureEvent.Kind.STARTUP, exception.failure().kind());
+        assertEquals(WorkerRuntimeStartupStep.ONLINE.name(), exception.failure().context().get("failedStep"));
+        assertEquals(null, exception.failure().context().get("lastSuccessfulStep"));
         assertEquals(exception.failure(), failureRef.get());
         assertEquals(List.of("POST /worker-api/v1/workers/worker-1:online"), observed);
     }
 
     @Test
-    void heartbeatFailureUsesDedicatedCallbackAndDoesNotReportPollFailure() throws Exception {
+    void heartbeatFailureUsesDedicatedKindAndDoesNotReportPollFailure() throws Exception {
         CountDownLatch heartbeatFailed = new CountDownLatch(1);
-        AtomicReference<WorkerRuntimeHeartbeatFailure> heartbeatFailure = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> heartbeatFailure = new AtomicReference<>();
         AtomicBoolean pollFailureReported = new AtomicBoolean(false);
         AtomicInteger heartbeatAttempts = new AtomicInteger();
         startServer(exchange -> {
@@ -216,14 +217,14 @@ class PollingWorkerRuntimeTest {
 
         WorkerRuntimeListener listener = new WorkerRuntimeListener() {
             @Override
-            public void onHeartbeatFailure(WorkerRuntimeHeartbeatFailure failure) {
-                heartbeatFailure.set(failure);
-                heartbeatFailed.countDown();
-            }
-
-            @Override
-            public void onPollFailure(WorkerRuntimePollFailure failure) {
-                pollFailureReported.set(true);
+            public void onFailure(WorkerRuntimeFailureEvent failure) {
+                if (failure.kind() == WorkerRuntimeFailureEvent.Kind.HEARTBEAT) {
+                    heartbeatFailure.set(failure);
+                    heartbeatFailed.countDown();
+                }
+                if (failure.kind() == WorkerRuntimeFailureEvent.Kind.POLL) {
+                    pollFailureReported.set(true);
+                }
             }
         };
 
@@ -236,6 +237,7 @@ class PollingWorkerRuntimeTest {
         }
 
         assertEquals("worker-1", heartbeatFailure.get().workerId());
+        assertEquals(WorkerRuntimeFailureEvent.Kind.HEARTBEAT, heartbeatFailure.get().kind());
         assertEquals(1, heartbeatFailure.get().consecutiveFailures());
         assertTrue(heartbeatAttempts.get() >= 1);
         assertFalse(pollFailureReported.get(), "heartbeat failure must not be reported as poll failure");
@@ -244,7 +246,7 @@ class PollingWorkerRuntimeTest {
     @Test
     void handlerPayloadExceptionSubmitsStructuredFailedResult() throws Exception {
         CountDownLatch failedResultSubmitted = new CountDownLatch(1);
-        AtomicReference<WorkerRuntimeDispatchFailure> handlerFailure = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> handlerFailure = new AtomicReference<>();
         AtomicBoolean firstPoll = new AtomicBoolean(true);
         startServer(exchange -> {
             String path = exchange.getRequestURI().getRawPath();
@@ -302,8 +304,10 @@ class PollingWorkerRuntimeTest {
 
         WorkerRuntimeListener listener = new WorkerRuntimeListener() {
             @Override
-            public void onHandlerFailure(WorkerRuntimeDispatchFailure failure) {
-                handlerFailure.set(failure);
+            public void onFailure(WorkerRuntimeFailureEvent failure) {
+                if (failure.kind() == WorkerRuntimeFailureEvent.Kind.HANDLER) {
+                    handlerFailure.set(failure);
+                }
             }
         };
 

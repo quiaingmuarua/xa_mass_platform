@@ -1,6 +1,8 @@
 package com.xa.mass.client;
 
 import com.xa.mass.client.worker.runtime.WorkerRuntime;
+import com.xa.mass.client.worker.runtime.WorkerRuntimeFailureEvent;
+import com.xa.mass.client.worker.runtime.WorkerRuntimeListener;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
 import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
 import com.xa.mass.client.worker.runtime.WebSocketWorkerRuntime;
@@ -135,6 +137,58 @@ class JavaExternalSdkArchitectureGuardTest {
                 "event",
                 "eventHandler",
                 "eventHandlers");
+    }
+
+    @Test
+    void workerRuntimeFailureSurfaceStaysSingleEventModel() throws IOException {
+        Set<String> methodNames = Arrays.stream(WorkerRuntimeListener.class.getDeclaredMethods())
+                .map(Method::getName)
+                .collect(Collectors.toSet());
+
+        assertEquals(Set.of("onFailure", "onConnectionRecovered"), methodNames);
+        assertEquals(Set.of("workerId", "kind", "reason", "resultCorrelationRef",
+                        "consecutiveFailures", "detail", "cause", "context"),
+                Arrays.stream(WorkerRuntimeFailureEvent.class.getRecordComponents())
+                        .map(component -> component.getName())
+                        .collect(Collectors.toSet()));
+
+        for (String deletedFailureModel : List.of(
+                "WorkerRuntimeConnectionFailure.java",
+                "WorkerRuntimeDispatchFailure.java",
+                "WorkerRuntimeFrameFailure.java",
+                "WorkerRuntimeHeartbeatFailure.java",
+                "WorkerRuntimePollFailure.java",
+                "WorkerRuntimeQueuedResultFailure.java",
+                "WorkerRuntimeStartupFailure.java"
+        )) {
+            assertFalse(Files.exists(Path.of("src/main/java/com/xa/mass/client/worker/runtime")
+                            .resolve(deletedFailureModel)),
+                    deletedFailureModel + " must not remain as a dedicated worker-runtime failure model");
+        }
+    }
+
+    @Test
+    void protocolRuntimeShellsUseCommonRuntimeContextForSharedFacts() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        Path.of("src/main/java/com/xa/mass/client/worker/runtime/PollingWorkerRuntime.java"),
+                        Path.of("src/main/java/com/xa/mass/client/worker/runtime/WebSocketWorkerRuntime.java")
+                ),
+                "new WorkerDispatchProcessor",
+                "new WorkerRuntimeReporter",
+                ".attributes()",
+                ".eventHandlers()"
+        );
+
+        assertNoProductionSourceContains(
+                List.of(
+                        Path.of("src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntimeContext.java"),
+                        Path.of("src/main/java/com/xa/mass/client/worker/runtime/WorkerRuntimeOptions.java")
+                ),
+                "public final class WorkerRuntimeContext",
+                "public class WorkerRuntimeContext",
+                "public record WorkerRuntimeOptions"
+        );
     }
 
     @Test

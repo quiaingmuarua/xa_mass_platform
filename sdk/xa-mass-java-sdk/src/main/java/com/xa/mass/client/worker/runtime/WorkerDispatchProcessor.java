@@ -39,7 +39,7 @@ final class WorkerDispatchProcessor {
         } catch (Throwable failure) {
             result = WorkerResult.failure("HANDLER_ERROR",
                     failure.getClass().getName() + ": " + failure.getMessage());
-            listener.onHandlerFailure(new WorkerRuntimeDispatchFailure(
+            listener.onFailure(WorkerRuntimeFailureEvent.handler(
                     workerId,
                     resultCorrelationRef,
                     workerInvocation,

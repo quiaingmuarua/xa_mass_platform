@@ -199,16 +199,20 @@ For realtime paths:
 - keep polling as the stable third-party worker protocol; Java SDK WebSocket is
   an implemented JVM session and internal staging validation path while its
   wire shape continues hardening
-- Java SDK session listeners distinguish heartbeat, poll, frame/protocol,
-  connection, recovery, submit, and queued-result terminal outcomes
-- heartbeat failures report only through `onHeartbeatFailure(...)`, not through
-  `onPollFailure(...)`
-- `onSubmitFailure(...)` is an attempt-level signal; queued-result abandonment
-  is the terminal signal for results that cannot be retained or delivered
-- send-failure requeue failure is a queued-result terminal outcome reported as
-  `REQUEUE_FAILED` through `onQueuedResultAbandoned(...)`
-- frame/protocol failures expose bounded `framePreview` plus `frameLength`, not
-  the complete raw frame; previews can still contain payload fragments
+- Java SDK session listeners report runtime failures through one
+  `WorkerRuntimeFailureEvent` model; its `kind` distinguishes heartbeat, poll,
+  frame/protocol, connection, submit, queued-result terminal outcomes,
+  startup, and shutdown failures
+- heartbeat failures report as `WorkerRuntimeFailureEvent.Kind.HEARTBEAT`, not
+  as `POLL`
+- `WorkerRuntimeFailureEvent.Kind.SUBMIT` is an attempt-level signal;
+  queued-result abandonment is the terminal signal for results that cannot be
+  retained or delivered
+- send-failure requeue failure is a queued-result terminal outcome with reason
+  `REQUEUE_FAILED`
+- frame/protocol failures expose bounded `framePreview` plus `frameLength` in
+  event context, not the complete raw frame; previews can still contain payload
+  fragments
 - WebSocket result idempotency under reconnect, malformed frame flood ceilings,
   socket session ownership, and Android host support remain open hardening
   topics rather than stable public protocol promises

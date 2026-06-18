@@ -10,11 +10,8 @@ import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
 import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.client.worker.runtime.WebSocketWorkerRuntime;
 import com.xa.mass.client.worker.runtime.WorkerRuntime;
-import com.xa.mass.client.worker.runtime.WorkerRuntimeConnectionFailure;
-import com.xa.mass.client.worker.runtime.WorkerRuntimeDispatchFailure;
+import com.xa.mass.client.worker.runtime.WorkerRuntimeFailureEvent;
 import com.xa.mass.client.worker.runtime.WorkerRuntimeListener;
-import com.xa.mass.client.worker.runtime.WorkerRuntimePollFailure;
-import com.xa.mass.client.worker.runtime.WorkerRuntimeStartupFailure;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -212,39 +209,14 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
 
     private static final class LoggingWorkerRuntimeListener implements WorkerRuntimeListener {
         @Override
-        public void onStartupFailure(WorkerRuntimeStartupFailure failure) {
-            System.err.printf("[java-scenario-launcher] worker startup failed workerId=%s step=%s error=%s%n",
-                    failure.workerId(), failure.failedStep(), failure.cause().getMessage());
-        }
-
-        @Override
-        public void onHandlerFailure(WorkerRuntimeDispatchFailure failure) {
-            System.err.printf("[java-scenario-launcher] worker handler failed workerId=%s resultCorrelationRef=%s error=%s%n",
-                    failure.workerId(), failure.resultCorrelationRef(), failure.cause().getMessage());
-        }
-
-        @Override
-        public void onSubmitFailure(WorkerRuntimeDispatchFailure failure) {
-            System.err.printf("[java-scenario-launcher] worker submit failed workerId=%s resultCorrelationRef=%s error=%s%n",
-                    failure.workerId(), failure.resultCorrelationRef(), failure.cause().getMessage());
-        }
-
-        @Override
-        public void onPollFailure(WorkerRuntimePollFailure failure) {
-            System.err.printf("[java-scenario-launcher] worker poll failed workerId=%s consecutiveFailures=%d error=%s%n",
-                    failure.workerId(), failure.consecutiveFailures(), failure.cause().getMessage());
-        }
-
-        @Override
-        public void onConnectionFailure(WorkerRuntimeConnectionFailure failure) {
-            System.err.printf("[java-scenario-launcher] worker websocket connection failed workerId=%s consecutiveFailures=%d error=%s%n",
-                    failure.workerId(), failure.consecutiveFailures(), failure.cause().getMessage());
-        }
-
-        @Override
-        public void onShutdownFailure(String workerId, Throwable failure) {
-            System.err.printf("[java-scenario-launcher] worker shutdown failed workerId=%s error=%s%n",
-                    workerId, failure.getMessage());
+        public void onFailure(WorkerRuntimeFailureEvent failure) {
+            System.err.printf("[java-scenario-launcher] worker runtime failure workerId=%s kind=%s reason=%s consecutiveFailures=%s resultCorrelationRef=%s error=%s%n",
+                    failure.workerId(),
+                    failure.kind(),
+                    failure.reason(),
+                    failure.consecutiveFailures(),
+                    failure.resultCorrelationRef(),
+                    failure.cause() == null ? failure.detail() : failure.cause().getMessage());
         }
     }
 }

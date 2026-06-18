@@ -209,8 +209,8 @@ class WebSocketWorkerRuntimeTest {
     void invalidFrameReportsFrameFailureWithoutConnectionFailure() throws Exception {
         CountDownLatch frameFailed = new CountDownLatch(1);
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerRuntimeFrameFailure> frameFailure = new AtomicReference<>();
-        AtomicReference<WorkerRuntimeConnectionFailure> connectionFailure = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> frameFailure = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> connectionFailure = new AtomicReference<>();
         RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
         startRealtimeControlPlaneServer();
 
@@ -219,14 +219,14 @@ class WebSocketWorkerRuntimeTest {
                 .connectTimeout(Duration.ofSeconds(1))
                 .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onFrameFailure(WorkerRuntimeFrameFailure failure) {
-                        frameFailure.set(failure);
-                        frameFailed.countDown();
-                    }
-
-                    @Override
-                    public void onConnectionFailure(WorkerRuntimeConnectionFailure failure) {
-                        connectionFailure.set(failure);
+                    public void onFailure(WorkerRuntimeFailureEvent failure) {
+                        if (failure.kind() == WorkerRuntimeFailureEvent.Kind.FRAME) {
+                            frameFailure.set(failure);
+                            frameFailed.countDown();
+                        }
+                        if (failure.kind() == WorkerRuntimeFailureEvent.Kind.CONNECTION) {
+                            connectionFailure.set(failure);
+                        }
                     }
                 })
                 .webSocketConnector((uri, listener) -> {
@@ -240,8 +240,9 @@ class WebSocketWorkerRuntimeTest {
 
             assertTrue(frameFailed.await(2, TimeUnit.SECONDS), "invalid frame should be reported");
             assertEquals("ws-worker-001", frameFailure.get().workerId());
-            assertEquals("{not-json", frameFailure.get().framePreview());
-            assertEquals("{not-json".length(), frameFailure.get().frameLength());
+            assertEquals(WorkerRuntimeFailureEvent.Kind.FRAME, frameFailure.get().kind());
+            assertEquals("{not-json", frameFailure.get().context().get("framePreview"));
+            assertEquals(Integer.toString("{not-json".length()), frameFailure.get().context().get("frameLength"));
             assertNotNull(frameFailure.get().cause());
             assertEquals(null, connectionFailure.get(), "frame decode failure must not be connection failure");
             assertTrue(webSocket.sentTexts().isEmpty());
@@ -252,7 +253,7 @@ class WebSocketWorkerRuntimeTest {
     void invalidLongFrameReportsBoundedFramePreview() throws Exception {
         CountDownLatch frameFailed = new CountDownLatch(1);
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerRuntimeFrameFailure> frameFailure = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> frameFailure = new AtomicReference<>();
         RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
         startRealtimeControlPlaneServer();
 
@@ -261,9 +262,11 @@ class WebSocketWorkerRuntimeTest {
                 .connectTimeout(Duration.ofSeconds(1))
                 .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onFrameFailure(WorkerRuntimeFrameFailure failure) {
-                        frameFailure.set(failure);
-                        frameFailed.countDown();
+                    public void onFailure(WorkerRuntimeFailureEvent failure) {
+                        if (failure.kind() == WorkerRuntimeFailureEvent.Kind.FRAME) {
+                            frameFailure.set(failure);
+                            frameFailed.countDown();
+                        }
                     }
                 })
                 .webSocketConnector((uri, listener) -> {
@@ -277,9 +280,9 @@ class WebSocketWorkerRuntimeTest {
                     .toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertTrue(frameFailed.await(2, TimeUnit.SECONDS), "invalid frame should be reported");
-            assertEquals(512, frameFailure.get().framePreview().length());
-            assertEquals(frame.substring(0, 512), frameFailure.get().framePreview());
-            assertEquals(frame.length(), frameFailure.get().frameLength());
+            assertEquals(512, frameFailure.get().context().get("framePreview").length());
+            assertEquals(frame.substring(0, 512), frameFailure.get().context().get("framePreview"));
+            assertEquals(Integer.toString(frame.length()), frameFailure.get().context().get("frameLength"));
             assertNotNull(frameFailure.get().cause());
         }
     }
@@ -315,7 +318,7 @@ class WebSocketWorkerRuntimeTest {
     void closeAbandonsQueuedResultWhenSocketIsUnavailable() throws Exception {
         CountDownLatch abandoned = new CountDownLatch(1);
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerRuntimeQueuedResultFailure> failureRef = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> failureRef = new AtomicReference<>();
         RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
         startRealtimeControlPlaneServer();
 
@@ -324,9 +327,11 @@ class WebSocketWorkerRuntimeTest {
                 .connectTimeout(Duration.ofMillis(100))
                 .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onQueuedResultAbandoned(WorkerRuntimeQueuedResultFailure failure) {
-                        failureRef.set(failure);
-                        abandoned.countDown();
+                    public void onFailure(WorkerRuntimeFailureEvent failure) {
+                        if (failure.kind() == WorkerRuntimeFailureEvent.Kind.QUEUED_RESULT_ABANDONED) {
+                            failureRef.set(failure);
+                            abandoned.countDown();
+                        }
                     }
                 })
                 .webSocketConnector((uri, listener) -> {
@@ -345,7 +350,7 @@ class WebSocketWorkerRuntimeTest {
             session.close();
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "close should abandon queued result");
-            assertEquals(WorkerRuntimeQueuedResultFailure.Reason.SESSION_CLOSED, failureRef.get().reason());
+            assertEquals("SESSION_CLOSED", failureRef.get().reason());
             assertEquals("corr-close", failureRef.get().resultCorrelationRef());
         } finally {
             session.close();
@@ -356,7 +361,7 @@ class WebSocketWorkerRuntimeTest {
     void fullQueueDropsResultWithSpecificCallback() throws Exception {
         CountDownLatch dropped = new CountDownLatch(1);
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerRuntimeQueuedResultFailure> failureRef = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> failureRef = new AtomicReference<>();
         BlockingWebSocket webSocket = new BlockingWebSocket();
         startRealtimeControlPlaneServer();
 
@@ -366,9 +371,11 @@ class WebSocketWorkerRuntimeTest {
                 .outboundQueueCapacity(1)
                 .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onQueuedResultDropped(WorkerRuntimeQueuedResultFailure failure) {
-                        failureRef.set(failure);
-                        dropped.countDown();
+                    public void onFailure(WorkerRuntimeFailureEvent failure) {
+                        if (failure.kind() == WorkerRuntimeFailureEvent.Kind.QUEUED_RESULT_DROPPED) {
+                            failureRef.set(failure);
+                            dropped.countDown();
+                        }
                     }
                 })
                 .webSocketConnector((uri, listener) -> {
@@ -384,7 +391,7 @@ class WebSocketWorkerRuntimeTest {
             }
 
             assertTrue(dropped.await(2, TimeUnit.SECONDS), "full queue should drop a result");
-            assertEquals(WorkerRuntimeQueuedResultFailure.Reason.QUEUE_FULL, failureRef.get().reason());
+            assertEquals("QUEUE_FULL", failureRef.get().reason());
         }
     }
 
@@ -394,7 +401,7 @@ class WebSocketWorkerRuntimeTest {
         CountDownLatch sendStarted = new CountDownLatch(1);
         CountDownLatch allowFailure = new CountDownLatch(1);
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerRuntimeQueuedResultFailure> failureRef = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> failureRef = new AtomicReference<>();
         CoordinatedFailingWebSocket webSocket = new CoordinatedFailingWebSocket(sendStarted, allowFailure);
         startRealtimeControlPlaneServer();
 
@@ -404,9 +411,11 @@ class WebSocketWorkerRuntimeTest {
                 .outboundQueueCapacity(1)
                 .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onQueuedResultAbandoned(WorkerRuntimeQueuedResultFailure failure) {
-                        failureRef.set(failure);
-                        abandoned.countDown();
+                    public void onFailure(WorkerRuntimeFailureEvent failure) {
+                        if (failure.kind() == WorkerRuntimeFailureEvent.Kind.QUEUED_RESULT_ABANDONED) {
+                            failureRef.set(failure);
+                            abandoned.countDown();
+                        }
                     }
                 })
                 .webSocketConnector((uri, listener) -> {
@@ -428,7 +437,7 @@ class WebSocketWorkerRuntimeTest {
             allowFailure.countDown();
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "failed requeue should abandon the original result");
-            assertEquals(WorkerRuntimeQueuedResultFailure.Reason.REQUEUE_FAILED, failureRef.get().reason());
+            assertEquals("REQUEUE_FAILED", failureRef.get().reason());
             assertEquals("corr-requeue-1", failureRef.get().resultCorrelationRef());
             assertNotNull(failureRef.get().cause());
         }
@@ -439,7 +448,7 @@ class WebSocketWorkerRuntimeTest {
         CountDownLatch abandoned = new CountDownLatch(1);
         AtomicInteger connectAttempts = new AtomicInteger();
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
-        AtomicReference<WorkerRuntimeQueuedResultFailure> failureRef = new AtomicReference<>();
+        AtomicReference<WorkerRuntimeFailureEvent> failureRef = new AtomicReference<>();
         RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
         startRealtimeControlPlaneServer();
 
@@ -450,9 +459,11 @@ class WebSocketWorkerRuntimeTest {
                 .maxReconnectAttempts(1)
                 .listener(new WorkerRuntimeListener() {
                     @Override
-                    public void onQueuedResultAbandoned(WorkerRuntimeQueuedResultFailure failure) {
-                        failureRef.set(failure);
-                        abandoned.countDown();
+                    public void onFailure(WorkerRuntimeFailureEvent failure) {
+                        if (failure.kind() == WorkerRuntimeFailureEvent.Kind.QUEUED_RESULT_ABANDONED) {
+                            failureRef.set(failure);
+                            abandoned.countDown();
+                        }
                     }
                 })
                 .webSocketConnector((uri, listener) -> {
@@ -472,7 +483,7 @@ class WebSocketWorkerRuntimeTest {
                     """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "reconnect exhaustion should abandon queued result");
-            assertEquals(WorkerRuntimeQueuedResultFailure.Reason.RECONNECT_EXHAUSTED, failureRef.get().reason());
+            assertEquals("RECONNECT_EXHAUSTED", failureRef.get().reason());
             assertEquals("corr-reconnect", failureRef.get().resultCorrelationRef());
             assertFalse(session.isRunning());
         } finally {
