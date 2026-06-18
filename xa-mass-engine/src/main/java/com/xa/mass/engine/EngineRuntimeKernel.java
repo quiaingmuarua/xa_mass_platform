@@ -13,10 +13,7 @@ import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.DispatchCadence;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
-import com.xa.mass.engine.strategy.DefaultWorkerCandidateRanker;
-import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
-import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
@@ -83,49 +80,32 @@ public class EngineRuntimeKernel {
             TaskAssignmentRuntimePort assignmentRuntimePort = config.getTaskAssignmentRuntimePort();
             taskEvents = config.getTaskEventService();
             eventListeners = taskEvents;
-            var workerAdmissionRuntime = config.getWorkerAdmissionRuntime();
             var workerAvailabilityWakeupRuntime = config.getWorkerAvailabilityWakeupRuntime();
-            var workerWarmHintRuntime = config.getWorkerWarmHintRuntime();
+            var workerSelectionRuntime = config.getWorkerSelectionRuntime();
             AssignmentDiagnosticRecorder recordService = config.getRecordService();
             TraceEventLogger traceEventLogger = config.getTraceEventLogger();
             var resourcePolicy = new DefaultWorkerDispatchResourcePolicy(schedulingPlaneResolver);
             var resourceReleaser = new WorkerDispatchResourceReleaser(
-                    workerAdmissionRuntime,
+                    workerSelectionRuntime,
                     resourcePolicy,
                     traceEventLogger
             );
             var dispatchBinder = new SimpleTaskDispatchBinder(
                     assignmentRuntimePort,
-                    workerAdmissionRuntime,
+                    workerSelectionRuntime,
                     recordService,
                     dispatchBatchListener,
                     traceEventLogger,
                     resourcePolicy,
                     resourceReleaser,
                     schedulingPlaneResolver);
-            TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
-            TaskWorkerMatchingStrategy matchingStrategy = customStrategy != null
-                    ? customStrategy
-                    : new RuleBasedTaskWorkerMatchingStrategy(
-                            config.getMatchingRuleSetProvider(),
-                            config.getMatchingRuleEvaluator(),
-                            config.getWorkerCandidateRuntime(),
-                            workerAdmissionRuntime,
-                            config.getWorkerSchedulingViewRuntime(),
-                            recordService,
-                            traceEventLogger,
-                            schedulingPlaneResolver,
-                            new DefaultWorkerCandidateRanker(),
-                            resourcePolicy,
-                            null);
             var workerAssignListener = new TaskWorkerAssignListener(
-                    matchingStrategy,
-                    workerAdmissionRuntime,
-                    workerWarmHintRuntime,
+                    workerSelectionRuntime,
                     dispatchBinder,
                     assignmentRuntimePort,
                     taskEvents,
                     traceEventLogger,
+                    recordService,
                     new DefaultAssignmentAllocationPolicy(null, schedulingPlaneResolver),
                     resourcePolicy,
                     resourceReleaser,
@@ -156,7 +136,7 @@ public class EngineRuntimeKernel {
             resourceReleaseListener = new TaskResourceReleaseListener(
                     leaseMaintenancePort,
                     dispatchWakeupPort,
-                    workerAdmissionRuntime,
+                    workerSelectionRuntime,
                     traceEventLogger,
                     null,
                     resourcePolicy,

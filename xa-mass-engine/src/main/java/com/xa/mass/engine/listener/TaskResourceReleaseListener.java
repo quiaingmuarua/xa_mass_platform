@@ -14,8 +14,8 @@ import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerEvidence;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -28,7 +28,7 @@ public class TaskResourceReleaseListener {
 
     private final TaskLeaseMaintenancePort leaseMaintenancePort;
     private final TaskDispatchWakeupPort dispatchWakeupPort;
-    private final WorkerAdmissionRuntime workerAdmissionRuntime;
+    private final WorkerSelectionRuntime workerSelectionRuntime;
     private final TraceEventLogger traceEventLogger;
     private final AssignmentRefillPolicy refillPolicy;
     private final WorkerDispatchResourcePolicy resourcePolicy;
@@ -36,49 +36,49 @@ public class TaskResourceReleaseListener {
 
     public TaskResourceReleaseListener(TaskLeaseMaintenancePort leaseMaintenancePort,
                                        TaskDispatchWakeupPort dispatchWakeupPort,
-                                       WorkerAdmissionRuntime workerAdmissionRuntime) {
-        this(leaseMaintenancePort, dispatchWakeupPort, workerAdmissionRuntime, TraceEventLogger.noop());
+                                       WorkerSelectionRuntime workerSelectionRuntime) {
+        this(leaseMaintenancePort, dispatchWakeupPort, workerSelectionRuntime, TraceEventLogger.noop());
     }
 
     public TaskResourceReleaseListener(TaskLeaseMaintenancePort leaseMaintenancePort,
                                        TaskDispatchWakeupPort dispatchWakeupPort,
-                                       WorkerAdmissionRuntime workerAdmissionRuntime,
+                                       WorkerSelectionRuntime workerSelectionRuntime,
                                        TraceEventLogger traceEventLogger) {
-        this(leaseMaintenancePort, dispatchWakeupPort, workerAdmissionRuntime, traceEventLogger, new DefaultAssignmentRefillPolicy());
+        this(leaseMaintenancePort, dispatchWakeupPort, workerSelectionRuntime, traceEventLogger, new DefaultAssignmentRefillPolicy());
     }
 
     TaskResourceReleaseListener(TaskLeaseMaintenancePort leaseMaintenancePort,
-                                TaskDispatchWakeupPort dispatchWakeupPort,
-                                WorkerAdmissionRuntime workerAdmissionRuntime,
-                                TraceEventLogger traceEventLogger,
-                                AssignmentRefillPolicy refillPolicy) {
-        this(leaseMaintenancePort, dispatchWakeupPort, workerAdmissionRuntime, traceEventLogger, refillPolicy, new DefaultWorkerDispatchResourcePolicy());
+                                 TaskDispatchWakeupPort dispatchWakeupPort,
+                                 WorkerSelectionRuntime workerSelectionRuntime,
+                                 TraceEventLogger traceEventLogger,
+                                 AssignmentRefillPolicy refillPolicy) {
+        this(leaseMaintenancePort, dispatchWakeupPort, workerSelectionRuntime, traceEventLogger, refillPolicy, new DefaultWorkerDispatchResourcePolicy());
     }
 
     TaskResourceReleaseListener(TaskLeaseMaintenancePort leaseMaintenancePort,
-                                TaskDispatchWakeupPort dispatchWakeupPort,
-                                WorkerAdmissionRuntime workerAdmissionRuntime,
-                                TraceEventLogger traceEventLogger,
-                                AssignmentRefillPolicy refillPolicy,
-                                WorkerDispatchResourcePolicy resourcePolicy) {
-        this(leaseMaintenancePort, dispatchWakeupPort, workerAdmissionRuntime, traceEventLogger, refillPolicy, resourcePolicy, null);
+                                 TaskDispatchWakeupPort dispatchWakeupPort,
+                                 WorkerSelectionRuntime workerSelectionRuntime,
+                                 TraceEventLogger traceEventLogger,
+                                 AssignmentRefillPolicy refillPolicy,
+                                 WorkerDispatchResourcePolicy resourcePolicy) {
+        this(leaseMaintenancePort, dispatchWakeupPort, workerSelectionRuntime, traceEventLogger, refillPolicy, resourcePolicy, null);
     }
 
     public TaskResourceReleaseListener(TaskLeaseMaintenancePort leaseMaintenancePort,
                                        TaskDispatchWakeupPort dispatchWakeupPort,
-                                       WorkerAdmissionRuntime workerAdmissionRuntime,
+                                       WorkerSelectionRuntime workerSelectionRuntime,
                                        TraceEventLogger traceEventLogger,
                                        AssignmentRefillPolicy refillPolicy,
                                        WorkerDispatchResourcePolicy resourcePolicy,
                                        WorkerDispatchResourceReleaser resourceReleaser) {
         this.leaseMaintenancePort = leaseMaintenancePort;
         this.dispatchWakeupPort = dispatchWakeupPort;
-        this.workerAdmissionRuntime = workerAdmissionRuntime;
+        this.workerSelectionRuntime = workerSelectionRuntime;
         this.traceEventLogger = traceEventLogger;
         this.refillPolicy = refillPolicy == null ? new DefaultAssignmentRefillPolicy() : refillPolicy;
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
         this.resourceReleaser = resourceReleaser == null
-                ? new WorkerDispatchResourceReleaser(workerAdmissionRuntime, this.resourcePolicy, traceEventLogger)
+                ? new WorkerDispatchResourceReleaser(workerSelectionRuntime, this.resourcePolicy, traceEventLogger)
                 : resourceReleaser;
     }
 
@@ -94,7 +94,7 @@ public class TaskResourceReleaseListener {
             if (lease == null || lease.workerId() == null || lease.workerId().isBlank()) {
                 continue;
             }
-            workerAdmissionRuntime.recordWorkFinal(admissionTarget(task.getTid(), lease));
+            workerSelectionRuntime.recordSelectedFinal(selectedWorkerEvidence(task.getTid(), lease, false));
             WorkerDispatchResourceUsage usage = resourcePolicy.usageForAttempt(task);
             if (usage.exclusiveWorkerLock()) {
                 exclusiveWorkerIds.add(lease.workerId());
@@ -102,8 +102,12 @@ public class TaskResourceReleaseListener {
         }
 
         for (String workerId : exclusiveWorkerIds) {
-            resourceReleaser.releaseAttemptLockIfExclusive(task, workerId,
-                    "ON_TASK_TERMINAL", "TaskResourceReleaseListener", "task reached terminal");
+            leases.stream()
+                    .filter(lease -> lease != null && workerId.equals(lease.workerId()))
+                    .findFirst()
+                    .map(lease -> selectedWorkerEvidence(task.getTid(), lease, true))
+                    .ifPresent(evidence -> resourceReleaser.releaseAttemptLockIfExclusive(task, evidence,
+                            "ON_TASK_TERMINAL", "TaskResourceReleaseListener", "task reached terminal"));
         }
     }
 
@@ -115,12 +119,12 @@ public class TaskResourceReleaseListener {
         if (workerId == null || workerId.isBlank()) {
             return;
         }
-        workerAdmissionRuntime.recordWorkFinal(admissionTarget(task.getTid(), event));
+        workerSelectionRuntime.recordSelectedFinal(selectedWorkerEvidence(task.getTid(), event, false));
         if (hasOtherActiveAttempts(task.getTid(), workerId)) {
             return;
         }
 
-        resourceReleaser.releaseAttemptLockIfExclusive(task, workerId,
+        resourceReleaser.releaseAttemptLockIfExclusive(task, selectedWorkerEvidence(task.getTid(), event, true),
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED", "TaskResourceReleaseListener", "worker has no in-flight messages");
 
         AssignmentRefillDecision refillDecision = refillPolicy.decide(new AssignmentRefillRequest(
@@ -136,11 +140,15 @@ public class TaskResourceReleaseListener {
         return leaseMaintenancePort.hasActiveWorkForWorker(taskId, workerId);
     }
 
-    private static WorkerAdmissionTarget admissionTarget(String taskId, ActiveLeaseRecord lease) {
-        return WorkerAdmissionTarget.groupScoped(lease.workerGroupId(), lease.workerId(), taskId);
+    private static SelectedWorkerEvidence selectedWorkerEvidence(String taskId,
+                                                                 ActiveLeaseRecord lease,
+                                                                 boolean exclusiveWorkerLock) {
+        return SelectedWorkerEvidence.of(lease.workerId(), lease.workerGroupId(), taskId, exclusiveWorkerLock);
     }
 
-    private static WorkerAdmissionTarget admissionTarget(String taskId, TaskWorkAttemptClosedEvent event) {
-        return WorkerAdmissionTarget.groupScoped(event.workerGroupId(), event.workerId(), taskId);
+    private static SelectedWorkerEvidence selectedWorkerEvidence(String taskId,
+                                                                 TaskWorkAttemptClosedEvent event,
+                                                                 boolean exclusiveWorkerLock) {
+        return SelectedWorkerEvidence.of(event.workerId(), event.workerGroupId(), taskId, exclusiveWorkerLock);
     }
 }

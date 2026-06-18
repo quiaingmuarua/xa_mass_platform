@@ -5,7 +5,7 @@ import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import java.util.List;
 
 /**
- * Runtime admission and occupancy surface for matched workers.
+ * Runtime admission and occupancy surface for selected workers.
  *
  * <p>Scheduling callers must carry WorkerGroup evidence from candidate source
  * through reserve, confirm/release, claim, and final accounting. Worker-id-only

@@ -1,10 +1,8 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
@@ -40,9 +38,7 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals(1, harness.stats(task.getTid()).readyCount());
         assertEquals(0, harness.stats(task.getTid()).inflightCount());
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
-        AssignmentRecord rejected = harness.record(task.getTid(), "worker-unknown");
-        assertEquals(AssignmentResult.RESOURCE_UNAVAILABLE, rejected.getResult());
-        assertEquals("worker transport unreachable", rejected.getReason());
+        assertEquals(1, harness.selectionReasonCount(task.getTid(), "worker transport unreachable"));
         assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-unknown"));
     }
 
@@ -99,9 +95,7 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals(2, gatedStats.readyCount());
         assertEquals(0, gatedStats.inflightCount());
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
-        AssignmentRecord routingMismatch = harness.record(task.getTid(), "worker-gb");
-        assertEquals(AssignmentResult.RULE_NOT_MATCH, routingMismatch.getResult());
-        assertEquals("routing code mismatch", routingMismatch.getReason());
+        assertEquals(1, harness.selectionReasonCount(task.getTid(), "routing code mismatch"));
 
         harness.addWorker("worker-us-2", "us");
 
@@ -201,13 +195,8 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals(1, activeLeases.size());
         assertEquals("worker-gold", activeLeases.getFirst().workerId());
 
-        AssignmentRecord silverRecord = harness.record(task.getTid(), "worker-silver");
-        assertEquals(AssignmentResult.RULE_NOT_MATCH, silverRecord.getResult());
-        assertEquals("target worker attributes mismatch", silverRecord.getReason());
-
-        AssignmentRecord lockedGoldRecord = harness.record(task.getTid(), "worker-gold-locked");
-        assertEquals(AssignmentResult.CONFLICT, lockedGoldRecord.getResult());
-        assertEquals("worker locked", lockedGoldRecord.getReason());
+        assertEquals(1, harness.selectionReasonCount(task.getTid(), "target worker attributes mismatch"));
+        assertEquals(1, harness.selectionReasonCount(task.getTid(), "worker locked"));
     }
 
     @Test
@@ -241,9 +230,7 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals(1, harness.stats(waitingTask.getTid()).readyCount());
         assertTrue(harness.activeLeases(waitingTask.getTid()).isEmpty());
         assertTrue(harness.workerRecords(waitingTask.getTid(), "worker-backup").isEmpty());
-        AssignmentRecord targetLockedRecord = harness.record(waitingTask.getTid(), "worker-target");
-        assertEquals(AssignmentResult.CONFLICT, targetLockedRecord.getResult());
-        assertEquals("worker locked", targetLockedRecord.getReason());
+        assertEquals(1, harness.selectionReasonCount(waitingTask.getTid(), "worker locked"));
 
         assertTrue(harness.taskManager.ingestTaskResult(
                 runningTask.getTid(),

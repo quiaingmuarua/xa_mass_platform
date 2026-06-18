@@ -2,6 +2,7 @@ package com.xa.mass.engine;
 
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
+import com.xa.mass.base.enums.assignment.AssignmentType;
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
@@ -17,10 +18,8 @@ import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.AssignmentRecord;
-import com.xa.mass.engine.rules.RegistryBackedMatchingRuleEvaluator;
-import com.xa.mass.engine.rules.RuleEvaluatorRegistries;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
 import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
@@ -31,9 +30,6 @@ import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.kernel.spi.rule.RuleDefinition;
-import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
@@ -42,7 +38,6 @@ import com.xa.mass.worker.runtime.report.WorkerStateReport;
 import java.util.ArrayList;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -56,7 +51,6 @@ final class TaskSchedulingTestHarness {
     final InMemoryTaskShellRuntimeStore taskStorage;
     final TaskManager taskManager;
     final WorkerManager workerManager;
-    final RuleStorage ruleStorage;
     final AssignmentRecordService assignmentRecords;
     final List<TaskDispatchBinding> dispatches;
     final TaskWorkerAssignListener assignListener;
@@ -83,10 +77,8 @@ final class TaskSchedulingTestHarness {
                 new WorkerStateProjectionOwner(),
                 TraceEventLogger.noop()
         );
-        this.ruleStorage = new InMemoryRuleDefinitionStore();
         this.assignmentRecords = new AssignmentRecordService();
         this.dispatches = new ArrayList<>();
-        installDefaultSchedulingRules();
         installDefaultWorkerRegistrationSpine();
 
         SimpleTaskDispatchBinder binder = new SimpleTaskDispatchBinder(
@@ -95,25 +87,17 @@ final class TaskSchedulingTestHarness {
                 assignmentRecords,
                 (context, bindings) -> dispatches.addAll(bindings)
         );
-        RuleBasedTaskWorkerMatchingStrategy matchingStrategy = new RuleBasedTaskWorkerMatchingStrategy(
-                () -> ruleStorage.getAllRules().stream()
-                        .filter(RuleDefinition::isEnabled)
-                        .sorted(Comparator.comparingInt(RuleDefinition::getPriority))
-                        .toList(),
-                new RegistryBackedMatchingRuleEvaluator(RuleEvaluatorRegistries.defaultRegistry()),
-                workerManager,
-                workerManager,
-                workerManager,
-                assignmentRecords,
-                com.xa.mass.engine.TraceEventLogger.noop()
-        );
         this.assignListener = new TaskWorkerAssignListener(
-                matchingStrategy,
-                workerManager,
                 workerManager,
                 binder,
                 taskManager,
-                taskManager.events()
+                taskManager.events(),
+                TraceEventLogger.noop(),
+                assignmentRecords,
+                null,
+                null,
+                null,
+                new DefaultSchedulingPlaneResolver()
         );
 
         TaskResourceReleaseListener releaseListener = new TaskResourceReleaseListener(
@@ -286,6 +270,29 @@ final class TaskSchedulingTestHarness {
                 .toList();
     }
 
+    AssignmentRecord selectionOutcome(String taskId) {
+        return latestSelectionOutcome(taskId).orElseThrow();
+    }
+
+    private java.util.Optional<AssignmentRecord> latestSelectionOutcome(String taskId) {
+        return assignmentRecords.getRecordsByTaskId(taskId).stream()
+                .filter(record -> AssignmentType.WORKER_SELECTION.equals(record.getType()))
+                .max(java.util.Comparator.comparing(AssignmentRecord::getAssignTime));
+    }
+
+    int selectionReasonCount(String taskId, String reason) {
+        java.util.Optional<AssignmentRecord> outcome = latestSelectionOutcome(taskId);
+        if (outcome.isEmpty()) {
+            return 0;
+        }
+        Object reasons = outcome.orElseThrow().getContextSnapshot().get("rejectedCountByReason");
+        if (!(reasons instanceof Map<?, ?> reasonCounts)) {
+            return 0;
+        }
+        Object count = reasonCounts.get(reason);
+        return count instanceof Number number ? number.intValue() : 0;
+    }
+
     long successfulMessageAssignments(String taskId, String workerId) {
         return assignmentRecords.getRecordsByTaskId(taskId).stream()
                 .filter(record -> workerId.equals(record.getWorkerId()))
@@ -295,24 +302,6 @@ final class TaskSchedulingTestHarness {
 
     Map<String, Object> item(String target) {
         return Map.of("target", target);
-    }
-
-    private void installDefaultSchedulingRules() {
-        ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
-                rule("worker_scheduling_resource_check", "hasWorkerSchedulingResource == true"),
-                rule("routing_code_match", "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true"),
-                rule("app_support_check", "supportsProject == true"),
-                rule("target_worker_attributes_check", "matchesTargetWorkerAttributes == true")
-        ));
-    }
-
-    private RuleDefinition rule(String id, String content) {
-        RuleDefinition rule = new RuleDefinition();
-        rule.setId(id);
-        rule.setType(RuleType.QL_EXPRESS);
-        rule.setContent(content);
-        return rule;
     }
 
     private Worker worker(String workerId) {

@@ -3,14 +3,10 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.TaskWorkLifecycleState.AttemptFinalReason;
 import com.xa.mass.engine.TaskWorkLifecycleState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkLifecycleState.MessageFinalReason;
 import com.xa.mass.engine.TaskWorkLifecycleState.MessageStatus;
-import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
-import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
@@ -245,118 +241,6 @@ public final class TraceEventLogger {
                         "reason", reason,
                         "result", "SUCCESS"
                 ))
-                .build());
-    }
-
-    public void workerMatchAccepted(String taskId,
-                                    WorkerSchedulingCandidate candidate,
-                                    String reason,
-                                    Integer candidateRank,
-                                    Double candidateScore) {
-        workerMatchAccepted(taskId, candidate, reason, candidateRank, candidateScore, null);
-    }
-
-    public void workerMatchAccepted(String taskId,
-                                    WorkerSchedulingCandidate candidate,
-                                    String reason,
-                                    Integer candidateRank,
-                                    Double candidateScore,
-                                    WorkerLoadSnapshot workerLoadSnapshot) {
-        workerMatchAccepted(null, taskId, candidate, reason, candidateRank, candidateScore, workerLoadSnapshot);
-    }
-
-    public void workerMatchAccepted(Task task,
-                                    WorkerSchedulingCandidate candidate,
-                                    String reason,
-                                    Integer candidateRank,
-                                    Double candidateScore,
-                                    WorkerLoadSnapshot workerLoadSnapshot) {
-        workerMatchAccepted(task, task != null ? task.getTid() : null, candidate, reason, candidateRank,
-                candidateScore, workerLoadSnapshot);
-    }
-
-    private void workerMatchAccepted(Task task,
-                                     String taskId,
-                                     WorkerSchedulingCandidate candidate,
-                                     String reason,
-                                     Integer candidateRank,
-                                     Double candidateScore,
-                                     WorkerLoadSnapshot workerLoadSnapshot) {
-        if (candidate == null) {
-            return;
-        }
-        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, task, taskId,
-                candidate.getWorkerId(), reason, "SUCCESS",
-                workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
-    }
-
-    public void workerMatchRejected(String taskId,
-                                    WorkerSchedulingCandidate candidate,
-                                    String reason,
-                                    Integer candidateRank,
-                                    Double candidateScore) {
-        workerMatchRejected(taskId, candidate, reason, candidateRank, candidateScore, null);
-    }
-
-    public void workerMatchRejected(String taskId,
-                                    WorkerSchedulingCandidate candidate,
-                                    String reason,
-                                    Integer candidateRank,
-                                    Double candidateScore,
-                                    WorkerLoadSnapshot workerLoadSnapshot) {
-        workerMatchRejected(null, taskId, candidate, reason, candidateRank, candidateScore, workerLoadSnapshot);
-    }
-
-    public void workerMatchRejected(Task task,
-                                    WorkerSchedulingCandidate candidate,
-                                    String reason,
-                                    Integer candidateRank,
-                                    Double candidateScore,
-                                    WorkerLoadSnapshot workerLoadSnapshot) {
-        workerMatchRejected(task, task != null ? task.getTid() : null, candidate, reason, candidateRank,
-                candidateScore, workerLoadSnapshot);
-    }
-
-    private void workerMatchRejected(Task task,
-                                     String taskId,
-                                     WorkerSchedulingCandidate candidate,
-                                     String reason,
-                                     Integer candidateRank,
-                                     Double candidateScore,
-                                     WorkerLoadSnapshot workerLoadSnapshot) {
-        if (candidate == null) {
-            return;
-        }
-        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, task, taskId,
-                candidate.getWorkerId(), reason, "REJECTED",
-                workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
-    }
-
-    private void emitWorkerMatchEvent(ExecutionEventType eventType,
-                                      Task task,
-                                      String taskId,
-                                      String workerId,
-                                      String reason,
-                                      String result,
-                                      Map<String, Object> extraAttrs) {
-        if (workerId == null || workerId.isBlank()) {
-            return;
-        }
-        Map<String, Object> values = attrs(
-                "source", "RuleBasedTaskWorkerMatchingStrategy",
-                "reason", reason,
-                "result", result
-        );
-        putTaskRuntimeProfile(values, task);
-        if (extraAttrs != null) {
-            values.putAll(extraAttrs);
-        }
-        emit(event(eventType)
-                .identity(identity -> identity
-                        .taskId(taskId)
-                        .workerId(workerId))
-                .outcome(eventType == ExecutionEventType.WORKER_MATCH_ACCEPTED, null, reason)
-                .attrs(values)
                 .build());
     }
 
@@ -1010,66 +894,8 @@ public final class TraceEventLogger {
         return values;
     }
 
-    private static Map<String, Object> workerSchedulingRankAttrs(WorkerSchedulingView view,
-                                                                 Integer candidateRank,
-                                                                 Double candidateScore) {
-        return workerSchedulingRankAttrs(null, view, null, candidateRank, candidateScore);
-    }
-
-    private static Map<String, Object> workerSchedulingRankAttrs(Task task,
-                                                                 WorkerSchedulingView view,
-                                                                 WorkerLoadSnapshot workerLoadSnapshot,
-                                                                 Integer candidateRank,
-                                                                 Double candidateScore) {
-        Map<String, Object> values = attrs(
-                "candidateRank", candidateRank,
-                "candidateScore", candidateScore != null ? formatDouble(candidateScore) : null
-        );
-        if (view != null) {
-            String routingCode = TaskSharedConfig.routingCode(task);
-            String taskEventCode = TaskSharedConfig.sdkEventCode(task);
-            values.put("workerSchedulingResourceId", view.schedulingResourceId());
-            values.put("workerSchedulingRoutingTags", view.schedulingRoutingTags());
-            values.put("workerSchedulingAttributes", view.schedulingAttributes());
-            values.put("workerSchedulingMatchesRoutingCode",
-                    routingCode != null && view.schedulingRoutingTagsContain(routingCode));
-            values.put("workerGroupId", view.workerGroupId());
-            values.put("workerCandidateSource", workerCandidateSource(task));
-            if (task != null && taskEventCode != null && !taskEventCode.isBlank()
-                    && task.getProject() != null && !task.getProject().isBlank()) {
-                values.put("eventBindingKey", task.getProject().trim() + ":" + taskEventCode.trim());
-            }
-        }
-        if (workerLoadSnapshot != null) {
-            values.put("workerActiveLeaseCount", workerLoadSnapshot.activeLeaseCount());
-            values.put("workerReservedCount", workerLoadSnapshot.reservedCount());
-            values.put("workerDeclaredCapacity", workerLoadSnapshot.declaredCapacity());
-            values.put("workerEstimatedLoadRatio", formatDouble(workerLoadSnapshot.estimatedLoadRatio()));
-        } else if (view != null) {
-            values.put("workerActiveLeaseCount", view.activeLeaseCount());
-            values.put("workerReservedCount", view.reservedCount());
-            values.put("workerDeclaredCapacity", view.declaredCapacity());
-            values.put("workerEstimatedLoadRatio", formatDouble(view.estimatedLoadRatio()));
-        }
-        return values;
-    }
-
     private static String enumName(Enum<?> value) {
         return value != null ? value.name() : null;
-    }
-
-    private static String workerCandidateSource(Task task) {
-        if (task == null) {
-            return null;
-        }
-        if (TaskSharedConfig.workerGroupSelector(task).isEmpty()) {
-            return null;
-        }
-        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
-        if (targetWorkerId != null && !targetWorkerId.isBlank()) {
-            return "TARGET_WORKER";
-        }
-        return "GROUP_SELECTOR";
     }
 
     private static String formatDouble(double value) {

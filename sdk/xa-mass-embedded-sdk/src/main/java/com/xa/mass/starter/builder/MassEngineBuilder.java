@@ -1,7 +1,6 @@
 package com.xa.mass.starter.builder;
 
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
-import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
@@ -18,7 +17,6 @@ import com.xa.mass.starter.config.EngineConfig;
 public class MassEngineBuilder {
     private EngineConfig config = new EngineConfig();
 
-    private TaskWorkerMatchingStrategy matchingStrategy;
     private AssignmentDiagnosticRecorder recordService;
     private MassBootstrapDataProvider bootstrapDataProvider;
     private TaskShellStore taskShellStore;
@@ -73,11 +71,6 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder matchingStrategy(TaskWorkerMatchingStrategy matchingStrategy) {
-        this.matchingStrategy = matchingStrategy;
-        return this;
-    }
-
     public MassEngineBuilder recordService(AssignmentDiagnosticRecorder recordService) {
         this.recordService = recordService;
         return this;
@@ -101,7 +94,6 @@ public class MassEngineBuilder {
     public MassEngine build() {
         if (workerThreads != null) config.setWorkerThreads(workerThreads);
         if (taskMessageLeaseSeconds != null) config.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
-        if (matchingStrategy != null) config.setMatchingStrategy(matchingStrategy);
         if (taskShellStore != null) config.setTaskShellStore(taskShellStore);
         if (taskWorkRuntime != null) config.setTaskWorkRuntime(taskWorkRuntime);
         if (taskResultRuntime != null) config.setTaskResultRuntime(taskResultRuntime);

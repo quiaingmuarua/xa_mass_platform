@@ -1,11 +1,6 @@
 package com.xa.mass.engine.resource;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.TestWorkerCandidateRows;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
-import com.xa.mass.engine.model.WorkerSchedulingView;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,11 +20,11 @@ class DefaultWorkerDispatchResourcePolicyTest {
     }
 
     @Test
-    void backgroundTaskUsesSharedCapacityWithoutWorkerLockForStatelessCandidate() {
+    void backgroundTaskUsesSharedCapacityWithoutWorkerLock() {
         Task task = new Task();
         task.getExecutionSpec().setForeground(false);
 
-        WorkerDispatchResourceUsage usage = policy.usageForCandidate(task, candidate());
+        WorkerDispatchResourceUsage usage = policy.usageForTask(task);
 
         assertFalse(usage.exclusiveWorkerLock());
     }
@@ -51,13 +46,4 @@ class DefaultWorkerDispatchResourcePolicyTest {
         assertTrue(usage.exclusiveWorkerLock());
     }
 
-    private WorkerSchedulingCandidate candidate() {
-        Worker worker = new Worker();
-        worker.setWorkerId("worker-1");
-        return new WorkerSchedulingCandidate(
-                TestWorkerCandidateRows.from(worker),
-                WorkerSchedulingView.from(TestWorkerCandidateRows.from(worker), WorkerReachabilityState.ONLINE,
-                        true, false)
-        );
-    }
 }

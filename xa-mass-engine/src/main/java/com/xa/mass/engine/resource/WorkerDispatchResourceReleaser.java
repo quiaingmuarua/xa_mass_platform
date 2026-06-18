@@ -1,107 +1,102 @@
 package com.xa.mass.engine.resource;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.TraceEventLogger;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerEvidence;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 
 import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
  * Releases dispatch-time worker reservations and exclusive locks.
  */
 public final class WorkerDispatchResourceReleaser {
-    private final WorkerAdmissionRuntime workerAdmissionRuntime;
+    private final WorkerSelectionRuntime workerSelectionRuntime;
     private final WorkerDispatchResourcePolicy resourcePolicy;
     private final TraceEventLogger traceEventLogger;
 
-    public WorkerDispatchResourceReleaser(WorkerAdmissionRuntime workerAdmissionRuntime,
+    public WorkerDispatchResourceReleaser(WorkerSelectionRuntime workerSelectionRuntime,
                                           WorkerDispatchResourcePolicy resourcePolicy,
                                           TraceEventLogger traceEventLogger) {
-        this.workerAdmissionRuntime = workerAdmissionRuntime;
+        this.workerSelectionRuntime = Objects.requireNonNull(workerSelectionRuntime, "workerSelectionRuntime");
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
         this.traceEventLogger = traceEventLogger == null ? TraceEventLogger.noop() : traceEventLogger;
     }
 
-    public void releaseReservations(Task task, Collection<WorkerSchedulingCandidate> candidates) {
-        if (task == null || candidates == null || candidates.isEmpty()) {
+    public void releaseReservations(Task task, Collection<SelectedWorkerHandle> handles) {
+        if (task == null || handles == null || handles.isEmpty()) {
             return;
         }
-        for (WorkerCleanupDecision decision : cleanupDecisions(task, candidates)) {
-            workerAdmissionRuntime.releaseWorkerReservation(decision.admissionTarget());
+        for (SelectedWorkerHandle handle : handles) {
+            if (handle != null) {
+                workerSelectionRuntime.releaseSelected(handle);
+            }
         }
     }
 
     public void releaseReservationsAndLocks(Task task,
-                                            Collection<WorkerSchedulingCandidate> candidates,
+                                            Collection<SelectedWorkerHandle> handles,
                                             String trigger,
                                             String source,
                                             String reason) {
-        if (task == null || candidates == null || candidates.isEmpty()) {
+        if (task == null || handles == null || handles.isEmpty()) {
             return;
         }
-        for (WorkerCleanupDecision decision : cleanupDecisions(task, candidates)) {
-            workerAdmissionRuntime.releaseWorkerReservation(decision.admissionTarget());
-            releaseLockIfExclusive(task, decision.workerId(), decision.exclusiveWorkerLock(),
-                    trigger, source, reason);
+        for (SelectedWorkerHandle handle : handles) {
+            if (handle == null) {
+                continue;
+            }
+            workerSelectionRuntime.releaseSelected(handle);
+            emitLockReleasedIfExclusive(task, handle.workerId(), handle.exclusiveWorkerLock(), trigger, source, reason);
         }
     }
 
     public void releaseLocks(Task task,
-                             Collection<WorkerSchedulingCandidate> candidates,
+                             Collection<SelectedWorkerHandle> handles,
                              String trigger,
                              String source,
                              String reason) {
-        if (task == null || candidates == null || candidates.isEmpty()) {
+        if (task == null || handles == null || handles.isEmpty()) {
             return;
         }
-        for (WorkerCleanupDecision decision : cleanupDecisions(task, candidates)) {
-            releaseLockIfExclusive(task, decision.workerId(), decision.exclusiveWorkerLock(),
-                    trigger, source, reason);
+        for (SelectedWorkerHandle handle : handles) {
+            if (handle == null) {
+                continue;
+            }
+            if (handle.exclusiveWorkerLock()) {
+                workerSelectionRuntime.releaseSelectedLock(handle);
+            }
+            emitLockReleasedIfExclusive(task, handle.workerId(), handle.exclusiveWorkerLock(), trigger, source, reason);
         }
     }
 
     public void releaseReservationAndLock(Task task,
-                                          WorkerSchedulingCandidate candidate,
+                                          SelectedWorkerHandle handle,
                                           String trigger,
                                           String source,
                                           String reason) {
-        if (task == null || candidate == null) {
+        if (task == null || handle == null) {
             return;
         }
-        String workerId = candidate.getWorkerId();
+        String workerId = handle.workerId();
         if (workerId == null || workerId.isBlank()) {
             return;
         }
-        workerAdmissionRuntime.releaseWorkerReservation(admissionTarget(task.getTid(), candidate));
-        releaseLockIfExclusive(task, workerId,
-                resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock(),
-                trigger, source, reason);
+        workerSelectionRuntime.releaseSelected(handle);
+        emitLockReleasedIfExclusive(task, workerId, handle.exclusiveWorkerLock(), trigger, source, reason);
     }
 
-    private void releaseLockIfExclusive(Task task,
-                                        String workerId,
-                                        boolean exclusiveWorkerLock,
-                                        String trigger,
-                                        String source,
-                                        String reason) {
+    private void emitLockReleasedIfExclusive(Task task,
+                                             String workerId,
+                                             boolean exclusiveWorkerLock,
+                                             String trigger,
+                                             String source,
+                                             String reason) {
         if (task == null || workerId == null || workerId.isBlank() || !exclusiveWorkerLock) {
             return;
         }
-        releaseWorkerExclusiveLease(task, workerId, trigger, source, reason);
-    }
-
-    private void releaseWorkerExclusiveLease(Task task,
-                              String workerId,
-                              String trigger,
-                              String source,
-                              String reason) {
-        workerAdmissionRuntime.releaseWorkerExclusiveLease(workerId);
         traceEventLogger.workerLockReleased(task.getTid(), workerId, trigger, source, reason);
         traceEventLogger.resourceReleased(
                 task.getTid(),
@@ -114,51 +109,24 @@ public final class WorkerDispatchResourceReleaser {
     }
 
     public void releaseAttemptLockIfExclusive(Task task,
-                                              String workerId,
+                                              SelectedWorkerEvidence evidence,
                                               String trigger,
                                               String source,
                                               String reason) {
-        if (task == null || workerId == null || workerId.isBlank()) {
+        if (task == null || evidence == null || evidence.workerId() == null || evidence.workerId().isBlank()) {
             return;
         }
         if (!resourcePolicy.usageForAttempt(task).exclusiveWorkerLock()) {
             return;
         }
-        releaseWorkerExclusiveLease(task, workerId, trigger, source, reason);
-    }
-
-    private List<WorkerCleanupDecision> cleanupDecisions(Task task,
-                                                         Collection<WorkerSchedulingCandidate> candidates) {
-        Map<WorkerAdmissionTarget, Boolean> exclusiveLockByTarget = new LinkedHashMap<>();
-        candidates.stream()
-                .filter(Objects::nonNull)
-                .forEach(candidate -> {
-                    String workerId = candidate.getWorkerId();
-                    if (workerId == null || workerId.isBlank()) {
-                        return;
-                    }
-                    boolean exclusiveWorkerLock =
-                            resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock();
-                    exclusiveLockByTarget.merge(admissionTarget(task.getTid(), candidate),
-                            exclusiveWorkerLock,
-                            Boolean::logicalOr);
-                });
-        return exclusiveLockByTarget.entrySet().stream()
-                .map(entry -> new WorkerCleanupDecision(entry.getKey(), entry.getValue()))
-                .toList();
-    }
-
-    private static WorkerAdmissionTarget admissionTarget(String taskId, WorkerSchedulingCandidate candidate) {
-        return WorkerAdmissionTarget.groupScoped(
-                candidate.getSchedulingView().workerGroupId(),
-                candidate.getWorkerId(),
-                taskId
+        SelectedWorkerEvidence lockEvidence = new SelectedWorkerEvidence(
+                evidence.workerId(),
+                evidence.workerGroupId(),
+                evidence.selectionScopeKey(),
+                evidence.selectionToken(),
+                true
         );
-    }
-
-    private record WorkerCleanupDecision(WorkerAdmissionTarget admissionTarget, boolean exclusiveWorkerLock) {
-        String workerId() {
-            return admissionTarget.workerId();
-        }
+        workerSelectionRuntime.releaseSelectedLock(lockEvidence);
+        emitLockReleasedIfExclusive(task, evidence.workerId(), true, trigger, source, reason);
     }
 }

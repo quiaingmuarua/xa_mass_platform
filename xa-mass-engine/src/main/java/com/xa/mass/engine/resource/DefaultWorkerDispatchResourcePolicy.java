@@ -1,7 +1,6 @@
 package com.xa.mass.engine.resource;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.WorkerResourceMode;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
@@ -30,11 +29,6 @@ public final class DefaultWorkerDispatchResourcePolicy implements WorkerDispatch
     @Override
     public WorkerDispatchResourceUsage usageForTask(Task task) {
         return new WorkerDispatchResourceUsage(requiresExclusiveWorkerLock(task));
-    }
-
-    @Override
-    public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
-        return usageForTask(task);
     }
 
     @Override

@@ -1,15 +1,11 @@
 package com.xa.mass.engine.resource;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.TestWorkerCandidateRows;
-import com.xa.mass.worker.runtime.WorkerManager;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
-import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.engine.TraceEventLogger;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerEvidence;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,18 +18,19 @@ class WorkerDispatchResourceReleaserTest {
 
     @Test
     void releaseReservationsAndLocksReleasesEachWorkerOnceAndEmitsWorkerResourceTrace() {
-        WorkerManager workerManager = mock(WorkerManager.class);
+        WorkerSelectionRuntime workerSelectionRuntime = mock(WorkerSelectionRuntime.class);
         WorkerDispatchResourceReleaser releaser = new WorkerDispatchResourceReleaser(
-                workerManager,
+                workerSelectionRuntime,
                 new DefaultWorkerDispatchResourcePolicy(),
                 TraceEventLogger.noop()
         );
         Task task = task("task-1");
+        SelectedWorkerHandle selected = handle("worker-1", "task-1", true);
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             releaser.releaseReservationsAndLocks(
                     task,
-                    List.of(candidate("worker-1"), candidate("worker-1")),
+                    List.of(selected, selected),
                     "UNLOCK_WORKER",
                     "TestSource",
                     "test release"
@@ -51,83 +48,85 @@ class WorkerDispatchResourceReleaserTest {
                             && "TestSource".equals(mdc.get("source")));
         }
 
-        verify(workerManager).releaseWorkerReservation(admissionTarget("worker-1", "task-1"));
-        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
+        verify(workerSelectionRuntime, org.mockito.Mockito.times(2)).releaseSelected(selected);
     }
 
     @Test
     void backgroundTaskReleasesReservationWithoutUnlock() {
-        WorkerManager workerManager = mock(WorkerManager.class);
+        WorkerSelectionRuntime workerSelectionRuntime = mock(WorkerSelectionRuntime.class);
         WorkerDispatchResourceReleaser releaser = new WorkerDispatchResourceReleaser(
-                workerManager,
+                workerSelectionRuntime,
                 new DefaultWorkerDispatchResourcePolicy(),
                 TraceEventLogger.noop()
         );
         Task task = task("task-1");
         task.getExecutionSpec().setForeground(false);
+        SelectedWorkerHandle selected = handle("worker-1", "task-1", false);
 
         releaser.releaseReservationsAndLocks(
                 task,
-                List.of(candidate("worker-1")),
+                List.of(selected),
                 "UNLOCK_WORKER",
                 "TestSource",
                 "test release"
         );
 
-        verify(workerManager).releaseWorkerReservation(admissionTarget("worker-1", "task-1"));
-        verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
+        verify(workerSelectionRuntime).releaseSelected(selected);
+        verify(workerSelectionRuntime, never()).releaseSelectedLock(selected);
     }
 
     @Test
-    void releaseLocksUsesCandidatePolicyInsteadOfTaskPolicy() {
-        WorkerManager workerManager = mock(WorkerManager.class);
+    void releaseLocksUsesSelectedHandleLockFlagInsteadOfTaskPolicy() {
+        WorkerSelectionRuntime workerSelectionRuntime = mock(WorkerSelectionRuntime.class);
         WorkerDispatchResourceReleaser releaser = new WorkerDispatchResourceReleaser(
-                workerManager,
-                new CandidateExclusiveResourcePolicy(),
-                TraceEventLogger.noop()
-        );
-        Task task = task("task-1");
-        task.getExecutionSpec().setForeground(false);
-
-        releaser.releaseLocks(
-                task,
-                List.of(candidate("worker-1")),
-                "UNLOCK_WORKER",
-                "TestSource",
-                "test lock only"
-        );
-
-        verify(workerManager, never()).releaseWorkerReservation(admissionTarget("worker-1", "task-1"));
-        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
-    }
-
-    @Test
-    void releaseLocksDoesNotReleaseReservations() {
-        WorkerManager workerManager = mock(WorkerManager.class);
-        WorkerDispatchResourceReleaser releaser = new WorkerDispatchResourceReleaser(
-                workerManager,
+                workerSelectionRuntime,
                 new DefaultWorkerDispatchResourcePolicy(),
                 TraceEventLogger.noop()
         );
         Task task = task("task-1");
+        task.getExecutionSpec().setForeground(false);
+        SelectedWorkerHandle selected = handle("worker-1", "task-1", true);
 
         releaser.releaseLocks(
                 task,
-                List.of(candidate("worker-1")),
+                List.of(selected),
                 "UNLOCK_WORKER",
                 "TestSource",
                 "test lock only"
         );
 
-        verify(workerManager, never()).releaseWorkerReservation(admissionTarget("worker-1", "task-1"));
-        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
+        verify(workerSelectionRuntime, never()).releaseSelected(selected);
+        verify(workerSelectionRuntime).releaseSelectedLock(selected);
+    }
+
+    @Test
+    void releaseLocksDoesNotReleaseReservations() {
+        WorkerSelectionRuntime workerSelectionRuntime = mock(WorkerSelectionRuntime.class);
+        WorkerDispatchResourceReleaser releaser = new WorkerDispatchResourceReleaser(
+                workerSelectionRuntime,
+                new DefaultWorkerDispatchResourcePolicy(),
+                TraceEventLogger.noop()
+        );
+        Task task = task("task-1");
+        SelectedWorkerHandle selected = handle("worker-1", "task-1", true);
+
+        releaser.releaseLocks(
+                task,
+                List.of(selected),
+                "UNLOCK_WORKER",
+                "TestSource",
+                "test lock only"
+        );
+
+        verify(workerSelectionRuntime, never()).releaseSelected(selected);
+        verify(workerSelectionRuntime).releaseSelectedLock(selected);
     }
 
     @Test
     void releaseAttemptLockUsesAttemptResourcePolicy() {
-        WorkerManager workerManager = mock(WorkerManager.class);
+        WorkerSelectionRuntime workerSelectionRuntime = mock(WorkerSelectionRuntime.class);
         WorkerDispatchResourceReleaser releaser = new WorkerDispatchResourceReleaser(
-                workerManager,
+                workerSelectionRuntime,
                 new AttemptNonExclusiveResourcePolicy(),
                 TraceEventLogger.noop()
         );
@@ -135,13 +134,13 @@ class WorkerDispatchResourceReleaserTest {
 
         releaser.releaseAttemptLockIfExclusive(
                 task,
-                "worker-1",
+                SelectedWorkerEvidence.of("worker-1", "group-a", "task-1", true),
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED",
                 "TestSource",
                 "test attempt release"
         );
 
-        verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
+        verify(workerSelectionRuntime, never()).releaseSelectedLock(org.mockito.ArgumentMatchers.any(SelectedWorkerEvidence.class));
     }
 
     private Task task(String taskId) {
@@ -150,46 +149,19 @@ class WorkerDispatchResourceReleaserTest {
         return task;
     }
 
-    private WorkerSchedulingCandidate candidate(String workerId) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        return new WorkerSchedulingCandidate(
-                TestWorkerCandidateRows.from(worker),
-                WorkerSchedulingView.from(TestWorkerCandidateRows.from(worker), WorkerReachabilityState.ONLINE,
-                        true, false)
+    private SelectedWorkerHandle handle(String workerId, String taskId, boolean exclusiveWorkerLock) {
+        return SelectedWorkerHandle.of(
+                workerId,
+                "group-a",
+                taskId,
+                exclusiveWorkerLock
         );
-    }
-
-    private static WorkerAdmissionTarget admissionTarget(String workerId, String taskId) {
-        return WorkerAdmissionTarget.groupScoped("group-a", workerId, taskId);
-    }
-
-    private static final class CandidateExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {
-        @Override
-        public WorkerDispatchResourceUsage usageForTask(Task task) {
-            return new WorkerDispatchResourceUsage(false);
-        }
-
-        @Override
-        public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
-            return new WorkerDispatchResourceUsage(true);
-        }
-
-        @Override
-        public WorkerDispatchResourceUsage usageForAttempt(Task task) {
-            return usageForTask(task);
-        }
     }
 
     private static final class AttemptNonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {
         @Override
         public WorkerDispatchResourceUsage usageForTask(Task task) {
             return new WorkerDispatchResourceUsage(true);
-        }
-
-        @Override
-        public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
-            return usageForTask(task);
         }
 
         @Override

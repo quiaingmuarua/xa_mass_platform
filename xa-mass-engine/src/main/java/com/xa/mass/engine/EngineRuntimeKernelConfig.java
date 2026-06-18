@@ -1,18 +1,10 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.engine.rules.MatchingRuleEvaluator;
-import com.xa.mass.engine.rules.MatchingRuleSetProvider;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
-import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.TraceEventLogger;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAvailabilityWakeupRuntime;
-import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
-import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
-
-import java.util.Map;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 
 /**
  * Engine-owned assembly contract for the default runtime scheduling kernel.
@@ -36,15 +28,9 @@ public interface EngineRuntimeKernelConfig {
 
     TaskEventService getTaskEventService();
 
-    WorkerAdmissionRuntime getWorkerAdmissionRuntime();
-
     WorkerAvailabilityWakeupRuntime getWorkerAvailabilityWakeupRuntime();
 
-    WorkerWarmHintRuntime getWorkerWarmHintRuntime();
-
-    WorkerCandidateRuntime getWorkerCandidateRuntime();
-
-    WorkerSchedulingViewRuntime getWorkerSchedulingViewRuntime();
+    WorkerSelectionRuntime getWorkerSelectionRuntime();
 
     WorkerDispatchGateRuntime getWorkerDispatchGateRuntime();
 
@@ -53,12 +39,6 @@ public interface EngineRuntimeKernelConfig {
     AssignmentDiagnosticRecorder getRecordService();
 
     TraceEventLogger getTraceEventLogger();
-
-    TaskWorkerMatchingStrategy getMatchingStrategy();
-
-    MatchingRuleSetProvider getMatchingRuleSetProvider();
-
-    MatchingRuleEvaluator<Map<String, Object>> getMatchingRuleEvaluator();
 
     long getAssignmentRetryDelayMillis();
 

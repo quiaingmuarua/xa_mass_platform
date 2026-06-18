@@ -2,9 +2,9 @@
 
 Status: current higher-level worker runtime owner module.
 
-This module owns worker-plane lifecycle, resource convergence, candidate
-source, admission, reporting, and scheduling evidence above the low-level
-`mass-runtime-api` registry SPI.
+This module owns worker-plane lifecycle, resource convergence, runtime worker
+selection, candidate source, admission, reporting, and scheduling evidence
+above the low-level `mass-runtime-api` registry SPI.
 
 For the full boundary contract, see [CONTRACTS.md](CONTRACTS.md).
 
@@ -18,6 +18,8 @@ Worker runtime owns worker truth that is not task truth:
 - Worker state report bounded projection.
 - Worker reachability, load, and group capability evidence.
 - Worker admission, occupancy, dispatch gates, and exclusive leases.
+- Runtime worker selection: worker-side predicates, ordering, reservation,
+  selected handles, claim authorization, and selected-worker accounting.
 - Worker command lifecycle truth: command records, status transitions,
   worker-pulled claims, delivery attempt state, and command lifecycle value
   contracts.
@@ -28,16 +30,18 @@ Worker runtime owns worker truth that is not task truth:
   worker registration surfaces. These are topology/control-plane evidence only;
   they do not own event capability, final-hop delivery, or worker selection.
 
-Engine still owns task scheduling decisions. Worker runtime provides worker
-lifecycle state, admission operations, and evidence; it does not evaluate match
-rules, rank candidates, choose allocation budgets, bind dispatches, converge
-results, or apply dispatch-control side effects from command lifecycle changes.
+Engine still owns task lifecycle, task-side scheduling policy intent,
+allocation budgets, dispatch binding, result convergence, and terminal policy.
+Worker-runtime owns worker-fact predicate/ranking mechanics only behind the
+minimal `WorkerSelectionRuntime` contract; it must not reinterpret task payload
+or become a second task scheduling policy owner.
 
-Scheduling admission is WorkerGroup-scoped in the engine mainline. Candidate
-acquisition and runtime work evidence must carry `workerGroupId` into
-`WorkerAdmissionTarget`; reserve, confirm, release, claim, and final accounting
-must not depend on worker-id reverse lookup when group evidence is already
-known or recoverable from runtime lifecycle records.
+Scheduling admission is WorkerGroup-scoped. Engine assignment calls
+`WorkerSelectionRuntime` with task-side worker-universe intent and consumes
+`SelectedWorkerHandle` / `SelectedWorkerEvidence` for confirm, release, claim,
+and final accounting. `WorkerAdmissionTarget` remains below that selection
+boundary; engine mainline must not call worker-id-only admission mutations when
+group evidence is already known or recoverable from runtime lifecycle records.
 
 Stage-1 scheduling candidate acquisition passes one scheduling clock into the
 registry acquisition and source guard. Redis may use that clock against an
@@ -50,12 +54,13 @@ runtime-api `WorkerCandidateBucketPolicy` owns bucket key calculation and its
 declared max fan-out cost; memory and Redis registries execute that policy and
 must not hardcode worker attribute dimensions. When no policy-specific bucket is
 available, scheduling falls back to the `default` source bucket plus bounded
-acquisition, source guard, and metadata/rule filtering.
+acquisition, source guard, and worker-runtime selection filtering.
 
 ## Package Map
 
 ```text
 com.xa.mass.worker.runtime.resource   resource declarations and lookup
+com.xa.mass.worker.runtime.selection  selected-worker contract for engine
 com.xa.mass.worker.runtime.candidate  Stage-1 candidate contracts
 com.xa.mass.worker.runtime.evidence   read-only scheduling evidence
 com.xa.mass.worker.runtime.admission  reserve/release, wakeup, warm hints

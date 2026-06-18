@@ -25,8 +25,12 @@ Worker runtime owns:
 - WorkerGroup, AdapterNode, NodeGroupBinding, and event binding declarations.
 - Worker row to registry slot projection.
 - Worker capability report application and bounded state projection.
-- Worker reachability, load, and group capability evidence exposed to engine.
+- Worker reachability, load, and group capability evidence used by
+  worker-runtime selection and explicit diagnostics.
 - Worker admission, capacity permits, dispatch gates, and exclusive leases.
+- Runtime worker selection: worker-fact predicates, ordering, reservation,
+  selected handles, selected claim authorization, and selected-worker
+  accounting.
 - Worker command lifecycle truth: request records, status transitions,
   worker-pulled claims, delivery-attempt bookkeeping, expiry, and command
   lifecycle value contracts.
@@ -40,7 +44,9 @@ Worker runtime does not own:
 - Task lifecycle, task runtime queue state, delayed availability, or item lease
   state.
 - Dispatch binding, transport delivery, or result convergence.
-- Rule evaluation, worker ranking, allocation budget, or terminal policy.
+- Task-side policy/rule intent, allocation budget, or terminal policy.
+  Worker-runtime may own worker-fact predicate and ranking mechanics only
+  behind the minimal selection contract.
 - Engine dispatch-control side effects produced from worker command lifecycle
   results.
 - Transport protocol sessions, adapter-specific connection state, or SDK wire
@@ -97,6 +103,45 @@ Allowed callers:
 
 Transport must not use declaration or binding mutation contracts.
 
+### Selection
+
+Package: `com.xa.mass.worker.runtime.selection`
+
+Owned contracts:
+
+- `WorkerSelectionRuntime`
+- `WorkerSelectionIntent`
+- `WorkerSelectionRequest`
+- `WorkerSelectionResult`
+- `SelectedWorkerHandle`
+- `SelectedWorkerEvidence`
+
+Allowed callers:
+
+- Engine assignment orchestration.
+- SDK/server assembly.
+- Worker-runtime implementation.
+
+Selection is the default engine-facing runtime worker-selection boundary.
+Engine provides task-side worker-universe intent and requested counts; it does
+not provide worker-runtime source keys, candidate rows, scheduling views,
+worker attributes, load snapshots, dispatch-gate evidence, or transport
+topology ids.
+
+Worker-runtime selection may compose candidate source, reachability, dispatch
+gate, load, WorkerGroup capability, routing/attribute matching, admission, and
+exclusive lease evidence internally. It returns selected handles only after
+worker-runtime has selected and reserved workers. Engine may read `workerId`,
+`workerGroupId`, selection token, and selected accounting/claim operations from
+the handle. Claim authorization remains a worker-runtime package-private bridge
+used by the selected handle to build the current task-runtime claim target;
+engine must not inspect capability lists or authorization internals. Any
+additional worker fact belongs in an explicit server/SDK diagnostic view, not
+in the engine hot path.
+
+`SelectedWorkerEvidence` is the recovery/release shape for persisted dispatch
+bindings. It carries selected identity and selection scope only.
+
 ### Candidate
 
 Package: `com.xa.mass.worker.runtime.candidate`
@@ -110,12 +155,13 @@ Owned contracts:
 
 Allowed callers:
 
-- Engine matching strategy.
 - Worker-runtime implementation.
 - Test support that proves candidate-source behavior.
 
-Candidate acquisition must start from an explicit WorkerGroup selector. It must
-not reintroduce all-worker scans.
+Candidate acquisition is an internal worker-runtime selection mechanism.
+Engine scheduling must use `WorkerSelectionRuntime`, not
+`WorkerCandidateRuntime`. Candidate acquisition must start from an explicit
+WorkerGroup selector and must not reintroduce all-worker scans.
 
 Production scheduling candidate acquisition carries the scheduling clock into
 `WorkerRegistry#acquireCandidates(...)` so registry implementations may use
@@ -146,12 +192,14 @@ Owned contracts:
 
 Allowed callers:
 
-- Engine matching and diagnostics.
+- Worker-runtime selection implementation.
 - SDK/server assembly when exposing worker state.
 - Worker-runtime implementation.
 
-Evidence is read-only scheduling input. It must not mutate worker lifecycle
-truth.
+Evidence is read-only worker-runtime input and diagnostic output. Engine
+scheduling must not read it directly as a worker-selection input; selected
+handles are the engine hot-path contract. Evidence must not mutate worker
+lifecycle truth.
 
 Reachability, readiness, and occupancy are separate dimensions. `UNKNOWN`
 reachability is an observation gap; only `ONLINE` is reachable for scheduling.
@@ -183,20 +231,20 @@ Owned contracts:
 
 Allowed callers:
 
-- Engine matching and release paths.
+- Worker-runtime selection implementation.
 - Engine lifecycle wakeup wiring.
 - SDK/server assembly.
 - Worker-runtime implementation.
 
 Admission translates registry reserve/release primitives into worker-plane
-results. Engine strategy must not consume `ReserveResult` or `ReserveStatus`
-directly.
+results. Engine strategy must not consume `ReserveResult`, `ReserveStatus`, or
+`WorkerAdmissionRuntime` directly for scheduling. The engine-facing mutation
+surface for selection, confirm, release, claim, and final accounting is
+`WorkerSelectionRuntime` with `SelectedWorkerHandle` or
+`SelectedWorkerEvidence`.
 
-`WorkerAdmissionTarget` is the engine-facing mutation target for reserve,
-confirm, release, claim, and final accounting. It carries
-`workerGroupId + workerId + taskId + permits`; the engine scheduling lifecycle
-must pass known or runtime-recoverable group evidence instead of calling
-worker-id-only admission mutations. Worker-id reverse lookup belongs below this
+`WorkerAdmissionTarget` carries `workerGroupId + workerId + taskId + permits`
+below the selection boundary. Worker-id reverse lookup belongs below this
 contract as low-level registry support for diagnostics, commands, or genuinely
 group-less paths.
 
@@ -332,17 +380,18 @@ is not a globally unique business event identity.
 
 Public `eventCode` is handler/capability identity. It validates that a selected
 WorkerGroup can execute the requested handler and tells the worker which local
-handler to run. It is not a worker selector and must not cause engine matching
-to scan all workers from item payload.
+handler to run. It is not a worker selector and must not cause engine code to
+scan all workers from item payload.
 
 WorkerGroup owns project/event capability truth. Worker registration and
 runtime state provide execution identity, group/node membership, reachability,
 load, admission, draining, lease, and other scheduling evidence for selection
 inside the selected group.
 
-Engine matching code should not import registry primitives except where the
-module assembly explicitly wires a registry implementation into
-`WorkerManager`.
+Engine scheduling code should not import registry primitives or worker-runtime
+candidate/evidence/admission subports. The default engine-facing contract is
+`WorkerSelectionRuntime`; module assembly may still wire registry
+implementations into `WorkerManager`.
 
 ## Implementation-Only Owners
 

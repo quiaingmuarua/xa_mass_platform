@@ -4,24 +4,20 @@ import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskQueryService;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
-import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
-import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
-import com.xa.mass.engine.model.WorkerSchedulingView;
+import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.starter.config.EngineConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -37,33 +33,13 @@ class MassEngineStartRecoveryTest {
         EngineConfig config = new EngineConfig();
         TaskCommandService taskCommands = config.getTaskCommandService();
         TaskQueryService taskQueries = config.getTaskQueryService();
-        WorkerResourceDeclarationRuntime workerDeclaration = config.getWorkerResourceDeclarationRuntime();
-        WorkerResourceQueryRuntime workerQuery = config.getWorkerResourceQueryRuntime();
-        WorkerAdmissionRuntime workerAdmission = config.getWorkerAdmissionRuntime();
-        workerDeclaration.addWorker(workerDeclaration("worker-1", "demo-workers"));
-
-        config.setMatchingStrategy((task, maxWorkerCount) -> {
-            if (!workerAdmission.tryAcquireWorkerExclusiveLease("worker-1")) {
-                return List.of();
-            }
-            WorkerResourceRecord candidateWorker = workerQuery.worker("worker-1").orElseThrow();
-            WorkerCandidateRow candidateRow = candidateRow(candidateWorker);
-            return List.of(new WorkerSchedulingCandidate(
-                    candidateRow,
-                    WorkerSchedulingView.from(
-                            candidateRow,
-                            WorkerReachabilityState.ONLINE,
-                            true,
-                            true
-                    )
-            ));
-        });
+        registerSelectableWorker(config, "worker-1", "demo-workers");
 
         TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
         dto.setUserId("user-1");
         dto.setProject("demoApp");
         dto.setSourceRef("startup-recovery");
-        dto.setSharedConfig(Map.of());
+        dto.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "demo-workers"));
         dto.setExecutionSpec(taskExecutionSpec(1, 3));
 
         Task task = taskCommands.createTaskShell(dto);
@@ -111,34 +87,14 @@ class MassEngineStartRecoveryTest {
             TaskCommandService taskCommands = config.getTaskCommandService();
             TaskQueryService taskQueries = config.getTaskQueryService();
             TaskResultIngestFacade resultIngestFacade = config.getTaskResultIngestFacade();
-            WorkerResourceDeclarationRuntime workerDeclaration = config.getWorkerResourceDeclarationRuntime();
-            WorkerResourceQueryRuntime workerQuery = config.getWorkerResourceQueryRuntime();
-            WorkerAdmissionRuntime workerAdmission = config.getWorkerAdmissionRuntime();
-            workerDeclaration.addWorker(workerDeclaration("worker-1", "demo-workers"));
-
-            config.setMatchingStrategy((task, maxWorkerCount) -> {
-                if (!workerAdmission.tryAcquireWorkerExclusiveLease("worker-1")) {
-                    return List.of();
-                }
-                WorkerResourceRecord candidateWorker = workerQuery.worker("worker-1").orElseThrow();
-                WorkerCandidateRow candidateRow = candidateRow(candidateWorker);
-                return List.of(new WorkerSchedulingCandidate(
-                        candidateRow,
-                        WorkerSchedulingView.from(
-                                candidateRow,
-                                WorkerReachabilityState.ONLINE,
-                                true,
-                                true
-                        )
-                ));
-            });
+            registerSelectableWorker(config, "worker-1", "demo-workers");
             config.setRuntimeReadyDispatchIntervalMillis(50L);
 
             TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
             dto.setUserId("user-1");
             dto.setProject("demoApp");
             dto.setSourceRef("batch-delayed-retry-recovery");
-            dto.setSharedConfig(Map.of());
+            dto.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "demo-workers"));
             dto.setExecutionSpec(taskExecutionSpec(1, 3));
 
             Task task = taskCommands.createTaskShell(dto);
@@ -215,14 +171,22 @@ class MassEngineStartRecoveryTest {
         );
     }
 
-    private static WorkerCandidateRow candidateRow(WorkerResourceRecord worker) {
-        return new WorkerCandidateRow(
-                worker.workerId(),
-                worker.agentVersion(),
-                worker.workerGroupId(),
-                worker.transportHint(),
-                worker.attributes()
+    private static void registerSelectableWorker(EngineConfig config, String workerId, String workerGroupId) {
+        WorkerResourceDeclarationRuntime workerDeclaration = config.getWorkerResourceDeclarationRuntime();
+        workerDeclaration.upsertWorkerGroup(WorkerGroupRecord.builder(workerGroupId)
+                .projectCodes(Set.of("demoApp"))
+                .build());
+        workerDeclaration.addWorker(workerDeclaration(workerId, workerGroupId));
+        long observedAtMillis = System.currentTimeMillis();
+        config.getWorkerPresenceRuntime().sessionConnected(
+                workerId,
+                "polling",
+                workerGroupId,
+                workerId + "-session",
+                observedAtMillis,
+                "test worker session connected"
         );
+        config.getWorkerHeartbeatRuntime().refreshWorkerHeartbeat(workerId, observedAtMillis);
     }
 
     private static TaskExecutionSpec taskExecutionSpec(int batchSize, int defaultMaxRetryCount) {

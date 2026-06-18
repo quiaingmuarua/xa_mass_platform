@@ -34,6 +34,12 @@ import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerEvidence;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionOwner;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionRequest;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionResult;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 import com.xa.mass.worker.runtime.WorkerAdmissionOwner;
 import com.xa.mass.worker.runtime.WorkerCandidateIndex;
@@ -68,6 +74,7 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
         WorkerCandidateRuntime,
         WorkerSchedulingViewRuntime,
         WorkerAdmissionRuntime,
+        WorkerSelectionRuntime,
         WorkerAvailabilityWakeupRuntime,
         WorkerDispatchGateRuntime,
         WorkerReportRuntime,
@@ -82,6 +89,7 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
     private final WorkerReportOwner reportOwner;
     private final WorkerCandidateSourceOwner candidateSourceOwner;
     private final WorkerAdmissionOwner admissionOwner;
+    private final WorkerSelectionOwner selectionOwner;
     private final WorkerRelationshipOwner relationshipOwner;
     private volatile WorkerRegistrySnapshot workerRegistrySnapshot;
     private volatile Runnable dispatchWakeupCallback = () -> {
@@ -123,6 +131,7 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
         this.groupOwner = new WorkerGroupOwner(this.workerRegistry);
         this.candidateSourceOwner = new WorkerCandidateSourceOwner(this::getWorkerCandidateIndex);
         this.admissionOwner = new WorkerAdmissionOwner(this.workerRegistry);
+        this.selectionOwner = new WorkerSelectionOwner(this, this, this);
         this.relationshipOwner = new WorkerRelationshipOwner(this.groupOwner::hasWorkerGroup);
         this.resourceOwner = new WorkerResourceOwner(
                 workerStorage,
@@ -288,6 +297,51 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
     public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(WorkerTaskSelector selector,
                                                                              int maxCandidateCount) {
         return candidateSourceOwner.findWorkerCandidateBatch(selector, maxCandidateCount);
+    }
+
+    @Override
+    public WorkerSelectionResult selectAndReserve(WorkerSelectionRequest request) {
+        return selectionOwner.selectAndReserve(request);
+    }
+
+    @Override
+    public int activeSelectedWorkerCount(String selectionScopeKey) {
+        return selectionOwner.activeSelectedWorkerCount(selectionScopeKey);
+    }
+
+    @Override
+    public boolean confirmSelected(SelectedWorkerHandle handle) {
+        return selectionOwner.confirmSelected(handle);
+    }
+
+    @Override
+    public void releaseSelected(SelectedWorkerHandle handle) {
+        selectionOwner.releaseSelected(handle);
+    }
+
+    @Override
+    public void releaseSelected(SelectedWorkerEvidence evidence) {
+        selectionOwner.releaseSelected(evidence);
+    }
+
+    @Override
+    public void recordSelectedClaimed(SelectedWorkerHandle handle) {
+        selectionOwner.recordSelectedClaimed(handle);
+    }
+
+    @Override
+    public void recordSelectedFinal(SelectedWorkerEvidence evidence) {
+        selectionOwner.recordSelectedFinal(evidence);
+    }
+
+    @Override
+    public void releaseSelectedLock(SelectedWorkerHandle handle) {
+        selectionOwner.releaseSelectedLock(handle);
+    }
+
+    @Override
+    public void releaseSelectedLock(SelectedWorkerEvidence evidence) {
+        selectionOwner.releaseSelectedLock(evidence);
     }
 
     WorkerRegistrySnapshot getWorkerRegistrySnapshot() {

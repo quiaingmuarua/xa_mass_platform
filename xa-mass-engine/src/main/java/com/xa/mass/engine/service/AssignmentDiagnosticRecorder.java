@@ -3,10 +3,9 @@ package com.xa.mass.engine.service;
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.AssignmentRecord;
-import com.xa.mass.engine.model.RuleEvaluationDetail;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionResult;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,19 +17,22 @@ import java.util.Map;
  */
 public interface AssignmentDiagnosticRecorder {
 
-    AssignmentRecord recordWorkerAssignment(Task task,
-                                            WorkerSchedulingCandidate candidate,
-                                            AssignmentResult result,
-                                            String reason,
-                                            List<RuleEvaluationDetail> ruleEvaluations,
-                                            Map<String, Object> contextSnapshot,
-                                            boolean workerLocked);
+    AssignmentRecord recordWorkerSelectionOutcome(Task task,
+                                                  WorkerSelectionResult selectionResult,
+                                                  AssignmentResult result,
+                                                  String reason,
+                                                  Map<String, Object> contextSnapshot);
+
+    AssignmentRecord recordWorkerSelection(Task task,
+                                           SelectedWorkerHandle selectedWorker,
+                                           AssignmentResult result,
+                                           String reason,
+                                           Map<String, Object> contextSnapshot);
 
     AssignmentRecord recordMessageAssignment(Task task,
-                                             WorkerSchedulingCandidate candidate,
+                                             SelectedWorkerHandle selectedWorker,
                                              String messageId,
                                              String batchId,
                                              AssignmentResult result,
-                                             String reason,
-                                             boolean workerLocked);
+                                             String reason);
 }

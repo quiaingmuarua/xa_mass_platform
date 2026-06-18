@@ -1,7 +1,7 @@
 package com.xa.mass.engine.assignment;
 
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
 
 import java.util.List;
 
@@ -11,5 +11,5 @@ public interface AssignmentAllocationPolicy {
 
     AssignmentAllocationDecision decide(AssignmentAllocationPlan plan,
                                         TaskStatus currentStatus,
-                                        List<WorkerSchedulingCandidate> matchedWorkers);
+                                        List<SelectedWorkerHandle> selectedWorkers);
 }

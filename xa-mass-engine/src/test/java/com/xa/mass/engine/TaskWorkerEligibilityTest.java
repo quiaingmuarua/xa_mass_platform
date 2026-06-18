@@ -1,10 +1,8 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -46,15 +44,9 @@ class TaskWorkerEligibilityTest {
         assertEquals("worker-eligible", activeLeases.getFirst().workerId());
         assertEquals(1, harness.successfulMessageAssignments(task.getTid(), "worker-eligible"));
 
-        assertRejected(harness, task.getTid(), "worker-unreachable",
-                AssignmentResult.RESOURCE_UNAVAILABLE, "worker transport unreachable");
-        assertRejected(harness, task.getTid(), "worker-locked",
-                AssignmentResult.CONFLICT, "worker locked");
-        assertRejected(harness, task.getTid(), "worker-occupied",
-                AssignmentResult.CONFLICT, "worker locked");
-        assertRejected(harness, task.getTid(), "worker-routing-mismatch",
-                AssignmentResult.RULE_NOT_MATCH, "routing code mismatch");
-        assertFalse(harness.record(task.getTid(), "worker-eligible").getRuleEvaluations().isEmpty());
+        assertEquals(1, harness.selectionReasonCount(task.getTid(), "worker transport unreachable"));
+        assertEquals(2, harness.selectionReasonCount(task.getTid(), "worker locked"));
+        assertEquals(1, harness.selectionReasonCount(task.getTid(), "routing code mismatch"));
     }
 
     @Test
@@ -80,8 +72,7 @@ class TaskWorkerEligibilityTest {
         assertEquals(1, secondLeases.size());
         assertEquals("worker-backup", secondLeases.getFirst().workerId());
         assertEquals(1, harness.activeLeases(firstTask.getTid()).size());
-        assertRejected(harness, secondTask.getTid(), "worker-primary",
-                AssignmentResult.RESOURCE_UNAVAILABLE, "worker transport unreachable");
+        assertEquals(1, harness.selectionReasonCount(secondTask.getTid(), "worker transport unreachable"));
     }
 
     @Test
@@ -139,8 +130,7 @@ class TaskWorkerEligibilityTest {
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
         assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-stable"));
         assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-dropped"));
-        assertRejected(harness, task.getTid(), "worker-dropped",
-                AssignmentResult.RESOURCE_UNAVAILABLE, "worker transport unreachable");
+        assertEquals(1, harness.selectionReasonCount(task.getTid(), "worker transport unreachable"));
 
         reachability.put("worker-dropped", WorkerReachabilityState.ONLINE);
 
@@ -153,13 +143,4 @@ class TaskWorkerEligibilityTest {
         assertEquals(2, harness.stats(task.getTid()).inflightCount());
     }
 
-    private void assertRejected(TaskSchedulingTestHarness harness,
-                                String taskId,
-                                String workerId,
-                                AssignmentResult expectedResult,
-                                String expectedReason) {
-        AssignmentRecord record = harness.record(taskId, workerId);
-        assertEquals(expectedResult, record.getResult());
-        assertEquals(expectedReason, record.getReason());
-    }
 }

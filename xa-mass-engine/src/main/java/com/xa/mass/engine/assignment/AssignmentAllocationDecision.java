@@ -1,12 +1,12 @@
 package com.xa.mass.engine.assignment;
 
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
 
 import java.util.List;
 
 public record AssignmentAllocationDecision(
         AssignmentAllocationOutcome outcome,
-        List<WorkerSchedulingCandidate> dispatchCandidates,
+        List<SelectedWorkerHandle> dispatchCandidates,
         String reason
 ) {
 

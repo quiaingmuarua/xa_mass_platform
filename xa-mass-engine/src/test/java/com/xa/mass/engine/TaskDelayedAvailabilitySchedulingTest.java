@@ -1,9 +1,7 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import org.junit.jupiter.api.Test;
 
@@ -50,7 +48,6 @@ class TaskDelayedAvailabilitySchedulingTest {
         assertEquals("worker-stateless", activeLeases.getFirst().workerId());
         assertTrue(harness.workerManager.hasWorkerExclusiveLease("worker-stateless"));
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
-        AssignmentRecord record = harness.record(task.getTid(), "worker-stateless");
-        assertEquals(AssignmentResult.SUCCESS, record.getResult());
+        assertEquals(1, harness.successfulMessageAssignments(task.getTid(), "worker-stateless"));
     }
 }

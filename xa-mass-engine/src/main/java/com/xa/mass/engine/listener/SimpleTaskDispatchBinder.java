@@ -9,8 +9,6 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskWorkLifecycleState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkAttemptIdSupport;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
-import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
@@ -23,8 +21,9 @@ import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerEvidence;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
+import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,7 +34,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Claims runtime-ready work for matched workers and emits the dispatch queue.
+ * Claims runtime-ready work for selected workers and emits the dispatch queue.
  */
 public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     private static final Logger log = LoggerFactory.getLogger(SimpleTaskDispatchBinder.class);
@@ -43,7 +42,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             new TaskRuntimeClaimOptionsResolver();
 
     private final TaskAssignmentRuntimePort assignmentRuntime;
-    private final WorkerAdmissionRuntime workerAdmissionRuntime;
+    private final WorkerSelectionRuntime workerSelectionRuntime;
     private final AssignmentDiagnosticRecorder recordService;
     private final TaskDispatchBatchListener dispatchListener;
     private final TraceEventLogger traceEventLogger;
@@ -52,50 +51,50 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     private final SchedulingPlaneResolver schedulingPlaneResolver;
 
     public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                                       WorkerAdmissionRuntime workerAdmissionRuntime,
+                                       WorkerSelectionRuntime workerSelectionRuntime,
                                        AssignmentDiagnosticRecorder recordService) {
-        this(assignmentRuntime, workerAdmissionRuntime, recordService, null, TraceEventLogger.noop());
+        this(assignmentRuntime, workerSelectionRuntime, recordService, null, TraceEventLogger.noop());
     }
 
     public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                                       WorkerAdmissionRuntime workerAdmissionRuntime,
+                                       WorkerSelectionRuntime workerSelectionRuntime,
                                        AssignmentDiagnosticRecorder recordService,
                                        TaskDispatchBatchListener dispatchListener) {
-        this(assignmentRuntime, workerAdmissionRuntime, recordService, dispatchListener, TraceEventLogger.noop());
+        this(assignmentRuntime, workerSelectionRuntime, recordService, dispatchListener, TraceEventLogger.noop());
     }
 
     public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                                       WorkerAdmissionRuntime workerAdmissionRuntime,
+                                       WorkerSelectionRuntime workerSelectionRuntime,
                                        AssignmentDiagnosticRecorder recordService,
                                        TaskDispatchBatchListener dispatchListener,
                                        TraceEventLogger traceEventLogger) {
-        this(assignmentRuntime, workerAdmissionRuntime, recordService, dispatchListener, traceEventLogger,
+        this(assignmentRuntime, workerSelectionRuntime, recordService, dispatchListener, traceEventLogger,
                 new DefaultWorkerDispatchResourcePolicy());
     }
 
     SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                             WorkerAdmissionRuntime workerAdmissionRuntime,
+                             WorkerSelectionRuntime workerSelectionRuntime,
                              AssignmentDiagnosticRecorder recordService,
                              TaskDispatchBatchListener dispatchListener,
                              TraceEventLogger traceEventLogger,
                              WorkerDispatchResourcePolicy resourcePolicy) {
-        this(assignmentRuntime, workerAdmissionRuntime, recordService, dispatchListener, traceEventLogger,
+        this(assignmentRuntime, workerSelectionRuntime, recordService, dispatchListener, traceEventLogger,
                 resourcePolicy, null);
     }
 
     SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                             WorkerAdmissionRuntime workerAdmissionRuntime,
+                             WorkerSelectionRuntime workerSelectionRuntime,
                              AssignmentDiagnosticRecorder recordService,
                              TaskDispatchBatchListener dispatchListener,
                              TraceEventLogger traceEventLogger,
                              WorkerDispatchResourcePolicy resourcePolicy,
                              WorkerDispatchResourceReleaser resourceReleaser) {
-        this(assignmentRuntime, workerAdmissionRuntime, recordService, dispatchListener, traceEventLogger,
+        this(assignmentRuntime, workerSelectionRuntime, recordService, dispatchListener, traceEventLogger,
                 resourcePolicy, resourceReleaser, new DefaultSchedulingPlaneResolver());
     }
 
     public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                                    WorkerAdmissionRuntime workerAdmissionRuntime,
+                                    WorkerSelectionRuntime workerSelectionRuntime,
                                     AssignmentDiagnosticRecorder recordService,
                                     TaskDispatchBatchListener dispatchListener,
                                     TraceEventLogger traceEventLogger,
@@ -106,7 +105,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 ? new DefaultSchedulingPlaneResolver()
                 : schedulingPlaneResolver;
         this.assignmentRuntime = assignmentRuntime;
-        this.workerAdmissionRuntime = workerAdmissionRuntime;
+        this.workerSelectionRuntime = workerSelectionRuntime;
         this.recordService = recordService;
         this.dispatchListener = dispatchListener;
         this.traceEventLogger = traceEventLogger;
@@ -114,15 +113,15 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 ? new DefaultWorkerDispatchResourcePolicy(resolvedSchedulingPlaneResolver)
                 : resourcePolicy;
         this.resourceReleaser = resourceReleaser == null
-                ? new WorkerDispatchResourceReleaser(workerAdmissionRuntime, this.resourcePolicy, traceEventLogger)
+                ? new WorkerDispatchResourceReleaser(workerSelectionRuntime, this.resourcePolicy, traceEventLogger)
                 : resourceReleaser;
         this.schedulingPlaneResolver = resolvedSchedulingPlaneResolver;
     }
 
     @Override
-    public List<TaskDispatchBinding> bindDispatches(Task task, List<WorkerSchedulingCandidate> matchedWorkers) {
-        if (matchedWorkers == null || matchedWorkers.isEmpty()) {
-            log.info("[MsgAssign] Skip task {} because no matched worker scheduling candidates were provided", task.getTid());
+    public List<TaskDispatchBinding> bindDispatches(Task task, List<SelectedWorkerHandle> selectedWorkers) {
+        if (selectedWorkers == null || selectedWorkers.isEmpty()) {
+            log.info("[MsgAssign] Skip task {} because no selected workers were provided", task.getTid());
             traceEventLogger.dispatchBindingSummary(
                     task,
                     0,
@@ -133,7 +132,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                     Math.max(task.getExecutionSpec().getBatchSize(), 1),
                     "ON_MSG_ASSIGN",
                     "SimpleTaskDispatchBinder",
-                    "no matched worker scheduling candidates were provided",
+                    "no selected workers were provided",
                     "SKIPPED"
             );
             return List.of();
@@ -142,11 +141,11 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         int readyWorkCount = assignmentRuntime.countDispatchReadyWork(task.getTid());
         if (readyWorkCount == 0) {
             log.info("[MsgAssign] Skip task {} because there is no runtime-ready work to dispatch", task.getTid());
-            resourceReleaser.releaseReservations(task, matchedWorkers);
+            resourceReleaser.releaseReservations(task, selectedWorkers);
             traceEventLogger.dispatchBindingSummary(
                     task,
                     0,
-                    matchedWorkers.size(),
+                    selectedWorkers.size(),
                     0,
                     0,
                     0,
@@ -159,7 +158,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             return List.of();
         }
 
-        int resolvedWorkerCount = Math.max(matchedWorkers.size(), 1);
+        int resolvedWorkerCount = Math.max(selectedWorkers.size(), 1);
         ResolvedTaskSchedulingPolicy taskPolicy = schedulingPlaneResolver.resolve(task).taskSchedulingPolicy();
         TaskWorkClaimOptions claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
                 task,
@@ -171,22 +170,15 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         List<TaskDispatchBinding> dispatchBindings = new ArrayList<>();
         List<DispatchSlot> dispatchSlots = new ArrayList<>();
 
-        log.info("[MsgAssign] Starting assignment for task {} with {} matched candidates, readyWorkCount={}, perWorkerBatchLimit={}",
-                task.getTid(), matchedWorkers.size(), readyWorkCount, perWorkerBatchLimit);
+        log.info("[MsgAssign] Starting assignment for task {} with {} selected workers, readyWorkCount={}, perWorkerBatchLimit={}",
+                task.getTid(), selectedWorkers.size(), readyWorkCount, perWorkerBatchLimit);
 
-        for (int i = 0; i < matchedWorkers.size(); i++) {
-            WorkerSchedulingCandidate matchedWorker = matchedWorkers.get(i);
-            dispatchSlots.add(new DispatchSlot(matchedWorker));
+        for (SelectedWorkerHandle selectedWorker : selectedWorkers) {
+            dispatchSlots.add(new DispatchSlot(selectedWorker));
         }
 
         List<WorkerClaimTarget> claimTargets = dispatchSlots.stream()
-                .map(slot -> WorkerClaimTarget.groupScoped(
-                        slot.candidate.getSchedulingView().workerGroupId(),
-                        slot.workerId(),
-                        slot.batchId(),
-                        perWorkerBatchLimit,
-                        supportedEventCodes(slot.candidate)
-                ))
+                .map(slot -> slot.handle.toClaimTarget(slot.batchId(), perWorkerBatchLimit))
                 .collect(Collectors.toList());
         claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
                 task,
@@ -204,23 +196,21 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             }
             TaskDispatchBinding dispatchBinding = bindClaimedTaskWork(task, work, slot);
             dispatchBindings.add(dispatchBinding);
-            WorkerAdmissionTarget admissionTarget = admissionTarget(task.getTid(), slot.candidate);
-            if (!workerAdmissionRuntime.confirmWorkerReservation(admissionTarget)) {
-                workerAdmissionRuntime.recordWorkClaimed(admissionTarget);
+            if (!workerSelectionRuntime.confirmSelected(slot.handle)) {
+                workerSelectionRuntime.recordSelectedClaimed(slot.handle);
             }
             slot.incrementAssigned();
 
             recordService.recordMessageAssignment(
-                    task, slot.candidate, work.messageId(), slot.batchId(),
-                    AssignmentResult.SUCCESS, "message assigned",
-                    workerAdmissionRuntime.hasWorkerExclusiveLease(slot.workerId())
+                    task, slot.handle, work.messageId(), slot.batchId(),
+                    AssignmentResult.SUCCESS, "message assigned"
             );
         }
 
         for (DispatchSlot slot : dispatchSlots) {
             if (slot.assignedCount() == 0) {
-                resourceReleaser.releaseReservationAndLock(task, slot.candidate,
-                        "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "matched worker received no messages");
+                resourceReleaser.releaseReservationAndLock(task, slot.handle,
+                        "UNLOCK_WORKER", "SimpleTaskDispatchBinder", "selected worker received no messages");
             }
         }
 
@@ -232,7 +222,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         traceEventLogger.dispatchBindingSummary(
                 task,
                 readyWorkCount,
-                matchedWorkers.size(),
+                selectedWorkers.size(),
                 dispatchSlots.size(),
                 dispatchBindings.size(),
                 uniqueWorkerCount,
@@ -240,7 +230,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 "ON_MSG_ASSIGN",
                 "SimpleTaskDispatchBinder",
                 dispatchBindings.isEmpty()
-                        ? "matched workers produced no dispatchable bindings"
+                        ? "selected workers produced no dispatchable bindings"
                         : "runtime work bound to dispatch slots",
                 dispatchBindings.isEmpty() ? "SKIPPED" : "SUCCESS"
         );
@@ -269,7 +259,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 traceEventLogger.dispatchBindingSummary(
                         task,
                         readyWorkCount,
-                        matchedWorkers.size(),
+                        selectedWorkers.size(),
                         dispatchSlots.size(),
                         0,
                         0,
@@ -290,21 +280,30 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             return;
         }
         for (TaskDispatchBinding binding : dispatchBindings) {
-            workerAdmissionRuntime.recordWorkFinal(admissionTarget(binding));
+            workerSelectionRuntime.recordSelectedFinal(SelectedWorkerEvidence.of(
+                    binding.workerId(),
+                    binding.workerGroupId(),
+                    binding.taskId(),
+                    false
+            ));
         }
     }
 
     private static final class DispatchSlot {
-        private final WorkerSchedulingCandidate candidate;
+        private final SelectedWorkerHandle handle;
         private final String batchId = java.util.UUID.randomUUID().toString();
         private int assignedCount;
 
-        private DispatchSlot(WorkerSchedulingCandidate candidate) {
-            this.candidate = candidate;
+        private DispatchSlot(SelectedWorkerHandle handle) {
+            this.handle = handle;
         }
 
         private String workerId() {
-            return candidate.getWorkerId();
+            return handle.workerId();
+        }
+
+        private String workerGroupId() {
+            return handle.workerGroupId();
         }
 
         private String batchId() {
@@ -329,23 +328,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         return null;
     }
 
-    private static WorkerAdmissionTarget admissionTarget(String taskId, WorkerSchedulingCandidate candidate) {
-        WorkerSchedulingView schedulingView = candidate.getSchedulingView();
-        return WorkerAdmissionTarget.groupScoped(
-                schedulingView.workerGroupId(),
-                candidate.getWorkerId(),
-                taskId
-        );
-    }
-
-    private static WorkerAdmissionTarget admissionTarget(TaskDispatchBinding binding) {
-        return WorkerAdmissionTarget.groupScoped(
-                binding.workerGroupId(),
-                binding.workerId(),
-                binding.taskId()
-        );
-    }
-
     private TaskDispatchBinding bindClaimedTaskWork(Task task, ClaimedTaskWork work, DispatchSlot slot) {
         int attemptNo = Math.max(0, work.retryCount()) + 1;
         String attemptId = TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
@@ -354,10 +336,9 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 work.workerId(),
                 work.batchId()
         );
-        WorkerSchedulingView schedulingView = slot.candidate.getSchedulingView();
         String eventBindingKey = eventBindingKey(task, work.eventCode());
         String workerCandidateSource = workerCandidateSource(task);
-        Map<String, Object> dispatchEvidence = dispatchEvidence(schedulingView, eventBindingKey, workerCandidateSource);
+        Map<String, Object> dispatchEvidence = dispatchEvidence(slot.handle, eventBindingKey, workerCandidateSource);
         traceEventLogger.taskWorkAttemptStatusTransition(
                 task.getTid(),
                 work.messageId(),
@@ -400,18 +381,18 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 work.leaseToken(),
                 work.workerId(),
                 work.batchId(),
-                schedulingView.workerGroupId(),
+                slot.workerGroupId(),
                 eventBindingKey,
                 workerCandidateSource
         );
     }
 
-    private static Map<String, Object> dispatchEvidence(WorkerSchedulingView schedulingView,
+    private static Map<String, Object> dispatchEvidence(SelectedWorkerHandle handle,
                                                         String eventBindingKey,
                                                         String workerCandidateSource) {
         Map<String, Object> evidence = new LinkedHashMap<>();
-        if (schedulingView != null) {
-            evidence.put("workerGroupId", schedulingView.workerGroupId());
+        if (handle != null) {
+            evidence.put("workerGroupId", handle.workerGroupId());
         }
         evidence.put("eventBindingKey", eventBindingKey);
         evidence.put("workerCandidateSource", workerCandidateSource);
@@ -441,23 +422,16 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     }
 
     private void releaseAssignedWorkerLocks(Task task, List<DispatchSlot> dispatchSlots, String reason) {
-        List<WorkerSchedulingCandidate> assignedCandidates = dispatchSlots.stream()
+        List<SelectedWorkerHandle> assignedSelectedWorkers = dispatchSlots.stream()
                 .filter(slot -> slot.assignedCount() > 0)
-                .map(slot -> slot.candidate)
+                .map(slot -> slot.handle)
                 .toList();
         resourceReleaser.releaseLocks(
                 task,
-                assignedCandidates,
+                assignedSelectedWorkers,
                 "UNLOCK_WORKER",
                 "SimpleTaskDispatchBinder",
                 reason
         );
-    }
-
-    private java.util.Set<String> supportedEventCodes(WorkerSchedulingCandidate candidate) {
-        if (candidate == null || candidate.getSchedulingView().supportedEventCodes().isEmpty()) {
-            return java.util.Set.of();
-        }
-        return new java.util.LinkedHashSet<>(candidate.getSchedulingView().supportedEventCodes());
     }
 }

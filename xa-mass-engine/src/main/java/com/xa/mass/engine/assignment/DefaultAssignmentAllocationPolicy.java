@@ -2,10 +2,10 @@ package com.xa.mass.engine.assignment;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
 
 import java.util.List;
 import java.util.Objects;
@@ -79,8 +79,8 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
     @Override
     public AssignmentAllocationDecision decide(AssignmentAllocationPlan plan,
                                                TaskStatus currentStatus,
-                                               List<WorkerSchedulingCandidate> matchedWorkers) {
-        List<WorkerSchedulingCandidate> matched = matchedWorkers == null ? List.of() : matchedWorkers;
+                                               List<SelectedWorkerHandle> selectedWorkers) {
+        List<SelectedWorkerHandle> selected = selectedWorkers == null ? List.of() : selectedWorkers;
         if (plan.workerBudget() != null && plan.workerBudget() <= plan.currentTaskWorkerCount()) {
             return new AssignmentAllocationDecision(
                     AssignmentAllocationOutcome.BUDGET_EXHAUSTED,
@@ -88,30 +88,30 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
                     "worker budget exhausted for task"
             );
         }
-        if (matched.isEmpty()) {
+        if (selected.isEmpty()) {
             return new AssignmentAllocationDecision(
                     AssignmentAllocationOutcome.NO_MATCH,
                     List.of(),
-                    "no matched worker scheduling candidates"
+                    "no selected workers"
             );
         }
-        if (plan.initialStatus() == TaskStatus.READY && matched.size() < plan.requiredStartWorkerCount()) {
+        if (plan.initialStatus() == TaskStatus.READY && selected.size() < plan.requiredStartWorkerCount()) {
             return new AssignmentAllocationDecision(
                     AssignmentAllocationOutcome.BELOW_MIN_START_GATE,
                     List.of(),
-                    "matched workers below minimum start gate"
+                    "selected workers below minimum start gate"
             );
         }
         if (currentStatus != plan.initialStatus()) {
             return new AssignmentAllocationDecision(
                     AssignmentAllocationOutcome.TASK_STATUS_CHANGED,
                     List.of(),
-                    "task status changed during matching from " + plan.initialStatus() + " to " + currentStatus
+                    "task status changed during worker selection from " + plan.initialStatus() + " to " + currentStatus
             );
         }
 
-        int dispatchCandidateCount = Math.min(matched.size(), plan.dispatchCandidateLimit());
-        List<WorkerSchedulingCandidate> dispatchCandidates = matched.subList(0, dispatchCandidateCount);
+        int dispatchCandidateCount = Math.min(selected.size(), plan.dispatchCandidateLimit());
+        List<SelectedWorkerHandle> dispatchCandidates = selected.subList(0, dispatchCandidateCount);
         if (dispatchCandidates.isEmpty()) {
             return new AssignmentAllocationDecision(
                     AssignmentAllocationOutcome.NO_DISPATCH_CANDIDATES,
@@ -122,7 +122,7 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
         return new AssignmentAllocationDecision(
                 AssignmentAllocationOutcome.DISPATCH,
                 dispatchCandidates,
-                "matched workers dispatched"
+                "selected workers dispatched"
         );
     }
 }

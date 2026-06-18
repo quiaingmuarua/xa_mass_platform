@@ -162,43 +162,44 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void ruleBasedMatchingStrategyDoesNotReadWorkerContextStorageDirectly() throws IOException {
-        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
-        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
+    void engineMainlineDoesNotKeepWorkerSchedulingCandidateStrategy() {
+        List<Path> retiredSelectionFiles = List.of(
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy/WorkerTaskSelectorFactory.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy/WorkerCandidateRanker.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy/DefaultWorkerCandidateRanker.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerSchedulingCandidate.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerSchedulingView.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerMatchContext.java")
+        );
 
-        assertTrue(!Pattern.compile("\\bgetWorkerContextsByWorkerIds\\s*\\(").matcher(source).find(),
-                "RuleBasedTaskWorkerMatchingStrategy must consume WorkerSchedulingCandidateEnumerator "
-                        + "instead of directly reading WorkerContext storage");
+        List<String> violations = retiredSelectionFiles.stream()
+                .filter(Files::exists)
+                .map(Path::toString)
+                .toList();
+
+        assertTrue(violations.isEmpty(),
+                "Engine mainline must not keep worker candidate/view/match-context selection models. "
+                        + "Worker-runtime owns worker-fact selection behind WorkerSelectionRuntime:\n"
+                        + String.join("\n", violations));
     }
 
     @Test
-    void ruleBasedMatchingStrategyUsesNarrowRuleContractsOnly() throws IOException {
-        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
-        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
-
-        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
-                Map.entry("RuleManager", Pattern.compile("\\bRuleManager\\b")),
-                Map.entry("RuleStorage", Pattern.compile("\\bRuleStorage\\b")),
-                Map.entry("rule CRUD method", Pattern.compile(
-                        "\\b(?:addRule|addRules|deleteRule|updateRule|clear|getAllRules|getRulesByType)\\s*\\(")),
-                Map.entry("broad evaluator method", Pattern.compile("\\bevaluateRules\\s*\\("))
-        );
-
+    void engineMainlineDoesNotOwnWorkerFactRuleEvaluation() throws IOException {
         List<String> violations = new ArrayList<>();
-        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
-            if (forbiddenPattern.getValue().matcher(source).find()) {
-                violations.add(strategyPath + " uses forbidden broad rule dependency: "
-                        + forbiddenPattern.getKey());
+        for (Path path : engineSelectionHotPathSourceFiles()) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (source.contains("WorkerMatchContext")
+                    || source.contains("RuleBasedTaskWorkerMatchingStrategy")
+                    || source.contains("WorkerCandidateRanker")) {
+                violations.add(path + " still owns worker-fact matching/rule evaluation");
             }
         }
-        assertTrue(source.contains("MatchingRuleSetProvider"),
-                "RuleBasedTaskWorkerMatchingStrategy must depend on MatchingRuleSetProvider");
-        assertTrue(source.contains("MatchingRuleEvaluator"),
-                "RuleBasedTaskWorkerMatchingStrategy must depend on MatchingRuleEvaluator");
+
         assertTrue(violations.isEmpty(),
-                "Matching must consume narrow rule contracts, not a CRUD-shaped rule manager or storage facade:\n"
+                "Engine may resolve task-side scheduling intent, but worker-fact predicates/ranking "
+                        + "must stay behind WorkerSelectionRuntime:\n"
                         + String.join("\n", violations));
     }
 
@@ -310,28 +311,6 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void ruleBasedMatchingStrategyDoesNotOwnRuleContextSnapshotFields() throws IOException {
-        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
-        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
-
-        List<String> violations = new ArrayList<>();
-        if (Pattern.compile("\\bbuildPrefilterContextSnapshot\\b").matcher(source).find()) {
-            violations.add(strategyPath + " defines a prefilter snapshot field builder");
-        }
-        if (Pattern.compile("\\.put\\s*\\(\\s*\"(?:workerScheduling|workerContext|taskUsesEventCapability|matchesTargetWorker)")
-                .matcher(source)
-                .find()) {
-            violations.add(strategyPath + " manually writes rule/snapshot read-model fields");
-        }
-
-        assertTrue(violations.isEmpty(),
-                "RuleBasedTaskWorkerMatchingStrategy must consume WorkerMatchContext for rule and "
-                        + "diagnostic snapshot fields instead of owning a duplicate field map:\n"
-                        + String.join("\n", violations));
-    }
-
-    @Test
     void strategyPackageDoesNotUseWorkerContextStorageOrPayloads() throws IOException {
         Path strategyRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
         Pattern workerContextImport = Pattern.compile(
@@ -354,122 +333,47 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Matching strategy code must stay scheduling-candidate/view first. "
-                        + "WorkerContext storage expansion is retired from the matching package:\n"
+                "Engine strategy code must not re-expand WorkerContext storage into worker selection. "
+                        + "Worker selection facts stay behind WorkerSelectionRuntime:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void workerSchedulingCandidateDoesNotCarryWorkerContextPayload() throws IOException {
-        Path candidatePath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/model/WorkerSchedulingCandidate.java");
-        String source = Files.readString(candidatePath, StandardCharsets.UTF_8);
+    void selectedWorkerHandleDoesNotExposeWorkerFactsToEngine() throws IOException {
+        Path handlePath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                "com", "xa", "mass", "worker", "runtime", "selection", "SelectedWorkerHandle.java");
+        Path authorizationPath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                "com", "xa", "mass", "worker", "runtime", "selection", "SelectedWorkerClaimAuthorization.java");
+        String source = Files.readString(handlePath, StandardCharsets.UTF_8)
+                + "\n" + Files.readString(authorizationPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
-        if (Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.base\\.model\\.WorkerContext\\s*;")
-                .matcher(source)
-                .find()) {
-            violations.add(candidatePath + " imports WorkerContext");
-        }
-        if (Pattern.compile("\\bWorkerContext\\s+workerContext\\b").matcher(source).find()) {
-            violations.add(candidatePath + " stores WorkerContext payload");
-        }
-        if (Pattern.compile("\\bgetWorkerContext\\s*\\(").matcher(source).find()) {
-            violations.add(candidatePath + " exposes WorkerContext payload accessor");
-        }
-
-        assertTrue(violations.isEmpty(),
-                "WorkerSchedulingCandidate is a worker-level scheduling handoff. "
-                        + "It must not carry a WorkerContext object:\n"
-                        + String.join("\n", violations));
-    }
-
-    @Test
-    void workerSchedulingViewDoesNotReadWorkerContextModel() throws IOException {
-        Path viewPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerSchedulingView.java");
-        String source = Files.readString(viewPath, StandardCharsets.UTF_8);
-
-        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
-                Map.entry("WorkerContext import",
-                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.base\\.model\\.WorkerContext\\s*;")),
-                Map.entry("WorkerContext parameter", Pattern.compile("\\bWorkerContext\\s+workerContext\\b")),
-                Map.entry("hasWorkerContext", Pattern.compile("\\bhasWorkerContext\\b")),
-                Map.entry("workerContextId accessor", Pattern.compile("\\bworkerContextId\\s*\\(")),
-                Map.entry("WorkerContextStatus", Pattern.compile("\\bWorkerContextStatus\\b")),
-                Map.entry("workerContextProject", Pattern.compile("\\bworkerContextProject\\b")),
-                Map.entry("workerContextRoutingTags", Pattern.compile("\\bworkerContextRoutingTags\\b")),
-                Map.entry("workerContextAttributes", Pattern.compile("\\bworkerContextAttributes\\b")),
-                Map.entry("workerContextAllocatable", Pattern.compile("\\bworkerContextAllocatable\\b")),
-                Map.entry("workerContextAvailable", Pattern.compile("\\bworkerContextAvailable\\b")),
-                Map.entry("workerContextUsable", Pattern.compile("\\bworkerContextUsable\\b")),
-                Map.entry("workerContextReserved", Pattern.compile("\\bworkerContextReserved\\b")),
-                Map.entry("workerContextOccupied", Pattern.compile("\\bworkerContextOccupied\\b")),
-                Map.entry("worker-row supported project fallback",
-                        Pattern.compile("\\bcandidateRow\\.supportedProjects\\s*\\(")),
-                Map.entry("worker-row supported event fallback",
-                        Pattern.compile("\\bcandidateRow\\.supportedEventCodes\\s*\\("))
-        );
-
-        List<String> violations = new ArrayList<>();
-        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
-            if (forbiddenPattern.getValue().matcher(source).find()) {
-                violations.add(viewPath + " reads retired WorkerContext scheduling fact: "
-                        + forbiddenPattern.getKey());
+        for (String forbiddenToken : List.of(
+                "attributes()",
+                "routingTags()",
+                "supportedEventCodes()",
+                "supportedProjects()",
+                "reachability",
+                "dispatchEnabled",
+                "activeLeaseCount",
+                "reservedCount",
+                "estimatedLoadRatio"
+        )) {
+            if (source.contains(forbiddenToken)) {
+                violations.add("selected-worker handle surface exposes worker fact token: " + forbiddenToken);
             }
         }
-
-        assertTrue(violations.isEmpty(),
-                "WorkerSchedulingView is a worker-level scheduling read model. It must not "
-                        + "read account-slot identity, lifecycle state, or worker-row capability fallback:\n"
-                        + String.join("\n", violations));
-    }
-
-    @Test
-    void workerMatchContextDoesNotExposeWorkerContextRuleFields() throws IOException {
-        Path contextPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerMatchContext.java");
-        String source = Files.readString(contextPath, StandardCharsets.UTF_8);
-
-        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
-                Map.entry("workerContext field",
-                        Pattern.compile("\\.put\\s*\\(\\s*\"workerContext[A-Za-z0-9_]*\"")),
-                Map.entry("isWorkerContext field",
-                        Pattern.compile("\\.put\\s*\\(\\s*\"isWorkerContext[A-Za-z0-9_]*\"")),
-                Map.entry("hasWorkerContext field",
-                        Pattern.compile("\\.put\\s*\\(\\s*\"hasWorkerContext\""))
-        );
-
-        List<String> violations = new ArrayList<>();
-        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
-            if (forbiddenPattern.getValue().matcher(source).find()) {
-                violations.add(contextPath + " exposes retired rule context key: "
-                        + forbiddenPattern.getKey());
-            }
+        if (Pattern.compile("public\\s+.*\\s+supportedEventCodes\\s*\\(").matcher(source).find()) {
+            violations.add("claim authorization exposes raw supportedEventCodes getter");
+        }
+        if (Pattern.compile("public\\s+final\\s+class\\s+SelectedWorkerClaimAuthorization").matcher(source).find()) {
+            violations.add("SelectedWorkerClaimAuthorization is public; keep claim authorization behind SelectedWorkerHandle");
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerMatchContext rule fields must stay workerScheduling*/worker-level. "
-                        + "Legacy workerContext* variables are retired from the scheduling rule surface:\n"
+                "Selected worker handles may expose workerId, workerGroupId, selection token, "
+                        + "lock mode, and an opaque claim bridge only:\n"
                         + String.join("\n", violations));
-    }
-
-    @Test
-    void ruleBasedMatchingEvaluatesDeclarativeRuleContextOnly() throws IOException {
-        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
-        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
-
-        Pattern fullContextEvaluation = Pattern.compile(
-                "ruleEvaluator\\.evaluate\\s*\\([^;]*getContext\\s*\\(",
-                Pattern.DOTALL);
-        Pattern declarativeContextEvaluation = Pattern.compile(
-                "ruleEvaluator\\.evaluate\\s*\\([^;]*getRuleContext\\s*\\(",
-                Pattern.DOTALL);
-
-        assertFalse(fullContextEvaluation.matcher(source).find(),
-                "Rule evaluation must not consume the full diagnostic WorkerMatchContext snapshot. "
-                        + "Runtime evidence belongs to prefilter, rank, reserve, and diagnostics.");
-        assertTrue(declarativeContextEvaluation.matcher(source).find(),
-                "RuleBasedTaskWorkerMatchingStrategy must evaluate the declarative rule context.");
     }
 
     @Test
@@ -682,7 +586,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
             violations.add(kernelPath + " must build resource policy from the kernel schedulingPlaneResolver");
         }
         if (!source.contains("new WorkerDispatchResourceReleaser(\n"
-                + "                    workerAdmissionRuntime,\n"
+                + "                    workerSelectionRuntime,\n"
                 + "                    resourcePolicy,\n"
                 + "                    traceEventLogger\n"
                 + "            )")) {
@@ -693,11 +597,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 + "                    schedulingPlaneResolver")) {
             violations.add(kernelPath + " must pass policy/releaser/resolver into SimpleTaskDispatchBinder");
         }
-        if (!source.contains("traceEventLogger,\n"
-                + "                            schedulingPlaneResolver,\n"
-                + "                            new DefaultWorkerCandidateRanker(),\n"
-                + "                            resourcePolicy,")) {
-            violations.add(kernelPath + " must pass schedulingPlaneResolver/resourcePolicy into matching strategy");
+        if (!source.contains("var workerSelectionRuntime = config.getWorkerSelectionRuntime();")) {
+            violations.add(kernelPath + " must acquire WorkerSelectionRuntime as the only worker-selection port");
         }
         if (!source.contains("new DefaultAssignmentAllocationPolicy(null, schedulingPlaneResolver)")) {
             violations.add(kernelPath + " must build assignment allocation policy from the kernel resolver");
@@ -751,16 +652,21 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerSchedulingResourcePresenceDoesNotDependOnWorkerContextPresence() throws IOException {
-        Path contextPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerMatchContext.java");
-        String source = Files.readString(contextPath, StandardCharsets.UTF_8);
+    void engineSchedulingMainlineDoesNotImportWorkerSchedulingView() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (source.contains("WorkerSchedulingView")
+                    || source.contains("WorkerSchedulingCandidate")
+                    || source.contains("WorkerMatchContext")) {
+                violations.add(path + " imports or references retired worker scheduling read models");
+            }
+        }
 
-        Pattern contextBackedSchedulingResourceFlag = Pattern.compile(
-                "\\.put\\s*\\(\\s*\"hasWorkerSchedulingResource\"\\s*,\\s*schedulingView\\.hasWorkerContext\\s*\\(");
-
-        assertTrue(!contextBackedSchedulingResourceFlag.matcher(source).find(),
-                "hasWorkerSchedulingResource must describe the worker-level scheduling resource, "
-                        + "not legacy WorkerContext presence.");
+        assertTrue(violations.isEmpty(),
+                "Engine scheduling mainline must consume SelectedWorkerHandle only; worker scheduling "
+                        + "views/candidates stay inside worker-runtime diagnostics or internals:\n"
+                        + String.join("\n", violations));
     }
 
     @Test
@@ -791,8 +697,15 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("WorkerClaimTarget\\.workerLevel\\s*\\(", Pattern.DOTALL).matcher(binderSource).find()) {
             violations.add(binderPath + " uses worker-id-only claim targets in the engine scheduling mainline");
         }
-        if (!Pattern.compile("WorkerClaimTarget\\.groupScoped\\s*\\(", Pattern.DOTALL).matcher(binderSource).find()) {
-            violations.add(binderPath + " does not carry WorkerGroup evidence into runtime claim targets");
+        if (!Pattern.compile("\\.toClaimTarget\\s*\\(", Pattern.DOTALL)
+                .matcher(binderSource).find()) {
+            violations.add(binderPath + " does not translate selected handles into runtime claim targets");
+        }
+        if (Pattern.compile("\\.claimAuthorization\\s*\\(", Pattern.DOTALL).matcher(binderSource).find()) {
+            violations.add(binderPath + " reads selected-handle claim authorization instead of using the handle bridge");
+        }
+        if (Pattern.compile("\\bsupportedEventCodes\\s*\\(", Pattern.DOTALL).matcher(binderSource).find()) {
+            violations.add(binderPath + " reads raw worker supportedEventCodes instead of using selected-handle claim bridge");
         }
         if (Pattern.compile("private\\s+String\\s+workerContextId\\s*\\(\\s*\\)", Pattern.DOTALL).matcher(binderSource).find()) {
             violations.add(binderPath + " keeps a workerContextId dispatch-slot accessor in the scheduling path");
@@ -971,24 +884,27 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Assignment diagnostics must snapshot WorkerSchedulingView evidence. "
-                        + "WorkerContext lifecycle snapshots must not return to engine diagnostics:\n"
+                "Assignment diagnostics may store selected-worker or selection-summary evidence, "
+                        + "but WorkerContext lifecycle snapshots must not return to engine diagnostics:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void ruleBasedMatchingStrategyTestsDoNotRegisterWorkerContextFixtures() throws IOException {
-        Path strategyTestPath = TEST_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategyTest.java");
-        List<String> violations = testMethodsCalling(strategyTestPath, "addWorkerContext(").stream()
-                .distinct()
-                .map(methodName -> strategyTestPath + " registers WorkerContext in strategy test: " + methodName)
-                .toList();
+    void engineSelectionTestsDoNotReintroduceWorkerContextFixtures() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path path : selectedSuiteSourceFiles()) {
+            if (!Files.isRegularFile(path)) {
+                continue;
+            }
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (source.contains("addWorkerContext(") || source.contains("WorkerMatchContext")) {
+                violations.add(path + " reintroduces WorkerContext or WorkerMatchContext selection fixtures");
+            }
+        }
 
         assertTrue(violations.isEmpty(),
-                "RuleBasedTaskWorkerMatchingStrategyTest should prove normal matching with stateless "
-                        + "worker scheduling attributes. Context-backed matching fixtures are retired from "
-                        + "the strategy proof surface:\n"
+                "Engine selection tests must exercise selected-worker handles or runtime integration, "
+                        + "not retired worker-context matching fixtures:\n"
                         + String.join("\n", violations));
     }
 
@@ -1018,7 +934,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Engine scheduling must stay on WorkerSchedulingCandidate handoff; "
+                "Engine scheduling must stay on selected-worker handles; "
                         + "do not reintroduce the retired context-first types:\n"
                         + String.join("\n", violations));
     }
@@ -1509,58 +1425,31 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerSchedulingCandidateEnumeratorStaysPackagePrivateImplementationDetail() throws IOException {
+    void workerSchedulingCandidateEnumeratorStaysRemovedFromEngine() {
         Path enumeratorPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java");
-        String source = Files.readString(enumeratorPath, StandardCharsets.UTF_8);
 
-        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
-                Map.entry("public class",
-                        Pattern.compile("\\bpublic\\s+(?:final\\s+)?class\\s+WorkerSchedulingCandidateEnumerator\\b")),
-                Map.entry("public constructor",
-                        Pattern.compile("\\bpublic\\s+WorkerSchedulingCandidateEnumerator\\s*\\(")),
-                Map.entry("public enumerate",
-                        Pattern.compile("\\bpublic\\s+List\\s*<\\s*WorkerSchedulingCandidate\\s*>\\s+enumerate\\s*\\("))
-        );
+        assertFalse(Files.exists(enumeratorPath),
+                "Engine must not keep a candidate enumerator. Worker-runtime owns candidate acquisition "
+                        + "and worker-fact evidence composition behind WorkerSelectionRuntime.");
+    }
+
+    @Test
+    void engineMainlineDoesNotScanWorkerRuntimeCandidateSourcesDirectly() throws IOException {
+        Pattern forbiddenWorkerFactRead = Pattern.compile(
+                "\\.(?:findWorkerCandidateBatch|acquireCandidates|slotByWorkerId|getAllWorkers|slotLifecycleStatus)\\s*\\(");
 
         List<String> violations = new ArrayList<>();
-        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
-            if (forbiddenPattern.getValue().matcher(source).find()) {
-                violations.add(enumeratorPath + " exposes " + forbiddenPattern.getKey());
+        for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (forbiddenWorkerFactRead.matcher(source).find()) {
+                violations.add(path + " reads worker-runtime candidate/source facts directly");
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerSchedulingCandidateEnumerator must stay a strategy-package implementation detail. "
-                        + "WG-3 should replace the candidate source with WorkerCandidateIndex rather than "
-                        + "stabilizing this enumerator as a public extension point:\n"
-                        + String.join("\n", violations));
-    }
-
-    @Test
-    void ruleBasedMatchingStrategyDoesNotScanAllWorkersDirectly() throws IOException {
-        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
-        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
-
-        List<String> violations = new ArrayList<>();
-        if (Pattern.compile("\\.getAllWorkers\\s*\\(").matcher(source).find()) {
-            violations.add(strategyPath + " calls getAllWorkers() directly");
-        }
-        if (Pattern.compile("\\.acquireCandidates\\s*\\(").matcher(source).find()) {
-            violations.add(strategyPath + " calls WorkerRegistry.acquireCandidates(...) directly");
-        }
-        if (Pattern.compile("\\.slotByWorkerId\\s*\\(").matcher(source).find()) {
-            violations.add(strategyPath + " reads WorkerRegistry slot relation directly");
-        }
-        if (!Pattern.compile("\\.findWorkerCandidateBatch\\s*\\(").matcher(source).find()) {
-            violations.add(strategyPath + " does not consume WorkerCandidateRuntime candidate-source API");
-        }
-
-        assertTrue(violations.isEmpty(),
-                "RuleBasedTaskWorkerMatchingStrategy must consume the centralized candidate source. "
-                        + "Do not reintroduce direct worker-pool scans, candidate-bucket reads, or source-guard "
-                        + "relation checks in the rule/rank/resource path:\n"
+                "Engine selection mainline must call WorkerSelectionRuntime, not worker-runtime "
+                        + "candidate/source/index/admission internals:\n"
                         + String.join("\n", violations));
     }
 
@@ -1630,7 +1519,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerAdmissionRuntime is the engine-facing admission lifecycle surface. "
+                "WorkerAdmissionRuntime is a worker-runtime admission lifecycle sub-port behind WorkerSelectionRuntime. "
                         + "Reserve, confirm, release, claim, and final accounting must carry "
                         + "WorkerAdmissionTarget instead of worker-id-only mutation calls:\n"
                         + String.join("\n", violations));
@@ -1761,37 +1650,28 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void engineStageTwoDoesNotRereadDispatchGateAsCandidatePredicate() throws IOException {
-        Path enumeratorPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java");
-        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
-        String enumeratorSource = Files.readString(enumeratorPath, StandardCharsets.UTF_8);
-        String strategySource = Files.readString(strategyPath, StandardCharsets.UTF_8);
-
+    void engineStageTwoDoesNotOwnWorkerFactPredicateComposition() throws IOException {
         List<String> violations = new ArrayList<>();
-        if (Pattern.compile("\\.isWorkerDispatchEnabled\\s*\\(").matcher(enumeratorSource).find()) {
-            violations.add(enumeratorPath + " rereads dispatch gate for every candidate");
-        }
-        if (Pattern.compile("\\.dispatchEnabled\\s*\\(\\s*\\)").matcher(strategySource).find()) {
-            violations.add(strategyPath + " uses dispatchEnabled as a stage-two matching predicate");
-        }
-        if (strategySource.contains("DISPATCH_GATE")) {
-            violations.add(strategyPath + " reintroduces a dispatch-gate rejection owner in stage two");
+        for (Path path : engineSelectionHotPathSourceFiles()) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (source.contains(".isWorkerDispatchEnabled(")
+                    || source.contains(".dispatchEnabled()")
+                    || source.contains(".estimatedLoadRatio()")
+                    || source.contains(".reachability(")
+                    || source.contains("DISPATCH_GATE")) {
+                violations.add(path + " composes worker-fact predicates in engine scheduling");
+            }
         }
 
         assertTrue(violations.isEmpty(),
-                "Dispatch gate belongs to stage-1 slot lifecycle acquisition/source guard and reserve "
-                        + "revalidation. Stage two may keep diagnostic snapshots, but must not reread "
-                        + "dispatch gate or reject candidates through a second predicate:\n"
+                "Engine stage-2 must not compose worker reachability/dispatch/load predicates. "
+                        + "Those worker facts are evaluated inside worker-runtime selection:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void engineSchedulingLifecycleBuildsGroupScopedAdmissionTargets() throws IOException {
+    void engineSchedulingLifecycleUsesSelectedWorkerEvidenceInsteadOfAdmissionTargets() throws IOException {
         Map<Path, String> guardedFiles = Map.ofEntries(
-                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java"),
-                        "matching strategy"),
                 Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java"),
                         "dispatch binder"),
                 Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/resource/WorkerDispatchResourceReleaser.java"),
@@ -1799,38 +1679,25 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/TaskResourceReleaseListener.java"),
                         "terminal/attempt release listener")
         );
-        Pattern workerIdOnlyFactory = Pattern.compile("\\bWorkerAdmissionTarget\\.workerLevel\\s*\\(");
-        Pattern rawTargetConstruction = Pattern.compile("\\bnew\\s+WorkerAdmissionTarget\\s*\\(");
-        Pattern workerIdOnlyMutation = Pattern.compile("\\.(?:reserveWorkerCapacity|confirmWorkerReservation|"
-                + "releaseWorkerReservation|recordWorkClaimed|recordWorkFinal)\\s*\\(\\s*"
-                + "(?:workerId\\b|candidate\\.getWorkerId\\s*\\(|worker\\.workerId\\s*\\(|"
-                + "lease\\.workerId\\s*\\(|event\\.workerId\\s*\\()", Pattern.DOTALL);
-
         List<String> violations = new ArrayList<>();
         for (Map.Entry<Path, String> guardedFile : guardedFiles.entrySet()) {
             String source = Files.readString(guardedFile.getKey(), StandardCharsets.UTF_8);
-            if (workerIdOnlyFactory.matcher(source).find()) {
-                violations.add(guardedFile.getValue() + " uses worker-id-only admission target factory");
+            if (source.contains("WorkerAdmissionTarget") || source.contains("WorkerAdmissionRuntime")) {
+                violations.add(guardedFile.getValue() + " still imports admission target/runtime directly");
             }
-            if (rawTargetConstruction.matcher(source).find()) {
-                violations.add(guardedFile.getValue() + " constructs admission target directly");
-            }
-            if (workerIdOnlyMutation.matcher(source).find()) {
-                violations.add(guardedFile.getValue() + " calls admission mutation with workerId evidence only");
-            }
-            if (!source.contains("WorkerAdmissionTarget.groupScoped")) {
-                violations.add(guardedFile.getValue() + " does not build group-scoped admission targets");
+            if (!source.contains("SelectedWorker")) {
+                violations.add(guardedFile.getValue() + " does not use selected-worker handle/evidence");
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "Engine scheduling lifecycle must carry WorkerGroup evidence into admission mutations. "
-                        + "Do not recover the hot path through worker-id reverse lookup:\n"
+                "Engine dispatch/release lifecycle must use SelectedWorkerHandle/Evidence and "
+                        + "WorkerSelectionRuntime, leaving admission internals inside worker-runtime:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void dispatchReleasePathUsesWorkerAdmissionRuntime() throws IOException {
+    void dispatchReleasePathUsesWorkerSelectionRuntime() throws IOException {
         Map<Path, String> guardedFiles = Map.of(
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java"),
                 "dispatch binder",
@@ -1847,19 +1714,22 @@ class EngineSchedulingCoreArchitectureGuardTest {
                     || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
                 violations.add(guardedFile.getValue() + " depends on full WorkerManager");
             }
-            if (!source.contains("WorkerAdmissionRuntime")) {
-                violations.add(guardedFile.getValue() + " does not use WorkerAdmissionRuntime");
+            if (!source.contains("WorkerSelectionRuntime")) {
+                violations.add(guardedFile.getValue() + " does not use WorkerSelectionRuntime");
+            }
+            if (source.contains("WorkerAdmissionRuntime")) {
+                violations.add(guardedFile.getValue() + " still uses WorkerAdmissionRuntime directly");
             }
         }
 
         assertTrue(violations.isEmpty(),
                 "Dispatch binding and release may mutate worker occupancy only through "
-                        + "WorkerAdmissionRuntime; task claim/refill stays engine-owned:\n"
+                        + "WorkerSelectionRuntime selected-handle/evidence operations; task claim/refill stays engine-owned:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void taskWorkerAssignListenerConsumesRuntimeContractsForWorkerOccupancyAndWarmHints() throws IOException {
+    void taskWorkerAssignListenerConsumesWorkerSelectionRuntimeOnly() throws IOException {
         Path listenerPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/listener/TaskWorkerAssignListener.java");
         String source = Files.readString(listenerPath, StandardCharsets.UTF_8);
@@ -1869,16 +1739,19 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
             violations.add(listenerPath + " depends on full WorkerManager");
         }
-        if (!source.contains("WorkerAdmissionRuntime")) {
-            violations.add(listenerPath + " does not use WorkerAdmissionRuntime for active occupancy/release");
+        if (!source.contains("WorkerSelectionRuntime")) {
+            violations.add(listenerPath + " does not use WorkerSelectionRuntime");
         }
-        if (!source.contains("WorkerWarmHintRuntime")) {
-            violations.add(listenerPath + " does not use WorkerWarmHintRuntime for warm hint writes");
+        if (source.contains("WorkerAdmissionRuntime")
+                || source.contains("WorkerWarmHintRuntime")
+                || source.contains("WorkerCandidateRuntime")
+                || source.contains("WorkerSchedulingViewRuntime")) {
+            violations.add(listenerPath + " imports a retired direct worker-runtime selection sub-port");
         }
 
         assertTrue(violations.isEmpty(),
-                "Assignment orchestration may own allocation/refill and warm-hint timing, but worker "
-                        + "occupancy and hint mutation must cross runtime contracts:\n"
+                "Assignment orchestration may own allocation/refill, but worker selection and "
+                        + "occupancy mutation must cross the single WorkerSelectionRuntime contract:\n"
                         + String.join("\n", violations));
     }
 
@@ -2026,7 +1899,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerCandidateRuntime is the strategy-facing candidate acquisition contract. "
+                "WorkerCandidateRuntime is a worker-runtime candidate acquisition sub-port behind WorkerSelectionRuntime. "
                         + "Keep diagnostics and warm hint writes off candidate acquisition; warm hints "
                         + "belong on WorkerWarmHintRuntime:\n"
                         + String.join("\n", violations));
@@ -2132,27 +2005,21 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void ruleBasedMatchingDoesNotInferSchedulingViewRuntimeFromCandidateRuntime() throws IOException {
-        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
-        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
+    void engineSelectionMainlineDoesNotInferWorkerRuntimeSubPorts() throws IOException {
+        Pattern forbiddenSubPort = Pattern.compile(
+                "\\b(?:WorkerCandidateRuntime|WorkerSchedulingViewRuntime|WorkerAdmissionRuntime|WorkerWarmHintRuntime)\\b");
 
         List<String> violations = new ArrayList<>();
-        if (source.contains("com.xa.mass.worker.runtime.WorkerManager")
-                || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
-            violations.add(strategyPath + " depends on full WorkerManager");
-        }
-        if (source.contains("candidateRuntime instanceof WorkerSchedulingViewRuntime")) {
-            violations.add(strategyPath + " infers scheduling-view runtime from candidate runtime");
-        }
-        if (source.contains("must also implement WorkerSchedulingViewRuntime")) {
-            violations.add(strategyPath + " requires candidate runtime to also implement scheduling-view runtime");
+        for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (forbiddenSubPort.matcher(source).find()) {
+                violations.add(path + " references a worker-runtime selection sub-port directly");
+            }
         }
 
         assertTrue(violations.isEmpty(),
-                "Candidate acquisition and scheduling-view reads are separate worker runtime surfaces. "
-                        + "The strategy must consume explicit runtime contracts and must not depend on "
-                        + "the WorkerManager assembly surface:\n"
+                "Engine selection mainline must not infer or wire candidate/view/admission/warm sub-ports. "
+                        + "It consumes WorkerSelectionRuntime only:\n"
                         + String.join("\n", violations));
     }
 
@@ -2186,8 +2053,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Engine matching strategy may consume candidate/admission/scheduling-view evidence, "
-                        + "but must not own worker registry/resource/report/gate mutation truth:\n"
+                "Worker-runtime selection may consume candidate/admission/scheduling-view evidence, "
+                        + "but engine strategy code must not own worker registry/resource/report/gate mutation truth:\n"
                         + String.join("\n", violations));
     }
 
@@ -2774,9 +2641,11 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void taskSelectorAdapterStaysInEngineStrategyAndRoutingPolicyDoesNotReturn() throws IOException {
+    void taskSelectorAdapterDoesNotReturnToEngineSelectionMainline() throws IOException {
         Path workerPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker");
         Path strategyPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
+        Path selectionOwnerPath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                "com", "xa", "mass", "worker", "runtime", "selection", "WorkerSelectionOwner.java");
 
         List<String> violations = new ArrayList<>();
         String selectorAdapter = "WorkerTaskSelectorFactory.java";
@@ -2784,18 +2653,21 @@ class EngineSchedulingCoreArchitectureGuardTest {
             violations.add(workerPackage.resolve(selectorAdapter)
                     + " keeps task selector adapter in worker package");
         }
-        if (!Files.exists(strategyPackage.resolve(selectorAdapter))) {
+        if (Files.exists(strategyPackage.resolve(selectorAdapter))) {
             violations.add(strategyPackage.resolve(selectorAdapter)
-                    + " is missing engine strategy selector adapter");
+                    + " reintroduces engine-side WorkerTaskSelector adaptation");
         }
         if (Files.exists(strategyPackage.resolve("WorkerRoutingPolicy.java"))) {
             violations.add(strategyPackage.resolve("WorkerRoutingPolicy.java")
                     + " reintroduces a second candidate-bucket owner");
         }
+        if (!Files.readString(selectionOwnerPath, StandardCharsets.UTF_8).contains("new WorkerTaskSelector(")) {
+            violations.add(selectionOwnerPath + " does not own WorkerTaskSelector construction");
+        }
 
         assertTrue(violations.isEmpty(),
-                "Task sharedConfig to WorkerTaskSelector adaptation stays in engine strategy, "
-                        + "but candidate-bucket policy belongs to the shared worker-runtime policy owner:\n"
+                "Engine builds WorkerSelectionRequest only. WorkerTaskSelector adaptation and candidate "
+                        + "bucket policy belong inside worker-runtime selection:\n"
                         + String.join("\n", violations));
     }
 
@@ -3017,32 +2889,20 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void schedulingKernelDoesNotReadWorkerLevelCapabilityAsDecisionTruth() throws IOException {
-        Map<Path, List<Pattern>> guardedFiles = Map.ofEntries(
-                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerSchedulingView.java"),
-                        List.of(Pattern.compile("\\.getSupportedProjects\\s*\\("),
-                                Pattern.compile("\\.getSupportedEventCodes\\s*\\("))),
-                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java"),
-                        List.of(Pattern.compile("\\.getSupportedProjects\\s*\\("),
-                                Pattern.compile("\\.getSupportedEventCodes\\s*\\("))),
-                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java"),
-                        List.of(Pattern.compile("\\.getSupportedEventCodes\\s*\\(")))
-        );
-
         List<String> violations = new ArrayList<>();
-        for (Map.Entry<Path, List<Pattern>> guardedFile : guardedFiles.entrySet()) {
-            String source = Files.readString(guardedFile.getKey(), StandardCharsets.UTF_8);
-            for (Pattern pattern : guardedFile.getValue()) {
-                if (pattern.matcher(source).find()) {
-                    violations.add(guardedFile.getKey()
-                            + " reads Worker.supportedProjects/supportedEventCodes in scheduling decision path");
-                }
+        Pattern workerCapabilityRead = Pattern.compile(
+                "\\.(?:getSupportedProjects|getSupportedEventCodes|supportedProjects|supportedEventCodes)\\s*\\(");
+        for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (workerCapabilityRead.matcher(source).find()) {
+                violations.add(path + " reads worker-level capability truth in engine scheduling mainline");
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "WG-4 capability truth must be materialized from WorkerGroup snapshot/index truth. "
-                        + "Worker-level supportedProjects/supportedEventCodes may remain migration inputs "
-                        + "or legacy diagnostics, but not scheduling decision truth:\n"
+                "Engine must not inspect worker capability lists for scheduling decisions. "
+                        + "Worker-runtime selection may use WorkerGroup capability internally and expose only "
+                        + "a selected-handle claim bridge:\n"
                         + String.join("\n", violations));
     }
 
@@ -3637,6 +3497,27 @@ class EngineSchedulingCoreArchitectureGuardTest {
             }
         }
         throw new AssertionError("method body did not close: " + methodPrefix);
+    }
+
+    private static List<Path> engineSelectionHotPathSourceFiles() throws IOException {
+        List<Path> roots = List.of(
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/assignment"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/resource"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/runtime"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernel.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernelConfig.java")
+        );
+        List<Path> files = new ArrayList<>();
+        for (Path root : roots) {
+            if (Files.isRegularFile(root)) {
+                files.add(root);
+            } else {
+                files.addAll(javaSourceFiles(root));
+            }
+        }
+        return files;
     }
 
     private record GuardedSourceArea(List<Path> roots, Pattern forbiddenPattern) {

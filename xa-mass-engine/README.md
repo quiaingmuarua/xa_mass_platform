@@ -23,11 +23,11 @@ covers engine-owned assets and when to use them.
 Assignment allocation is engine-internal policy ownership:
 
 - `AssignmentAllocationPolicy` owns this round's allocation decision: requested
-  match count, minimum-worker start gate, and the matched worker candidates that
+  selection count, minimum-worker start gate, and the selected worker handles that
   may enter dispatch.
 - `TaskWorkerAssignListener` owns orchestration around that decision: invoking
-  matching, unlocking skipped/surplus workers, task status transition, assignment
-  trace, task update, and assignment event publication.
+  worker-runtime selection, unlocking skipped/surplus workers, task status
+  transition, assignment trace, task update, and assignment event publication.
 - `SimpleTaskDispatchBinder` owns runtime claim and dispatch binding only; it is
   not the assignment allocation policy owner.
 
@@ -61,17 +61,13 @@ Assignment signal admission
 Task-level assignment orchestration
   -> TaskWorkerAssignListener
   -> AssignmentAllocationPolicy
-  -> matching/acquisition path
+  -> WorkerSelectionRuntime.selectAndReserve(...)
   -> SimpleTaskDispatchBinder
 
-Worker scheduling read model
-  -> WorkerSchedulingCandidateEnumerator
-  -> WorkerSchedulingView
-  -> WorkerMatchContext
-
-Eligibility and preference
-  -> worker prefilter + current default QLExpress rule evaluation
-  -> WorkerCandidateRanker
+Worker-side runtime selection
+  -> WorkerSelectionRequest
+  -> SelectedWorkerHandle
+  -> worker-runtime candidate/evidence/admission internals
 
 Allocation and budget
   -> AssignmentAllocationPolicy
@@ -104,15 +100,15 @@ Owner-backed worker-control and stage entry surfaces:
   SDK/server integration should call the services through SDK-facing request
   models, not reach into event handlers or mutate owner internals directly.
 
-The current `RuleBasedTaskWorkerMatchingStrategy` combines group-first candidate
-acquisition, worker scheduling evidence, QLExpress-backed eligibility rules,
-ranking, capacity reservation, and optional worker-lock acquisition. That is
-the current default worker-selection mechanism, not the strategic endpoint of
-the platform and not a top-level policy owner. Future selection work may add
+Current default runtime worker selection is delegated to
+`WorkerSelectionRuntime`. Engine resolves task-side policy intent and requested
+worker count, then consumes selected worker handles. Worker-runtime owns
+worker-fact predicate composition, ranking mechanics, reservation, and selected
+worker accounting behind that minimal contract. Future selection work may add
 worker intrinsic metrics, task-type affinity, historical performance, or
-domain-specific scoring. Add those as explicit worker scheduling policy inputs,
-runtime worker selection evidence, or rule-backed components; do not hide
-mechanism growth behind pass-through wrappers.
+domain-specific scoring as worker-runtime selection mechanics or explicit
+task-side policy intent; do not reintroduce engine-visible worker metadata as a
+shortcut.
 
 Policy abstraction boundary:
 
@@ -124,8 +120,8 @@ Policy abstraction boundary:
   `ResolvedTaskSchedulingPolicy`, and `ResolvedWorkerSchedulingPolicy`; a
   catalog/binding/configurable policy path is not implemented yet.
 - current implementation: policy remains distributed across task runtime
-  profile, explicit group selectors, matching rule sets, assignment allocation,
-  runtime backpressure, and admission behavior.
+  profile, explicit group selectors, assignment allocation, runtime
+  backpressure, worker-runtime selection, and admission behavior.
 - task-level dispatch intent narrows the target: project, `workerGroupId(s)` or
   selector, `routingCode`, route attributes, optional `targetWorkerId`, and
   optional constrained target worker attributes.
@@ -143,8 +139,8 @@ are worker-level.
 Current WorkerGroup / group-selector scheduling baseline:
 
 - WorkerGroup candidate-source convergence is closed; ordinary scheduling uses
-  explicit task `workerGroupId` / `workerGroupIds` selectors before worker rows
-  are acquired
+  explicit task `workerGroupId` / `workerGroupIds` selectors as worker-universe
+  intent before asking worker-runtime for selected handles
 - low-level worker registry primitives live in
   `platform_infra/mass-runtime-api`; resource contracts and higher-level worker
   runtime contracts live in `xa-mass-worker-runtime`
@@ -152,16 +148,13 @@ Current WorkerGroup / group-selector scheduling baseline:
   `EventBinding`, `WorkerGroupRecord`, and resource DTOs are worker-runtime
   resource contracts; `WorkerRegistrySnapshot` is worker-runtime package-local
   implementation evidence, not an engine public surface
-- `WorkerCandidateIndex` consumes explicit group selectors and narrows
-  `workerGroupId(s) -> group-scoped candidate source -> workerIds`; it does not derive
-  candidate groups from task eventCode/project and does not own reachability,
-  load, reservation, or resource policy
+- `WorkerSelectionRuntime` consumes explicit group selectors and narrows
+  `workerGroupId(s) -> worker-runtime selection -> SelectedWorkerHandle`.
+  Engine does not acquire candidate rows, join scheduling views, or rank workers
+  directly.
 - `WorkerManager` lives in `xa-mass-worker-runtime` as private runtime assembly.
   SDK/server registration crosses narrow worker-runtime declaration and query
   ports; accepted worker declarations refresh derived registry projections.
-- candidate source enters through `WorkerCandidateRuntime.findWorkerCandidateBatch(...)`
-  and is materialized by the strategy-package
-  `WorkerSchedulingCandidateEnumerator`
 - `targetWorkerId` is only a debug/manual narrowing shortcut inside an
   explicit group selector; it cannot bypass group, reachability, dispatch gate,
   load, lock, or rule checks
@@ -171,23 +164,17 @@ Current WorkerGroup / group-selector scheduling baseline:
 - `WorkerRegistrySnapshot` may retain WorkerGroup `EventBinding` read caches
   for catalog/report-ceiling flows, but event bindings are not the scheduling
   candidate-source key
-- Stage 2 scheduling capability evidence is materialized from
+- Worker-runtime materializes WorkerGroup capability evidence from
   `WorkerGroupRecord`; group-level capability remains the boundary for
   supported event handlers and projects. AdapterNode/NodeGroupBinding metadata
   is topology/admin evidence, not a scheduling selector or worker-registration
   prerequisite.
-- `WorkerSchedulingCandidateEnumerator` is a strategy-package implementation
-  detail, not a public extension point
 - the old unused `WorkerSelector` / `DefaultWorkerSelector` path is removed so
-  worker selection has one active mainline: candidate source -> rule/rank ->
-  allocation/resource admission
-- `RuleBasedTaskWorkerMatchingStrategy` must consume the centralized candidate
-  source and must not reintroduce direct all-worker scans
-- canonical assignment trace includes `workerGroupId`, `eventBindingKey`, and
-  `workerCandidateSource` on worker match rows; the
-  `group-capability-routing` trace scenario is the representative proof that
-  SDK event routing uses the group-indexed candidate source through real server
-  wiring
+  worker selection has one active mainline: task-side intent ->
+  worker-runtime selected handles -> allocation/bind/release
+- canonical assignment trace and diagnostics may include `workerGroupId` and
+  bounded selection-summary counts. They must not reconstruct worker scheduling
+  views or candidate rows in engine code.
 
 ## Scheduling Core Test Intent
 
@@ -313,9 +300,9 @@ Keep these facts fixed unless the owning global baselines change:
 - `TaskAssignWorker` orders assignment signals by `DispatchPriority` inside
   each existing lane; `DispatchLane` remains the primary isolation boundary and
   same-priority signals remain FIFO
-- `WorkerCandidateRanker` orders rule-passed scheduling candidates before lock
-  acquisition; rules remain the eligibility gate, and the default ranker uses
-  observed load plus routing affinity as preference signals
+- `WorkerSelectionRuntime` owns worker-fact eligibility and ordering before
+  selected handles are returned; engine does not rank worker rows or worker
+  scheduling views.
 - `WorkerRegistry` owns worker slot capacity, reservation, active lease, and
   exclusive execution-lane evidence. Worker selection reserves one unit of
   worker-declared capacity before exclusive lease acquisition, and dispatch
@@ -328,7 +315,7 @@ Keep these facts fixed unless the owning global baselines change:
   another assignment attempt; `TaskResourceReleaseListener` releases resources
   and consumes that decision instead of owning refill formulas
 - `WorkerDispatchResourcePolicy` owns dispatch resource usage semantics:
-  whether a task/candidate uses the long-lived worker-level exclusive lock.
+  whether a task/selected worker uses the long-lived worker-level exclusive lock.
   Worker selection, assignment listener cleanup, binder compensation, and
   resource release consume this decision instead of each re-deriving foreground
   behavior. WorkerContext identity is no longer a resource policy input; only
@@ -439,87 +426,53 @@ Infra ownership:
 
 ## Worker Selection Mechanism
 
-Matching is current worker-selection mechanism vocabulary, not a top-level
-policy owner. The current default implementation enumerates
-`WorkerSchedulingCandidate` values, reads `WorkerSchedulingView` evidence,
-evaluates declarative eligibility through `WorkerMatchContext#getRuleContext()`
-and QLExpress rules, ranks accepted candidates, and reserves/adopts worker
-admission evidence. The full `WorkerMatchContext` snapshot remains diagnostic
-evidence for records and traces. QLExpress rules are one eligibility component,
-not the final shape of worker scheduling policy or runtime worker selection.
+Runtime worker selection is a Scheduling Plane concern with a narrow engine
+contract. The engine resolves task-side policy intent and passes a
+`WorkerSelectionRequest` to worker-runtime. Worker-runtime returns
+`SelectedWorkerHandle` values that carry only selected identity and accounting
+capability needed by the binder/release path.
 
 Current owner types:
 
-- `src/main/java/com/xa/mass/engine/model/WorkerSchedulingCandidate.java`
-- `src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java`
-- `src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
-- `src/main/java/com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java`
-- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/candidate/WorkerCandidateRuntime.java`
-- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerSchedulingViewRuntime.java`
-- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/admission/WorkerAdmissionRuntime.java`
-- `src/main/java/com/xa/mass/engine/rules/MatchingRuleSetProvider.java`
-- `src/main/java/com/xa/mass/engine/rules/MatchingRuleEvaluator.java`
-- `src/main/java/com/xa/mass/engine/rules/RegistryBackedMatchingRuleEvaluator.java`
-- `src/main/java/com/xa/mass/engine/rules/StorageBackedMatchingRuleSetProvider.java`
-- `src/main/java/com/xa/mass/engine/rules/RuleConfig.java`
-
-Current default bootstrap rule set:
-
-- `basic_worker_check`
-- `worker_scheduling_resource_check`
-- `routing_code_match`
-- `worker_load_check`
+- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/selection/WorkerSelectionRuntime.java`
+- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/selection/WorkerSelectionRequest.java`
+- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/selection/WorkerSelectionIntent.java`
+- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/selection/WorkerSelectionResult.java`
+- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/selection/SelectedWorkerHandle.java`
+- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/selection/SelectedWorkerEvidence.java`
+- `src/main/java/com/xa/mass/engine/listener/TaskWorkerAssignListener.java`
+- `src/main/java/com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java`
+- `src/main/java/com/xa/mass/engine/resource/WorkerDispatchResourceReleaser.java`
 
 Worker selection boundaries:
 
-- `WorkerSchedulingCandidate` is the engine-internal handoff between worker
-  selection, allocation, listener orchestration, and dispatch binding
-- `WorkerSchedulingCandidateEnumerator` creates one scheduling candidate per
-  worker from the worker read model; worker selection no longer expands legacy
-  `WorkerContext` storage into candidates
-- worker-level assignment diagnostics consume `WorkerSchedulingCandidate`;
-  candidate handoff no longer carries a nullable `WorkerContext` payload
-- `WorkerMatchContext` owns both the full diagnostic snapshot and the narrower
-  declarative rule context; `RuleBasedTaskWorkerMatchingStrategy` evaluates
-  rules against the declarative rule context and keeps the full snapshot for
-  prefilter, assignment records, and trace diagnostics
-- assignment records snapshot `WorkerSchedulingView` evidence through
-  `WorkerSchedulingSnapshot`; account-slot identity is not the diagnostic
-  subject
-- `WorkerSchedulingView` is the scheduling read surface; new matching code
-  should read the view rather than treating `WorkerContext` as the worker
-  selection subject
-- `WorkerRegistry` is the worker runtime slot owner for reservation and active
-  lease counters; `WorkerLoadSnapshot` is a read-side value derived from the
-  current slot, not a separate mutable owner
-- `Worker.status` and worker lock state are typed truth, not attributes
-- `Worker.status` is worker-runtime lifecycle truth, not transport endpoint-lease
-  truth
-- dispatch eligibility must read worker-runtime reachability from
-  `WorkerReachabilityView`, not transport endpoint-lease expiry or local
-  heartbeat-expiry heuristics
-- `workerSchedulingAttributes` is one worker-selection evidence family for labels,
-  fingerprints, and routing hints; it is not the whole policy model
-- default rules must use declarative task intent, worker capability, and static
-  worker metadata variables; legacy `workerContext*` variables and live runtime
-  evidence such as availability, lock, admission, reserve, and load are not part
-  of the engine rule surface
-- worker load variables such as `workerActiveLeaseCount`,
-  `workerReservedCount`, and `workerEstimatedLoadRatio` are scheduling
-  diagnostics and ranking evidence; current capacity semantics are
-  worker-declared process-local reservation plus the existing worker lock, not
-  distributed capacity correctness or shared background execution
-- worker-selection inputs must stay explicit scheduling evidence rather than
-  being smuggled into worker-resource ownership or worker scheduling policy
-- routing is a task-owned hint currently resolved from
-  `Task.sharedConfig["routingCode"]`
-- once a task requires routing, the candidate must expose worker-selection
-  `workerSchedulingRoutingTags`; in the current scheduling hot path those tags
-  come from worker attributes such as `routingTag` / `routingTags`
+- Engine does not own worker candidate rows, worker scheduling views, worker
+  match contexts, worker-fact rule evaluation, or worker-load ranking.
+- Engine may decide requested worker count, minimum start gate, allocation
+  budget, task-side worker universe intent, and retry/terminal behavior.
+- Worker-runtime owns worker-fact predicate composition, routing/attribute
+  matching mechanics, reachability/dispatch/lock/load/capability checks,
+  ranking mechanics, reservation, exclusive lease acquisition, selected claim
+  authorization, and selected-worker accounting.
+- `SelectedWorkerHandle` is the hot-path handoff from worker-runtime to engine.
+  Engine may read `workerId`, `workerGroupId`, and selected accounting/claim
+  operations; it must not read worker attributes, live load, capability lists,
+  reachability, dispatch gate state, candidate bucket ids, or transport
+  topology ids.
+- `SelectedWorkerEvidence` is the recovery/release shape for paths that only
+  have persisted task binding evidence. It carries selected identity and
+  selection scope, not worker metadata.
+- Assignment diagnostics may record selected handles and task-level
+  `WorkerSelectionResult` reason counts. They must not reconstruct
+  `WorkerSchedulingView`, `WorkerSchedulingCandidate`, or `WorkerMatchContext`
+  snapshots inside engine.
+- Routing remains task-side intent currently resolved from
+  `Task.sharedConfig["routingCode"]`; worker-runtime interprets it against
+  worker facts after the request crosses the selection boundary.
 
-If worker-selection semantics change, update the policy contract,
-`WorkerMatchContext` when rule evaluation is affected, trace evidence, and the
-relevant routing/integration coverage together.
+If worker-selection semantics change, update the worker-runtime selection
+contract, engine trace/diagnostic evidence, and representative routing or
+contention coverage together.
 
 ## Acceptance Focus
 
@@ -567,8 +520,8 @@ Useful starting tests:
 - `TaskResourceReleaseListenerTest`
 - `TaskAssignWorkerTest`
 - `TaskWorkerAssignListenerTest`
-- `RuleBasedTaskWorkerMatchingStrategyTest`
-- `WorkerMatchContextTest`
+- `SimpleTaskDispatchBinderTest`
+- `WorkerDispatchResourceReleaserTest`
 
 Current scheduling-matrix scenarios include:
 

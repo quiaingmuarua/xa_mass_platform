@@ -13,7 +13,7 @@ import java.util.List;
  *
  * <p>This class is for demo data and local runtime bootstrap only. Worker
  * matching uses {@code RuleDefinition + QLExpressRuleEvaluator +
- * WorkerMatchContext}; do not route assignment or binding decisions through
+ * worker-runtime selected-worker handles; do not route assignment or binding decisions through
  * this generator.
  */
 @SuppressWarnings("deprecation")

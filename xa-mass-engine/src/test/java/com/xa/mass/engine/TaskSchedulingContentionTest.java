@@ -1,11 +1,9 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.assignment.DefaultWorkerBudgetPolicy;
-import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.worker.runtime.evidence.WorkerOccupancyState;
@@ -46,9 +44,7 @@ class TaskSchedulingContentionTest {
         assertEquals(1, firstLeases.size());
         assertEquals("worker-single", firstLeases.getFirst().workerId());
 
-        AssignmentRecord rejectedRecord = harness.record(secondTask.getTid(), "worker-single");
-        assertEquals(AssignmentResult.CONFLICT, rejectedRecord.getResult());
-        assertEquals("worker locked", rejectedRecord.getReason());
+        assertEquals(1, harness.selectionReasonCount(secondTask.getTid(), "worker locked"));
         assertEquals(1, harness.successfulMessageAssignments(firstTask.getTid(), "worker-single"));
         assertEquals(0, harness.successfulMessageAssignments(secondTask.getTid(), "worker-single"));
         assertTrue(harness.workerManager.hasWorkerExclusiveLease("worker-single"));
@@ -86,9 +82,7 @@ class TaskSchedulingContentionTest {
         assertEquals("worker-background", firstLeases.getFirst().workerId());
         assertEquals("worker-background", secondLeases.getFirst().workerId());
 
-        AssignmentRecord rejectedRecord = harness.record(thirdTask.getTid(), "worker-background");
-        assertEquals(AssignmentResult.QUOTA_EXCEEDED, rejectedRecord.getResult());
-        assertEquals("worker capacity unavailable after candidate ranking", rejectedRecord.getReason());
+        assertEquals(1, harness.selectionReasonCount(thirdTask.getTid(), "worker capacity unavailable"));
     }
 
     @Test
@@ -118,14 +112,7 @@ class TaskSchedulingContentionTest {
         assertEquals(1, harness.stats(thirdTask.getTid()).readyCount());
         assertTrue(harness.activeLeases(thirdTask.getTid()).isEmpty());
 
-        List<AssignmentRecord> thirdTaskWorkerARecords = harness.workerRecords(thirdTask.getTid(), "worker-a");
-        List<AssignmentRecord> thirdTaskWorkerBRecords = harness.workerRecords(thirdTask.getTid(), "worker-b");
-        assertTrue(thirdTaskWorkerARecords.stream().allMatch(record ->
-                AssignmentResult.CONFLICT.equals(record.getResult())
-                        && "worker locked".equals(record.getReason())));
-        assertTrue(thirdTaskWorkerBRecords.stream().allMatch(record ->
-                AssignmentResult.CONFLICT.equals(record.getResult())
-                        && "worker locked".equals(record.getReason())));
+        assertEquals(2, harness.selectionReasonCount(thirdTask.getTid(), "worker locked"));
 
         ActiveLeaseRecord firstLease = firstLeases.getFirst();
         assertTrue(harness.taskManager.ingestTaskResult(

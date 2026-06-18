@@ -59,8 +59,7 @@ class MassEngineAssemblyBoundaryTest {
             "import com.xa.mass.engine.stage.TaskStageEvidenceOwner;",
             "import com.xa.mass.engine.stage.TaskStageEvidenceResult;",
             "import com.xa.mass.engine.stage.TaskStageEvidenceService;",
-            "import com.xa.mass.engine.stage.TaskStageProjection;",
-            "import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;"
+            "import com.xa.mass.engine.stage.TaskStageProjection;"
     );
 
     @Test

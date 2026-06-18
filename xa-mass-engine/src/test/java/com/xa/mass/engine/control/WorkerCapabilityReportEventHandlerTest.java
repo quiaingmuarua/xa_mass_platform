@@ -13,12 +13,11 @@ import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
-import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
-import com.xa.mass.engine.strategy.WorkerTaskSelectorFactory;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
+import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportStatus;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
@@ -125,8 +124,12 @@ public class WorkerCapabilityReportEventHandlerTest {
     }
 
     private static List<WorkerCandidateRow> workerRows(WorkerManager workerManager, Task task) {
-        return workerManager.findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromPolicy(
-                new DefaultSchedulingPlaneResolver().resolve(task).workerSchedulingPolicy()), 512).candidates();
+        return workerManager.findWorkerCandidateBatch(new WorkerTaskSelector(
+                task.getTid(),
+                TaskSharedConfig.workerGroupSelector(task),
+                TaskSharedConfig.targetWorkerId(task),
+                java.util.Set.of()
+        ), 512).candidates();
     }
 
     private static Worker worker(String workerId, String workerGroupId) {

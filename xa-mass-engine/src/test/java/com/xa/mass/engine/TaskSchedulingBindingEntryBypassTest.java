@@ -1,11 +1,9 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.listener.TaskAssignWorker;
-import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -98,15 +96,13 @@ class TaskSchedulingBindingEntryBypassTest {
             );
 
             awaitCondition(
-                    () -> !harness.workerRecords(task.getTid(), "worker-target").isEmpty(),
+                    () -> harness.selectionReasonCount(task.getTid(), "worker locked") > 0,
                     "first assignment attempt should record target worker conflict before wakeup"
             );
             assertEquals(TaskStatus.READY, harness.taskManager.getTask(task.getTid()).getStatus());
             assertSelectedCounters(harness, task.getTid(), 1, 0);
             assertNoWorkerAttemptOrBinding(harness, task.getTid(), "worker-backup");
-            AssignmentRecord targetConflict = harness.record(task.getTid(), "worker-target");
-            assertEquals(AssignmentResult.CONFLICT, targetConflict.getResult());
-            assertEquals("worker locked", targetConflict.getReason());
+            assertEquals(1, harness.selectionReasonCount(task.getTid(), "worker locked"));
 
             harness.workerManager.releaseWorkerExclusiveLease("worker-target");
             awaitCondition(
