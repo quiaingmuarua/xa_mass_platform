@@ -45,8 +45,8 @@ This is a design constraint, not an external-adapter implementation roadmap.
   `TransportAdapterContribution`, `TransportBinding`,
   `TransportRuntimeRegistry`, `TransportRegistrationResolver`,
   `AdapterCommandExecutor`, `ManagedTransportAdapter`,
-  `CompositeWorkerEndpointRegistry`, `CompositeWorkerEndpointInspector`,
-  `TransportDeliveryCommandListener`, and `RawWorkerMessageChannel`.
+  `CompositeWorkerEndpointInspector`, `TransportDeliveryCommandListener`,
+  and `RawWorkerMessageChannel`.
 - `MassApplication` and `TransportRuntimeComposition` assemble both sets in
   one embedded SDK startup path. This is acceptable for the current embedded
   runtime, but it makes it easy for embedded-only facts to drift into core
@@ -174,7 +174,7 @@ embedded-java-adapter-support
   TransportRegistrationResolver
   AdapterCommandExecutor
   PollingTransportAdapterBootstrap
-  CompositeWorkerEndpointRegistry / Inspector
+  CompositeWorkerEndpointInspector
   ManagedTransportAdapter
   RawWorkerMessageChannel
   RouteEndpointIndex
@@ -244,7 +244,7 @@ Classification:
 | Embedded Java assembly | `TransportAdapterBootstrap`, `TransportAdapterContribution`, `TransportBinding`, `TransportRuntimeRegistry`, `TransportDeliveryCommandListener` | embedded Java adapter support |
 | Polling adapter assembly | `PollingTransportAdapterBootstrap` contributes polling binding; `DefaultWorkerTransportRuntimeFactory` creates registry only | embedded Java adapter support |
 | SDK embedded assembly surface | `MassSdk.TransportOptions.workerTransportRuntimeFactory`, `addSupplementalTransportAdapterBootstrap` | embedded-only JVM extension points |
-| Embedded Java local endpoint utilities | `CompositeWorkerEndpointRegistry`, `CompositeWorkerEndpointInspector`, `RouteEndpointIndex` | embedded Java adapter support |
+| Embedded Java local endpoint utilities | `CompositeWorkerEndpointInspector`, `RouteEndpointIndex` | embedded Java adapter support |
 | Raw/manual side-channel | `RawWorkerMessageChannel` | embedded diagnostics/manual side-channel |
 | Legacy packet helper | `TransportPacketFactory` | review; keep only if result/event wire owner still needs it |
 
@@ -434,8 +434,8 @@ Acceptance:
 - Core delivery/evidence/result classes do not import:
   `TransportAdapterBootstrap`, `TransportAdapterContribution`,
   `TransportBinding`, `TransportRuntimeRegistry`, `ManagedTransportAdapter`,
-  `CompositeWorkerEndpointRegistry`, `CompositeWorkerEndpointInspector`,
-  `RawWorkerMessageChannel`, or concrete adapter packages.
+  `CompositeWorkerEndpointInspector`, `RawWorkerMessageChannel`, or concrete
+  adapter packages.
 - Embedded adapter support may import core contracts.
 - Concrete adapters may import embedded support and core contracts.
 - SDK/starter assembly may compose both, but must not force core contracts to

@@ -132,6 +132,6 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 || workerId == null || workerId.isBlank()) {
             return;
         }
-        sessionHandle.addSession(workerGroupId, routeKey, workerId, ctx.channel(), ctx);
+        sessionHandle.addSession(workerGroupId, routeKey, workerId, ctx.channel());
     }
 }

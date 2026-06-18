@@ -1,7 +1,6 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
-import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
@@ -17,7 +16,6 @@ import java.util.Objects;
  */
 public final class TransportAdapterBootstrapContext {
 
-    private final WorkerEndpointRegistry endpointRegistry;
     private final TransportResultIngressChannel resultIngressChannel;
     private final WorkerPresenceIngress workerPresenceIngress;
     private final TransportEndpointLeaseStore endpointLeaseStore;
@@ -25,14 +23,12 @@ public final class TransportAdapterBootstrapContext {
     private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
 
-    public TransportAdapterBootstrapContext(WorkerEndpointRegistry endpointRegistry,
-                                            TransportResultIngressChannel resultIngressChannel,
+    public TransportAdapterBootstrapContext(TransportResultIngressChannel resultIngressChannel,
                                             WorkerPresenceIngress workerPresenceIngress,
                                             TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryService deliveryService,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
-        this(endpointRegistry,
-                resultIngressChannel,
+        this(resultIngressChannel,
                 workerPresenceIngress,
                 endpointLeaseStore,
                 deliveryService,
@@ -40,14 +36,12 @@ public final class TransportAdapterBootstrapContext {
                 runtimeTaskExecutor);
     }
 
-    public TransportAdapterBootstrapContext(WorkerEndpointRegistry endpointRegistry,
-                                            TransportResultIngressChannel resultIngressChannel,
+    public TransportAdapterBootstrapContext(TransportResultIngressChannel resultIngressChannel,
                                             WorkerPresenceIngress workerPresenceIngress,
                                             TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryService deliveryService,
                                             DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
-        this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.resultIngressChannel = resultIngressChannel;
         this.workerPresenceIngress = Objects.requireNonNull(workerPresenceIngress, "workerPresenceIngress");
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
@@ -56,10 +50,6 @@ public final class TransportAdapterBootstrapContext {
                 ? deliveryCommandConsumerRegistry
                 : NoopDeliveryCommandConsumerRegistry.INSTANCE;
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
-    }
-
-    public WorkerEndpointRegistry getEndpointRegistry() {
-        return endpointRegistry;
     }
 
     public TransportResultIngressChannel getResultIngressChannel() {

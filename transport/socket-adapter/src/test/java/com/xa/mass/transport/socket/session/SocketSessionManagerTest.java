@@ -81,7 +81,7 @@ class SocketSessionManagerTest {
         manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-1", "endpoint-1", activeSocket(), firstWriter);
         manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-2", "endpoint-2", activeSocket(), secondWriter);
 
-        assertTrue(manager.sendToSelectedWorker("worker-2", "{\"messageId\":\"msg-2\"}"));
+        assertTrue(manager.sendToWorker("worker-2", "{\"messageId\":\"msg-2\"}"));
 
         verify(firstWriter, never()).write(anyString());
         verify(secondWriter).write("{\"messageId\":\"msg-2\"}");
@@ -161,7 +161,7 @@ class SocketSessionManagerTest {
         assertEquals("route-new", endpoint(endpointLeaseStore, "worker-1").endpointAddress());
         verify(oldSocket).close();
 
-        assertTrue(manager.sendToSelectedWorker("worker-1", "{\"messageId\":\"msg-new\"}"));
+        assertTrue(manager.sendToWorker("worker-1", "{\"messageId\":\"msg-new\"}"));
         verify(oldWriter, never()).write(anyString());
         verify(newWriter).write("{\"messageId\":\"msg-new\"}");
     }

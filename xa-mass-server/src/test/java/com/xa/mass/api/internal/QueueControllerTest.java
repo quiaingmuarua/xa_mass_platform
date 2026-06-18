@@ -64,15 +64,6 @@ class QueueControllerTest {
                                         "oldestQueuedAgeMillis", 25L,
                                         "backpressureRejectedItems", 3L
                                 )
-                        ),
-                        "directByAdapter", Map.of(
-                                "websocket", Map.of(
-                                        "sentItems", 7L,
-                                        "offlineItems", 1L,
-                                        "failedItems", 0L,
-                                        "invalidItems", 0L,
-                                        "unavailableItems", 0L
-                                )
                         )
                 ),
                 "runtimeExecutors", Map.of(
@@ -109,8 +100,6 @@ class QueueControllerTest {
                 .andExpect(jsonPath("$.data.deliveryDiagnostics.maxQueuedItems").value(100000))
                 .andExpect(jsonPath("$.data.deliveryDiagnostics.queueByAdapter.polling.queuedItems").value(4))
                 .andExpect(jsonPath("$.data.deliveryDiagnostics.queueByAdapter.polling.backpressureRejectedItems").value(3))
-                .andExpect(jsonPath("$.data.deliveryDiagnostics.directByAdapter.websocket.sentItems").value(7))
-                .andExpect(jsonPath("$.data.deliveryDiagnostics.directByAdapter.websocket.offlineItems").value(1))
                 .andExpect(jsonPath("$.data.runtimeExecutors.transport.available").value(true))
                 .andExpect(jsonPath("$.data.runtimeExecutors.transport.rejectedTasks").value(1))
                 .andExpect(jsonPath("$.data.runtimeExecutors.event.available").value(false));

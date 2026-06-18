@@ -1,6 +1,7 @@
 package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 
 import java.util.Objects;
 
@@ -27,7 +28,7 @@ public final class WebSocketRawWorkerRouteEndpointRegistry implements RawWorkerR
             return false;
         }
         for (WebSocketSessionRecord record : sessionStore.activeRecordsForEndpointAddress(routeKey)) {
-            record.send(message);
+            record.channel().writeAndFlush(new TextWebSocketFrame(message));
             return true;
         }
         return false;

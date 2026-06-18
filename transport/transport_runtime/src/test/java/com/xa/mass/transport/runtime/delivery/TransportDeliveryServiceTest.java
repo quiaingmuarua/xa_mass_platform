@@ -6,120 +6,14 @@ import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransportDeliveryServiceTest {
 
     private static final String BUCKET = "bucket-1";
     private static final String QUEUE_KEY = AssignedDeliveryCommandQueueKey.queueKeyFor(BUCKET);
-
-    @Test
-    void sendDirectReturnsSentWhenSenderAcceptsItem() {
-        TransportDeliveryService service = service();
-
-        List<DispatchOutcome> outcomes = service.sendDirect(
-                "websocket",
-                List.of(request("msg-1", "worker-1")),
-                request -> true,
-                "unavailable"
-        );
-
-        assertEquals(List.of(DispatchOutcomeStatus.DELIVERED), statuses(outcomes));
-        assertEquals(1L, service.stats().getDirectSentItems());
-        assertEquals(1L, service.directStatsByAdapter().get("websocket").getSentItems());
-    }
-
-    @Test
-    void sendDirectReturnsEndpointOfflineWhenSenderRejectsItem() {
-        TransportDeliveryService service = service();
-
-        List<DispatchOutcome> outcomes = service.sendDirect(
-                "socket",
-                List.of(request("msg-1", "worker-1")),
-                request -> false,
-                "unavailable"
-        );
-
-        assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcomes.get(0).getStatus());
-        assertTrue(outcomes.get(0).isRetryable());
-        assertEquals(1L, service.stats().getDirectOfflineItems());
-        assertEquals(1L, service.directStatsByAdapter().get("socket").getOfflineItems());
-    }
-
-    @Test
-    void sendDirectReturnsAdapterUnavailableWhenSenderIsMissing() {
-        TransportDeliveryService service = service();
-
-        List<DispatchOutcome> outcomes = service.sendDirect(
-                "websocket",
-                List.of(request("msg-1", "worker-1")),
-                null,
-                "dispatcher context is unavailable"
-        );
-
-        assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcomes.get(0).getStatus());
-        assertEquals("dispatcher context is unavailable", outcomes.get(0).getReason());
-        assertEquals(1L, service.stats().getDirectUnavailableItems());
-        assertEquals(1L, service.directStatsByAdapter().get("websocket").getUnavailableItems());
-    }
-
-    @Test
-    void sendDirectReturnsInvalidItemBeforeCallingSender() {
-        TransportDeliveryService service = service();
-        AtomicBoolean called = new AtomicBoolean(false);
-
-        List<DispatchOutcome> outcomes = service.sendDirect(
-                "websocket",
-                java.util.Collections.singletonList(null),
-                request -> {
-                    called.set(true);
-                    return true;
-                },
-                "unavailable"
-        );
-
-        assertEquals(DispatchOutcomeStatus.INVALID, outcomes.get(0).getStatus());
-        assertFalse(called.get());
-        assertEquals(1L, service.stats().getDirectInvalidItems());
-        assertEquals(1L, service.directStatsByAdapter().get("websocket").getInvalidItems());
-    }
-
-    @Test
-    void sendDirectReturnsFailedWhenSenderThrows() {
-        TransportDeliveryService service = service();
-
-        List<DispatchOutcome> outcomes = service.sendDirect(
-                "socket",
-                List.of(request("msg-1", "worker-1")),
-                request -> {
-                    throw new IllegalStateException("write failed");
-                },
-                "unavailable"
-        );
-
-        assertEquals(DispatchOutcomeStatus.FAILED, outcomes.get(0).getStatus());
-        assertTrue(outcomes.get(0).isRetryable());
-        assertEquals("write failed", outcomes.get(0).getReason());
-        assertEquals(1L, service.stats().getDirectFailedItems());
-        assertEquals(1L, service.directStatsByAdapter().get("socket").getFailedItems());
-    }
-
-    @Test
-    void directStatsByAdapterNormalizeAdapterIds() {
-        TransportDeliveryService service = service();
-
-        service.sendDirect(" WebSocket ", List.of(request("msg-1", "worker-1")), request -> true, "unavailable");
-        service.sendDirect("websocket", List.of(request("msg-2", "worker-2")), request -> false, "unavailable");
-
-        TransportDirectDeliveryStats stats = service.directStatsByAdapter().get("websocket");
-        assertEquals(1L, stats.getSentItems());
-        assertEquals(1L, stats.getOfflineItems());
-    }
 
     @Test
     void pollReturnsQueuedItems() {
@@ -186,32 +80,11 @@ class TransportDeliveryServiceTest {
         assertTrue(stats.getOldestQueuedAgeMillis() >= 0L);
         assertEquals(1L, stats.getEnqueuedItems());
         assertEquals(0L, stats.getDrainedItems());
-        assertEquals(0L, stats.getDirectSentItems());
         assertEquals(1, stats.getQueueByAdapter().get(QUEUE_KEY).getQueuedItems());
     }
 
     @Test
-    void directSendDoesNotPopulateQueueStats() {
-        TransportDeliveryService service = service();
-
-        List<DispatchOutcome> outcomes = service.sendDirect(
-                "websocket",
-                List.of(request("msg-1", "worker-1")),
-                request -> true,
-                "unavailable"
-        );
-
-        TransportDeliveryServiceStats stats = service.stats();
-        assertEquals(List.of(DispatchOutcomeStatus.DELIVERED), statuses(outcomes));
-        assertEquals(0, stats.getQueuedItems());
-        assertEquals(0, stats.getQueueCount());
-        assertEquals(Map.of(), stats.getQueueByAdapter());
-        assertEquals(1L, stats.getDirectSentItems());
-        assertEquals(1L, service.directStatsByAdapter().get("websocket").getSentItems());
-    }
-
-    @Test
-    void queuedDeliveryDoesNotPopulateDirectCounters() {
+    void queuedDeliveryStatsRemainQueueOnly() {
         TransportDeliveryService service = service();
 
         List<DispatchOutcome> outcomes = service.enqueue("polling", List.of(request("msg-1", "worker-1")));
@@ -220,12 +93,6 @@ class TransportDeliveryServiceTest {
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED), statuses(outcomes));
         assertEquals(1, stats.getQueuedItems());
         assertEquals(1, stats.getQueueByAdapter().get(QUEUE_KEY).getQueuedItems());
-        assertEquals(0L, stats.getDirectSentItems());
-        assertEquals(0L, stats.getDirectOfflineItems());
-        assertEquals(0L, stats.getDirectFailedItems());
-        assertEquals(0L, stats.getDirectInvalidItems());
-        assertEquals(0L, stats.getDirectUnavailableItems());
-        assertEquals(Map.of(), service.directStatsByAdapter());
     }
 
     @Test

@@ -2,16 +2,13 @@ package com.xa.mass.starter.config;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
-import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
-import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -19,7 +16,6 @@ import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -41,9 +37,6 @@ public class TransportConfig {
     private String apiKey;
 
     private WorkerPresenceIngress customWorkerPresenceIngress;
-    private WorkerEndpointRegistry workerEndpointRegistry;
-    private Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
-    private Function<WorkerEndpointRegistry, WorkerPresenceIngress> workerPresenceIngressResolver;
     private Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory;
     private WebSocketAdapterConfig bundledWebSocketAdapterConfig = new WebSocketAdapterConfig();
     private SocketAdapterConfig bundledSocketAdapterConfig = new SocketAdapterConfig();
@@ -65,8 +58,6 @@ public class TransportConfig {
     private TransportRuntimeRole runtimeRole = TransportRuntimeRole.EMBEDDED;
 
     public TransportConfig() {
-        this.endpointRegistryFactory = CompositeWorkerEndpointRegistry::new;
-        this.workerPresenceIngressResolver = ignored -> NoopWorkerPresenceIngress.INSTANCE;
     }
 
     public TransportConfig(TransportConfig source) {
@@ -77,9 +68,6 @@ public class TransportConfig {
         this.outputApiUrl = source.outputApiUrl;
         this.apiKey = source.apiKey;
         this.customWorkerPresenceIngress = source.customWorkerPresenceIngress;
-        this.workerEndpointRegistry = source.workerEndpointRegistry;
-        this.endpointRegistryFactory = source.endpointRegistryFactory;
-        this.workerPresenceIngressResolver = source.workerPresenceIngressResolver;
         this.endpointLeaseStoreFactory = source.endpointLeaseStoreFactory;
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.bundledWebSocketAdapterConfig);
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.bundledSocketAdapterConfig);
@@ -170,14 +158,6 @@ public class TransportConfig {
 
     public void setCustomWorkerPresenceIngress(WorkerPresenceIngress customWorkerPresenceIngress) {
         this.customWorkerPresenceIngress = customWorkerPresenceIngress;
-    }
-
-    public WorkerEndpointRegistry getWorkerEndpointRegistry() {
-        return workerEndpointRegistry;
-    }
-
-    public void setWorkerEndpointRegistry(WorkerEndpointRegistry workerEndpointRegistry) {
-        this.workerEndpointRegistry = workerEndpointRegistry;
     }
 
     public WebSocketAdapterConfig getBundledWebSocketAdapterConfig() {
@@ -384,10 +364,6 @@ public class TransportConfig {
         this.eventHandlerTimeoutMillis = eventHandlerTimeoutMillis;
     }
 
-    Supplier<WorkerEndpointRegistry> endpointRegistryFactory() {
-        return endpointRegistryFactory;
-    }
-
     Supplier<TransportDeliveryStore> deliveryStoreFactory() {
         return deliveryStoreFactory;
     }
@@ -402,10 +378,6 @@ public class TransportConfig {
 
     Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory() {
         return deliveryFailureInboxFactory;
-    }
-
-    Function<WorkerEndpointRegistry, WorkerPresenceIngress> workerPresenceIngressResolver() {
-        return workerPresenceIngressResolver;
     }
 
     public TransportRuntimeComposition snapshotRuntimeComposition() {

@@ -1,7 +1,9 @@
 # Transport Adapter Command Executor Convergence Roadmap
 
-Status: mainline complete after adapter metadata cleanup; retained as
-route-key-removal handoff context until owner archive.
+Status: mainline complete and superseded for push final-hop/session details by
+`TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_ROADMAP.md`.
+Retained only as executor-boundary historical context until archive. Do not
+use lower endpoint-registry or verification references as current contracts.
 
 Polling adapter internal role splitting after this mainline has landed and was
 archived with the polling capability roadmap. Remaining WebSocket/socket
@@ -51,20 +53,21 @@ longer expose route/raw/session concepts through the assigned-delivery path.
   `deliveryBucketId + selectedWorkerId`, reads the endpoint driver id, resolves
   the local `TransportBinding`, groups commands by canonical adapter binding,
   and calls the binding's `AdapterCommandExecutor.dispatch(...)`.
-- `WebSocketTaskDispatchChannel` sends by `selectedWorkerId` through
-  `WebSocketCommandDispatchContext`. It no longer depends on raw/result
-  dispatcher context state and does not expose adapter metadata methods.
+- `WebSocketTaskDispatchChannel` sends by `selectedWorkerId` by looking up the
+  active worker session in `WebSocketSessionStore`, writing the WebSocket frame
+  directly, and returning `DispatchOutcome`. It no longer depends on
+  `WorkerEndpointRegistry`, raw/result dispatcher context state, a
+  command-context wrapper, or adapter metadata methods.
 - `WebSocketDispatcherContext` is now raw/result input-processing context only.
   It carries raw route side-channel access, frame codec, and result ingress, not
   the assigned-delivery selected-worker endpoint registry.
-- `ServerSessionManager` implements only `WorkerEndpointRegistry`. It owns
-  selected-worker session indexing, active connection counters, replacement,
-  shutdown close semantics, and the WebSocket endpoint lease refresh loop.
-  Endpoint lease / selected-worker consumer evidence writes are owned by
-  `TransportEndpointLeasePublisher`; worker session-presence writes are owned by
-  `WorkerPresenceSessionPublisher`; diagnostics are exposed through
-  `WebSocketEndpointInspector`; raw/manual route send is isolated in
-  `WebSocketRawWorkerRouteEndpointRegistry`.
+- `ServerSessionManager` has been removed from the WebSocket adapter.
+  `WebSocketSessionStore` owns selected-worker session indexing and state;
+  `WebSocketSessionController` owns server/session orchestration only and
+  implements `WebSocketServerSessionHandle`. Endpoint lease / selected-worker
+  consumer evidence writes are owned by `WebSocketSessionEvidenceDriver`;
+  diagnostics are exposed through `WebSocketEndpointInspector`; raw/manual
+  route send is isolated in `WebSocketRawWorkerRouteEndpointRegistry`.
 - `WebSocketTransportAdapterBootstrap` contributes an explicit command binding,
   optional server, optional raw/manual channel, and diagnostics inspector through
   `TransportAdapterContribution`.
@@ -350,10 +353,10 @@ Scope:
   count, and shutdown close semantics.
 - Extract a WebSocket command executor that owns:
   `DeliveryCommand -> encode worker frame -> send to selected worker`.
-- Split `WebSocketDispatcherContext`. The command executor context may contain
-  adapter id, selected-worker sender/session lookup, and frame encoder only.
-  Raw route registry, input processor state, result ingress, and diagnostics use
-  separate contexts or contribution paths.
+- Keep `WebSocketDispatcherContext` as raw/result input-processing context only.
+  The command executor should receive adapter id, the narrow selected-worker
+  endpoint registry, and delivery service directly; do not reintroduce a
+  WebSocket command-context wrapper.
 - Extract an endpoint lease / consumer evidence publisher that owns:
   session connect, heartbeat, disconnect, replacement, and shutdown evidence
   publication.

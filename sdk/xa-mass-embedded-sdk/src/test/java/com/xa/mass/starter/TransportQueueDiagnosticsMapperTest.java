@@ -5,7 +5,6 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryQueueStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
-import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -18,19 +17,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class TransportQueueDiagnosticsMapperTest {
 
     @Test
-    void mapsCombinedQueueAndDirectDiagnosticsIntoStableControlPlaneShape() {
+    void mapsQueueDiagnosticsIntoStableControlPlaneShape() {
         TransportDeliveryServiceStats stats = new TransportDeliveryServiceStats(new TransportDeliveryStoreStats(
                 4, 2, 1, 100_000,
                 25L, 10L, 6L, 3L, 1L, 2L, 0L,
                 Map.of("polling", new TransportDeliveryQueueStats(4, 2, 1, 25L, 3L))
-        ), 7L, 1L, 0L, 0L, 0L);
+        ));
         Map<String, Object> detail = TransportQueueDiagnosticsMapper.toQueueDetail(
                 -1,
                 -1,
                 false,
                 true,
                 stats,
-                Map.of("websocket", new TransportDirectDeliveryStats(7L, 1L, 0L, 0L, 0L)),
                 new FixedStatsExecutor(new RuntimeTaskExecutorStatistics(8L, 7L, 1L, 1, 1, 10_000)),
                 null
         );
@@ -44,8 +42,6 @@ class TransportQueueDiagnosticsMapperTest {
         assertEquals(4, deliveryDiagnostics.get("queuedItems"));
         assertEquals(3L, ((Map<?, ?>) ((Map<?, ?>) deliveryDiagnostics.get("queueByAdapter")).get("polling"))
                 .get("backpressureRejectedItems"));
-        assertEquals(7L, ((Map<?, ?>) ((Map<?, ?>) deliveryDiagnostics.get("directByAdapter")).get("websocket"))
-                .get("sentItems"));
 
         Map<?, ?> runtimeExecutors = (Map<?, ?>) detail.get("runtimeExecutors");
         assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));

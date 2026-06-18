@@ -19,7 +19,6 @@ import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
-import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;

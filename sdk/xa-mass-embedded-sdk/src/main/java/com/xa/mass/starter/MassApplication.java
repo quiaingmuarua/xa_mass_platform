@@ -45,13 +45,11 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureInboxPump;
-import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
-import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
@@ -93,7 +91,6 @@ public class MassApplication {
 
     private final MassEngine engine;
     private MessageTransporter<String, TransportOutboundMessage> messageTransporter;
-    private WorkerEndpointRegistry endpointRegistry;
     private WorkerEndpointInspector endpointInspector;
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportEndpointLeaseStore endpointLeaseStore;
@@ -250,9 +247,8 @@ public class MassApplication {
             rawWorkerMessageChannelsByAdapterId.clear();
             transportServers.clear();
             startEventRuntimeTaskExecutor();
-            endpointRegistry = transportRuntimeComposition.resolveWorkerEndpointRegistry();
             endpointInspector = new CompositeWorkerEndpointInspector();
-            logger.info("Worker endpoint registry initialized");
+            logger.info("Worker endpoint inspector initialized");
 
             messageTransporter = transportRuntimeComposition.createMessageTransporterIfConfigured();
             if (messageTransporter != null) {
@@ -321,7 +317,6 @@ public class MassApplication {
                 for (TransportAdapterBootstrap transportAdapterBootstrap
                         : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
                     TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
-                            endpointRegistry,
                             resultIngressChannel,
                             presenceIngress,
                             endpointLeaseStore,
@@ -757,66 +752,6 @@ public class MassApplication {
         );
     }
 
-    public void publishWorkerSessionConnected(String workerId,
-                                              String adapterId,
-                                              String routeKey,
-                                              String sessionToken,
-                                              String reason,
-                                              String traceId) {
-        requireWorkerPresenceIngress().sessionConnected(WorkerSessionPresenceEvent.connected(
-                requireText(workerId, "workerId"),
-                requireText(adapterId, "adapterId"),
-                routeKey,
-                requireText(sessionToken, "sessionToken"),
-                normalizeNullableReason(reason),
-                traceId
-        ));
-    }
-
-    public void publishWorkerSessionHeartbeat(String workerId,
-                                              String adapterId,
-                                              String routeKey,
-                                              String sessionToken,
-                                              String reason,
-                                              String traceId) {
-        requireWorkerPresenceIngress().sessionHeartbeat(WorkerSessionPresenceEvent.heartbeat(
-                requireText(workerId, "workerId"),
-                requireText(adapterId, "adapterId"),
-                routeKey,
-                requireText(sessionToken, "sessionToken"),
-                normalizeNullableReason(reason),
-                traceId
-        ));
-    }
-
-    public void publishWorkerSessionDisconnected(String workerId,
-                                                 String adapterId,
-                                                 String routeKey,
-                                                 String sessionToken,
-                                                 String reason,
-                                                 String traceId) {
-        requireWorkerPresenceIngress().sessionDisconnected(WorkerSessionPresenceEvent.disconnected(
-                requireText(workerId, "workerId"),
-                requireText(adapterId, "adapterId"),
-                routeKey,
-                requireText(sessionToken, "sessionToken"),
-                normalizeNullableReason(reason),
-                traceId
-        ));
-    }
-
-    private WorkerPresenceIngress requireWorkerPresenceIngress() {
-        WorkerPresenceIngress ingress = workerPresenceIngress;
-        if (ingress == null) {
-            throw new IllegalStateException("Worker presence ingress is unavailable before transport runtime start");
-        }
-        return ingress;
-    }
-
-    private static String normalizeNullableReason(String reason) {
-        return reason == null || reason.isBlank() ? null : reason.trim();
-    }
-
     private static String requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " must not be blank");
@@ -968,22 +903,15 @@ public class MassApplication {
         int outputSize = safeOutputQueueSize(messageTransporter);
         TransportDeliveryService deliveryService = transportDeliveryService;
         TransportDeliveryServiceStats stats = deliveryService != null ? deliveryService.stats() : null;
-        Map<String, TransportDirectDeliveryStats> directByAdapter =
-                deliveryService != null ? deliveryService.directStatsByAdapter() : Map.of();
         return TransportQueueDiagnosticsMapper.toQueueDetail(
                 inputSize,
                 outputSize,
                 messageTransporter != null,
                 deliveryService != null,
                 stats,
-                directByAdapter,
                 transportRuntimeTaskExecutor,
                 eventRuntimeTaskExecutor
         );
-    }
-
-    public WorkerEndpointRegistry getEndpointRegistry() {
-        return endpointRegistry;
     }
 
     public WorkerEndpointInspector getEndpointInspector() {

@@ -324,7 +324,7 @@ class WebSocketServerImplDisconnectTest {
         when(ctx.fireChannelActive()).thenReturn(ctx);
         when(ctx.fireChannelInactive()).thenReturn(ctx);
 
-        sessionController.addSession("bucket-1", "worker-1", "worker-1", channel, ctx);
+        sessionController.addSession("bucket-1", "worker-1", "worker-1", channel);
 
         ChannelInboundHandlerAdapter handler = newConnectionStatsHandler(server);
         handler.channelActive(ctx);

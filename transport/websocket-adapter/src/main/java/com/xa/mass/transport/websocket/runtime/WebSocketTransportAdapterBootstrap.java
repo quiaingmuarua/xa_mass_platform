@@ -1,6 +1,5 @@
 package com.xa.mass.transport.websocket.runtime;
 
-import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
@@ -8,7 +7,6 @@ import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketCommandDispatchContext;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
@@ -18,8 +16,6 @@ import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
 import com.xa.mass.transport.websocket.session.WebSocketEndpointInspector;
 import com.xa.mass.transport.websocket.session.WebSocketRawWorkerRouteEndpointRegistry;
-import com.xa.mass.transport.websocket.session.WebSocketSelectedWorkerRegistry;
-import com.xa.mass.transport.websocket.session.WebSocketSelectedWorkerSender;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
 import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
@@ -59,12 +55,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 evidenceDriver,
                 refreshLoop
         );
-        WebSocketSelectedWorkerSender selectedWorkerSender = new WebSocketSelectedWorkerSender(sessionStore);
-        WebSocketSelectedWorkerRegistry selectedWorkerRegistry = new WebSocketSelectedWorkerRegistry(
-                sessionStore,
-                selectedWorkerSender,
-                sessionController
-        );
         WebSocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
                 new WebSocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionStore);
         WebSocketJsonFrameParser frameParser = new WebSocketJsonFrameParser();
@@ -72,10 +62,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 new WebSocketResultIngressFrameReader(config.getAdapterId(), frameParser);
         WebSocketSessionOpenFrameReader sessionOpenFrameReader =
                 new WebSocketSessionOpenFrameReader(frameParser);
-        WebSocketCommandDispatchContext commandContext = new WebSocketCommandDispatchContext(
-                config.getAdapterId(),
-                selectedWorkerRegistry
-        );
         WebSocketDispatcherContext dispatcherContext = new WebSocketDispatcherContext(
                 config.getAdapterId(),
                 rawRouteEndpointRegistry,
@@ -86,9 +72,8 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
-            registerSelectedWorkerRegistry(context, selectedWorkerRegistry);
             WebSocketTaskDispatchChannel commandExecutor =
-                    new WebSocketTaskDispatchChannel(commandContext, context.getDeliveryService());
+                    new WebSocketTaskDispatchChannel(sessionStore);
             contribution.addTransportBinding(TransportBinding.builder(
                             config.getAdapterId(),
                             com.xa.mass.transport.WorkerTransportHints.REALTIME,
@@ -112,15 +97,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             contribution.addTransportServer(transportServer);
         }
         return contribution.build();
-    }
-
-    private void registerSelectedWorkerRegistry(TransportAdapterBootstrapContext context,
-                                                WebSocketSelectedWorkerRegistry selectedWorkerRegistry) {
-        if (context.getEndpointRegistry() instanceof CompositeWorkerEndpointRegistry composite) {
-            composite.register(config.getAdapterId(), selectedWorkerRegistry);
-            return;
-        }
-        throw new IllegalStateException("WebSocket transport requires a composite selected-worker endpoint registry");
     }
 
     private TransportServer createTransportServer(WebSocketDispatcherContext dispatcherContext,

@@ -4,7 +4,6 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryQueueStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
-import com.xa.mass.transport.runtime.delivery.TransportDirectDeliveryStats;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,7 +27,6 @@ final class TransportQueueDiagnosticsMapper {
                                              boolean transporterAvailable,
                                              boolean deliveryAvailable,
                                              TransportDeliveryServiceStats stats,
-                                             Map<String, TransportDirectDeliveryStats> directByAdapter,
                                              RuntimeTaskExecutor transportExecutor,
                                              RuntimeTaskExecutor eventExecutor) {
         return toQueueDetailView(
@@ -37,7 +35,6 @@ final class TransportQueueDiagnosticsMapper {
                 transporterAvailable,
                 deliveryAvailable,
                 stats,
-                directByAdapter,
                 transportExecutor,
                 eventExecutor
         ).toMap();
@@ -48,21 +45,19 @@ final class TransportQueueDiagnosticsMapper {
                                                       boolean transporterAvailable,
                                                       boolean deliveryAvailable,
                                                       TransportDeliveryServiceStats stats,
-                                                      Map<String, TransportDirectDeliveryStats> directByAdapter,
                                                       RuntimeTaskExecutor transportExecutor,
                                                       RuntimeTaskExecutor eventExecutor) {
         return new TransportQueueDetailView(
                 inputSize,
                 outputSize,
                 transporterAvailable,
-                deliveryQueueDetailView(deliveryAvailable, stats, directByAdapter),
+                deliveryQueueDetailView(deliveryAvailable, stats),
                 runtimeExecutorDetailView(transportExecutor, eventExecutor)
         );
     }
 
     private static DeliveryQueueDiagnosticsView deliveryQueueDetailView(boolean available,
-                                                                        TransportDeliveryServiceStats stats,
-                                                                        Map<String, TransportDirectDeliveryStats> directByAdapter) {
+                                                                        TransportDeliveryServiceStats stats) {
         return new DeliveryQueueDiagnosticsView(
                 available,
                 stats != null ? stats.getQueuedItems() : 0,
@@ -76,13 +71,7 @@ final class TransportQueueDiagnosticsMapper {
                 stats != null ? stats.getInvalidItems() : 0L,
                 stats != null ? stats.getUnavailableItems() : 0L,
                 stats != null ? stats.getShutdownClearedItems() : 0L,
-                stats != null ? stats.getDirectSentItems() : 0L,
-                stats != null ? stats.getDirectOfflineItems() : 0L,
-                stats != null ? stats.getDirectFailedItems() : 0L,
-                stats != null ? stats.getDirectInvalidItems() : 0L,
-                stats != null ? stats.getDirectUnavailableItems() : 0L,
-                queueByAdapterDetailView(stats != null ? stats.getQueueByAdapter() : Map.of()),
-                directByAdapterDetailView(directByAdapter)
+                queueByAdapterDetailView(stats != null ? stats.getQueueByAdapter() : Map.of())
         );
     }
 
@@ -98,22 +87,6 @@ final class TransportQueueDiagnosticsMapper {
                 stats != null ? stats.getWaitingPollers() : 0,
                 stats != null ? stats.getOldestQueuedAgeMillis() : 0L,
                 stats != null ? stats.getBackpressureRejectedItems() : 0L
-        )));
-        return Map.copyOf(map);
-    }
-
-    private static Map<String, DirectAdapterDiagnosticsView> directByAdapterDetailView(
-            Map<String, TransportDirectDeliveryStats> directByAdapter) {
-        if (directByAdapter == null || directByAdapter.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, DirectAdapterDiagnosticsView> map = new LinkedHashMap<>();
-        directByAdapter.forEach((adapterId, stats) -> map.put(adapterId, new DirectAdapterDiagnosticsView(
-                stats != null ? stats.getSentItems() : 0L,
-                stats != null ? stats.getOfflineItems() : 0L,
-                stats != null ? stats.getFailedItems() : 0L,
-                stats != null ? stats.getInvalidItems() : 0L,
-                stats != null ? stats.getUnavailableItems() : 0L
         )));
         return Map.copyOf(map);
     }

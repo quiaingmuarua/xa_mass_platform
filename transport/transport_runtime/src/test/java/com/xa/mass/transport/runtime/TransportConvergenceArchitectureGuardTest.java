@@ -196,11 +196,10 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void endpointRegistryCannotFallbackSelectedWorkerSendToRouteOnlySend() throws IOException {
-        assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointRegistry.java")),
-                "sendToAdapterRoute(",
-                "isAdapterRouteOnline("
+    void pushAssignedDeliveryDoesNotExposeGenericWorkerEndpointRegistry() {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointRegistry.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointRegistry.java")
         );
     }
 
@@ -569,22 +568,37 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void websocketAssignedDeliveryUsesNarrowCommandContext() throws IOException {
+    void websocketAssignedDeliveryOwnsFinalHopWithoutEndpointRegistryWrapper() throws IOException {
         Path taskDispatchChannel = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketTaskDispatchChannel.java");
         String taskDispatchSource = Files.readString(taskDispatchChannel);
-        assertTrue(taskDispatchSource.contains("WebSocketCommandDispatchContext"),
-                "WebSocket assigned delivery must use the narrow command context");
+        assertTrue(taskDispatchSource.contains("WebSocketSessionStore"),
+                "WebSocket assigned delivery executor must read the adapter-local session store");
+        assertTrue(taskDispatchSource.contains("TextWebSocketFrame")
+                        && taskDispatchSource.contains("record.channel().writeAndFlush"),
+                "WebSocket assigned delivery executor must own the final-hop frame send attempt");
+        assertTrue(!taskDispatchSource.contains("WorkerEndpointRegistry"),
+                "WebSocket assigned delivery must not route through the generic endpoint-registry wrapper");
+        assertTrue(!taskDispatchSource.contains("TransportDeliveryService")
+                        && !taskDispatchSource.contains("sendDirect("),
+                "WebSocket assigned delivery must not proxy local final-hop sends through TransportDeliveryService");
+        assertTrue(!taskDispatchSource.contains("WebSocketCommandDispatchContext"),
+                "WebSocket assigned delivery must not reintroduce a command-context wrapper");
         assertTrue(!taskDispatchSource.contains("WebSocketDispatcherContext"),
                 "WebSocket assigned delivery must not depend on the raw/result dispatcher context");
+        assertTrue(!taskDispatchSource.contains("adapterId"),
+                "WebSocket assigned delivery executor must not own adapter id metadata");
 
-        Path commandContext = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketCommandDispatchContext.java");
-        String commandContextSource = Files.readString(commandContext);
-        assertTrue(commandContextSource.contains("WorkerEndpointRegistry"),
-                "WebSocket command context may depend on selected-worker endpoint registry");
-        assertTrue(!commandContextSource.contains("RawWorkerRouteEndpointRegistry"),
-                "WebSocket command context must not depend on raw route registry");
-        assertTrue(!commandContextSource.contains("TransportResultIngressChannel"),
-                "WebSocket command context must not depend on result ingress");
+        assertPathsDoNotExist(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketCommandDispatchContext.java"));
+        assertPathsDoNotExist(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSelectedWorkerSender.java"));
+        assertPathsDoNotExist(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSelectedWorkerRegistry.java"));
+
+        String bootstrapSource = Files.readString(repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java"));
+        assertTrue(!bootstrapSource.contains("CompositeWorkerEndpointRegistry")
+                        && !bootstrapSource.contains("registerSelectedWorkerRegistry")
+                        && !bootstrapSource.contains("getEndpointRegistry()")
+                        && !bootstrapSource.contains("WebSocketSelectedWorker"),
+                "WebSocket bootstrap must not register a selected-worker endpoint-registry wrapper");
 
         Path dispatcherContext = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketDispatcherContext.java");
         String dispatcherContextSource = Files.readString(dispatcherContext);
@@ -615,7 +629,8 @@ class TransportConvergenceArchitectureGuardTest {
         assertTrue(!serverSessionHandleSource.contains("getWorkerId(")
                         && !serverSessionHandleSource.contains("getEndpointAddress(")
                         && !serverSessionHandleSource.contains("getDeliveryBucketId(")
-                        && !serverSessionHandleSource.contains("getChannelContext("),
+                        && !serverSessionHandleSource.contains("getChannelContext(")
+                        && !serverSessionHandleSource.contains("ChannelHandlerContext"),
                 "WebSocket server session handle must not expose route/bucket/channel-context index getters");
         String serverSessionSource = Files.readString(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketServerSession.java"));
@@ -623,24 +638,35 @@ class TransportConvergenceArchitectureGuardTest {
                         && !serverSessionSource.contains("routeKey")
                         && !serverSessionSource.contains("deliveryBucketId"),
                 "WebSocket server session view must not expose endpoint address, route, or delivery bucket metadata");
+        String sessionStoreSource = Files.readString(repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionStore.java"));
+        assertTrue(!sessionStoreSource.contains("sendToSelectedWorker(")
+                        && !sessionStoreSource.contains("TextWebSocketFrame")
+                        && !sessionStoreSource.contains("writeAndFlush("),
+                "WebSocket session store must remain an index/state owner, not a send behavior owner");
+        assertTrue(!sessionStoreSource.contains("RouteEndpointIndex"),
+                "WebSocket session store must keep direct worker/channel/endpoint indexes instead of a route-oriented wrapper");
+        assertTrue(!sessionStoreSource.contains("ChannelHandlerContext"),
+                "WebSocket session store must not retain unused Netty handler context");
+        String sessionRecordSource = Files.readString(repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionRecord.java"));
+        assertTrue(!sessionRecordSource.contains("TextWebSocketFrame")
+                        && !sessionRecordSource.contains("writeAndFlush(")
+                        && !sessionRecordSource.contains("void send(")
+                        && !sessionRecordSource.contains("closeIfActive("),
+                "WebSocket session record must remain an index record, not a send/close behavior owner");
+        assertTrue(!sessionRecordSource.contains("ChannelHandlerContext"),
+                "WebSocket session record must not retain unused Netty handler context");
         String inboundMessageSource = Files.readString(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketInboundMessage.java"));
         assertTrue(!inboundMessageSource.contains("routeKey")
                         && !inboundMessageSource.contains("endpointAddress")
                         && !inboundMessageSource.contains("deliveryBucketId"),
                 "WebSocket inbound message must not inherit endpoint address, route, or delivery bucket metadata from the session");
-        Path selectedWorkerRegistry = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSelectedWorkerRegistry.java");
-        String selectedWorkerRegistrySource = Files.readString(selectedWorkerRegistry);
-        assertTrue(selectedWorkerRegistrySource.contains("implements WorkerEndpointRegistry"),
-                "WebSocket assigned delivery must use a selected-worker-only endpoint registry");
-        assertTrue(!selectedWorkerRegistrySource.contains("String adapterId"),
-                "WebSocket selected-worker endpoint registry must not retain adapterId as a send or construction fact");
-        String endpointRegistrySource = Files.readString(repoRoot().resolve(
-                "transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointRegistry.java"));
-        assertTrue(endpointRegistrySource.contains("sendToSelectedWorker(String selectedWorkerId, String message)"),
-                "WorkerEndpointRegistry selected-worker send contract must not expose adapter/route/connection ids");
-        assertTrue(!endpointRegistrySource.contains("sendToSelectedWorker(String adapterId"),
-                "WorkerEndpointRegistry must not use adapterId as a selected-worker send key");
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointRegistry.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointRegistry.java")
+        );
         assertTrue(!taskDispatchSource.contains("sendToSelectedWorker(\n                            adapterId()")
                         && !taskDispatchSource.contains("sendToSelectedWorker(\r\n                            adapterId()"),
                 "WebSocket assigned delivery must not pass adapterId into selected-worker endpoint send");
@@ -683,22 +709,27 @@ class TransportConvergenceArchitectureGuardTest {
     void socketAssignedDeliveryUsesNarrowCommandContext() throws IOException {
         Path taskDispatchChannel = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java");
         String taskDispatchSource = Files.readString(taskDispatchChannel);
-        assertTrue(taskDispatchSource.contains("SocketCommandDispatchContext"),
-                "Socket assigned delivery must use the narrow command context");
-        assertTrue(!taskDispatchSource.contains("SocketSessionManager"),
-                "Socket assigned delivery must not depend on the concrete session manager");
+        assertTrue(taskDispatchSource.contains("SocketSessionManager"),
+                "Socket assigned delivery executor must use the adapter-local session owner for final-hop sends");
+        assertTrue(taskDispatchSource.contains("sendToWorker("),
+                "Socket assigned delivery executor must dispatch by selected worker only");
+        assertTrue(taskDispatchSource.contains("SocketTransportFrameCodec"),
+                "Socket assigned delivery executor must own frame encoding at the concrete adapter boundary");
+        assertTrue(!taskDispatchSource.contains("SocketCommandDispatchContext"),
+                "Socket assigned delivery must not reintroduce a command-context wrapper");
+        assertTrue(!taskDispatchSource.contains("WorkerEndpointRegistry"),
+                "Socket assigned delivery must not route through the generic endpoint-registry wrapper");
+        assertTrue(!taskDispatchSource.contains("TransportDeliveryService")
+                        && !taskDispatchSource.contains("sendDirect("),
+                "Socket assigned delivery must not proxy local final-hop sends through TransportDeliveryService");
 
-        Path commandContext = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketCommandDispatchContext.java");
-        String commandContextSource = Files.readString(commandContext);
-        assertTrue(commandContextSource.contains("WorkerEndpointRegistry"),
-                "Socket command context may depend on selected-worker endpoint registry");
-        assertTrue(!commandContextSource.contains("RawWorkerRouteEndpointRegistry"),
-                "Socket command context must not depend on raw route registry");
-        assertTrue(!commandContextSource.contains("TransportResultIngressChannel"),
-                "Socket command context must not depend on result ingress");
+        assertPathsDoNotExist(repoRoot().resolve(
+                "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketCommandDispatchContext.java"));
 
         Path sessionManager = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java");
         String sessionManagerSource = Files.readString(sessionManager);
+        assertTrue(!sessionManagerSource.contains("implements WorkerEndpointRegistry"),
+                "SocketSessionManager must not implement the generic endpoint registry");
         assertTrue(!sessionManagerSource.contains("RawWorkerRouteEndpointRegistry"),
                 "SocketSessionManager must not implement the raw route side-channel");
         assertTrue(!sessionManagerSource.contains("WorkerEndpointInspector"),
@@ -712,13 +743,7 @@ class TransportConvergenceArchitectureGuardTest {
     @Test
     void endpointCompositeDoesNotOwnRawRouteOrDiagnosticsRoles() throws IOException {
         Path endpointComposite = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointRegistry.java");
-        String endpointCompositeSource = Files.readString(endpointComposite);
-        assertTrue(!endpointCompositeSource.contains("RawWorkerRouteEndpointRegistry"),
-                "Endpoint registry composite must not own raw route side-channel");
-        assertTrue(!endpointCompositeSource.contains("WorkerEndpointInspector"),
-                "Endpoint registry composite must not own diagnostics inspector aggregation");
-        assertTrue(!endpointCompositeSource.contains("instanceof"),
-                "Endpoint registry composite must not discover side roles via instanceof");
+        assertPathsDoNotExist(endpointComposite);
 
         Path inspectorComposite = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointInspector.java");
         String inspectorCompositeSource = Files.readString(inspectorComposite);

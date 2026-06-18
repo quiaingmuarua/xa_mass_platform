@@ -67,11 +67,13 @@ entry for `transport/`.
 - route-only endpoint helpers may exist inside one concrete adapter for
   raw/manual side channels. Task dispatch must use selected-worker addressing:
   producer queue selection derives only from `deliveryBucketId`, handoff
-  readiness is selected-worker consumer evidence, and push adapters dispatch
-  through `sendToSelectedWorker(...)` rather than a route-only fallback.
-- `WorkerEndpointRegistry` is selected-worker only. Raw/manual route delivery
-  uses `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`, not the
-  assigned-task endpoint interface.
+  readiness is selected-worker consumer evidence, and push adapters dispatch by
+  concrete adapter command executors using a worker-id-only local session lookup
+  rather than a route-only fallback.
+- `WorkerEndpointRegistry` has been removed. Do not reintroduce a generic
+  assigned-delivery endpoint interface; raw/manual route delivery uses
+  `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`, not the
+  assigned-task command path.
 - raw/debug worker side-channels are also adapter-scoped. They may resolve one
   concrete active route for a worker, but once resolved they must dispatch via
   the serving adapter identity instead of reviving route-only shared semantics.
@@ -110,9 +112,12 @@ entry for `transport/`.
   but endpoint lease / selected-worker consumer evidence is projected by
   `TransportEndpointLeasePublisher`, and worker session-presence observations
   are projected by `WorkerPresenceSessionPublisher`. WebSocket now splits this
-  into explicit session store, server handle, selected-worker sender/registry,
-  evidence driver, and refresh-loop roles. Socket still carries the older
-  session-manager shape until the push-adapter follow-up lands.
+  into explicit session store, server handle, command executor, evidence
+  driver, and refresh-loop roles. Assigned delivery lookup inside the adapter is
+  worker-id-only; `deliveryBucketId` remains upstream queue/evidence context.
+  Socket uses the same adapter-local final-hop rule through its session manager;
+  there is no generic selected-worker endpoint-registry wrapper on the assigned
+  delivery path.
 - `DeliveryCommandBatch` is consumer-local handoff materialization:
   `deliveryQueueKey`, handoff-owned command references, and command items only.
   It does not carry bucket, lane, target node, adapter route, connection, or
@@ -219,7 +224,7 @@ Acceptance focus:
 - task dispatch preserves the engine-selected worker through
   `selectedWorkerId` and cannot fallback to route-only delivery
 - polling `poll` and result submission work
-- realtime direct-send, endpoint lease delivery feasibility, and worker-runtime
+- realtime push final-hop, endpoint lease delivery feasibility, and worker-runtime
   presence/reachability projection work
 - result lifecycle validation remains outside transport runtime; starter/engine
   assembly applies result correlation before engine mutation

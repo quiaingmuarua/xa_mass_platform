@@ -518,7 +518,7 @@ Verified evidence:
 - `workerMetrics.transportChurnDisconnects=1`
 - `workerMetrics.transportChurnReconnects=1`
 - one terminal task with `ALL_MESSAGES_SUCCEEDED`
-- `deliveryQueue.directFailedItems=0`
+- `deliveryQueue.queuedItems=0`
 
 WebSocket worker mode:
 

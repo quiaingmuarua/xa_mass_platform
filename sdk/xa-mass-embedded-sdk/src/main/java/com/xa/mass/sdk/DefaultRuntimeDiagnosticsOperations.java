@@ -2,7 +2,6 @@ package com.xa.mass.sdk;
 
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.transport.WorkerEndpointInspector;
-import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 
 import java.util.ArrayList;
@@ -54,20 +53,15 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
     @Override
     public Map<String, Object> getSessionStats() {
         Map<String, Object> data = new LinkedHashMap<>();
-        WorkerEndpointRegistry endpointRegistry = resolveEndpointRegistry();
         WorkerEndpointInspector endpointInspector = resolveEndpointInspector();
-        if (endpointRegistry != null) {
-            data.put("activeConnections", endpointRegistry.getActiveConnectionCount());
-            if (endpointInspector != null) {
-                List<WorkerEndpointSnapshot> snapshots = endpointInspector.listWorkerEndpoints();
-                data.put("workerCount", snapshots.stream().map(WorkerEndpointSnapshot::getWorkerId).distinct().count());
-            } else {
-                data.put("workerCount", 0L);
-            }
-        } else {
+        if (endpointInspector == null) {
             data.put("activeConnections", 0);
             data.put("workerCount", 0L);
+            return data;
         }
+        List<WorkerEndpointSnapshot> snapshots = endpointInspector.listWorkerEndpoints();
+        data.put("activeConnections", snapshots.stream().filter(WorkerEndpointSnapshot::isActive).count());
+        data.put("workerCount", snapshots.stream().map(WorkerEndpointSnapshot::getWorkerId).distinct().count());
         return data;
     }
 
@@ -107,10 +101,6 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
 
     protected final MassApplication runtimeApplication() {
         return delegate;
-    }
-
-    private WorkerEndpointRegistry resolveEndpointRegistry() {
-        return delegate.getEndpointRegistry();
     }
 
     private WorkerEndpointInspector resolveEndpointInspector() {

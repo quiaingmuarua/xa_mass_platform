@@ -1,6 +1,10 @@
 # Transport Push Adapter Session Capability Convergence Roadmap
 
-Status: active umbrella; WebSocket shape implemented, Socket follow-up remains.
+Status: superseded by
+`TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_ROADMAP.md`.
+Retained only as historical push-adapter session notes until archive.
+Do not treat lower current-code observations or verification commands in this
+file as current contracts.
 
 WebSocket implementation detail is now tracked by
 `TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
@@ -18,8 +22,8 @@ PollingSessionEvidenceDriver
 
 WebSocket and Socket assigned-delivery executors are already narrow enough for
 the current command path. WebSocket now uses explicit session store,
-selected-worker sender/registry, evidence driver, refresh loop, server handle,
-raw side-channel, and diagnostics roles. Socket still carries the older broad
+session controller, evidence driver, refresh loop, server handle, raw
+side-channel, and diagnostics roles. Socket still carries the older broad
 session-manager shape and should follow the WebSocket-proven split.
 
 This roadmap tracks the push-adapter follow-up so the polling roadmap can close
@@ -29,13 +33,15 @@ should follow after the WebSocket shape is proven.
 
 ## Current Facts
 
-- `WebSocketTaskDispatchChannel` implements `AdapterCommandExecutor` and sends
-  by `selectedWorkerId` through `WorkerEndpointRegistry.sendToSelectedWorker`.
+- `WebSocketTaskDispatchChannel` implements `AdapterCommandExecutor`, looks up
+  the selected worker in `WebSocketSessionStore`, writes the WebSocket frame,
+  and returns `DispatchOutcome` directly.
 - `SocketTaskDispatchChannel` implements `AdapterCommandExecutor` and sends by
   `selectedWorkerId` after socket frame encoding.
-- WebSocket no longer has `ServerSessionManager`; assigned delivery uses
-  `WebSocketSelectedWorkerRegistry` / `WebSocketSelectedWorkerSender`, server
-  wiring uses `WebSocketServerSessionHandle`, and session evidence uses
+- WebSocket no longer has `ServerSessionManager`; assigned delivery is owned by
+  `WebSocketTaskDispatchChannel`, server wiring uses
+  `WebSocketServerSessionHandle`, session state is indexed by
+  `WebSocketSessionStore`, and session evidence uses
   `WebSocketSessionEvidenceDriver`.
 - `SocketSessionManager` mirrors the same broad session-owner shape for socket
   workers.
@@ -65,11 +71,15 @@ adapter capability.
 The target is role separation, not a public adapter runtime:
 
 ```text
-WebSocketSelectedWorkerSender / SocketSelectedWorkerSender
-  -> selectedWorkerId + payload/frame -> local send attempt
+WebSocketTaskDispatchChannel / future Socket command executor
+  -> selectedWorkerId + payload/frame local send
+  -> reads session store and returns DispatchOutcome directly
 
 WebSocketSessionStore / SocketSessionStore
   -> session handle / worker id / endpoint address index
+
+WebSocketSessionController / SocketSessionController
+  -> server/session orchestration only
 
 WebSocketSessionEvidenceDriver / SocketSessionEvidenceDriver
   -> connect / heartbeat / disconnect / refresh-loop evidence projection
@@ -81,9 +91,10 @@ WebSocketEndpointInspector / SocketEndpointInspector
   -> bounded diagnostics only
 ```
 
-The command executor may keep using `TransportDeliveryService.sendDirect(...)`,
-but it should depend on a selected-worker sender, not on a broad session
-manager.
+The command executor should not use `TransportDeliveryService.sendDirect(...)`
+as the push mainline. WebSocket has already moved to direct outcome
+production; Socket should stop depending on a broad session manager before this
+umbrella closes.
 
 ## Non-Goals
 
@@ -119,26 +130,32 @@ Acceptance:
   from assigned delivery.
 - No implementation starts by renaming routeKey, adapterId, or manager class.
 
-## PSA-1 Selected-Worker Sender Extraction
+## PSA-1 Selected-Worker Endpoint Role Extraction
 
-Goal: make command executors depend on a selected-worker sender role instead of
-the broad session manager.
+Goal: make push command executors depend on a narrow selected-worker endpoint
+role instead of a broad session manager.
 
 Scope:
 
-- Introduce adapter-local selected-worker sender classes or interfaces in each
-  concrete adapter module.
-- Move `sendToSelectedWorker(...)` implementation behind the selected-worker
-  sender role.
+- Treat WebSocket as the proven shape: `WebSocketTaskDispatchChannel` owns
+  final-hop frame write and outcome production, while `WebSocketSessionStore`
+  owns lookup/state and `WebSocketSessionController` owns server/session
+  orchestration. Do not reintroduce WebSocket `SelectedWorkerSender` or
+  `SelectedWorkerRegistry` wrappers.
+- Move Socket `sendToSelectedWorker(...)` behind an equivalent narrow endpoint
+  role or split its broad manager so the command executor cannot reach raw,
+  evidence, or diagnostics behavior through the same object.
 - Keep `WebSocketTaskDispatchChannel` and `SocketTaskDispatchChannel` as
   command executors.
-- Keep raw/manual route send outside the selected-worker sender.
+- Keep raw/manual route send outside the selected-worker endpoint role.
 
 Acceptance:
 
 - Command executors cannot call endpoint lease, worker-presence, raw-route, or
   diagnostics APIs.
 - Command executors still send by `selectedWorkerId`.
+- WebSocket does not regain `WebSocketSelectedWorkerSender` or
+  `WebSocketSelectedWorkerRegistry`.
 - Existing selected-worker delivery tests pass.
 
 ## PSA-2 Session Evidence Driver Extraction
@@ -165,7 +182,7 @@ Acceptance:
 ## PSA-3 Raw And Diagnostics Boundary Tightening
 
 Goal: keep raw/manual channels and diagnostics as explicit side roles, not
-hidden capabilities of the selected-worker sender or command executor.
+hidden capabilities of the selected-worker endpoint role or command executor.
 
 Scope:
 

@@ -1,11 +1,12 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
-import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
+import com.xa.mass.transport.websocket.session.WebSocketSessionStore;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelId;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -14,7 +15,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,44 +22,28 @@ import static org.mockito.Mockito.when;
 class WebSocketTaskDispatchChannelTest {
 
     @Test
-    void publishesDispatchItemsDirectlyToEndpointRegistry() {
-        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
-        when(endpointRegistry.sendToSelectedWorker(
-                org.mockito.ArgumentMatchers.eq("worker-1"),
-                any()))
-                .thenReturn(true);
-        WebSocketCommandDispatchContext context = new WebSocketCommandDispatchContext(
-                "websocket",
-                endpointRegistry
-        );
+    void publishesDispatchItemsDirectlyToSessionStoreEndpoint() {
+        WebSocketSessionStore sessionStore = sessionStoreWithWorker("worker-1");
         DeliveryCommand command = request();
 
-        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(context, deliveryService());
+        WebSocketTaskDispatchChannel publisher =
+                new WebSocketTaskDispatchChannel(sessionStore);
 
         List<DispatchOutcome> outcomes = publisher.dispatch(List.of(command));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
 
-        ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
-        verify(endpointRegistry).sendToSelectedWorker(
-                org.mockito.ArgumentMatchers.eq("worker-1"),
-                captor.capture());
+        ArgumentCaptor<TextWebSocketFrame> captor = ArgumentCaptor.forClass(TextWebSocketFrame.class);
+        verify(sessionStore.activeRecordForWorker("worker-1").channel()).writeAndFlush(captor.capture());
 
-        assertEquals(command.getPayload(), captor.getValue());
+        assertEquals(command.getPayload(), captor.getValue().text());
     }
 
     @Test
-    void returnsEndpointOfflineWhenEndpointRegistryCannotSend() {
-        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
-        when(endpointRegistry.sendToSelectedWorker(
-                org.mockito.ArgumentMatchers.eq("worker-1"),
-                any()))
-                .thenReturn(false);
-        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketCommandDispatchContext(
-                "websocket",
-                endpointRegistry
-        ), deliveryService());
+    void returnsEndpointOfflineWhenSessionStoreHasNoWorker() {
+        WebSocketTaskDispatchChannel publisher =
+                new WebSocketTaskDispatchChannel(new WebSocketSessionStore("websocket"));
 
         List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
 
@@ -69,27 +53,24 @@ class WebSocketTaskDispatchChannelTest {
     }
 
     @Test
-    void returnsAdapterUnavailableWhenRuntimeContextIsIncomplete() {
-        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketCommandDispatchContext(
-                "websocket",
-                null
-        ), deliveryService());
-
-        List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
-
-        assertEquals(1, outcomes.size());
-        assertEquals(DispatchOutcomeStatus.UNAVAILABLE, outcomes.get(0).getStatus());
-        assertTrue(outcomes.get(0).isRetryable());
-    }
-
-    @Test
-    void constructorRejectsMissingRuntimeContext() {
+    void constructorRejectsMissingSessionStore() {
         assertThrows(NullPointerException.class,
-                () -> new WebSocketTaskDispatchChannel(null, deliveryService()));
+                () -> new WebSocketTaskDispatchChannel(null));
     }
 
-    private TransportDeliveryService deliveryService() {
-        return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
+    private WebSocketSessionStore sessionStoreWithWorker(String workerId) {
+        WebSocketSessionStore sessionStore = new WebSocketSessionStore("websocket");
+        sessionStore.bind("bucket-1", "route-1", workerId, mockActiveChannel(workerId));
+        return sessionStore;
+    }
+
+    private Channel mockActiveChannel(String idText) {
+        Channel ch = mock(Channel.class);
+        ChannelId chId = mock(ChannelId.class);
+        when(chId.asShortText()).thenReturn(idText);
+        when(ch.id()).thenReturn(chId);
+        when(ch.isActive()).thenReturn(true);
+        return ch;
     }
 
     private DeliveryCommand request() {

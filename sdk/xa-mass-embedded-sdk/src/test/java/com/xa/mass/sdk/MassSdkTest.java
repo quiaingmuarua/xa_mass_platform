@@ -97,7 +97,6 @@ import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
-import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
@@ -123,7 +122,6 @@ import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
@@ -326,31 +324,13 @@ class MassSdkTest {
     }
 
     @Test
-    void bundledWebSocketEndpointRegistryIsMemoizedPerRuntimeCompositionAndIsolatedAcrossSnapshots() {
-        TransportConfig config = new TransportConfig();
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        TransportRuntimeComposition secondSnapshot = config.snapshotRuntimeComposition();
-
-        WorkerEndpointRegistry first = runtimeComposition.resolveWorkerEndpointRegistry();
-        WorkerEndpointRegistry second = runtimeComposition.resolveWorkerEndpointRegistry();
-        WorkerEndpointRegistry snapshotRegistry = secondSnapshot.resolveWorkerEndpointRegistry();
-
-        assertSame(first, second);
-        assertInstanceOf(CompositeWorkerEndpointRegistry.class, first);
-        assertInstanceOf(CompositeWorkerEndpointRegistry.class, snapshotRegistry);
-        assertNotSame(first, snapshotRegistry);
-    }
-
-    @Test
     void defaultWorkerPresenceIngressIsNoopUntilEngineAssemblyProvidesRuntimeOwner() {
         TransportConfig config = new TransportConfig();
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        WorkerEndpointRegistry endpointRegistry = runtimeComposition.resolveWorkerEndpointRegistry();
         WorkerPresenceIngress presenceIngress = runtimeComposition.resolveWorkerPresenceIngress();
 
-        assertInstanceOf(CompositeWorkerEndpointRegistry.class, endpointRegistry);
-        assertSame(NoopWorkerPresenceIngress.INSTANCE, presenceIngress);
+        assertNull(presenceIngress);
     }
 
     @Test
@@ -426,12 +406,6 @@ class MassSdkTest {
         TransportConfig config = new TransportConfig();
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        WorkerEndpointRegistry firstRegistry = runtimeComposition.resolveWorkerEndpointRegistry();
-        WorkerEndpointRegistry secondRegistry = runtimeComposition.resolveWorkerEndpointRegistry();
-        assertSame(firstRegistry, secondRegistry);
-
-        WorkerEndpointRegistry overriddenRegistry = mock(WorkerEndpointRegistry.class);
-        config.setWorkerEndpointRegistry(overriddenRegistry);
         WorkerPresenceIngress customPresenceIngress = mock(WorkerPresenceIngress.class);
         config.setCustomWorkerPresenceIngress(customPresenceIngress);
         WorkerTransportRuntimeFactory customFactory = (taskResultIngestChannel,
@@ -442,7 +416,6 @@ class MassSdkTest {
 
         TransportRuntimeComposition customizedRuntimeComposition = config.snapshotRuntimeComposition();
 
-        assertSame(overriddenRegistry, customizedRuntimeComposition.resolveWorkerEndpointRegistry());
         assertSame(customPresenceIngress, customizedRuntimeComposition.resolveWorkerPresenceIngress());
         assertSame(customFactory, customizedRuntimeComposition.resolveWorkerTransportRuntimeFactory());
     }
@@ -595,10 +568,9 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
+            TransportAdapterContribution contribution;
         try {
             TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
-                    new CompositeWorkerEndpointRegistry(),
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
@@ -624,10 +596,9 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
+            TransportAdapterContribution contribution;
         try {
             TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
-                    new CompositeWorkerEndpointRegistry(),
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
@@ -655,10 +626,9 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
+            TransportAdapterContribution contribution;
         try {
             TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
-                    new CompositeWorkerEndpointRegistry(),
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
@@ -688,10 +658,9 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
+            TransportAdapterContribution contribution;
         try {
             TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
-                    new CompositeWorkerEndpointRegistry(),
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
@@ -708,67 +677,6 @@ class MassSdkTest {
         assertEquals("socket-edge", contribution.getRawWorkerMessageChannels().get(0).adapterId());
         assertEquals("socket-edge",
                 runtimeComposition.resolveRegistrationAdapterId("socket-edge", WorkerTransportHints.REALTIME));
-    }
-
-    @Test
-    void bundledWebSocketTransportBootstrapRejectsNonSessionRegistry() {
-        TransportConfig config = new TransportConfig();
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
-        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
-                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
-
-        IllegalStateException error;
-        try {
-            error = assertThrows(
-                    IllegalStateException.class,
-                    () -> adapterBootstrap(runtimeComposition, config.getBundledWebSocketAdapterConfig().getAdapterId()).contribute(
-                            new TransportAdapterBootstrapContext(
-                                    endpointRegistry,
-                                    null,
-                                    runtimeComposition.resolveWorkerPresenceIngress(),
-                                    new InMemoryTransportEndpointLeaseStore(),
-                                    deliveryService(),
-                                    runtimeTaskExecutor
-                            )
-                    )
-            );
-        } finally {
-            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
-        }
-
-        assertTrue(error.getMessage().contains("composite selected-worker endpoint registry"));
-    }
-
-    @Test
-    void bundledSocketTransportBootstrapRejectsMismatchedSessionRegistryAdapterId() {
-        TransportConfig config = new TransportConfig();
-        config.getBundledSocketAdapterConfig().setAdapterId("socket-edge");
-        config.getBundledSocketAdapterConfig().setEnabled(true);
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
-                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
-
-        IllegalStateException error;
-        try {
-            error = assertThrows(
-                    IllegalStateException.class,
-                    () -> adapterBootstrap(runtimeComposition, "socket-edge").contribute(
-                            new TransportAdapterBootstrapContext(
-                                    new com.xa.mass.transport.socket.session.SocketSessionManager("socket"),
-                                    mock(TransportResultIngressChannel.class),
-                                    NoopWorkerPresenceIngress.INSTANCE,
-                                    new InMemoryTransportEndpointLeaseStore(),
-                                    deliveryService(),
-                                    runtimeTaskExecutor
-                            )
-                    )
-            );
-        } finally {
-            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
-        }
-
-        assertTrue(error.getMessage().contains("endpoint registry adapterId 'socket-edge'"));
     }
 
     @Test
@@ -1045,7 +953,6 @@ class MassSdkTest {
     @Test
     void transportOperationsUseDelegateTransportAccessors() {
         MassApplication delegate = mock(MassApplication.class);
-        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
 
         when(delegate.getTransportQueueDetail()).thenReturn(Map.of(
                 "inputQueueSize", 2,
@@ -1066,22 +973,13 @@ class MassSdkTest {
                                         "backpressureRejectedItems", 0L
                                 )
                         ),
-                        "directByAdapter", Map.of(
-                                "websocket", Map.of(
-                                        "sentItems", 2L,
-                                        "offlineItems", 1L,
-                                        "failedItems", 0L,
-                                        "invalidItems", 0L,
-                                        "unavailableItems", 0L
-                                )
-                        )
+                        "oldestQueuedAgeMillis", 0L
                 ),
                 "runtimeExecutors", Map.of(
                         "transport", Map.of("available", true, "pendingTasks", 0),
                         "event", Map.of("available", false, "pendingTasks", 0)
                 )
         ));
-        when(delegate.getEndpointRegistry()).thenReturn(endpointRegistry);
         when(delegate.sendRawTransportMessage(anyString(), anyString(), anyString())).thenReturn(true);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
@@ -1098,8 +996,6 @@ class MassSdkTest {
         assertEquals(1, ((Map<?, ?>) queueDetail.get("deliveryDiagnostics")).get("queuedItems"));
         assertEquals(1, ((Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("deliveryDiagnostics"))
                 .get("queueByAdapter")).get("polling")).get("queuedItems"));
-        assertEquals(2L, ((Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("deliveryDiagnostics"))
-                .get("directByAdapter")).get("websocket")).get("sentItems"));
         assertEquals(true, ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("runtimeExecutors")).get("transport"))
                 .get("available"));
         assertEquals(0, sessionStats.get("activeConnections"));
@@ -1107,7 +1003,6 @@ class MassSdkTest {
         assertFalse(sessionStats.containsKey("activeConnectionsByAdapter"));
         assertEquals(true, enqueueResult.get("success"));
         verify(delegate).getTransportQueueDetail();
-        verify(delegate, atLeastOnce()).getEndpointRegistry();
         verify(delegate).sendRawTransportMessage(eq("worker-debug-1"), eq("{\"eventCode\":\"platform.test\"}"), anyString());
     }
 
@@ -1155,12 +1050,9 @@ class MassSdkTest {
     @Test
     void sessionDiagnosticsHideTransportInternalIds() {
         MassApplication delegate = mock(MassApplication.class);
-        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         com.xa.mass.transport.WorkerEndpointInspector inspector = mock(com.xa.mass.transport.WorkerEndpointInspector.class);
 
-        when(delegate.getEndpointRegistry()).thenReturn(endpointRegistry);
         when(delegate.getEndpointInspector()).thenReturn(inspector);
-        when(endpointRegistry.getActiveConnectionCount()).thenReturn(2);
         when(inspector.listWorkerEndpoints()).thenReturn(List.of(
                 new com.xa.mass.transport.WorkerEndpointSnapshot(
                         "route-public",
@@ -1190,7 +1082,7 @@ class MassSdkTest {
         assertEquals("endpoint-1", connections.get(0).get("endpointId"));
         assertFalse(connections.get(0).containsKey("routeKey"));
         assertFalse(connections.get(0).containsKey("adapterId"));
-        assertEquals(2, sessionStats.get("activeConnections"));
+        assertEquals(2L, sessionStats.get("activeConnections"));
         assertEquals(1L, sessionStats.get("workerCount"));
         assertFalse(sessionStats.containsKey("activeConnectionsByAdapter"));
     }
@@ -1241,13 +1133,7 @@ class MassSdkTest {
             assertEquals(0L, deliveryDiagnostics.get("invalidItems"));
             assertEquals(0L, deliveryDiagnostics.get("unavailableItems"));
             assertEquals(0L, deliveryDiagnostics.get("shutdownClearedItems"));
-            assertEquals(0L, deliveryDiagnostics.get("directSentItems"));
-            assertEquals(0L, deliveryDiagnostics.get("directOfflineItems"));
-            assertEquals(0L, deliveryDiagnostics.get("directFailedItems"));
-            assertEquals(0L, deliveryDiagnostics.get("directInvalidItems"));
-            assertEquals(0L, deliveryDiagnostics.get("directUnavailableItems"));
             assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
-            assertEquals(Map.of(), deliveryDiagnostics.get("directByAdapter"));
             Map<?, ?> runtimeExecutors = (Map<?, ?>) queueDetail.get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
             assertEquals(10_000, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));

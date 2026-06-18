@@ -481,7 +481,5 @@ diagnostic surface and explicitly documented as non-contractual. Delivery-store 
 `app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is a legacy
 queue-path breakdown name rather than queue ownership truth. RouteKey-owned stores may aggregate this
 diagnostic under an endpoint-lease bucket instead of preserving adapter-specific queue identity.
-Realtime direct-send counters are intentionally separate under
-`app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
-language with queued delivery but they do not imply queue ownership, dequeue,
-or durable backlog state.
+Realtime push final-hop outcomes are produced by concrete adapter executors and
+are not folded into delivery queue diagnostics.

@@ -1,7 +1,10 @@
 # Transport WebSocket Adapter Session Capability Convergence Roadmap
 
-Status: WebSocket mainline implemented; guards/docs and Socket follow-up remain
-tracked through `TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
+Status: superseded by
+`TRANSPORT_PUSH_ADAPTER_FINAL_HOP_BOUNDARY_CONVERGENCE_ROADMAP.md`.
+Retained only as historical WebSocket-session execution notes until archive.
+Do not treat lower current-code observations or verification commands in this
+file as current contracts.
 
 ## Summary
 
@@ -14,15 +17,17 @@ DeliveryCommand -> AdapterCommandExecutor -> selected-worker final-hop attempt -
 The WebSocket adapter still has an internal owner problem below that boundary.
 `WebSocketTaskDispatchChannel` is narrow and the former `ServerSessionManager`
 shape has been split. The active implementation keeps session indexing,
-selected-worker send, endpoint lease projection, worker session-presence
-projection, refresh-loop scheduling, raw/manual route send, diagnostics,
-shutdown, and replacement behavior in separate adapter-local roles.
+executor-owned final-hop send, endpoint lease projection, worker
+session-presence projection, refresh-loop scheduling, raw/manual route send,
+diagnostics, shutdown, and replacement behavior in separate adapter-local
+roles.
 
 This roadmap makes WebSocket adapter internals follow explicit capabilities:
 
 ```text
 session store
-selected-worker sender
+assigned-delivery command executor
+session controller
 session evidence driver
 refresh loop
 raw/manual side-channel
@@ -52,9 +57,9 @@ These observations describe the old shape that motivated this roadmap.
 - `WebSocketTaskDispatchChannel` implements `AdapterCommandExecutor` and sends
   each `DeliveryCommand` by `selectedWorkerId` through
   `WorkerEndpointRegistry.sendToSelectedWorker(...)`.
-- `WebSocketCommandDispatchContext` carries only adapter id plus
-  `WorkerEndpointRegistry`, so the command executor is already close to the
-  desired assigned-delivery shape.
+- `WebSocketTaskDispatchChannel` receives the adapter binding id and
+  selected-worker `WorkerEndpointRegistry` directly. A separate command-context
+  wrapper is no longer part of the target shape.
 - `ServerSessionManager` implements `WorkerEndpointRegistry`, owns
   `RouteEndpointIndex`, channel/session maps, selected-worker send, raw route
   send helpers, endpoint snapshots, endpoint lease publisher wiring, worker
@@ -89,12 +94,18 @@ These observations describe the old shape that motivated this roadmap.
 ## Implemented Current Shape
 
 - `ServerSessionManager` has been removed from production code.
-- `WebSocketSessionStore` owns WebSocket session maps, `RouteEndpointIndex`,
-  retired-channel tracking, active connection count, and session snapshots.
+- `WebSocketSessionStore` owns direct WebSocket session maps by worker id,
+  channel, and endpoint address, plus retired-channel tracking, active
+  connection count, and session snapshots. It no longer wraps the generic
+  route-oriented `RouteEndpointIndex`.
 - `WebSocketSessionController` owns server-facing bind/remove/shutdown
-  orchestration only and implements `WebSocketServerSessionHandle`.
-- `WebSocketSelectedWorkerSender` and `WebSocketSelectedWorkerRegistry` own
-  selected-worker final-hop send for assigned delivery.
+  orchestration and implements `WebSocketServerSessionHandle` only.
+- `WebSocketTaskDispatchChannel` owns selected-worker final-hop lookup/write
+  for assigned delivery by reading `WebSocketSessionStore` and writing the
+  WebSocket frame directly.
+- `WebSocketSessionStore` owns selected-worker lookup and session state only.
+  Assigned delivery lookup is keyed by one local id:
+  `selectedWorkerId` / `workerId`.
 - `WebSocketSessionEvidenceDriver` owns endpoint lease and worker-presence
   projection; `WebSocketSessionRefreshLoop` owns periodic evidence refresh.
 - `WebSocketRawWorkerRouteEndpointRegistry` and `WebSocketEndpointInspector`
@@ -102,9 +113,9 @@ These observations describe the old shape that motivated this roadmap.
 - `WebSocketServerFactoryContext` is WebSocket-specific and exposes a
   server-facing session handle plus inbound raw-message sink, port, and path.
   The old runtime-wide `TransportServerFactoryContext` is removed.
-- `WebSocketTransportAdapterBootstrap` registers only
-  `WebSocketSelectedWorkerRegistry` with the runtime-owned selected-worker
-  endpoint registry sink.
+- `WebSocketTransportAdapterBootstrap` wires `WebSocketTaskDispatchChannel`
+  directly with the adapter-local `WebSocketSessionStore`; it does not register
+  a WebSocket selected-worker endpoint-registry wrapper.
 
 ## Owner Review
 
@@ -113,7 +124,7 @@ WebSocket adapter owns protocol session mechanics:
 - Netty channel lifecycle
 - handshake/session-open interpretation
 - adapter-local session indexes
-- selected-worker local send attempt
+- selected-worker local send attempt through the command executor
 - raw/manual WebSocket route side-channel when explicitly retained
 - adapter-local diagnostics
 
@@ -123,7 +134,6 @@ Transport runtime owns shared runtime shapes:
 - worker session-presence ingress shape
 - delivery outcomes
 - binding/contribution assembly
-- runtime-owned selected-worker endpoint registry aggregation
 
 SDK/starter owns embedded Java assembly surfaces such as custom
 `TransportServerFactory` wiring. That surface may expose a server-facing
@@ -134,23 +144,34 @@ Worker runtime owns worker lifecycle and reachability projection. Engine owns
 worker selection, retry, reassign, compensation, and task attempt policy.
 
 Therefore WebSocket session events are orchestrated by a narrow
-`WebSocketSessionController`, while selected-worker send, session evidence,
-refresh, raw/manual route send, and diagnostics live in separate roles. No
-single WebSocket object should be registered as every adapter capability.
+`WebSocketSessionController`. Assigned delivery is executed by
+`WebSocketTaskDispatchChannel`, which reads `WebSocketSessionStore` and writes
+the frame. Session evidence, refresh, raw/manual route send, and diagnostics
+remain separate roles. No single WebSocket object should be registered as every
+adapter capability.
 
 ## Boundary Decision
 
 Assigned delivery must enter the WebSocket adapter through one path:
 
 ```text
-DeliveryCommand -> WebSocketTaskDispatchChannel -> WebSocketSelectedWorkerSender
+DeliveryCommand -> WebSocketTaskDispatchChannel
+  -> WebSocketSessionStore.activeRecordForWorker(...)
+  -> channel.writeAndFlush(...)
+  -> DispatchOutcome
 ```
 
-The selected-worker sender may only use `selectedWorkerId` and the
+The selected-worker send path may only use `selectedWorkerId` and the
 already-opaque worker payload to attempt a local channel write. It must not use
 `adapterId`, route, connection, or endpoint-owner ids as delivery correctness,
 and must not touch endpoint lease stores, worker-presence ingress, raw route
 channels, or diagnostic inspectors.
+
+It must also not use `deliveryBucketId` as a WebSocket local session lookup
+dimension. `deliveryBucketId` is upstream queue/evidence context; inside this
+adapter, the final-hop session lookup is worker-id-only. Adding
+`bucket + worker` lookup to `WebSocketSessionStore` or
+`WebSocketServerSessionHandle` would recreate a second delivery identity.
 
 Session evidence must enter the runtime through one path:
 
@@ -188,23 +209,16 @@ Target internal roles:
 
 ```text
 WebSocketSessionRecord
-  -> deliveryBucketId, endpointAddress, workerId, sessionHandle, channel,
-     optional ChannelHandlerContext
+  -> workerId, sessionHandle, channel
+  -> may carry deliveryBucketId / endpointAddress only as evidence or
+     raw/manual diagnostic metadata, not as assigned-delivery lookup keys
 
 WebSocketSessionStore
   -> bind / remove / lookup / snapshot active WebSocket sessions
-  -> owns RouteEndpointIndex usage and channel/session maps
+  -> owns direct worker/channel/endpoint-address maps
   -> returns explicit BindResult / RemoveResult records so replacement,
      retired-channel, active-count, and evidence publication decisions are not
      recomputed by callers
-
-WebSocketSelectedWorkerSender
-  -> selectedWorkerId + payload -> local channel write
-  -> backs WorkerEndpointRegistry for assigned delivery
-
-WebSocketSelectedWorkerRegistry
-  -> selected-worker-only WorkerEndpointRegistry adapter backed by sender/store
-  -> registered with the runtime-owned CompositeWorkerEndpointRegistry
 
 WebSocketSessionEvidenceDriver
   -> connected / heartbeat / disconnected / replaced
@@ -220,7 +234,8 @@ WebSocketSessionController
 WebSocketServerSessionHandle
   -> server-facing session operations needed by DispatcherInboundHandler and
      custom TransportServerFactory implementations
-  -> owns no assigned-delivery send capability
+  -> owns no assigned-delivery lookup, route, endpoint-address, or diagnostics
+     access
 
 WebSocketRawWorkerRouteEndpointRegistry
   -> raw/manual side-channel backed by session store
@@ -234,14 +249,11 @@ Target bootstrap contribution:
 ```text
 WebSocketTransportAdapterBootstrap
   -> creates session store
-  -> creates selected-worker sender/registry
   -> creates evidence driver and refresh loop
   -> creates session controller
   -> contributes TransportBinding with WebSocketTaskDispatchChannel
   -> contributes raw channel and endpoint inspector as explicit side roles
-  -> registers selected-worker registry with the runtime-owned endpoint
-     registry sink, or contributes it through an explicit contribution slot if
-     that sink is moved to contribution output
+  -> does not register a selected-worker endpoint-registry wrapper
   -> creates server with session controller/server-session handle, not a broad
      endpoint registry
 ```
@@ -321,7 +333,7 @@ Scope:
 
 - Add adapter-local `WebSocketSessionRecord`.
 - Add adapter-local `WebSocketSessionStore`.
-- Move `RouteEndpointIndex`, channel/session maps, retired-channel tracking,
+- Move direct worker/channel/endpoint-address maps, retired-channel tracking,
   active-connection count, and snapshot lookup into the store.
 - Define store result records before moving behavior:
   - `BindResult`: current record, previous worker record if replaced, unchanged
@@ -338,10 +350,12 @@ Scope:
 
 Acceptance:
 
-- The WebSocket session controller no longer directly owns `RouteEndpointIndex`
-  or the low-level session maps.
+- The WebSocket session controller no longer directly owns low-level session
+  maps.
 - Store bind/remove operations are the only place that mutates session maps,
   retired-channel tracking, and active-connection count.
+- The store must not use the generic `RouteEndpointIndex` wrapper for assigned
+  delivery; worker-id lookup is a direct store fact.
 - Store result records are covered by focused tests for unchanged bind,
   replacement, removed-current, stale/retired channel, and shared endpoint
   address cases.
@@ -353,10 +367,10 @@ Acceptance:
 - `WebSocketSessionStoreTest` or equivalent focused tests cover bind, remove,
   lookup by worker, lookup by endpoint address, snapshot, and shutdown clear.
 
-## WSA-2 Server Handle And Selected-Worker Sender Boundary
+## WSA-2 Server Handle And Final-Hop Executor Boundary
 
-Goal: split server-facing session control from assigned-delivery selected-worker
-send before the broad manager stops implementing `WorkerEndpointRegistry`.
+Goal: split server-facing session control from assigned-delivery final-hop send
+before the broad manager shape returns.
 
 Scope:
 
@@ -371,33 +385,43 @@ Scope:
 - Update SDK/starter tests that capture the WebSocket server factory context so they
   prove the server-facing handle exists and no longer rely on
   `getEndpointRegistry()` as a server dependency.
-- Add `WebSocketSelectedWorkerSender` or equivalent adapter-local role.
-- The sender uses `WebSocketSessionStore` to locate the active record for
-  `selectedWorkerId` and writes the payload to that channel.
-- If a `WorkerEndpointRegistry` implementation remains needed by
-  `TransportBinding` assembly, it must be a thin selected-worker registry backed
-  by the sender/store, not the session controller.
-- Update `WebSocketCommandDispatchContext` so it receives the selected-worker
-  send role or selected-worker-only registry.
-- Update `WebSocketTransportAdapterBootstrap` to register only the
-  selected-worker registry in the runtime-owned registry sink; do not register
-  `ServerSessionManager` or the server-facing session handle.
-- If WSA-0 chose to move endpoint registry registration to
-  `TransportAdapterContribution`, add that contribution slot in this slice and
-  update `MassApplication` assembly in the same slice.
+- `WebSocketSessionStore` owns selected-worker lookup and session state for
+  `selectedWorkerId`, but does not own local channel write. It must not expose
+  a bucket-worker assigned-delivery lookup.
+- `WebSocketTaskDispatchChannel` receives `WebSocketSessionStore` directly,
+  performs the final-hop frame write, and returns `DispatchOutcome` directly.
+- `WebSocketSessionController` must not implement `WorkerEndpointRegistry` or
+  expose selected-worker send. It remains the server/session orchestration
+  object.
+- Update `WebSocketTransportAdapterBootstrap` so it does not register any
+  WebSocket selected-worker endpoint registry. It should wire the command
+  executor with the session store and contribute raw/diagnostic side roles
+  separately.
 
 Acceptance:
 
 - `ServerSessionManager` is removed from production code, or at minimum cannot
   implement `WorkerEndpointRegistry` during an intermediate slice.
 - `WebSocketTaskDispatchChannel` cannot import or receive
-  `ServerSessionManager`.
+  `ServerSessionManager` or `WorkerEndpointRegistry`.
+- `WebSocketTaskDispatchChannel` does not call
+  `TransportDeliveryService.sendDirect(...)`.
+- `WebSocketSessionStore` does not expose `sendToSelectedWorker(...)`, import
+  WebSocket frame classes, or call `writeAndFlush(...)`.
+- `WebSocketSessionStore` assigned-delivery lookup is worker-id-only; it does
+  not expose `activeRecordForDelivery(deliveryBucketId, workerId)` or an
+  equivalent bucket-worker lookup.
+- `WebSocketSessionController` does not expose `sendToSelectedWorker(...)`.
+- `WebSocketServerSessionHandle` does not expose assigned-delivery lookup by
+  worker id or bucket-worker; it remains server/inbound session control.
 - `WebSocketServerFactoryContext` does not expose assigned-delivery
   `WorkerEndpointRegistry` as the server factory input.
 - `DispatcherInboundHandler` and `WebSocketServerImpl` depend on the
   server-facing session handle/controller, not on `WorkerEndpointRegistry`.
-- Assigned delivery still calls `TransportDeliveryService.sendDirect(...)` and
-  returns `DELIVERED`, `NO_ENDPOINT`, or `UNAVAILABLE` as before.
+- `WebSocketSelectedWorkerRegistry` and `WebSocketSelectedWorkerSender` do not
+  exist as production wrapper layers.
+- Assigned delivery returns `DELIVERED`, `NO_ENDPOINT`, retryable `FAILED`, or
+  `INVALID` directly from the command executor.
 - A guard or focused test fails if the WebSocket command executor can reach raw
   route, endpoint lease, worker presence, or diagnostics roles.
 - `TransportConvergenceArchitectureGuardTest` or an equivalent guard fails if
@@ -446,7 +470,7 @@ Scope:
 
 Acceptance:
 
-- Refresh scheduling code is not in selected-worker sender or raw route
+- Refresh scheduling code is not in selected-worker registry/store send path or raw route
   registry.
 - Shutdown cancels refresh and releases active session evidence.
 - Refresh failure is logged and does not corrupt the session store.
@@ -487,10 +511,9 @@ Scope:
   must expose only server-facing session control plus inbound raw-message sink,
   port, and endpoint path. It must not expose the assigned-delivery
   `WorkerEndpointRegistry`.
-- Finish the selected-worker registry registration decision made in WSA-0/WSA-2:
-  either runtime-owned registry sink usage is documented and guarded, or
-  endpoint registry contribution output exists and `MassApplication` assembly
-  consumes it.
+- Remove any selected-worker endpoint-registry registration from WebSocket
+  bootstrap. Assigned delivery should be represented only by the command
+  executor binding wired with the adapter-local session store.
 - Update `WebSocketServerImpl` and `DispatcherInboundHandler` to depend on the
   session controller/session lookup role rather than the old manager shape.
 
@@ -498,7 +521,6 @@ Acceptance:
 
 - Bootstrap contribution lists are explicit:
   - command executor
-  - selected-worker endpoint registry registration owner
   - server
   - raw worker message channel
   - endpoint inspector
@@ -520,7 +542,7 @@ Scope:
   - Replace the old rule that one endpoint-registry instance is passed to both
     server and dispatcher wiring.
   - Document server/session-controller wiring separately from selected-worker
-    sender/registry wiring.
+    final-hop executor wiring.
 - Update `transport/TRANSPORT_BOUNDARY_BASELINE.md` only if a transport-wide
   contract changes.
 - Update `doc/PROOF_REGISTRY.md` if proof ownership changes.
@@ -529,8 +551,15 @@ Scope:
   - WebSocket command executor must not import `ServerSessionManager`, raw
     route registry, endpoint lease publisher, worker presence publisher, or
     endpoint inspector.
-  - the old broad `ServerSessionManager` production class must not return, and
-    session control must not implement assigned-delivery `WorkerEndpointRegistry`.
+  - the old broad `ServerSessionManager` production class must not return.
+  - `WebSocketSessionController` must not implement assigned-delivery
+    `WorkerEndpointRegistry` or expose selected-worker send.
+  - `WebSocketSessionStore` must not expose selected-worker send or write
+    WebSocket frames.
+  - WebSocket assigned-delivery lookup remains worker-id-only and must not add
+    a bucket-worker lookup to session store or server handle.
+  - `WebSocketTaskDispatchChannel` must own assigned-delivery frame write and
+    outcome production; `WebSocketSelectedWorker*` wrappers must not return.
   - `WebSocketServerFactoryContext` must not expose assigned-delivery
     `WorkerEndpointRegistry` after WSA-2/WSA-6.
   - raw route and diagnostics must not be reachable from assigned-delivery
@@ -556,7 +585,7 @@ Focused WebSocket adapter proof:
 Transport runtime guard proof:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime -am test -Dtest=TransportConvergenceArchitectureGuardTest,CompositeWorkerEndpointRegistryTest,RouteEndpointIndexTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl transport/transport_runtime -am test -Dtest=TransportConvergenceArchitectureGuardTest,CompositeWorkerEndpointRegistryTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 SDK/server realtime assembly proof:
@@ -578,12 +607,14 @@ renamed or deleted any listed tests.
 
 This roadmap is complete only when all of these are true:
 
-- `ServerSessionManager` is removed from production code and cannot implement
-  `WorkerEndpointRegistry`.
-- Assigned WebSocket delivery depends only on a selected-worker send role and
-  delivery outcome normalization.
+- `ServerSessionManager` is removed from production code; the only WebSocket
+  server/session controller is `WebSocketSessionController`, which must not
+  implement `WorkerEndpointRegistry`.
+- Assigned WebSocket delivery is owned by `WebSocketTaskDispatchChannel`, which
+  looks up the selected worker in `WebSocketSessionStore` by one worker id,
+  writes the frame, and returns `DispatchOutcome` directly.
 - WebSocket session storage/indexing is isolated from evidence projection,
-  refresh scheduling, raw/manual route send, and diagnostics.
+  refresh scheduling, raw/manual route send, diagnostics, and frame writes.
 - Endpoint lease and worker-presence publication are owned by a dedicated
   WebSocket session evidence driver.
 - Raw/manual and diagnostics are explicit side-channel contributions and cannot
@@ -593,8 +624,8 @@ This roadmap is complete only when all of these are true:
 - `WebSocketServerFactoryContext` does not expose assigned-delivery
   `WorkerEndpointRegistry`; custom embedded server factories receive a
   server-facing session handle instead.
-- Selected-worker endpoint registry registration has exactly one documented
-  owner: runtime registry sink or explicit contribution output.
+- WebSocket bootstrap does not register a selected-worker endpoint registry for
+  assigned delivery.
 - Owner docs and guards match the implemented role split.
 - Socket follow-up is either updated with the proven WebSocket pattern or
   deliberately kept as active residue in the push-adapter umbrella roadmap.

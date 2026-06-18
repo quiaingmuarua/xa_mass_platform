@@ -172,7 +172,6 @@ lifecycle state.
 `transport_api` owns stable contracts used across adapters and runtime:
 
 - transport-neutral dispatch/result/session-presence interfaces
-- endpoint registry contracts
 - transport-neutral models that adapters must exchange with runtime
 - canonical worker route-key codec contract for the WRB convergence target
 
@@ -184,8 +183,8 @@ lifecycle state.
 - canonical transport-hint resolution; adapter labels such as `websocket`,
   `ws`, `push`, `pull`, or `queue` are not family aliases
 - delivery service and delivery store
-- runtime-owned envelope identity/timestamp generation for queued or direct
-  dispatch handoff
+- runtime-owned envelope identity/timestamp generation for queued dispatch
+  handoff
 - delivery backlog admission control and store statistics
 - runtime executor handoff into adapter bootstraps for transport-owned blocking work
 - result ingress envelope queueing, buffering, and runtime logging; result
@@ -570,24 +569,27 @@ Current runtime rules:
   protocols, but public managed SDK sessions must not expose routeKey. When a
   managed session omits it, the adapter/server side mints an internal opaque
   endpoint address from stable bucket/session context such as worker group.
-- task dispatch endpoint registries must expose selected-worker addressing,
-  such as `sendToSelectedWorker(selectedWorkerId, message)`, with no adapter,
-  route, connection, or endpoint-owner id in the send contract and with no
-  default implementation that drops the selected worker and falls back to
-  route-only send. Route-only send is reserved for explicit raw/manual
-  side-channels.
+- push adapter command executors must perform selected-worker final-hop sends
+  inside the concrete adapter, with no adapter, route, connection, or
+  endpoint-owner id in the dispatch input and with no fallback that drops the
+  selected worker and falls back to route-only send. Route-only send is
+  reserved for explicit raw/manual side-channels.
+- push adapter local session lookup uses one unique id only:
+  `selectedWorkerId` / worker id. `deliveryBucketId` is upstream queue and
+  endpoint-evidence context; it must not be added as a WebSocket/Socket
+  adapter-local session lookup dimension.
 - `adapterId` is never a worker-selection or selected-worker send input. It may
   help transport register local adapter metadata or raw/manual side-channel
   diagnostics after a selected worker and endpoint evidence already exist.
-- `WorkerEndpointRegistry` is the assigned-task selected-worker endpoint
-  contract. Route-only raw/manual sends are separated behind
-  `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`; assigned task
-  delivery callers must not receive those helpers through the same interface.
+- There is no transport-neutral selected-worker endpoint registry for assigned
+  push delivery. Concrete push adapter command executors perform worker-id-only
+  session lookup and final-hop writes inside the adapter. Route-only raw/manual
+  sends remain separated behind `RawWorkerRouteEndpointRegistry` or
+  `RawWorkerMessageChannel` and are not assigned-task delivery fallbacks.
 - blank `routeKey` is invalid for endpoint lease evidence when an adapter
-  protocol uses routeKey as the endpoint address. Direct-send delivery
-  must not require routeKey when selected-worker session addressing is
-  available. Queued polling delivery must not rely on routeKey as the only
-  isolation key.
+  protocol uses routeKey as the endpoint address. Push assigned delivery must
+  not require routeKey when selected-worker session addressing is available.
+  Queued polling delivery must not rely on routeKey as the only isolation key.
 - assigned delivery-command handoff queues are addressed by bucket-derived
   `deliveryQueueKey`. Each queued command carries `selectedWorkerId`; the
   adapter dispatcher demuxes by that field and resolves endpoint/session lease
@@ -664,9 +666,10 @@ Dispatch is also a hot path. Delivery-command handoff queues store
 bucket-scoped command payloads plus handoff-owned command references. They
 must not deep-copy worker pull DTOs, endpoint leases, or generic task-dispatch
 `TransportPacket` payloads as the handoff item shape. Adapter delivery receives
-`DeliveryCommand` with selected-worker opaque payload and an adapter-private
-selector; polling queue delivery should converge to opaque pulled delivery
-messages. Retryable dispatch outcomes must carry delivery id,
+`DeliveryCommand` with selected-worker opaque payload; concrete push adapters
+use the selected worker id as their single local final-hop lookup key, while
+polling queue delivery should converge to opaque pulled delivery messages.
+Retryable dispatch outcomes must carry delivery id,
 `selectedWorkerId`, opaque correlation, status, retryability, reason, and time;
 transport trace ids are diagnostics and must not double as compensation keys.
 
@@ -689,13 +692,14 @@ command handoff stores use bucket queue admission plus local claim/ack
 consistency; polling pull stores may keep selected-worker indexes as adapter
 pull implementation details, but those indexes are not the engine-to-transport
 handoff address.
-`TransportDeliveryStoreStats` is queue/store-path only; direct-send diagnostics
-are assembled above the store boundary by
-`TransportDeliveryServiceStats`. Poll semantics must stay explicit enough to
-distinguish delivered, empty, invalid-request, unavailable, and shutdown
-results without forcing callers to treat every non-delivery outcome as an empty
-queue. `DeliveryPullChannel.pollDeliveryMessagesResult(...)` is the transport
-mainline for that statusful view and receives the polling worker's registered
+`TransportDeliveryStoreStats` and `TransportDeliveryServiceStats` are
+queue/store-path only. Push adapter final-hop outcomes are returned by concrete
+adapter command executors and are not folded into queue diagnostics. Poll
+semantics must stay explicit enough to distinguish delivered, empty,
+invalid-request, unavailable, and shutdown results without forcing callers to
+treat every non-delivery outcome as an empty queue.
+`DeliveryPullChannel.pollDeliveryMessagesResult(...)` is the transport mainline
+for that statusful view and receives the polling worker's registered
 `deliveryBucketId` plus registered worker id as `selectedWorkerId`; SDK
 task-shaped pull helpers are convenience wrappers above it. `DELIVERED` status
 must always carry one or more pulled items/envelopes;
@@ -737,28 +741,30 @@ That assembly layer also owns queue-cap tuning such as total queued items and
 any adapter-store-specific selected-worker caps; transport contracts should
 consume those resolved limits rather than hard-code runtime policy.
 
-## Direct vs Queued Delivery
+## Push vs Pull Delivery
 
-Transport currently has two delivery paths:
+Transport currently has two delivery executor paths:
 
-- direct-send: realtime adapters attempt synchronous endpoint delivery and return
-  `SENT` / `ENDPOINT_OFFLINE` / `FAILED` / `ADAPTER_UNAVAILABLE` / `INVALID_ITEM`
-- queued delivery: polling or backlog-backed adapters admit an envelope into
+- push final hop: realtime adapters perform adapter-local selected-worker
+  session lookup/write and return
+  `DELIVERED` / `NO_ENDPOINT` / `FAILED` / `UNAVAILABLE` / `INVALID`
+- pull queue: polling or backlog-backed adapters admit an envelope into
   `TransportDeliveryStore` and return `QUEUED` / `BACKPRESSURE_REJECTED` /
-  `ADAPTER_UNAVAILABLE` / `INVALID_ITEM`
+  `UNAVAILABLE` / `INVALID`
 
 These paths intentionally share `DispatchOutcome` identity fields and status
 language, but they do not form one richer transport-owned lifecycle model.
 
 Keep these rules:
 
-- `SENT` does not imply durable store ownership, ack tracking, or later dequeue
+- `DELIVERED` from a push adapter does not imply durable store ownership, ack
+  tracking, or later dequeue
 - `QUEUED` means store admission only; engine lifecycle truth still lives outside transport
 - queue stats such as `queueByAdapter`, backlog age, waiting pollers, and queued-item counts
   are queue-path diagnostics only; `queueByAdapter` is not canonical queue ownership truth
-- direct-send counters are separate transport diagnostics and must not appear as
-  synthetic queue occupancy or queue ownership
-- do not add a transport-owned retry/lease/state machine that merges direct-send
+- push final-hop counters, if added later, belong to concrete adapter
+  diagnostics, not `TransportDeliveryService` queue diagnostics
+- do not add a transport-owned retry/lease/state machine that merges push final-hop
   and queued delivery into one second attempt lifecycle
 
 Observability rule:

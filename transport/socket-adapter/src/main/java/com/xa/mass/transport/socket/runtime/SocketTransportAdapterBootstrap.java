@@ -1,13 +1,11 @@
 package com.xa.mass.transport.socket.runtime;
 
-import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
-import com.xa.mass.transport.socket.dispatcher.SocketCommandDispatchContext;
 import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.server.SocketTransportServer;
@@ -40,17 +38,12 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         SocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
                 new SocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionManager);
         SocketTransportFrameCodec frameCodec = new SocketTransportFrameCodec();
-        SocketCommandDispatchContext commandContext = new SocketCommandDispatchContext(
-                config.getAdapterId(),
-                sessionManager,
-                frameCodec
-        );
 
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
             SocketTaskDispatchChannel commandExecutor = new SocketTaskDispatchChannel(
-                            commandContext,
-                            context.getDeliveryService()
+                            frameCodec,
+                            sessionManager
                     );
             contribution.addTransportBinding(TransportBinding.builder(
                             config.getAdapterId(),
@@ -81,27 +74,11 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
     }
 
     private SocketSessionManager resolveSessionManager(TransportAdapterBootstrapContext context) {
-        if (context.getEndpointRegistry() instanceof SocketSessionManager sessionManager) {
-            if (!config.getAdapterId().equalsIgnoreCase(sessionManager.getAdapterId())) {
-                throw new IllegalStateException("Socket transport requires endpoint registry adapterId '"
-                        + config.getAdapterId() + "' but found '" + sessionManager.getAdapterId() + "'");
-            }
-            sessionManager.setEndpointLeaseStore(context.getEndpointLeaseStore());
-            sessionManager.setDeliveryCommandConsumerRegistry(context.getDeliveryCommandConsumerRegistry());
-            sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
-            return sessionManager;
-        }
-        if (context.getEndpointRegistry() instanceof CompositeWorkerEndpointRegistry composite) {
-            SocketSessionManager sessionManager = composite.getOrRegister(
-                    config.getAdapterId(),
-                    () -> new SocketSessionManager(config.getAdapterId())
-            );
-            sessionManager.setEndpointLeaseStore(context.getEndpointLeaseStore());
-            sessionManager.setDeliveryCommandConsumerRegistry(context.getDeliveryCommandConsumerRegistry());
-            sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
-            return sessionManager;
-        }
-        throw new IllegalStateException("Socket transport requires a socket-managed endpoint registry");
+        SocketSessionManager sessionManager = new SocketSessionManager(config.getAdapterId());
+        sessionManager.setEndpointLeaseStore(context.getEndpointLeaseStore());
+        sessionManager.setDeliveryCommandConsumerRegistry(context.getDeliveryCommandConsumerRegistry());
+        sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
+        return sessionManager;
     }
 
     private static final class SocketRawWorkerMessageChannel implements RawWorkerMessageChannel {

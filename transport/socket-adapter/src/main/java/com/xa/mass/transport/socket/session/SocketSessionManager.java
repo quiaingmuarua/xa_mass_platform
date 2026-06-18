@@ -1,6 +1,5 @@
 package com.xa.mass.transport.socket.session;
 
-import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
@@ -21,10 +20,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * Adapter-owned endpoint registry for raw TCP socket workers.
+ * Adapter-owned session manager for raw TCP socket workers.
  */
-public final class SocketSessionManager
-        implements WorkerEndpointRegistry {
+public final class SocketSessionManager {
 
     private static final Logger logger = LoggerFactory.getLogger(SocketSessionManager.class);
 
@@ -153,13 +151,12 @@ public final class SocketSessionManager
         return sendToBoundRoute(routeKey, null, message);
     }
 
-    @Override
-    public boolean sendToSelectedWorker(String selectedWorkerId, String message) {
-        String normalizedSelectedWorkerId = normalizeNullable(selectedWorkerId);
-        if (normalizedSelectedWorkerId == null) {
+    public boolean sendToWorker(String workerId, String message) {
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedWorkerId == null) {
             return false;
         }
-        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForWorker(normalizedSelectedWorkerId)) {
+        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForWorker(normalizedWorkerId)) {
             SocketWorkerEndpoint endpoint = entry.endpoint();
             if (endpoint == null || !endpoint.isActive()) {
                 continue;
@@ -168,8 +165,8 @@ public final class SocketSessionManager
                 endpoint.send(message);
                 return true;
             } catch (IOException ex) {
-                logger.warn("Failed to send socket message to selectedWorkerId={}, endpointId={}",
-                        normalizedSelectedWorkerId, endpoint.endpointId(), ex);
+                logger.warn("Failed to send socket message to workerId={}, endpointId={}",
+                        normalizedWorkerId, endpoint.endpointId(), ex);
                 removeSession(endpoint.endpointId());
             }
         }
@@ -183,7 +180,6 @@ public final class SocketSessionManager
         return hasActiveRoute(routeKey);
     }
 
-    @Override
     public int getActiveConnectionCount() {
         return (int) routeIndex.entries().stream()
                 .map(RouteEndpointIndex.Entry::endpoint)
@@ -191,7 +187,6 @@ public final class SocketSessionManager
                 .count();
     }
 
-    @Override
     public synchronized void shutdown() {
         List<RouteEndpointIndex.Entry<String, SocketWorkerEndpoint>> entries = routeIndex.entries();
         List<SocketWorkerEndpoint> endpoints = entries.stream()

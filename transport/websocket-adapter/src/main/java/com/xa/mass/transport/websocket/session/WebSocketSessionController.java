@@ -1,7 +1,6 @@
 package com.xa.mass.transport.websocket.session;
 
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,10 +26,9 @@ public final class WebSocketSessionController implements WebSocketServerSessionH
     public synchronized void addSession(String deliveryBucketId,
                                         String endpointAddress,
                                         String workerId,
-                                        Channel channel,
-                                        ChannelHandlerContext context) {
+                                        Channel channel) {
         WebSocketSessionStore.BindResult result =
-                store.bind(deliveryBucketId, endpointAddress, workerId, channel, context);
+                store.bind(deliveryBucketId, endpointAddress, workerId, channel);
         if (result.ignoredRetiredChannel()) {
             logger.debug("Ignoring retired WebSocket channel for endpointAddress={} channelId={}",
                     endpointAddress, channel.id().asShortText());
@@ -52,7 +50,7 @@ public final class WebSocketSessionController implements WebSocketServerSessionH
             logger.warn("Existing channel for endpointAddress={} workerId={} found. Replacing session.",
                     replaced.endpointAddress(), replaced.workerId());
             evidenceDriver.disconnected(replaced, "websocket session replaced");
-            replaced.closeIfActive();
+            closeIfActive(replaced);
         }
         refreshLoop.ensureRunning();
     }
@@ -86,7 +84,7 @@ public final class WebSocketSessionController implements WebSocketServerSessionH
         for (WebSocketSessionRecord record : records) {
             if (record.isActive()) {
                 evidenceDriver.disconnected(record, "websocket adapter shutdown");
-                record.closeIfActive();
+                closeIfActive(record);
             }
         }
         refreshLoop.shutdown();
@@ -97,6 +95,12 @@ public final class WebSocketSessionController implements WebSocketServerSessionH
     public WebSocketServerSession currentSession(Channel channel) {
         WebSocketSessionRecord record = store.recordForChannel(channel);
         return record != null && record.isActive() ? WebSocketServerSession.from(record) : null;
+    }
+
+    private static void closeIfActive(WebSocketSessionRecord record) {
+        if (record != null && record.isActive()) {
+            record.channel().close();
+        }
     }
 
 }

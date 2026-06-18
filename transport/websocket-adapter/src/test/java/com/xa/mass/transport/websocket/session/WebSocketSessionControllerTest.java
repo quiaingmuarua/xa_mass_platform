@@ -6,7 +6,6 @@ import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,11 +39,9 @@ class WebSocketSessionControllerTest {
     void shutdownClosesAllActiveChannelsAndClearsState() {
         Channel ch1 = mockActiveChannel("ch1");
         Channel ch2 = mockActiveChannel("ch2");
-        ChannelHandlerContext ctx1 = mock(ChannelHandlerContext.class);
-        ChannelHandlerContext ctx2 = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "worker-1", ch1, ctx1);
-        manager.addSession(DELIVERY_BUCKET_ID, "worker-2", "worker-2", ch2, ctx2);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "worker-1", ch1);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-2", "worker-2", ch2);
 
         assertEquals(2, sessionStore.activeConnectionCount());
 
@@ -66,9 +63,8 @@ class WebSocketSessionControllerTest {
     void adapterScopedLookupsUseConfiguredAdapterId() {
         manager = newController("ws-public");
         Channel channel = mockActiveChannel("worker-1");
-        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
 
         assertTrue(sessionStore.hasActiveEndpointAddress("route-1"));
         assertEquals("ws-public", new WebSocketEndpointInspector(sessionStore).listWorkerEndpoints().get(0).getAdapterId());
@@ -82,9 +78,8 @@ class WebSocketSessionControllerTest {
         evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
         evidenceDriver.setWorkerPresenceIngress(presenceIngress);
         Channel channel = mockActiveChannel("worker-1");
-        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
 
         assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
         assertEquals("route-1", endpoint(endpointLeaseStore, "worker-1").endpointAddress());
@@ -107,10 +102,9 @@ class WebSocketSessionControllerTest {
         evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
         Channel firstChannel = mockActiveChannel("worker-1");
         Channel secondChannel = mockActiveChannel("worker-2");
-        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-1", firstChannel, ctx);
-        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-2", secondChannel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-1", firstChannel);
+        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-2", secondChannel);
 
         assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
         assertTrue(hasEndpoint(endpointLeaseStore, "worker-2"));
@@ -123,19 +117,16 @@ class WebSocketSessionControllerTest {
     }
 
     @Test
-    void selectedWorkerSendUsesWorkerIndexUnderSharedRouteKey() {
+    void sessionStoreIndexesSelectedWorkersUnderSharedEndpointAddress() {
         Channel firstChannel = mockActiveChannel("worker-1-channel");
         Channel secondChannel = mockActiveChannel("worker-2-channel");
-        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-1", firstChannel, ctx);
-        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-2", secondChannel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-1", firstChannel);
+        manager.addSession(DELIVERY_BUCKET_ID, "group-route", "worker-2", secondChannel);
 
-        assertTrue(new WebSocketSelectedWorkerSender(sessionStore)
-                .sendToSelectedWorker("worker-2", "{\"messageId\":\"msg-2\"}"));
-
-        verify(firstChannel, never()).writeAndFlush(any());
-        verify(secondChannel).writeAndFlush(any());
+        assertEquals(firstChannel, sessionStore.activeRecordForWorker("worker-1").channel());
+        assertEquals(secondChannel, sessionStore.activeRecordForWorker("worker-2").channel());
+        assertEquals(2, sessionStore.activeRecordsForEndpointAddress("group-route").size());
     }
 
     @Test
@@ -144,13 +135,11 @@ class WebSocketSessionControllerTest {
         evidenceDriver.setWorkerPresenceIngress(presenceIngress);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
-        ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
-        ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "worker-1", firstChannel, firstCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "worker-1", firstChannel);
         assertEquals(1, sessionStore.activeConnectionCount());
 
-        manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "worker-1", secondChannel, secondCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "worker-1", secondChannel);
 
         assertEquals(1, sessionStore.activeConnectionCount());
         assertEquals(secondChannel, sessionStore.activeRecordForEndpointAddress("worker-1").channel());
@@ -185,11 +174,9 @@ class WebSocketSessionControllerTest {
         evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
-        ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
-        ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "route-old", "worker-1", firstChannel, firstCtx);
-        manager.addSession(DELIVERY_BUCKET_ID, "route-new", "worker-1", secondChannel, secondCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-old", "worker-1", firstChannel);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-new", "worker-1", secondChannel);
 
         assertEquals(1, sessionStore.activeConnectionCount());
         assertNull(sessionStore.activeRecordForEndpointAddress("route-old"));
@@ -197,10 +184,7 @@ class WebSocketSessionControllerTest {
         assertEquals("route-new", endpoint(endpointLeaseStore, "worker-1").endpointAddress());
         verify(firstChannel).close();
 
-        assertTrue(new WebSocketSelectedWorkerSender(sessionStore)
-                .sendToSelectedWorker("worker-1", "{\"messageId\":\"msg-new\"}"));
-        verify(firstChannel, never()).writeAndFlush(any());
-        verify(secondChannel).writeAndFlush(any());
+        assertEquals(secondChannel, sessionStore.activeRecordForWorker("worker-1").channel());
     }
 
     @Test
@@ -209,13 +193,11 @@ class WebSocketSessionControllerTest {
         evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
-        ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
-        ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", firstChannel, firstCtx);
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", secondChannel, secondCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", firstChannel);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", secondChannel);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", firstChannel, firstCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", firstChannel);
 
         assertEquals(secondChannel, sessionStore.activeRecordForEndpointAddress("route-1").channel());
         assertEquals("worker-1-new", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
@@ -228,11 +210,9 @@ class WebSocketSessionControllerTest {
         evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
-        ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
-        ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", firstChannel, firstCtx);
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", secondChannel, secondCtx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", firstChannel);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", secondChannel);
 
         manager.removeSession(firstChannel);
 
@@ -252,10 +232,8 @@ class WebSocketSessionControllerTest {
         when(inactive.isActive()).thenReturn(false);
         when(inactive.id()).thenReturn(inactiveId);
         when(inactiveId.asShortText()).thenReturn("inactive");
-
-        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
-        manager.addSession(DELIVERY_BUCKET_ID, "worker-a", "worker-a", active, ctx);
-        manager.addSession(DELIVERY_BUCKET_ID, "worker-b", "worker-b", inactive, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-a", "worker-a", active);
+        manager.addSession(DELIVERY_BUCKET_ID, "worker-b", "worker-b", inactive);
 
         manager.shutdown();
 
@@ -268,9 +246,8 @@ class WebSocketSessionControllerTest {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
         Channel channel = mockActiveChannel("worker-1");
-        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
 
         manager.shutdown();
 
@@ -282,9 +259,8 @@ class WebSocketSessionControllerTest {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore(1_200L);
         evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
         Channel channel = mockActiveChannel("worker-1");
-        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
 
         assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
             Thread.sleep(2_200L);
@@ -298,9 +274,8 @@ class WebSocketSessionControllerTest {
         InMemoryTransportEndpointLeaseStore secondStore = new InMemoryTransportEndpointLeaseStore(30_000L);
         evidenceDriver.setEndpointLeaseStore(firstStore);
         Channel channel = mockActiveChannel("worker-1");
-        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
 
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel, ctx);
+        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
         evidenceDriver.setEndpointLeaseStore(secondStore);
         evidenceDriver.projectActiveSessions(sessionStore.activeRecords(), "websocket endpoint lease store replaced");
 

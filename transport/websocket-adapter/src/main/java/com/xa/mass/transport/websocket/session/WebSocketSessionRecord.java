@@ -1,8 +1,6 @@
 package com.xa.mass.transport.websocket.session;
 
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 
 import java.util.Objects;
 
@@ -10,8 +8,7 @@ public record WebSocketSessionRecord(
         String deliveryBucketId,
         String endpointAddress,
         String workerId,
-        Channel channel,
-        ChannelHandlerContext context
+        Channel channel
 ) {
 
     public WebSocketSessionRecord {
@@ -27,16 +24,6 @@ public record WebSocketSessionRecord(
 
     public boolean isActive() {
         return channel != null && channel.isActive();
-    }
-
-    public void send(String message) {
-        channel.writeAndFlush(new TextWebSocketFrame(message));
-    }
-
-    public void closeIfActive() {
-        if (isActive()) {
-            channel.close();
-        }
     }
 
     private static String requireText(String value, String fieldName) {

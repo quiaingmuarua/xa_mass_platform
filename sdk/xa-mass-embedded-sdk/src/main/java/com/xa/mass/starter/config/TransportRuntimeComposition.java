@@ -17,7 +17,6 @@ import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChann
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
@@ -29,7 +28,6 @@ import com.xa.mass.transport.websocket.runtime.WebSocketTransportAdapterBootstra
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -50,9 +48,6 @@ public class TransportRuntimeComposition {
     private final MessageQueue<String> inputQueue;
     private final MessageQueue<TransportOutboundMessage> outputQueue;
     private final WorkerPresenceIngress customWorkerPresenceIngress;
-    private final WorkerEndpointRegistry workerEndpointRegistry;
-    private final Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
-    private final Function<WorkerEndpointRegistry, WorkerPresenceIngress> workerPresenceIngressResolver;
     private final Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory;
     private final WebSocketAdapterConfig bundledWebSocketAdapterConfig;
     private final SocketAdapterConfig bundledSocketAdapterConfig;
@@ -73,7 +68,6 @@ public class TransportRuntimeComposition {
     private final long endpointLeaseMillis;
     private final TransportRuntimeRole runtimeRole;
 
-    private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
     private transient TransportRegistrationResolver registrationResolver;
     private transient TransportEndpointLeaseStore runtimeOwnedEndpointLeaseStore;
 
@@ -82,9 +76,6 @@ public class TransportRuntimeComposition {
         this.inputQueue = source.getInputQueue();
         this.outputQueue = source.getOutputQueue();
         this.customWorkerPresenceIngress = source.getCustomWorkerPresenceIngress();
-        this.workerEndpointRegistry = source.getWorkerEndpointRegistry();
-        this.endpointRegistryFactory = source.endpointRegistryFactory();
-        this.workerPresenceIngressResolver = source.workerPresenceIngressResolver();
         this.endpointLeaseStoreFactory = source.endpointLeaseStoreFactory();
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getBundledWebSocketAdapterConfig());
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.getBundledSocketAdapterConfig());
@@ -162,31 +153,11 @@ public class TransportRuntimeComposition {
                 .toList();
     }
 
-    public WorkerEndpointRegistry resolveWorkerEndpointRegistry() {
-        if (workerEndpointRegistry != null) {
-            return workerEndpointRegistry;
-        }
-        if (runtimeOwnedEndpointRegistry == null) {
-            if (endpointRegistryFactory == null) {
-                throw new IllegalStateException("Transport endpoint registry factory is not configured");
-            }
-            runtimeOwnedEndpointRegistry = endpointRegistryFactory.get();
-        }
-        return runtimeOwnedEndpointRegistry;
-    }
-
     public WorkerPresenceIngress resolveWorkerPresenceIngress() {
         if (customWorkerPresenceIngress != null) {
             return customWorkerPresenceIngress;
         }
-        WorkerEndpointRegistry endpointRegistry = workerEndpointRegistry;
-        if (endpointRegistry == null) {
-            endpointRegistry = resolveWorkerEndpointRegistry();
-        }
-        if (workerPresenceIngressResolver == null) {
-            throw new IllegalStateException("Transport worker presence ingress resolver is not configured");
-        }
-        return workerPresenceIngressResolver.apply(endpointRegistry);
+        return null;
     }
 
     public WorkerTransportRuntimeFactory resolveWorkerTransportRuntimeFactory() {

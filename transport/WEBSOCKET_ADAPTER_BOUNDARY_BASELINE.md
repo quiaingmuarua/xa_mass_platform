@@ -34,8 +34,6 @@ Current code centers on:
 - `WebSocketSessionStore`
 - `WebSocketSessionController`
 - `WebSocketServerSessionHandle`
-- `WebSocketSelectedWorkerSender`
-- `WebSocketSelectedWorkerRegistry`
 - `WebSocketSessionEvidenceDriver`
 - `WebSocketSessionRefreshLoop`
 - `WebSocketRawWorkerRouteEndpointRegistry`
@@ -78,12 +76,21 @@ Hard rules:
 
 ## Wiring Rules
 
-- construct codec, channels, endpoint registry, and processors before start
-- keep server-facing session control separate from assigned-delivery endpoint
-  registry wiring
-- pass `WebSocketServerSessionHandle` to server/inbound wiring
-- register only `WebSocketSelectedWorkerRegistry` with the runtime-owned
-  selected-worker endpoint registry sink
+- construct codec, command executor, session store/controller, and processors
+  before start
+- `WebSocketSessionStore` owns low-level session indexes and selected-worker
+  channel lookup only
+- WebSocket assigned-delivery local lookup is worker-id-only:
+  `DeliveryCommand.selectedWorkerId` -> `WebSocketSessionStore` active record
+  -> channel write. `deliveryBucketId` is upstream queue/evidence context, not
+  a WebSocket session lookup dimension.
+- `WebSocketTaskDispatchChannel` owns assigned-delivery final-hop frame write
+  and `DispatchOutcome` production
+- `WebSocketSessionController` is a server/session orchestration object only;
+  it must not implement `WorkerEndpointRegistry` or own selected-worker send
+- pass `WebSocketServerSessionHandle` to server/inbound wiring, not the broader
+  runtime registry surface; do not add assigned-delivery lookup methods to that
+  handle
 - keep `WebSocketSessionStore`, `WebSocketSessionEvidenceDriver`, and
   `WebSocketSessionRefreshLoop` as separate adapter-local roles
 - route inbound result shells into opaque `TransportResultIngressEnvelope`
@@ -95,6 +102,8 @@ Hard rules:
   not route assigned dispatch through a generic task-frame codec
 - raw/manual route sending and endpoint diagnostics are explicit side roles
   backed by session store snapshots; they are not assigned-delivery fallbacks
+- endpoint address and route-style fields are raw/manual or diagnostic
+  metadata only; they are not the WebSocket assigned-delivery lookup key
 - keep bootstrap defaults inside adapter-owned support code
 - do not add mutable late-binding seams like `setHandler(...)` or `registerRoute(...)`
 
