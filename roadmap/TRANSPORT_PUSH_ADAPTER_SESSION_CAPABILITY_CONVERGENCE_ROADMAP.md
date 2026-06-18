@@ -1,6 +1,10 @@
 # Transport Push Adapter Session Capability Convergence Roadmap
 
-Status: proposed follow-up after polling adapter capability split.
+Status: proposed umbrella follow-up after polling adapter capability split.
+
+WebSocket implementation detail is now tracked by
+`TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
+This file remains the push-adapter umbrella and Socket follow-up holder.
 
 ## Summary
 
@@ -19,7 +23,9 @@ session-presence projection, refresh-loop ownership, raw/manual route
 side-channels, and diagnostics.
 
 This roadmap tracks the push-adapter follow-up so the polling roadmap can close
-without pretending WebSocket/socket session managers have been rewritten.
+without pretending WebSocket/socket session managers have been rewritten. The
+first concrete implementation track is the WebSocket-specific roadmap; Socket
+should follow after the WebSocket shape is proven.
 
 ## Current Facts
 
@@ -90,6 +96,10 @@ manager.
   change.
 
 ## PSA-0 Inventory And Proof Boundaries
+
+WebSocket note: this inventory is owned in more detail by
+`TRANSPORT_WEBSOCKET_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
+Keep this umbrella section as the cross-adapter checklist and Socket reminder.
 
 Goal: classify WebSocket/socket session-manager roles before any rewrite.
 

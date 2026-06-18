@@ -11,23 +11,21 @@ import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
  * open-pull-worker methods so transport endpoint lease and consumer registry
  * details stay out of the SDK-facing constructor surface.</p>
  */
-public final class InternalPullWorkerSessions {
+public final class EmbeddedPullWorkerSessions {
 
-    private InternalPullWorkerSessions() {
+    private EmbeddedPullWorkerSessions() {
     }
 
-    public static PullWorkerSession open(String workerId,
+    public static EmbeddedPullWorkerSession open(String workerId,
                                          String workerGroupId,
-                                         String adapterId,
                                          String sessionToken,
                                          DeliveryPullChannel deliveryPullChannel,
                                          TransportResultIngressChannel resultIngressChannel,
                                          PullSessionEvidenceDriver evidenceDriver,
                                          String transportHint) {
-        return new PullWorkerSession(
+        return new EmbeddedPullWorkerSession(
                 workerId,
                 workerGroupId,
-                adapterId,
                 sessionToken,
                 deliveryPullChannel,
                 resultIngressChannel,

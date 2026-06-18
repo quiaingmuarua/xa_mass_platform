@@ -67,7 +67,7 @@ Transport should stay centered on these concepts only:
   and status mapping into `DeliveryPullResult`. It must not own command
   execution or endpoint/session evidence.
 - `PullSessionEvidenceDriver`: embedded runtime seam consumed by SDK
-  `PullWorkerSession` for connect/heartbeat/disconnect evidence projection.
+  `EmbeddedPullWorkerSession` for connect/heartbeat/disconnect evidence projection.
   The polling implementation is `PollingSessionEvidenceDriver`, which delegates
   to runtime publishers instead of exposing raw stores or registries to the SDK
   session.

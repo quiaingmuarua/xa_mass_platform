@@ -1123,7 +1123,7 @@ Verified on 2026-06-16 in the current workspace slice:
 # PASS: 114 tests, 0 failures
 
 .\mvnw.cmd -pl sdk/xa-mass-embedded-sdk -am `
-  "-Dtest=MassSdkTest,PullWorkerSessionTest,RuntimeTaskResultIngestChannelTest" `
+  "-Dtest=MassSdkTest,EmbeddedPullWorkerSessionTest,RuntimeTaskResultIngestChannelTest" `
   "-Dsurefire.failIfNoSpecifiedTests=false" test
 # PASS: 118 tests, 0 failures
 
@@ -1211,7 +1211,7 @@ Focused tests:
   "-Dtest=TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest" test
 
 .\mvnw.cmd -pl sdk/xa-mass-embedded-sdk `
-  "-Dtest=MassSdkTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest" test
+  "-Dtest=MassSdkTest,EmbeddedPullWorkerSessionTest,MassApplicationDistributedTransportTest" test
 
 .\mvnw.cmd -pl sdk/xa-mass-java-sdk test
 

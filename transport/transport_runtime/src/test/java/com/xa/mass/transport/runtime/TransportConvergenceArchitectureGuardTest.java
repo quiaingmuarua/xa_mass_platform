@@ -246,10 +246,10 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void pullWorkerSessionDoesNotExposeTransportInternalConstructors() throws IOException {
+    void embeddedPullWorkerSessionDoesNotExposeTransportInternalConstructors() throws IOException {
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/PullWorkerSession.java")),
-                "public PullWorkerSession("
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/EmbeddedPullWorkerSession.java")),
+                "public EmbeddedPullWorkerSession("
         );
     }
 
@@ -701,11 +701,11 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void pullWorkerSessionUsesEvidenceDriverInsteadOfTransportEvidenceInternals() throws IOException {
-        Path pullWorkerSession = repoRoot().resolve(
-                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/PullWorkerSession.java");
+    void embeddedPullWorkerSessionUsesEvidenceDriverInsteadOfTransportEvidenceInternals() throws IOException {
+        Path embeddedPullWorkerSession = repoRoot().resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/EmbeddedPullWorkerSession.java");
         assertNoProductionSourceContains(
-                List.of(pullWorkerSession),
+                List.of(embeddedPullWorkerSession),
                 "TransportEndpointLeaseStore",
                 "DeliveryCommandConsumerRegistry",
                 "WorkerPresenceIngress",
@@ -718,9 +718,9 @@ class TransportConvergenceArchitectureGuardTest {
                 "refreshEndpointLease",
                 "releaseEndpointLease"
         );
-        String source = Files.readString(pullWorkerSession);
+        String source = Files.readString(embeddedPullWorkerSession);
         assertTrue(source.contains("PullSessionEvidenceDriver"),
-                "PullWorkerSession must consume the runtime-resolved pull-session evidence driver");
+                "EmbeddedPullWorkerSession must consume the runtime-resolved pull-session evidence driver");
     }
 
     @Test
@@ -930,12 +930,16 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void sdkFacingPullWorkerSessionDoesNotExposeTransportOwnerIdGetters() throws IOException {
+    void sdkFacingEmbeddedPullWorkerSessionDoesNotExposeTransportOwnerIdGetters() throws IOException {
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/PullWorkerSession.java")),
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/EmbeddedPullWorkerSession.java")),
                 "public String routeKey(",
                 "public String connectionId(",
-                "public String adapterId("
+                "public String adapterId(",
+                "diagnostic(\"routeKey\"",
+                "diagnostic(\"adapterId\"",
+                "\"routeKey\"",
+                "\"adapterId\""
         );
     }
 

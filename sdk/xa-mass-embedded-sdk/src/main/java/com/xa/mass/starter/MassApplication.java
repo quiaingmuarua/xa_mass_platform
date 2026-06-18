@@ -16,8 +16,8 @@ import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.sdk.worker.InternalPullWorkerSessions;
-import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSessions;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
@@ -731,11 +731,11 @@ public class MassApplication {
                 && (!engineExpected || engine == null || engine.isRunning());
     }
 
-    public PullWorkerSession openPullWorkerSession(String workerId) {
-        return openPullWorkerSession(workerId, UUID.randomUUID().toString());
+    public EmbeddedPullWorkerSession openEmbeddedPullWorkerSession(String workerId) {
+        return openEmbeddedPullWorkerSession(workerId, UUID.randomUUID().toString());
     }
 
-    public PullWorkerSession openPullWorkerSession(String workerId, String sessionToken) {
+    public EmbeddedPullWorkerSession openEmbeddedPullWorkerSession(String workerId, String sessionToken) {
         if (transportRuntimeRegistry == null) {
             throw new IllegalStateException("Pull worker transport is unavailable for this runtime");
         }
@@ -746,10 +746,9 @@ public class MassApplication {
                 null,
                 worker.transportHint()
         );
-        return InternalPullWorkerSessions.open(
+        return EmbeddedPullWorkerSessions.open(
                 resolved.getWorkerId(),
                 resolved.getWorkerGroupId(),
-                resolved.getAdapterId(),
                 requireText(sessionToken, "sessionToken"),
                 resolved.getDeliveryPullChannel(),
                 resolved.getResultIngressChannel(),

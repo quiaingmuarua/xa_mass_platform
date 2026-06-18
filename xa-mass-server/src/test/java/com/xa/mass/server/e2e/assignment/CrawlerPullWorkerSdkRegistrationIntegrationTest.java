@@ -15,7 +15,7 @@ import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
-import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.sdk.worker.WorkerInvocation;
 import org.junit.jupiter.api.Test;
@@ -99,7 +99,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
 
         assertFalse(app.isWorkerReachable(workerId), "SDK registration must not create transport presence");
 
-        PullWorkerSession session = app.pullWorker(workerId);
+        EmbeddedPullWorkerSession session = app.pullWorker(workerId);
         session.connect();
         try {
             waitUntil(() -> app.isWorkerReachable(workerId), "pull session connect must surface worker reachability");

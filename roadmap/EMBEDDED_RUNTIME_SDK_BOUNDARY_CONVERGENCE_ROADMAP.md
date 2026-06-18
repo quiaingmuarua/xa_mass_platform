@@ -76,8 +76,8 @@ result convergence, auth policy, or public HTTP contracts.
 - `com.xa.mass.starter.*` and starter config classes are runtime assembly, not
   SDK contract. They currently live in `xa-mass-embedded-sdk`.
 - `WorkerClientOperations` is not a pure API extraction candidate today. It
-  exposes `PullWorkerSession`, `PulledTaskDispatch`, `TaskPullResult`, and
-  transport-owned `TaskResultReport`; `PullWorkerSession` imports transport
+  exposes `EmbeddedPullWorkerSession`, `PulledTaskDispatch`, `TaskPullResult`, and
+  transport-owned `TaskResultReport`; `EmbeddedPullWorkerSession` imports transport
   channel, lease, route, result, and runtime delivery types.
 - `MassRuntimeControl` and `RuleOperations` expose `RuleDefinition` from
   `xa-mass-kernel-spi`. Moving them to `xa-mass-embedded-sdk-api` requires an
@@ -287,7 +287,7 @@ Scope:
 - Keep these out of ERB-1 until ERB-2 settles their owner boundary:
   - `WorkerClientOperations`
   - `ExternalWorkerOperations`
-  - `PullWorkerSession`
+  - `EmbeddedPullWorkerSession`
   - `PulledTaskDispatch`
   - `TaskPullResult`
   - `TaskResultReport`
@@ -318,7 +318,7 @@ Acceptance:
 - `xa-mass-embedded-sdk-api` still has no dependency on engine, server,
   transport runtime/channel/lease/delivery, runtime implementation, or storage
   implementation modules.
-- `WorkerClientOperations`, `ExternalWorkerOperations`, `PullWorkerSession`,
+- `WorkerClientOperations`, `ExternalWorkerOperations`, `EmbeddedPullWorkerSession`,
   `TaskResultReport`, and transport session types are not introduced into
   `xa-mass-embedded-sdk-api` by this slice.
 - Public SDK compatibility checking is updated in the same slice so moved
@@ -334,7 +334,7 @@ Verification candidates:
 .\mvnw.cmd -pl sdk/xa-mass-embedded-sdk-api,sdk/xa-mass-embedded-sdk,xa-mass-server -am -DskipTests compile
 .\mvnw.cmd -pl sdk/xa-mass-embedded-sdk-api,sdk/xa-mass-embedded-sdk -am test
 if (rg -n "xa-mass-engine|xa-mass-server|xa-mass-transport-runtime|mass-runtime-memory|mass-storage-memory" sdk\xa-mass-embedded-sdk-api\pom.xml) { throw "embedded-sdk-api has a forbidden runtime/server dependency" }
-if (rg -n "WorkerClientOperations|ExternalWorkerOperations|PullWorkerSession|PulledTaskDispatch|TaskResultReport|TransportEndpointLease|DeliveryPullChannel" sdk\xa-mass-embedded-sdk-api\src\main\java) { throw "worker pull/session implementation types entered embedded-sdk-api before ERB-2" }
+if (rg -n "WorkerClientOperations|ExternalWorkerOperations|EmbeddedPullWorkerSession|PulledTaskDispatch|TaskResultReport|TransportEndpointLease|DeliveryPullChannel" sdk\xa-mass-embedded-sdk-api\src\main\java) { throw "worker pull/session implementation types entered embedded-sdk-api before ERB-2" }
 rg -n "japicmp|mass.sdk.api.baselineVersion|com\.xa\.mass\.sdk" sdk\*\pom.xml
 ```
 
@@ -352,7 +352,7 @@ Scope:
   - keep `WorkerClientOperations` as an SDK facade surface and introduce a
     runtime-owned server/internal worker pull/result port for server assembly.
 - Do not move `WorkerClientOperations` unchanged while it exposes
-  `PullWorkerSession`, `PulledTaskDispatch`, or transport-owned
+  `EmbeddedPullWorkerSession`, `PulledTaskDispatch`, or transport-owned
   `TaskResultReport`.
 - Decide whether `PulledTaskDispatch` and `TaskPullResult` are API DTOs,
   runtime DTOs, or SDK facade DTOs; remove transport helper dependencies before
@@ -391,7 +391,7 @@ Verification candidates:
 ```powershell
 .\mvnw.cmd -pl sdk/xa-mass-embedded-sdk-api,sdk/xa-mass-embedded-sdk,xa-mass-server -am -DskipTests compile
 if (rg -n "import com\.xa\.mass\.transport\.(channel|lease|runtime)|import com\.xa\.mass\.transport\.model\.TaskResultReport" sdk\xa-mass-embedded-sdk-api\src\main\java) { throw "transport session/result implementation imports entered embedded-sdk-api" }
-rg -n "WorkerClientOperations|ExternalWorkerOperations|PullWorkerSession|PulledTaskDispatch|TaskPullResult|TaskResultReport|RuleOperations|MassRuntimeControl|MassBootstrapDataProvider" sdk\xa-mass-embedded-sdk-api\src\main\java sdk\xa-mass-embedded-sdk\src\main\java xa-mass-server\src\main\java
+rg -n "WorkerClientOperations|ExternalWorkerOperations|EmbeddedPullWorkerSession|PulledTaskDispatch|TaskPullResult|TaskResultReport|RuleOperations|MassRuntimeControl|MassBootstrapDataProvider" sdk\xa-mass-embedded-sdk-api\src\main\java sdk\xa-mass-embedded-sdk\src\main\java xa-mass-server\src\main\java
 rg -n "<artifactId>xa-mass-kernel-spi</artifactId>|<artifactId>xa-mass-transport" sdk\xa-mass-embedded-sdk-api\pom.xml
 ```
 

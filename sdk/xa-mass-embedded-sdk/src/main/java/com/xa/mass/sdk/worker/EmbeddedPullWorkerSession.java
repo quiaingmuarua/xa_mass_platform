@@ -13,16 +13,18 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * SDK-facing pull worker session for crawlers, queue consumers, and other
- * executors that receive work by polling instead of server push.
+ * Embedded SDK pull worker session handle.
+ *
+ * <p>This is an in-process MassApplication facade over the resolved polling
+ * transport. External Java worker processes use xa-mass-java-sdk runtimes
+ * instead of this embedded runtime handle.</p>
  */
-public class PullWorkerSession {
+public final class EmbeddedPullWorkerSession {
 
     private final String workerId;
     private final String workerGroupId;
-    private final String adapterId;
-    private final String routeKey;
-    private final String connectionId;
+    private final String endpointAddress;
+    private final String sessionToken;
     private final DeliveryPullChannel deliveryPullChannel;
     private final WorkerInvocationPayloadDecoder payloadDecoder;
     private final TransportResultIngressChannel resultIngressChannel;
@@ -30,22 +32,20 @@ public class PullWorkerSession {
     private final PullSessionEvidenceDriver evidenceDriver;
     private final String transportHint;
 
-    PullWorkerSession(String workerId,
-                      String workerGroupId,
-                      String adapterId,
-                      String connectionId,
-                      DeliveryPullChannel deliveryPullChannel,
-                      TransportResultIngressChannel resultIngressChannel,
-                      PullSessionEvidenceDriver evidenceDriver,
-                      String transportHint) {
+    EmbeddedPullWorkerSession(String workerId,
+                              String workerGroupId,
+                              String sessionToken,
+                              DeliveryPullChannel deliveryPullChannel,
+                              TransportResultIngressChannel resultIngressChannel,
+                              PullSessionEvidenceDriver evidenceDriver,
+                              String transportHint) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
         }
         this.workerId = workerId.trim();
         this.workerGroupId = requireText(workerGroupId, "workerGroupId");
-        this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
-        this.routeKey = CanonicalWorkerGroupRouteKeyCodec.encode(this.workerGroupId);
-        this.connectionId = requireText(connectionId, "connectionId");
+        this.endpointAddress = CanonicalWorkerGroupRouteKeyCodec.encode(this.workerGroupId);
+        this.sessionToken = requireText(sessionToken, "sessionToken");
         this.deliveryPullChannel = Objects.requireNonNull(deliveryPullChannel, "deliveryPullChannel");
         this.payloadDecoder = new WorkerInvocationPayloadDecoder();
         this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
@@ -78,8 +78,8 @@ public class PullWorkerSession {
         return evidenceDriver.connect(
                 workerId,
                 workerGroupId,
-                routeKey,
-                connectionId,
+                endpointAddress,
+                sessionToken,
                 normalizeReason(reason, "pull-session-connect")
         );
     }
@@ -96,8 +96,8 @@ public class PullWorkerSession {
         return evidenceDriver.disconnect(
                 workerId,
                 workerGroupId,
-                routeKey,
-                connectionId,
+                endpointAddress,
+                sessionToken,
                 normalizeReason(reason, "pull-session-disconnect")
         );
     }
@@ -114,8 +114,8 @@ public class PullWorkerSession {
         return evidenceDriver.heartbeat(
                 workerId,
                 workerGroupId,
-                routeKey,
-                connectionId,
+                endpointAddress,
+                sessionToken,
                 normalizeReason(reason, "pull-session-heartbeat")
         );
     }
@@ -168,7 +168,7 @@ public class PullWorkerSession {
         return resultIngressChannel.ingest(resultCallbackCodec.toEnvelope(
                 request,
                 request.resultCorrelationRef(),
-                diagnostics(null)
+                Map.of()
         ));
     }
 
@@ -182,16 +182,6 @@ public class PullWorkerSession {
                 resultCode,
                 result
         ));
-    }
-
-    private Map<String, String> diagnostics(String traceId) {
-        java.util.LinkedHashMap<String, String> values = new java.util.LinkedHashMap<>();
-        values.put("adapterId", adapterId);
-        values.put("routeKey", routeKey);
-        if (traceId != null && !traceId.isBlank()) {
-            values.put("traceId", traceId);
-        }
-        return Map.copyOf(values);
     }
 
     private String normalizeReason(String reason, String defaultReason) {

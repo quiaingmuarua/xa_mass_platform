@@ -86,7 +86,7 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.auth.PrincipalType;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.authz.TaskOwnershipStamp;
-import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
@@ -449,7 +449,7 @@ class MassSdkTest {
     }
 
     @Test
-    void workerLifecycleFacadePublishesPresenceOnceThroughPullWorkerSession() {
+    void workerLifecycleFacadePublishesPresenceOnceThroughEmbeddedPullWorkerSession() {
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
         MassApplication delegate = MassApplicationBuilder.create()
                 .transport(transport -> transport
@@ -3050,7 +3050,7 @@ class MassSdkTest {
                     .transportHint("polling")
                     .build());
 
-            PullWorkerSession session = app.pullWorker("polling-worker-canonical");
+            EmbeddedPullWorkerSession session = app.pullWorker("polling-worker-canonical");
             Assertions.assertEquals(WorkerTransportHints.POLLING, session.transportHint());
         } finally {
             app.stop();
@@ -3093,7 +3093,7 @@ class MassSdkTest {
                     .transportHint("polling")
                     .build());
 
-            PullWorkerSession session = app.pullWorker("polling-worker-1");
+            EmbeddedPullWorkerSession session = app.pullWorker("polling-worker-1");
             session.connect("polling-worker-online");
 
             TaskDetailSnapshot task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()

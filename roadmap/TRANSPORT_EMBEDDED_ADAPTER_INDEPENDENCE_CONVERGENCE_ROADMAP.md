@@ -345,7 +345,7 @@ Verification candidates:
 ```bash
 rg -n "new PollingWorkerAdapter|pollingBinding\\(|registrationDescriptors\\(" transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/DefaultWorkerTransportRuntimeFactory.java
 rg -n "new PollingTransportAdapterBootstrap\\(" sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/TransportRuntimeComposition.java
-./mvnw -q -pl transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest,TransportConfigTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,EmbeddedPullWorkerSessionTest,MassApplicationDistributedTransportTest,TransportConfigTest -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests test-compile
 ```
 

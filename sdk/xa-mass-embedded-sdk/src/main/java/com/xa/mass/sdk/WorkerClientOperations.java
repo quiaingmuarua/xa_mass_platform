@@ -1,6 +1,6 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.sdk.worker.WorkerInvocation;
 import com.xa.mass.sdk.worker.WorkerPollResult;
 import com.xa.mass.sdk.worker.WorkerResultSubmission;
@@ -8,13 +8,13 @@ import com.xa.mass.sdk.worker.WorkerResultSubmission;
 import java.util.List;
 
 /**
- * External worker runtime interaction surface.
+ * Embedded worker runtime interaction surface.
  */
 public interface WorkerClientOperations {
 
     String getWorkerTransportHint(String workerId);
 
-    PullWorkerSession pullWorker(String workerId);
+    EmbeddedPullWorkerSession pullWorker(String workerId);
 
     void workerOnline(String workerId, String sessionToken, String reason);
 

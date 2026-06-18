@@ -533,7 +533,7 @@ Socket proof:
 Polling and SDK proof:
 
 ```bash
-./mvnw -q -pl transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,EmbeddedPullWorkerSessionTest,MassApplicationDistributedTransportTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Server/public worker smoke proof when worker wire or registration behavior is

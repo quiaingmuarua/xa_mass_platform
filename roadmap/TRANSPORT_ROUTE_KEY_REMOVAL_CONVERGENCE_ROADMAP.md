@@ -262,7 +262,7 @@ must stay out of assigned delivery and worker command mainlines.
 | `DeliveryCommand`, `AdapterDispatchRequest`, `DispatchOutcome`, pulled DTOs | already forbidden / absent | keep absent and guard |
 | `RouteEndpointIndex` | route-addressed session index | rename to endpoint/session index or replace with selected-worker plus endpointAddress indexes |
 | WebSocket/socket session managers | connect address, raw route send, logs, endpoint lease address | rename to endpointAddress/session address; final-hop remains selected-worker |
-| Polling `PullWorkerSession` | mints group-derived routeKey and sends it as presence/lease metadata | remove public route minting; use deliveryBucketId + workerId + session token, optionally internal endpointAddress |
+| Polling `EmbeddedPullWorkerSession` | mints group-derived routeKey and sends it as presence/lease metadata | remove public route minting; use deliveryBucketId + workerId + session token, optionally internal endpointAddress |
 | `CanonicalWorkerGroupRouteKeyCodec` | SDK/starter default route mint helper in transport API | delete or move to an adapter-local endpoint-address helper if still needed |
 | `WorkerSessionPresenceEvent` | session presence metadata | remove routeKey field; diagnostics only if needed |
 | `WorkerPresenceRuntime` / `InMemoryWorkerPresenceRuntime` | worker-runtime session presence currently stores routeKey | remove routeKey from session APIs and session records; do not rename it to endpointAddress |
@@ -569,7 +569,7 @@ Focused tests:
 ./mvnw -q -pl transport/transport_api,transport/transport_runtime -am test -Dtest=TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest,TransportEndpointLeaseStoreContractTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest
 ./mvnw -q -pl transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter -am test -Dtest=WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,WebSocketInputProcessorTest,WebSocketFrameReadersTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,ServerSessionManagerShutdownTest,SocketSessionManagerTest
 ./mvnw -q -pl xa-mass-worker-runtime -am test -Dtest=InMemoryWorkerPresenceRuntimeTest
-./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,PullWorkerSessionTest,WorkerRuntimePresenceIngressTest,MassApplicationDistributedTransportTest
+./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,EmbeddedPullWorkerSessionTest,WorkerRuntimePresenceIngressTest,MassApplicationDistributedTransportTest
 ./mvnw -q -pl sdk/xa-mass-java-sdk -am test -Dtest=WorkerClientTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest
 ./mvnw -q -pl xa-mass-server -am test -Dtest=ExternalWorkerApiControllerTest,ExternalWorkerRealtimeRegistrationIntegrationTest,ExternalWorkerPollingApiIntegrationTest
 ```

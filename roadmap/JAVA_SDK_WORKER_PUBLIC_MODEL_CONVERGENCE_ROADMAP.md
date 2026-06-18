@@ -595,7 +595,7 @@ Scope:
 - `WorkerResultSubmitRequest` in Java SDK and embedded SDK
 - `WorkerResultSubmitOutcome`
 - direct `WorkerClient.submitResult(...)` return shape
-- embedded SDK `PullWorkerSession` submit overloads
+- embedded SDK `EmbeddedPullWorkerSession` submit overloads
 - server external worker result-submit request/route shape
 - WebSocket result frame encoding and private queued-result shape
 - worker-pack WebSocket samples and test helpers that preserve old result frame
@@ -645,7 +645,7 @@ Verification candidates:
 
 ```bash
 rg -n "WorkerResultSubmitRequest|WorkerResultSubmitOutcome|detail|errorCode|output|OutboundResult|ExternalWorkerResultSubmitApiRequest" sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker xa-mass-server/src/main/java/com/xa/mass/api/model/worker integrations/xa-mass-worker-pack -g "*.java" -g "*.md"
-./mvnw -q -pl sdk/xa-mass-java-sdk,sdk/xa-mass-embedded-sdk,xa-mass-server -am test -Dtest=WorkerDispatchProcessorTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest,PullWorkerSessionTest,ExternalWorkerPollingApiIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl sdk/xa-mass-java-sdk,sdk/xa-mass-embedded-sdk,xa-mass-server -am test -Dtest=WorkerDispatchProcessorTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest,EmbeddedPullWorkerSessionTest,ExternalWorkerPollingApiIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 ## JSM-5 Converge Worker Invocation Contract
@@ -709,7 +709,7 @@ Verification candidates:
 ```bash
 rg -n "WorkerDispatchItem|PulledTaskDispatch|DispatchContext|taskId|attemptId|leaseToken|rawItem" sdk/xa-mass-java-sdk sdk/xa-mass-embedded-sdk integrations xa-mass-server -g "*.java" -g "*.md"
 rg -n "WorkerDispatchItem|PulledTaskDispatch|TaskPullResult|TaskPullStatus|PulledTaskDispatchPayloadDecoder" sdk/xa-mass-java-sdk/src/main/java sdk/xa-mass-embedded-sdk/src/main/java xa-mass-server/src/main/java -g "*.java"
-./mvnw -q -pl sdk/xa-mass-java-sdk,sdk/xa-mass-embedded-sdk,xa-mass-server -am test -Dtest=WorkerDispatchProcessorTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest,PullWorkerSessionTest,ExternalWorkerPollingApiIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl sdk/xa-mass-java-sdk,sdk/xa-mass-embedded-sdk,xa-mass-server -am test -Dtest=WorkerDispatchProcessorTest,PollingWorkerSessionTest,WebSocketWorkerSessionTest,EmbeddedPullWorkerSessionTest,ExternalWorkerPollingApiIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 ## JSM-6 Collapse Handler And Session Helper Residue

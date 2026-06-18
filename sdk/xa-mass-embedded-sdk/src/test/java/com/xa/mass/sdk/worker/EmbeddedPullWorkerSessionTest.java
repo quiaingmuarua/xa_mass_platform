@@ -20,13 +20,14 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class PullWorkerSessionTest {
+class EmbeddedPullWorkerSessionTest {
 
     @Test
     void pollResultDelegatesToDeliveryPullChannelWithRegisteredWorkerId() {
@@ -34,7 +35,7 @@ class PullWorkerSessionTest {
         DeliveryPullResult expected = DeliveryPullResult.delivered(List.of(message("msg-1")));
         when(deliveryPullChannel.pollDeliveryMessagesResult("group-1", "worker-1", 5, 250L)).thenReturn(expected);
 
-        PullWorkerSession session = session(deliveryPullChannel, mock(TransportResultIngressChannel.class),
+        EmbeddedPullWorkerSession session = session(deliveryPullChannel, mock(TransportResultIngressChannel.class),
                 new InMemoryTransportEndpointLeaseStore());
 
         WorkerPollResult result = session.pollResult(5, 250L);
@@ -51,7 +52,7 @@ class PullWorkerSessionTest {
         when(deliveryPullChannel.pollDeliveryMessagesResult("group-1", "worker-1", 3, 100L))
                 .thenReturn(DeliveryPullResult.delivered(List.of(message("msg-1"), message("msg-2"))));
 
-        PullWorkerSession session = session(deliveryPullChannel, mock(TransportResultIngressChannel.class),
+        EmbeddedPullWorkerSession session = session(deliveryPullChannel, mock(TransportResultIngressChannel.class),
                 new InMemoryTransportEndpointLeaseStore());
 
         List<WorkerInvocation> items = session.poll(3, 100L);
@@ -61,11 +62,11 @@ class PullWorkerSessionTest {
     }
 
     @Test
-    void submitResultUsesSessionRouteKeyAndPulledAttemptContext() {
+    void submitResultUsesOpaqueCorrelationWithoutTransportDiagnostics() {
         TransportResultIngressChannel resultIngestChannel = mock(TransportResultIngressChannel.class);
         when(resultIngestChannel.ingest(any(TransportResultIngressEnvelope.class))).thenReturn(true);
 
-        PullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
+        EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
 
         WorkerInvocation item = new WorkerInvocation(
@@ -79,17 +80,18 @@ class PullWorkerSessionTest {
 
         var captured = org.mockito.ArgumentCaptor.forClass(TransportResultIngressEnvelope.class);
         verify(resultIngestChannel).ingest(captured.capture());
-        assertEquals(routeKey(), captured.getValue().diagnostic("routeKey"));
+        assertNull(captured.getValue().diagnostic("routeKey"));
+        assertNull(captured.getValue().diagnostic("adapterId"));
         assertEquals(item.getResultCorrelationRef(), captured.getValue().getPartitionKey());
         assertTrue(captured.getValue().getPayload().contains("\"resultCorrelationRef\":\"" + item.getResultCorrelationRef() + "\""));
     }
 
     @Test
-    void submitResultWithoutDispatchRouteKeyUsesCanonicalRouteKey() {
+    void submitResultWithCorrelationRefDoesNotExposeTransportDiagnostics() {
         TransportResultIngressChannel resultIngestChannel = mock(TransportResultIngressChannel.class);
         when(resultIngestChannel.ingest(any(TransportResultIngressEnvelope.class))).thenReturn(true);
 
-        PullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
+        EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
 
         String resultCorrelationRef = correlation("msg-1", "attempt-1");
@@ -97,7 +99,8 @@ class PullWorkerSessionTest {
 
         var captured = org.mockito.ArgumentCaptor.forClass(TransportResultIngressEnvelope.class);
         verify(resultIngestChannel).ingest(captured.capture());
-        assertEquals(routeKey(), captured.getValue().diagnostic("routeKey"));
+        assertNull(captured.getValue().diagnostic("routeKey"));
+        assertNull(captured.getValue().diagnostic("adapterId"));
         assertEquals(resultCorrelationRef, captured.getValue().getPartitionKey());
         assertTrue(captured.getValue().getPayload().contains("\"resultCorrelationRef\":\"" + resultCorrelationRef + "\""));
         assertTrue(captured.getValue().getPayload().contains("\"result\":\"ok\""));
@@ -107,7 +110,7 @@ class PullWorkerSessionTest {
     void connectHeartbeatDisconnectWritePresenceWithCanonicalRouteAndSessionToken() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        PullWorkerSession session = session(mock(DeliveryPullChannel.class), mock(TransportResultIngressChannel.class),
+        EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), mock(TransportResultIngressChannel.class),
                 endpointLeaseStore, presenceIngress);
 
         assertTrue(session.connectAndClaim("connected"));
@@ -142,37 +145,36 @@ class PullWorkerSessionTest {
                 presenceIngress.events);
     }
 
-    private static PullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
+    private static EmbeddedPullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
                                              TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore) {
         return session("conn-1", deliveryPullChannel, resultIngestChannel, endpointLeaseStore,
                 new RecordingWorkerPresenceIngress());
     }
 
-    private static PullWorkerSession staleSession(String connectionId,
+    private static EmbeddedPullWorkerSession staleSession(String sessionToken,
                                                   InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                                   WorkerPresenceIngress presenceIngress) {
-        return session(connectionId, mock(DeliveryPullChannel.class), mock(TransportResultIngressChannel.class), endpointLeaseStore,
+        return session(sessionToken, mock(DeliveryPullChannel.class), mock(TransportResultIngressChannel.class), endpointLeaseStore,
                 presenceIngress);
     }
 
-    private static PullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
+    private static EmbeddedPullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
                                              TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                              WorkerPresenceIngress presenceIngress) {
         return session("conn-1", deliveryPullChannel, resultIngestChannel, endpointLeaseStore, presenceIngress);
     }
 
-    private static PullWorkerSession session(String connectionId,
+    private static EmbeddedPullWorkerSession session(String sessionToken,
                                              DeliveryPullChannel deliveryPullChannel,
                                              TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                              WorkerPresenceIngress presenceIngress) {
-        return new PullWorkerSession(
+        return new EmbeddedPullWorkerSession(
                 "worker-1",
                 "group-1",
-                "polling",
-                connectionId,
+                sessionToken,
                 deliveryPullChannel,
                 resultIngestChannel,
                 evidenceDriver(endpointLeaseStore, presenceIngress),

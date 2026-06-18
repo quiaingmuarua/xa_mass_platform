@@ -52,7 +52,7 @@ import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.event.EventDefinitionRegistry;
 import com.xa.mass.sdk.event.EventHandler;
 import com.xa.mass.sdk.model.*;
-import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -674,16 +674,16 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public PullWorkerSession pullWorker(String workerId) {
+    public EmbeddedPullWorkerSession pullWorker(String workerId) {
         requireStartedEngine();
-        return delegate.openPullWorkerSession(workerId);
+        return delegate.openEmbeddedPullWorkerSession(workerId);
     }
 
     @Override
     public void workerOnline(String workerId, String sessionToken, String reason) {
         String normalizedWorkerId = requireWorkerId(workerId);
         String normalizedSessionToken = requireNonBlank(sessionToken, "sessionToken");
-        PullWorkerSession session = externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken);
+        EmbeddedPullWorkerSession session = embeddedPullWorkerSession(normalizedWorkerId, normalizedSessionToken);
         session.connectAndClaim(reason);
     }
 
@@ -691,7 +691,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public void workerHeartbeat(String workerId, String sessionToken, String reason) {
         String normalizedWorkerId = requireWorkerId(workerId);
         String normalizedSessionToken = requireNonBlank(sessionToken, "sessionToken");
-        PullWorkerSession session = externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken);
+        EmbeddedPullWorkerSession session = embeddedPullWorkerSession(normalizedWorkerId, normalizedSessionToken);
         session.refreshHeartbeatIfCurrent(reason);
     }
 
@@ -699,7 +699,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public void workerOffline(String workerId, String sessionToken, String reason) {
         String normalizedWorkerId = requireWorkerId(workerId);
         String normalizedSessionToken = requireNonBlank(sessionToken, "sessionToken");
-        PullWorkerSession session = externalPullWorkerSession(normalizedWorkerId, normalizedSessionToken);
+        EmbeddedPullWorkerSession session = embeddedPullWorkerSession(normalizedWorkerId, normalizedSessionToken);
         session.disconnectIfCurrent(reason);
     }
 
@@ -713,7 +713,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (maxMessages <= 0) {
             throw new IllegalArgumentException("maxMessages must be greater than 0");
         }
-        return externalPullWorkerSession(workerId).pollResult(maxMessages, timeoutMillis);
+        return embeddedPullWorkerSession(workerId).pollResult(maxMessages, timeoutMillis);
     }
 
     @Override
@@ -724,7 +724,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public boolean submitResult(String workerId, WorkerResultSubmission request) {
         Objects.requireNonNull(request, "request");
-        return externalPullWorkerSession(workerId).submitResult(
+        return embeddedPullWorkerSession(workerId).submitResult(
                 request
         );
     }
@@ -1342,12 +1342,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return stageName.trim();
     }
 
-    private PullWorkerSession externalPullWorkerSession(String workerId) {
+    private EmbeddedPullWorkerSession embeddedPullWorkerSession(String workerId) {
         return pullWorker(requireWorkerId(workerId));
     }
 
-    private PullWorkerSession externalPullWorkerSession(String workerId, String sessionToken) {
-        return delegate.openPullWorkerSession(requireWorkerId(workerId), requireNonBlank(sessionToken, "sessionToken"));
+    private EmbeddedPullWorkerSession embeddedPullWorkerSession(String workerId, String sessionToken) {
+        return delegate.openEmbeddedPullWorkerSession(requireWorkerId(workerId), requireNonBlank(sessionToken, "sessionToken"));
     }
 
     private WorkerGroupRecord toWorkerGroupRecord(WorkerGroupDeclaration declaration) {
