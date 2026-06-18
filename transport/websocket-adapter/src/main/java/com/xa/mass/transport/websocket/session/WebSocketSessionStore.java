@@ -15,7 +15,6 @@ public final class WebSocketSessionStore {
 
     private final String adapterId;
     private final RouteEndpointIndex<Channel, WebSocketSessionRecord> routeIndex = new RouteEndpointIndex<>();
-    private final java.util.concurrent.ConcurrentMap<Channel, String> deliveryBucketByChannel = new ConcurrentHashMap<>();
     private final Set<Channel> retiredChannels = ConcurrentHashMap.newKeySet();
     private final AtomicInteger activeConnectionCount = new AtomicInteger();
 
@@ -52,7 +51,6 @@ public final class WebSocketSessionStore {
         if (result.unchanged()) {
             return new BindResult(result.currentEntry().endpoint(), null, true, false, 0);
         }
-        deliveryBucketByChannel.put(channel, normalizedDeliveryBucketId);
         int activeCountDelta = 0;
         if (result.previousEntry() == null || result.previousEntry().handle() != channel) {
             activeConnectionCount.incrementAndGet();
@@ -65,7 +63,6 @@ public final class WebSocketSessionStore {
             replacedWorkerRecord = removed.removedEntry() != null
                     ? removed.removedEntry().endpoint()
                     : previousForWorker.endpoint();
-            deliveryBucketByChannel.remove(previousForWorker.handle());
             activeConnectionCount.updateAndGet(current -> Math.max(0, current - 1));
             retiredChannels.add(previousForWorker.handle());
             activeCountDelta--;
@@ -80,7 +77,6 @@ public final class WebSocketSessionStore {
             return new RemoveResult(null, false, retired, 0);
         }
         WebSocketSessionRecord removed = result.removedEntry() != null ? result.removedEntry().endpoint() : null;
-        deliveryBucketByChannel.remove(channel);
         int activeCountDelta = 0;
         if (result.removedCurrentRoute()) {
             activeConnectionCount.updateAndGet(current -> Math.max(0, current - 1));
@@ -92,7 +88,6 @@ public final class WebSocketSessionStore {
     public synchronized List<WebSocketSessionRecord> clear() {
         List<WebSocketSessionRecord> active = activeRecords();
         routeIndex.clear();
-        deliveryBucketByChannel.clear();
         retiredChannels.clear();
         activeConnectionCount.set(0);
         return active;
@@ -148,18 +143,9 @@ public final class WebSocketSessionStore {
         return List.copyOf(records);
     }
 
-    public String workerId(Channel channel) {
-        RouteEndpointIndex.Binding binding = routeIndex.bindingForHandle(channel);
-        return binding != null ? binding.workerId() : null;
-    }
-
-    public String endpointAddress(Channel channel) {
-        RouteEndpointIndex.Binding binding = routeIndex.bindingForHandle(channel);
-        return binding != null ? binding.routeKey() : null;
-    }
-
-    public String deliveryBucketId(Channel channel) {
-        return deliveryBucketByChannel.get(channel);
+    public WebSocketSessionRecord recordForChannel(Channel channel) {
+        RouteEndpointIndex.Entry<Channel, WebSocketSessionRecord> entry = routeIndex.entryForHandle(channel);
+        return entry != null ? entry.endpoint() : null;
     }
 
     public int activeConnectionCount() {

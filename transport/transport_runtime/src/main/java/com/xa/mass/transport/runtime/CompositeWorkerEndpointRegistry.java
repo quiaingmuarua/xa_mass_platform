@@ -45,9 +45,13 @@ public final class CompositeWorkerEndpointRegistry
     }
 
     @Override
-    public synchronized boolean sendToSelectedWorker(String adapterId, String selectedWorkerId, String message) {
-        WorkerEndpointRegistry registry = registryForAdapter(adapterId);
-        return registry != null && registry.sendToSelectedWorker(adapterId, selectedWorkerId, message);
+    public synchronized boolean sendToSelectedWorker(String selectedWorkerId, String message) {
+        for (WorkerEndpointRegistry registry : uniqueRegistries()) {
+            if (registry.sendToSelectedWorker(selectedWorkerId, message)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -70,13 +74,6 @@ public final class CompositeWorkerEndpointRegistry
     private List<WorkerEndpointRegistry> uniqueRegistries() {
         Set<WorkerEndpointRegistry> unique = new LinkedHashSet<>(registriesByAdapterId.values());
         return List.copyOf(unique);
-    }
-
-    private WorkerEndpointRegistry registryForAdapter(String adapterId) {
-        if (adapterId == null || adapterId.isBlank()) {
-            return null;
-        }
-        return registriesByAdapterId.get(normalizeAdapterId(adapterId));
     }
 
     private static String normalizeAdapterId(String adapterId) {

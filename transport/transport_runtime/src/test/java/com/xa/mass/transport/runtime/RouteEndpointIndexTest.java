@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteEndpointIndexTest {
@@ -64,5 +65,21 @@ class RouteEndpointIndexTest {
 
         assertTrue(index.entriesForWorker("worker-2").isEmpty());
         assertEquals("endpoint-a", index.entryForWorker("worker-1").endpoint());
+    }
+
+    @Test
+    void handleLookupReturnsCurrentEntry() {
+        RouteEndpointIndex<String, String> index = new RouteEndpointIndex<>();
+        index.bind("route-1", "worker-1", "handle-a", "endpoint-a", endpoint -> true);
+
+        RouteEndpointIndex.Entry<String, String> entry = index.entryForHandle("handle-a");
+
+        assertEquals("route-1", entry.routeKey());
+        assertEquals("worker-1", entry.workerId());
+        assertEquals("endpoint-a", entry.endpoint());
+
+        index.removeByHandle("handle-a");
+
+        assertNull(index.entryForHandle("handle-a"));
     }
 }

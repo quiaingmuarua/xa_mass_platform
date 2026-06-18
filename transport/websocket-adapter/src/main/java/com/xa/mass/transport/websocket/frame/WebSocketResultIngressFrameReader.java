@@ -2,7 +2,6 @@ package com.xa.mass.transport.websocket.frame;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.transport.model.TransportResultIngressEnvelope;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessage;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
 
 import java.util.LinkedHashMap;
@@ -34,7 +33,7 @@ public final class WebSocketResultIngressFrameReader {
                 && parser.readBoolean(frame, SUCCESS_FIELD) != null;
     }
 
-    public TransportResultIngressEnvelope toEnvelope(JsonObject frame, WebSocketInboundMessage inboundMessage) {
+    public TransportResultIngressEnvelope toEnvelope(JsonObject frame) {
         String resultCorrelationRef = parser.readString(frame, RESULT_CORRELATION_REF_FIELD);
         if (resultCorrelationRef == null) {
             throw new IllegalArgumentException(RESULT_CORRELATION_REF_FIELD + " is required");
@@ -42,10 +41,7 @@ public final class WebSocketResultIngressFrameReader {
         if (parser.readBoolean(frame, SUCCESS_FIELD) == null) {
             throw new IllegalArgumentException(SUCCESS_FIELD + " is required");
         }
-        String routeKey = WebSocketStringValues.firstNonBlank(
-                parser.readString(frame, ROUTE_KEY_FIELD),
-                inboundMessage != null ? inboundMessage.getRouteKey() : null
-        );
+        String routeKey = WebSocketStringValues.firstNonBlank(parser.readString(frame, ROUTE_KEY_FIELD));
         String traceId = WebSocketStringValues.firstNonBlank(
                 parser.readString(frame, TRACE_ID_FIELD),
                 resultCorrelationRef

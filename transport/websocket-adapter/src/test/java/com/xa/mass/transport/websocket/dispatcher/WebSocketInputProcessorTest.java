@@ -76,7 +76,7 @@ class WebSocketInputProcessorTest {
     }
 
     @Test
-    void canonicalTaskResultUsesInboundMetadataWhenFrameOmitsWorkerId() {
+    void canonicalTaskResultDoesNotUseSessionRouteMetadata() {
         AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
         context = createContext(envelope -> {
             capturedEnvelope.set(envelope);
@@ -92,13 +92,12 @@ class WebSocketInputProcessorTest {
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 frameParser.toJson(frame),
                 "worker-from-handshake",
-                "route-from-handshake",
                 "endpoint-1"
         ));
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertEquals("route-from-handshake", capturedEnvelope.get().diagnostic("routeKey"));
+        assertNull(capturedEnvelope.get().diagnostic("routeKey"));
         assertEquals("corr-1", capturedEnvelope.get().getPartitionKey());
         assertPayload(capturedEnvelope.get(), "corr-1", true, "ok");
     }
@@ -121,14 +120,13 @@ class WebSocketInputProcessorTest {
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 "not-json-but-already-parsed",
                 "worker-from-session",
-                "route-from-session",
                 "endpoint-1",
                 frame
         ));
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertEquals("route-from-session", capturedEnvelope.get().diagnostic("routeKey"));
+        assertNull(capturedEnvelope.get().diagnostic("routeKey"));
         assertEquals("corr-1", capturedEnvelope.get().getPartitionKey());
         assertPayload(capturedEnvelope.get(), "corr-1", true, "ok");
     }
@@ -151,7 +149,6 @@ class WebSocketInputProcessorTest {
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 frameParser.toJson(frame),
                 "worker-from-session",
-                "route-from-session",
                 "endpoint-1"
         ));
 
@@ -186,7 +183,6 @@ class WebSocketInputProcessorTest {
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 frameParser.toJson(frame),
                 "worker-1",
-                "route-1",
                 "endpoint-1"
         ));
 

@@ -24,7 +24,6 @@ class SocketTaskDispatchChannelTest {
     void dispatchReturnsSentWhenEndpointRegistryAcceptsMessage() {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         when(endpointRegistry.sendToSelectedWorker(
-                org.mockito.ArgumentMatchers.eq("socket"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(true);
@@ -35,7 +34,6 @@ class SocketTaskDispatchChannelTest {
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
         verify(endpointRegistry).sendToSelectedWorker(
-                org.mockito.ArgumentMatchers.eq("socket"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any());
     }
@@ -44,7 +42,6 @@ class SocketTaskDispatchChannelTest {
     void dispatchReturnsEndpointOfflineWhenEndpointRegistryRejectsMessage() {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         when(endpointRegistry.sendToSelectedWorker(
-                org.mockito.ArgumentMatchers.eq("socket"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(false);

@@ -9,7 +9,7 @@ package com.xa.mass.transport;
  */
 public interface WorkerEndpointRegistry {
 
-    boolean sendToSelectedWorker(String adapterId, String selectedWorkerId, String message);
+    boolean sendToSelectedWorker(String selectedWorkerId, String message);
 
     int getActiveConnectionCount();
 

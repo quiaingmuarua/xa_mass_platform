@@ -608,10 +608,47 @@ class TransportConvergenceArchitectureGuardTest {
                 "WebSocket session controller must not own endpoint lease or presence wiring setters");
         assertTrue(!sessionControllerSource.contains("sendToSelectedWorker("),
                 "WebSocket session controller must not own selected-worker final-hop send");
+        String serverSessionHandleSource = Files.readString(repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketServerSessionHandle.java"));
+        assertTrue(serverSessionHandleSource.contains("WebSocketServerSession currentSession(Channel channel)"),
+                "WebSocket server session handle should expose one bounded current-session view");
+        assertTrue(!serverSessionHandleSource.contains("getWorkerId(")
+                        && !serverSessionHandleSource.contains("getEndpointAddress(")
+                        && !serverSessionHandleSource.contains("getDeliveryBucketId(")
+                        && !serverSessionHandleSource.contains("getChannelContext("),
+                "WebSocket server session handle must not expose route/bucket/channel-context index getters");
+        String serverSessionSource = Files.readString(repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketServerSession.java"));
+        assertTrue(!serverSessionSource.contains("endpointAddress")
+                        && !serverSessionSource.contains("routeKey")
+                        && !serverSessionSource.contains("deliveryBucketId"),
+                "WebSocket server session view must not expose endpoint address, route, or delivery bucket metadata");
+        String inboundMessageSource = Files.readString(repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketInboundMessage.java"));
+        assertTrue(!inboundMessageSource.contains("routeKey")
+                        && !inboundMessageSource.contains("endpointAddress")
+                        && !inboundMessageSource.contains("deliveryBucketId"),
+                "WebSocket inbound message must not inherit endpoint address, route, or delivery bucket metadata from the session");
         Path selectedWorkerRegistry = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSelectedWorkerRegistry.java");
         String selectedWorkerRegistrySource = Files.readString(selectedWorkerRegistry);
         assertTrue(selectedWorkerRegistrySource.contains("implements WorkerEndpointRegistry"),
                 "WebSocket assigned delivery must use a selected-worker-only endpoint registry");
+        assertTrue(!selectedWorkerRegistrySource.contains("String adapterId"),
+                "WebSocket selected-worker endpoint registry must not retain adapterId as a send or construction fact");
+        String endpointRegistrySource = Files.readString(repoRoot().resolve(
+                "transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointRegistry.java"));
+        assertTrue(endpointRegistrySource.contains("sendToSelectedWorker(String selectedWorkerId, String message)"),
+                "WorkerEndpointRegistry selected-worker send contract must not expose adapter/route/connection ids");
+        assertTrue(!endpointRegistrySource.contains("sendToSelectedWorker(String adapterId"),
+                "WorkerEndpointRegistry must not use adapterId as a selected-worker send key");
+        assertTrue(!taskDispatchSource.contains("sendToSelectedWorker(\n                            adapterId()")
+                        && !taskDispatchSource.contains("sendToSelectedWorker(\r\n                            adapterId()"),
+                "WebSocket assigned delivery must not pass adapterId into selected-worker endpoint send");
+        String socketDispatchSource = Files.readString(repoRoot().resolve(
+                "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java"));
+        assertTrue(!socketDispatchSource.contains("sendToSelectedWorker(\n                            adapterId()")
+                        && !socketDispatchSource.contains("sendToSelectedWorker(\r\n                            adapterId()"),
+                "Socket assigned delivery must not pass adapterId into selected-worker endpoint send");
         Path endpointInspector = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketEndpointInspector.java");
         assertTrue(Files.exists(endpointInspector), "WebSocket diagnostics must live in a dedicated inspector");
         Path serverFactoryContext = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketServerFactoryContext.java");

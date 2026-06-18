@@ -94,24 +94,9 @@ public final class WebSocketSessionController implements WebSocketServerSessionH
     }
 
     @Override
-    public String getWorkerId(Channel channel) {
-        return store.workerId(channel);
-    }
-
-    @Override
-    public String getEndpointAddress(Channel channel) {
-        return store.endpointAddress(channel);
-    }
-
-    @Override
-    public String getDeliveryBucketId(Channel channel) {
-        return store.deliveryBucketId(channel);
-    }
-
-    @Override
-    public ChannelHandlerContext getChannelContext(String endpointAddress) {
-        WebSocketSessionRecord record = store.activeRecordForEndpointAddress(endpointAddress);
-        return record != null ? record.context() : null;
+    public WebSocketServerSession currentSession(Channel channel) {
+        WebSocketSessionRecord record = store.recordForChannel(channel);
+        return record != null && record.isActive() ? WebSocketServerSession.from(record) : null;
     }
 
 }

@@ -61,7 +61,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         );
         WebSocketSelectedWorkerSender selectedWorkerSender = new WebSocketSelectedWorkerSender(sessionStore);
         WebSocketSelectedWorkerRegistry selectedWorkerRegistry = new WebSocketSelectedWorkerRegistry(
-                config.getAdapterId(),
                 sessionStore,
                 selectedWorkerSender,
                 sessionController

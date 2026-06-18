@@ -571,13 +571,14 @@ Current runtime rules:
   managed session omits it, the adapter/server side mints an internal opaque
   endpoint address from stable bucket/session context such as worker group.
 - task dispatch endpoint registries must expose selected-worker addressing,
-  such as `sendToSelectedWorker(adapterId, selectedWorkerId, message)`, with no
+  such as `sendToSelectedWorker(selectedWorkerId, message)`, with no adapter,
+  route, connection, or endpoint-owner id in the send contract and with no
   default implementation that drops the selected worker and falls back to
   route-only send. Route-only send is reserved for explicit raw/manual
   side-channels.
-- `adapterId` is never a worker-selection input. It may help transport resolve
-  the local adapter executor or raw/manual side-channel after a selected worker
-  and endpoint evidence already exist.
+- `adapterId` is never a worker-selection or selected-worker send input. It may
+  help transport register local adapter metadata or raw/manual side-channel
+  diagnostics after a selected worker and endpoint evidence already exist.
 - `WorkerEndpointRegistry` is the assigned-task selected-worker endpoint
   contract. Route-only raw/manual sends are separated behind
   `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`; assigned task

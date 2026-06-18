@@ -3,7 +3,6 @@ package com.xa.mass.transport.websocket.frame;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.xa.mass.transport.model.TransportResultIngressEnvelope;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessage;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -69,10 +68,7 @@ class WebSocketFrameReadersTest {
         frame.add("output", payload("status", "SUCCESS"));
 
         assertTrue(reader.isResultFrame(frame));
-        TransportResultIngressEnvelope envelope = reader.toEnvelope(
-                frame,
-                WebSocketInboundMessage.of(parser.toJson(frame), "worker-1", "session-route", "endpoint-1")
-        );
+        TransportResultIngressEnvelope envelope = reader.toEnvelope(frame);
 
         assertEquals("websocket", envelope.diagnostic("adapterId"));
         assertEquals("inline-route", envelope.diagnostic("routeKey"));

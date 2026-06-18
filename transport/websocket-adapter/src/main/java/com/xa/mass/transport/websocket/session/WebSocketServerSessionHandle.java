@@ -13,11 +13,5 @@ public interface WebSocketServerSessionHandle {
 
     void removeSession(Channel channel);
 
-    String getWorkerId(Channel channel);
-
-    String getEndpointAddress(Channel channel);
-
-    String getDeliveryBucketId(Channel channel);
-
-    ChannelHandlerContext getChannelContext(String endpointAddress);
+    WebSocketServerSession currentSession(Channel channel);
 }

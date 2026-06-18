@@ -45,7 +45,6 @@ public final class WebSocketTaskDispatchChannel implements AdapterCommandExecuto
                 commands,
                 command -> {
                     boolean sent = context.getEndpointRegistry().sendToSelectedWorker(
-                            adapterId(),
                             command.getSelectedWorkerId(),
                             command.getPayload()
                     );

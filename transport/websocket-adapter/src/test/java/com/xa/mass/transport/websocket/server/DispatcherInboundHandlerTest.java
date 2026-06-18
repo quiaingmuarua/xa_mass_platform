@@ -5,6 +5,7 @@ import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
+import com.xa.mass.transport.websocket.session.WebSocketServerSession;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
 import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
 import com.xa.mass.transport.websocket.session.WebSocketSessionRefreshLoop;
@@ -115,7 +116,7 @@ class DispatcherInboundHandlerTest {
         ));
 
         assertEquals(1, sessionStore.activeConnectionCount());
-        assertNotNull(sessionController.getChannelContext("ws-route-1"));
+        assertNotNull(sessionController.currentSession(channel));
     }
 
     @Test
@@ -127,8 +128,9 @@ class DispatcherInboundHandlerTest {
         ));
 
         assertEquals(1, sessionStore.activeConnectionCount());
-        assertEquals("bucket:bucket-1", sessionController.getEndpointAddress(channel));
-        assertNotNull(sessionController.getChannelContext("bucket:bucket-1"));
+        WebSocketServerSession session = sessionController.currentSession(channel);
+        assertNotNull(session);
+        assertNotNull(sessionStore.activeRecordForEndpointAddress("bucket:bucket-1"));
     }
 
     @Test
@@ -155,11 +157,10 @@ class DispatcherInboundHandlerTest {
         assertNull(sentFrame.get());
         assertEquals(controlJson, acceptedInboundMessage.get().getRawJson());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
-        assertEquals("ws-route-1", acceptedInboundMessage.get().getRouteKey());
         assertEquals("test-ch", acceptedInboundMessage.get().getEndpointId());
         assertNotNull(acceptedInboundMessage.get().getParsedFrame());
         assertEquals(1, sessionStore.activeConnectionCount());
-        assertNotNull(sessionController.getChannelContext("ws-route-1"));
+        assertNotNull(sessionStore.activeRecordForEndpointAddress("ws-route-1"));
     }
 
     @Test
@@ -185,9 +186,8 @@ class DispatcherInboundHandlerTest {
 
         assertNull(sentFrame.get());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
-        assertEquals("ws-route-11", acceptedInboundMessage.get().getRouteKey());
-        assertNotNull(sessionController.getChannelContext("ws-route-11"));
-        assertNull(sessionController.getChannelContext("worker-1"));
+        assertNotNull(sessionStore.activeRecordForEndpointAddress("ws-route-11"));
+        assertNull(sessionStore.activeRecordForEndpointAddress("worker-1"));
     }
 
     @Test
@@ -199,10 +199,11 @@ class DispatcherInboundHandlerTest {
         ));
 
         assertEquals(1, sessionStore.activeConnectionCount());
-        assertNotNull(sessionController.getChannelContext("ws-route-9"));
-        assertNull(sessionController.getChannelContext("worker-1"));
-        assertEquals("worker-1", sessionController.getWorkerId(channel));
-        assertEquals("ws-route-9", sessionController.getEndpointAddress(channel));
+        WebSocketServerSession session = sessionController.currentSession(channel);
+        assertNotNull(session);
+        assertEquals("worker-1", session.workerId());
+        assertNotNull(sessionStore.activeRecordForEndpointAddress("ws-route-9"));
+        assertNull(sessionStore.activeRecordForEndpointAddress("worker-1"));
     }
 
     @Test
@@ -231,7 +232,7 @@ class DispatcherInboundHandlerTest {
         assertNotNull(accepted);
         assertTrue(accepted.contains("\"eventCode\": \"mock.state.get\"")
                 || accepted.contains("\"eventCode\":\"mock.state.get\""));
-        assertNotNull(sessionController.getChannelContext("ws-route-1"));
+        assertNotNull(sessionStore.activeRecordForEndpointAddress("ws-route-1"));
     }
 
     @Test
@@ -261,7 +262,6 @@ class DispatcherInboundHandlerTest {
         assertNull(sentFrame.get());
         assertNotNull(acceptedInboundMessage.get());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
-        assertEquals("ws-route-1", acceptedInboundMessage.get().getRouteKey());
     }
 
     @Test
@@ -336,8 +336,7 @@ class WebSocketServerImplDisconnectTest {
         assertEquals(0L, server.getActiveConnectionCount());
         assertEquals(0, sessionStore.activeConnectionCount());
         assertNull(sessionStore.activeRecordForEndpointAddress("worker-1"));
-        assertNull(sessionController.getWorkerId(channel));
-        assertNull(sessionController.getEndpointAddress(channel));
+        assertNull(sessionController.currentSession(channel));
     }
 
     @Test

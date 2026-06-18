@@ -146,10 +146,11 @@ Assigned delivery must enter the WebSocket adapter through one path:
 DeliveryCommand -> WebSocketTaskDispatchChannel -> WebSocketSelectedWorkerSender
 ```
 
-The selected-worker sender may only use `adapterId`, `selectedWorkerId`, and
-the already-opaque worker payload to attempt a local channel write. It must not
-touch endpoint lease stores, worker-presence ingress, raw route channels, or
-diagnostic inspectors.
+The selected-worker sender may only use `selectedWorkerId` and the
+already-opaque worker payload to attempt a local channel write. It must not use
+`adapterId`, route, connection, or endpoint-owner ids as delivery correctness,
+and must not touch endpoint lease stores, worker-presence ingress, raw route
+channels, or diagnostic inspectors.
 
 Session evidence must enter the runtime through one path:
 

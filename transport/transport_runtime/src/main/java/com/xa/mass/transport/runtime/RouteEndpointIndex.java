@@ -83,6 +83,11 @@ public final class RouteEndpointIndex<H, E> {
         return bindingByHandle.get(handle);
     }
 
+    public Entry<H, E> entryForHandle(H handle) {
+        Binding binding = bindingByHandle.get(handle);
+        return binding != null ? entryForHandle(handle, binding.routeKey()) : null;
+    }
+
     public Entry<H, E> entryForRoute(String routeKey) {
         List<Entry<H, E>> entries = entriesForRoute(routeKey);
         return entries.isEmpty() ? null : entries.getFirst();

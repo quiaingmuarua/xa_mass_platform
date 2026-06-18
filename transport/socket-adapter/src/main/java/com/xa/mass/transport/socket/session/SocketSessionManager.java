@@ -154,10 +154,7 @@ public final class SocketSessionManager
     }
 
     @Override
-    public boolean sendToSelectedWorker(String adapterId, String selectedWorkerId, String message) {
-        if (!matchesAdapter(adapterId)) {
-            return false;
-        }
+    public boolean sendToSelectedWorker(String selectedWorkerId, String message) {
         String normalizedSelectedWorkerId = normalizeNullable(selectedWorkerId);
         if (normalizedSelectedWorkerId == null) {
             return false;

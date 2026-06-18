@@ -42,10 +42,10 @@ class CompositeWorkerEndpointRegistryTest {
     }
 
     @Test
-    void selectedWorkerOperationsRequireMatchingAdapter() {
+    void selectedWorkerSendReturnsFalseWhenNoRegistryCanDeliver() {
         CompositeWorkerEndpointRegistry registry = new CompositeWorkerEndpointRegistry();
         TestRegistry websocket = new TestRegistry(
-                true
+                false
         );
         TestRegistry socket = new TestRegistry(
                 false
@@ -54,13 +54,13 @@ class CompositeWorkerEndpointRegistryTest {
         registry.register("websocket", websocket);
         registry.register("socket", socket);
 
-        assertFalse(registry.sendToSelectedWorker("unknown", "worker-a", "{\"hello\":1}"));
-        assertFalse(websocket.selectedWorkerSendInvoked);
-        assertFalse(socket.selectedWorkerSendInvoked);
+        assertFalse(registry.sendToSelectedWorker("worker-a", "{\"hello\":1}"));
+        assertTrue(websocket.selectedWorkerSendInvoked);
+        assertTrue(socket.selectedWorkerSendInvoked);
     }
 
     @Test
-    void selectedWorkerSendUsesAdapterScopedRegistryWithoutRouteFallback() {
+    void selectedWorkerSendStopsAtFirstRegistryThatCanDeliver() {
         CompositeWorkerEndpointRegistry registry = new CompositeWorkerEndpointRegistry();
         TestRegistry websocket = new TestRegistry(
                 true
@@ -72,7 +72,7 @@ class CompositeWorkerEndpointRegistryTest {
         registry.register("websocket", websocket);
         registry.register("socket", socket);
 
-        assertTrue(registry.sendToSelectedWorker("websocket", "worker-a", "{\"hello\":1}"));
+        assertTrue(registry.sendToSelectedWorker("worker-a", "{\"hello\":1}"));
         assertTrue(websocket.selectedWorkerSendInvoked);
         assertEquals("worker-a", websocket.lastSelectedWorkerId);
         assertFalse(socket.selectedWorkerSendInvoked);
@@ -109,7 +109,7 @@ class CompositeWorkerEndpointRegistryTest {
         }
 
         @Override
-        public boolean sendToSelectedWorker(String adapterId, String selectedWorkerId, String message) {
+        public boolean sendToSelectedWorker(String selectedWorkerId, String message) {
             selectedWorkerSendInvoked = true;
             lastSelectedWorkerId = selectedWorkerId;
             return sendResult;

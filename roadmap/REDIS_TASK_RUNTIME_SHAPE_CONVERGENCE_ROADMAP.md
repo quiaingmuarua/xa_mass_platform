@@ -5,8 +5,11 @@ Status: proposed direction document.
 This roadmap converges the Redis physical layout behind task runtime truth:
 `TaskWorkRuntime` and `TaskResultRuntime`. It follows the same lesson as the
 worker-runtime cleanup: first keep upper runtime and engine callers independent
-of physical Redis shape, then replace the Redis-internal layout. The first
-concrete targets are the current per-message key families:
+of physical Redis shape, then replace the Redis-internal layout. For task work,
+the target direction is now Redis Stream based, eventual-consistency delivery:
+task item delivery is at-least-once, result convergence is idempotent, and
+Redis does not select workers. For result rows, the first target remains
+removing one key per stable-final visible row.
 
 ```text
 xa:mass:runtime:v1:task:{taskId}:work:{messageId}
@@ -29,13 +32,20 @@ Read with:
   engine: enqueue, ready task discovery, claim, result apply with context,
   expiry polling, active lease reads, stats, recent final receipts, and task
   discard.
+- Current `TaskWorkRuntime#claimReady(...)` accepts worker claim targets and
+  `ClaimedTaskWork` returns a selected worker/batch. That is current code, but
+  it is also the main semantic blocker for the Stream direction: Redis runtime
+  should reserve/deliver a task item to the engine; Scheduling Plane should
+  select the concrete worker after reservation.
 - `TaskResultRuntime` is already the semantic runtime contract for stable-final
   public result rows, task-local result windows, staged callback repair anchors,
   and result-side attempt-closed/logical-final/progress barriers.
 - Engine mainline does not need Redis key names to perform scheduling,
   assignment, result convergence, or lifecycle transitions.
 - `RedisTaskWorkRuntime` currently owns physical Redis mutation through Lua
-  scripts and direct Redis reads.
+  scripts and direct Redis reads. Many scripts protect strong multi-key claim,
+  lease, counter, and cleanup semantics that should be reduced when work
+  delivery moves to Stream/Pending Entries List semantics.
 - `RedisTaskResultRuntime` currently owns result-stage, visible-row, pending
   barrier, and repair-state Redis mutation through Lua scripts and direct Redis
   reads.
@@ -83,17 +93,19 @@ Read with:
 engine and other runtime callers may consume.
 
 `RedisTaskWorkRuntime` and `RedisTaskResultRuntime` belong to
-`platform_infra/mass-runtime-redis`. They own Redis keys, Redis value encoding,
-Lua scripts, and Redis-specific proof.
+`platform_infra/mass-runtime-redis`. They own Redis keys, Redis Stream consumer
+group mechanics, Redis value encoding, any remaining Lua scripts, and
+Redis-specific proof.
 
 Engine may consume `TaskWorkRuntime` values such as `TaskWorkEnvelope`,
-`ClaimedTaskWork`, `ActiveLeaseRecord`, `TaskWorkResult`,
+current `ClaimedTaskWork` / future item-reservation values, `TaskWorkResult`,
 `RuntimeResultApplyContext`, `RecentFinalWorkReceipt`, and `TaskWorkStats`.
 Engine may also consume `TaskResultRuntime` values such as
 `TaskResultCallbackDraft`, `TaskResultFinalDraft`, `TaskResultRuntimeRow`,
 `TaskResultWindow`, and result repair/barrier outcomes. Engine must not
 consume Redis key families, Redis field names, encoded payload formats,
-task-local hash layout, or migration details.
+Stream ids, consumer group names, Pending Entries List details, task-local hash
+layout, or migration details.
 
 Storage, server, SDK, transport, trace, and worker-runtime must not become
 owners of task runtime Redis physical shape. They may observe behavior through
@@ -112,11 +124,13 @@ Separate the work into two explicit layers:
 semantic runtime surface
   TaskWorkRuntime, TaskResultRuntime, and runtime-api values
   engine-facing behavior and shared memory/Redis contract tests
+  TaskWorkRuntime converges from strong worker-target claim to at-least-once
+  item reservation/delivery semantics
 
 Redis physical shape
   RedisTaskWorkRuntime, RedisTaskWorkKeyspace
   RedisTaskResultRuntime, RedisTaskResultKeyspace
-  Redis value codecs, Lua scripts
+  Redis Streams, consumer groups, eventual indexes, value codecs, remaining Lua
   no engine/server/sdk/transport dependency on key or value layout
 ```
 
@@ -130,16 +144,31 @@ convergence. If a slice changes `TaskResultRuntimeRow`, public result
 snapshots, server append contracts, or worker invocation event identity, it is
 no longer just a Redis key-shape slice and needs its own owner decision.
 
+This roadmap does intentionally change the task work runtime delivery contract:
+work delivery may be at-least-once and counters/indexes may be eventually
+consistent, while final result convergence remains idempotent by
+`taskId + messageId`. That is the enabling decision for the Stream direction and
+must be reflected in `TaskWorkRuntime` contract tests before Redis internals are
+rewired.
+
 ## Target Shape
 
 Preferred staged Redis physical direction for work runtime:
 
 ```text
 ...:task:{taskId}:work
-  HASH messageId -> encoded work dispatch envelope
+  STREAM
+  entry fields:
+    messageId
+    payloadJson or payloadRef
+    retryCount
+    maxRetryCount
+    createdAtMillis
+    eventCode only as current handler identity residue, not worker selector
 
-...:task:{taskId}:leases
-  HASH messageId -> encoded active lease payload
+...:task:{taskId}:message-index
+  HASH messageId -> streamId
+  optional enqueue idempotency / duplicate detection index
 
 ...:task:{taskId}:recent-final
   HASH messageId -> encoded bounded recent-final receipt
@@ -147,21 +176,30 @@ Preferred staged Redis physical direction for work runtime:
 
 Task work is not shaped like worker lifecycle state. Worker bucket fan-out is
 useful for long-lived worker registry/candidate dimensions; task work is
-normally consumed quickly and can be bounded by a task-level maximum length.
-Use a single task-local hash first, backed by an explicit max length across
-ready, delayed, and inflight runtime-owned work.
+normally consumed quickly and should move to a task-local Stream rather than a
+large per-item key family or worker buckets.
 
-Keep these discovery and correctness indexes unless a slice proves a safe
-replacement:
+The task Stream is delivery/reservation truth between Redis runtime and engine,
+not worker assignment truth. Redis may use a runtime consumer group,
+`XREADGROUP`, `XAUTOCLAIM`, and `XACK` to provide at-least-once item delivery
+to engine instances. Scheduling Plane still selects the concrete worker after
+the item is reserved. Final result commit must happen before `XACK`; if `XACK`
+fails, duplicate delivery is tolerated and absorbed by idempotent final result
+commit.
 
-- `...:ready:tasks`
-- `...:delayed:work`
-- `...:lease:expiry`
-- `...:task:{taskId}:ready`
-- `...:task:{taskId}:delayed` until task-local delayed lookup is removed
-- `...:task:{taskId}:stats`
-- `...:worker:{workerId}:active` until worker occupancy/resource-release proof
-  replaces it
+Keep or replace these discovery and support indexes under eventual-consistency
+rules:
+
+- `...:ready:tasks` as a dispatch hint, not correctness truth
+- `...:delayed:work` and/or `...:task:{taskId}:delayed` for delayed/retry
+  visibility because Redis Stream has no native delayed message
+- `...:task:{taskId}:stats` as derived diagnostics/progress input that can be
+  repaired from stream/final result truth
+- stream pending entries as inflight/reservation evidence instead of one
+  `...:task:{taskId}:lease:{messageId}` key per item
+- `...:worker:{workerId}:active` should not be owned by task work runtime after
+  worker selection moves out of Redis claim; keep only if a separate worker
+  occupancy/resource-release proof still needs it
 
 Preferred staged Redis physical direction for result runtime:
 
@@ -198,19 +236,19 @@ replacement:
 
 Value encoding rules:
 
-- encode optional fields only when nonblank or non-default
-- remove `shardKey` from Redis work values unless a current production caller
-  is proven
-- do not store `eventCode` as a separate Redis field and do not put it in the
-  task shell; while current runtime/engine/transport contracts still carry it,
-  keep it only inside the encoded work dispatch envelope or existing runtime
-  values. Removing it from server API, engine dispatch binding, transport
-  frames, and SDK worker invocation is a later roadmap.
+- encode optional stream entry fields only when nonblank or non-default
+- remove `shardKey` from Redis work stream entries unless a current production
+  caller is proven
+- do not let `eventCode` drive Redis worker selection. While current
+  runtime/engine/transport contracts still carry it, keep it only as handler
+  identity residue inside the stream entry or existing runtime value. Removing
+  it from server API, engine dispatch binding, transport frames, and SDK worker
+  invocation is a later roadmap.
 - keep inline input support, but keep user input distinct from platform
   envelope metadata; allow `payloadRef` to be the preferred large-input
   carrier
 - keep retry/max-retry and timestamps needed by retry, delayed visibility,
-  result context, and ready score repair
+  result context, and ready hint repair
 - for result rows, prefer reconstructing `taskId` and `messageId` from the
   task-local key and hash field instead of repeating them in every value
 - for result rows, omit null optional fields instead of using
@@ -223,14 +261,20 @@ Value encoding rules:
 - keep repair/barrier progress outside any future public final result value
   unless a later slice proves a compact internal marker can be kept without
   exposing or bloating the result row
-- keep encoding package-private inside `mass-runtime-redis`
-- enforce a task-level maximum runtime work length so the single task hash
-  cannot grow without bound
+- keep stream entry encoding package-private inside `mass-runtime-redis`
+- enforce a task-level maximum stream length or terminal cleanup policy so one
+  task stream cannot grow without bound
 
 ## Do Not Start With
 
-Do not start by changing engine assignment, result, query, or lifecycle callers to
-know about Redis task-local hashes, hash fields, or encoded values.
+Do not start by changing engine assignment, result, query, or lifecycle callers
+to know about Redis Streams, stream ids, consumer groups, pending entries, hash
+fields, or encoded values.
+
+Do not preserve the current `claimReady(taskId, workers, options)` worker-target
+selection semantics while calling the result a Stream migration. The Stream
+direction requires Redis to deliver/reserve items and Scheduling Plane to select
+workers after reservation.
 
 Do not start by removing `eventCode` from server APIs, engine dispatch binding,
 transport frames, or SDK worker invocation. That is real boundary work, but it
@@ -240,8 +284,9 @@ Do not start by narrowing `TaskResultRuntimeRow` or public SDK/server result
 snapshots while moving Redis visible rows into a task-local hash. Preserve the
 current semantic contract first; narrow it in a later contract slice.
 
-Do not start by deleting current Redis keys before the semantic contract,
-keyspace tests, and Redis implementation tests have a replacement shape.
+Do not start by deleting current Redis keys before the at-least-once delivery
+contract, keyspace tests, and Redis implementation tests have a replacement
+shape.
 
 Do not fold result barrier/stage repair state into the visible-result row
 migration before stable-final row cardinality is fixed and result repair tests
@@ -254,8 +299,11 @@ make that explicit in the slice.
 
 ## Non-Goals
 
-- No change to task lifecycle semantics, terminal policy, scheduling policy, or
-  worker selection.
+- No change to public task lifecycle states, terminal policy, or public
+  scheduling policy configuration.
+- Worker selection result should remain Scheduling Plane owned. This roadmap may
+  move worker selection out of `TaskWorkRuntime` claim semantics, but it must
+  not change which scheduling owner makes the decision.
 - No change to the public server/SDK task APIs.
 - No removal of `eventCode` from server append APIs, engine dispatch binding,
   transport payloads, SDK worker invocation, or public result snapshots.
@@ -269,7 +317,8 @@ make that explicit in the slice.
 - No transport dispatch handoff redesign.
 - No replacement of `TaskWorkRuntime` or `TaskResultRuntime` with an
   engine-owned facade.
-- No Redis Streams/pubsub ownership for queue or lease truth.
+- No Redis Pub/Sub ownership for queue or lease truth. Redis Stream is the
+  target task-item delivery mechanism, not durable history or trace storage.
 - No in-place migration obligation for pre-release Redis runtime keys unless a
   separate operator requirement is added.
 
@@ -339,126 +388,149 @@ Acceptance:
 - Contract tests remain the primary semantic proof for memory and Redis.
 - Redis implementation tests remain free to assert physical shape.
 
-## RTR-2 Introduce Redis-Internal Record Codecs And Task-Length Plan
+## RTR-2 Define Stream Delivery Contract And Keyspace
 
-Goal: introduce package-private Redis value encoding and task-local hash keys
-inside `mass-runtime-redis` without changing behavior yet.
+Goal: make the Stream direction executable by changing the task work runtime
+contract before Redis internals move.
 
 Scope:
 
-- Add package-private encoded value helpers for work, lease, and recent-final
-  records, or equivalent internal methods if a class is unnecessary.
-- Add package-private encoded value helpers for stable-final result values, or
-  equivalent internal methods if a class is unnecessary.
-- Add target task-local hash key builders in `RedisTaskWorkKeyspace` without
-  retargeting scripts yet.
+- Introduce or rename runtime-api values so Redis runtime reserves/delivers task
+  items without accepting worker claim targets. Exact class names are an
+  implementation choice, but the target shape is:
+  - enqueue remains idempotent by `taskId + messageId`
+  - runtime delivery returns a task item reservation plus stream/delivery token
+  - Scheduling Plane chooses the concrete worker after the reservation
+  - result final commit happens before runtime acknowledgement
+  - duplicate delivery is allowed and absorbed by idempotent final result
+    convergence
+- Remove worker event-scope filtering from the Redis claim contract target.
+  `eventCode` may still travel as current handler identity residue, but Redis
+  must not use it to select a worker.
+- Define memory and Redis `TaskWorkRuntime` contract tests for at-least-once
+  delivery, duplicate delivery after unacknowledged reservation, and ack after
+  final commit.
+- Add target Stream key builders in `RedisTaskWorkKeyspace` without retargeting
+  Redis implementation yet:
+  - task-local work stream key
+  - optional task-local message-index key
+  - delayed/retry visibility indexes
+  - consumer group and consumer id naming rules
 - Add target task-local result row hash builders in `RedisTaskResultKeyspace`
   without retargeting scripts yet.
-- Make the task-level maximum length owner decision before RTR-3. The decision
-  must choose one of these paths and document why:
-  - shared runtime-api semantics, with `WorkEnqueueOptions` or a successor
-    runtime value updated and memory/Redis contract tests kept consistent
-  - Redis-only physical safety configuration, explicitly not treated as a
-    shared runtime contract
-  - resolved task scheduling policy input, if the current engine caller and
-    policy owner are named in the same slice
-- Define the exact count that the limit applies to before a new write:
-  ready + delayed + inflight not-yet-final work, or a narrower count with an
-  explicit reason. Do not reuse the existing `maxReadyItemsPerTask` name for a
-  broader semantic without renaming or documenting the difference.
-- Define defaults for omitted fields: empty payload/ref, retry count `0`,
-  no next-visible timestamp, no shard key.
-- Add focused unit tests for codec round-trip, omitted optional fields, and
-  target task-local key names.
+- Decide stream growth control before RTR-3: `MAXLEN`/approx trim, task
+  terminal cleanup, explicit task-level max unfinalized item count, or a
+  combination. Do not reuse the existing `maxReadyItemsPerTask` name for a
+  broader Stream semantic without renaming or documenting the difference.
+- Define defaults for omitted stream entry fields: empty payload/ref, retry
+  count `0`, no next-visible timestamp, no shard key.
+- Add focused unit tests for stream entry encoding, omitted optional fields,
+  target task-local key names, and consumer group naming.
 
 Acceptance:
 
 - Existing Redis runtime behavior and physical key tests still pass.
-- New codec tests prove compact value round-trip for current work, lease, and
+- New or updated runtime-api contract tests name at-least-once work delivery as
+  the target behavior and do not require exclusive worker-target claim semantics.
+- Engine-facing call sites have a clear migration path away from
+  `claimReady(taskId, workers, options)` to reserve item first and select worker
+  second.
+- New codec tests prove compact stream entry round-trip for current work and
   recent-final fields.
 - New codec tests prove compact value round-trip for current stable-final
   result semantics, including `taskId`/`messageId` reconstruction from key and
   hash field. Null optional field omission may be added only where it does not
   change `TaskResultRuntimeRow` behavior.
-- No external module can access the codec or task-local hash plan.
+- No external module can access the codec, Stream key plan, consumer group
+  naming, or Redis delivery token layout.
 - `shardKey` has an explicit keep/remove decision before RTR-3.
-- RTR-2 is not complete until the per-task length limit owner, scope, default,
-  and test surface are decided. RTR-3 must not start while this is still open.
-- If the cap is shared runtime-api semantics, both memory and Redis contract
-  tests prove the same behavior. If it is Redis-only physical safety, tests
-  must stay Redis-implementation-scoped and the roadmap must not describe it as
-  an engine/runtime contract.
+- RTR-2 is not complete until Stream growth control, delayed/retry visibility,
+  unacknowledged reservation reclaim, and ack-after-final rules are decided and
+  have focused test candidates.
 
-## RTR-3 Replace Per-Work Keys With A Task-Local Work Hash
+## RTR-3 Replace Per-Work Keys With A Task-Local Work Stream
 
-Goal: remove the main key-cardinality problem for ready/delayed work payloads.
+Goal: remove the main key-cardinality problem for ready/delayed work payloads
+and move task item delivery to Redis Stream semantics.
 
 Scope:
 
-- Replace `task:{taskId}:work:{messageId}` with one task-local work hash:
-  `task:{taskId}:work`, with `messageId -> encoded work value`.
-- Update enqueue, claim, delayed promotion, ready-head cleanup, result apply,
-  retry, `getWork(...)`, and discard logic to read/write work records by
-  `messageId`.
-- Enforce the task-level maximum length before writing a new work record.
-- Retarget the work-script key layout explicitly for enqueue, claim, delayed
-  promotion, result apply, `applyResultWithContext(...)`, retry scheduling,
-  ready-head cleanup, `getWork(...)`, and discard. The implementation slice
-  should leave a short checklist in code review or tests showing each old
-  `taskWorkHash(taskId, messageId)` path was moved.
-- Keep lease and recent-final key families unchanged in this slice unless the
-  change is trivial and already proven.
-- Keep ready/delayed/global indexes semantically unchanged.
+- Replace `task:{taskId}:work:{messageId}` with one task-local Stream:
+  `task:{taskId}:work`, using one entry per logical message.
+- Use `XADD` for enqueue and `XREADGROUP` / `XAUTOCLAIM` for runtime item
+  reservation. Stream entries carry task item envelope fields; worker selection
+  is not performed by Redis.
+- Keep an optional `messageId -> streamId` index only for enqueue idempotency or
+  precise support reads. If it is unnecessary, omit it and prove duplicate
+  enqueue behavior another way.
+- Preserve delayed/retry visibility through an explicit ZSET or re-enqueue
+  strategy because Redis Stream has no native delayed message. The chosen
+  strategy must not create one Redis key per item.
+- Apply stream growth control decided in RTR-2.
+- Replace ready-head cleanup and claim Lua with Stream/Pending Entries List
+  behavior. Any remaining Lua must be justified by a specific multi-key
+  correctness need.
+- Keep recent-final key family unchanged in this slice unless the change is
+  trivial and already proven.
+- Treat ready/delayed/global indexes as hints or support indexes unless a
+  contract test requires strong consistency.
 - Retarget `RedisTaskWorkKeyspaceTest` and `RedisTaskWorkRuntimeTest` from
-  per-work keys to the task-local work hash.
+  per-work keys to the task-local work Stream.
 
 Acceptance:
 
-- No Redis key is created per ready work payload.
+- No Redis key is created per ready work payload; one task-local Stream owns
+  task item delivery.
 - A high-volume single-task Redis test proves task-local key count does not
-  grow with ready work count.
-- A task-level max-length test proves enqueue rejection or backpressure when
-  not-yet-final task work reaches the configured limit.
-- `TaskWorkRuntimeContractTest` passes for Redis.
-- `RedisTaskWorkRuntimeTest` still proves concurrent enqueue idempotence,
-  delayed promotion, exclusive claim, retry, discard, and namespace isolation.
-- Redis implementation proof covers old work-key absence after enqueue, delayed
-  promotion, claim, retry, result apply, `getWork(...)`, and task discard.
+  grow with ready work count and `XLEN` grows with item count instead.
+- A stream growth-control test proves the chosen max/cleanup policy.
+- `TaskWorkRuntimeContractTest` passes for Redis with at-least-once delivery
+  semantics.
+- `RedisTaskWorkRuntimeTest` proves concurrent enqueue idempotence, duplicate
+  delivery after unacknowledged reservation, `XAUTOCLAIM`/reclaim behavior,
+  delayed/retry visibility, ack after final commit, discard, and namespace
+  isolation.
+- Redis implementation proof covers old work-key absence after enqueue,
+  reservation, retry, result apply/ack, support reads, and task discard.
 - Live or test memory evidence shows the 50-work sample class no longer creates
-  50 work keys.
+  50 work keys; Stream evidence uses `XLEN`, `XPENDING`, and task-local key
+  count.
 
-## RTR-4 Replace Per-Lease Keys With A Task-Local Lease Hash
+## RTR-4 Retire Per-Lease Keys And Strong Claim Lua
 
-Goal: converge active lease payload storage after the work payload shape is
-stable.
+Goal: make Stream pending entries the reservation/inflight evidence and remove
+old per-lease key semantics.
 
 Scope:
 
-- Replace `task:{taskId}:lease:{messageId}` with one task-local lease hash:
-  `task:{taskId}:leases`, with `messageId -> encoded lease value`.
-- Update claim, apply result, `applyResultWithContext(...)`,
-  `getActiveLease(...)`, `activeLeases(taskId)`, `pollExpiredLeases(...)`,
-  and discard logic.
-- Retarget lease-script and lease-read layout explicitly for claim,
-  result-apply, `applyResultWithContext(...)`, stale lease rejection,
-  lease-expiry polling, active-lease reads, and discard. The slice should prove
-  each old `taskLeaseHash(taskId, messageId)` path has either moved or remains
-  intentionally deferred.
-- Decide whether `task:{taskId}:active` remains as a task-active listing index
-  or is replaced by enumerating the task-local lease hash.
-- Keep `worker:{workerId}:active` unless a separate worker occupancy/resource
-  release proof removes it.
+- Remove `task:{taskId}:lease:{messageId}` as the source of active lease truth.
+  Reservation/inflight truth comes from Stream consumer group pending entries
+  plus any narrow reservation metadata still needed by engine callback handling.
+- Replace strong lease expiry polling with Stream idle/reclaim semantics
+  (`XPENDING` / `XAUTOCLAIM`) and engine-owned expiry/result convergence.
+- Retarget `applyResultWithContext(...)` so final result commit can obtain the
+  needed reservation/work snapshot without requiring a per-message lease key.
+  If a compact side hash is temporarily needed for callback correlation, it
+  must be bounded and not become a second lease truth.
+- Remove worker active ownership from task work runtime unless a separate
+  worker occupancy/resource-release proof still requires a runtime-owned view.
+- Retire or justify each Lua script. Claim/ready-head cleanup scripts should
+  disappear in the Stream model; result apply may keep minimal Lua only if it
+  protects ack-after-final or bounded metadata cleanup.
 
 Acceptance:
 
 - No Redis key is created per active lease payload.
-- Result apply with context remains one atomic Redis mutation for accepted
-  callbacks.
-- Expired lease polling reports each lease once across competing Redis
-  clients.
-- Redis implementation proof covers old lease-key absence after claim,
-  result-apply, lease expiry, active-lease reads, and task discard.
-- Engine result convergence and resource-release tests still pass.
+- Unacknowledged reserved items can be reclaimed by another engine consumer
+  after the configured idle threshold.
+- Final result commit happens before `XACK`; duplicate delivery after failed
+  ack is absorbed by idempotent final result commit.
+- Old lease expiry polling and worker-active cleanup no longer define task item
+  correctness. Any retained support view is documented as derived.
+- Redis implementation proof covers old lease-key absence after reservation,
+  result-apply/ack, reclaim, support reads, and task discard.
+- Engine result convergence and resource-release tests still pass under
+  at-least-once delivery semantics.
 
 ## RTR-5 Replace Per-Result Visible Row Keys With A Task-Local Result Hash
 
@@ -559,13 +631,13 @@ regression.
 Scope:
 
 - Update `platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md` from
-  per-message work/lease/result key wording to the implemented task-local hash
-  shapes.
+  per-message work/lease/result key wording to the implemented task-local
+  Stream work shape and task-local result hash shape.
 - Update `platform_infra/mass-runtime-redis/README.md` only if role or guardrail
   wording changes.
 - Remove stale tests that preserve old key names as a hidden second API.
 - Add focused guard coverage against reintroducing one key per work or visible
-  result item where a task-local hash record is expected.
+  result item where a task-local Stream/result hash record is expected.
 - Run a residue scan for old key builders, old field constants, and stale docs.
 
 Acceptance:
@@ -580,9 +652,10 @@ Acceptance:
 
 1. Complete RTR-0 inventory and field decisions.
 2. Implement RTR-1 guards before touching Redis shape.
-3. Add RTR-2 internal codecs and task-length plan.
-4. Implement RTR-3 task-local work hash migration.
-5. Implement RTR-4 task-local lease hash migration.
+3. Add RTR-2 Stream delivery contract, runtime-api test plan, and keyspace
+   builders.
+4. Implement RTR-3 task-local work Stream migration.
+5. Implement RTR-4 lease-key retirement and Stream pending/reclaim semantics.
 6. Implement RTR-5 task-local result row hash migration.
 7. Implement RTR-6 recent-final migration or justified retention.
 8. Update baseline docs and residue guards in RTR-7.
@@ -606,8 +679,10 @@ Redis shape spot checks:
 
 ```bash
 redis-cli --raw --scan --pattern 'xa:mass:runtime:v1:task:<taskId>:work:*' | wc -l
-redis-cli --raw MEMORY USAGE 'xa:mass:runtime:v1:task:<taskId>:work'
-redis-cli --raw HLEN 'xa:mass:runtime:v1:task:<taskId>:work'
+redis-cli --raw TYPE 'xa:mass:runtime:v1:task:<taskId>:work'
+redis-cli --raw XLEN 'xa:mass:runtime:v1:task:<taskId>:work'
+redis-cli --raw XINFO GROUPS 'xa:mass:runtime:v1:task:<taskId>:work'
+redis-cli --raw XPENDING 'xa:mass:runtime:v1:task:<taskId>:work' '<group>'
 redis-cli --raw --scan --pattern 'xa:mass:runtime:v1:result:task:<taskId>:visible:*' | wc -l
 redis-cli --raw ZCARD 'xa:mass:runtime:v1:result:task:<taskId>:visible'
 redis-cli --raw HLEN 'xa:mass:runtime:v1:result:task:<taskId>:final'
@@ -616,7 +691,7 @@ redis-cli --raw HLEN 'xa:mass:runtime:v1:result:task:<taskId>:final'
 Residue checks:
 
 ```bash
-rg -n "taskWorkHash\\(|taskLeaseHash\\(|taskRecentFinalReceiptHash\\(|taskVisibleRow\\(|:work:\\{messageId\\}|:lease:\\{messageId\\}|:visible:\\{messageId\\}|FIELD_SHARD_KEY|shardKey" platform_infra/mass-runtime-redis platform_infra/mass-runtime-api xa-mass-engine xa-mass-server sdk transport xa-mass-worker-runtime doc roadmap
+rg -n "taskWorkHash\\(|taskLeaseHash\\(|taskRecentFinalReceiptHash\\(|taskVisibleRow\\(|:work:\\{messageId\\}|:lease:\\{messageId\\}|:visible:\\{messageId\\}|claimReady\\(String taskId,\\s*List<WorkerClaimTarget>|FIELD_SHARD_KEY|shardKey" platform_infra/mass-runtime-redis platform_infra/mass-runtime-api xa-mass-engine xa-mass-server sdk transport xa-mass-worker-runtime doc roadmap
 ```
 
 ## Roadmap Completion Criteria
@@ -625,21 +700,27 @@ rg -n "taskWorkHash\\(|taskLeaseHash\\(|taskRecentFinalReceiptHash\\(|taskVisibl
   dispatch/result code, and worker-runtime mainline do not reference Redis task
   runtime key/value layout. Explicit bootstrap assembly may instantiate Redis
   runtime implementations.
-- `TaskWorkRuntime` and `TaskResultRuntime` semantic contracts remain stable
-  for engine-visible behavior.
-- Ready/delayed work payloads no longer create one Redis key per work item.
-- Active lease payloads no longer create one Redis key per active lease item,
-  or a documented later-phase decision explains why the lease shape remains.
+- `TaskWorkRuntime` has converged to at-least-once item delivery semantics:
+  Redis reserves/delivers task items, Scheduling Plane selects workers, final
+  commit is idempotent, and ack happens after final commit.
+- `TaskResultRuntime` semantic contracts remain stable for engine-visible
+  result behavior.
+- Ready/delayed work payloads no longer create one Redis key per work item; one
+  task-local Stream owns item delivery.
+- Active lease payloads no longer create one Redis key per active lease item;
+  Stream pending entries and bounded reservation metadata replace lease-key
+  truth.
 - Stable-final visible result rows no longer create one Redis key per result
   item.
-- A task-level max runtime work length prevents a single task work hash from
-  growing without bound.
-- Empty optional fields are not persisted in Redis encoded values.
+- Stream growth control or terminal cleanup prevents a single task work Stream
+  from growing without bound.
+- Empty optional fields are not persisted in Redis stream entries or encoded
+  values.
 - `shardKey` is removed from Redis work values or has a current production
   caller and proof.
-- Result apply, duplicate callback idempotence, stale lease rejection,
-  retry scheduling, lease expiry, result window ordering, result repair, and
-  precise task discard proofs still pass.
+- Result apply, duplicate delivery/final idempotence, retry scheduling, Stream
+  reclaim, result window ordering, result repair, and precise task discard
+  proofs still pass.
 - Public/server/SDK result behavior and current `eventCode` API behavior remain
   unchanged unless a separate approved follow-up roadmap changes them.
 - `REDIS_RUNTIME_BASELINE.md` matches the implemented key/value shape.
@@ -651,16 +732,14 @@ rg -n "taskWorkHash\\(|taskLeaseHash\\(|taskRecentFinalReceiptHash\\(|taskVisibl
   or same-namespace replacement in local/dev runtime.
 - Exact compact encoding format: compact JSON, delimiter encoding, or another
   package-private codec.
-- Whether a Redis-only task-level safety cap should later be promoted into
-  shared runtime-api semantics or resolved task scheduling policy after real
-  caller demand exists. The initial owner/scope/default must be decided in
-  RTR-2 before RTR-3 starts.
-- Whether `createdAtMillis` stays inside the work value or moves into a ready
-  queue member/side index.
-- Whether `task:{taskId}:delayed` is still required after global delayed work
-  promotion is stable.
-- Whether `task:{taskId}:active` can be replaced by task-local lease hash
-  enumeration.
+- Exact Stream consumer group name, consumer id source, idle reclaim threshold,
+  and `XAUTOCLAIM` batch size.
+- Whether enqueue idempotency uses a `messageId -> streamId` index, stream entry
+  inspection, or a different bounded dedup structure.
+- Whether delayed/retry visibility uses global delayed ZSET plus task-local
+  delayed ZSET, delayed re-XADD, or another non-per-item-key strategy.
+- Whether Stream growth control is `XTRIM`/`MAXLEN`, terminal task cleanup,
+  explicit task-level max unfinalized item count, or a combination.
 - Whether result row encoding should keep `seq` in the hash value or
   reconstruct it from the visible ZSET score.
 - Whether result barrier keys should later be folded into the result row hash

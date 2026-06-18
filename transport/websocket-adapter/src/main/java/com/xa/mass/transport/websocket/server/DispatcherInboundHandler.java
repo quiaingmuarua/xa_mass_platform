@@ -6,6 +6,7 @@ import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionIdentity;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
+import com.xa.mass.transport.websocket.session.WebSocketServerSession;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
 import io.netty.channel.ChannelHandlerContext;
@@ -50,17 +51,12 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 return;
             }
 
-            String workerId = sessionHandle.getWorkerId(ctx.channel());
-            String workerGroupId = sessionHandle.getDeliveryBucketId(ctx.channel());
-            String routeKey = sessionHandle.getEndpointAddress(ctx.channel());
-            if (workerId == null) {
+            WebSocketServerSession session = sessionHandle.currentSession(ctx.channel());
+            if (session == null) {
                 sendError(ctx, "SESSION_NOT_BOUND", "WebSocket session is not bound to a worker");
                 return;
             }
-            if (workerGroupId == null) {
-                sendError(ctx, "SESSION_NOT_BOUND", "WebSocket session is not bound to a worker group");
-                return;
-            }
+            String workerId = session.workerId();
             org.slf4j.MDC.put("event", "channelRead0");
             org.slf4j.MDC.put("workerId", workerId);
             String eventCode = frameParser.readString(frame, "eventCode");
@@ -86,8 +82,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             inboundMessageSink.accept(WebSocketInboundMessage.of(
                     raw,
                     workerId,
-                    routeKey,
-                    ctx.channel().id().asShortText(),
+                    session.sessionHandle(),
                     frame
             ));
         } catch (Exception e) {
@@ -135,15 +130,6 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         if (workerGroupId == null || workerGroupId.isBlank()
                 || routeKey == null || routeKey.isBlank()
                 || workerId == null || workerId.isBlank()) {
-            return;
-        }
-        String existingWorkerGroupId = sessionHandle.getDeliveryBucketId(ctx.channel());
-        String existingWorkerId = sessionHandle.getWorkerId(ctx.channel());
-        String existingRouteKey = sessionHandle.getEndpointAddress(ctx.channel());
-        if (workerGroupId.equals(existingWorkerGroupId)
-                && workerId.equals(existingWorkerId)
-                && routeKey.equals(existingRouteKey)
-                && sessionHandle.getChannelContext(routeKey) != null) {
             return;
         }
         sessionHandle.addSession(workerGroupId, routeKey, workerId, ctx.channel(), ctx);

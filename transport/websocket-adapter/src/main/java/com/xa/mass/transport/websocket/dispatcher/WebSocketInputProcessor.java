@@ -54,7 +54,7 @@ public final class WebSocketInputProcessor {
             return true;
         }
         try {
-            TransportResultIngressEnvelope envelope = context.getResultFrameReader().toEnvelope(frame, inboundMessage);
+            TransportResultIngressEnvelope envelope = context.getResultFrameReader().toEnvelope(frame);
             boolean accepted = context.getResultIngressChannel().ingest(envelope);
             if (!accepted) {
                 throw new IllegalStateException("task result ingest channel rejected inbound canonical task result");

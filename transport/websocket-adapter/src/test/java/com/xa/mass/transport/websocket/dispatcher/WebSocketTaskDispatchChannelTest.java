@@ -25,7 +25,6 @@ class WebSocketTaskDispatchChannelTest {
     void publishesDispatchItemsDirectlyToEndpointRegistry() {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         when(endpointRegistry.sendToSelectedWorker(
-                org.mockito.ArgumentMatchers.eq("websocket"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(true);
@@ -44,7 +43,6 @@ class WebSocketTaskDispatchChannelTest {
 
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
         verify(endpointRegistry).sendToSelectedWorker(
-                org.mockito.ArgumentMatchers.eq("websocket"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 captor.capture());
 
@@ -55,7 +53,6 @@ class WebSocketTaskDispatchChannelTest {
     void returnsEndpointOfflineWhenEndpointRegistryCannotSend() {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         when(endpointRegistry.sendToSelectedWorker(
-                org.mockito.ArgumentMatchers.eq("websocket"),
                 org.mockito.ArgumentMatchers.eq("worker-1"),
                 any()))
                 .thenReturn(false);

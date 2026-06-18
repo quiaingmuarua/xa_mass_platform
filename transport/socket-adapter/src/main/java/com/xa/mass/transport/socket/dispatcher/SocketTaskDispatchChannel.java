@@ -37,7 +37,6 @@ public final class SocketTaskDispatchChannel implements AdapterCommandExecutor {
                 command -> {
                     String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(command);
                     boolean sent = context.getEndpointRegistry().sendToSelectedWorker(
-                            adapterId(),
                             command.getSelectedWorkerId(),
                             rawJson
                     );
