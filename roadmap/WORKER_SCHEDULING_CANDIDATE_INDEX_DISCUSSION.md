@@ -12,7 +12,8 @@ Related:
 - `xa-mass-worker-runtime/README.md`
 - `roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md`
 - `roadmap/WORKER_RUNTIME_COMPOSITE_ELIGIBILITY_SET_ROADMAP.md`
-- `roadmap/RUNTIME_WORKER_SELECTION_RESIDUE_CONVERGENCE_ROADMAP.md`
+- Historical selection-boundary context:
+  `doc/archive/xa-mass-engine/2026-06-18_WORKER_RUNTIME_SELECTION_MINIMAL_CONTRACT_ROADMAP.md`
 
 ## Problem
 
