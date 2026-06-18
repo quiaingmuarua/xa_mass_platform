@@ -344,7 +344,8 @@ Focused tests:
 
 - `WebSocketTaskDispatchChannelTest`
 - `SocketTaskDispatchChannelTest`
-- `PollingWorkerAdapterTest`
+- `PollingDeliveryExecutorTest`
+- `PollingDeliveryPullChannelTest`
 - `TransportDeliveryServiceTest`
 - frame codec tests that encode canonical task dispatch without endpoint facts
 
@@ -446,7 +447,9 @@ Acceptance:
 
 Focused tests:
 
-- `PollingWorkerAdapterTest`
+- `PollingDeliveryExecutorTest`
+- `PollingDeliveryPullChannelTest`
+- `PollingSessionEvidenceDriverTest`
 - `TransportDeliveryServiceTest`
 - `InMemoryTransportDeliveryStoreTest`
 - `RedisTransportDeliveryStoreTest`
@@ -548,7 +551,7 @@ Verification:
 Focused suite:
 
 ```bash
-./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/socket-adapter,transport/websocket-adapter -am test -Dtest=DeliveryCommandTest,DispatchOutcomeTest,TransportAssignedDeliverySubmitterTest,TransportDeliveryCommandListenerTest,TransportDeliveryCommandBatchCodecTest,InMemoryTransportDeliveryCommandHandoffTest,RedisTransportDeliveryCommandHandoffTest,TransportDeliveryServiceTest,InMemoryTransportDeliveryStoreTest,RedisTransportDeliveryStoreTest,PollingWorkerAdapterTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/socket-adapter,transport/websocket-adapter -am test -Dtest=DeliveryCommandTest,DispatchOutcomeTest,TransportAssignedDeliverySubmitterTest,TransportDeliveryCommandListenerTest,TransportDeliveryCommandBatchCodecTest,InMemoryTransportDeliveryCommandHandoffTest,RedisTransportDeliveryCommandHandoffTest,TransportDeliveryServiceTest,InMemoryTransportDeliveryStoreTest,RedisTransportDeliveryStoreTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Representative cross-module proof:

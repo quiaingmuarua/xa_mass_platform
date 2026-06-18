@@ -3,20 +3,10 @@ package com.xa.mass.sdk.worker;
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.DeliveryPullStatus;
-import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.starter.TaskResultCallbackCodec;
-import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
-import com.xa.mass.transport.lease.TransportEndpointLeaseConsumerEvidence;
-import com.xa.mass.transport.lease.TransportEndpointLeaseHeartbeat;
-import com.xa.mass.transport.lease.TransportEndpointLeaseRelease;
-import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 
 import java.util.List;
 import java.util.Map;
@@ -37,9 +27,7 @@ public class PullWorkerSession {
     private final WorkerInvocationPayloadDecoder payloadDecoder;
     private final TransportResultIngressChannel resultIngressChannel;
     private final TaskResultCallbackCodec resultCallbackCodec;
-    private final TransportEndpointLeaseStore endpointLeaseStore;
-    private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
-    private final WorkerPresenceIngress workerPresenceIngress;
+    private final PullSessionEvidenceDriver evidenceDriver;
     private final String transportHint;
 
     PullWorkerSession(String workerId,
@@ -48,30 +36,7 @@ public class PullWorkerSession {
                       String connectionId,
                       DeliveryPullChannel deliveryPullChannel,
                       TransportResultIngressChannel resultIngressChannel,
-                      TransportEndpointLeaseStore endpointLeaseStore,
-                      WorkerPresenceIngress workerPresenceIngress,
-                      String transportHint) {
-        this(workerId,
-                workerGroupId,
-                adapterId,
-                connectionId,
-                deliveryPullChannel,
-                resultIngressChannel,
-                endpointLeaseStore,
-                NoopDeliveryCommandConsumerRegistry.INSTANCE,
-                workerPresenceIngress,
-                transportHint);
-    }
-
-    PullWorkerSession(String workerId,
-                      String workerGroupId,
-                      String adapterId,
-                      String connectionId,
-                      DeliveryPullChannel deliveryPullChannel,
-                      TransportResultIngressChannel resultIngressChannel,
-                      TransportEndpointLeaseStore endpointLeaseStore,
-                      DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
-                      WorkerPresenceIngress workerPresenceIngress,
+                      PullSessionEvidenceDriver evidenceDriver,
                       String transportHint) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
@@ -85,13 +50,7 @@ public class PullWorkerSession {
         this.payloadDecoder = new WorkerInvocationPayloadDecoder();
         this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
         this.resultCallbackCodec = new TaskResultCallbackCodec();
-        this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
-        this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
-                ? deliveryCommandConsumerRegistry
-                : NoopDeliveryCommandConsumerRegistry.INSTANCE;
-        this.workerPresenceIngress = workerPresenceIngress != null
-                ? workerPresenceIngress
-                : NoopWorkerPresenceIngress.INSTANCE;
+        this.evidenceDriver = Objects.requireNonNull(evidenceDriver, "evidenceDriver");
         this.transportHint = transportHint;
     }
 
@@ -116,19 +75,13 @@ public class PullWorkerSession {
     }
 
     public boolean connectAndClaim(String reason) {
-        String normalizedReason = normalizeReason(reason, "pull-session-connect");
-        workerPresenceIngress.sessionConnected(WorkerSessionPresenceEvent.connected(
+        return evidenceDriver.connect(
                 workerId,
-                adapterId,
+                workerGroupId,
                 routeKey,
                 connectionId,
-                normalizedReason,
-                connectionId
-        ));
-        TransportEndpointLeaseConsumerEvidence evidence =
-                endpointLeaseStore.claimEndpointLease(endpointLeaseClaim(normalizedReason));
-        claimDeliveryConsumer(evidence);
-        return true;
+                normalizeReason(reason, "pull-session-connect")
+        );
     }
 
     public void disconnect() {
@@ -140,18 +93,13 @@ public class PullWorkerSession {
     }
 
     public boolean disconnectIfCurrent(String reason) {
-        String normalizedReason = normalizeReason(reason, "pull-session-disconnect");
-        workerPresenceIngress.sessionDisconnected(WorkerSessionPresenceEvent.disconnected(
+        return evidenceDriver.disconnect(
                 workerId,
-                adapterId,
+                workerGroupId,
                 routeKey,
                 connectionId,
-                normalizedReason,
-                connectionId
-        ));
-        boolean releasedCurrent = endpointLeaseStore.releaseEndpointLease(endpointLeaseRelease(normalizedReason));
-        releaseDeliveryConsumer();
-        return releasedCurrent;
+                normalizeReason(reason, "pull-session-disconnect")
+        );
     }
 
     public void heartbeat() {
@@ -163,24 +111,13 @@ public class PullWorkerSession {
     }
 
     public boolean refreshHeartbeatIfCurrent(String reason) {
-        String normalizedReason = normalizeReason(reason, "pull-session-heartbeat");
-        workerPresenceIngress.sessionHeartbeat(WorkerSessionPresenceEvent.heartbeat(
+        return evidenceDriver.heartbeat(
                 workerId,
-                adapterId,
+                workerGroupId,
                 routeKey,
                 connectionId,
-                normalizedReason,
-                connectionId
-        ));
-        return endpointLeaseStore.refreshEndpointLease(endpointLeaseHeartbeat(normalizedReason))
-                .map(evidence -> {
-                    claimDeliveryConsumer(evidence);
-                    return true;
-                })
-                .orElseGet(() -> {
-                    releaseDeliveryConsumer();
-                    return false;
-                });
+                normalizeReason(reason, "pull-session-heartbeat")
+        );
     }
 
     public List<WorkerInvocation> poll(int maxMessages) {
@@ -259,57 +196,6 @@ public class PullWorkerSession {
 
     private String normalizeReason(String reason, String defaultReason) {
         return reason == null || reason.isBlank() ? defaultReason : reason.trim();
-    }
-
-    private void claimDeliveryConsumer(TransportEndpointLeaseConsumerEvidence evidence) {
-        deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
-                evidence.deliveryBucketId(),
-                evidence.workerId(),
-                evidence.endpointLeaseId(),
-                evidence.leaseExpireAtEpochMillis()
-        ));
-    }
-
-    private void releaseDeliveryConsumer() {
-        deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
-                workerGroupId,
-                workerId,
-                connectionId,
-                0L
-        ));
-    }
-
-    private TransportEndpointLeaseClaim endpointLeaseClaim(String reason) {
-        return new TransportEndpointLeaseClaim(
-                workerId,
-                workerGroupId,
-                adapterId,
-                routeKey,
-                connectionId,
-                reason
-        );
-    }
-
-    private TransportEndpointLeaseHeartbeat endpointLeaseHeartbeat(String reason) {
-        return new TransportEndpointLeaseHeartbeat(
-                workerId,
-                workerGroupId,
-                adapterId,
-                routeKey,
-                connectionId,
-                reason
-        );
-    }
-
-    private TransportEndpointLeaseRelease endpointLeaseRelease(String reason) {
-        return new TransportEndpointLeaseRelease(
-                workerId,
-                workerGroupId,
-                adapterId,
-                routeKey,
-                connectionId,
-                reason
-        );
     }
 
     private static String requireText(String value, String fieldName) {

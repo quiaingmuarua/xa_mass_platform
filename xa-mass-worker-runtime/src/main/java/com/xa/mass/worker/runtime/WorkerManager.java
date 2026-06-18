@@ -4,8 +4,6 @@ import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
 import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
@@ -54,7 +52,6 @@ import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -145,7 +142,7 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
 
     @Override
     public void addWorker(WorkerDeclarationRecord worker) {
-        resourceOwner.addWorker(toWorker(worker));
+        resourceOwner.addWorker(worker);
         publishWorkerRegistrySnapshot();
         notifyDispatchWakeup("worker registered");
     }
@@ -157,7 +154,7 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
 
     @Override
     public boolean updateWorker(WorkerDeclarationRecord worker) {
-        Optional<Worker> updated = resourceOwner.updateWorker(toWorker(worker));
+        Optional<WorkerDeclarationRecord> updated = resourceOwner.updateWorker(worker);
         updated.ifPresent(ignored -> publishWorkerRegistrySnapshot());
         return updated.isPresent();
     }
@@ -445,47 +442,18 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
         return reportOwner.composeWorkerRegistrySnapshot();
     }
 
-    private static String normalizeNullable(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private static WorkerResourceRecord toWorkerResourceRecord(Worker worker) {
+    private static WorkerResourceRecord toWorkerResourceRecord(WorkerDeclarationRecord worker) {
         if (worker == null) {
             return null;
         }
         return new WorkerResourceRecord(
-                worker.getWorkerId(),
-                worker.getAgentVersion(),
-                worker.getWorkerGroupId(),
-                worker.getOnlineStrategy(),
-                worker.getMaxConcurrentWork(),
-                worker.getAttributes()
+                worker.workerId(),
+                worker.agentVersion(),
+                worker.workerGroupId(),
+                worker.transportHint(),
+                worker.maxConcurrentWork(),
+                worker.attributes()
         );
-    }
-
-    private static Worker toWorker(WorkerDeclarationRecord record) {
-        if (record == null) {
-            throw new IllegalArgumentException("worker declaration record must not be null");
-        }
-        Worker worker = new Worker();
-        worker.setWorkerId(record.workerId());
-        worker.setStatus(WorkerStatus.OFFLINE);
-        worker.setAgentVersion(record.agentVersion());
-        worker.setWorkerGroupId(record.workerGroupId());
-        worker.setOnlineStrategy(record.transportHint());
-        worker.setMaxConcurrentWork(record.maxConcurrentWork());
-        worker.setAttributes(record.attributes());
-        worker.setCreateTime(LocalDateTime.now());
-        worker.setUpdateTime(LocalDateTime.now());
-        return worker;
-    }
-
-    private static WorkerStatus toWorkerStatus(String statusName) {
-        String normalizedStatus = normalizeNullable(statusName);
-        if (normalizedStatus == null) {
-            return WorkerStatus.OFFLINE;
-        }
-        return WorkerStatus.valueOf(normalizedStatus);
     }
 
     private void notifyDispatchWakeup(String reason) {

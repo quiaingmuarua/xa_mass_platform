@@ -2,6 +2,7 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 
 import java.util.Objects;
 
@@ -16,6 +17,7 @@ public final class TransportBinding {
     private final String protocol;
     private final AdapterCommandExecutor commandExecutor;
     private final DeliveryPullChannel deliveryPullChannel;
+    private final PullSessionEvidenceDriver pullSessionEvidenceDriver;
 
     private TransportBinding(Builder builder) {
         this.adapterId = requireText(builder.adapterId, "adapterId");
@@ -25,6 +27,10 @@ public final class TransportBinding {
                 : builder.protocol.trim();
         this.commandExecutor = Objects.requireNonNull(builder.commandExecutor, "commandExecutor");
         this.deliveryPullChannel = builder.deliveryPullChannel;
+        this.pullSessionEvidenceDriver = builder.pullSessionEvidenceDriver;
+        if (this.deliveryPullChannel != null && this.pullSessionEvidenceDriver == null) {
+            throw new IllegalArgumentException("pullSessionEvidenceDriver must be set when deliveryPullChannel is set");
+        }
     }
 
     public static Builder builder(String adapterId,
@@ -53,12 +59,17 @@ public final class TransportBinding {
         return deliveryPullChannel;
     }
 
+    public PullSessionEvidenceDriver getPullSessionEvidenceDriver() {
+        return pullSessionEvidenceDriver;
+    }
+
     public static final class Builder {
         private final String adapterId;
         private final String transportHint;
         private final AdapterCommandExecutor commandExecutor;
         private String protocol;
         private DeliveryPullChannel deliveryPullChannel;
+        private PullSessionEvidenceDriver pullSessionEvidenceDriver;
 
         private Builder(String adapterId,
                         String transportHint,
@@ -75,6 +86,11 @@ public final class TransportBinding {
 
         public Builder deliveryPullChannel(DeliveryPullChannel deliveryPullChannel) {
             this.deliveryPullChannel = deliveryPullChannel;
+            return this;
+        }
+
+        public Builder pullSessionEvidenceDriver(PullSessionEvidenceDriver pullSessionEvidenceDriver) {
+            this.pullSessionEvidenceDriver = pullSessionEvidenceDriver;
             return this;
         }
 

@@ -1,12 +1,12 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.ReserveStatus;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -52,11 +52,11 @@ public final class WorkerCandidateIndex {
         this.nowMillisSupplier = nowMillisSupplier != null ? nowMillisSupplier : System::currentTimeMillis;
     }
 
-    public List<Worker> workersFor(WorkerTaskSelector selector) {
+    public List<WorkerDeclarationRecord> workersFor(WorkerTaskSelector selector) {
         return workersFor(selector, Integer.MAX_VALUE);
     }
 
-    public List<Worker> workersFor(WorkerTaskSelector selector, int maxCandidateCount) {
+    public List<WorkerDeclarationRecord> workersFor(WorkerTaskSelector selector, int maxCandidateCount) {
         List<String> groupIds = selector == null ? List.of() : selector.workerGroupIds();
         if (groupIds.isEmpty()) {
             return List.of();
@@ -72,11 +72,11 @@ public final class WorkerCandidateIndex {
         return workersForGroups(selector, groupIds, maxCandidateCount);
     }
 
-    public List<Worker> workersForGroups(WorkerTaskSelector selector, List<String> groupIds, int maxCandidateCount) {
+    public List<WorkerDeclarationRecord> workersForGroups(WorkerTaskSelector selector, List<String> groupIds, int maxCandidateCount) {
         if (groupIds == null || groupIds.isEmpty() || maxCandidateCount <= 0) {
             return List.of();
         }
-        List<Worker> workers = new ArrayList<>();
+        List<WorkerDeclarationRecord> workers = new ArrayList<>();
         long nowMillis = nowMillisSupplier.getAsLong();
         for (CandidateSourceBucket sourceBucket : candidateSourceBuckets(selector, groupIds)) {
             int remaining = remaining(maxCandidateCount, workers.size());
@@ -101,10 +101,10 @@ public final class WorkerCandidateIndex {
         return List.copyOf(workers);
     }
 
-    private Optional<Worker> workerForWorkerId(WorkerTaskSelector selector,
-                                               List<String> selectedGroupIds,
-                                               String workerId,
-                                               long nowMillis) {
+    private Optional<WorkerDeclarationRecord> workerForWorkerId(WorkerTaskSelector selector,
+                                                                List<String> selectedGroupIds,
+                                                                String workerId,
+                                                                long nowMillis) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null || selectedGroupIds == null || selectedGroupIds.isEmpty()) {
             return Optional.empty();
@@ -182,7 +182,7 @@ public final class WorkerCandidateIndex {
         if (lifecycleStatus != ReserveStatus.ACCEPTED) {
             return SourceGuardResult.rejected(sourceGuardRejection(lifecycleStatus));
         }
-        Optional<Worker> worker = snapshot.worker(normalizedWorkerId);
+        Optional<WorkerDeclarationRecord> worker = snapshot.worker(normalizedWorkerId);
         if (worker.isEmpty()) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.MISSING_WORKER);
         }
@@ -280,8 +280,8 @@ public final class WorkerCandidateIndex {
 
     public record SourceGuardResult(boolean accepted,
                                     SourceGuardRejectionReason rejectionReason,
-                                    Optional<Worker> worker) {
-        private static SourceGuardResult accepted(Worker worker) {
+                                    Optional<WorkerDeclarationRecord> worker) {
+        private static SourceGuardResult accepted(WorkerDeclarationRecord worker) {
             return new SourceGuardResult(true, null, Optional.of(worker));
         }
 

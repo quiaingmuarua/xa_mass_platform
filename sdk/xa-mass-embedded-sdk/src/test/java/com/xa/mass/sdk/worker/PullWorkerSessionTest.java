@@ -8,6 +8,9 @@ import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.polling.runtime.PollingSessionEvidenceDriver;
+import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
 
@@ -172,9 +175,18 @@ class PullWorkerSessionTest {
                 connectionId,
                 deliveryPullChannel,
                 resultIngestChannel,
-                endpointLeaseStore,
-                presenceIngress,
+                evidenceDriver(endpointLeaseStore, presenceIngress),
                 "polling"
+        );
+    }
+
+    private static PullSessionEvidenceDriver evidenceDriver(InMemoryTransportEndpointLeaseStore endpointLeaseStore,
+                                                            WorkerPresenceIngress presenceIngress) {
+        return new PollingSessionEvidenceDriver(
+                "polling",
+                endpointLeaseStore,
+                NoopDeliveryCommandConsumerRegistry.INSTANCE,
+                presenceIngress
         );
     }
 

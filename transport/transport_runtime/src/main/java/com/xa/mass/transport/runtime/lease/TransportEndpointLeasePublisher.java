@@ -58,11 +58,11 @@ public final class TransportEndpointLeasePublisher {
         claimDeliveryConsumer(endpointLeaseStore.claimEndpointLease(claim));
     }
 
-    public void refresh(String workerId,
-                        String deliveryBucketId,
-                        String endpointAddress,
-                        String endpointLeaseId,
-                        String reason) {
+    public boolean refresh(String workerId,
+                           String deliveryBucketId,
+                           String endpointAddress,
+                           String endpointLeaseId,
+                           String reason) {
         TransportEndpointLeaseHeartbeat heartbeat = new TransportEndpointLeaseHeartbeat(
                 workerId,
                 requireText(deliveryBucketId, "deliveryBucketId"),
@@ -71,17 +71,22 @@ public final class TransportEndpointLeasePublisher {
                 endpointLeaseId,
                 reason
         );
-        endpointLeaseStore.refreshEndpointLease(heartbeat).ifPresentOrElse(
-                this::claimDeliveryConsumer,
-                () -> releaseDeliveryConsumer(heartbeat)
-        );
+        return endpointLeaseStore.refreshEndpointLease(heartbeat)
+                .map(evidence -> {
+                    claimDeliveryConsumer(evidence);
+                    return true;
+                })
+                .orElseGet(() -> {
+                    releaseDeliveryConsumer(heartbeat);
+                    return false;
+                });
     }
 
-    public void release(String workerId,
-                        String deliveryBucketId,
-                        String endpointAddress,
-                        String endpointLeaseId,
-                        String reason) {
+    public boolean release(String workerId,
+                           String deliveryBucketId,
+                           String endpointAddress,
+                           String endpointLeaseId,
+                           String reason) {
         TransportEndpointLeaseRelease release = new TransportEndpointLeaseRelease(
                 workerId,
                 requireText(deliveryBucketId, "deliveryBucketId"),
@@ -90,8 +95,9 @@ public final class TransportEndpointLeasePublisher {
                 endpointLeaseId,
                 reason
         );
-        endpointLeaseStore.releaseEndpointLease(release);
+        boolean releasedCurrent = endpointLeaseStore.releaseEndpointLease(release);
         releaseDeliveryConsumer(release);
+        return releasedCurrent;
     }
 
     private void claimDeliveryConsumer(TransportEndpointLeaseConsumerEvidence evidence) {

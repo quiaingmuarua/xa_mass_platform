@@ -6,7 +6,6 @@ import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
@@ -14,6 +13,7 @@ import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.engine.testutil.RecordingEventSink;
+import com.xa.mass.engine.testutil.WorkerTestFixture;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
@@ -35,7 +35,7 @@ public class WorkerCapabilityReportEventHandlerTest {
     @Test
     void capabilityReportEventRefreshesWorkerRegistrySnapshotThroughOwner() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
-        Worker worker = worker("worker-crawler", "crawler");
+        WorkerTestFixture worker = worker("worker-crawler", "crawler");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
         registerWorker(workerManager, worker);
@@ -77,7 +77,7 @@ public class WorkerCapabilityReportEventHandlerTest {
     @Test
     void staleReportEventFailsWithoutChangingCandidateSnapshot() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
-        Worker worker = worker("worker-crawler", "crawler");
+        WorkerTestFixture worker = worker("worker-crawler", "crawler");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
         registerWorker(workerManager, worker);
@@ -132,8 +132,8 @@ public class WorkerCapabilityReportEventHandlerTest {
         ), 512).candidates();
     }
 
-    private static Worker worker(String workerId, String workerGroupId) {
-        Worker worker = new Worker();
+    private static WorkerTestFixture worker(String workerId, String workerGroupId) {
+        WorkerTestFixture worker = new WorkerTestFixture();
         worker.setWorkerId(workerId);
         worker.setWorkerGroupId(workerGroupId);
         return worker;

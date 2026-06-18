@@ -50,12 +50,27 @@ Transport should stay centered on these concepts only:
   pull channel, server lifecycle, diagnostics, and raw/manual side-channels are
   binding or contribution metadata, not executor facts.
 - `TransportBinding`: explicit runtime binding for adapter id, transport hint,
-  protocol label, command executor, and optional pull channel. It must not read
-  adapter metadata back from the command executor.
+  protocol label, command executor, optional pull channel, and pull-session
+  evidence driver. A pull-capable binding must provide both the pull channel
+  and the evidence driver; it must not read adapter metadata back from the
+  command executor.
 - `TransportAdapterContribution`: explicit adapter bootstrap output for
   contributed bindings, managed adapters, servers, raw/manual channels, and
   diagnostics. Runtime input context and adapter-produced outputs must not share
   mutable single-slot state.
+- `PollingDeliveryExecutor`: polling adapter command executor. It owns only
+  `DeliveryCommand` enqueue into the polling delivery buffer and dispatch
+  outcome normalization/logging. It must not own pull polling, endpoint lease
+  projection, worker-presence projection, or selected-worker consumer claims.
+- `PollingDeliveryPullChannel`: polling adapter pull-channel implementation. It
+  owns only worker pull-buffer demux by `deliveryBucketId + selectedWorkerId`
+  and status mapping into `DeliveryPullResult`. It must not own command
+  execution or endpoint/session evidence.
+- `PullSessionEvidenceDriver`: embedded runtime seam consumed by SDK
+  `PullWorkerSession` for connect/heartbeat/disconnect evidence projection.
+  The polling implementation is `PollingSessionEvidenceDriver`, which delegates
+  to runtime publishers instead of exposing raw stores or registries to the SDK
+  session.
 - `TransportEndpointLeasePublisher`: runtime owner that projects adapter
   session facts into endpoint lease evidence and handoff-private selected-worker
   consumer evidence. Concrete adapters should not duplicate endpoint lease

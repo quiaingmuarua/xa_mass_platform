@@ -1,8 +1,8 @@
 package com.xa.mass.worker.runtime;
 
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
 
 import java.util.Collection;
@@ -20,13 +20,13 @@ import java.util.Set;
 public final class WorkerRegistrySnapshot {
 
     private final Map<String, WorkerGroupRecord> groupsById;
-    private final Map<String, Worker> workersById;
+    private final Map<String, WorkerDeclarationRecord> workersById;
     private final Map<EventKey, Set<String>> groupIdsByEventKey;
     private final Map<String, Set<String>> groupIdsByProjectCode;
     private final Map<String, Set<EventKey>> workerEventKeysByWorkerId;
 
     private WorkerRegistrySnapshot(Map<String, WorkerGroupRecord> groupsById,
-                                   Map<String, Worker> workersById,
+                                   Map<String, WorkerDeclarationRecord> workersById,
                                    Map<String, Set<EventKey>> workerEventKeysByWorkerId) {
         this.groupsById = immutableMap(groupsById);
         this.workersById = immutableMap(workersById);
@@ -39,12 +39,13 @@ public final class WorkerRegistrySnapshot {
         return new WorkerRegistrySnapshot(Map.of(), Map.of(), Map.of());
     }
 
-    public static WorkerRegistrySnapshot from(Collection<WorkerGroupRecord> groups, Collection<Worker> workers) {
+    public static WorkerRegistrySnapshot from(Collection<WorkerGroupRecord> groups,
+                                              Collection<WorkerDeclarationRecord> workers) {
         return new WorkerRegistrySnapshot(normalizeGroups(groups), normalizeWorkers(workers), Map.of());
     }
 
     public static WorkerRegistrySnapshot from(Collection<WorkerGroupRecord> groups,
-                                              Collection<Worker> workers,
+                                              Collection<WorkerDeclarationRecord> workers,
                                               Map<String, Set<EventKey>> workerEventKeysByWorkerId) {
         return new WorkerRegistrySnapshot(
                 normalizeGroups(groups),
@@ -65,16 +66,16 @@ public final class WorkerRegistrySnapshot {
         return new WorkerRegistrySnapshot(groups, workersById, workerEventKeysByWorkerId);
     }
 
-    public WorkerRegistrySnapshot withWorker(Worker worker) {
-        LinkedHashMap<String, Worker> workers = new LinkedHashMap<>(workersById);
-        if (worker != null && normalizeNullable(worker.getWorkerId()) != null) {
-            workers.put(worker.getWorkerId().trim(), copyWorker(worker));
+    public WorkerRegistrySnapshot withWorker(WorkerDeclarationRecord worker) {
+        LinkedHashMap<String, WorkerDeclarationRecord> workers = new LinkedHashMap<>(workersById);
+        if (worker != null && normalizeNullable(worker.workerId()) != null) {
+            workers.put(worker.workerId().trim(), copyWorker(worker));
         }
         return new WorkerRegistrySnapshot(groupsById, workers, workerEventKeysByWorkerId);
     }
 
     public WorkerRegistrySnapshot withoutWorker(String workerId) {
-        LinkedHashMap<String, Worker> workers = new LinkedHashMap<>(workersById);
+        LinkedHashMap<String, WorkerDeclarationRecord> workers = new LinkedHashMap<>(workersById);
         workers.remove(normalizeNullable(workerId));
         return new WorkerRegistrySnapshot(groupsById, workers, withoutWorkerEventKeys(workerId));
     }
@@ -84,7 +85,7 @@ public final class WorkerRegistrySnapshot {
         return normalized == null ? Optional.empty() : Optional.ofNullable(groupsById.get(normalized));
     }
 
-    public Optional<Worker> worker(String workerId) {
+    public Optional<WorkerDeclarationRecord> worker(String workerId) {
         String normalized = normalizeNullable(workerId);
         return normalized == null ? Optional.empty() : Optional.ofNullable(workersById.get(normalized));
     }
@@ -113,7 +114,7 @@ public final class WorkerRegistrySnapshot {
         return List.copyOf(groupsById.values());
     }
 
-    public List<Worker> workers() {
+    public List<WorkerDeclarationRecord> workers() {
         return List.copyOf(workersById.values());
     }
 
@@ -130,13 +131,13 @@ public final class WorkerRegistrySnapshot {
         return normalized;
     }
 
-    private static Map<String, Worker> normalizeWorkers(Collection<Worker> workers) {
+    private static Map<String, WorkerDeclarationRecord> normalizeWorkers(Collection<WorkerDeclarationRecord> workers) {
         if (workers == null || workers.isEmpty()) {
             return Map.of();
         }
-        LinkedHashMap<String, Worker> normalized = new LinkedHashMap<>();
-        for (Worker worker : workers) {
-            String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
+        LinkedHashMap<String, WorkerDeclarationRecord> normalized = new LinkedHashMap<>();
+        for (WorkerDeclarationRecord worker : workers) {
+            String workerId = worker == null ? null : normalizeNullable(worker.workerId());
             if (workerId != null) {
                 normalized.put(workerId, copyWorker(worker));
             }
@@ -144,23 +145,15 @@ public final class WorkerRegistrySnapshot {
         return normalized;
     }
 
-    private static Worker copyWorker(Worker source) {
-        Worker copy = new Worker();
-        copy.setWorkerId(source.getWorkerId());
-        copy.setStatus(source.getStatus());
-        copy.setAgentVersion(source.getAgentVersion());
-        copy.setLastHeartbeat(source.getLastHeartbeat());
-        // Compatibility worker-level capability hints are intentionally not
-        // copied into the snapshot; WorkerGroup remains candidate-source truth.
-        copy.setWorkerGroupId(source.getWorkerGroupId());
-        copy.setAdapterNodeId(source.getAdapterNodeId());
-        copy.setAdapterId(source.getAdapterId());
-        copy.setOnlineStrategy(source.getOnlineStrategy());
-        copy.setMaxConcurrentWork(source.getMaxConcurrentWork());
-        copy.setAttributes(source.getAttributes());
-        copy.setCreateTime(source.getCreateTime());
-        copy.setUpdateTime(source.getUpdateTime());
-        return copy;
+    private static WorkerDeclarationRecord copyWorker(WorkerDeclarationRecord source) {
+        return new WorkerDeclarationRecord(
+                source.workerId(),
+                source.workerGroupId(),
+                source.transportHint(),
+                source.agentVersion(),
+                source.maxConcurrentWork(),
+                source.attributes()
+        );
     }
 
     private static Map<EventKey, Set<String>> indexGroupsByEventKey(Collection<WorkerGroupRecord> groups) {

@@ -1,15 +1,10 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 
-import java.time.LocalDateTime;
-import java.time.Instant;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,35 +26,31 @@ public final class WorkerResourceOwner {
         this.groupOwner = groupOwner;
     }
 
-    public Worker addWorker(Worker worker) {
-        Worker registrationRow = normalizeWorkerRegistrationInput(worker);
-        WorkerDeclarationRecord declarationRow = toDeclarationRecord(registrationRow);
+    public WorkerDeclarationRecord addWorker(WorkerDeclarationRecord worker) {
+        WorkerDeclarationRecord declarationRow = normalizeWorkerRegistrationInput(worker);
         workerStorage.addWorker(declarationRow);
         synchronized (lock) {
-            upsertWorkerRegistrySlot(registrationRow);
+            upsertWorkerRegistrySlot(declarationRow);
         }
-        return toWorkerWithRuntimeState(declarationRow);
+        return declarationRow;
     }
 
-    public Optional<Worker> getWorker(String workerId) {
-        return workerStorage.getWorker(workerId).map(this::toWorkerWithRuntimeState);
+    public Optional<WorkerDeclarationRecord> getWorker(String workerId) {
+        return workerStorage.getWorker(workerId);
     }
 
-    public List<Worker> getAllWorkers() {
-        return workerStorage.getAllWorkers().stream()
-                .map(this::toWorkerWithRuntimeState)
-                .toList();
+    public List<WorkerDeclarationRecord> getAllWorkers() {
+        return workerStorage.getAllWorkers();
     }
 
-    public Optional<Worker> updateWorker(Worker worker) {
-        Worker registrationRow = normalizeWorkerRegistrationInput(worker);
-        WorkerDeclarationRecord declarationRow = toDeclarationRecord(registrationRow);
+    public Optional<WorkerDeclarationRecord> updateWorker(WorkerDeclarationRecord worker) {
+        WorkerDeclarationRecord declarationRow = normalizeWorkerRegistrationInput(worker);
         boolean updated = workerStorage.updateWorker(declarationRow);
         if (updated) {
             synchronized (lock) {
-                upsertWorkerRegistrySlot(registrationRow);
+                upsertWorkerRegistrySlot(declarationRow);
             }
-            return Optional.of(toWorkerWithRuntimeState(declarationRow));
+            return Optional.of(declarationRow);
         }
         return Optional.empty();
     }
@@ -92,7 +83,7 @@ public final class WorkerResourceOwner {
     }
 
     public boolean deleteWorker(String workerId) {
-        Worker existing = getWorker(workerId).orElse(null);
+        WorkerDeclarationRecord existing = getWorker(workerId).orElse(null);
         boolean deleted = workerStorage.deleteWorker(workerId);
         if (deleted) {
             synchronized (lock) {
@@ -102,28 +93,28 @@ public final class WorkerResourceOwner {
         return deleted;
     }
 
-    public void syncWorkerRegistrySlots(Iterable<Worker> workers) {
+    public void syncWorkerRegistrySlots(Iterable<WorkerDeclarationRecord> workers) {
         if (workers == null) {
             return;
         }
         synchronized (lock) {
-            for (Worker worker : workers) {
+            for (WorkerDeclarationRecord worker : workers) {
                 upsertWorkerRegistrySlot(worker);
             }
         }
     }
 
-    private void upsertWorkerRegistrySlot(Worker worker) {
-        String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
+    private void upsertWorkerRegistrySlot(WorkerDeclarationRecord worker) {
+        String workerId = worker == null ? null : normalizeNullable(worker.workerId());
         WorkerMeta existingMeta = workerId == null ? null : workerRegistry.workerMeta(workerId).orElse(null);
         WorkerMeta meta = workerMeta(worker, existingMeta);
         if (meta == null) {
             return;
         }
-        workerRegistry.upsertSlot(meta, worker.getMaxConcurrentWork(), groupOwner.eventBindingCeilingFor(meta.groupId()));
+        workerRegistry.upsertSlot(meta, worker.maxConcurrentWork(), groupOwner.eventBindingCeilingFor(meta.groupId()));
     }
 
-    private void markWorkerRemoving(Worker worker, String reason) {
+    private void markWorkerRemoving(WorkerDeclarationRecord worker, String reason) {
         WorkerMeta meta = workerMeta(worker);
         if (meta == null) {
             return;
@@ -131,28 +122,24 @@ public final class WorkerResourceOwner {
         workerRegistry.markWorkerRemoving(meta.workerId(), reason);
     }
 
-    private WorkerMeta workerMeta(Worker worker) {
+    private WorkerMeta workerMeta(WorkerDeclarationRecord worker) {
         return workerMeta(worker, null);
     }
 
-    private WorkerMeta workerMeta(Worker worker, WorkerMeta existingMeta) {
-        String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
-        String groupId = worker == null ? null : normalizeNullable(worker.getWorkerGroupId());
+    private WorkerMeta workerMeta(WorkerDeclarationRecord worker, WorkerMeta existingMeta) {
+        String workerId = worker == null ? null : normalizeNullable(worker.workerId());
+        String groupId = worker == null ? null : normalizeNullable(worker.workerGroupId());
         if (workerId == null || groupId == null) {
             return null;
         }
-        long lastHeartbeatMillis = worker.getLastHeartbeat() == null
-                ? existingMeta == null ? 0L : existingMeta.lastHeartbeatMillis()
-                : worker.getLastHeartbeat().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        String diagnosticStatus = existingMeta == null
-                ? worker.getStatus() == null ? null : worker.getStatus().name()
-                : existingMeta.diagnosticStatus();
+        long lastHeartbeatMillis = existingMeta == null ? 0L : existingMeta.lastHeartbeatMillis();
+        String diagnosticStatus = existingMeta == null ? null : existingMeta.diagnosticStatus();
         return new WorkerMeta(
                 workerId,
                 groupId,
-                normalizeNullable(worker.getOnlineStrategy()),
-                worker.getAttributes(),
-                normalizeNullable(worker.getAgentVersion()),
+                worker.transportHint(),
+                worker.attributes(),
+                worker.agentVersion(),
                 null,
                 lastHeartbeatMillis,
                 diagnosticStatus
@@ -177,67 +164,14 @@ public final class WorkerResourceOwner {
         );
     }
 
-    private Worker normalizeWorkerRegistrationInput(Worker worker) {
+    private WorkerDeclarationRecord normalizeWorkerRegistrationInput(WorkerDeclarationRecord worker) {
         if (worker == null) {
             throw new IllegalArgumentException("worker must not be null");
         }
-        String workerId = normalizeNullable(worker.getWorkerId());
-        if (workerId == null) {
+        if (worker.workerId() == null) {
             throw new IllegalArgumentException("workerId must not be blank");
         }
-        worker.setWorkerId(workerId);
-        String groupId = normalizeNullable(worker.getWorkerGroupId());
-        if (groupId != null) {
-            worker.setWorkerGroupId(groupId);
-        }
         return worker;
-    }
-
-    private WorkerDeclarationRecord toDeclarationRecord(Worker worker) {
-        return new WorkerDeclarationRecord(
-                worker.getWorkerId(),
-                worker.getWorkerGroupId(),
-                worker.getOnlineStrategy(),
-                worker.getAgentVersion(),
-                worker.getMaxConcurrentWork(),
-                worker.getAttributes()
-        );
-    }
-
-    private Worker toWorkerWithRuntimeState(WorkerDeclarationRecord declaration) {
-        Worker worker = toWorker(declaration);
-        workerRegistry.workerMeta(worker.getWorkerId()).ifPresent(meta -> {
-            worker.setStatus(toWorkerStatus(meta.diagnosticStatus()));
-            if (meta.lastHeartbeatMillis() > 0L) {
-                worker.setLastHeartbeat(LocalDateTime.ofInstant(
-                        Instant.ofEpochMilli(meta.lastHeartbeatMillis()),
-                        ZoneId.systemDefault()
-                ));
-            }
-        });
-        return worker;
-    }
-
-    private Worker toWorker(WorkerDeclarationRecord declaration) {
-        Worker worker = new Worker();
-        worker.setWorkerId(declaration.workerId());
-        worker.setStatus(WorkerStatus.OFFLINE);
-        worker.setAgentVersion(declaration.agentVersion());
-        worker.setWorkerGroupId(declaration.workerGroupId());
-        worker.setOnlineStrategy(declaration.transportHint());
-        worker.setMaxConcurrentWork(declaration.maxConcurrentWork());
-        worker.setAttributes(declaration.attributes());
-        worker.setCreateTime(LocalDateTime.now());
-        worker.setUpdateTime(LocalDateTime.now());
-        return worker;
-    }
-
-    private WorkerStatus toWorkerStatus(String statusName) {
-        String normalizedStatus = normalizeNullable(statusName);
-        if (normalizedStatus == null) {
-            return WorkerStatus.OFFLINE;
-        }
-        return WorkerStatus.valueOf(normalizedStatus);
     }
 
     private static String normalizeNullable(String value) {

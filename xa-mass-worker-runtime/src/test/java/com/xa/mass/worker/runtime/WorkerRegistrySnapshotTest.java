@@ -1,9 +1,9 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.worker.runtime.resource.EventBinding;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
 import org.junit.jupiter.api.Test;
 
@@ -43,14 +43,13 @@ public class WorkerRegistrySnapshotTest {
         WorkerRegistrySnapshot snapshot = WorkerRegistrySnapshot.from(List.of(
                 group("crawler", EventBinding.of("crawler.fetch", List.of("demoApp"))),
                 group("export", EventBinding.of("report.export", List.of("reportApp")))
-        ), List.of(worker("worker-1", "node-a", "crawler")));
+        ), List.of(worker("worker-1", "crawler")));
 
-        assertEquals("crawler", snapshot.worker("worker-1").orElseThrow().getWorkerGroupId());
+        assertEquals("crawler", snapshot.worker("worker-1").orElseThrow().workerGroupId());
 
-        WorkerRegistrySnapshot moved = snapshot.withWorker(worker("worker-1", "node-b", "export"));
+        WorkerRegistrySnapshot moved = snapshot.withWorker(worker("worker-1", "export"));
 
-        assertEquals("export", moved.worker("worker-1").orElseThrow().getWorkerGroupId());
-        assertEquals("node-b", moved.worker("worker-1").orElseThrow().getAdapterNodeId());
+        assertEquals("export", moved.worker("worker-1").orElseThrow().workerGroupId());
 
         WorkerRegistrySnapshot deleted = moved.withoutWorker("worker-1");
 
@@ -100,15 +99,7 @@ public class WorkerRegistrySnapshotTest {
                 .build();
     }
 
-    private static Worker worker(String workerId, String groupId) {
-        return worker(workerId, null, groupId);
-    }
-
-    private static Worker worker(String workerId, String adapterNodeId, String groupId) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setAdapterNodeId(adapterNodeId);
-        worker.setWorkerGroupId(groupId);
-        return worker;
+    private static WorkerDeclarationRecord worker(String workerId, String groupId) {
+        return new WorkerDeclarationRecord(workerId, groupId, null, null, 1, Map.of());
     }
 }

@@ -1,6 +1,5 @@
 package com.xa.mass.engine.testutil;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
 import com.xa.mass.worker.runtime.resource.EventBinding;
 import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
@@ -26,14 +25,13 @@ public final class WorkerRegistrationTestSupport {
     private WorkerRegistrationTestSupport() {
     }
 
-    public static Worker registerWorker(WorkerManager workerManager, Worker worker) {
+    public static WorkerTestFixture registerWorker(WorkerManager workerManager, WorkerTestFixture worker) {
         String groupId = normalizeGroupId(worker.getWorkerGroupId());
         ensureWorkerGroup(workerManager, groupId, worker.getSupportedProjects(), worker.getSupportedEventCodes());
         String adapterNodeId = adapterNodeIdForGroup(groupId);
         workerManager.registerAdapterNode(adapterNode(adapterNodeId));
         workerManager.bindNodeGroup(binding(adapterNodeId, groupId));
         worker.setWorkerGroupId(groupId);
-        worker.setAdapterNodeId(adapterNodeId);
         if (worker.getLastHeartbeat() == null) {
             worker.setLastHeartbeat(LocalDateTime.now());
         }
@@ -45,7 +43,7 @@ public final class WorkerRegistrationTestSupport {
         return worker;
     }
 
-    private static WorkerDeclarationRecord workerDeclaration(Worker worker) {
+    private static WorkerDeclarationRecord workerDeclaration(WorkerTestFixture worker) {
         return new WorkerDeclarationRecord(
                 worker.getWorkerId(),
                 worker.getWorkerGroupId(),
@@ -56,7 +54,7 @@ public final class WorkerRegistrationTestSupport {
         );
     }
 
-    private static void refreshHeartbeatEvidence(WorkerManager workerManager, Worker worker) {
+    private static void refreshHeartbeatEvidence(WorkerManager workerManager, WorkerTestFixture worker) {
         long observedAtMillis = worker.getLastHeartbeat()
                 .atZone(ZoneId.systemDefault())
                 .toInstant()

@@ -112,6 +112,11 @@ public final class TransportRuntimeRegistry {
                     + "' under transport '" + binding.getTransportHint()
                     + "' is not pull-capable for worker " + normalizedWorkerId);
         }
+        if (binding.getPullSessionEvidenceDriver() == null) {
+            throw new IllegalStateException("Worker adapter '" + binding.getAdapterId()
+                    + "' under transport '" + binding.getTransportHint()
+                    + "' has no pull-session evidence driver for worker " + normalizedWorkerId);
+        }
         return new ResolvedPullWorkerTransport(
                 normalizedWorkerId,
                 normalizedWorkerGroupId,
@@ -119,8 +124,7 @@ public final class TransportRuntimeRegistry {
                 binding.getTransportHint(),
                 binding.getDeliveryPullChannel(),
                 resultIngressChannel,
-                endpointLeaseStore,
-                deliveryCommandConsumerRegistry
+                binding.getPullSessionEvidenceDriver()
         );
     }
 

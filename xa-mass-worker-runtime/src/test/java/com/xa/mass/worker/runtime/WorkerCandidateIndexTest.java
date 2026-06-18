@@ -4,8 +4,8 @@ import com.xa.mass.worker.runtime.resource.EventBinding;
 import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
@@ -76,8 +76,8 @@ public class WorkerCandidateIndexTest {
         WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
         ), List.of(
-                worker("worker-node-a", "crawler", "node-a", Map.of()),
-                worker("worker-node-b", "crawler", "node-b", Map.of())
+                worker("worker-node-a", "crawler", Map.of()),
+                worker("worker-node-b", "crawler", Map.of())
         )));
 
         assertEquals(List.of("worker-node-b"),
@@ -262,7 +262,7 @@ public class WorkerCandidateIndexTest {
         WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
         ), List.of(
-                worker("worker-node-b", "crawler", "node-b", Map.of())
+                worker("worker-node-b", "crawler", Map.of())
         )));
 
         WorkerCandidateIndex.SourceGuardResult result =
@@ -274,8 +274,8 @@ public class WorkerCandidateIndexTest {
         assertTrue(result.accepted());
     }
 
-    private static List<String> workerIds(List<Worker> workers) {
-        return workers.stream().map(Worker::getWorkerId).toList();
+    private static List<String> workerIds(List<WorkerDeclarationRecord> workers) {
+        return workers.stream().map(WorkerDeclarationRecord::workerId).toList();
     }
 
     private static WorkerCandidateIndex index(WorkerRegistrySnapshot snapshot) {
@@ -292,20 +292,20 @@ public class WorkerCandidateIndexTest {
                 WorkerCandidateBucketPolicies.defaultPolicy(),
                 RandomWorkerCandidateSamplingPolicy.defaultPolicy()
         );
-        for (Worker worker : snapshot.workers()) {
-            if (worker.getWorkerGroupId() == null || snapshot.group(worker.getWorkerGroupId()).isEmpty()) {
+        for (WorkerDeclarationRecord worker : snapshot.workers()) {
+            if (worker.workerGroupId() == null || snapshot.group(worker.workerGroupId()).isEmpty()) {
                 continue;
             }
             registry.upsertSlot(new WorkerMeta(
-                    worker.getWorkerId(),
-                    worker.getWorkerGroupId(),
-                    worker.getOnlineStrategy(),
-                    worker.getAttributes(),
-                    worker.getAgentVersion(),
+                    worker.workerId(),
+                    worker.workerGroupId(),
+                    worker.transportHint(),
+                    worker.attributes(),
+                    worker.agentVersion(),
                     null,
                     1_000L,
-                    worker.getStatus() == null ? null : worker.getStatus().name()
-            ), worker.getMaxConcurrentWork(), Set.of());
+                    null
+            ), worker.maxConcurrentWork(), Set.of());
         }
         return registry;
     }
@@ -355,20 +355,11 @@ public class WorkerCandidateIndexTest {
                 .build();
     }
 
-    private static Worker worker(String workerId, String groupId) {
+    private static WorkerDeclarationRecord worker(String workerId, String groupId) {
         return worker(workerId, groupId, Map.of());
     }
 
-    private static Worker worker(String workerId, String groupId, Map<String, String> attributes) {
-        return worker(workerId, groupId, null, attributes);
-    }
-
-    private static Worker worker(String workerId, String groupId, String adapterNodeId, Map<String, String> attributes) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setWorkerGroupId(groupId);
-        worker.setAdapterNodeId(adapterNodeId);
-        worker.setAttributes(attributes);
-        return worker;
+    private static WorkerDeclarationRecord worker(String workerId, String groupId, Map<String, String> attributes) {
+        return new WorkerDeclarationRecord(workerId, groupId, null, null, 1, attributes);
     }
 }

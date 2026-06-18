@@ -3,9 +3,11 @@
 Status: mainline complete after adapter metadata cleanup; retained as
 route-key-removal handoff context until owner archive.
 
-Adapter-internal residual role splitting after this mainline is tracked by
-`TRANSPORT_ADAPTER_INTERNAL_CAPABILITY_CONVERGENCE_ROADMAP.md`. This roadmap
-keeps the executor boundary context; it no longer owns polling/websocket/socket
+Polling adapter internal role splitting after this mainline has landed and was
+archived with the polling capability roadmap. Remaining WebSocket/socket
+session-manager decomposition is tracked by
+`TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`. This
+roadmap keeps the executor boundary context; it no longer owns concrete adapter
 internal capability decomposition.
 
 ## Summary
@@ -531,7 +533,7 @@ Socket proof:
 Polling and SDK proof:
 
 ```bash
-./mvnw -q -pl transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=PollingWorkerAdapterTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Server/public worker smoke proof when worker wire or registration behavior is

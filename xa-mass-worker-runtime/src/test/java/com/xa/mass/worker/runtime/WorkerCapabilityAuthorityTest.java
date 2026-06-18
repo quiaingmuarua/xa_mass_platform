@@ -1,9 +1,9 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.worker.runtime.resource.EventBinding;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
@@ -22,10 +22,7 @@ public class WorkerCapabilityAuthorityTest {
 
     @Test
     void composesDeclaredWorkerGroupsIntoWorkerRegistrySnapshot() {
-        Worker worker = worker("worker-crawler", "crawler");
-        worker.setAdapterId("adapter-a");
-        worker.setMaxConcurrentWork(3);
-        worker.setAttributes(Map.of("country", "us"));
+        WorkerDeclarationRecord worker = worker("worker-crawler", "crawler", 3, Map.of("country", "us"));
         WorkerGroupRecord declaredGroup = WorkerGroupRecord.builder("crawler")
                 .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
                 .defaultAttributes(Map.of("source", "declared"))
@@ -46,9 +43,7 @@ public class WorkerCapabilityAuthorityTest {
 
     @Test
     void workerLevelCompatibilityFieldsDoNotCreateGroupCapabilityTruth() {
-        Worker worker = worker("worker-crawler", "crawler");
-        worker.setSupportedProjects(List.of("legacyApp"));
-        worker.setSupportedEventCodes(List.of("legacy.fetch"));
+        WorkerDeclarationRecord worker = worker("worker-crawler", "crawler");
 
         WorkerRegistrySnapshot snapshot = authority.composeSnapshot(List.of(worker));
 
@@ -59,9 +54,7 @@ public class WorkerCapabilityAuthorityTest {
 
     @Test
     void keepsWorkersWithoutGroupAsRowsButNotGroupIndexCandidates() {
-        Worker worker = worker("worker-stateless", null);
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        WorkerDeclarationRecord worker = worker("worker-stateless", null);
 
         WorkerRegistrySnapshot snapshot = authority.composeSnapshot(List.of(worker));
 
@@ -72,7 +65,7 @@ public class WorkerCapabilityAuthorityTest {
 
     @Test
     void composedSnapshotsArePointInTimeReadViews() {
-        Worker worker = worker("worker-crawler", "crawler");
+        WorkerDeclarationRecord worker = worker("worker-crawler", "crawler");
         WorkerGroupRecord crawler = WorkerGroupRecord.builder("crawler")
                 .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
                 .build();
@@ -82,22 +75,20 @@ public class WorkerCapabilityAuthorityTest {
 
         WorkerRegistrySnapshot first = authority.composeSnapshot(List.of(worker), List.of(crawler));
 
-        worker.setWorkerGroupId("export");
-        WorkerRegistrySnapshot second = authority.composeSnapshot(List.of(worker), List.of(export));
+        WorkerDeclarationRecord movedWorker = worker("worker-crawler", "export");
+        WorkerRegistrySnapshot second = authority.composeSnapshot(List.of(movedWorker), List.of(export));
 
         assertTrue(first.group("crawler").isPresent());
         assertTrue(first.group("export").isEmpty());
-        assertEquals("crawler", first.worker("worker-crawler").orElseThrow().getWorkerGroupId());
+        assertEquals("crawler", first.worker("worker-crawler").orElseThrow().workerGroupId());
         assertTrue(second.group("export").isPresent());
         assertTrue(second.group("crawler").isEmpty());
-        assertEquals("export", second.worker("worker-crawler").orElseThrow().getWorkerGroupId());
+        assertEquals("export", second.worker("worker-crawler").orElseThrow().workerGroupId());
     }
 
     @Test
     void reportReplacesOnlyReportOwnedAvailabilityWithinRegistrationCeiling() {
-        Worker worker = worker("worker-crawler", "crawler");
-        worker.setAdapterNodeId("node-a");
-        worker.setAttributes(Map.of("region", "us"));
+        WorkerDeclarationRecord worker = worker("worker-crawler", "crawler", 1, Map.of("region", "us"));
         WorkerGroupRecord declaredGroup = WorkerGroupRecord.builder("crawler")
                 .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
                 .build();
@@ -118,17 +109,14 @@ public class WorkerCapabilityAuthorityTest {
                 new EventKey("demoApp", "crawler.fetch"))));
         assertTrue(snapshot.groupIdsByEventKey(new EventKey("demoApp", "crawler.parse")).isEmpty());
         assertTrue(snapshot.groupIdsByEventKey(new EventKey("demoApp", "admin.not-approved")).isEmpty());
-        Worker effectiveWorker = snapshot.worker("worker-crawler").orElseThrow();
-        assertEquals(Map.of("region", "us", "loadClass", "warm"), effectiveWorker.getAttributes());
-        assertEquals("agent-2", effectiveWorker.getAgentVersion());
-        assertEquals("node-a", effectiveWorker.getAdapterNodeId());
+        WorkerDeclarationRecord effectiveWorker = snapshot.worker("worker-crawler").orElseThrow();
+        assertEquals(Map.of("region", "us", "loadClass", "warm"), effectiveWorker.attributes());
+        assertEquals("agent-2", effectiveWorker.agentVersion());
     }
 
     @Test
     void reportOrderingRejectsStaleConflictAndUnknownWorkerWithoutPublishingSnapshot() {
-        Worker worker = worker("worker-crawler", "crawler");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
+        WorkerDeclarationRecord worker = worker("worker-crawler", "crawler");
         WorkerCapabilityReport accepted = WorkerCapabilityReport.builder("worker-crawler", 7)
                 .availableEventCodes(List.of("crawler.fetch"))
                 .build();
@@ -168,10 +156,14 @@ public class WorkerCapabilityAuthorityTest {
         assertTrue(!unknown.snapshotChanged());
     }
 
-    private static Worker worker(String workerId, String workerGroupId) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setWorkerGroupId(workerGroupId);
-        return worker;
+    private static WorkerDeclarationRecord worker(String workerId, String workerGroupId) {
+        return worker(workerId, workerGroupId, 1, Map.of());
+    }
+
+    private static WorkerDeclarationRecord worker(String workerId,
+                                                  String workerGroupId,
+                                                  int maxConcurrentWork,
+                                                  Map<String, String> attributes) {
+        return new WorkerDeclarationRecord(workerId, workerGroupId, null, null, maxConcurrentWork, attributes);
     }
 }

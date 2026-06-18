@@ -345,7 +345,7 @@ Verification candidates:
 ```bash
 rg -n "new PollingWorkerAdapter|pollingBinding\\(|registrationDescriptors\\(" transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/DefaultWorkerTransportRuntimeFactory.java
 rg -n "new PollingTransportAdapterBootstrap\\(" sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/TransportRuntimeComposition.java
-./mvnw -q -pl transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=PollingWorkerAdapterTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest,TransportConfigTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest,TransportConfigTest -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests test-compile
 ```
 
@@ -670,7 +670,7 @@ Focused proof:
 Adapter proof:
 
 ```bash
-./mvnw -q -pl transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter -am test -Dtest=WebSocketTaskDispatchChannelTest,WebSocketInputProcessorTest,WebSocketOutputProcessorTest,DispatcherInboundHandlerTest,ServerSessionManagerShutdownTest,WebSocketFrameReadersTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingWorkerAdapterTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter -am test -Dtest=WebSocketTaskDispatchChannelTest,WebSocketInputProcessorTest,WebSocketOutputProcessorTest,DispatcherInboundHandlerTest,ServerSessionManagerShutdownTest,WebSocketFrameReadersTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Assembly proof:

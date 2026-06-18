@@ -1,6 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
@@ -51,6 +52,23 @@ class TransportRuntimeRegistryTest {
         assertEquals("Adapter command executor instance is shared by adapters 'websocket' and 'socket'; "
                         + "each adapter binding must own a distinct executor instance",
                 error.getMessage());
+    }
+
+    @Test
+    void pullBindingRequiresSessionEvidenceDriver() {
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> TransportBinding.builder(
+                                "polling-custom",
+                                WorkerTransportHints.POLLING,
+                                commands -> java.util.List.of()
+                        )
+                        .deliveryPullChannel((deliveryBucketId, selectedWorkerId, maxMessages, timeoutMillis) ->
+                                DeliveryPullResult.empty())
+                        .build()
+        );
+
+        assertEquals("pullSessionEvidenceDriver must be set when deliveryPullChannel is set", error.getMessage());
     }
 
     private static TransportBinding binding(String adapterId, String transportHint) {

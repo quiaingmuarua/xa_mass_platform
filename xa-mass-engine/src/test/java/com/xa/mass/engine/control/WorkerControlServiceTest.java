@@ -4,7 +4,6 @@ import com.xa.mass.engine.InMemoryWorkerDeclarationRuntimeStore;
 
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.worker.runtime.command.WorkerCommandAcknowledgement;
 import com.xa.mass.engine.command.WorkerCommandDeliveryCoordinator;
 import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryResult;
@@ -12,6 +11,7 @@ import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.worker.runtime.command.WorkerCommandRequest;
 import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
 import com.xa.mass.engine.testutil.RecordingEventSink;
+import com.xa.mass.engine.testutil.WorkerTestFixture;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
@@ -40,7 +40,7 @@ public class WorkerControlServiceTest {
     void appliesOwnerBackedCommandCapabilityAndStateEntriesWithReadViews() {
         InMemoryWorkerRegistry workerRegistry = new InMemoryWorkerRegistry();
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), workerRegistry);
-        Worker worker = new Worker();
+        WorkerTestFixture worker = new WorkerTestFixture();
         worker.setWorkerId("worker-1");
         worker.setWorkerGroupId("group-1");
         worker.setSupportedProjects(List.of("demoApp"));
@@ -102,7 +102,7 @@ public class WorkerControlServiceTest {
     @Test
     void drainCommandFailureDoesNotReenableDispatchWithoutExplicitAvailableState() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
-        Worker worker = new Worker();
+        WorkerTestFixture worker = new WorkerTestFixture();
         worker.setWorkerId("worker-2");
         worker.setWorkerGroupId("group-2");
         registerWorker(workerManager, worker);
@@ -145,7 +145,7 @@ public class WorkerControlServiceTest {
     @Test
     void dispatchWakeupFiresOnlyForSchedulingRecoveryEvidence() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
-        Worker worker = new Worker();
+        WorkerTestFixture worker = new WorkerTestFixture();
         worker.setWorkerId("worker-wakeup");
         worker.setWorkerGroupId("group-wakeup");
         worker.setSupportedProjects(List.of("demoApp"));
@@ -188,7 +188,7 @@ public class WorkerControlServiceTest {
     @Test
     void dispatchAvailabilityPolicyIsPluggable() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
-        Worker worker = new Worker();
+        WorkerTestFixture worker = new WorkerTestFixture();
         worker.setWorkerId("worker-3");
         worker.setWorkerGroupId("group-3");
         registerWorker(workerManager, worker);
@@ -258,7 +258,7 @@ public class WorkerControlServiceTest {
     @Test
     void expiredDrainCommandDoesNotCreateOrClearCommandDispatchGate() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
-        Worker worker = new Worker();
+        WorkerTestFixture worker = new WorkerTestFixture();
         worker.setWorkerId("worker-expiry");
         worker.setWorkerGroupId("group-expiry");
         registerWorker(workerManager, worker);
@@ -318,7 +318,7 @@ public class WorkerControlServiceTest {
     @Test
     void acceptedRealtimeDrainHandoffAppliesCommandGatePolicy() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
-        Worker worker = new Worker();
+        WorkerTestFixture worker = new WorkerTestFixture();
         worker.setWorkerId("worker-realtime-drain");
         worker.setWorkerGroupId("group-realtime-drain");
         registerWorker(workerManager, worker);
@@ -406,7 +406,7 @@ public class WorkerControlServiceTest {
     @Test
     void pollingClaimMarksDrainDeliveredAndDisablesCommandGate() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
-        Worker worker = new Worker();
+        WorkerTestFixture worker = new WorkerTestFixture();
         worker.setWorkerId("worker-command-poll");
         worker.setWorkerGroupId("group-command-poll");
         registerWorker(workerManager, worker);

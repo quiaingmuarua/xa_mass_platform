@@ -3,7 +3,6 @@ package com.xa.mass.engine.monkey;
 import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.generate.TypeRegistry;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 
 import java.util.List;
@@ -11,22 +10,16 @@ import java.util.List;
 /**
  * Dev/mock fixture generator backed by the legacy JSON-DSL object generator.
  *
- * <p>This class is for demo data and local runtime bootstrap only. Worker
- * matching uses {@code RuleDefinition + QLExpressRuleEvaluator +
- * worker-runtime selected-worker handles; do not route assignment or binding decisions through
- * this generator.
+ * <p>This class is for task/rule fixture data and local runtime bootstrap only.
+ * Worker selection is owned by worker-runtime and must not route assignment or
+ * binding decisions through this generator.
  */
 @SuppressWarnings("deprecation")
 public class MonkeyGenerator {
 
     static {
-        TypeRegistry.register("Worker", Worker.class);
         TypeRegistry.register("RuleDefinition", RuleDefinition.class);
         TypeRegistry.register("TaskFixture", TaskFixture.class);
-    }
-
-    public static List<Worker> generateWorkers(String jsonDsl) {
-        return JsonDslEngine.generateList(jsonDsl, Worker.class);
     }
 
     public static List<TaskFixture> generateTasks(String jsonDsl) {
@@ -59,21 +52,6 @@ public class MonkeyGenerator {
                         "target": {"$JOIN": ["target-", "&.index"]}
                       }
                     }
-                  }
-                }
-                """;
-    }
-
-    public static String exampleJsonDsl() {
-        return """
-                {
-                  "MODEL": "Worker",
-                  "COUNT": 3,
-                  "FIELDS": {
-                    "workerId": {"$JOIN": ["worker-", "&.index"]},
-                    "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-                    "workerGroupId": {"$CHOICE": ["us", "gb", "cn"]},
-                    "agentVersion": {"$JOIN": ["1.0.", "&.index"]}
                   }
                 }
                 """;

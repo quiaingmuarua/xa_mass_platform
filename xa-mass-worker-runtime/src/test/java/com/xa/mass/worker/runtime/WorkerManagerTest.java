@@ -8,7 +8,6 @@ import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
@@ -836,7 +835,7 @@ public class WorkerManagerTest {
         assertTrue(before.workers().isEmpty());
         assertTrue(before.group("crawler").isEmpty());
         assertEquals(List.of("w-published-snapshot"),
-                afterAdd.workers().stream().map(Worker::getWorkerId).toList());
+                afterAdd.workers().stream().map(WorkerDeclarationRecord::workerId).toList());
 
         Worker updated = worker("w-published-snapshot", "export");
         assertTrue(updateWorker(updated));
@@ -845,10 +844,10 @@ public class WorkerManagerTest {
         assertNotSame(afterAdd, afterUpdate);
         assertTrue(afterAdd.group("crawler").isPresent());
         assertTrue(afterAdd.group("export").isPresent());
-        assertEquals("crawler", afterAdd.worker("w-published-snapshot").orElseThrow().getWorkerGroupId());
+        assertEquals("crawler", afterAdd.worker("w-published-snapshot").orElseThrow().workerGroupId());
         assertTrue(afterUpdate.group("crawler").isPresent());
         assertTrue(afterUpdate.group("export").isPresent());
-        assertEquals("export", afterUpdate.worker("w-published-snapshot").orElseThrow().getWorkerGroupId());
+        assertEquals("export", afterUpdate.worker("w-published-snapshot").orElseThrow().workerGroupId());
     }
 
     @Test
@@ -927,7 +926,7 @@ public class WorkerManagerTest {
         assertEquals("crawler", storageBackedManager.getWorkerRegistrySnapshot()
                 .worker("w-storage-direct-snapshot")
                 .orElseThrow()
-                .getWorkerGroupId());
+                .workerGroupId());
         assertTrue(candidateIndexIds(storageBackedManager, task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
                 Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))).isEmpty());
     }
@@ -1180,7 +1179,7 @@ public class WorkerManagerTest {
         return workerManager.getWorkerCandidateIndex()
                 .workersFor(workerTaskSelector(task))
                 .stream()
-                .map(Worker::getWorkerId)
+                .map(WorkerDeclarationRecord::workerId)
                 .toList();
     }
 
@@ -1231,5 +1230,113 @@ public class WorkerManagerTest {
             sharedConfig.put(TaskSharedConfig.WORKER_GROUP_IDS, List.of(groupIds));
         }
         return Map.copyOf(sharedConfig);
+    }
+
+    private static final class Worker {
+        private String workerId;
+        private WorkerStatus status = WorkerStatus.OFFLINE;
+        private String agentVersion;
+        private LocalDateTime lastHeartbeat;
+        private String workerGroupId;
+        private String adapterNodeId;
+        private String adapterId;
+        private String onlineStrategy;
+        private int maxConcurrentWork = 1;
+        private Map<String, String> attributes = Map.of();
+        @SuppressWarnings("unused")
+        private List<String> supportedProjects = List.of();
+        @SuppressWarnings("unused")
+        private List<String> supportedEventCodes = List.of();
+
+        String getWorkerId() {
+            return workerId;
+        }
+
+        void setWorkerId(String workerId) {
+            this.workerId = workerId;
+        }
+
+        WorkerStatus getStatus() {
+            return status;
+        }
+
+        void setStatus(WorkerStatus status) {
+            this.status = status;
+        }
+
+        String getAgentVersion() {
+            return agentVersion;
+        }
+
+        void setAgentVersion(String agentVersion) {
+            this.agentVersion = agentVersion;
+        }
+
+        LocalDateTime getLastHeartbeat() {
+            return lastHeartbeat;
+        }
+
+        void setLastHeartbeat(LocalDateTime lastHeartbeat) {
+            this.lastHeartbeat = lastHeartbeat;
+        }
+
+        String getWorkerGroupId() {
+            return workerGroupId;
+        }
+
+        void setWorkerGroupId(String workerGroupId) {
+            this.workerGroupId = workerGroupId;
+        }
+
+        String getAdapterNodeId() {
+            return adapterNodeId;
+        }
+
+        void setAdapterNodeId(String adapterNodeId) {
+            this.adapterNodeId = adapterNodeId;
+        }
+
+        @SuppressWarnings("unused")
+        String getAdapterId() {
+            return adapterId;
+        }
+
+        void setAdapterId(String adapterId) {
+            this.adapterId = adapterId;
+        }
+
+        String getOnlineStrategy() {
+            return onlineStrategy;
+        }
+
+        void setOnlineStrategy(String onlineStrategy) {
+            this.onlineStrategy = onlineStrategy;
+        }
+
+        int getMaxConcurrentWork() {
+            return Math.max(1, maxConcurrentWork);
+        }
+
+        void setMaxConcurrentWork(int maxConcurrentWork) {
+            this.maxConcurrentWork = Math.max(1, maxConcurrentWork);
+        }
+
+        Map<String, String> getAttributes() {
+            return attributes;
+        }
+
+        void setAttributes(Map<String, String> attributes) {
+            this.attributes = attributes == null || attributes.isEmpty()
+                    ? Map.of()
+                    : Map.copyOf(attributes);
+        }
+
+        void setSupportedProjects(List<String> supportedProjects) {
+            this.supportedProjects = supportedProjects == null ? List.of() : List.copyOf(supportedProjects);
+        }
+
+        void setSupportedEventCodes(List<String> supportedEventCodes) {
+            this.supportedEventCodes = supportedEventCodes == null ? List.of() : List.copyOf(supportedEventCodes);
+        }
     }
 }

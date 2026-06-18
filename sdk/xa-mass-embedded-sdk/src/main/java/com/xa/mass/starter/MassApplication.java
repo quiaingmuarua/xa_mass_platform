@@ -753,9 +753,7 @@ public class MassApplication {
                 requireText(sessionToken, "sessionToken"),
                 resolved.getDeliveryPullChannel(),
                 resolved.getResultIngressChannel(),
-                resolved.getEndpointLeaseStore(),
-                resolved.getDeliveryCommandConsumerRegistry(),
-                requireWorkerPresenceIngress(),
+                resolved.getPullSessionEvidenceDriver(),
                 resolved.getTransportHint()
         );
     }

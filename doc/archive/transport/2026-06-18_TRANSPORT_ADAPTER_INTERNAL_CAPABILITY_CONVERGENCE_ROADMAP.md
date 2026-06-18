@@ -1,6 +1,7 @@
 # Transport Adapter Internal Capability Convergence Roadmap
 
-Status: proposed direction document.
+Status: complete; polling capability split landed, push-adapter alignment is
+tracked by `TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 
 ## Summary
 
@@ -54,26 +55,25 @@ has one owner.
 
 ## Current Code Observations
 
-- `PollingWorkerAdapter` currently implements both `AdapterCommandExecutor` and
-  `DeliveryPullChannel`.
-- `PollingWorkerAdapter.dispatch(...)` calls
-  `TransportDeliveryService.enqueue(adapterId, commands)` and returns
-  `DispatchOutcome`.
-- `PollingWorkerAdapter.pollDeliveryMessagesResult(...)` calls
+- `PollingWorkerAdapter` has been removed from production code.
+- `PollingDeliveryExecutor` implements `AdapterCommandExecutor` and calls
+  `TransportDeliveryService.enqueue(adapterId, commands)`.
+- `PollingDeliveryPullChannel` implements `DeliveryPullChannel` and calls
   `TransportDeliveryService.pollItemResult(deliveryBucketId,
   selectedWorkerId, ...)`.
-- `PollingWorkerAdapter` also constructs and owns a
-  `TransportEndpointLeasePublisher`, then exposes `announceWorkerOnline`,
-  `announceWorkerOffline`, and `refreshEndpointLeaseHeartbeat`.
-- `PollingTransportAdapterBootstrap` creates one `PollingWorkerAdapter` and
-  contributes it as both the command executor and the pull channel.
-- `PullWorkerSession` is the embedded SDK production pull session. It directly
-  owns worker session-presence publication, endpoint lease claim/heartbeat/
-  release, and selected-worker consumer claim/release, while also polling work
-  and submitting results.
-- `InternalPullWorkerSessions` passes `TransportEndpointLeaseStore`,
-  `DeliveryCommandConsumerRegistry`, and `WorkerPresenceIngress` into
-  `PullWorkerSession`.
+- `PollingSessionEvidenceDriver` implements `PullSessionEvidenceDriver` and
+  delegates connect/heartbeat/disconnect evidence projection to
+  `TransportEndpointLeasePublisher` and `WorkerPresenceSessionPublisher`.
+- `PollingTransportAdapterBootstrap` creates explicit polling metadata,
+  executor, pull channel, and evidence driver objects, then contributes them
+  through `TransportBinding`.
+- `PullWorkerSession` is the embedded SDK production pull session. It now
+  consumes a runtime-resolved `PullSessionEvidenceDriver` for
+  connect/heartbeat/disconnect evidence while keeping polling and result
+  submission behavior.
+- `InternalPullWorkerSessions` passes `PullSessionEvidenceDriver` into
+  `PullWorkerSession` instead of raw endpoint lease stores, consumer
+  registries, or presence ingress.
 - `MassApplication.openPullWorkerSession(...)` resolves
   `ResolvedPullWorkerTransport` and opens `PullWorkerSession`, so this is not a
   test-only or legacy path.
@@ -299,9 +299,9 @@ Acceptance:
 Suggested proof:
 
 ```bash
-rg -n "PollingWorkerAdapter|WebSocketTaskDispatchChannel|SocketTaskDispatchChannel|ServerSessionManager|SocketSessionManager|DeliveryPullChannel|TransportEndpointLeasePublisher" transport -g "*.java"
+rg -n "PollingDeliveryExecutor|PollingDeliveryPullChannel|PollingSessionEvidenceDriver|WebSocketTaskDispatchChannel|SocketTaskDispatchChannel|ServerSessionManager|SocketSessionManager|DeliveryPullChannel|TransportEndpointLeasePublisher" transport -g "*.java"
 rg -n "PullWorkerSession|InternalPullWorkerSessions|ResolvedPullWorkerTransport|openPullWorkerSession|TransportEndpointLeaseStore|DeliveryCommandConsumerRegistry|WorkerPresenceIngress" sdk/xa-mass-embedded-sdk/src/main/java transport/transport_runtime/src/main/java -g "*.java"
-rg -n "PollingWorkerAdapter|ServerSessionManager|SocketSessionManager" transport/*-adapter/src/test/java -g "*.java"
+rg -n "PollingDeliveryExecutor|PollingDeliveryPullChannel|PollingSessionEvidenceDriver|ServerSessionManager|SocketSessionManager" transport/*-adapter/src/test/java -g "*.java"
 ```
 
 ## PAC-1 Pull Session Evidence Driver
@@ -448,7 +448,7 @@ Acceptance:
 Suggested focused tests:
 
 ```bash
-./mvnw -q -pl transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,PollingWorkerAdapterTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest,TransportConfigTest
+./mvnw -q -pl transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,PullWorkerSessionTest,MassApplicationDistributedTransportTest,TransportConfigTest
 ./mvnw -q -pl transport/transport_runtime -am test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,TransportAdapterContributionTest,TransportConvergenceArchitectureGuardTest
 ```
 
@@ -456,6 +456,9 @@ Suggested focused tests:
 
 Goal: use the polling split to define the later WebSocket/socket
 session-manager split without changing push adapter behavior yet.
+
+Status: split into
+`TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 
 Scope:
 
@@ -477,6 +480,8 @@ Acceptance:
 
 - WebSocket/socket alignment work is classified before any push session-manager
   rewrite starts.
+- Push adapter session-manager work is tracked in
+  `TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 - Assigned delivery remains selected-worker only.
 - Raw/manual side-channels remain outside command executors.
 - Any later split has its own focused proof commands and does not depend on
@@ -523,7 +528,7 @@ Suggested verification:
 
 ```bash
 ./mvnw -q -pl transport/transport_runtime,transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test -Dtest=TransportConvergenceArchitectureGuardTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,PullWorkerSessionTest
-./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/websocket-adapter,transport/socket-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests test-compile
+./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/websocket-adapter,transport/socket-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests compile
 ```
 
 ## Roadmap Completion Criteria
@@ -542,7 +547,9 @@ This roadmap can be marked complete only when:
 - Endpoint lease projection remains runtime-publisher based and is not
   duplicated in concrete adapter or SDK session code.
 - WebSocket/socket have either been aligned to the same capability vocabulary or
-  explicitly tracked in a follow-up roadmap with current evidence.
+  explicitly tracked in a follow-up roadmap with current evidence. Current
+  follow-up:
+  `TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 - Transport owner docs and proof registry match current code.
 - Residue scan finds no tests or docs preserving the old polling multi-role
   object as the desired shape.
@@ -556,7 +563,9 @@ This roadmap can be marked complete only when:
    bootstrap contribution.
 4. PAC-4: land guards and owner-doc updates for polling.
 5. PAC-3: classify WebSocket/socket alignment and decide whether to continue in
-   this roadmap or split a push-adapter session-manager roadmap.
+   this roadmap or split a push-adapter session-manager roadmap. This has been
+   split into
+   `TRANSPORT_PUSH_ADAPTER_SESSION_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 
 PAC-3 is intentionally after the polling split. WebSocket/socket should be
 analyzed early, but they should not be the first edit surface.

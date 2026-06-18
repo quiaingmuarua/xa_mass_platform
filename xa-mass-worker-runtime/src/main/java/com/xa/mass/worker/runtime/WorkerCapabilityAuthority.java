@@ -1,9 +1,9 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.worker.runtime.resource.EventBinding;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
@@ -30,11 +30,11 @@ public final class WorkerCapabilityAuthority {
 
     private final LinkedHashMap<String, WorkerCapabilityReport> reportsByWorkerId = new LinkedHashMap<>();
 
-    public synchronized WorkerRegistrySnapshot composeSnapshot(Collection<Worker> registrationRows) {
+    public synchronized WorkerRegistrySnapshot composeSnapshot(Collection<WorkerDeclarationRecord> registrationRows) {
         return WorkerRegistrySnapshot.from(List.of(), effectiveWorkers(registrationRows));
     }
 
-    public synchronized WorkerRegistrySnapshot composeSnapshot(Collection<Worker> registrationRows,
+    public synchronized WorkerRegistrySnapshot composeSnapshot(Collection<WorkerDeclarationRecord> registrationRows,
                                                                Collection<WorkerGroupRecord> declaredGroups) {
         LinkedHashMap<String, WorkerGroupRecord> groupsById = new LinkedHashMap<>();
         if (declaredGroups != null) {
@@ -44,7 +44,7 @@ public final class WorkerCapabilityAuthority {
                 }
             }
         }
-        List<Worker> effectiveWorkers = effectiveWorkers(registrationRows, groupsById);
+        List<WorkerDeclarationRecord> effectiveWorkers = effectiveWorkers(registrationRows, groupsById);
         return WorkerRegistrySnapshot.from(
                 groupsById.values(),
                 effectiveWorkers,
@@ -53,18 +53,18 @@ public final class WorkerCapabilityAuthority {
     }
 
     public synchronized WorkerCapabilityReportResult applyReport(WorkerCapabilityReport report,
-                                                                 Collection<Worker> registrationRows) {
+                                                                 Collection<WorkerDeclarationRecord> registrationRows) {
         return applyReport(report, registrationRows, List.of());
     }
 
     public synchronized WorkerCapabilityReportResult applyReport(WorkerCapabilityReport report,
-                                                                 Collection<Worker> registrationRows,
+                                                                 Collection<WorkerDeclarationRecord> registrationRows,
                                                                  Collection<WorkerGroupRecord> declaredGroups) {
         if (report == null) {
             throw new IllegalArgumentException("report must not be null");
         }
 
-        Worker registrationRow = registrationRow(report.workerId(), registrationRows);
+        WorkerDeclarationRecord registrationRow = registrationRow(report.workerId(), registrationRows);
         if (registrationRow == null) {
             return result(WorkerCapabilityReportStatus.UNKNOWN_WORKER, report, false,
                     "worker is not registered");
@@ -91,48 +91,38 @@ public final class WorkerCapabilityAuthority {
                 "capability report accepted");
     }
 
-    private List<Worker> effectiveWorkers(Collection<Worker> registrationRows) {
+    private List<WorkerDeclarationRecord> effectiveWorkers(Collection<WorkerDeclarationRecord> registrationRows) {
         return effectiveWorkers(registrationRows, Map.of());
     }
 
-    private List<Worker> effectiveWorkers(Collection<Worker> registrationRows,
-                                          Map<String, WorkerGroupRecord> groupsById) {
+    private List<WorkerDeclarationRecord> effectiveWorkers(Collection<WorkerDeclarationRecord> registrationRows,
+                                                           Map<String, WorkerGroupRecord> groupsById) {
         if (registrationRows == null || registrationRows.isEmpty()) {
             return List.of();
         }
-        List<Worker> effective = new ArrayList<>();
-        for (Worker worker : registrationRows) {
-            if (worker == null || normalizeNullable(worker.getWorkerId()) == null) {
+        List<WorkerDeclarationRecord> effective = new ArrayList<>();
+        for (WorkerDeclarationRecord worker : registrationRows) {
+            if (worker == null || normalizeNullable(worker.workerId()) == null) {
                 continue;
             }
-            WorkerCapabilityReport report = reportsByWorkerId.get(worker.getWorkerId().trim());
-            effective.add(report == null ? worker : effectiveWorker(worker, report, groupsById));
+            WorkerCapabilityReport report = reportsByWorkerId.get(worker.workerId().trim());
+            effective.add(report == null ? worker : effectiveWorker(worker, report));
         }
         return effective;
     }
 
-    private Worker effectiveWorker(Worker worker,
-                                   WorkerCapabilityReport report,
-                                   Map<String, WorkerGroupRecord> groupsById) {
-        Worker effective = copyWorker(worker);
-        if (!report.availableEventCodes().isEmpty()) {
-            effective.setSupportedEventCodes(approvedEventCodes(worker, report, groupsById));
-        }
+    private WorkerDeclarationRecord effectiveWorker(WorkerDeclarationRecord worker,
+                                                    WorkerCapabilityReport report) {
         if (!report.schedulingAttributes().isEmpty()) {
             LinkedHashMap<String, String> attributes = new LinkedHashMap<>();
-            if (worker.getAttributes() != null) {
-                attributes.putAll(worker.getAttributes());
-            }
+            attributes.putAll(worker.attributes());
             attributes.putAll(report.schedulingAttributes());
-            effective.setAttributes(attributes);
+            return copyWorker(worker, report.agentVersion(), attributes);
         }
-        if (report.agentVersion() != null) {
-            effective.setAgentVersion(report.agentVersion());
-        }
-        return effective;
+        return copyWorker(worker, report.agentVersion(), worker.attributes());
     }
 
-    private static List<String> approvedEventCodes(Worker worker,
+    private static List<String> approvedEventCodes(WorkerDeclarationRecord worker,
                                                    WorkerCapabilityReport report,
                                                    Map<String, WorkerGroupRecord> groupsById) {
         WorkerGroupRecord group = groupFor(worker, groupsById);
@@ -153,19 +143,19 @@ public final class WorkerCapabilityAuthority {
         return effective.isEmpty() ? List.of() : List.copyOf(effective);
     }
 
-    private static WorkerGroupRecord groupFor(Worker worker, Map<String, WorkerGroupRecord> groupsById) {
-        String groupId = worker == null ? null : normalizeNullable(worker.getWorkerGroupId());
+    private static WorkerGroupRecord groupFor(WorkerDeclarationRecord worker, Map<String, WorkerGroupRecord> groupsById) {
+        String groupId = worker == null ? null : normalizeNullable(worker.workerGroupId());
         return groupId == null || groupsById == null ? null : groupsById.get(groupId);
     }
 
-    private Map<String, Set<EventKey>> workerEventKeysByWorkerId(Collection<Worker> registrationRows,
-                                                                  Map<String, WorkerGroupRecord> groupsById) {
+    private Map<String, Set<EventKey>> workerEventKeysByWorkerId(Collection<WorkerDeclarationRecord> registrationRows,
+                                                                 Map<String, WorkerGroupRecord> groupsById) {
         if (reportsByWorkerId.isEmpty() || registrationRows == null || registrationRows.isEmpty()) {
             return Map.of();
         }
         LinkedHashMap<String, Set<EventKey>> scopes = new LinkedHashMap<>();
-        for (Worker worker : registrationRows) {
-            String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
+        for (WorkerDeclarationRecord worker : registrationRows) {
+            String workerId = worker == null ? null : normalizeNullable(worker.workerId());
             if (workerId == null) {
                 continue;
             }
@@ -178,7 +168,7 @@ public final class WorkerCapabilityAuthority {
         return scopes.isEmpty() ? Map.of() : Map.copyOf(scopes);
     }
 
-    private static Set<EventKey> approvedEventKeys(Worker worker,
+    private static Set<EventKey> approvedEventKeys(WorkerDeclarationRecord worker,
                                                    WorkerCapabilityReport report,
                                                    Map<String, WorkerGroupRecord> groupsById) {
         WorkerGroupRecord group = groupFor(worker, groupsById);
@@ -198,13 +188,14 @@ public final class WorkerCapabilityAuthority {
         return eventKeys.isEmpty() ? Set.of() : Set.copyOf(eventKeys);
     }
 
-    private static Worker registrationRow(String workerId, Collection<Worker> registrationRows) {
+    private static WorkerDeclarationRecord registrationRow(String workerId,
+                                                           Collection<WorkerDeclarationRecord> registrationRows) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null || registrationRows == null) {
             return null;
         }
-        for (Worker worker : registrationRows) {
-            if (worker != null && normalizedWorkerId.equals(normalizeNullable(worker.getWorkerId()))) {
+        for (WorkerDeclarationRecord worker : registrationRows) {
+            if (worker != null && normalizedWorkerId.equals(normalizeNullable(worker.workerId()))) {
                 return worker;
             }
         }
@@ -219,25 +210,17 @@ public final class WorkerCapabilityAuthority {
                 snapshotChanged, reason);
     }
 
-    private static Worker copyWorker(Worker source) {
-        Worker copy = new Worker();
-        copy.setWorkerId(source.getWorkerId());
-        if (source.getStatus() != null) {
-            copy.setStatus(source.getStatus());
-        }
-        copy.setAgentVersion(source.getAgentVersion());
-        copy.setLastHeartbeat(source.getLastHeartbeat());
-        copy.setSupportedProjects(source.getSupportedProjects());
-        copy.setSupportedEventCodes(source.getSupportedEventCodes());
-        copy.setWorkerGroupId(source.getWorkerGroupId());
-        copy.setAdapterNodeId(source.getAdapterNodeId());
-        copy.setAdapterId(source.getAdapterId());
-        copy.setOnlineStrategy(source.getOnlineStrategy());
-        copy.setMaxConcurrentWork(source.getMaxConcurrentWork());
-        copy.setAttributes(source.getAttributes());
-        copy.setCreateTime(source.getCreateTime());
-        copy.setUpdateTime(source.getUpdateTime());
-        return copy;
+    private static WorkerDeclarationRecord copyWorker(WorkerDeclarationRecord source,
+                                                      String reportAgentVersion,
+                                                      Map<String, String> attributes) {
+        return new WorkerDeclarationRecord(
+                source.workerId(),
+                source.workerGroupId(),
+                source.transportHint(),
+                reportAgentVersion == null ? source.agentVersion() : reportAgentVersion,
+                source.maxConcurrentWork(),
+                attributes
+        );
     }
 
     private static String normalizeNullable(String value) {

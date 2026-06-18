@@ -6,12 +6,10 @@ import com.xa.mass.base.enums.assignment.AssignmentType;
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
@@ -20,6 +18,7 @@ import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
+import com.xa.mass.engine.testutil.WorkerTestFixture;
 import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
 import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
@@ -181,30 +180,30 @@ final class TaskSchedulingTestHarness {
         return taskManager.getTask(task.getTid());
     }
 
-    Worker addWorker(String workerId, String routingCode) {
+    WorkerTestFixture addWorker(String workerId, String routingCode) {
         return addWorker(workerId, routingCode, Map.of());
     }
 
-    Worker addStatelessWorker(String workerId, int maxConcurrentWork) {
-        Worker worker = worker(workerId);
+    WorkerTestFixture addStatelessWorker(String workerId, int maxConcurrentWork) {
+        WorkerTestFixture worker = worker(workerId);
         worker.setMaxConcurrentWork(maxConcurrentWork);
         workerManager.addWorker(workerDeclaration(worker));
         refreshHeartbeatEvidence(worker);
         return worker;
     }
 
-    Worker addWorker(String workerId,
-                     String routingCode,
-                     Map<String, String> attributes) {
+    WorkerTestFixture addWorker(String workerId,
+                                String routingCode,
+                                Map<String, String> attributes) {
         return addWorker(workerId, DEFAULT_WORKER_GROUP_ID, routingCode, attributes);
     }
 
-    Worker addWorker(String workerId,
-                     String workerGroupId,
-                     String routingCode,
-                     Map<String, String> attributes) {
+    WorkerTestFixture addWorker(String workerId,
+                                String workerGroupId,
+                                String routingCode,
+                                Map<String, String> attributes) {
         installWorkerGroup(workerGroupId);
-        Worker worker = worker(workerId);
+        WorkerTestFixture worker = worker(workerId);
         worker.setWorkerGroupId(workerGroupId);
         worker.setAttributes(workerAttributes(routingCode, attributes));
         workerManager.addWorker(workerDeclaration(worker));
@@ -225,7 +224,7 @@ final class TaskSchedulingTestHarness {
         return result;
     }
 
-    private static WorkerDeclarationRecord workerDeclaration(Worker worker) {
+    private static WorkerDeclarationRecord workerDeclaration(WorkerTestFixture worker) {
         return new WorkerDeclarationRecord(
                 worker.getWorkerId(),
                 worker.getWorkerGroupId(),
@@ -236,7 +235,7 @@ final class TaskSchedulingTestHarness {
         );
     }
 
-    private void refreshHeartbeatEvidence(Worker worker) {
+    private void refreshHeartbeatEvidence(WorkerTestFixture worker) {
         if (worker == null || worker.getLastHeartbeat() == null) {
             return;
         }
@@ -304,13 +303,11 @@ final class TaskSchedulingTestHarness {
         return Map.of("target", target);
     }
 
-    private Worker worker(String workerId) {
-        Worker worker = new Worker();
+    private WorkerTestFixture worker(String workerId) {
+        WorkerTestFixture worker = new WorkerTestFixture();
         worker.setWorkerId(workerId);
-        worker.setStatus(WorkerStatus.ONLINE);
         worker.setLastHeartbeat(LocalDateTime.now());
         worker.setOnlineStrategy("polling");
-        worker.setAdapterNodeId(DEFAULT_ADAPTER_NODE_ID);
         worker.setWorkerGroupId(DEFAULT_WORKER_GROUP_ID);
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of());

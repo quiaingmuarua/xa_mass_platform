@@ -1,7 +1,8 @@
 package com.xa.mass.transport.polling.runtime;
 
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
+import com.xa.mass.transport.polling.worker.PollingDeliveryExecutor;
+import com.xa.mass.transport.polling.worker.PollingDeliveryPullChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
@@ -36,19 +37,30 @@ public final class PollingTransportAdapterBootstrap implements TransportAdapterB
 
     @Override
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
-        PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(
-                context.getEndpointLeaseStore(),
-                context.getDeliveryService(),
-                context.getDeliveryCommandConsumerRegistry(),
-                adapterId
+        PollingAdapterMetadata metadata = new PollingAdapterMetadata(
+                adapterId,
+                PROTOCOL,
+                WorkerTransportHints.POLLING
         );
+        PollingSessionEvidenceDriver sessionEvidenceDriver = new PollingSessionEvidenceDriver(
+                metadata.adapterId(),
+                context.getEndpointLeaseStore(),
+                context.getDeliveryCommandConsumerRegistry(),
+                context.getWorkerPresenceIngress()
+        );
+        PollingDeliveryExecutor deliveryExecutor = new PollingDeliveryExecutor(
+                metadata.adapterId(),
+                context.getDeliveryService()
+        );
+        PollingDeliveryPullChannel pullChannel = new PollingDeliveryPullChannel(context.getDeliveryService());
         TransportBinding binding = TransportBinding.builder(
-                        adapterId,
-                        WorkerTransportHints.POLLING,
-                        pollingAdapter
+                        metadata.adapterId(),
+                        metadata.transportHint(),
+                        deliveryExecutor
                 )
-                .protocol(PROTOCOL)
-                .deliveryPullChannel(pollingAdapter)
+                .protocol(metadata.protocol())
+                .deliveryPullChannel(pullChannel)
+                .pullSessionEvidenceDriver(sessionEvidenceDriver)
                 .build();
         return TransportAdapterContribution.builder()
                 .addTransportBinding(binding)

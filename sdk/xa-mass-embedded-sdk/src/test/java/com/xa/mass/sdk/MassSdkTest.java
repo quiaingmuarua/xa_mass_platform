@@ -13,7 +13,6 @@ import com.xa.mass.base.event.TargetScope;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.UserRef;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.command.event.CoreEventDescriptor;
@@ -122,6 +121,7 @@ import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
@@ -2908,16 +2908,13 @@ class MassSdkTest {
 
         try {
             app.start();
-            Worker worker = new Worker();
-            worker.setWorkerId("worker-without-transport");
-            worker.setWorkerGroupId("transport-identity-workers");
             requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().addWorker(new WorkerDeclarationRecord(
-                    worker.getWorkerId(),
-                    worker.getWorkerGroupId(),
-                    worker.getOnlineStrategy(),
-                    worker.getAgentVersion(),
-                    worker.getMaxConcurrentWork(),
-                    worker.getAttributes()
+                    "worker-without-transport",
+                    "transport-identity-workers",
+                    null,
+                    null,
+                    1,
+                    Map.of()
             ));
 
             IllegalArgumentException error = assertThrows(
@@ -3196,7 +3193,8 @@ class MassSdkTest {
         assertMissingMethod(MassSdkApplication.class, "getTaskManager");
         assertMissingMethod(MassSdkApplication.class, "getWorkerManager");
         assertMissingMethod(MassSdkApplication.class, "updateTask", Task.class);
-        assertMissingMethod(MassSdkApplication.class, "updateWorker", Worker.class);
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.base.model.Worker"));
         assertMissingMethod(MassSdkApplication.class, "publishTaskEvents");
         assertMissingMethod(MassSdkApplication.class, "listSessions");
         assertMissingMethod(MassSdkApplication.class, "getSessionStats");
@@ -3206,7 +3204,6 @@ class MassSdkTest {
         assertMissingMethod(MassSdk.Builder.class, "unwrap");
         assertMissingMethod(MassSdk.TransportOptions.class, "unwrap");
         assertMissingMethod(MassSdk.EngineOptions.class, "unwrap");
-        assertMissingMethod(MassEngine.class, "addWorker", Worker.class);
         Assertions.assertThrows(ClassNotFoundException.class,
                 () -> Class.forName("com.xa.mass.sdk.model.WorkerContextRegistration"));
         Assertions.assertThrows(ClassNotFoundException.class,
@@ -3468,7 +3465,39 @@ class MassSdkTest {
         return TransportBinding.builder(adapter.adapterId(), adapter.transportHint(), adapter)
                 .protocol(adapter.protocol())
                 .deliveryPullChannel(deliveryPullChannel)
+                .pullSessionEvidenceDriver(noopPullSessionEvidenceDriver())
                 .build();
+    }
+
+    private static PullSessionEvidenceDriver noopPullSessionEvidenceDriver() {
+        return new PullSessionEvidenceDriver() {
+            @Override
+            public boolean connect(String workerId,
+                                   String deliveryBucketId,
+                                   String endpointAddress,
+                                   String sessionToken,
+                                   String reason) {
+                return true;
+            }
+
+            @Override
+            public boolean heartbeat(String workerId,
+                                     String deliveryBucketId,
+                                     String endpointAddress,
+                                     String sessionToken,
+                                     String reason) {
+                return true;
+            }
+
+            @Override
+            public boolean disconnect(String workerId,
+                                      String deliveryBucketId,
+                                      String endpointAddress,
+                                      String sessionToken,
+                                      String reason) {
+                return true;
+            }
+        };
     }
 
     private static <T> T waitFor(Duration timeout, ThrowingSupplier<T> supplier) throws Exception {

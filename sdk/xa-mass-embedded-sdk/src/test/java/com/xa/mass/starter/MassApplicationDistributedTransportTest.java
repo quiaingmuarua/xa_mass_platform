@@ -1,6 +1,5 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
@@ -129,24 +128,14 @@ class MassApplicationDistributedTransportTest {
         return transport;
     }
 
-    private static Worker worker(String workerId) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setWorkerGroupId("demo-workers");
-        worker.setAdapterId("websocket");
-        worker.setOnlineStrategy(WorkerTransportHints.REALTIME);
-        return worker;
-    }
-
     private static WorkerDeclarationRecord workerDeclaration(String workerId) {
-        Worker worker = worker(workerId);
         return new WorkerDeclarationRecord(
-                worker.getWorkerId(),
-                worker.getWorkerGroupId(),
-                worker.getOnlineStrategy(),
-                worker.getAgentVersion(),
-                worker.getMaxConcurrentWork(),
-                worker.getAttributes()
+                workerId,
+                "demo-workers",
+                "realtime",
+                null,
+                1,
+                Map.of()
         );
     }
 

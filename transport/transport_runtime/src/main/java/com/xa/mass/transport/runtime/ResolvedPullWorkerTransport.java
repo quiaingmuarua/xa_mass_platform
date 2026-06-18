@@ -2,9 +2,7 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 
 import java.util.Objects;
 
@@ -19,8 +17,7 @@ public final class ResolvedPullWorkerTransport {
     private final String transportHint;
     private final DeliveryPullChannel deliveryPullChannel;
     private final TransportResultIngressChannel resultIngressChannel;
-    private final TransportEndpointLeaseStore endpointLeaseStore;
-    private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
+    private final PullSessionEvidenceDriver pullSessionEvidenceDriver;
 
     public ResolvedPullWorkerTransport(String workerId,
                                        String workerGroupId,
@@ -28,35 +25,15 @@ public final class ResolvedPullWorkerTransport {
                                        String transportHint,
                                        DeliveryPullChannel deliveryPullChannel,
                                        TransportResultIngressChannel resultIngressChannel,
-                                       TransportEndpointLeaseStore endpointLeaseStore) {
-        this(workerId,
-                workerGroupId,
-                adapterId,
-                transportHint,
-                deliveryPullChannel,
-                resultIngressChannel,
-                endpointLeaseStore,
-                NoopDeliveryCommandConsumerRegistry.INSTANCE);
-    }
-
-    public ResolvedPullWorkerTransport(String workerId,
-                                       String workerGroupId,
-                                       String adapterId,
-                                       String transportHint,
-                                       DeliveryPullChannel deliveryPullChannel,
-                                       TransportResultIngressChannel resultIngressChannel,
-                                       TransportEndpointLeaseStore endpointLeaseStore,
-                                       DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry) {
+                                       PullSessionEvidenceDriver pullSessionEvidenceDriver) {
         this.workerId = Objects.requireNonNull(workerId, "workerId");
         this.workerGroupId = Objects.requireNonNull(workerGroupId, "workerGroupId");
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
         this.transportHint = Objects.requireNonNull(transportHint, "transportHint");
         this.deliveryPullChannel = Objects.requireNonNull(deliveryPullChannel, "deliveryPullChannel");
         this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
-        this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
-        this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
-                ? deliveryCommandConsumerRegistry
-                : NoopDeliveryCommandConsumerRegistry.INSTANCE;
+        this.pullSessionEvidenceDriver = Objects.requireNonNull(pullSessionEvidenceDriver,
+                "pullSessionEvidenceDriver");
     }
 
     public String getWorkerId() {
@@ -83,12 +60,8 @@ public final class ResolvedPullWorkerTransport {
         return resultIngressChannel;
     }
 
-    public TransportEndpointLeaseStore getEndpointLeaseStore() {
-        return endpointLeaseStore;
-    }
-
-    public DeliveryCommandConsumerRegistry getDeliveryCommandConsumerRegistry() {
-        return deliveryCommandConsumerRegistry;
+    public PullSessionEvidenceDriver getPullSessionEvidenceDriver() {
+        return pullSessionEvidenceDriver;
     }
 
 }

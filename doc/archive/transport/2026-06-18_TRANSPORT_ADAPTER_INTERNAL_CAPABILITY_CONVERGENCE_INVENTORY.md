@@ -3,21 +3,25 @@
 Status: current code inventory for
 `TRANSPORT_ADAPTER_INTERNAL_CAPABILITY_CONVERGENCE_ROADMAP.md`.
 
-This inventory classifies concrete adapter internals after the
-`AdapterCommandExecutor` and embedded-adapter-independence mainline work. It is
-not proof that the target shape is implemented.
+This inventory classifies concrete adapter internals after the polling
+capability split. Polling is now the implemented reference shape; WebSocket and
+Socket remain later alignment targets.
 
 ## Symbols
 
 | Symbol | Current Owner | Current Role | Classification | Target |
 | --- | --- | --- | --- | --- |
-| `PollingWorkerAdapter` | `transport/polling-adapter` | Implements both `AdapterCommandExecutor` and `DeliveryPullChannel`; also owns endpoint lease publisher wiring and public online/offline/refresh helpers. | Mixed adapter capability object | Split into polling command executor, polling pull channel, and pull-session evidence driver. |
-| `PollingTransportAdapterBootstrap` | `transport/polling-adapter` | Creates one `PollingWorkerAdapter` and contributes it as both command executor and pull channel. | Adapter composition root with multi-role contribution | Create explicit capability instances and contribute them separately through `TransportBinding`. |
-| `PullWorkerSession` | `sdk/xa-mass-embedded-sdk` | SDK-facing pull worker session. Polls through `DeliveryPullChannel`, submits results, and currently writes worker presence, endpoint lease, and selected-worker consumer evidence directly. | Production pull-session action object with embedded transport evidence writes | Keep polling/result session behavior, but move connect/heartbeat/disconnect evidence writes behind a runtime-resolved pull-session evidence driver. |
-| `InternalPullWorkerSessions` | `sdk/xa-mass-embedded-sdk` | Internal factory that passes `TransportEndpointLeaseStore`, `DeliveryCommandConsumerRegistry`, and `WorkerPresenceIngress` into `PullWorkerSession`. | Assembly bridge exposing transport internals to the session constructor | Pass a narrow pull-session evidence driver instead of raw stores/registries/ingress. |
-| `MassApplication.openPullWorkerSession(...)` | `sdk/xa-mass-embedded-sdk` | Resolves `ResolvedPullWorkerTransport` and opens a `PullWorkerSession`. | Embedded SDK production entry path | Continue as the public starter entry, but stop threading raw evidence stores into the session. |
-| `ResolvedPullWorkerTransport` | `transport_runtime` | Carries worker id/group, adapter id, transport hint, pull channel, result ingress, endpoint lease store, and consumer registry. | Runtime pull binding result with too many evidence internals for SDK session construction | Add or resolve a narrow pull-session evidence driver; keep raw stores out of `PullWorkerSession`. |
-| `PullSessionEvidenceDriver` | target runtime embedded-support seam | Not present. | Missing production capability seam | Own connect/heartbeat/disconnect evidence projection for pull sessions without exposing stores/registries to SDK session code. |
+| `PollingWorkerAdapter` | removed | Historical mixed object that implemented both `AdapterCommandExecutor` and `DeliveryPullChannel` and also owned endpoint lease publisher wiring. | Removed residue | Keep deleted; do not reintroduce as a compatibility wrapper. |
+| `PollingAdapterMetadata` | `transport/polling-adapter` | Adapter-local metadata for polling bootstrap contribution: adapter id, protocol label, and transport hint. | Metadata holder | Keep local to polling runtime; do not derive metadata from executors. |
+| `PollingDeliveryExecutor` | `transport/polling-adapter` | Implements `AdapterCommandExecutor` and calls `TransportDeliveryService.enqueue(adapterId, commands)`. | Narrow polling command executor | Must not import pull-channel, endpoint lease, consumer registry, or presence types. |
+| `PollingDeliveryPullChannel` | `transport/polling-adapter` | Implements `DeliveryPullChannel` and calls `TransportDeliveryService.pollItemResult(deliveryBucketId, selectedWorkerId, ...)`. | Narrow polling pull channel | Must not import command-executor, endpoint lease, consumer registry, or presence types. |
+| `PollingSessionEvidenceDriver` | `transport/polling-adapter` | Implements `PullSessionEvidenceDriver` and delegates session observations to `TransportEndpointLeasePublisher` and `WorkerPresenceSessionPublisher`. | Pull-session evidence driver | May use evidence publishers; must not import `DeliveryCommand`, pull-channel, or polling delivery buffer classes. |
+| `PollingTransportAdapterBootstrap` | `transport/polling-adapter` | Creates explicit polling metadata, command executor, pull channel, and session evidence driver, then contributes them through `TransportBinding`. | Adapter composition root with explicit capability contribution | Keep as the owner of polling embedded adapter composition. |
+| `PullWorkerSession` | `sdk/xa-mass-embedded-sdk` | SDK-facing pull worker session. Polls through `DeliveryPullChannel`, submits results, and calls a runtime-resolved `PullSessionEvidenceDriver` for connect/heartbeat/disconnect evidence. | Production pull-session action object | Must not import raw endpoint lease stores, consumer registries, presence ingress, lease command models, or consumer claim models. |
+| `InternalPullWorkerSessions` | `sdk/xa-mass-embedded-sdk` | Internal factory that passes pull channel, result ingress channel, and `PullSessionEvidenceDriver` into `PullWorkerSession`. | Assembly bridge with narrow evidence seam | Keep raw stores/registries/ingress out of the session constructor. |
+| `MassApplication.openPullWorkerSession(...)` | `sdk/xa-mass-embedded-sdk` | Resolves `ResolvedPullWorkerTransport` and opens a `PullWorkerSession`. | Embedded SDK production entry path | Continue as the public starter entry; evidence internals stay behind resolved transport binding. |
+| `ResolvedPullWorkerTransport` | `transport_runtime` | Carries worker id/group, adapter id, transport hint, pull channel, result ingress, and pull-session evidence driver. | Runtime pull binding result | Keep raw stores and consumer registries out of SDK session construction. |
+| `PullSessionEvidenceDriver` | `transport_runtime` embedded support | Narrow connect/heartbeat/disconnect evidence projection seam consumed by `PullWorkerSession`. | Runtime-resolved capability seam | Own evidence projection without exposing stores/registries to SDK session code. |
 | `TransportDeliveryService.enqueue(...)` | `transport_runtime` | Converts `DeliveryCommand.deliveryBucketId` into bucket queue key and enqueues `QueuedPulledDispatch`. Also accepts adapter id for store/stats context. | Runtime delivery store front door | Keep in current slice; later decide whether adapter id remains diagnostics/store context or moves behind a narrower polling enqueue command. |
 | `TransportDeliveryService.pollItemResult(...)` | `transport_runtime` | Polls bucket queue by `deliveryBucketId + selectedWorkerId` demux. | Runtime pull buffer front door | Keep behavior; polling pull channel should be the only adapter-local caller. |
 | `TransportEndpointLeasePublisher` | `transport_runtime` | Builds endpoint lease and selected-worker consumer evidence from adapter session facts. | Runtime evidence projector | Keep as shared projector; concrete adapters should orchestrate calls, not duplicate record construction. |
@@ -31,22 +35,22 @@ not proof that the target shape is implemented.
 
 ## Current Mixed Roles
 
-`PollingWorkerAdapter` currently combines:
+Polling is now split into explicit capabilities:
 
-- assigned-delivery command execution
-- worker pull-buffer polling
-- endpoint lease claim / refresh / release orchestration
-- adapter-id normalization and rejection logging
+- `PollingDeliveryExecutor`: assigned-delivery command execution and polling
+  enqueue outcome logging
+- `PollingDeliveryPullChannel`: worker pull-buffer polling and status mapping
+- `PollingSessionEvidenceDriver`: endpoint lease, selected-worker consumer, and
+  worker session-presence projection through runtime publishers
 
-`PullWorkerSession` is also part of the production polling path. It currently
-combines:
+`PullWorkerSession` is still part of the production polling path. It now owns:
 
 - worker pull session lifecycle methods
 - worker invocation polling
 - result submission
-- worker session-presence publication
-- endpoint lease claim / refresh / release
-- selected-worker consumer claim / release
+
+It no longer owns worker session-presence event construction, endpoint lease
+record construction, or selected-worker consumer claim construction.
 
 `ServerSessionManager` and `SocketSessionManager` remain larger than ideal, but
 they are not the first implementation target because push adapters include real

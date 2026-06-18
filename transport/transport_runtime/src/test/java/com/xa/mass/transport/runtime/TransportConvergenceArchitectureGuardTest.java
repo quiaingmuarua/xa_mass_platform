@@ -398,7 +398,7 @@ class TransportConvergenceArchitectureGuardTest {
                 List.of(
                         repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketTaskDispatchChannel.java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java"),
-                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingWorkerAdapter.java")
+                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingDeliveryExecutor.java")
                 ),
                 "public String protocol(",
                 "public String adapterId(",
@@ -486,6 +486,59 @@ class TransportConvergenceArchitectureGuardTest {
         String compositionSource = Files.readString(composition);
         assertTrue(compositionSource.contains("new PollingTransportAdapterBootstrap()"),
                 "TransportRuntimeComposition must install the default polling adapter through bootstrap contribution");
+    }
+
+    @Test
+    void pollingAdapterCapabilitiesStayRoleSeparated() throws IOException {
+        assertPathsDoNotExist(repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingWorkerAdapter.java"));
+
+        Path executor = repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingDeliveryExecutor.java");
+        Path pullChannel = repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingDeliveryPullChannel.java");
+        Path evidenceDriver = repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingSessionEvidenceDriver.java");
+        Path bootstrap = repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingTransportAdapterBootstrap.java");
+        assertTrue(Files.exists(executor), "Polling command execution must live in an explicit executor");
+        assertTrue(Files.exists(pullChannel), "Polling pull demux must live in an explicit pull channel");
+        assertTrue(Files.exists(evidenceDriver), "Polling pull-session evidence must live in an explicit driver");
+
+        assertNoProductionSourceContains(
+                List.of(executor),
+                "DeliveryPullChannel",
+                "TransportEndpointLease",
+                "DeliveryCommandConsumerRegistry",
+                "WorkerPresenceIngress",
+                "PullSessionEvidenceDriver"
+        );
+        assertNoProductionSourceContains(
+                List.of(pullChannel),
+                "AdapterCommandExecutor",
+                "DeliveryCommand",
+                "TransportEndpointLease",
+                "DeliveryCommandConsumerRegistry",
+                "WorkerPresenceIngress",
+                "PullSessionEvidenceDriver"
+        );
+        assertNoProductionSourceContains(
+                List.of(evidenceDriver),
+                "com.xa.mass.transport.model.DeliveryCommand",
+                "DeliveryPullChannel",
+                "TransportDeliveryService",
+                "QueuedPulledDispatch"
+        );
+
+        String bootstrapSource = Files.readString(bootstrap);
+        assertTrue(bootstrapSource.contains("new PollingDeliveryExecutor"),
+                "Polling bootstrap must create the command executor explicitly");
+        assertTrue(bootstrapSource.contains("new PollingDeliveryPullChannel"),
+                "Polling bootstrap must create the pull channel explicitly");
+        assertTrue(bootstrapSource.contains("new PollingSessionEvidenceDriver"),
+                "Polling bootstrap must create the session evidence driver explicitly");
+        assertTrue(!bootstrapSource.contains("deliveryPullChannel(deliveryExecutor)"),
+                "Polling bootstrap must not reuse the command executor as the pull channel");
     }
 
     @Test
@@ -629,8 +682,7 @@ class TransportConvergenceArchitectureGuardTest {
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/ServerSessionManager.java"),
-                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java"),
-                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingWorkerAdapter.java")
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java")
                 ),
                 "TransportEndpointLeaseClaim",
                 "TransportEndpointLeaseHeartbeat",
@@ -646,6 +698,29 @@ class TransportConvergenceArchitectureGuardTest {
                 "Endpoint lease projection must live in a dedicated publisher");
         assertTrue(Files.exists(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease/WorkerPresenceSessionPublisher.java")),
                 "Worker presence projection must live in a dedicated publisher");
+    }
+
+    @Test
+    void pullWorkerSessionUsesEvidenceDriverInsteadOfTransportEvidenceInternals() throws IOException {
+        Path pullWorkerSession = repoRoot().resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/PullWorkerSession.java");
+        assertNoProductionSourceContains(
+                List.of(pullWorkerSession),
+                "TransportEndpointLeaseStore",
+                "DeliveryCommandConsumerRegistry",
+                "WorkerPresenceIngress",
+                "WorkerSessionPresenceEvent",
+                "TransportEndpointLeaseClaim",
+                "TransportEndpointLeaseHeartbeat",
+                "TransportEndpointLeaseRelease",
+                "DeliveryCommandConsumerClaim",
+                "claimEndpointLease",
+                "refreshEndpointLease",
+                "releaseEndpointLease"
+        );
+        String source = Files.readString(pullWorkerSession);
+        assertTrue(source.contains("PullSessionEvidenceDriver"),
+                "PullWorkerSession must consume the runtime-resolved pull-session evidence driver");
     }
 
     @Test

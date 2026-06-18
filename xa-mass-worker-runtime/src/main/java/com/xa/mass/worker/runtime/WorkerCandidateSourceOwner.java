@@ -1,10 +1,10 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -44,14 +44,14 @@ public final class WorkerCandidateSourceOwner {
                 : 1;
         WorkerCandidateIndex candidateIndex = candidateIndexSupplier.get();
         if (selector.targetsWorker()) {
-            List<Worker> targetCandidates = candidateIndex.workersFor(selector, limit);
+            List<WorkerDeclarationRecord> targetCandidates = candidateIndex.workersFor(selector, limit);
             CandidateMerge targetMerge = mergeWarmAndCold(List.of(), targetCandidates, limit);
             return new WorkerCandidateBatch<>(targetMerge.candidates(), 0, targetCandidates.size(), 0,
                     targetMerge.duplicateCandidateCount());
         }
         WarmCandidateSelection warmSelection = warmCandidatesFor(selector, candidateIndex, limit);
         List<WorkerCandidateRow> warmCandidates = warmSelection.candidates();
-        List<Worker> coldCandidates = candidateIndex.workersFor(selector, limit);
+        List<WorkerDeclarationRecord> coldCandidates = candidateIndex.workersFor(selector, limit);
         if (warmCandidates.isEmpty()) {
             CandidateMerge coldMerge = mergeWarmAndCold(List.of(), coldCandidates, limit);
             return new WorkerCandidateBatch<>(coldMerge.candidates(), 0, coldCandidates.size(),
@@ -119,7 +119,7 @@ public final class WorkerCandidateSourceOwner {
     }
 
     private static CandidateMerge mergeWarmAndCold(List<WorkerCandidateRow> warmCandidates,
-                                                   List<Worker> coldCandidates,
+                                                   List<WorkerDeclarationRecord> coldCandidates,
                                                    int limit) {
         LinkedHashMap<String, WorkerCandidateRow> deduped = new LinkedHashMap<>();
         int duplicateCount = 0;
@@ -137,9 +137,9 @@ public final class WorkerCandidateSourceOwner {
             }
         }
         if (coldCandidates != null) {
-            for (Worker worker : coldCandidates) {
-                if (worker != null && worker.getWorkerId() != null) {
-                    WorkerCandidateRow previous = deduped.putIfAbsent(worker.getWorkerId(), toCandidateRow(worker));
+            for (WorkerDeclarationRecord worker : coldCandidates) {
+                if (worker != null && worker.workerId() != null) {
+                    WorkerCandidateRow previous = deduped.putIfAbsent(worker.workerId(), toCandidateRow(worker));
                     if (previous != null) {
                         duplicateCount++;
                     }
@@ -152,13 +152,13 @@ public final class WorkerCandidateSourceOwner {
         return new CandidateMerge(List.copyOf(deduped.values()), duplicateCount);
     }
 
-    private static WorkerCandidateRow toCandidateRow(Worker worker) {
+    private static WorkerCandidateRow toCandidateRow(WorkerDeclarationRecord worker) {
         return new WorkerCandidateRow(
-                worker.getWorkerId(),
-                worker.getAgentVersion(),
-                worker.getWorkerGroupId(),
-                worker.getOnlineStrategy(),
-                worker.getAttributes()
+                worker.workerId(),
+                worker.agentVersion(),
+                worker.workerGroupId(),
+                worker.transportHint(),
+                worker.attributes()
         );
     }
 
