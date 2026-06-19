@@ -6,6 +6,8 @@ import com.google.gson.JsonObject;
 
 import java.net.ServerSocket;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -52,8 +54,8 @@ public final class ChaosSupport {
 
     public static boolean isTaskDispatchFrame(JsonObject frame) {
         return frame != null
-                && readString(frame, "taskId") != null
-                && readString(frame, "messageId") != null
+                && readString(frame, "eventCode") != null
+                && readString(frame, "resultCorrelationRef") != null
                 && !hasBoolean(frame, "success")
                 && !isResponseFrame(frame);
     }
@@ -70,14 +72,22 @@ public final class ChaosSupport {
                                          String detail,
                                          Map<String, Object> output) {
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", readString(taskFrame, "messageId"));
+        frame.addProperty("resultCorrelationRef", readString(taskFrame, "resultCorrelationRef"));
         frame.addProperty("workerId", readString(taskFrame, "workerId"));
-        frame.addProperty("taskId", readString(taskFrame, "taskId"));
         frame.addProperty("project", readString(taskFrame, "project"));
         frame.addProperty("success", success);
         frame.addProperty("detail", detail);
-        frame.add("output", GSON.toJsonTree(output != null ? output : Map.of()));
+        frame.addProperty("result", GSON.toJson(output != null ? output : Map.of()));
         return GSON.toJson(frame);
+    }
+
+    public static String dispatchMessageId(JsonObject taskFrame) {
+        String messageId = readString(taskFrame, "messageId");
+        if (messageId != null) {
+            return messageId;
+        }
+        CorrelationRecord correlation = decodeResultCorrelationRef(readString(taskFrame, "resultCorrelationRef"));
+        return correlation == null ? null : correlation.messageId();
     }
 
     public static String readString(JsonObject object, String field) {
@@ -89,6 +99,29 @@ public final class ChaosSupport {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private static CorrelationRecord decodeResultCorrelationRef(String resultCorrelationRef) {
+        if (resultCorrelationRef == null || resultCorrelationRef.isBlank()) {
+            return null;
+        }
+        try {
+            String json = new String(Base64.getUrlDecoder().decode(resultCorrelationRef), StandardCharsets.UTF_8);
+            CorrelationRecord record = GSON.fromJson(json, CorrelationRecord.class);
+            if (record != null && "v1".equals(record.version())) {
+                return record;
+            }
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private record CorrelationRecord(String version,
+                                     String taskId,
+                                     String messageId,
+                                     String attemptId,
+                                     int attemptNo) {
     }
 
     public static URI appendWorkerIdentity(URI serverUri, String workerId, String workerGroupId, String routeKey) {

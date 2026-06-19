@@ -101,9 +101,9 @@ public final class RuntimeTaskResultIngestChannel implements TransportResultIngr
         TaskResultCorrelation correlation =
                 taskResultIngestFacade.getResultCorrelation(command.taskId(), command.messageId());
         if (correlation == null || !correlation.activeLeasePresent()) {
-            logger.warn("Result ingress identity could not be validated because no active runtime lease exists: taskId={}, messageId={}, ingressAttemptId={}, ingressLeaseToken={}, diagnostics={}",
+            logger.debug("Result ingress identity has no active runtime lease; delegating to engine duplicate/late/no-lease classification: taskId={}, messageId={}, ingressAttemptId={}, ingressLeaseToken={}, diagnostics={}",
                     command.taskId(), command.messageId(), attemptId, leaseToken, envelope.getDiagnostics());
-            return IdentityValidationOutcome.ACCEPTED_NOOP;
+            return IdentityValidationOutcome.VALID;
         }
         if (leaseToken != null && !leaseToken.equals(correlation.leaseToken())) {
             logger.warn("Result ingress lease identity mismatch: taskId={}, messageId={}, ingressLeaseToken={}, activeLeaseToken={}, diagnostics={}",

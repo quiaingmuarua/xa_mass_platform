@@ -87,6 +87,77 @@ class TaskReviewStoreMaterializerTest {
     }
 
     @Test
+    void terminalEventExpandsJsonObjectResultForReviewOutputOnly() {
+        InMemoryTaskReviewStore store = new InMemoryTaskReviewStore();
+        TaskReviewStoreMaterializer materializer = new TaskReviewStoreMaterializer(store);
+
+        materializer.apply(new TaskReviewWorkTerminalEvent(
+                "task-001",
+                "msg-001",
+                "SUCCESS",
+                "BUSINESS_SUCCESS",
+                0,
+                3,
+                "probe.weather",
+                "worker-001",
+                "batch-001",
+                "attempt-001",
+                null,
+                null,
+                "payload://result/msg-001",
+                Instant.parse("2026-05-29T02:00:00Z"),
+                Instant.parse("2026-05-29T02:01:00Z"),
+                Instant.parse("2026-05-29T02:01:05Z"),
+                Instant.parse("2026-05-29T02:01:12Z"),
+                Instant.parse("2026-05-29T02:01:12Z"),
+                Map.of("result",
+                        "{\"integrationProbe\":\"cross-language-node\",\"workerProfile\":{\"workerId\":\"worker-001\"}}")));
+
+        TaskReviewItem item = store.findItem("task-001", "msg-001").orElseThrow();
+        assertEquals("cross-language-node", item.output().get("integrationProbe"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> workerProfile = (Map<String, Object>) item.output().get("workerProfile");
+        assertEquals("worker-001", workerProfile.get("workerId"));
+
+        TaskReviewAttempt attempt = store.listAttempts("task-001", "msg-001").get(0);
+        assertEquals("cross-language-node", attempt.output().get("integrationProbe"));
+    }
+
+    @Test
+    void terminalFailureExpandsJsonObjectErrorMessageForReviewOutputOnly() {
+        InMemoryTaskReviewStore store = new InMemoryTaskReviewStore();
+        TaskReviewStoreMaterializer materializer = new TaskReviewStoreMaterializer(store);
+
+        materializer.apply(new TaskReviewWorkTerminalEvent(
+                "task-001",
+                "msg-001",
+                "FAILED",
+                "BUSINESS_FAILURE",
+                0,
+                3,
+                "stock.quote.fetch",
+                "worker-001",
+                "batch-001",
+                "attempt-001",
+                "INVALID_INPUT",
+                "{\"detail\":\"requestId and symbol are required\",\"requestId\":\"stockreq-invalid-0003\"}",
+                "payload://result/msg-001",
+                Instant.parse("2026-05-29T02:00:00Z"),
+                Instant.parse("2026-05-29T02:01:00Z"),
+                Instant.parse("2026-05-29T02:01:05Z"),
+                Instant.parse("2026-05-29T02:01:12Z"),
+                Instant.parse("2026-05-29T02:01:12Z"),
+                Map.of()));
+
+        TaskReviewItem item = store.findItem("task-001", "msg-001").orElseThrow();
+        assertEquals("stockreq-invalid-0003", item.output().get("requestId"));
+        assertEquals("INVALID_INPUT", item.errorCode());
+
+        TaskReviewAttempt attempt = store.listAttempts("task-001", "msg-001").get(0);
+        assertEquals("stockreq-invalid-0003", attempt.output().get("requestId"));
+    }
+
+    @Test
     void retryableAttemptClosedIsMaterializedBeforeLaterTerminalSuccess() {
         InMemoryTaskReviewStore store = new InMemoryTaskReviewStore();
         TaskReviewStoreMaterializer materializer = new TaskReviewStoreMaterializer(store);

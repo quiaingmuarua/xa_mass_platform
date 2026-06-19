@@ -151,6 +151,7 @@ public class TaskWorkerAssignListener {
         WorkerSelectionResult selectionResult = workerSelectionRuntime.selectAndReserve(selectionRequest(task, allocationPlan));
         recordSelectionOutcome(task, selectionResult);
         List<SelectedWorkerHandle> selectedWorkers = selectionResult.selectedWorkers();
+        emitAcceptedWorkerMatches(task, selectedWorkers);
         log.info("[WorkerAssign] Worker-runtime selected {} workers for task {}",
                 selectedWorkers.size(), task.getTid());
 
@@ -289,6 +290,22 @@ public class TaskWorkerAssignListener {
                 reason,
                 Map.of()
         );
+    }
+
+    private void emitAcceptedWorkerMatches(Task task, List<SelectedWorkerHandle> selectedWorkers) {
+        if (selectedWorkers == null || selectedWorkers.isEmpty()) {
+            return;
+        }
+        for (int index = 0; index < selectedWorkers.size(); index++) {
+            traceEventLogger.workerMatchAccepted(
+                    task,
+                    selectedWorkers.get(index),
+                    index + 1,
+                    "ON_TASK_ASSIGN",
+                    "TaskWorkerAssignListener",
+                    "worker-runtime selected worker"
+            );
+        }
     }
 
     private void releaseLocksIfExclusive(Task task, List<SelectedWorkerHandle> workers) {

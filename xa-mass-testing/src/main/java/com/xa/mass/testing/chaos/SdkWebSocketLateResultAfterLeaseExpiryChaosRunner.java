@@ -300,7 +300,7 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
         }
 
         private String capturedMessageId() {
-            return ChaosSupport.readString(capturedDispatchFrame.get(), "messageId");
+            return ChaosSupport.dispatchMessageId(capturedDispatchFrame.get());
         }
 
         private void reconnectAndSubmitLateResult() throws Exception {

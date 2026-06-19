@@ -1,5 +1,8 @@
 package com.xa.mass.api.review;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewAttempt;
 import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewItem;
 
@@ -16,6 +19,11 @@ import java.util.Objects;
  * Materializes server review report events into the server-local review store.
  */
 public final class TaskReviewStoreMaterializer implements TaskReviewMaterializer {
+
+    private static final ObjectMapper OUTPUT_OBJECT_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> OUTPUT_MAP_TYPE = new TypeReference<>() {
+    };
+    private static final String RESULT_FIELD = "result";
 
     private final TaskReviewStore store;
 
@@ -176,6 +184,7 @@ public final class TaskReviewStoreMaterializer implements TaskReviewMaterializer
         String attemptId = firstNonBlank(event.attemptId(), previous != null ? previous.attemptId() : null);
         String workerId = firstNonBlank(event.workerId(), previous != null ? previous.workerId() : null);
         String batchId = firstNonBlank(event.batchId(), previous != null ? previous.batchId() : null);
+        Map<String, Object> output = reviewOutput(event.output(), event.errorMessage());
         store.upsertItem(taskId, new TaskReviewItem(
                 messageId,
                 firstNonBlank(event.eventCode(), previous != null ? previous.eventCode() : null),
@@ -195,7 +204,7 @@ public final class TaskReviewStoreMaterializer implements TaskReviewMaterializer
                 attemptId,
                 event.errorCode(),
                 event.errorMessage(),
-                copyMap(event.output())
+                output
         ));
         if (attemptId != null) {
             store.upsertAttempt(taskId, messageId, new TaskReviewAttempt(
@@ -209,7 +218,7 @@ public final class TaskReviewStoreMaterializer implements TaskReviewMaterializer
                     normalizeAttemptFinalReason(event.finalReason()),
                     event.errorCode(),
                     event.errorMessage(),
-                    copyMap(event.output())
+                    output
             ));
         }
     }
@@ -305,5 +314,34 @@ public final class TaskReviewStoreMaterializer implements TaskReviewMaterializer
             return null;
         }
         return Collections.unmodifiableMap(new LinkedHashMap<>(values));
+    }
+
+    private static Map<String, Object> reviewOutput(Map<String, Object> output, String errorMessage) {
+        if (output == null || output.isEmpty()) {
+            Map<String, Object> decodedErrorMessage = decodeJsonObjectResult(errorMessage);
+            return decodedErrorMessage == null ? null : copyMap(decodedErrorMessage);
+        }
+        if (output.size() == 1 && output.get(RESULT_FIELD) instanceof String result) {
+            Map<String, Object> decoded = decodeJsonObjectResult(result);
+            if (decoded != null) {
+                return copyMap(decoded);
+            }
+        }
+        return copyMap(output);
+    }
+
+    private static Map<String, Object> decodeJsonObjectResult(String result) {
+        if (isBlank(result)) {
+            return null;
+        }
+        String trimmed = result.trim();
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+            return null;
+        }
+        try {
+            return OUTPUT_OBJECT_MAPPER.readValue(trimmed, OUTPUT_MAP_TYPE);
+        } catch (JsonProcessingException ignored) {
+            return null;
+        }
     }
 }

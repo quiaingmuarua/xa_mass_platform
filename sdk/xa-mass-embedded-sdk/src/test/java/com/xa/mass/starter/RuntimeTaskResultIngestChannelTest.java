@@ -169,7 +169,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void missingActiveLeaseIsAcceptedNoopWithoutEngineApply() {
+    void missingActiveLeaseDelegatesToEngineForDuplicateLateOrNoLeaseClassification() {
         RecordingResultIngestFacade facade = new RecordingResultIngestFacade(
                 TaskResultCorrelation.noActiveLease("task-6", "msg-6")
         );
@@ -186,9 +186,9 @@ class RuntimeTaskResultIngestChannelTest {
                 null
         )));
 
-        assertEquals(ResultIngressHandleOutcome.HANDLED_NOOP, handled);
+        assertEquals(ResultIngressHandleOutcome.HANDLED_APPLIED, handled);
         assertEquals(1, facade.correlationCalls.get());
-        assertEquals(0, facade.ingestCalls.get());
+        assertEquals(1, facade.ingestCalls.get());
     }
 
     @Test

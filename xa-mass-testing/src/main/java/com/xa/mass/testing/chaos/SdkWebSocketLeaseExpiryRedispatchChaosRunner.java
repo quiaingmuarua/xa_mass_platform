@@ -308,7 +308,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         }
 
         private String capturedMessageId() {
-            return ChaosSupport.readString(capturedDispatchFrame.get(), "messageId");
+            return ChaosSupport.dispatchMessageId(capturedDispatchFrame.get());
         }
 
         private WorkerRuntimeSnapshot snapshot() {

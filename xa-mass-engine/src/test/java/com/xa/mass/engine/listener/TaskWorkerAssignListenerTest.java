@@ -8,6 +8,9 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TraceEventLogger;
+import com.xa.mass.engine.testutil.RecordingEventSink;
+import com.xa.mass.trace.sink.ExecutionEvent;
+import com.xa.mass.trace.sink.ExecutionEventType;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionRequest;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionResult;
@@ -120,6 +123,35 @@ public class TaskWorkerAssignListenerTest {
 
         verify(workerSelectionRuntime).releaseSelectedLock(selected);
         verify(assignmentEvents, never()).publishTaskAssigned(any());
+    }
+
+    @Test
+    void emitsAcceptedWorkerMatchTraceForSelectedWorkers() {
+        RecordingEventSink sink = new RecordingEventSink();
+        listener = new TaskWorkerAssignListener(
+                workerSelectionRuntime,
+                dispatchBinder,
+                assignmentRuntime,
+                assignmentEvents,
+                new TraceEventLogger(sink)
+        );
+        Task task = task("task-trace-match", TaskStatus.READY, 1, 1);
+        SelectedWorkerHandle selected = handle("worker-1", task.getTid(), true);
+        when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(1);
+        when(workerSelectionRuntime.selectAndReserve(any(WorkerSelectionRequest.class)))
+                .thenReturn(selection(selected));
+        when(dispatchBinder.bindDispatches(task, List.of(selected)))
+                .thenReturn(List.of(binding(task.getTid(), "worker-1")));
+        when(assignmentRuntime.updateTask(task)).thenReturn(true);
+
+        assertTrue(listener.onTaskAssign(task));
+
+        ExecutionEvent event = sink.firstEventOfType(ExecutionEventType.WORKER_MATCH_ACCEPTED).orElseThrow();
+        assertEquals(task.getTid(), event.getIdentity().taskId());
+        assertEquals("worker-1", event.getIdentity().workerId());
+        assertEquals("pool-a", event.getAttrs().get("workerGroupId"));
+        assertEquals("worker-runtime-selection", event.getAttrs().get("workerCandidateSource"));
+        assertEquals(1, event.getAttrs().get("candidateRank"));
     }
 
     private static WorkerSelectionResult selection(SelectedWorkerHandle... handles) {

@@ -639,7 +639,7 @@ java -jar "${WORKER_JAR}" \
 WORKER_PID=$!
 
 deadline=$((SECONDS + WORKER_READY_TIMEOUT_SECONDS))
-until grep -q "running workerSessions=1" "${worker_log}" 2>/dev/null; do
+until grep -Eq "running worker(Runtimes|Sessions)=1" "${worker_log}" 2>/dev/null; do
   if ! kill -0 "${WORKER_PID}" 2>/dev/null; then
     echo "worker launcher exited before readiness" >&2
     exit 1

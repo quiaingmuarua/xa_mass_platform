@@ -13,6 +13,7 @@ import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.stage.TaskStageEvidenceResult;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
 import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -328,6 +329,34 @@ public final class TraceEventLogger {
                         "currentStatus", enumName(currentStatus),
                         "retryDelayMillis", retryDelayMillis
                 ))
+                .build());
+    }
+
+    public void workerMatchAccepted(Task task,
+                                    SelectedWorkerHandle selectedWorker,
+                                    int candidateRank,
+                                    String trigger,
+                                    String source,
+                                    String reason) {
+        if (task == null || selectedWorker == null) {
+            return;
+        }
+        Map<String, Object> attrs = attrs(
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SUCCESS",
+                "workerGroupId", selectedWorker.workerGroupId(),
+                "workerCandidateSource", "worker-runtime-selection",
+                "candidateRank", Math.max(candidateRank, 0),
+                "exclusiveWorkerLock", selectedWorker.exclusiveWorkerLock()
+        );
+        putTaskRuntimeProfile(attrs, task);
+        emit(event(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                .identity(identity -> identity
+                        .taskId(task.getTid())
+                        .workerId(selectedWorker.workerId()))
+                .attrs(attrs)
                 .build());
     }
 
