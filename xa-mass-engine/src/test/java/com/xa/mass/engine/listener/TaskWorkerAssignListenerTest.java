@@ -150,7 +150,6 @@ public class TaskWorkerAssignListenerTest {
         assertEquals(task.getTid(), event.getIdentity().taskId());
         assertEquals("worker-1", event.getIdentity().workerId());
         assertEquals("pool-a", event.getAttrs().get("workerGroupId"));
-        assertEquals("worker-runtime-selection", event.getAttrs().get("workerCandidateSource"));
         assertEquals(1, event.getAttrs().get("candidateRank"));
     }
 

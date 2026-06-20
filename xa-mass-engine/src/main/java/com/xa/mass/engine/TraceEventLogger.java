@@ -347,8 +347,18 @@ public final class TraceEventLogger {
                 "reason", reason,
                 "result", "SUCCESS",
                 "workerGroupId", selectedWorker.workerGroupId(),
-                "workerCandidateSource", "worker-runtime-selection",
+                "eventBindingKey", selectedWorker.eventBindingKey(),
+                "workerCandidateSource", selectedWorker.workerCandidateSource(),
+                "workerSchedulingResourceId", selectedWorker.workerSchedulingResourceId(),
+                "workerSchedulingRoutingTags", selectedWorker.workerSchedulingRoutingTags(),
+                "workerSchedulingAttributes", selectedWorker.workerSchedulingAttributes(),
+                "workerSchedulingMatchesRoutingCode", selectedWorker.workerSchedulingMatchesRoutingCode(),
                 "candidateRank", Math.max(candidateRank, 0),
+                "candidateScore", selectedWorker.candidateScore(),
+                "workerActiveLeaseCount", selectedWorker.workerActiveLeaseCount(),
+                "workerReservedCount", selectedWorker.workerReservedCount(),
+                "workerDeclaredCapacity", selectedWorker.workerDeclaredCapacity(),
+                "workerEstimatedLoadRatio", selectedWorker.workerEstimatedLoadRatio(),
                 "exclusiveWorkerLock", selectedWorker.exclusiveWorkerLock()
         );
         putTaskRuntimeProfile(attrs, task);

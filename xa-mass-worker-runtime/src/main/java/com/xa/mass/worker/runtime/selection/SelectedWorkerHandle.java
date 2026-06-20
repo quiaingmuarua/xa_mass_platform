@@ -2,6 +2,9 @@ package com.xa.mass.worker.runtime.selection;
 
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -17,6 +20,17 @@ public final class SelectedWorkerHandle {
     private final String selectionToken;
     private final boolean exclusiveWorkerLock;
     private final SelectedWorkerClaimAuthorization claimAuthorization;
+    private final String eventBindingKey;
+    private final String workerCandidateSource;
+    private final String workerSchedulingResourceId;
+    private final String workerSchedulingRoutingTags;
+    private final Map<String, String> workerSchedulingAttributes;
+    private final Boolean workerSchedulingMatchesRoutingCode;
+    private final Double candidateScore;
+    private final Integer workerActiveLeaseCount;
+    private final Integer workerReservedCount;
+    private final Integer workerDeclaredCapacity;
+    private final Double workerEstimatedLoadRatio;
 
     SelectedWorkerHandle(String workerId,
                          String workerGroupId,
@@ -24,7 +38,8 @@ public final class SelectedWorkerHandle {
                          boolean exclusiveWorkerLock,
                          SelectedWorkerClaimAuthorization claimAuthorization) {
         this(workerId, workerGroupId, selectionScopeKey, UUID.randomUUID().toString(),
-                exclusiveWorkerLock, claimAuthorization);
+                exclusiveWorkerLock, claimAuthorization, null, null, null, null, Map.of(),
+                null, null, null, null, null, null);
     }
 
     public static SelectedWorkerHandle of(String workerId,
@@ -40,7 +55,18 @@ public final class SelectedWorkerHandle {
                                  String selectionScopeKey,
                                  String selectionToken,
                                  boolean exclusiveWorkerLock,
-                                 SelectedWorkerClaimAuthorization claimAuthorization) {
+                                 SelectedWorkerClaimAuthorization claimAuthorization,
+                                 String eventBindingKey,
+                                 String workerCandidateSource,
+                                 String workerSchedulingResourceId,
+                                 String workerSchedulingRoutingTags,
+                                 Map<String, String> workerSchedulingAttributes,
+                                 Boolean workerSchedulingMatchesRoutingCode,
+                                 Double candidateScore,
+                                 Integer workerActiveLeaseCount,
+                                 Integer workerReservedCount,
+                                 Integer workerDeclaredCapacity,
+                                 Double workerEstimatedLoadRatio) {
         this.workerId = requireText(workerId, "workerId");
         this.workerGroupId = requireText(workerGroupId, "workerGroupId");
         this.selectionScopeKey = normalizeNullable(selectionScopeKey);
@@ -49,6 +75,54 @@ public final class SelectedWorkerHandle {
         this.claimAuthorization = claimAuthorization == null
                 ? SelectedWorkerClaimAuthorization.unrestricted()
                 : claimAuthorization;
+        this.eventBindingKey = normalizeNullable(eventBindingKey);
+        this.workerCandidateSource = normalizeNullable(workerCandidateSource);
+        this.workerSchedulingResourceId = normalizeNullable(workerSchedulingResourceId);
+        this.workerSchedulingRoutingTags = normalizeNullable(workerSchedulingRoutingTags);
+        this.workerSchedulingAttributes = copyMap(workerSchedulingAttributes);
+        this.workerSchedulingMatchesRoutingCode = workerSchedulingMatchesRoutingCode;
+        this.candidateScore = candidateScore;
+        this.workerActiveLeaseCount = workerActiveLeaseCount;
+        this.workerReservedCount = workerReservedCount;
+        this.workerDeclaredCapacity = workerDeclaredCapacity;
+        this.workerEstimatedLoadRatio = workerEstimatedLoadRatio;
+    }
+
+    static SelectedWorkerHandle selectedWithEvidence(String workerId,
+                                                     String workerGroupId,
+                                                     String selectionScopeKey,
+                                                     boolean exclusiveWorkerLock,
+                                                     SelectedWorkerClaimAuthorization claimAuthorization,
+                                                     String eventBindingKey,
+                                                     String workerCandidateSource,
+                                                     String workerSchedulingResourceId,
+                                                     String workerSchedulingRoutingTags,
+                                                     Map<String, String> workerSchedulingAttributes,
+                                                     Boolean workerSchedulingMatchesRoutingCode,
+                                                     Double candidateScore,
+                                                     Integer workerActiveLeaseCount,
+                                                     Integer workerReservedCount,
+                                                     Integer workerDeclaredCapacity,
+                                                     Double workerEstimatedLoadRatio) {
+        return new SelectedWorkerHandle(
+                workerId,
+                workerGroupId,
+                selectionScopeKey,
+                UUID.randomUUID().toString(),
+                exclusiveWorkerLock,
+                claimAuthorization,
+                eventBindingKey,
+                workerCandidateSource,
+                workerSchedulingResourceId,
+                workerSchedulingRoutingTags,
+                workerSchedulingAttributes,
+                workerSchedulingMatchesRoutingCode,
+                candidateScore,
+                workerActiveLeaseCount,
+                workerReservedCount,
+                workerDeclaredCapacity,
+                workerEstimatedLoadRatio
+        );
     }
 
     public String workerId() {
@@ -65,6 +139,50 @@ public final class SelectedWorkerHandle {
 
     public boolean exclusiveWorkerLock() {
         return exclusiveWorkerLock;
+    }
+
+    public String eventBindingKey() {
+        return eventBindingKey;
+    }
+
+    public String workerCandidateSource() {
+        return workerCandidateSource;
+    }
+
+    public String workerSchedulingResourceId() {
+        return workerSchedulingResourceId;
+    }
+
+    public String workerSchedulingRoutingTags() {
+        return workerSchedulingRoutingTags;
+    }
+
+    public Map<String, String> workerSchedulingAttributes() {
+        return workerSchedulingAttributes;
+    }
+
+    public Boolean workerSchedulingMatchesRoutingCode() {
+        return workerSchedulingMatchesRoutingCode;
+    }
+
+    public Double candidateScore() {
+        return candidateScore;
+    }
+
+    public Integer workerActiveLeaseCount() {
+        return workerActiveLeaseCount;
+    }
+
+    public Integer workerReservedCount() {
+        return workerReservedCount;
+    }
+
+    public Integer workerDeclaredCapacity() {
+        return workerDeclaredCapacity;
+    }
+
+    public Double workerEstimatedLoadRatio() {
+        return workerEstimatedLoadRatio;
     }
 
     public WorkerClaimTarget toClaimTarget(String batchId, int capacity) {
@@ -89,5 +207,12 @@ public final class SelectedWorkerHandle {
 
     private static String normalizeNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static Map<String, String> copyMap(Map<String, String> source) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        return Collections.unmodifiableMap(new LinkedHashMap<>(source));
     }
 }

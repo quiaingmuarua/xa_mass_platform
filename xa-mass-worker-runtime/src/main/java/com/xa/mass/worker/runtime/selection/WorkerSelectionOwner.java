@@ -102,12 +102,23 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
                 increment(rejectedByReason, "worker lock conflict");
                 continue;
             }
-            selected.add(new SelectedWorkerHandle(
+            selected.add(SelectedWorkerHandle.selectedWithEvidence(
                     candidate.row().workerId(),
                     candidate.row().workerGroupId(),
                     resolvedRequest.selectionScopeKey(),
                     resolvedRequest.exclusiveWorkerLock(),
-                    SelectedWorkerClaimAuthorization.eventCodes(candidate.groupView().eventCodes())
+                    SelectedWorkerClaimAuthorization.eventCodes(candidate.groupView().eventCodes()),
+                    eventBindingKey(intent),
+                    workerCandidateSource(intent),
+                    candidate.row().workerId(),
+                    routingTagsCsv(candidate.row().attributes()),
+                    candidate.row().attributes(),
+                    matchesRoutingCode(candidate.row().attributes(), intent),
+                    candidate.score(),
+                    activeLeaseCount(candidate.load()),
+                    reservedCountAfterSelection(candidate.load()),
+                    declaredCapacity(candidate.load()),
+                    estimatedLoadRatioAfterSelection(candidate.load())
             ));
         }
 
@@ -291,6 +302,54 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
                 tags.add(normalized);
             }
         }
+    }
+
+    private static String routingTagsCsv(Map<String, String> attributes) {
+        Set<String> tags = routingTags(attributes);
+        return tags.isEmpty() ? null : String.join(",", tags);
+    }
+
+    private static Boolean matchesRoutingCode(Map<String, String> attributes, WorkerSelectionIntent intent) {
+        if (intent == null || intent.routingCode() == null) {
+            return null;
+        }
+        return routingTags(attributes).contains(intent.routingCode());
+    }
+
+    private static String eventBindingKey(WorkerSelectionIntent intent) {
+        if (intent == null || isBlank(intent.project()) || isBlank(intent.eventCode())) {
+            return null;
+        }
+        return intent.project().trim() + ":" + intent.eventCode().trim();
+    }
+
+    private static String workerCandidateSource(WorkerSelectionIntent intent) {
+        if (intent == null) {
+            return null;
+        }
+        if (intent.targetWorkerId() != null) {
+            return "TARGET_WORKER";
+        }
+        if (!intent.workerGroupIds().isEmpty()) {
+            return "GROUP_SELECTOR";
+        }
+        return null;
+    }
+
+    private static int activeLeaseCount(WorkerLoadSnapshot load) {
+        return load == null ? 0 : load.activeLeaseCount();
+    }
+
+    private static int reservedCountAfterSelection(WorkerLoadSnapshot load) {
+        return load == null ? 1 : load.reservedCount() + 1;
+    }
+
+    private static int declaredCapacity(WorkerLoadSnapshot load) {
+        return load == null ? 1 : load.declaredCapacity();
+    }
+
+    private static double estimatedLoadRatioAfterSelection(WorkerLoadSnapshot load) {
+        return (activeLeaseCount(load) + reservedCountAfterSelection(load)) / (double) declaredCapacity(load);
     }
 
     private static int candidateAcquisitionLimit(WorkerSelectionIntent intent, int requestedWorkerCount) {

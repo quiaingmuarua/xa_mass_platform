@@ -59,6 +59,18 @@ class WorkerSelectionRankingMechanicsTest {
         assertEquals(List.of("worker-best"), result.selectedWorkers().stream()
                 .map(SelectedWorkerHandle::workerId)
                 .toList());
+        SelectedWorkerHandle selected = result.selectedWorkers().getFirst();
+        assertEquals("demoApp:demo.event", selected.eventBindingKey());
+        assertEquals("GROUP_SELECTOR", selected.workerCandidateSource());
+        assertEquals("worker-best", selected.workerSchedulingResourceId());
+        assertEquals("lane-us", selected.workerSchedulingRoutingTags());
+        assertEquals(Map.of("region", "us", "routingTags", "lane-us"), selected.workerSchedulingAttributes());
+        assertEquals(Boolean.TRUE, selected.workerSchedulingMatchesRoutingCode());
+        assertEquals(0.0d, selected.candidateScore());
+        assertEquals(0, selected.workerActiveLeaseCount());
+        assertEquals(1, selected.workerReservedCount());
+        assertEquals(3, selected.workerDeclaredCapacity());
+        assertEquals(1.0d / 3.0d, selected.workerEstimatedLoadRatio());
         assertEquals(1, result.rejectedCountByReason().get("worker transport unreachable"));
         verify(admissionRuntime).reserveWorkerCapacity(target("worker-best"));
         verify(admissionRuntime, never()).reserveWorkerCapacity(target("worker-loaded"));

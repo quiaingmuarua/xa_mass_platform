@@ -303,9 +303,16 @@ public class TaskWorkerAssignListener {
                     index + 1,
                     "ON_TASK_ASSIGN",
                     "TaskWorkerAssignListener",
-                    "worker-runtime selected worker"
+                    acceptedWorkerMatchReason(selectedWorkers.get(index))
             );
         }
+    }
+
+    private static String acceptedWorkerMatchReason(SelectedWorkerHandle selectedWorker) {
+        if (selectedWorker != null && !selectedWorker.exclusiveWorkerLock()) {
+            return "worker-runtime selected worker; capacity reserved";
+        }
+        return "worker-runtime selected worker";
     }
 
     private void releaseLocksIfExclusive(Task task, List<SelectedWorkerHandle> workers) {
