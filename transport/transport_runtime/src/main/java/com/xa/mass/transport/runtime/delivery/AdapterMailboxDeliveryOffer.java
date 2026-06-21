@@ -5,13 +5,13 @@ import com.xa.mass.transport.model.DeliveryCommand;
 import java.util.List;
 
 /**
- * Producer-side assigned-delivery command offer scoped by an opaque queue key.
+ * Producer-side assigned-delivery command offer scoped by one adapter mailbox.
  */
-public record DeliveryQueueOffer(String deliveryQueueKey,
-                                 List<DeliveryCommand> commands) {
+public record AdapterMailboxDeliveryOffer(String adapterMailboxKey,
+                                          List<DeliveryCommand> commands) {
 
-    public DeliveryQueueOffer {
-        deliveryQueueKey = requireText(deliveryQueueKey, "deliveryQueueKey");
+    public AdapterMailboxDeliveryOffer {
+        adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
         commands = commands == null ? List.of() : List.copyOf(commands);
         if (commands.isEmpty()) {
             throw new IllegalArgumentException("commands must not be empty");

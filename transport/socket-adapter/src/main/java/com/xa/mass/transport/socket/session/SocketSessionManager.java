@@ -4,7 +4,6 @@ import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.lease.TransportEndpointLeasePublisher;
 import com.xa.mass.transport.runtime.lease.WorkerPresenceSessionPublisher;
 import org.slf4j.Logger;
@@ -27,18 +26,20 @@ public final class SocketSessionManager {
     private static final Logger logger = LoggerFactory.getLogger(SocketSessionManager.class);
 
     private final String adapterId;
+    private final String adapterMailboxKey;
     private final RouteEndpointIndex<String, SocketWorkerEndpoint> routeIndex = new RouteEndpointIndex<>();
     private final ConcurrentMap<String, String> deliveryBucketByEndpoint = new ConcurrentHashMap<>();
     private final TransportEndpointLeasePublisher endpointLeasePublisher;
     private final WorkerPresenceSessionPublisher workerPresencePublisher;
 
-    public SocketSessionManager(String adapterId) {
+    public SocketSessionManager(String adapterId, String adapterMailboxKey) {
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must not be blank");
         }
         this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
+        this.adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
         this.endpointLeasePublisher = new TransportEndpointLeasePublisher(this.adapterId);
-        this.workerPresencePublisher = new WorkerPresenceSessionPublisher(this.adapterId);
+        this.workerPresencePublisher = new WorkerPresenceSessionPublisher(this.adapterId, this.adapterMailboxKey);
     }
 
     public synchronized void addSession(String deliveryBucketId,
@@ -259,13 +260,6 @@ public final class SocketSessionManager {
         synchronized (this) {
             endpointLeasePublisher.setEndpointLeaseStore(endpointLeaseStore);
             projectActiveSessionsToEndpointLease("socket endpoint lease store replaced");
-        }
-    }
-
-    public void setDeliveryCommandConsumerRegistry(DeliveryCommandConsumerRegistry registry) {
-        synchronized (this) {
-            endpointLeasePublisher.setDeliveryCommandConsumerRegistry(registry);
-            projectActiveSessionsToEndpointLease("socket delivery consumer registry replaced");
         }
     }
 

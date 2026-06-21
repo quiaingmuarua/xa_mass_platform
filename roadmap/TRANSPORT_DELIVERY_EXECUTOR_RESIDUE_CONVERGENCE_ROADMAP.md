@@ -1,6 +1,25 @@
 # Transport Delivery Executor Residue Convergence Roadmap
 
-Status: active successor roadmap for DQK residual phases.
+Status: superseded by `TRANSPORT_ROUTING_ENVELOPE_ADAPTER_MAILBOX_CONVERGENCE_ROADMAP.md`.
+
+Superseded note:
+
+This roadmap preserves historical residue context from the bucket-derived
+delivery queue direction. Do not execute it as an active implementation plan.
+Current mainline dispatch is:
+
+```text
+selectedWorkerId
+  -> worker-runtime delivery target evidence
+  -> adapterMailboxKey
+  -> adapter-mailbox delivery-command handoff
+  -> adapter-local selectedWorkerId final-hop send
+```
+
+The active successor is
+`TRANSPORT_ROUTING_ENVELOPE_ADAPTER_MAILBOX_CONVERGENCE_ROADMAP.md`, which
+intentionally supersedes bucket-derived dispatch queues and selected-worker
+consumer indexes.
 
 Depends on:
 
@@ -433,8 +452,11 @@ pollDeliveryMessagesResult(String deliveryBucketId,
                            long timeoutMillis)
 ```
 
-- Keep polling queue placement bucket-derived. Workers and engine should not see
-  polling inbox partitions or adapter ids as queue selectors.
+- Historical target at the time of this residue roadmap kept polling queue
+  placement bucket-derived. Current dispatch routing is superseded by adapter
+  mailbox evidence; do not restore bucket-derived placement from this archived
+  context. Workers and engine should not see polling inbox partitions or adapter
+  ids as queue selectors.
 
 Acceptance:
 

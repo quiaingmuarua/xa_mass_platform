@@ -73,7 +73,7 @@ class PollingDeliveryExecutorTest {
         );
         return new Fixture(
                 new PollingDeliveryExecutor(PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID, deliveryService),
-                new PollingDeliveryPullChannel(deliveryService)
+                new PollingDeliveryPullChannel(PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID, deliveryService)
         );
     }
 

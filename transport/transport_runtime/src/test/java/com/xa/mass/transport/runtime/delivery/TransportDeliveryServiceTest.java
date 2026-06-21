@@ -13,35 +13,35 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TransportDeliveryServiceTest {
 
     private static final String BUCKET = "bucket-1";
-    private static final String QUEUE_KEY = AssignedDeliveryCommandQueueKey.queueKeyFor(BUCKET);
+    private static final String MAILBOX = "mailbox-1";
 
     @Test
     void pollReturnsQueuedItems() {
         TransportDeliveryService service = service();
-        service.enqueue("polling", List.of(request("msg-1", "worker-1")));
+        service.enqueueForMailbox(MAILBOX, List.of(request("msg-1", "worker-1")));
 
-        assertEquals(List.of("msg-1"), service.pollItems(BUCKET, "worker-1", 10, 0).stream()
+        assertEquals(List.of("msg-1"), service.pollMailboxItemResult(MAILBOX, "worker-1", 10, 0).getItems().stream()
                 .map(item -> messageId(item.payload()))
                 .toList());
     }
 
     @Test
-    void pollUsesCanonicalBucketAndWorkerKeys() {
+    void pollUsesCanonicalMailboxAndWorkerKeys() {
         TransportDeliveryService service = service();
-        service.enqueue("polling", List.of(request("delivery-msg-1", " " + BUCKET + " ", "msg-1", " worker-1 ")));
+        service.enqueueForMailbox(" " + MAILBOX + " ", List.of(request("delivery-msg-1", BUCKET, "msg-1", " worker-1 ")));
 
-        assertEquals(List.of("msg-1"), service.pollItems(BUCKET, "worker-1", 10, 0).stream()
+        assertEquals(List.of("msg-1"), service.pollMailboxItemResult(MAILBOX, "worker-1", 10, 0).getItems().stream()
                 .map(item -> messageId(item.payload()))
                 .toList());
     }
 
     @Test
-    void pollingQueueKeyComesFromDeliveryBucketNotAdapterId() {
+    void pollingQueueKeyComesFromAdapterMailboxNotDeliveryBucket() {
         TransportDeliveryService service = service();
-        service.enqueue("polling-adapter-a", List.of(request("delivery-msg-1", BUCKET, "msg-1", "worker-1")));
+        service.enqueueForMailbox(MAILBOX, List.of(request("delivery-msg-1", BUCKET, "msg-1", "worker-1")));
 
-        assertTrue(service.pollItems("polling-adapter-a", "worker-1", 10, 0).isEmpty());
-        assertEquals(List.of("msg-1"), service.pollItems(BUCKET, "worker-1", 10, 0).stream()
+        assertTrue(service.pollMailboxItemResult(BUCKET, "worker-1", 10, 0).getItems().isEmpty());
+        assertEquals(List.of("msg-1"), service.pollMailboxItemResult(MAILBOX, "worker-1", 10, 0).getItems().stream()
                 .map(item -> messageId(item.payload()))
                 .toList());
     }
@@ -49,10 +49,10 @@ class TransportDeliveryServiceTest {
     @Test
     void selectedWorkerPollDoesNotDrainAnotherWorkerSharingRouteKey() {
         TransportDeliveryService service = service();
-        service.enqueue("polling", List.of(request("delivery-msg-1", BUCKET, "msg-1", "worker-2")));
+        service.enqueueForMailbox(MAILBOX, List.of(request("delivery-msg-1", BUCKET, "msg-1", "worker-2")));
 
-        assertTrue(service.pollItems(BUCKET, "worker-1", 10, 0).isEmpty());
-        assertEquals(List.of("msg-1"), service.pollItems(BUCKET, "worker-2", 10, 0).stream()
+        assertTrue(service.pollMailboxItemResult(MAILBOX, "worker-1", 10, 0).getItems().isEmpty());
+        assertEquals(List.of("msg-1"), service.pollMailboxItemResult(MAILBOX, "worker-2", 10, 0).getItems().stream()
                 .map(item -> messageId(item.payload()))
                 .toList());
     }
@@ -62,15 +62,15 @@ class TransportDeliveryServiceTest {
         TransportDeliveryService service = service();
 
         assertEquals(TransportDeliveryPollStatus.EMPTY,
-                service.pollItemResult(BUCKET, "worker-1", 10, 0).getStatus());
+                service.pollMailboxItemResult(MAILBOX, "worker-1", 10, 0).getStatus());
         assertEquals(TransportDeliveryPollStatus.INVALID_REQUEST,
-                service.pollItemResult(BUCKET, " ", 10, 0).getStatus());
+                service.pollMailboxItemResult(MAILBOX, " ", 10, 0).getStatus());
     }
 
     @Test
     void statsExposeDeliveryStoreSnapshot() {
         TransportDeliveryService service = new TransportDeliveryService(new InMemoryTransportDeliveryStore(10));
-        service.enqueue("polling", List.of(request("msg-1", "worker-1")));
+        service.enqueueForMailbox(MAILBOX, List.of(request("msg-1", "worker-1")));
 
         TransportDeliveryServiceStats stats = service.stats();
 
@@ -80,32 +80,32 @@ class TransportDeliveryServiceTest {
         assertTrue(stats.getOldestQueuedAgeMillis() >= 0L);
         assertEquals(1L, stats.getEnqueuedItems());
         assertEquals(0L, stats.getDrainedItems());
-        assertEquals(1, stats.getQueueByAdapter().get(QUEUE_KEY).getQueuedItems());
+        assertEquals(1, stats.getQueueByAdapter().get(MAILBOX).getQueuedItems());
     }
 
     @Test
     void queuedDeliveryStatsRemainQueueOnly() {
         TransportDeliveryService service = service();
 
-        List<DispatchOutcome> outcomes = service.enqueue("polling", List.of(request("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = service.enqueueForMailbox(MAILBOX, List.of(request("msg-1", "worker-1")));
 
         TransportDeliveryServiceStats stats = service.stats();
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED), statuses(outcomes));
         assertEquals(1, stats.getQueuedItems());
-        assertEquals(1, stats.getQueueByAdapter().get(QUEUE_KEY).getQueuedItems());
+        assertEquals(1, stats.getQueueByAdapter().get(MAILBOX).getQueuedItems());
     }
 
     @Test
     void shutdownStopsQueuedDelivery() {
         TransportDeliveryService service = service();
-        service.enqueue("polling", List.of(request("msg-1", "worker-1")));
+        service.enqueueForMailbox(MAILBOX, List.of(request("msg-1", "worker-1")));
 
         service.shutdown();
 
         assertEquals(0, service.stats().getQueuedItems());
-        assertTrue(service.pollItems(BUCKET, "worker-1", 10, 0).isEmpty());
+        assertTrue(service.pollMailboxItemResult(MAILBOX, "worker-1", 10, 0).getItems().isEmpty());
         assertEquals(DispatchOutcomeStatus.UNAVAILABLE,
-                service.enqueue("polling", List.of(request("msg-2", "worker-1"))).get(0).getStatus());
+                service.enqueueForMailbox(MAILBOX, List.of(request("msg-2", "worker-1"))).get(0).getStatus());
     }
 
     private TransportDeliveryService service() {

@@ -228,6 +228,11 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions adapterMailboxConsumerLeaseMillis(long adapterMailboxConsumerLeaseMillis) {
+            delegate.adapterMailboxConsumerLeaseMillis(adapterMailboxConsumerLeaseMillis);
+            return this;
+        }
+
         public TransportOptions transportRuntimeMaxPendingTasks(int maxPendingTasks) {
             delegate.transportRuntimeMaxPendingTasks(maxPendingTasks);
             return this;

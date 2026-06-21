@@ -303,7 +303,7 @@ class WebSocketSessionControllerTest {
 
     private WebSocketSessionController newController(String adapterId) {
         sessionStore = new WebSocketSessionStore(adapterId);
-        evidenceDriver = new WebSocketSessionEvidenceDriver(adapterId);
+        evidenceDriver = new WebSocketSessionEvidenceDriver(adapterId, adapterId);
         WebSocketSessionRefreshLoop refreshLoop =
                 new WebSocketSessionRefreshLoop(adapterId, sessionStore, evidenceDriver);
         return new WebSocketSessionController(sessionStore, evidenceDriver, refreshLoop);

@@ -68,6 +68,7 @@ class WorkerRuntimeSelectionIntegrationTest {
         config.getWorkerPresenceRuntime().sessionConnected(
                 "wrx-worker-1",
                 "polling",
+                "polling",
                 "wrx-selection-workers",
                 "wrx-session-1",
                 observedAtMillis,

@@ -18,11 +18,11 @@ public final class PollingDeliveryExecutor implements AdapterCommandExecutor {
 
     private static final Logger logger = LoggerFactory.getLogger(PollingDeliveryExecutor.class);
 
-    private final String adapterId;
+    private final String adapterMailboxKey;
     private final TransportDeliveryService deliveryService;
 
-    public PollingDeliveryExecutor(String adapterId, TransportDeliveryService deliveryService) {
-        this.adapterId = requireText(adapterId, "adapterId");
+    public PollingDeliveryExecutor(String adapterMailboxKey, TransportDeliveryService deliveryService) {
+        this.adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
     }
 
@@ -31,7 +31,7 @@ public final class PollingDeliveryExecutor implements AdapterCommandExecutor {
         if (commands == null || commands.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = deliveryService.enqueue(adapterId, commands);
+        List<DispatchOutcome> outcomes = deliveryService.enqueueForMailbox(adapterMailboxKey, commands);
         for (DispatchOutcome outcome : outcomes) {
             if (outcome.isRetryable()) {
                 logger.warn("Polling delivery rejected: selectedWorkerId={}, deliveryId={}, status={}, reason={}",

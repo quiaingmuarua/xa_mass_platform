@@ -1,14 +1,16 @@
 package com.xa.mass.worker.runtime.presence;
 
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
+import com.xa.mass.worker.runtime.evidence.WorkerDeliveryTargetView;
 
 /**
  * Worker-runtime owner for session presence and derived reachability evidence.
  */
-public interface WorkerPresenceRuntime extends WorkerReachabilityView {
+public interface WorkerPresenceRuntime extends WorkerReachabilityView, WorkerDeliveryTargetView {
 
     WorkerPresenceChange sessionConnected(String workerId,
                                           String adapterId,
+                                          String adapterMailboxKey,
                                           String routeKey,
                                           String sessionToken,
                                           long observedAtMillis,
@@ -16,6 +18,7 @@ public interface WorkerPresenceRuntime extends WorkerReachabilityView {
 
     WorkerPresenceChange sessionHeartbeat(String workerId,
                                           String adapterId,
+                                          String adapterMailboxKey,
                                           String routeKey,
                                           String sessionToken,
                                           long observedAtMillis,
@@ -23,6 +26,7 @@ public interface WorkerPresenceRuntime extends WorkerReachabilityView {
 
     WorkerPresenceChange sessionDisconnected(String workerId,
                                              String adapterId,
+                                             String adapterMailboxKey,
                                              String routeKey,
                                              String sessionToken,
                                              long observedAtMillis,

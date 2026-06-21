@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Redis-backed non-blocking delivery command handoff.
  */
 public final class RedisTransportDeliveryCommandHandoff implements TransportDeliveryCommandHandoff,
-        DeliveryCommandConsumerRegistry,
+        AdapterMailboxConsumerRegistry,
         AutoCloseable {
 
     public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.DELIVERY_COMMAND;
@@ -45,7 +45,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
             local commandId = ARGV[2]
             local value = ARGV[3]
             local commandRetentionDeadlineMillis = tonumber(ARGV[4])
-            local deliveryQueueKey = ARGV[5]
+            local adapterMailboxKey = ARGV[5]
             local referenceValue = ARGV[6]
             if maxQueuedItems <= 0 then
               return {'BACKPRESSURE', 'queue capacity is exhausted'}
@@ -59,7 +59,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
               redis.call('ZADD', commandRetentionDeadlineKey, commandRetentionDeadlineMillis, commandId)
             end
             redis.call('RPUSH', readyCommandsKey, referenceValue)
-            redis.call('SADD', queuesKey, deliveryQueueKey)
+            redis.call('SADD', queuesKey, adapterMailboxKey)
             return {'QUEUED', ''}
             """;
     private static final String CLAIM_READY_REFERENCE_SCRIPT = """
@@ -78,7 +78,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     private final StatefulRedisConnection<String, String> connection;
     private final RedisCommands<String, String> commands;
     private final String namespacePrefix;
-    private final Map<String, LocalConsumerEvidence> localConsumers = new ConcurrentHashMap<>();
+    private final Map<String, LocalMailboxConsumerEvidence> localConsumers = new ConcurrentHashMap<>();
     private final int maxQueuedCommandsPerQueue;
     private final boolean ownsClient;
     private final AtomicBoolean running = new AtomicBoolean(true);
@@ -131,9 +131,9 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     }
 
     @Override
-    public List<DispatchOutcome> offer(DeliveryQueueOffer offer) {
+    public List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer) {
         Objects.requireNonNull(offer, "offer");
-        String deliveryQueueKey = normalizeRequired(offer.deliveryQueueKey(), "deliveryQueueKey");
+        String adapterMailboxKey = normalizeRequired(offer.adapterMailboxKey(), "adapterMailboxKey");
         List<DeliveryCommand> commandsToOffer = offer.commands();
         if (!running.get()) {
             return commandsToOffer.stream()
@@ -144,28 +144,37 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
                             "delivery command handoff is stopped"))
                     .toList();
         }
+        if (currentMailboxConsumerEvidence(adapterMailboxKey, System.currentTimeMillis()) == null) {
+            return commandsToOffer.stream()
+                    .map(item -> DispatchOutcome.fromCommand(
+                            item,
+                            DispatchOutcomeStatus.UNAVAILABLE,
+                            true,
+                            "adapter mailbox has no active consumer"))
+                    .toList();
+        }
         List<DispatchOutcome> outcomes = new ArrayList<>(commandsToOffer.size());
         long now = System.currentTimeMillis();
         long commandRetentionDeadline = now + DEFAULT_COMMAND_RETENTION_MILLIS;
         for (DeliveryCommand command : commandsToOffer) {
             DeliveryCommandReference reference = new DeliveryCommandReference(
-                    deliveryQueueKey,
+                    adapterMailboxKey,
                     command.getCommandId()
             );
             Object raw = commands.eval(
                     OFFER_COMMAND_SCRIPT,
                     ScriptOutputType.MULTI,
                     new String[]{
-                            commandStoreKey(deliveryQueueKey),
-                            commandRetentionDeadlineKey(deliveryQueueKey),
-                            readyCommandsKey(deliveryQueueKey),
+                            commandStoreKey(adapterMailboxKey),
+                            commandRetentionDeadlineKey(adapterMailboxKey),
+                            readyCommandsKey(adapterMailboxKey),
                             queuesKey()
                     },
                     Integer.toString(maxQueuedCommandsPerQueue),
                     command.getCommandId(),
-                    codec.encode(new DeliveryCommandBatch(deliveryQueueKey, List.of(command))),
+                    codec.encode(new DeliveryCommandBatch(adapterMailboxKey, List.of(command))),
                     Long.toString(commandRetentionDeadline),
-                    deliveryQueueKey,
+                    adapterMailboxKey,
                     encodeReference(reference)
             );
             List<?> values = raw instanceof List<?> list ? list : List.of();
@@ -188,11 +197,11 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         }
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
         do {
-            for (String deliveryQueueKey : pollQueuesSnapshot()) {
-                reclaimExpiredInflight(deliveryQueueKey);
-                String encodedReference = claimReadyReference(deliveryQueueKey);
+            for (String adapterMailboxKey : pollQueuesSnapshot()) {
+                reclaimExpiredInflight(adapterMailboxKey);
+                String encodedReference = claimReadyReference(adapterMailboxKey);
                 if (encodedReference != null && !encodedReference.isBlank()) {
-                    DeliveryCommandBatch claimed = materializeClaimedReference(deliveryQueueKey, encodedReference);
+                    DeliveryCommandBatch claimed = materializeClaimedReference(adapterMailboxKey, encodedReference);
                     if (claimed != null) {
                         return claimed;
                     }
@@ -210,47 +219,40 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         return null;
     }
 
-    private DeliveryCommandBatch materializeClaimedReference(String claimedDeliveryQueueKey, String encodedReference) {
+    private DeliveryCommandBatch materializeClaimedReference(String claimedAdapterMailboxKey, String encodedReference) {
         DeliveryCommandReference reference = decodeReference(encodedReference);
         if (reference == null) {
-            removeInflightClaim(claimedDeliveryQueueKey, encodedReference);
+            removeInflightClaim(claimedAdapterMailboxKey, encodedReference);
             return null;
         }
-        String json = commands.hget(commandStoreKey(reference.deliveryQueueKey()), reference.commandId());
+        String json = commands.hget(commandStoreKey(reference.adapterMailboxKey()), reference.commandId());
         if (json == null || json.isBlank()) {
-            removeInflightClaim(claimedDeliveryQueueKey, encodedReference);
+            removeInflightClaim(claimedAdapterMailboxKey, encodedReference);
             return null;
         }
         DeliveryCommandBatch stored = codec.decode(json);
         DeliveryCommand command = stored.items().getFirst();
-        String selectedWorkerId = command.getSelectedWorkerId();
-        LocalConsumerEvidence local = localConsumers.get(selectedWorkerConsumerKey(reference.deliveryQueueKey(), selectedWorkerId));
-        if (local != null && local.leaseExpireAtEpochMillis() <= System.currentTimeMillis()) {
-            localConsumers.remove(selectedWorkerConsumerKey(local.deliveryQueueKey(), local.selectedWorkerId()), local);
+        LocalMailboxConsumerEvidence local = localConsumers.get(reference.adapterMailboxKey());
+        if (local != null && local.leaseDeadlineEpochMillis() <= System.currentTimeMillis()) {
+            localConsumers.remove(local.adapterMailboxKey(), local);
             local = null;
         }
-        ConsumerEvidence currentConsumer = currentConsumerEvidence(
-                reference.deliveryQueueKey(),
-                selectedWorkerId,
+        MailboxConsumerEvidence currentConsumer = currentMailboxConsumerEvidence(
+                reference.adapterMailboxKey(),
                 System.currentTimeMillis()
         );
-        if (currentConsumer == null) {
+        if (currentConsumer == null
+                || local == null
+                || !local.consumerId().equals(currentConsumer.consumerId())) {
             if (local != null) {
-                localConsumers.remove(selectedWorkerConsumerKey(local.deliveryQueueKey(), local.selectedWorkerId()), local);
-                removeInflightClaim(claimedDeliveryQueueKey, encodedReference);
-                commands.rpush(readyCommandsKey(reference.deliveryQueueKey()), encodedReference);
-                return null;
+                localConsumers.remove(local.adapterMailboxKey(), local);
             }
-        } else if (local == null || !local.endpointLeaseId().equals(currentConsumer.endpointLeaseId())) {
-            if (local != null) {
-                localConsumers.remove(selectedWorkerConsumerKey(local.deliveryQueueKey(), local.selectedWorkerId()), local);
-            }
-            removeInflightClaim(claimedDeliveryQueueKey, encodedReference);
-            commands.rpush(readyCommandsKey(reference.deliveryQueueKey()), encodedReference);
+            removeInflightClaim(claimedAdapterMailboxKey, encodedReference);
+            commands.rpush(readyCommandsKey(reference.adapterMailboxKey()), encodedReference);
             return null;
         }
         return new DeliveryCommandBatch(
-                reference.deliveryQueueKey(),
+                reference.adapterMailboxKey(),
                 List.of(reference),
                 List.of(command)
         );
@@ -263,44 +265,38 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         }
         for (DeliveryCommandReference reference : batch.references()) {
             String encodedReference = encodeReference(reference);
-            commands.zrem(inflightCommandsKey(reference.deliveryQueueKey()), encodedReference);
-            commands.hdel(commandStoreKey(reference.deliveryQueueKey()), reference.commandId());
-            commands.zrem(commandRetentionDeadlineKey(reference.deliveryQueueKey()), reference.commandId());
+            commands.zrem(inflightCommandsKey(reference.adapterMailboxKey()), encodedReference);
+            commands.hdel(commandStoreKey(reference.adapterMailboxKey()), reference.commandId());
+            commands.zrem(commandRetentionDeadlineKey(reference.adapterMailboxKey()), reference.commandId());
         }
     }
 
     @Override
-    public void claimConsumer(DeliveryCommandConsumerClaim claim) {
-        Objects.requireNonNull(claim, "claim");
-        String deliveryQueueKey = AssignedDeliveryCommandQueueKey.queueKeyFor(claim.deliveryBucketId());
-        String selectedWorkerId = normalizeRequired(claim.selectedWorkerId(), "selectedWorkerId");
-        LocalConsumerEvidence local = new LocalConsumerEvidence(
-                deliveryQueueKey,
-                selectedWorkerId,
-                claim.endpointLeaseId(),
-                claim.leaseExpireAtEpochMillis()
+    public void claimMailboxConsumer(AdapterMailboxConsumerLease lease) {
+        Objects.requireNonNull(lease, "lease");
+        LocalMailboxConsumerEvidence local = new LocalMailboxConsumerEvidence(
+                lease.adapterMailboxKey(),
+                lease.consumerId(),
+                lease.generation(),
+                lease.leaseDeadlineEpochMillis()
         );
-        localConsumers.put(selectedWorkerConsumerKey(deliveryQueueKey, selectedWorkerId), local);
-        commands.hset(selectedWorkerConsumersKey(deliveryQueueKey), selectedWorkerId, encodeConsumerEvidence(claim));
-        commands.zadd(selectedWorkerConsumerDeadlinesKey(deliveryQueueKey), claim.leaseExpireAtEpochMillis(), selectedWorkerId);
-        commands.sadd(queuesKey(), deliveryQueueKey);
+        localConsumers.put(lease.adapterMailboxKey(), local);
+        commands.hset(mailboxConsumersKey(), lease.adapterMailboxKey(), encodeConsumerEvidence(lease));
+        commands.zadd(mailboxConsumerDeadlinesKey(), lease.leaseDeadlineEpochMillis(), lease.adapterMailboxKey());
+        commands.sadd(queuesKey(), lease.adapterMailboxKey());
     }
 
     @Override
-    public void releaseConsumer(DeliveryCommandConsumerClaim claim) {
-        Objects.requireNonNull(claim, "claim");
-        String deliveryQueueKey = AssignedDeliveryCommandQueueKey.queueKeyFor(claim.deliveryBucketId());
-        String selectedWorkerId = normalizeRequired(claim.selectedWorkerId(), "selectedWorkerId");
-        String localKey = selectedWorkerConsumerKey(deliveryQueueKey, selectedWorkerId);
-        localConsumers.computeIfPresent(localKey,
-                (ignored, current) -> claim.endpointLeaseId().equals(current.endpointLeaseId()) ? null : current);
-        ConsumerEvidence current = currentConsumerEvidence(deliveryQueueKey, selectedWorkerId, System.currentTimeMillis());
-        if (current == null
-                || !claim.endpointLeaseId().equals(current.endpointLeaseId())) {
+    public void releaseMailboxConsumer(AdapterMailboxConsumerLease lease) {
+        Objects.requireNonNull(lease, "lease");
+        localConsumers.computeIfPresent(lease.adapterMailboxKey(),
+                (ignored, current) -> lease.consumerId().equals(current.consumerId()) ? null : current);
+        MailboxConsumerEvidence current = currentMailboxConsumerEvidence(lease.adapterMailboxKey(), System.currentTimeMillis());
+        if (current == null || !lease.consumerId().equals(current.consumerId())) {
             return;
         }
-        commands.hdel(selectedWorkerConsumersKey(deliveryQueueKey), selectedWorkerId);
-        commands.zrem(selectedWorkerConsumerDeadlinesKey(deliveryQueueKey), selectedWorkerId);
+        commands.hdel(mailboxConsumersKey(), lease.adapterMailboxKey());
+        commands.zrem(mailboxConsumerDeadlinesKey(), lease.adapterMailboxKey());
     }
 
     @Override
@@ -319,171 +315,155 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         }
     }
 
-    int queuedBatches(String deliveryQueueKey) {
-        return Math.toIntExact(commands.hlen(commandStoreKey(deliveryQueueKey)));
+    int queuedBatches(String adapterMailboxKey) {
+        return Math.toIntExact(commands.hlen(commandStoreKey(adapterMailboxKey)));
     }
 
-    long readyReferencesForTest(String deliveryQueueKey) {
-        return commands.llen(readyCommandsKey(deliveryQueueKey));
+    long readyReferencesForTest(String adapterMailboxKey) {
+        return commands.llen(readyCommandsKey(adapterMailboxKey));
     }
 
-    long inflightReferencesForTest(String deliveryQueueKey) {
-        return commands.zcard(inflightCommandsKey(deliveryQueueKey));
+    long inflightReferencesForTest(String adapterMailboxKey) {
+        return commands.zcard(inflightCommandsKey(adapterMailboxKey));
     }
 
-    void expireInflightForTest(String deliveryQueueKey) {
-        String inflightKey = inflightCommandsKey(deliveryQueueKey);
+    void expireInflightForTest(String adapterMailboxKey) {
+        String inflightKey = inflightCommandsKey(adapterMailboxKey);
         long expiredAt = System.currentTimeMillis() - 1L;
         for (String encodedReference : commands.zrange(inflightKey, 0, -1)) {
             commands.zadd(inflightKey, expiredAt, encodedReference);
         }
     }
 
-    void deleteCommandPayloadForTest(String deliveryQueueKey, String commandId) {
-        commands.hdel(commandStoreKey(deliveryQueueKey), commandId);
-        commands.zrem(commandRetentionDeadlineKey(deliveryQueueKey), commandId);
+    void deleteCommandPayloadForTest(String adapterMailboxKey, String commandId) {
+        commands.hdel(commandStoreKey(adapterMailboxKey), commandId);
+        commands.zrem(commandRetentionDeadlineKey(adapterMailboxKey), commandId);
     }
 
-    void pushReadyReferenceForTest(String deliveryQueueKey, String encodedReference) {
-        commands.rpush(readyCommandsKey(deliveryQueueKey), encodedReference);
+    void pushReadyReferenceForTest(String adapterMailboxKey, String encodedReference) {
+        commands.rpush(readyCommandsKey(adapterMailboxKey), encodedReference);
     }
 
     String encodeReferenceForTest(DeliveryCommandReference reference) {
         return encodeReference(reference);
     }
 
-    void clearForTest(String deliveryQueueKey) {
-        String normalizedQueueKey = normalizeRequired(deliveryQueueKey, "deliveryQueueKey");
-        commands.del(readyCommandsKey(normalizedQueueKey));
-        commands.del(inflightCommandsKey(normalizedQueueKey));
-        commands.del(commandStoreKey(normalizedQueueKey));
-        commands.del(commandRetentionDeadlineKey(normalizedQueueKey));
-        commands.del(selectedWorkerConsumersKey(normalizedQueueKey));
-        commands.del(selectedWorkerConsumerDeadlinesKey(normalizedQueueKey));
-        commands.srem(queuesKey(), normalizedQueueKey);
+    void clearForTest(String adapterMailboxKey) {
+        String normalizedMailboxKey = normalizeRequired(adapterMailboxKey, "adapterMailboxKey");
+        commands.del(readyCommandsKey(normalizedMailboxKey));
+        commands.del(inflightCommandsKey(normalizedMailboxKey));
+        commands.del(commandStoreKey(normalizedMailboxKey));
+        commands.del(commandRetentionDeadlineKey(normalizedMailboxKey));
+        commands.hdel(mailboxConsumersKey(), normalizedMailboxKey);
+        commands.zrem(mailboxConsumerDeadlinesKey(), normalizedMailboxKey);
+        commands.srem(queuesKey(), normalizedMailboxKey);
     }
 
-    void claimConsumerForTest(String deliveryBucketId, String selectedWorkerId, String endpointLeaseId) {
-        claimConsumer(new DeliveryCommandConsumerClaim(
-                deliveryBucketId,
-                selectedWorkerId,
-                endpointLeaseId,
+    void claimConsumerForTest(String adapterMailboxKey, String consumerId) {
+        claimMailboxConsumer(new AdapterMailboxConsumerLease(
+                adapterMailboxKey,
+                consumerId,
+                1L,
                 System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5L)
         ));
     }
 
-    private String claimReadyReference(String deliveryQueueKey) {
+    private String claimReadyReference(String adapterMailboxKey) {
         Object raw = commands.eval(
                 CLAIM_READY_REFERENCE_SCRIPT,
                 ScriptOutputType.VALUE,
                 new String[]{
-                        readyCommandsKey(deliveryQueueKey),
-                        inflightCommandsKey(deliveryQueueKey)
+                        readyCommandsKey(adapterMailboxKey),
+                        inflightCommandsKey(adapterMailboxKey)
                 },
                 Long.toString(System.currentTimeMillis() + DEFAULT_VISIBILITY_TIMEOUT_MILLIS)
         );
         return raw instanceof String value ? value : null;
     }
 
-    private void removeInflightClaim(String deliveryQueueKey, String encodedReference) {
-        commands.zrem(inflightCommandsKey(deliveryQueueKey), encodedReference);
+    private void removeInflightClaim(String adapterMailboxKey, String encodedReference) {
+        commands.zrem(inflightCommandsKey(adapterMailboxKey), encodedReference);
     }
 
-    private void reclaimExpiredInflight(String deliveryQueueKey) {
+    private void reclaimExpiredInflight(String adapterMailboxKey) {
         long now = System.currentTimeMillis();
         List<String> expired = commands.zrangebyscore(
-                inflightCommandsKey(deliveryQueueKey),
+                inflightCommandsKey(adapterMailboxKey),
                 Range.create(Double.NEGATIVE_INFINITY, (double) now)
         );
         for (String encodedReference : expired) {
-            if (commands.zrem(inflightCommandsKey(deliveryQueueKey), encodedReference) > 0L) {
+            if (commands.zrem(inflightCommandsKey(adapterMailboxKey), encodedReference) > 0L) {
                 DeliveryCommandReference reference = decodeReference(encodedReference);
-                if (reference != null && commands.hexists(commandStoreKey(reference.deliveryQueueKey()), reference.commandId())) {
-                    commands.rpush(readyCommandsKey(reference.deliveryQueueKey()), encodedReference);
+                if (reference != null && commands.hexists(commandStoreKey(reference.adapterMailboxKey()), reference.commandId())) {
+                    commands.rpush(readyCommandsKey(reference.adapterMailboxKey()), encodedReference);
                 }
             }
         }
     }
 
-    private ConsumerEvidence currentConsumerEvidence(String deliveryQueueKey, String selectedWorkerId, long nowEpochMillis) {
-        String normalizedWorkerId = normalizeNullable(selectedWorkerId);
-        if (normalizedWorkerId == null) {
-            return null;
-        }
-        ConsumerEvidence evidence = decodeConsumerEvidence(
-                commands.hget(selectedWorkerConsumersKey(deliveryQueueKey), normalizedWorkerId)
+    private MailboxConsumerEvidence currentMailboxConsumerEvidence(String adapterMailboxKey, long nowEpochMillis) {
+        String normalizedMailboxKey = normalizeRequired(adapterMailboxKey, "adapterMailboxKey");
+        MailboxConsumerEvidence evidence = decodeConsumerEvidence(
+                commands.hget(mailboxConsumersKey(), normalizedMailboxKey)
         );
         if (evidence == null) {
-            commands.zrem(selectedWorkerConsumerDeadlinesKey(deliveryQueueKey), normalizedWorkerId);
+            commands.zrem(mailboxConsumerDeadlinesKey(), normalizedMailboxKey);
             return null;
         }
-        if (evidence.leaseExpireAtEpochMillis() <= nowEpochMillis) {
-            commands.hdel(selectedWorkerConsumersKey(deliveryQueueKey), normalizedWorkerId);
-            commands.zrem(selectedWorkerConsumerDeadlinesKey(deliveryQueueKey), normalizedWorkerId);
+        if (evidence.leaseDeadlineEpochMillis() <= nowEpochMillis) {
+            commands.hdel(mailboxConsumersKey(), normalizedMailboxKey);
+            commands.zrem(mailboxConsumerDeadlinesKey(), normalizedMailboxKey);
             return null;
         }
         return evidence;
     }
 
-    private String commandStoreKey(String deliveryQueueKey) {
+    private String commandStoreKey(String adapterMailboxKey) {
         return namespacePrefix
-                + ":q:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"))
+                + ":mailbox:" + encodeToken(normalizeRequired(adapterMailboxKey, "adapterMailboxKey"))
                 + ":commands";
     }
 
-    private String commandRetentionDeadlineKey(String deliveryQueueKey) {
+    private String commandRetentionDeadlineKey(String adapterMailboxKey) {
         return namespacePrefix
-                + ":q:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"))
+                + ":mailbox:" + encodeToken(normalizeRequired(adapterMailboxKey, "adapterMailboxKey"))
                 + ":command-retention-deadlines";
     }
 
-    private String readyCommandsKey(String deliveryQueueKey) {
+    private String readyCommandsKey(String adapterMailboxKey) {
         return namespacePrefix
-                + ":q:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"))
+                + ":mailbox:" + encodeToken(normalizeRequired(adapterMailboxKey, "adapterMailboxKey"))
                 + ":ready-commands";
     }
 
-    private String inflightCommandsKey(String deliveryQueueKey) {
+    private String inflightCommandsKey(String adapterMailboxKey) {
         return namespacePrefix
-                + ":q:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"))
+                + ":mailbox:" + encodeToken(normalizeRequired(adapterMailboxKey, "adapterMailboxKey"))
                 + ":inflight-commands";
     }
 
-    private String selectedWorkerConsumersKey(String deliveryQueueKey) {
-        return namespacePrefix
-                + ":selected-worker-consumers:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"));
+    private String mailboxConsumersKey() {
+        return namespacePrefix + ":mailbox-consumers";
     }
 
-    private String selectedWorkerConsumerDeadlinesKey(String deliveryQueueKey) {
-        return namespacePrefix
-                + ":selected-worker-consumer-deadlines:" + encodeToken(normalizeRequired(deliveryQueueKey, "deliveryQueueKey"));
+    private String mailboxConsumerDeadlinesKey() {
+        return namespacePrefix + ":mailbox-consumer-deadlines";
     }
 
     private String queuesKey() {
         return namespacePrefix + ":queues";
     }
 
-    private static String selectedWorkerConsumerKey(String deliveryQueueKey, String selectedWorkerId) {
-        return normalizeRequired(deliveryQueueKey, "deliveryQueueKey")
-                + "\n"
-                + normalizeRequired(selectedWorkerId, "selectedWorkerId");
-    }
-
     private List<String> pollQueuesSnapshot() {
         List<String> queues = new ArrayList<>();
-        for (LocalConsumerEvidence local : List.copyOf(localConsumers.values())) {
-            if (local.leaseExpireAtEpochMillis() <= System.currentTimeMillis()) {
-                localConsumers.remove(selectedWorkerConsumerKey(local.deliveryQueueKey(), local.selectedWorkerId()), local);
+        for (LocalMailboxConsumerEvidence local : List.copyOf(localConsumers.values())) {
+            if (local.leaseDeadlineEpochMillis() <= System.currentTimeMillis()) {
+                localConsumers.remove(local.adapterMailboxKey(), local);
                 continue;
             }
-            if (!queues.contains(local.deliveryQueueKey())) {
-                queues.add(local.deliveryQueueKey());
-            }
-        }
-        for (String deliveryQueueKey : commands.smembers(queuesKey())) {
-            String normalized = normalizeNullable(deliveryQueueKey);
-            if (normalized != null && !queues.contains(normalized)) {
-                queues.add(normalized);
+            if (currentMailboxConsumerEvidence(local.adapterMailboxKey(), System.currentTimeMillis()) != null
+                    && !queues.contains(local.adapterMailboxKey())) {
+                queues.add(local.adapterMailboxKey());
             }
         }
         return queues;
@@ -498,7 +478,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     }
 
     private static String encodeReference(DeliveryCommandReference reference) {
-        return encodeToken(reference.deliveryQueueKey())
+        return encodeToken(reference.adapterMailboxKey())
                 + MEMBER_SEPARATOR
                 + encodeToken(reference.commandId());
     }
@@ -517,16 +497,16 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         );
     }
 
-    private static String encodeConsumerEvidence(DeliveryCommandConsumerClaim claim) {
+    private static String encodeConsumerEvidence(AdapterMailboxConsumerLease lease) {
         return String.join("|",
                 CONSUMER_EVIDENCE_VERSION,
-                encodeToken(claim.selectedWorkerId()),
-                encodeToken(claim.endpointLeaseId()),
-                Long.toString(claim.leaseExpireAtEpochMillis())
+                encodeToken(lease.consumerId()),
+                Long.toString(lease.generation()),
+                Long.toString(lease.leaseDeadlineEpochMillis())
         );
     }
 
-    private static ConsumerEvidence decodeConsumerEvidence(String encoded) {
+    private static MailboxConsumerEvidence decodeConsumerEvidence(String encoded) {
         if (encoded == null || encoded.isBlank()) {
             return null;
         }
@@ -534,9 +514,9 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         if (parts.length != 4 || !CONSUMER_EVIDENCE_VERSION.equals(parts[0])) {
             return null;
         }
-        return new ConsumerEvidence(
+        return new MailboxConsumerEvidence(
                 decodeToken(parts[1]),
-                decodeToken(parts[2]),
+                parseLong(parts[2]),
                 parseLong(parts[3])
         );
     }
@@ -563,14 +543,14 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         return value.trim();
     }
 
-    private record ConsumerEvidence(String selectedWorkerId,
-                                    String endpointLeaseId,
-                                    long leaseExpireAtEpochMillis) {
+    private record MailboxConsumerEvidence(String consumerId,
+                                           long generation,
+                                           long leaseDeadlineEpochMillis) {
     }
 
-    private record LocalConsumerEvidence(String deliveryQueueKey,
-                                         String selectedWorkerId,
-                                         String endpointLeaseId,
-                                         long leaseExpireAtEpochMillis) {
+    private record LocalMailboxConsumerEvidence(String adapterMailboxKey,
+                                                String consumerId,
+                                                long generation,
+                                                long leaseDeadlineEpochMillis) {
     }
 }

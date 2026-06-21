@@ -3316,6 +3316,7 @@ class MassSdkTest {
 
     private static TransportBinding canonicalRouteBinding(StubPushOnlyAdapter adapter) {
         return TransportBinding.builder(adapter.adapterId(), adapter.transportHint(), adapter)
+                .adapterMailboxKey(adapter.adapterId())
                 .protocol(adapter.protocol())
                 .build();
     }
@@ -3323,6 +3324,7 @@ class MassSdkTest {
     private static TransportBinding canonicalRouteBinding(StubPullCapableAdapter adapter,
                                                           DeliveryPullChannel deliveryPullChannel) {
         return TransportBinding.builder(adapter.adapterId(), adapter.transportHint(), adapter)
+                .adapterMailboxKey(adapter.adapterId())
                 .protocol(adapter.protocol())
                 .deliveryPullChannel(deliveryPullChannel)
                 .pullSessionEvidenceDriver(noopPullSessionEvidenceDriver())
@@ -3633,8 +3635,7 @@ class MassSdkTest {
 
         @Override
         public com.xa.mass.transport.model.DispatchOutcome enqueue(
-                String adapterId,
-                String deliveryQueueKey,
+                String adapterMailboxKey,
                 com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch item) {
             return com.xa.mass.transport.model.DispatchOutcome.queued(
                     item != null ? item.deliveryId() : null,
@@ -3644,15 +3645,15 @@ class MassSdkTest {
         }
 
         @Override
-        public List<com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch> drain(String deliveryQueueKey,
+        public List<com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch> drain(String adapterMailboxKey,
                                                                                        String selectedWorkerId,
                                                                                        int maxItems) {
             return List.of();
         }
 
         @Override
-        public TransportDeliveryPollResult poll(String adapterId,
-                                                String routeKey,
+        public TransportDeliveryPollResult poll(String adapterMailboxKey,
+                                                String selectedWorkerId,
                                                 int maxItems,
                                                 long timeout,
                                                 TimeUnit unit) {

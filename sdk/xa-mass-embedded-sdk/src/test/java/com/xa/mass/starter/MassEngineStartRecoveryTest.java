@@ -181,6 +181,7 @@ class MassEngineStartRecoveryTest {
         config.getWorkerPresenceRuntime().sessionConnected(
                 workerId,
                 "polling",
+                "polling",
                 workerGroupId,
                 workerId + "-session",
                 observedAtMillis,

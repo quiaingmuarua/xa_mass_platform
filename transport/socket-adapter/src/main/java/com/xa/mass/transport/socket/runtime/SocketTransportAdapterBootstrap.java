@@ -34,7 +34,8 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
 
     @Override
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
-        SocketSessionManager sessionManager = resolveSessionManager(context);
+        String adapterMailboxKey = config.getAdapterId();
+        SocketSessionManager sessionManager = resolveSessionManager(context, adapterMailboxKey);
         SocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
                 new SocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionManager);
         SocketTransportFrameCodec frameCodec = new SocketTransportFrameCodec();
@@ -50,6 +51,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                             com.xa.mass.transport.WorkerTransportHints.REALTIME,
                             commandExecutor
                     )
+                    .adapterMailboxKey(adapterMailboxKey)
                     .protocol(SocketAdapterConfig.PROTOCOL)
                     .build());
             contribution.addRawWorkerMessageChannel(new SocketRawWorkerMessageChannel(
@@ -73,10 +75,10 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         return contribution.build();
     }
 
-    private SocketSessionManager resolveSessionManager(TransportAdapterBootstrapContext context) {
-        SocketSessionManager sessionManager = new SocketSessionManager(config.getAdapterId());
+    private SocketSessionManager resolveSessionManager(TransportAdapterBootstrapContext context,
+                                                       String adapterMailboxKey) {
+        SocketSessionManager sessionManager = new SocketSessionManager(config.getAdapterId(), adapterMailboxKey);
         sessionManager.setEndpointLeaseStore(context.getEndpointLeaseStore());
-        sessionManager.setDeliveryCommandConsumerRegistry(context.getDeliveryCommandConsumerRegistry());
         sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
         return sessionManager;
     }

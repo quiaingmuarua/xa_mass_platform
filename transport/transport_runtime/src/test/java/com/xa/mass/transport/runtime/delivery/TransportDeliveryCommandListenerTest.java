@@ -4,7 +4,6 @@ import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.embedded.TransportDeliveryCommandListener;
@@ -25,24 +24,17 @@ class TransportDeliveryCommandListenerTest {
         TransportRuntimeRegistry registry = new TransportRuntimeRegistry(
                 (TransportResultIngressChannel) envelope -> true,
                 endpointLeaseStore,
-                List.of(TransportBinding.builder("socket", "realtime", new NoopAdapterCommandExecutor()).build())
+                List.of(TransportBinding.builder("socket", "realtime", new NoopAdapterCommandExecutor())
+                        .adapterMailboxKey("socket")
+                        .build())
         );
         RecordingFailureHandler failures = new RecordingFailureHandler();
         TransportDeliveryCommandListener listener = new TransportDeliveryCommandListener(
                 registry,
-                endpointLeaseStore,
                 failures,
                 null
         );
         DeliveryCommand command = DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1");
-        endpointLeaseStore.claimEndpointLease(new TransportEndpointLeaseClaim(
-                command.getSelectedWorkerId(),
-                command.getDeliveryBucketId(),
-                "websocket",
-                "route-1",
-                "session-1",
-                "test"
-        ));
 
         List<DispatchOutcome> outcomes = listener.onDeliveryCommandBatch(batch(command));
 
@@ -54,9 +46,9 @@ class TransportDeliveryCommandListenerTest {
 
     private static DeliveryCommandBatch batch(DeliveryCommand command) {
         return new DeliveryCommandBatch(
-                DeliveryCommandFixtures.queueKey(),
+                DeliveryCommandFixtures.mailboxKey(),
                 List.of(new DeliveryCommandReference(
-                        DeliveryCommandFixtures.queueKey(),
+                        DeliveryCommandFixtures.mailboxKey(),
                         command.getCommandId()
                 )),
                 List.of(command)

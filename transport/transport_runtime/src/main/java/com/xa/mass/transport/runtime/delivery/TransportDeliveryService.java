@@ -24,7 +24,8 @@ public final class TransportDeliveryService {
         this.deliveryStore = Objects.requireNonNull(deliveryStore, "deliveryStore");
     }
 
-    public List<DispatchOutcome> enqueue(String adapterId, List<DeliveryCommand> commands) {
+    public List<DispatchOutcome> enqueueForMailbox(String adapterMailboxKey, List<DeliveryCommand> commands) {
+        String normalizedMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
         if (commands == null || commands.isEmpty()) {
             return List.of();
         }
@@ -39,42 +40,27 @@ public final class TransportDeliveryService {
                 ));
                 continue;
             }
-            String deliveryQueueKey;
-            try {
-                deliveryQueueKey = resolveDeliveryQueueKey(command.getDeliveryBucketId());
-            } catch (RuntimeException e) {
-                outcomes.add(DispatchOutcome.invalid(
-                        command,
-                        e.getMessage() == null || e.getMessage().isBlank()
-                                ? "delivery bucket id is invalid for transport queue addressing"
-                                : e.getMessage()
-                ));
-                continue;
-            }
-            outcomes.add(deliveryStore.enqueue(adapterId, deliveryQueueKey, QueuedPulledDispatch.from(command)));
+            outcomes.add(deliveryStore.enqueue(normalizedMailboxKey, QueuedPulledDispatch.from(command)));
         }
         return Collections.unmodifiableList(outcomes);
     }
 
-    public List<QueuedPulledDispatch> drainItems(String deliveryBucketId, String selectedWorkerId, int maxItems) {
-        return deliveryStore.drain(resolveDeliveryQueueKey(deliveryBucketId), selectedWorkerId, maxItems);
+    public TransportDeliveryPollResult pollMailboxItemResult(String adapterMailboxKey,
+                                                             String selectedWorkerId,
+                                                             int maxItems,
+                                                             long timeoutMillis) {
+        return pollResolvedQueue(requireText(adapterMailboxKey, "adapterMailboxKey"),
+                selectedWorkerId, maxItems, timeoutMillis);
     }
 
-    public List<QueuedPulledDispatch> pollItems(String deliveryBucketId,
-                                                String selectedWorkerId,
-                                                int maxItems,
-                                                long timeoutMillis) {
-        return pollItemResult(deliveryBucketId, selectedWorkerId, maxItems, timeoutMillis).getItems();
-    }
-
-    public TransportDeliveryPollResult pollItemResult(String deliveryBucketId,
-                                                      String selectedWorkerId,
-                                                      int maxItems,
-                                                      long timeoutMillis) {
+    private TransportDeliveryPollResult pollResolvedQueue(String adapterMailboxKey,
+                                                          String selectedWorkerId,
+                                                          int maxItems,
+                                                          long timeoutMillis) {
         TransportDeliveryPollResult result;
         try {
             result = deliveryStore.poll(
-                    resolveDeliveryQueueKey(deliveryBucketId),
+                    adapterMailboxKey,
                     selectedWorkerId,
                     maxItems,
                     Math.max(0L, timeoutMillis),
@@ -96,8 +82,11 @@ public final class TransportDeliveryService {
         deliveryStore.shutdown();
     }
 
-    private static String resolveDeliveryQueueKey(String deliveryBucketId) {
-        return AssignedDeliveryCommandQueueKey.queueKeyFor(deliveryBucketId);
+    private static String requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 
 }

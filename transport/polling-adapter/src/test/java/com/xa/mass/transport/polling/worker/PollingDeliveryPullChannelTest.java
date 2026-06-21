@@ -3,6 +3,7 @@ package com.xa.mass.transport.polling.worker;
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
 import com.xa.mass.transport.model.DeliveryCommand;
+import com.xa.mass.transport.polling.runtime.PollingTransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,10 @@ class PollingDeliveryPullChannelTest {
     void sharedBucketDoesNotCrossConsumeSelectedWorkerItems() {
         TransportDeliveryService deliveryService = deliveryService();
         PollingDeliveryExecutor executor = new PollingDeliveryExecutor("polling-default", deliveryService);
-        PollingDeliveryPullChannel pullChannel = new PollingDeliveryPullChannel(deliveryService);
+        PollingDeliveryPullChannel pullChannel = new PollingDeliveryPullChannel(
+                PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID,
+                deliveryService
+        );
         executor.dispatch(List.of(request("msg-2", "worker-2")));
 
         assertEquals(DeliveryPullStatus.EMPTY,
@@ -34,7 +38,10 @@ class PollingDeliveryPullChannelTest {
     void pollResultPreservesDeliveredAndInvalidRequestStatuses() {
         TransportDeliveryService deliveryService = deliveryService();
         PollingDeliveryExecutor executor = new PollingDeliveryExecutor("polling-default", deliveryService);
-        PollingDeliveryPullChannel pullChannel = new PollingDeliveryPullChannel(deliveryService);
+        PollingDeliveryPullChannel pullChannel = new PollingDeliveryPullChannel(
+                PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID,
+                deliveryService
+        );
         executor.dispatch(List.of(request("msg-1", "worker-1")));
 
         assertEquals(DeliveryPullStatus.DELIVERED,

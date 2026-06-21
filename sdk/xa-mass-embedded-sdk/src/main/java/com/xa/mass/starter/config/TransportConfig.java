@@ -55,6 +55,7 @@ public class TransportConfig {
     private int eventRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private long eventHandlerTimeoutMillis;
     private long endpointLeaseMillis = 30_000L;
+    private long adapterMailboxConsumerLeaseMillis = 30_000L;
     private TransportRuntimeRole runtimeRole = TransportRuntimeRole.EMBEDDED;
 
     public TransportConfig() {
@@ -90,6 +91,7 @@ public class TransportConfig {
         this.eventRuntimeMaxPendingTasks = source.eventRuntimeMaxPendingTasks;
         this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
         this.endpointLeaseMillis = source.endpointLeaseMillis;
+        this.adapterMailboxConsumerLeaseMillis = source.adapterMailboxConsumerLeaseMillis;
         this.runtimeRole = source.runtimeRole;
     }
 
@@ -231,6 +233,17 @@ public class TransportConfig {
             throw new IllegalArgumentException("endpointLeaseMillis must be greater than 0");
         }
         this.endpointLeaseMillis = endpointLeaseMillis;
+    }
+
+    public long getAdapterMailboxConsumerLeaseMillis() {
+        return adapterMailboxConsumerLeaseMillis;
+    }
+
+    public void setAdapterMailboxConsumerLeaseMillis(long adapterMailboxConsumerLeaseMillis) {
+        if (adapterMailboxConsumerLeaseMillis <= 0L) {
+            throw new IllegalArgumentException("adapterMailboxConsumerLeaseMillis must be greater than 0");
+        }
+        this.adapterMailboxConsumerLeaseMillis = adapterMailboxConsumerLeaseMillis;
     }
 
     public void setWorkerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {

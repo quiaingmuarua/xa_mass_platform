@@ -13,10 +13,12 @@ import java.util.Objects;
 public final class WorkerPresenceSessionPublisher {
 
     private final String adapterId;
+    private final String adapterMailboxKey;
     private volatile WorkerPresenceIngress workerPresenceIngress = NoopWorkerPresenceIngress.INSTANCE;
 
-    public WorkerPresenceSessionPublisher(String adapterId) {
+    public WorkerPresenceSessionPublisher(String adapterId, String adapterMailboxKey) {
         this.adapterId = requireText(adapterId, "adapterId").toLowerCase(Locale.ROOT);
+        this.adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
     }
 
     public void setWorkerPresenceIngress(WorkerPresenceIngress workerPresenceIngress) {
@@ -33,6 +35,7 @@ public final class WorkerPresenceSessionPublisher {
         workerPresenceIngress.sessionConnected(WorkerSessionPresenceEvent.connected(
                 workerId,
                 adapterId,
+                adapterMailboxKey,
                 endpointAddress,
                 sessionToken,
                 reason,
@@ -48,6 +51,7 @@ public final class WorkerPresenceSessionPublisher {
         workerPresenceIngress.sessionHeartbeat(WorkerSessionPresenceEvent.heartbeat(
                 workerId,
                 adapterId,
+                adapterMailboxKey,
                 endpointAddress,
                 sessionToken,
                 reason,
@@ -63,6 +67,7 @@ public final class WorkerPresenceSessionPublisher {
         workerPresenceIngress.sessionDisconnected(WorkerSessionPresenceEvent.disconnected(
                 workerId,
                 adapterId,
+                adapterMailboxKey,
                 endpointAddress,
                 sessionToken,
                 reason,

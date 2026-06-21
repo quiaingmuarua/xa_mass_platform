@@ -6,9 +6,12 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxDeliveryCommand;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
+import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
+import com.xa.mass.worker.runtime.evidence.WorkerDeliveryTargetView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,13 +30,18 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
 
     private final TransportAssignedDeliverySubmitter assignedDeliverySubmitter;
     private final TransportDeliveryFailureHandler failureHandler;
+    private final WorkerDeliveryTargetView deliveryTargetView;
     private final TaskDispatchPayloadEncoder payloadEncoder = new TaskDispatchPayloadEncoder();
     private final TaskDispatchDeliveryCorrelationCodec correlationCodec = new TaskDispatchDeliveryCorrelationCodec();
 
     TaskDispatchDeliveryCommandSubmitter(TransportAssignedDeliverySubmitter assignedDeliverySubmitter,
-                                         TransportDeliveryFailureHandler failureHandler) {
+                                         TransportDeliveryFailureHandler failureHandler,
+                                         WorkerDeliveryTargetView deliveryTargetView) {
         this.assignedDeliverySubmitter = Objects.requireNonNull(assignedDeliverySubmitter, "assignedDeliverySubmitter");
         this.failureHandler = failureHandler;
+        this.deliveryTargetView = deliveryTargetView != null
+                ? deliveryTargetView
+                : WorkerDeliveryTargetView.unavailable();
     }
 
     @Override
@@ -41,7 +49,7 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
         if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
             return;
         }
-        List<DeliveryCommand> commands = new ArrayList<>();
+        List<AdapterMailboxDeliveryCommand> commands = new ArrayList<>();
         List<TaskDispatchBinding> invalidBindings = new ArrayList<>();
         for (TaskDispatchBinding binding : dispatchBindings) {
             if (binding == null) {
@@ -53,7 +61,19 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
                 invalidBindings.add(binding);
                 continue;
             }
-            commands.add(toCommand(task, binding, deliveryBucketId, selectedWorkerId));
+            DeliveryCommand command = toCommand(task, binding, deliveryBucketId, selectedWorkerId);
+            SelectedWorkerDeliveryTargetEvidence target = deliveryTargetView
+                    .resolveDeliveryTarget(selectedWorkerId)
+                    .orElse(null);
+            if (target == null || !target.isDeliverable(System.currentTimeMillis())) {
+                compensateDeliveryTargetFailure(command, "selected worker has no current adapter mailbox target");
+                continue;
+            }
+            if (!selectedWorkerId.equals(target.workerId())) {
+                compensateDeliveryTargetFailure(command, "selected worker delivery target does not match assignment worker");
+                continue;
+            }
+            commands.add(new AdapterMailboxDeliveryCommand(target.adapterMailboxKey(), command));
         }
 
         compensateInvalidBindings(task, invalidBindings, "delivery command translation failed before transport handoff");
@@ -105,6 +125,28 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
                 logger.error("Delivery failure was not compensated: deliveryId={}, selectedWorkerId={}, detail={}",
                         outcome.getDeliveryId(), outcome.getSelectedWorkerId(), detail);
             }
+        }
+    }
+
+    private void compensateDeliveryTargetFailure(DeliveryCommand command, String detail) {
+        if (command == null) {
+            return;
+        }
+        if (failureHandler == null) {
+            logger.warn("Cannot compensate delivery target failure because no failure handler is configured: deliveryId={}, selectedWorkerId={}, detail={}",
+                    command.getCommandId(), command.getSelectedWorkerId(), detail);
+            return;
+        }
+        DispatchOutcome outcome = DispatchOutcome.fromCommand(
+                command,
+                DispatchOutcomeStatus.NO_ENDPOINT,
+                true,
+                detail
+        );
+        boolean handled = failureHandler.handle(new TransportDeliveryFailureEvent(outcome, detail));
+        if (!handled) {
+            logger.error("Delivery target failure was not compensated: deliveryId={}, selectedWorkerId={}, detail={}",
+                    outcome.getDeliveryId(), outcome.getSelectedWorkerId(), detail);
         }
     }
 

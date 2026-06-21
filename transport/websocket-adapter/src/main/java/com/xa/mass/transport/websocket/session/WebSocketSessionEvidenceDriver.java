@@ -2,7 +2,6 @@ package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.lease.TransportEndpointLeasePublisher;
 import com.xa.mass.transport.runtime.lease.WorkerPresenceSessionPublisher;
 
@@ -13,17 +12,13 @@ public final class WebSocketSessionEvidenceDriver {
     private final TransportEndpointLeasePublisher endpointLeasePublisher;
     private final WorkerPresenceSessionPublisher workerPresencePublisher;
 
-    public WebSocketSessionEvidenceDriver(String adapterId) {
+    public WebSocketSessionEvidenceDriver(String adapterId, String adapterMailboxKey) {
         this.endpointLeasePublisher = new TransportEndpointLeasePublisher(adapterId);
-        this.workerPresencePublisher = new WorkerPresenceSessionPublisher(adapterId);
+        this.workerPresencePublisher = new WorkerPresenceSessionPublisher(adapterId, adapterMailboxKey);
     }
 
     public void setEndpointLeaseStore(TransportEndpointLeaseStore endpointLeaseStore) {
         endpointLeasePublisher.setEndpointLeaseStore(endpointLeaseStore);
-    }
-
-    public void setDeliveryCommandConsumerRegistry(DeliveryCommandConsumerRegistry registry) {
-        endpointLeasePublisher.setDeliveryCommandConsumerRegistry(registry);
     }
 
     public void setWorkerPresenceIngress(WorkerPresenceIngress workerPresenceIngress) {

@@ -9,7 +9,7 @@ import java.util.List;
  */
 public interface TransportDeliveryCommandHandoff {
 
-    List<DispatchOutcome> offer(DeliveryQueueOffer offer);
+    List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer);
 
     DeliveryCommandBatch poll(long timeoutMillis) throws InterruptedException;
 

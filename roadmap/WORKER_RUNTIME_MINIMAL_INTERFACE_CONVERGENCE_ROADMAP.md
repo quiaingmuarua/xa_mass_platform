@@ -898,8 +898,11 @@ Acceptance:
 
 - Starter/transport assembly does not read `adapterId` or `adapterNodeId` from
   worker declaration or worker resource snapshot.
-- Assigned task delivery continues to use `deliveryBucketId + selectedWorkerId`
-  and handoff-private selected-worker consumer evidence.
+- Assigned task delivery continues to use engine-selected worker identity, but
+  delivery integration now resolves `selectedWorkerId -> adapterMailboxKey`
+  through worker-runtime delivery target evidence before transport handoff.
+  Transport handoff must not restore `deliveryBucketId + selectedWorkerId` or
+  per-worker consumer evidence as queue ownership.
 - Endpoint/session topology remains transport-owned and is not projected into
   worker declaration.
 - Raw/debug side-channel paths, if retained, obtain adapter identity from

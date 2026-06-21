@@ -30,7 +30,7 @@ class SocketSessionManagerTest {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore =
                 new InMemoryTransportEndpointLeaseStore(30_000L);
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        SocketSessionManager manager = new SocketSessionManager("socket");
+        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
         manager.setEndpointLeaseStore(endpointLeaseStore);
         manager.setWorkerPresenceIngress(presenceIngress);
 
@@ -61,7 +61,7 @@ class SocketSessionManagerTest {
 
     @Test
     void adapterScopedRouteLookupUsesConfiguredAdapterId() {
-        SocketSessionManager manager = new SocketSessionManager("socket-edge");
+        SocketSessionManager manager = new SocketSessionManager("socket-edge", "socket-edge");
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
                 activeSocket(), mock(BufferedWriter.class));
@@ -74,7 +74,7 @@ class SocketSessionManagerTest {
 
     @Test
     void selectedWorkerSendUsesWorkerIndexUnderSharedRouteKey() throws IOException {
-        SocketSessionManager manager = new SocketSessionManager("socket");
+        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
         BufferedWriter firstWriter = mock(BufferedWriter.class);
         BufferedWriter secondWriter = mock(BufferedWriter.class);
 
@@ -91,7 +91,7 @@ class SocketSessionManagerTest {
     void staleEndpointHeartbeatAndDisconnectDoNotOverrideReplacementEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        SocketSessionManager manager = new SocketSessionManager("socket");
+        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
         manager.setEndpointLeaseStore(endpointLeaseStore);
         manager.setWorkerPresenceIngress(presenceIngress);
 
@@ -133,7 +133,7 @@ class SocketSessionManagerTest {
     @Test
     void shutdownReleasesEndpointLeaseBeforeClearingRoutes() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        SocketSessionManager manager = new SocketSessionManager("socket");
+        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
         manager.setEndpointLeaseStore(endpointLeaseStore);
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
@@ -147,7 +147,7 @@ class SocketSessionManagerTest {
     @Test
     void replacingSelectedWorkerWithDifferentRouteRetiresOldEndpoint() throws IOException {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        SocketSessionManager manager = new SocketSessionManager("socket");
+        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
         manager.setEndpointLeaseStore(endpointLeaseStore);
         BufferedWriter oldWriter = mock(BufferedWriter.class);
         BufferedWriter newWriter = mock(BufferedWriter.class);
@@ -172,7 +172,7 @@ class SocketSessionManagerTest {
                 new InMemoryTransportEndpointLeaseStore(30_000L);
         InMemoryTransportEndpointLeaseStore secondStore =
                 new InMemoryTransportEndpointLeaseStore(30_000L);
-        SocketSessionManager manager = new SocketSessionManager("socket");
+        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
         manager.setEndpointLeaseStore(firstStore);
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",

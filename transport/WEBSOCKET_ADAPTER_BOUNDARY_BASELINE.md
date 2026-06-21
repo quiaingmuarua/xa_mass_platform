@@ -84,8 +84,8 @@ Hard rules:
 - WebSocket assigned-delivery local lookup is worker-id-only:
   `DeliveryCommand.selectedWorkerId` -> `WebSocketSessionController`
   `sendTextToWorker(...)` -> store channel lookup -> Netty frame write.
-  `deliveryBucketId` is upstream queue/evidence context, not a WebSocket
-  session lookup dimension.
+  `deliveryBucketId` is upstream scheduling/index and endpoint-evidence
+  context, not a WebSocket session lookup dimension.
 - `WebSocketTaskDispatchChannel` owns assigned-delivery command execution and
   `DispatchOutcome` production. It must not import Netty, session store, or
   session record types.

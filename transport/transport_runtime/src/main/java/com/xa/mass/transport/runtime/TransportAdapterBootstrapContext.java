@@ -4,8 +4,8 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.Objects;
@@ -20,7 +20,7 @@ public final class TransportAdapterBootstrapContext {
     private final WorkerPresenceIngress workerPresenceIngress;
     private final TransportEndpointLeaseStore endpointLeaseStore;
     private final TransportDeliveryService deliveryService;
-    private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
+    private final AdapterMailboxConsumerRegistry adapterMailboxConsumerRegistry;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
 
     public TransportAdapterBootstrapContext(TransportResultIngressChannel resultIngressChannel,
@@ -32,7 +32,7 @@ public final class TransportAdapterBootstrapContext {
                 workerPresenceIngress,
                 endpointLeaseStore,
                 deliveryService,
-                NoopDeliveryCommandConsumerRegistry.INSTANCE,
+                NoopAdapterMailboxConsumerRegistry.INSTANCE,
                 runtimeTaskExecutor);
     }
 
@@ -40,15 +40,15 @@ public final class TransportAdapterBootstrapContext {
                                             WorkerPresenceIngress workerPresenceIngress,
                                             TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryService deliveryService,
-                                            DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
+                                            AdapterMailboxConsumerRegistry adapterMailboxConsumerRegistry,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
         this.resultIngressChannel = resultIngressChannel;
         this.workerPresenceIngress = Objects.requireNonNull(workerPresenceIngress, "workerPresenceIngress");
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
-        this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
-                ? deliveryCommandConsumerRegistry
-                : NoopDeliveryCommandConsumerRegistry.INSTANCE;
+        this.adapterMailboxConsumerRegistry = adapterMailboxConsumerRegistry != null
+                ? adapterMailboxConsumerRegistry
+                : NoopAdapterMailboxConsumerRegistry.INSTANCE;
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
     }
 
@@ -68,8 +68,8 @@ public final class TransportAdapterBootstrapContext {
         return deliveryService;
     }
 
-    public DeliveryCommandConsumerRegistry getDeliveryCommandConsumerRegistry() {
-        return deliveryCommandConsumerRegistry;
+    public AdapterMailboxConsumerRegistry getAdapterMailboxConsumerRegistry() {
+        return adapterMailboxConsumerRegistry;
     }
 
     public RuntimeTaskExecutor getRuntimeTaskExecutor() {

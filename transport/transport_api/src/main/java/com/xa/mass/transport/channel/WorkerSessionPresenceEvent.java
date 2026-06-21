@@ -10,6 +10,7 @@ import java.util.Objects;
  */
 public record WorkerSessionPresenceEvent(String workerId,
                                          String adapterId,
+                                         String adapterMailboxKey,
                                          String routeKey,
                                          String sessionToken,
                                          WorkerPresenceEventType eventType,
@@ -20,6 +21,7 @@ public record WorkerSessionPresenceEvent(String workerId,
     public WorkerSessionPresenceEvent {
         workerId = requireText(workerId, "workerId");
         adapterId = requireText(adapterId, "adapterId");
+        adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
         sessionToken = requireText(sessionToken, "sessionToken");
         routeKey = normalizeNullable(routeKey);
         eventType = Objects.requireNonNull(eventType, "eventType");
@@ -30,6 +32,7 @@ public record WorkerSessionPresenceEvent(String workerId,
 
     public static WorkerSessionPresenceEvent connected(String workerId,
                                                        String adapterId,
+                                                       String adapterMailboxKey,
                                                        String routeKey,
                                                        String sessionToken,
                                                        String reason,
@@ -37,6 +40,7 @@ public record WorkerSessionPresenceEvent(String workerId,
         return new WorkerSessionPresenceEvent(
                 workerId,
                 adapterId,
+                adapterMailboxKey,
                 routeKey,
                 sessionToken,
                 WorkerPresenceEventType.CONNECTED,
@@ -48,6 +52,7 @@ public record WorkerSessionPresenceEvent(String workerId,
 
     public static WorkerSessionPresenceEvent heartbeat(String workerId,
                                                        String adapterId,
+                                                       String adapterMailboxKey,
                                                        String routeKey,
                                                        String sessionToken,
                                                        String reason,
@@ -55,6 +60,7 @@ public record WorkerSessionPresenceEvent(String workerId,
         return new WorkerSessionPresenceEvent(
                 workerId,
                 adapterId,
+                adapterMailboxKey,
                 routeKey,
                 sessionToken,
                 WorkerPresenceEventType.HEARTBEAT,
@@ -66,6 +72,7 @@ public record WorkerSessionPresenceEvent(String workerId,
 
     public static WorkerSessionPresenceEvent disconnected(String workerId,
                                                           String adapterId,
+                                                          String adapterMailboxKey,
                                                           String routeKey,
                                                           String sessionToken,
                                                           String reason,
@@ -73,6 +80,7 @@ public record WorkerSessionPresenceEvent(String workerId,
         return new WorkerSessionPresenceEvent(
                 workerId,
                 adapterId,
+                adapterMailboxKey,
                 routeKey,
                 sessionToken,
                 WorkerPresenceEventType.DISCONNECTED,

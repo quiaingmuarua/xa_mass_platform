@@ -2,7 +2,6 @@ package com.xa.mass.transport.polling.runtime;
 
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.lease.TransportEndpointLeasePublisher;
 import com.xa.mass.transport.runtime.lease.WorkerPresenceSessionPublisher;
@@ -22,15 +21,16 @@ public final class PollingSessionEvidenceDriver implements PullSessionEvidenceDr
     private final WorkerPresenceSessionPublisher workerPresencePublisher;
 
     public PollingSessionEvidenceDriver(String adapterId,
+                                        String adapterMailboxKey,
                                         TransportEndpointLeaseStore endpointLeaseStore,
-                                        DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
                                         WorkerPresenceIngress workerPresenceIngress) {
         String normalizedAdapterId = requireText(adapterId, "adapterId").toLowerCase(Locale.ROOT);
         this.endpointLeasePublisher = new TransportEndpointLeasePublisher(normalizedAdapterId);
         this.endpointLeasePublisher.setEndpointLeaseStore(Objects.requireNonNull(endpointLeaseStore,
                 "endpointLeaseStore"));
-        this.endpointLeasePublisher.setDeliveryCommandConsumerRegistry(deliveryCommandConsumerRegistry);
-        this.workerPresencePublisher = new WorkerPresenceSessionPublisher(normalizedAdapterId);
+        this.workerPresencePublisher = new WorkerPresenceSessionPublisher(
+                normalizedAdapterId,
+                requireText(adapterMailboxKey, "adapterMailboxKey"));
         this.workerPresencePublisher.setWorkerPresenceIngress(workerPresenceIngress);
     }
 

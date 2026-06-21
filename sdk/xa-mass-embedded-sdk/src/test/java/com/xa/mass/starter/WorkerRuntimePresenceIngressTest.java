@@ -50,6 +50,25 @@ class WorkerRuntimePresenceIngressTest {
     }
 
     @Test
+    void connectedSessionPreservesAdapterMailboxKeyForDeliveryTargetEvidence() {
+        InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
+        WorkerHeartbeatRuntime heartbeatRuntime = mock(WorkerHeartbeatRuntime.class);
+        RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, heartbeatRuntime, sink);
+
+        ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
+                "worker-1", "websocket", "mailbox-a", "route-1", "session-1",
+                1_000L, "connected", "trace-1"
+        ));
+
+        var target = runtime.resolveDeliveryTarget("worker-1").orElseThrow();
+        assertEquals("worker-1", target.workerId());
+        assertEquals("mailbox-a", target.adapterMailboxKey());
+        assertEquals(WorkerReachabilityState.ONLINE, target.reachabilityState());
+        verify(heartbeatRuntime).refreshWorkerHeartbeat("worker-1", 1_000L);
+    }
+
+    @Test
     void heartbeatDoesNotCreatePresenceWhenSessionWasNotConnected() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
         WorkerHeartbeatRuntime heartbeatRuntime = mock(WorkerHeartbeatRuntime.class);
@@ -192,9 +211,32 @@ class WorkerRuntimePresenceIngressTest {
                                                            long observedAtMillis,
                                                            String reason,
                                                            String traceId) {
+        return presenceEvent(
+                eventType,
+                workerId,
+                adapterId,
+                adapterId,
+                routeKey,
+                sessionToken,
+                observedAtMillis,
+                reason,
+                traceId
+        );
+    }
+
+    private static WorkerSessionPresenceEvent presenceEvent(WorkerPresenceEventType eventType,
+                                                           String workerId,
+                                                           String adapterId,
+                                                           String adapterMailboxKey,
+                                                           String routeKey,
+                                                           String sessionToken,
+                                                           long observedAtMillis,
+                                                           String reason,
+                                                           String traceId) {
         return new WorkerSessionPresenceEvent(
                 workerId,
                 adapterId,
+                adapterMailboxKey,
                 routeKey,
                 sessionToken,
                 eventType,

@@ -70,18 +70,18 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     @Override
-    public DispatchOutcome enqueue(String adapterId, String deliveryQueueKey, QueuedPulledDispatch item) {
-        String normalizedDeliveryQueueKey = normalizeDeliveryQueueKey(deliveryQueueKey);
+    public DispatchOutcome enqueue(String adapterMailboxKey, QueuedPulledDispatch item) {
+        String normalizedAdapterMailboxKey = normalizeMailboxKey(adapterMailboxKey);
         String normalizedSelectedWorkerId = item == null
                 ? null
                 : TransportDeliveryAddressing.normalizeText(item.selectedWorkerId());
-        if (item == null || normalizedDeliveryQueueKey == null) {
+        if (item == null || normalizedAdapterMailboxKey == null) {
             invalidItems.incrementAndGet();
             return DispatchOutcome.invalid(
                     item != null ? item.deliveryId() : null,
                     normalizedSelectedWorkerId,
                     item != null ? item.correlationRef() : null,
-                    "deliveryQueueKey must not be blank"
+                    "adapterMailboxKey must not be blank"
             );
         }
         if (normalizedSelectedWorkerId == null) {
@@ -108,13 +108,13 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
 
         QueuedPulledDispatch normalizedItem = normalizeItem(item, normalizedSelectedWorkerId);
         while (true) {
-            BucketState bucket = bucketState(normalizedDeliveryQueueKey);
+            BucketState bucket = bucketState(normalizedAdapterMailboxKey);
             synchronized (bucket) {
-                if (buckets.get(normalizedDeliveryQueueKey) != bucket) {
+                if (buckets.get(normalizedAdapterMailboxKey) != bucket) {
                     continue;
                 }
                 if (!running.get()) {
-                    cleanupIfEmpty(normalizedDeliveryQueueKey, bucket);
+                    cleanupIfEmpty(normalizedAdapterMailboxKey, bucket);
                     unavailableItems.incrementAndGet();
                     return new DispatchOutcome(
                             normalizedItem.deliveryId(),
@@ -127,7 +127,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                     );
                 }
                 if (bucket.items.size() >= maxItemsPerRoute) {
-                    rejectBackpressure(normalizedDeliveryQueueKey);
+                    rejectBackpressure(normalizedAdapterMailboxKey);
                     return DispatchOutcome.backpressure(
                             normalizedItem.deliveryId(),
                             normalizedItem.selectedWorkerId(),
@@ -136,8 +136,8 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                     );
                 }
                 if (!reserveGlobalSlot()) {
-                    cleanupIfEmpty(normalizedDeliveryQueueKey, bucket);
-                    rejectBackpressure(normalizedDeliveryQueueKey);
+                    cleanupIfEmpty(normalizedAdapterMailboxKey, bucket);
+                    rejectBackpressure(normalizedAdapterMailboxKey);
                     return DispatchOutcome.backpressure(
                             normalizedItem.deliveryId(),
                             normalizedItem.selectedWorkerId(),
@@ -159,13 +159,13 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     @Override
-    public List<QueuedPulledDispatch> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems) {
-        String normalizedDeliveryQueueKey = normalizeDeliveryQueueKey(deliveryQueueKey);
+    public List<QueuedPulledDispatch> drain(String adapterMailboxKey, String selectedWorkerId, int maxItems) {
+        String normalizedAdapterMailboxKey = normalizeMailboxKey(adapterMailboxKey);
         String normalizedSelectedWorkerId = TransportDeliveryAddressing.normalizeText(selectedWorkerId);
-        if (normalizedDeliveryQueueKey == null || normalizedSelectedWorkerId == null || maxItems <= 0 || !running.get()) {
+        if (normalizedAdapterMailboxKey == null || normalizedSelectedWorkerId == null || maxItems <= 0 || !running.get()) {
             return List.of();
         }
-        BucketState bucket = buckets.get(normalizedDeliveryQueueKey);
+        BucketState bucket = buckets.get(normalizedAdapterMailboxKey);
         if (bucket == null) {
             return List.of();
         }
@@ -176,33 +176,33 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 drainedItems.addAndGet(drained.size());
                 invalidateSnapshot();
             }
-            cleanupIfEmpty(normalizedDeliveryQueueKey, bucket);
+            cleanupIfEmpty(normalizedAdapterMailboxKey, bucket);
             return drained.isEmpty() ? List.of() : Collections.unmodifiableList(drained);
         }
     }
 
     @Override
-    public TransportDeliveryPollResult poll(String deliveryQueueKey,
+    public TransportDeliveryPollResult poll(String adapterMailboxKey,
                                             String selectedWorkerId,
                                             int maxItems,
                                             long timeout,
                                             TimeUnit unit) throws InterruptedException {
-        String normalizedDeliveryQueueKey = normalizeDeliveryQueueKey(deliveryQueueKey);
+        String normalizedAdapterMailboxKey = normalizeMailboxKey(adapterMailboxKey);
         String normalizedSelectedWorkerId = TransportDeliveryAddressing.normalizeText(selectedWorkerId);
-        if (normalizedDeliveryQueueKey == null || normalizedSelectedWorkerId == null || maxItems <= 0) {
+        if (normalizedAdapterMailboxKey == null || normalizedSelectedWorkerId == null || maxItems <= 0) {
             return TransportDeliveryPollResult.invalidRequest();
         }
         if (!running.get()) {
             return TransportDeliveryPollResult.shutdown();
         }
         if (timeout <= 0) {
-            List<QueuedPulledDispatch> drained = drain(normalizedDeliveryQueueKey, normalizedSelectedWorkerId, maxItems);
+            List<QueuedPulledDispatch> drained = drain(normalizedAdapterMailboxKey, normalizedSelectedWorkerId, maxItems);
             return drained.isEmpty() ? TransportDeliveryPollResult.empty() : TransportDeliveryPollResult.deliveredView(drained);
         }
 
         long timeoutMillis = Math.max(1L, unit == null ? timeout : unit.toMillis(timeout));
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
-        BucketState bucket = bucketState(normalizedDeliveryQueueKey);
+        BucketState bucket = bucketState(normalizedAdapterMailboxKey);
         synchronized (bucket) {
             bucket.waiters++;
             invalidateSnapshot();
@@ -228,7 +228,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
             } finally {
                 bucket.waiters--;
                 invalidateSnapshot();
-                cleanupIfEmpty(normalizedDeliveryQueueKey, bucket);
+                cleanupIfEmpty(normalizedAdapterMailboxKey, bucket);
             }
         }
     }
@@ -421,7 +421,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         );
     }
 
-    private static String normalizeDeliveryQueueKey(String value) {
+    private static String normalizeMailboxKey(String value) {
         return TransportDeliveryAddressing.normalizeText(value);
     }
 

@@ -283,7 +283,7 @@ class DispatcherInboundHandlerTest {
 
     private WebSocketSessionController newSessionController(String adapterId) {
         sessionStore = new WebSocketSessionStore(adapterId);
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(adapterId);
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(adapterId, adapterId);
         WebSocketSessionRefreshLoop refreshLoop =
                 new WebSocketSessionRefreshLoop(adapterId, sessionStore, evidenceDriver);
         return new WebSocketSessionController(sessionStore, evidenceDriver, refreshLoop);
@@ -389,7 +389,7 @@ class WebSocketServerImplDisconnectTest {
 
     private WebSocketSessionController newSessionController(String adapterId) {
         sessionStore = new WebSocketSessionStore(adapterId);
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(adapterId);
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(adapterId, adapterId);
         WebSocketSessionRefreshLoop refreshLoop =
                 new WebSocketSessionRefreshLoop(adapterId, sessionStore, evidenceDriver);
         return new WebSocketSessionController(sessionStore, evidenceDriver, refreshLoop);

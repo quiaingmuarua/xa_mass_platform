@@ -74,9 +74,9 @@ Transport should stay centered on these concepts only:
 - `PollingDeliveryExecutor`: polling adapter command executor. It owns only
   `DeliveryCommand` enqueue into the polling delivery buffer and dispatch
   outcome normalization/logging. It must not own pull polling, endpoint lease
-  projection, worker-presence projection, or selected-worker consumer claims.
+  projection, worker-presence projection, or mailbox consumer leases.
 - `PollingDeliveryPullChannel`: polling adapter pull-channel implementation. It
-  owns only worker pull-buffer demux by `deliveryBucketId + selectedWorkerId`
+  owns only worker pull-buffer demux by adapter mailbox plus `selectedWorkerId`
   and status mapping into `DeliveryPullResult`. It must not own command
   execution or endpoint/session evidence.
 - `PullSessionEvidenceDriver`: embedded runtime seam consumed by SDK
@@ -85,9 +85,9 @@ Transport should stay centered on these concepts only:
   to runtime publishers instead of exposing raw stores or registries to the SDK
   session.
 - `TransportEndpointLeasePublisher`: runtime owner that projects adapter
-  session facts into endpoint lease evidence and handoff-private selected-worker
-  consumer evidence. Concrete adapters should not duplicate endpoint lease
-  record construction or consumer-claim projection.
+  session facts into endpoint lease evidence. Concrete adapters should not
+  duplicate endpoint lease record construction. Mailbox-level handoff consumer
+  leases are claimed by runtime composition, not by endpoint lease projection.
 - `WorkerPresenceSessionPublisher`: runtime owner that projects adapter
   connect/heartbeat/disconnect observations into worker session-presence
   ingress. Concrete adapters may observe sessions, but they do not own worker
@@ -103,11 +103,11 @@ Transport should stay centered on these concepts only:
   delivery correlation, deadline, and creation timestamp. Task shell metadata,
   adapter, lane, target node, endpoint lease, connection, session, packet, and
   structured task payload facts are not command fields.
-- `DeliveryCommandBatch`: consumer-local handoff record for one assigned
-  delivery queue. It carries the bucket-derived `deliveryQueueKey`,
-  handoff-owned command references when the backing store needs ack, and
-  minimal `DeliveryCommand` items. It does not carry delivery bucket, lane,
-  target node, route, connection, or lease facts.
+- `DeliveryCommandBatch`: consumer-local handoff record for one adapter
+  mailbox. It carries `adapterMailboxKey`, handoff-owned command references
+  when the backing store needs ack, and minimal `DeliveryCommand` items. It does
+  not carry delivery bucket, lane, target node, route, connection, or lease
+  facts.
 - `QueuedPulledDispatch`: current polling queue value and pull DTO source. It
   carries delivery id, selected worker, payload, correlation, and timing only;
   it does not serialize packets, routeKey, endpoint evidence, deliveryQueueKey,
@@ -124,10 +124,12 @@ Transport should stay centered on these concepts only:
   ackability outcome used by local buffers and Redis inbox pumps.
 - `TransportDeliveryCommandHandoff`: post-claim delivery queue between
   engine/starter assembly and transport. Producers offer
-  `DeliveryQueueOffer(deliveryQueueKey, commands)` where the queue key is
-  derived only from the assigned delivery bucket. Handoff implementations own
-  selected-worker consumer evidence, bucket queue ready references, bucket
-  queue inflight references, ack/requeue, and endpoint lease validation.
+  `AdapterMailboxDeliveryOffer(adapterMailboxKey, commands)` after
+  worker-runtime delivery target evidence resolves the already selected worker
+  to an adapter mailbox. Handoff implementations own mailbox consumer lease
+  evidence, mailbox ready references, mailbox inflight references, ack/requeue,
+  and mailbox availability outcomes. Mailbox consumer leases are finite runtime
+  leases refreshed by runtime composition; they are not eternal process claims.
 - `TransportDeliveryCommandBatchListener`: narrow core callback used by the
   handoff pump after a batch is materialized. The embedded Java implementation
   is `TransportDeliveryCommandListener`; it bridges endpoint lease evidence to
@@ -145,8 +147,8 @@ Transport should stay centered on these concepts only:
   bucket from adapterId, routeKey, connection/session id, or worker id.
 - `TransportEndpointLeaseView`: narrow diagnostic read surface for current
   `deliveryBucketId + workerId` endpoint metadata. General view records do not
-  expose lease deadlines; only claim/refresh consumer evidence carries deadline
-  when the delivery-command consumer registry needs it.
+  expose lease deadlines; endpoint lease stores do not own delivery-command
+  handoff consumer leases.
 - `WorkerPresenceIngress`: transport-neutral ingress seam for worker session
   connect/disconnect/heartbeat observations. It is not an endpoint lease
   projection, worker command, worker state-report, or capability-report
@@ -209,20 +211,19 @@ lifecycle state.
 - engine-to-transport delivery-command handoff queue/store ownership after
   assignment; current embedded default wiring is an in-memory
   `TransportDeliveryCommandHandoff`, while split runtimes use Redis
-  delivery-command bucket queues plus selected-worker consumer evidence
+  delivery-command adapter-mailbox queues plus mailbox consumer lease evidence
 - producer-side starter assembly translates immutable `TaskDispatchContext +
   TaskDispatchBinding` assignment facts into minimal `DeliveryCommand` values.
-  The binding-level worker-group context becomes `deliveryBucketId`, and
+  The binding-level worker-group context remains `deliveryBucketId`, and
   binding-level `workerId` becomes `selectedWorkerId`, the engine-selected
   execution constraint. Starter owns worker-payload encoding and opaque
   correlation minting; transport copies those values without decoding task
-  item structure. Starter does not write adapter, queue, node, route,
-  connection, session, or packet facts into command items. Transport-owned
-  delivery submitters derive only the bucket queue key from `deliveryBucketId`.
-  Handoff implementations use selected-worker consumer evidence only for
-  demux/final-hop feasibility after claiming bucket queue entries. Transport
-  consumers drain referenced commands, dispatch by selected worker, and do not
-  reselect workers or decode route-key minting rules.
+  item structure. Delivery integration resolves `selectedWorkerId` through
+  worker-runtime delivery target evidence to an opaque `adapterMailboxKey`.
+  Starter does not write adapter, node, route, connection, session, or packet
+  facts into command items. Transport consumers drain referenced mailbox
+  commands, dispatch by selected worker, and do not reselect workers or decode
+  route-key minting rules.
 - worker transport-binding resolution from registered worker truth before
   dispatch handoff; transport consumers do not call worker-resource runtime for
   second-stage selection
@@ -234,8 +235,7 @@ Concrete adapters own protocol I/O only:
 - server/session/endpoint lifecycle for their protocol
 - frame or request/response codec
 - endpoint connect/disconnect/heartbeat lease refresh into
-  transport-owned endpoint lease evidence and handoff-private selected-worker
-  consumer evidence
+  transport-owned endpoint lease evidence
 - calls into runtime delivery and result-ingest contracts
 - accept/read/write loops submitted through the runtime executor context when they block
 
@@ -248,16 +248,16 @@ remain connectivity evidence rather than worker capability or assignment truth.
 
 Transport-owned final-hop delivery submitters do not read endpoint/session
 target hints after worker selection has already produced concrete bindings.
-Transport owns only endpoint/session lease evidence and handoff consumer
-evidence, not worker online/offline lifecycle.
+Transport owns only endpoint/session lease evidence and mailbox handoff
+consumer evidence, not worker online/offline lifecycle.
 Heartbeat expiry is a transport lease rule, not an engine selector heuristic.
-Expired endpoint or consumer evidence is not dispatchable; missing or stale
-evidence is a retryable delivery-failure input, not permission to reselect
+Expired endpoint or mailbox consumer evidence is not dispatchable; missing or
+stale evidence is a retryable delivery-failure input, not permission to reselect
 workers or mark workers offline. Shared-store implementations such as Redis
 must preserve the same endpoint lease semantics as the in-memory default. Only
 one current endpoint lease may own a given `(deliveryBucketId, workerId)` pair;
 delivery-command handoff consumer evidence decides which local consumer may
-drain a selected worker.
+drain one adapter mailbox.
 SDK/operator worker inspection must not read endpoint lease projections;
 it reads worker runtime lifecycle state. Engine and SDK inspection must not
 write presence, read adapter sessions, or treat presence as a schedule owner.
@@ -341,21 +341,22 @@ The split runtime uses three transport/runtime channels:
 
 - dispatch handoff: engine/starter assembly submits delivery-command batches
   after claim, attempt creation, lease, and worker binding have already
-  happened; transport drains only this small assigned window. Producer-side
-  assigned delivery derives one opaque handoff queue address from the assigned
-  `deliveryBucketId` and submits `DeliveryQueueOffer(deliveryQueueKey,
-  commands)`. Multi-process adapter mode stores commands under that bucket
-  queue and wakes only the queue consumer that currently has selected-worker
-  endpoint evidence. `DeliveryCommandBatch` at the consumer boundary carries a
-  queue key, optional handoff references, and materialized commands; it does
-  not carry lane or target-node facts. Redis dispatch queue ownership is not
-  routeKey cardinality.
+  happened; transport drains only this small assigned window. Delivery
+  integration resolves the already selected worker to an opaque
+  `adapterMailboxKey` through worker-runtime delivery target evidence and
+  submits `AdapterMailboxDeliveryOffer(adapterMailboxKey, commands)`.
+  Multi-process adapter mode stores commands under that mailbox queue and wakes
+  only the mailbox consumer that currently owns the mailbox lease.
+  `DeliveryCommandBatch` at the consumer boundary carries a mailbox key,
+  optional handoff references, and materialized commands; it does not carry
+  lane or target-node facts. Redis dispatch queue ownership is not routeKey
+  cardinality.
 - delivery inbox: polling transport routes `QueuedPulledDispatch` values into
-  `TransportDeliveryStore` by runtime `deliveryQueueKey` plus the
-  engine-selected `selectedWorkerId`. The `deliveryQueueKey` is supplied by
-  queue/store context, not repeated in every value. `routeKey` remains opaque
-  endpoint/result metadata and must not be the only queue isolation key for
-  assigned polling task delivery.
+  `TransportDeliveryStore` by adapter mailbox plus the engine-selected
+  `selectedWorkerId`. The mailbox key is supplied by queue/store context, not
+  repeated in every value. `routeKey` remains opaque endpoint/result metadata
+  and must not be the only queue isolation key for assigned polling task
+  delivery.
 - result/compensation inboxes: transport writes opaque
   `TransportResultIngressEnvelope` values and retryable delivery-failure events
   to Redis-backed inboxes; the engine process drains those inboxes into
@@ -370,9 +371,9 @@ membership, delayed visibility, active lease, retry timing, result application,
 and terminal convergence.
 
 `DeliveryCommandBatch` is a consumer-local handoff payload. It contains only
-the assigned-delivery queue key, handoff-owned command references when the
-backing store needs ack, and minimal delivery commands. The Redis/process-
-boundary codec serializes queue facts once; per-command records must not repeat
+the adapter mailbox key, handoff-owned command references when the backing store
+needs ack, and minimal delivery commands. The Redis/process-boundary codec
+serializes mailbox facts once; per-command records must not repeat
 `adapterId`, `deliveryQueueKey`, `targetTransportNodeId`, `routeKey`,
 `connectionId`, or `connectionToken`, and must not wrap another encoded
 task-dispatch batch string such as `taskBatchJson`. Large item bodies continue
@@ -389,12 +390,13 @@ sessionHandle, endpointLeaseId
 
 Engine matching still selects a worker from control-plane registration,
 capability, rule, lock, admission, and worker-runtime evidence. Only after
-assignment has produced concrete bindings does producer-side transport submit
-commands to the bucket-derived delivery-command queue. Queue-consumer wakeup is
-owned by the handoff through selected-worker consumer evidence; adapter/session
-connection handles stay inside adapter-owned endpoint registries. Missing
-or expired consumer evidence goes through engine-owned compensation/retry;
-transport does not re-schedule or mutate task lifecycle.
+assignment has produced a concrete selected worker does delivery integration
+resolve `selectedWorkerId -> adapterMailboxKey` from worker-runtime evidence and
+submit commands to the adapter-mailbox delivery-command queue. Mailbox consumer
+wakeup is owned by the handoff through finite mailbox lease evidence;
+adapter/session connection handles stay inside adapter-owned endpoint
+registries. Missing or expired mailbox evidence goes through engine-owned
+compensation/retry; transport does not re-schedule or mutate task lifecycle.
 
 SDK/starter assembly exposes three runtime roles:
 
@@ -416,15 +418,17 @@ Endpoint lease semantics are also part of the transport contract:
 - `routeKey` is opaque connection address, coarse delivery-domain metadata, or
   protocol correlation; transport treats it as opaque and must not require
   routeKey uniqueness for wrong-worker prevention
-- `deliveryBucketId` is the assigned-delivery bucket supplied by
+- `deliveryBucketId` is upstream scheduling/index context supplied by
   engine/starter or adapter session context. It is opaque to transport and is
-  not adapter identity, route-key syntax, or worker-runtime scheduling truth.
+  not adapter identity, route-key syntax, worker-runtime scheduling truth, or
+  the physical dispatch queue owner.
 - `workerId` is execution identity attached to endpoint lease evidence; after
   engine assignment the same value is carried as `selectedWorkerId`, the
   delivery constraint used with `deliveryBucketId`.
 - producer-side assigned delivery must not call endpoint lease lookup to choose
-  a queue, node, adapter, route, or connection; it derives the queue key from
-  `deliveryBucketId`
+  a queue, node, adapter, route, or connection; delivery integration consumes
+  worker-runtime delivery target evidence to resolve the selected worker to an
+  opaque `adapterMailboxKey`
 - `currentEndpointLease(deliveryBucketId, workerId)` is a narrow diagnostic
   view for current endpoint metadata. It is not worker lifecycle truth, not a
   scheduling view, and not producer-side queue selection.
@@ -432,8 +436,8 @@ Endpoint lease semantics are also part of the transport contract:
   in the bucket; stale heartbeat or disconnect events from an older lease must
   never revoke a newer active endpoint after reconnect or endpoint takeover.
 - `claimEndpointLease(...)` replaces the current endpoint lease for exactly
-  one `deliveryBucketId + workerId` pair and returns consumer evidence when
-  the handoff registry needs lease deadline policy.
+  one `deliveryBucketId + workerId` pair. It does not claim delivery-command
+  handoff consumer evidence.
 - `refreshEndpointLease(...)` extends only the matching current endpoint lease.
 - `releaseEndpointLease(...)` removes only the matching current endpoint lease;
   it does not write an offline worker state and must not revoke a replacement
@@ -450,20 +454,18 @@ default component namespaces are:
 | Component | Default namespace | Retained key families |
 | --- | --- | --- |
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` | `bucket:<encodedDeliveryBucketId>:workers`, `bucket:<encodedDeliveryBucketId>:deadlines` |
-| delivery | `xa:mass:transport:delivery:v1` | `q:<encodedDeliveryQueueKey>`, `meta:<encodedDeliveryQueueKey>`, `queues`, `stats` |
-| delivery-command | `xa:mass:transport:delivery-command:v1` | `q:<encodedDeliveryQueueKey>:commands`, `q:<encodedDeliveryQueueKey>:command-retention-deadlines`, `q:<encodedDeliveryQueueKey>:ready-commands`, `q:<encodedDeliveryQueueKey>:inflight-commands`, `selected-worker-consumers:<encodedDeliveryQueueKey>`, `selected-worker-consumer-deadlines:<encodedDeliveryQueueKey>`, `queues` |
+| delivery | `xa:mass:transport:delivery:v1` | `q:<encodedAdapterMailboxKey>`, `meta:<encodedAdapterMailboxKey>`, `queues`, `stats` |
+| delivery-command | `xa:mass:transport:delivery-command:v1` | `mailbox:<encodedAdapterMailboxKey>:commands`, `mailbox:<encodedAdapterMailboxKey>:command-retention-deadlines`, `mailbox:<encodedAdapterMailboxKey>:ready-commands`, `mailbox:<encodedAdapterMailboxKey>:inflight-commands`, `mailbox-consumers`, `mailbox-consumer-deadlines`, `queues` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
 
 Endpoint lease truth is keyed by opaque `deliveryBucketId + workerId`. Redis
 stores bucket-local worker metadata plus a bucket-local deadline index. The
-general endpoint lease view does not expose the deadline timestamp; claim and
-refresh return deadline-bearing consumer evidence only for components that own
-lease policy, such as the delivery-command consumer registry. Endpoint lease
-does not store route-key consumer hashes, route-owner worker projections, or
-`bucket:<deliveryBucketId>:worker:<workerId>:owner` pointers. Selected-worker
-delivery feasibility for split transport handoff is represented by
-handoff-private delivery-command consumer evidence.
+general endpoint lease view does not expose the deadline timestamp. Endpoint
+lease does not store route-key consumer hashes, route-owner worker projections,
+or `bucket:<deliveryBucketId>:worker:<workerId>:owner` pointers. Split
+transport handoff availability is represented by handoff-private mailbox
+consumer lease evidence.
 
 Forbidden transport key families:
 
@@ -497,7 +499,8 @@ payloads, or protected transport models.
 `TaskDispatchContext` is no longer a transport runtime handoff object.
 SDK/starter assembly consumes the task-level dispatch snapshot plus concrete
 `TaskDispatchBinding` values and translates them into minimal
-`DeliveryCommand` items carrying `deliveryBucketId + selectedWorkerId`.
+`DeliveryCommand` items carrying upstream delivery bucket context and the
+engine-selected worker constraint.
 Transport runtime consumes delivery commands and resolved batches only.
 
 `PulledDeliveryMessage` is the transport-core pull value. SDK/server worker
@@ -559,15 +562,15 @@ and rejection semantics.
 
 Transport delivery addressing keeps five facts separate:
 
-- `deliveryBucketId`: opaque assigned-delivery bucket exposed at the
-  engine/starter boundary; currently derived from worker-group context
+- `deliveryBucketId`: upstream scheduling/index context retained on commands
+  and endpoint lease claims; it is not the dispatch queue owner
 - `adapterId`: transport-internal concrete adapter binding identity, used for
   local final-hop executor/channel resolution after endpoint lease evidence is
   known
 - `routeKey`: opaque connection address, coarse delivery-domain metadata, or
   protocol correlation value
-- `deliveryQueueKey`: runtime queue/storage address derived from
-  `deliveryBucketId` and used for batching and backpressure
+- `adapterMailboxKey`: runtime queue/storage address for the adapter mailbox
+  process or embedded adapter binding that can attempt the final hop
 - `selectedWorkerId`: engine-selected execution identity used only as a
   delivery constraint
 
@@ -595,9 +598,9 @@ Current runtime rules:
   selected worker and falls back to route-only send. Route-only send is
   reserved for explicit raw/manual side-channels.
 - push adapter local session lookup uses one unique id only:
-  `selectedWorkerId` / worker id. `deliveryBucketId` is upstream queue and
-  endpoint-evidence context; it must not be added as a WebSocket/Socket
-  adapter-local session lookup dimension.
+  `selectedWorkerId` / worker id. `deliveryBucketId` is upstream
+  scheduling/index and endpoint-evidence context; it must not be added as a
+  WebSocket/Socket adapter-local session lookup dimension.
 - `adapterId` is never a worker-selection or selected-worker send input. It may
   help transport register local adapter metadata or raw/manual side-channel
   diagnostics after a selected worker and endpoint evidence already exist.
@@ -610,13 +613,12 @@ Current runtime rules:
   protocol uses routeKey as the endpoint address. Push assigned delivery must
   not require routeKey when selected-worker session addressing is available.
   Queued polling delivery must not rely on routeKey as the only isolation key.
-- assigned delivery-command handoff queues are addressed by bucket-derived
-  `deliveryQueueKey`. Each queued command carries `selectedWorkerId`; the
-  adapter dispatcher demuxes by that field and resolves endpoint/session lease
-  evidence before final-hop delivery. `selectedWorkerId` is not a second
-  physical queue address.
+- assigned delivery-command handoff queues are addressed by `adapterMailboxKey`.
+  Each queued command carries `selectedWorkerId`; the adapter dispatcher demuxes
+  by that field and uses adapter-local session state before final-hop delivery.
+  `selectedWorkerId` is not a second physical queue address.
 - for assigned task delivery, `selectedWorkerId` is the worker correctness
-  constraint, `deliveryBucketId` is the assigned-delivery bucket, and `routeKey`
+  constraint, `adapterMailboxKey` is the physical handoff target, and `routeKey`
   is only opaque connection/correlation metadata. Transport runtime must not
   reinterpret routeKey as task, attempt, lease, worker-group, worker, or
   business routing truth.
@@ -636,18 +638,19 @@ WRB convergence note:
   route-key mint rule: route identity is minted from `workerGroupId`. This is
   not a transport runtime rule; adapters and shared runtime code receive
   explicit opaque route keys.
-- `deliveryBucketId` is currently derived from worker-group context for
-  assigned delivery. It is the stable bucket exposed between engine/starter and
-  transport, while routeKey remains internal connection/domain metadata.
+- `deliveryBucketId` may still be derived from worker-group context for
+  upstream scheduling/index and endpoint lease context, but it is no longer the
+  stable queue address between engine/starter and transport. Worker-runtime
+  delivery target evidence owns `selectedWorkerId -> adapterMailboxKey`.
 - Binding-level `workerId` remains the selected execution identity and
-  delivery constraint within the bucket.
+  delivery constraint within the adapter mailbox.
 - Redis-backed endpoint lease state uses bucket-local worker metadata plus
   bucket-local deadline indexes. It does not expose route-key owner scans or
   producer-side dispatch lookup.
-- Assigned delivery-command handoff queues are bucket scoped. Adapter or
-  route changes must not make routeKey the worker correctness key; wrong-worker
-  prevention comes from the `selectedWorkerId` carried by each command and the
-  final-hop endpoint/session lease check.
+- Assigned delivery-command handoff queues are adapter-mailbox scoped. Adapter
+  or route changes must not make routeKey the worker correctness key;
+  wrong-worker prevention comes from the `selectedWorkerId` carried by each
+  command and the adapter-local final-hop session lookup.
 - `adapterId` and connection/session handles remain transport-internal
   endpoint/session evidence. They must stay in endpoint/session values or queue
   metadata, not become the route-key minting rule.
@@ -708,7 +711,7 @@ claimed by the wrong consumer, ready refs enter inflight before materialization,
 outcome or failure evidence.
 
 Runtime delivery stores must enforce explicit admission control. Delivery-
-command handoff stores use bucket queue admission plus local claim/ack
+command handoff stores use adapter-mailbox queue admission plus local claim/ack
 consistency; polling pull stores may keep selected-worker indexes as adapter
 pull implementation details, but those indexes are not the engine-to-transport
 handoff address.
@@ -743,12 +746,10 @@ For Redis-ready queue diagnostics, treat the stats contract in two tiers:
 
 `queueByAdapter` keeps its legacy field name for existing diagnostics, but it
 is not queue ownership truth. Current assigned polling delivery aggregates
-that field under the runtime delivery queue key derived from
-`deliveryBucketId`, such as `bucket:<encodedBucketId>`, while the actual drain
-selector remains `selectedWorkerId`. Best-effort diagnostics must remain
-meaningful, but future distributed queue implementations are not required to
-preserve the exact local JVM waiter or snapshot timing model of the current
-in-memory store.
+that field under the adapter mailbox queue key, while the actual drain selector
+remains `selectedWorkerId`. Best-effort diagnostics must remain meaningful, but
+future distributed queue implementations are not required to preserve the exact
+local JVM waiter or snapshot timing model of the current in-memory store.
 
 Queue mechanics such as keyed FIFO storage, blocking poll coordination,
 per-key/global admission, and queue snapshot counters may live under

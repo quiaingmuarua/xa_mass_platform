@@ -55,14 +55,30 @@ class TransportRuntimeRegistryTest {
     }
 
     @Test
+    void transportBindingRequiresExplicitAdapterMailboxKey() {
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> TransportBinding.builder(
+                                "websocket",
+                                WorkerTransportHints.REALTIME,
+                                commands -> java.util.List.of()
+                        )
+                        .build()
+        );
+
+        assertEquals("adapterMailboxKey must not be blank", error.getMessage());
+    }
+
+    @Test
     void pullBindingRequiresSessionEvidenceDriver() {
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
                 () -> TransportBinding.builder(
-                                "polling-custom",
-                                WorkerTransportHints.POLLING,
-                                commands -> java.util.List.of()
+                        "polling-custom",
+                        WorkerTransportHints.POLLING,
+                        commands -> java.util.List.of()
                         )
+                        .adapterMailboxKey("polling-custom")
                         .deliveryPullChannel((deliveryBucketId, selectedWorkerId, maxMessages, timeoutMillis) ->
                                 DeliveryPullResult.empty())
                         .build()
@@ -79,6 +95,7 @@ class TransportRuntimeRegistryTest {
                                             String transportHint,
                                             AdapterCommandExecutor commandExecutor) {
         return TransportBinding.builder(adapterId, transportHint, commandExecutor)
+                .adapterMailboxKey(adapterId)
                 .build();
     }
 }

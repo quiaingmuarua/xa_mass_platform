@@ -1,6 +1,7 @@
 package com.xa.mass.worker.runtime.presence;
 
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -8,15 +9,16 @@ import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongSupplier;
 
 /**
  * In-memory worker presence projection.
  *
- * <p>Presence identity is {@code workerId + adapterId + sessionToken}. Route key
- * is retained as diagnostic metadata only and never participates in currentness
- * decisions.</p>
+ * <p>Presence identity is {@code workerId + adapterId + sessionToken}. The
+ * adapter mailbox key is the delivery target projection. Route key is retained
+ * as diagnostic metadata only and never participates in currentness decisions.</p>
  */
 public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntime {
 
@@ -26,6 +28,8 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
     private final LongSupplier clock;
     private final Map<PresenceSessionKey, PresenceSessionRecord> activeSessions = new HashMap<>();
     private final Set<String> seenWorkers = new HashSet<>();
+    private final Map<String, String> currentMailboxByWorker = new HashMap<>();
+    private final Map<String, Long> deliveryTargetGenerationByWorker = new HashMap<>();
     private Runnable dispatchWakeupCallback = () -> {
     };
 
@@ -45,26 +49,29 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
     @Override
     public synchronized WorkerPresenceChange sessionConnected(String workerId,
                                                              String adapterId,
+                                                             String adapterMailboxKey,
                                                              String routeKey,
                                                              String sessionToken,
                                                              long observedAtMillis,
                                                              String reason) {
-        return upsertSession(workerId, adapterId, routeKey, sessionToken, observedAtMillis, reason);
+        return upsertSession(workerId, adapterId, adapterMailboxKey, routeKey, sessionToken, observedAtMillis, reason);
     }
 
     @Override
     public synchronized WorkerPresenceChange sessionHeartbeat(String workerId,
                                                              String adapterId,
+                                                             String adapterMailboxKey,
                                                              String routeKey,
                                                              String sessionToken,
                                                              long observedAtMillis,
                                                              String reason) {
-        return refreshSession(workerId, adapterId, routeKey, sessionToken, observedAtMillis, reason);
+        return refreshSession(workerId, adapterId, adapterMailboxKey, routeKey, sessionToken, observedAtMillis, reason);
     }
 
     @Override
     public synchronized WorkerPresenceChange sessionDisconnected(String workerId,
                                                                 String adapterId,
+                                                                String adapterMailboxKey,
                                                                 String routeKey,
                                                                 String sessionToken,
                                                                 long observedAtMillis,
@@ -101,28 +108,41 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
     }
 
     @Override
+    public synchronized Optional<SelectedWorkerDeliveryTargetEvidence> resolveDeliveryTarget(String selectedWorkerId) {
+        if (selectedWorkerId == null || selectedWorkerId.isBlank()) {
+            return Optional.empty();
+        }
+        long now = clock.getAsLong();
+        String normalizedWorkerId = selectedWorkerId.trim();
+        WorkerReachabilityState reachability = stateForWorker(normalizedWorkerId, now);
+        PresenceSessionRecord session = currentSessionForWorker(normalizedWorkerId, now);
+        if (session == null) {
+            return Optional.empty();
+        }
+        String mailboxKey = session.adapterMailboxKey();
+        long generation = ensureDeliveryTargetGeneration(normalizedWorkerId, mailboxKey);
+        long expiresAt = sessionTimeoutMillis == Long.MAX_VALUE
+                ? Long.MAX_VALUE
+                : session.lastObservedAtMillis() + sessionTimeoutMillis;
+        return Optional.of(new SelectedWorkerDeliveryTargetEvidence(
+                normalizedWorkerId,
+                mailboxKey,
+                reachability,
+                generation,
+                session.lastObservedAtMillis(),
+                expiresAt
+        ));
+    }
+
+    @Override
     public synchronized void setDispatchWakeupCallback(Runnable dispatchWakeupCallback) {
         this.dispatchWakeupCallback = dispatchWakeupCallback != null ? dispatchWakeupCallback : () -> {
         };
     }
 
-    public synchronized int activeSessionCount(String workerId) {
-        if (workerId == null || workerId.isBlank()) {
-            return 0;
-        }
-        String normalizedWorkerId = workerId.trim();
-        pruneExpired(clock.getAsLong());
-        int count = 0;
-        for (PresenceSessionKey key : activeSessions.keySet()) {
-            if (normalizedWorkerId.equals(key.workerId())) {
-                count++;
-            }
-        }
-        return count;
-    }
-
     private WorkerPresenceChange upsertSession(String workerId,
                                                String adapterId,
+                                               String adapterMailboxKey,
                                                String routeKey,
                                                String sessionToken,
                                                long observedAtMillis,
@@ -134,14 +154,17 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
                 requireText(sessionToken, "sessionToken")
         );
         long now = observedAtMillis > 0L ? observedAtMillis : clock.getAsLong();
+        String normalizedMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
         WorkerReachabilityState previous = stateForWorker(normalizedWorkerId, now);
         seenWorkers.add(normalizedWorkerId);
         activeSessions.put(key, new PresenceSessionRecord(
                 key,
+                normalizedMailboxKey,
                 normalizeNullable(routeKey),
                 now,
                 normalizeNullable(reason)
         ));
+        ensureDeliveryTargetGeneration(normalizedWorkerId, normalizedMailboxKey);
         WorkerReachabilityState current = stateForWorker(normalizedWorkerId, now);
         WorkerPresenceChange change = new WorkerPresenceChange(
                 normalizedWorkerId,
@@ -159,6 +182,7 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
 
     private WorkerPresenceChange refreshSession(String workerId,
                                                 String adapterId,
+                                                String adapterMailboxKey,
                                                 String routeKey,
                                                 String sessionToken,
                                                 long observedAtMillis,
@@ -182,12 +206,15 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
             );
         }
         seenWorkers.add(normalizedWorkerId);
+        String normalizedMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
         activeSessions.put(key, new PresenceSessionRecord(
                 key,
+                normalizedMailboxKey,
                 normalizeNullable(routeKey),
                 now,
                 normalizeNullable(reason)
         ));
+        ensureDeliveryTargetGeneration(normalizedWorkerId, normalizedMailboxKey);
         WorkerReachabilityState current = stateForWorker(normalizedWorkerId, now);
         return new WorkerPresenceChange(
                 normalizedWorkerId,
@@ -209,6 +236,37 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
         return seenWorkers.contains(workerId)
                 ? WorkerReachabilityState.OFFLINE
                 : WorkerReachabilityState.UNKNOWN;
+    }
+
+    private PresenceSessionRecord currentSessionForWorker(String workerId, long now) {
+        pruneExpired(now);
+        PresenceSessionRecord selected = null;
+        for (PresenceSessionRecord record : activeSessions.values()) {
+            if (!workerId.equals(record.key().workerId())) {
+                continue;
+            }
+            if (selected == null || record.lastObservedAtMillis() > selected.lastObservedAtMillis()) {
+                selected = record;
+            }
+        }
+        return selected;
+    }
+
+    private long ensureDeliveryTargetGeneration(String workerId, String mailboxKey) {
+        String previous = currentMailboxByWorker.get(workerId);
+        if (previous == null) {
+            currentMailboxByWorker.put(workerId, mailboxKey);
+            long generation = Math.max(1L, deliveryTargetGenerationByWorker.getOrDefault(workerId, 0L));
+            deliveryTargetGenerationByWorker.put(workerId, generation);
+            return generation;
+        }
+        long generation = deliveryTargetGenerationByWorker.getOrDefault(workerId, 1L);
+        if (!previous.equals(mailboxKey)) {
+            generation++;
+            currentMailboxByWorker.put(workerId, mailboxKey);
+            deliveryTargetGenerationByWorker.put(workerId, generation);
+        }
+        return generation;
     }
 
     private void pruneExpired(long now) {
@@ -253,6 +311,7 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
     }
 
     private record PresenceSessionRecord(PresenceSessionKey key,
+                                         String adapterMailboxKey,
                                          String routeKey,
                                          long lastObservedAtMillis,
                                          String reason) {

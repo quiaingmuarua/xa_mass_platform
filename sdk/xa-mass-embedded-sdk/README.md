@@ -139,11 +139,12 @@ configure shared transport endpoint leases through
 session/connect/heartbeat ingress, but shared endpoint lease evidence belongs to
 transport runtime as delivery feasibility, not SDK worker inspection or worker
 lifecycle truth. `routeKey` remains opaque connection/domain metadata minted
-outside transport. Assigned delivery commands expose `deliveryBucketId +
-selectedWorkerId` to transport; the current SDK/starter default derives the
-bucket from worker-group context. Transport-owned delivery submitters offer the
-already assigned item to the bucket-derived delivery queue; selected-worker
-consumer evidence prevents wrong-worker delivery at drain/final-hop time.
+outside transport. Assigned delivery commands carry `deliveryBucketId +
+selectedWorkerId`, but physical handoff targets come from worker-runtime
+delivery target evidence as opaque adapter mailbox keys. Transport-owned
+delivery submitters offer the already assigned item to the adapter-mailbox
+delivery queue; command-level `selectedWorkerId` prevents wrong-worker delivery
+at drain/final-hop time.
 Polling worker responses expose `WorkerInvocation`
 without worker or route metadata because worker identity comes from the
 session/path context. Worker runtime capacity, lifecycle, and multi-binding
@@ -224,8 +225,8 @@ MassSdkApplication transportConsumer = MassSdk.builder()
 
 The handoff carries only post-assignment `DeliveryCommand` values translated in
 SDK/starter assembly from neutral engine binding truth. Transport-owned delivery
-submitters resolve selected-worker delivery feasibility before handoff and write
-bounded delivery-command batches to the target transport node. It is not a
+submitters resolve selected-worker adapter mailbox evidence before handoff and
+write bounded delivery-command batches to the target mailbox. It is not a
 duplicate of the runtime ready queue, and transport consumers must not apply
 results, retry tasks, or mutate task lifecycle directly. Result and retryable
 delivery-failure inboxes are drained by the engine producer into local
@@ -360,13 +361,14 @@ routing listener. SDK runtime assembly now translates assignment truth into
 `DeliveryCommand` and hands it to a transport-owned selected-worker delivery
 submitter; the bundled default is an in-memory bounded queue plus pump, while
 `redisDistributedChannels(...)` uses Redis delivery-command inboxes with a
-bucket-derived delivery queue. Starter assembly records only `deliveryBucketId +
-selectedWorkerId` plus typed payload/context; adapter, route, connection, and
-endpoint facts remain transport-owned evidence. Transport producers derive the
-queue from `deliveryBucketId` and do not resolve transport nodes. Transport
-consumers drain bucket-queue entries, demux by command-level
-`selectedWorkerId`, resolve endpoint evidence locally for final-hop delivery,
-and do not reselect workers.
+mailbox-scoped delivery queue. Starter assembly records only `deliveryBucketId +
+selectedWorkerId` plus typed payload/context, then resolves the selected worker
+through worker-runtime delivery target evidence to an opaque
+`adapterMailboxKey`. Adapter, route, connection, and endpoint facts remain
+transport-owned evidence. Transport producers do not derive queues from
+`deliveryBucketId` and do not resolve transport nodes. Transport consumers drain
+mailbox entries, demux by command-level `selectedWorkerId`, invoke the local
+adapter final-hop executor, and do not reselect workers.
 The companion result and delivery-failure Redis inboxes are runtime channels
 back to the engine process; they are not server APIs and they do not move task
 lifecycle ownership into transport.

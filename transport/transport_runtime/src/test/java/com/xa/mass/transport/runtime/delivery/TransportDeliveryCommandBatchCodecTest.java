@@ -29,11 +29,12 @@ class TransportDeliveryCommandBatchCodecTest {
         assertFalse(json.contains("\"connectionId\""), json);
         assertFalse(json.contains("\"leaseExpireAtEpochMillis\""), json);
         assertEquals(0, occurrences(json, "\"adapterId\""));
-        assertEquals(1, occurrences(json, "\"deliveryQueueKey\""));
+        assertEquals(0, occurrences(json, "\"deliveryQueueKey\""));
+        assertEquals(1, occurrences(json, "\"adapterMailboxKey\""));
         assertEquals(2, occurrences(json, "\"deliveryBucketId\""));
         assertEquals(0, occurrences(json, "\"deliveryLaneKey\""));
         assertEquals(0, occurrences(json, "\"targetTransportNodeId\""));
-        assertEquals(DeliveryCommandFixtures.queueKey(), decoded.deliveryQueueKey());
+        assertEquals(DeliveryCommandFixtures.mailboxKey(), decoded.adapterMailboxKey());
         assertEquals("msg-1", DeliveryCommandFixtures.messageId(decoded.commands().get(0).getPayload()));
         assertEquals("msg-2", DeliveryCommandFixtures.messageId(decoded.commands().get(1).getPayload()));
         assertEquals("worker-1", decoded.commands().get(0).getSelectedWorkerId());

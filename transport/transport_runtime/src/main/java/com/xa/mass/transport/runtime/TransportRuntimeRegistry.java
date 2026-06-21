@@ -2,8 +2,8 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 
 import java.util.IdentityHashMap;
@@ -18,20 +18,22 @@ import java.util.TreeSet;
  * Runtime registry of worker transport bindings assembled for an embedded
  * XA Mass runtime.
  *
- * <p>Registration and runtime routing key off canonical worker transport
- * identity: {@code adapterId} is the concrete runtime truth, while
- * {@code transportHint} remains only the coarse transport family. Adapter-
- * specific wire-frame shapes belong to one adapter only and must not be
- * treated as the identity of a business or control capability.
+ * <p>Worker registration still resolves a concrete {@code adapterId} from the
+ * requested adapter or transport hint. Assigned-delivery routing resolves the
+ * local binding by {@code adapterMailboxKey}; the mailbox key is the physical
+ * handoff target, while {@code adapterId} remains embedded adapter metadata.
+ * Adapter-specific wire-frame shapes belong to one adapter only and must not
+ * be treated as the identity of a business or control capability.
  */
 public final class TransportRuntimeRegistry {
 
     private final TransportResultIngressChannel resultIngressChannel;
     private final TransportEndpointLeaseStore endpointLeaseStore;
-    private final DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry;
+    private final AdapterMailboxConsumerRegistry adapterMailboxConsumerRegistry;
     private final List<TransportBinding> bindings;
     private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
+    private final Map<String, TransportBinding> bindingByAdapterMailboxKey;
     private final Map<AdapterCommandExecutor, String> adapterIdByCommandExecutor;
 
     public TransportRuntimeRegistry(TransportResultIngressChannel resultIngressChannel,
@@ -39,29 +41,31 @@ public final class TransportRuntimeRegistry {
                                     List<TransportBinding> bindings) {
         this(resultIngressChannel,
                 endpointLeaseStore,
-                NoopDeliveryCommandConsumerRegistry.INSTANCE,
+                NoopAdapterMailboxConsumerRegistry.INSTANCE,
                 bindings);
     }
 
     public TransportRuntimeRegistry(TransportResultIngressChannel resultIngressChannel,
                                     TransportEndpointLeaseStore endpointLeaseStore,
-                                    DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
+                                    AdapterMailboxConsumerRegistry adapterMailboxConsumerRegistry,
                                     List<TransportBinding> bindings) {
         this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
-        this.deliveryCommandConsumerRegistry = deliveryCommandConsumerRegistry != null
-                ? deliveryCommandConsumerRegistry
-                : NoopDeliveryCommandConsumerRegistry.INSTANCE;
+        this.adapterMailboxConsumerRegistry = adapterMailboxConsumerRegistry != null
+                ? adapterMailboxConsumerRegistry
+                : NoopAdapterMailboxConsumerRegistry.INSTANCE;
         this.bindings = List.copyOf(bindings);
         if (this.bindings.isEmpty()) {
             throw new IllegalArgumentException("At least one transport binding is required");
         }
         this.registrationResolver = TransportRegistrationResolver.fromBindings(this.bindings);
         this.bindingByAdapterId = new LinkedHashMap<>();
+        this.bindingByAdapterMailboxKey = new LinkedHashMap<>();
         this.adapterIdByCommandExecutor = new IdentityHashMap<>();
         for (TransportBinding binding : this.bindings) {
             registerCommandExecutor(binding);
             registerAdapterId(binding.getAdapterId(), binding);
+            registerAdapterMailboxKey(binding.getAdapterMailboxKey(), binding);
         }
     }
 
@@ -96,6 +100,15 @@ public final class TransportRuntimeRegistry {
         if (binding == null) {
             throw new IllegalStateException("No runtime binding is registered for adapterId '" + adapterId
                     + "'; available adapterIds=" + availableAdapterIds());
+        }
+        return binding;
+    }
+
+    public TransportBinding resolveBindingByAdapterMailboxKey(String adapterMailboxKey) {
+        TransportBinding binding = bindingByAdapterMailboxKey.get(normalizeMailboxKey(adapterMailboxKey));
+        if (binding == null) {
+            throw new IllegalStateException("No runtime binding is registered for adapterMailboxKey '"
+                    + adapterMailboxKey + "'; available adapterMailboxKeys=" + availableAdapterMailboxKeys());
         }
         return binding;
     }
@@ -165,11 +178,39 @@ public final class TransportRuntimeRegistry {
         return adapterIds.toString();
     }
 
+    private String availableAdapterMailboxKeys() {
+        Set<String> mailboxKeys = new TreeSet<>();
+        mailboxKeys.addAll(bindingByAdapterMailboxKey.keySet());
+        return mailboxKeys.toString();
+    }
+
     private static String normalizeAdapterId(String adapterId) {
         if (adapterId == null || adapterId.isBlank()) {
             return null;
         }
         return adapterId.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private void registerAdapterMailboxKey(String adapterMailboxKey, TransportBinding binding) {
+        String normalized = normalizeMailboxKey(adapterMailboxKey);
+        if (normalized == null) {
+            throw new IllegalArgumentException("adapterMailboxKey must not be blank for adapter '"
+                    + binding.getAdapterId() + "'");
+        }
+        TransportBinding existing = bindingByAdapterMailboxKey.get(normalized);
+        if (existing != null && existing != binding) {
+            throw new IllegalArgumentException("Duplicate adapter mailbox key '" + normalized
+                    + "' is claimed by adapters '" + existing.getAdapterId()
+                    + "' and '" + binding.getAdapterId() + "'");
+        }
+        bindingByAdapterMailboxKey.put(normalized, binding);
+    }
+
+    private static String normalizeMailboxKey(String adapterMailboxKey) {
+        if (adapterMailboxKey == null || adapterMailboxKey.isBlank()) {
+            return null;
+        }
+        return adapterMailboxKey.trim();
     }
 
     private void registerCommandExecutor(TransportBinding binding) {

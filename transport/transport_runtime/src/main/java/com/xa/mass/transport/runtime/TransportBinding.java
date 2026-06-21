@@ -13,6 +13,7 @@ import java.util.Objects;
 public final class TransportBinding {
 
     private final String adapterId;
+    private final String adapterMailboxKey;
     private final String transportHint;
     private final String protocol;
     private final AdapterCommandExecutor commandExecutor;
@@ -21,6 +22,7 @@ public final class TransportBinding {
 
     private TransportBinding(Builder builder) {
         this.adapterId = requireText(builder.adapterId, "adapterId");
+        this.adapterMailboxKey = requireText(builder.adapterMailboxKey, "adapterMailboxKey");
         this.transportHint = requireText(builder.transportHint, "transportHint");
         this.protocol = builder.protocol == null || builder.protocol.isBlank()
                 ? this.adapterId
@@ -41,6 +43,10 @@ public final class TransportBinding {
 
     public String getAdapterId() {
         return adapterId;
+    }
+
+    public String getAdapterMailboxKey() {
+        return adapterMailboxKey;
     }
 
     public String getTransportHint() {
@@ -67,6 +73,7 @@ public final class TransportBinding {
         private final String adapterId;
         private final String transportHint;
         private final AdapterCommandExecutor commandExecutor;
+        private String adapterMailboxKey;
         private String protocol;
         private DeliveryPullChannel deliveryPullChannel;
         private PullSessionEvidenceDriver pullSessionEvidenceDriver;
@@ -81,6 +88,11 @@ public final class TransportBinding {
 
         public Builder protocol(String protocol) {
             this.protocol = protocol;
+            return this;
+        }
+
+        public Builder adapterMailboxKey(String adapterMailboxKey) {
+            this.adapterMailboxKey = adapterMailboxKey;
             return this;
         }
 

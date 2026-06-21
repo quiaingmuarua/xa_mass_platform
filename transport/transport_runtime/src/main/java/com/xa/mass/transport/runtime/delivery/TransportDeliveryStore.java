@@ -9,9 +9,9 @@ import java.util.concurrent.TimeUnit;
  * Runtime-owned storage boundary for transport delivery handoff.
  *
  * <p>This contract is transport-specific but intentionally Redis-friendly.
- * Queue ownership is the transport runtime {@code deliveryQueueKey}; assigned
+ * Queue ownership is the transport runtime {@code adapterMailboxKey}; assigned
  * polling delivery is selected by {@code selectedWorkerId} under that shared
- * queue owner.
+ * mailbox owner.
  *
  * <p>{@link #poll(String, String, int, long, TimeUnit)} returns transport
  * delivery status, but store implementations should throw
@@ -28,11 +28,11 @@ import java.util.concurrent.TimeUnit;
  */
 public interface TransportDeliveryStore {
 
-    DispatchOutcome enqueue(String adapterId, String deliveryQueueKey, QueuedPulledDispatch item);
+    DispatchOutcome enqueue(String adapterMailboxKey, QueuedPulledDispatch item);
 
-    List<QueuedPulledDispatch> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems);
+    List<QueuedPulledDispatch> drain(String adapterMailboxKey, String selectedWorkerId, int maxItems);
 
-    TransportDeliveryPollResult poll(String deliveryQueueKey,
+    TransportDeliveryPollResult poll(String adapterMailboxKey,
                                      String selectedWorkerId,
                                      int maxItems,
                                      long timeout,

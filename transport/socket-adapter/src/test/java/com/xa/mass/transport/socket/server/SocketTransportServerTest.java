@@ -32,7 +32,7 @@ class SocketTransportServerTest {
                 "127.0.0.1",
                 0,
                 10,
-                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID),
+                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID, SocketAdapterConfig.DEFAULT_ADAPTER_ID),
                 new SocketTransportFrameCodec(),
                 null,
                 executor
@@ -62,7 +62,7 @@ class SocketTransportServerTest {
     void helloFrameRegistersSocketSession() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
-                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID);
+                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID, SocketAdapterConfig.DEFAULT_ADAPTER_ID);
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
                 "127.0.0.1",
@@ -99,7 +99,7 @@ class SocketTransportServerTest {
     void helloFrameRouteKeyOverridesWorkerIdAsSocketAddress() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
-                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID);
+                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID, SocketAdapterConfig.DEFAULT_ADAPTER_ID);
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
                 "127.0.0.1",
@@ -137,7 +137,7 @@ class SocketTransportServerTest {
     void canonicalTaskResultIngressUsesBoundRouteKeyAndCorrelationTraceFallback() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
-                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID);
+                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID, SocketAdapterConfig.DEFAULT_ADAPTER_ID);
         AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
@@ -197,7 +197,7 @@ class SocketTransportServerTest {
                 "127.0.0.1",
                 0,
                 10,
-                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID),
+                new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID, SocketAdapterConfig.DEFAULT_ADAPTER_ID),
                 new SocketTransportFrameCodec(),
                 null,
                 executor

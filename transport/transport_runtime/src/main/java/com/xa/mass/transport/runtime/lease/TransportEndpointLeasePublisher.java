@@ -1,13 +1,9 @@
 package com.xa.mass.transport.runtime.lease;
 
 import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
-import com.xa.mass.transport.lease.TransportEndpointLeaseConsumerEvidence;
 import com.xa.mass.transport.lease.TransportEndpointLeaseHeartbeat;
 import com.xa.mass.transport.lease.TransportEndpointLeaseRelease;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerClaim;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
 
 import java.util.Locale;
 import java.util.Objects;
@@ -19,8 +15,6 @@ public final class TransportEndpointLeasePublisher {
 
     private final String endpointDriverId;
     private volatile TransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-    private volatile DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry =
-            NoopDeliveryCommandConsumerRegistry.INSTANCE;
 
     public TransportEndpointLeasePublisher(String endpointDriverId) {
         this.endpointDriverId = requireText(endpointDriverId, "endpointDriverId").toLowerCase(Locale.ROOT);
@@ -30,12 +24,6 @@ public final class TransportEndpointLeasePublisher {
         this.endpointLeaseStore = endpointLeaseStore != null
                 ? endpointLeaseStore
                 : new InMemoryTransportEndpointLeaseStore();
-    }
-
-    public void setDeliveryCommandConsumerRegistry(DeliveryCommandConsumerRegistry registry) {
-        this.deliveryCommandConsumerRegistry = registry != null
-                ? registry
-                : NoopDeliveryCommandConsumerRegistry.INSTANCE;
     }
 
     public long getLeaseMillis() {
@@ -55,7 +43,7 @@ public final class TransportEndpointLeasePublisher {
                 endpointLeaseId,
                 reason
         );
-        claimDeliveryConsumer(endpointLeaseStore.claimEndpointLease(claim));
+        endpointLeaseStore.claimEndpointLease(claim);
     }
 
     public boolean refresh(String workerId,
@@ -71,15 +59,7 @@ public final class TransportEndpointLeasePublisher {
                 endpointLeaseId,
                 reason
         );
-        return endpointLeaseStore.refreshEndpointLease(heartbeat)
-                .map(evidence -> {
-                    claimDeliveryConsumer(evidence);
-                    return true;
-                })
-                .orElseGet(() -> {
-                    releaseDeliveryConsumer(heartbeat);
-                    return false;
-                });
+        return endpointLeaseStore.refreshEndpointLease(heartbeat).isPresent();
     }
 
     public boolean release(String workerId,
@@ -96,35 +76,7 @@ public final class TransportEndpointLeasePublisher {
                 reason
         );
         boolean releasedCurrent = endpointLeaseStore.releaseEndpointLease(release);
-        releaseDeliveryConsumer(release);
         return releasedCurrent;
-    }
-
-    private void claimDeliveryConsumer(TransportEndpointLeaseConsumerEvidence evidence) {
-        deliveryCommandConsumerRegistry.claimConsumer(new DeliveryCommandConsumerClaim(
-                evidence.deliveryBucketId(),
-                evidence.workerId(),
-                evidence.endpointLeaseId(),
-                evidence.leaseExpireAtEpochMillis()
-        ));
-    }
-
-    private void releaseDeliveryConsumer(TransportEndpointLeaseRelease release) {
-        deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
-                release.deliveryBucketId(),
-                release.workerId(),
-                release.endpointLeaseId(),
-                0L
-        ));
-    }
-
-    private void releaseDeliveryConsumer(TransportEndpointLeaseHeartbeat heartbeat) {
-        deliveryCommandConsumerRegistry.releaseConsumer(new DeliveryCommandConsumerClaim(
-                heartbeat.deliveryBucketId(),
-                heartbeat.workerId(),
-                heartbeat.endpointLeaseId(),
-                0L
-        ));
     }
 
     private static String requireText(String value, String fieldName) {

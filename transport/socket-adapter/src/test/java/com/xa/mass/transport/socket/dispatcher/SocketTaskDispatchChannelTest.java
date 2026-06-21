@@ -32,7 +32,7 @@ class SocketTaskDispatchChannelTest {
 
     @Test
     void dispatchReturnsEndpointOfflineWhenWorkerSessionIsMissing() {
-        SocketTaskDispatchChannel channel = channel(new SocketSessionManager("socket"));
+        SocketTaskDispatchChannel channel = channel(new SocketSessionManager("socket", "socket"));
 
         List<DispatchOutcome> outcomes = channel.dispatch(List.of(request("msg-1", "worker-1")));
 
@@ -46,7 +46,7 @@ class SocketTaskDispatchChannelTest {
     }
 
     private SocketSessionManager sessionManagerWithWorker(String workerId) {
-        SocketSessionManager sessionManager = new SocketSessionManager("socket");
+        SocketSessionManager sessionManager = new SocketSessionManager("socket", "socket");
         Socket socket = mock(Socket.class);
         when(socket.isConnected()).thenReturn(true);
         when(socket.isClosed()).thenReturn(false);

@@ -47,7 +47,7 @@ class WebSocketTaskDispatchChannelTest {
     @Test
     void returnsEndpointOfflineWhenSessionStoreHasNoWorker() {
         WebSocketSessionStore sessionStore = new WebSocketSessionStore("websocket");
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver("websocket");
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver("websocket", "websocket");
         WebSocketSessionController controller = new WebSocketSessionController(
                 sessionStore,
                 evidenceDriver,
@@ -72,7 +72,7 @@ class WebSocketTaskDispatchChannelTest {
 
     private SessionFixture sessionWithWorker(String workerId) {
         WebSocketSessionStore sessionStore = new WebSocketSessionStore("websocket");
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver("websocket");
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver("websocket", "websocket");
         WebSocketSessionController controller = new WebSocketSessionController(
                 sessionStore,
                 evidenceDriver,

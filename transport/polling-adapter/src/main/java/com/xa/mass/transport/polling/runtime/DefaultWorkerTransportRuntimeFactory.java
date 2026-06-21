@@ -5,8 +5,8 @@ import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.NoopDeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.List;
@@ -28,7 +28,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
         return create(resultIngressChannel,
                 endpointLeaseStore,
                 deliveryService,
-                NoopDeliveryCommandConsumerRegistry.INSTANCE,
+                NoopAdapterMailboxConsumerRegistry.INSTANCE,
                 adapterBindings);
     }
 
@@ -36,7 +36,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
     public TransportRuntimeRegistry create(TransportResultIngressChannel resultIngressChannel,
                                            TransportEndpointLeaseStore endpointLeaseStore,
                                            TransportDeliveryService deliveryService,
-                                           DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
+                                           AdapterMailboxConsumerRegistry adapterMailboxConsumerRegistry,
                                            List<TransportBinding> adapterBindings) {
         List<TransportBinding> bindings = adapterBindings == null
                 ? List.of()
@@ -44,7 +44,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
         return new TransportRuntimeRegistry(
                 resultIngressChannel,
                 endpointLeaseStore,
-                deliveryCommandConsumerRegistry,
+                adapterMailboxConsumerRegistry,
                 bindings
         );
     }

@@ -37,17 +37,16 @@ entry for `transport/`.
   endpoint lease evidence only to decide final-hop feasibility for that worker.
 - Engine must not select by raw transport identifiers such as `adapterId`,
   `routeKey`, `connectionId`, endpoint lease ids, session handles, or
-  `deliveryQueueKey`. Any delivery reachability needed by scheduling must be
+  transport queue names. Any delivery reachability needed by scheduling must be
   projected through worker-runtime evidence first.
 - `adapterId` is concrete transport runtime truth, not an external worker API,
   SDK worker-session, engine/starter delivery contract, or worker-selection
   input. It identifies a concrete adapter binding only after transport has
   endpoint evidence for the already selected worker. `transportHint` is only a
   coarse family.
-- `deliveryBucketId` is the engine/starter to transport assigned-delivery
-  bucket. At the current boundary it is derived from worker-group context, but
-  transport treats it as an opaque delivery-domain id, not as worker scheduling,
-  capability, lifecycle, or adapter identity.
+- `deliveryBucketId` is upstream scheduling/index context. It is not the
+  physical dispatch queue owner and transport must not derive adapter mailbox
+  routing from it.
 - `routeKey` is opaque connection/domain metadata. Transport runtime and
   adapters must not know whether it was minted from worker group, adapter lane,
   or another owner-level rule, and must not depend on routeKey cardinality for
@@ -57,31 +56,29 @@ entry for `transport/`.
   command field for dispatcher demux and final-hop endpoint/session lookup; it
   must not become a second physical queue address, scheduling input, lifecycle
   mutation, or route-key minting rule.
-- Assigned-delivery `deliveryQueueKey` is a queue/storage/batching address
-  derived from `deliveryBucketId` by transport. It may be shared by many
-  workers; it must not express worker selection. Polling-store queue placement
-  also derives from the worker's `deliveryBucketId`; `adapterId` is not a pull
-  queue selector.
+- Assigned-delivery physical queueing is addressed by opaque
+  `adapterMailboxKey`. Worker-runtime delivery target evidence resolves an
+  already selected worker to that mailbox before transport handoff. The mailbox
+  may serve many workers; it must not express worker selection.
 - external worker execution/session APIs must not expose endpoint/session internals such as
   `routeKey`, `connectionId`, `deliveryQueueKey`, endpoint lease ids, or
   adapter runtime ids. `adapterNodeId`, where still present, belongs to
   worker/resource control-plane declaration surfaces, not transport delivery
   executor identity.
 - Polling task delivery is selected-worker delivery: the poll request carries
-  the registered bucket as `deliveryBucketId` and the registered worker id as
-  `selectedWorkerId`. Two polling workers may share one routeKey and one
-  delivery bucket; they must still receive only commands whose command-level
-  `selectedWorkerId` matches the polling worker.
+  the registered worker id as `selectedWorkerId`. Two polling workers may
+  share one routeKey and one adapter mailbox; they must still receive only
+  commands whose command-level `selectedWorkerId` matches the polling worker.
 - `CanonicalWorkerGroupRouteKeyCodec` is the current SDK/starter default
   worker-consumption route mint rule from `workerGroupId`; transport runtime
   and adapters receive explicit route keys as opaque metadata instead of
   importing or resolving that rule.
 - route-only endpoint helpers may exist inside one concrete adapter for
   raw/manual side channels. Task dispatch must use selected-worker addressing:
-  producer queue selection derives only from `deliveryBucketId`, handoff
-  readiness is selected-worker consumer evidence, and push adapters dispatch by
-  concrete adapter command executors using a worker-id-only local session lookup
-  rather than a route-only fallback.
+  producer-side delivery integration consumes worker-runtime mailbox evidence,
+  handoff readiness is finite mailbox-level consumer lease evidence, and push
+  adapters dispatch by concrete adapter command executors using a worker-id-only
+  local session lookup rather than a route-only fallback.
 - `WorkerEndpointRegistry` has been removed. Do not reintroduce a generic
   assigned-delivery endpoint interface; raw/manual route delivery uses
   `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`, not the
@@ -90,12 +87,12 @@ entry for `transport/`.
   concrete active route for a worker, but once resolved they must dispatch via
   the serving adapter identity instead of reviving route-only shared semantics.
 - worker endpoint lease evidence lives in a transport-owned endpoint lease
-  plane keyed by `deliveryBucketId + workerId`. Adapters/session ingress also
-  writes handoff-private selected-worker consumer evidence for assigned
-  delivery. Assigned-delivery producers must not re-own transport endpoint
-  evidence through worker heartbeat folding or endpoint lease lookup; the
-  delivery listener may read endpoint lease evidence only as final-hop
-  feasibility for the already selected worker.
+  plane keyed by `deliveryBucketId + workerId`. Handoff consumer availability is
+  mailbox-level evidence, not `deliveryBucketId + selectedWorkerId` evidence.
+  Assigned-delivery producers must not re-own transport endpoint evidence
+  through worker heartbeat folding or endpoint lease lookup; delivery
+  integration consumes worker-runtime mailbox evidence, while adapters use
+  local selected-worker session lookup for the final hop.
   Endpoint lease writes are connection-aware: each claim carries an explicit
   `deliveryBucketId`, heartbeat only extends the matching endpoint lease, and
   release only removes the endpoint lease when the caller still holds the
@@ -125,24 +122,24 @@ entry for `transport/`.
   on executor-local connection/session classes, late-bound handler setters, or
   adapter-owned registries.
 - Concrete adapters may observe protocol sessions and send to selected workers,
-  but endpoint lease / selected-worker consumer evidence is projected by
-  `TransportEndpointLeasePublisher`, and worker session-presence observations
-  are projected by `WorkerPresenceSessionPublisher`. WebSocket now splits this
-  into explicit session store, server handle, command executor, evidence
-  driver, and refresh-loop roles. Assigned delivery lookup inside the adapter is
-  worker-id-only; `deliveryBucketId` remains upstream queue/evidence context.
+  but endpoint lease evidence is projected by `TransportEndpointLeasePublisher`,
+  mailbox consumer evidence is claimed by runtime composition, and worker
+  session-presence observations are projected by `WorkerPresenceSessionPublisher`.
+  WebSocket now splits this into explicit session store, server handle, command
+  executor, evidence driver, and refresh-loop roles. Assigned delivery lookup
+  inside the adapter is worker-id-only; `deliveryBucketId` remains upstream
+  scheduling/index context.
   Socket uses the same adapter-local final-hop rule through its session manager;
   there is no generic selected-worker endpoint-registry wrapper on the assigned
   delivery path.
 - `DeliveryCommandBatch` is consumer-local handoff materialization:
-  `deliveryQueueKey`, handoff-owned command references, and command items only.
-  It does not carry bucket, lane, target node, adapter route, connection, or
-  endpoint lease facts.
+  `adapterMailboxKey`, handoff-owned command references, and command items
+  only. It does not carry bucket, lane, target node, adapter route, connection,
+  or endpoint lease facts.
 - Runtime embedded-support `TransportDeliveryCommandListener` consumes
-  bucket-queue handoff references, reads `deliveryBucketId + selectedWorkerId`
-  endpoint lease evidence for final-hop feasibility, then resolves the local
-  adapter from that endpoint lease. Core handoff pumping depends only on the
-  narrow batch-listener callback; the final-hop adapter SPI consumes
+  adapter-mailbox handoff references, resolves the local adapter binding by
+  mailbox, and invokes the final-hop adapter SPI. Core handoff pumping depends
+  only on the narrow batch-listener callback; the final-hop adapter SPI consumes
   `DeliveryCommand` directly and sends by selected worker.
 - `DeliveryPullResult` / `PulledDeliveryMessage` are the transport-core pull
   shapes. They carry status plus opaque delivery messages only. Task-shaped

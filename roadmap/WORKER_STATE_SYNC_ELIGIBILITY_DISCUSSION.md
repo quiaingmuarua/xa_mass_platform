@@ -243,12 +243,15 @@ These concepts must stay separate:
 | Concept | Owner | Meaning |
 | --- | --- | --- |
 | `candidateBucketKey` | worker runtime / scheduling policy | source index for worker matching |
-| `deliveryBucketId` | transport | delivery partition for selected-worker dispatch |
+| `adapterMailboxKey` | worker-runtime evidence / transport handoff | physical adapter mailbox target after worker selection |
+| `deliveryBucketId` | upstream scheduling/index context | worker-group-derived context retained on commands, not producer-side queue truth |
 | `selectedWorkerId` | engine scheduling result carried by transport | already selected execution identity |
 
-`deliveryBucketId + selectedWorkerId` is appropriate for transport consumer
-lease and delivery lookup. It is not a replacement for WorkerGroup-scoped
-scheduling candidate indexes.
+Post-assignment delivery target resolution is
+`selectedWorkerId -> adapterMailboxKey` through worker-runtime evidence.
+`deliveryBucketId + selectedWorkerId` is historical bucket-queue vocabulary and
+must not be restored as producer-side delivery target truth. It is not a
+replacement for WorkerGroup-scoped scheduling candidate indexes.
 
 ## Cleanup And Compensation
 

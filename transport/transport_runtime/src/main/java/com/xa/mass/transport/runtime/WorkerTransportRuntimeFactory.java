@@ -2,7 +2,7 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.List;
@@ -21,7 +21,7 @@ public interface WorkerTransportRuntimeFactory {
     default TransportRuntimeRegistry create(TransportResultIngressChannel resultIngressChannel,
                                             TransportEndpointLeaseStore endpointLeaseStore,
                                             TransportDeliveryService deliveryService,
-                                            DeliveryCommandConsumerRegistry deliveryCommandConsumerRegistry,
+                                            AdapterMailboxConsumerRegistry adapterMailboxConsumerRegistry,
                                             List<TransportBinding> adapterBindings) {
         return create(resultIngressChannel, endpointLeaseStore, deliveryService, adapterBindings);
     }

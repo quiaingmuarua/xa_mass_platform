@@ -5,19 +5,19 @@ import com.xa.mass.transport.model.DeliveryCommand;
 import java.util.List;
 
 /**
- * Local-consumer batch for commands claimed from one assigned-delivery queue.
+ * Local-consumer batch for commands claimed from one adapter mailbox.
  */
-public record DeliveryCommandBatch(String deliveryQueueKey,
+public record DeliveryCommandBatch(String adapterMailboxKey,
                                    List<DeliveryCommandReference> references,
                                    List<DeliveryCommand> items) {
 
-    public DeliveryCommandBatch(String deliveryQueueKey,
+    public DeliveryCommandBatch(String adapterMailboxKey,
                                 List<DeliveryCommand> items) {
-        this(deliveryQueueKey, List.of(), items);
+        this(adapterMailboxKey, List.of(), items);
     }
 
     public DeliveryCommandBatch {
-        deliveryQueueKey = requireText(deliveryQueueKey, "deliveryQueueKey");
+        adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
         references = references == null ? List.of() : List.copyOf(references);
         items = items == null ? List.of() : List.copyOf(items);
         if (items.isEmpty()) {

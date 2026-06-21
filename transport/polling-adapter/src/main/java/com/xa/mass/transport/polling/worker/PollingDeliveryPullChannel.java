@@ -17,9 +17,14 @@ import java.util.Objects;
  */
 public final class PollingDeliveryPullChannel implements DeliveryPullChannel {
 
+    private final String adapterMailboxKey;
     private final TransportDeliveryService deliveryService;
 
-    public PollingDeliveryPullChannel(TransportDeliveryService deliveryService) {
+    public PollingDeliveryPullChannel(String adapterMailboxKey, TransportDeliveryService deliveryService) {
+        if (adapterMailboxKey == null || adapterMailboxKey.isBlank()) {
+            throw new IllegalArgumentException("adapterMailboxKey must not be blank");
+        }
+        this.adapterMailboxKey = adapterMailboxKey.trim();
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
     }
 
@@ -33,8 +38,8 @@ public final class PollingDeliveryPullChannel implements DeliveryPullChannel {
                 || maxMessages <= 0) {
             return DeliveryPullResult.invalidRequest();
         }
-        TransportDeliveryPollResult result = deliveryService.pollItemResult(
-                deliveryBucketId,
+        TransportDeliveryPollResult result = deliveryService.pollMailboxItemResult(
+                adapterMailboxKey,
                 selectedWorkerId,
                 maxMessages,
                 timeoutMillis

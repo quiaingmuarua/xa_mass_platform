@@ -322,6 +322,7 @@ class MassApplicationStopOrderTest {
     private TransportBinding transportBinding(String adapterId, String transportHint) {
         AdapterCommandExecutor executor = commands -> List.of();
         return TransportBinding.builder(adapterId, transportHint, executor)
+                .adapterMailboxKey(adapterId)
                 .protocol(adapterId)
                 .build();
     }

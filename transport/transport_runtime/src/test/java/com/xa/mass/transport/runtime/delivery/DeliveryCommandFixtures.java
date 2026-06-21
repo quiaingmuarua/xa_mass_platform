@@ -29,15 +29,21 @@ final class DeliveryCommandFixtures {
     }
 
     static DeliveryCommandBatch batch(String unusedConsumerKey, DeliveryCommand... commands) {
-        return new DeliveryCommandBatch(queueKey(), List.of(commands));
+        return new DeliveryCommandBatch(mailboxKey(), List.of(commands));
     }
 
-    static DeliveryQueueOffer offer(DeliveryCommand... commands) {
-        return new DeliveryQueueOffer(queueKey(), List.of(commands));
+    static AdapterMailboxDeliveryOffer offer(DeliveryCommand... commands) {
+        return new AdapterMailboxDeliveryOffer(mailboxKey(), List.of(commands));
     }
 
-    static String queueKey() {
-        return AssignedDeliveryCommandQueueKey.queueKeyFor("bucket-1");
+    static List<AdapterMailboxDeliveryCommand> routed(DeliveryCommand... commands) {
+        return List.of(commands).stream()
+                .map(command -> new AdapterMailboxDeliveryCommand(mailboxKey(), command))
+                .toList();
+    }
+
+    static String mailboxKey() {
+        return "mailbox-1";
     }
 
     static List<String> messages(DeliveryCommandBatch batch) {

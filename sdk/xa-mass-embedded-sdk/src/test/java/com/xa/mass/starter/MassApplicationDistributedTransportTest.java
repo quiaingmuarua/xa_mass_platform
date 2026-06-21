@@ -18,10 +18,14 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandReference;
-import com.xa.mass.transport.runtime.delivery.DeliveryQueueOffer;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerLease;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxDeliveryOffer;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
+import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +34,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -38,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -49,6 +55,14 @@ class MassApplicationDistributedTransportTest {
         engine.setEnabled(true);
         engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-1"));
         engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-2"));
+        engine.setWorkerDeliveryTargetView(selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
+                selectedWorkerId,
+                adapterMailboxKey(),
+                WorkerReachabilityState.ONLINE,
+                1L,
+                System.currentTimeMillis(),
+                Long.MAX_VALUE
+        )));
 
         CapturingDeliveryCommandHandoff handoff = new CapturingDeliveryCommandHandoff();
         TransportConfig transport = disabledEngineProducerTransport();
@@ -71,13 +85,62 @@ class MassApplicationDistributedTransportTest {
 
             assertEquals(1, handoff.submitted.size());
             DeliveryCommandBatch firstBatch = handoff.submitted.get(0);
-            assertEquals(deliveryQueueKey(), firstBatch.deliveryQueueKey());
+            assertEquals(adapterMailboxKey(), firstBatch.adapterMailboxKey());
             assertEquals(List.of("msg-1", "msg-2"), messages(firstBatch));
             assertEquals("worker-1", firstBatch.commands().getFirst().getSelectedWorkerId());
             assertEquals("worker-2", firstBatch.commands().get(1).getSelectedWorkerId());
         } finally {
             app.stop();
         }
+    }
+
+    @Test
+    void engineProducerRejectsMismatchedSelectedWorkerDeliveryTargetEvidence() {
+        EngineConfig engine = new EngineConfig();
+        engine.setEnabled(true);
+        engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-1"));
+        engine.setWorkerDeliveryTargetView(selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
+                "other-worker",
+                adapterMailboxKey(),
+                WorkerReachabilityState.ONLINE,
+                1L,
+                System.currentTimeMillis(),
+                Long.MAX_VALUE
+        )));
+
+        CapturingDeliveryCommandHandoff handoff = new CapturingDeliveryCommandHandoff();
+        TransportConfig transport = disabledEngineProducerTransport();
+        transport.setDeliveryCommandHandoffFactory(() -> handoff);
+        transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
+        transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
+
+        CapturingMassEngine massEngine = new CapturingMassEngine(engine);
+        MassApplication app = new MassApplication(massEngine, transport, engine);
+
+        app.start();
+        try {
+            TaskDispatchBatchListener listener = massEngine.listenerRef.get();
+            assertNotNull(listener);
+
+            listener.onTaskDispatchBatch(context(), List.of(binding("msg-1", "worker-1")));
+
+            assertEquals(0, handoff.submitted.size());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void engineProducerRequiresExplicitWorkerDeliveryTargetView() {
+        EngineConfig engine = new EngineConfig();
+        engine.setEnabled(true);
+
+        TransportConfig transport = disabledEngineProducerTransport();
+        CapturingMassEngine massEngine = new CapturingMassEngine(engine);
+        MassApplication app = new MassApplication(massEngine, transport, engine);
+
+        RuntimeException failure = assertThrows(RuntimeException.class, app::start);
+        assertTrue(hasCauseMessage(failure, "engine-producer runtime requires an explicit WorkerDeliveryTargetView"));
     }
 
     @Test
@@ -103,6 +166,62 @@ class MassApplicationDistributedTransportTest {
             assertEquals(List.of("msg-local"), adapter.dispatchedMessageIds());
             assertEquals(List.of("worker-1"), adapter.dispatchedWorkerIds());
             assertEquals(List.of("msg-remote"), messages(handoff.pollForSelectedWorker("worker-2")));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void transportConsumerReleasesMailboxConsumerLeaseOnStop() {
+        EngineConfig engine = new EngineConfig();
+        engine.setEnabled(false);
+
+        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff("worker-1");
+        RecordingAdapter adapter = new RecordingAdapter("websocket", 0);
+        TransportConfig transport = disabledTransportConsumerTransport();
+        transport.setDeliveryCommandHandoffFactory(() -> handoff);
+        transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
+        transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
+        transport.setPrimaryTransportAdapterBootstrap(new RecordingAdapterBootstrap(adapter));
+
+        MassApplication app = new MassApplication(new CapturingMassEngine(engine), transport, engine);
+
+        app.start();
+        List<String> claimedMailboxKeys = handoff.claimedMailboxKeys();
+        assertTrue(claimedMailboxKeys.contains(adapterMailboxKey()));
+
+        app.stop();
+        assertEquals(claimedMailboxKeys, handoff.releasedMailboxKeys());
+    }
+
+    @Test
+    void transportConsumerRefreshesMailboxConsumerLease() throws Exception {
+        EngineConfig engine = new EngineConfig();
+        engine.setEnabled(false);
+
+        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff("worker-1");
+        RecordingAdapter adapter = new RecordingAdapter("websocket", 0);
+        TransportConfig transport = disabledTransportConsumerTransport();
+        transport.setAdapterMailboxConsumerLeaseMillis(300L);
+        transport.setDeliveryCommandHandoffFactory(() -> handoff);
+        transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
+        transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
+        transport.setPrimaryTransportAdapterBootstrap(new RecordingAdapterBootstrap(adapter));
+
+        MassApplication app = new MassApplication(new CapturingMassEngine(engine), transport, engine);
+
+        app.start();
+        try {
+            assertTrue(handoff.awaitMailboxClaimCount(adapterMailboxKey(), 2, 2, TimeUnit.SECONDS));
+            List<AdapterMailboxConsumerLease> claims = handoff.claimedConsumerLeases().stream()
+                    .filter(lease -> adapterMailboxKey().equals(lease.adapterMailboxKey()))
+                    .toList();
+            assertTrue(claims.size() >= 2);
+            AdapterMailboxConsumerLease first = claims.getFirst();
+            AdapterMailboxConsumerLease last = claims.getLast();
+            assertEquals(first.adapterMailboxKey(), last.adapterMailboxKey());
+            assertEquals(first.consumerId(), last.consumerId());
+            assertTrue(last.leaseDeadlineEpochMillis() > first.leaseDeadlineEpochMillis());
         } finally {
             app.stop();
         }
@@ -165,8 +284,8 @@ class MassApplicationDistributedTransportTest {
     private static DeliveryCommandBatch deliveryBatch(String messageId, String workerId) {
         DeliveryCommand command = deliveryCommand(messageId, workerId);
         return new DeliveryCommandBatch(
-                deliveryQueueKey(),
-                List.of(new DeliveryCommandReference(deliveryQueueKey(), command.getCommandId())),
+                adapterMailboxKey(),
+                List.of(new DeliveryCommandReference(adapterMailboxKey(), command.getCommandId())),
                 List.of(command)
         );
     }
@@ -185,8 +304,8 @@ class MassApplicationDistributedTransportTest {
         );
     }
 
-    private static String deliveryQueueKey() {
-        return "bucket:ZGVtby13b3JrZXJz";
+    private static String adapterMailboxKey() {
+        return "websocket";
     }
 
     private static List<String> messages(DeliveryCommandBatch batch) {
@@ -196,6 +315,18 @@ class MassApplicationDistributedTransportTest {
                 .map(command -> new TaskDispatchDeliveryCorrelationCodec().decode(command.getCorrelationRef())
                         .messageId())
                 .toList();
+    }
+
+    private static boolean hasCauseMessage(Throwable failure, String expectedMessage) {
+        Throwable current = failure;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.contains(expectedMessage)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private static DispatchOutcome outcome(DeliveryCommandBatch batch,
@@ -240,8 +371,8 @@ class MassApplicationDistributedTransportTest {
         private final List<DeliveryCommandBatch> submitted = new ArrayList<>();
 
         @Override
-        public List<DispatchOutcome> offer(DeliveryQueueOffer offer) {
-            DeliveryCommandBatch batch = new DeliveryCommandBatch(offer.deliveryQueueKey(), offer.commands());
+        public List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer) {
+            DeliveryCommandBatch batch = new DeliveryCommandBatch(offer.adapterMailboxKey(), offer.commands());
             submitted.add(batch);
             return batch.items().stream()
                     .map(item -> outcome(batch, item, DispatchOutcomeStatus.QUEUED, false, null))
@@ -258,9 +389,14 @@ class MassApplicationDistributedTransportTest {
         }
     }
 
-    private static final class LocalDeliveryCommandHandoff implements TransportDeliveryCommandHandoff {
+    private static final class LocalDeliveryCommandHandoff implements TransportDeliveryCommandHandoff,
+            AdapterMailboxConsumerRegistry {
         private final String localSelectedWorkerId;
         private final Queue<DeliveryCommandBatch> batches = new ConcurrentLinkedQueue<>();
+        private final List<AdapterMailboxConsumerLease> claimedConsumers =
+                Collections.synchronizedList(new ArrayList<>());
+        private final List<AdapterMailboxConsumerLease> releasedConsumers =
+                Collections.synchronizedList(new ArrayList<>());
         private volatile boolean running = true;
 
         private LocalDeliveryCommandHandoff(String localSelectedWorkerId) {
@@ -272,8 +408,8 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public List<DispatchOutcome> offer(DeliveryQueueOffer offer) {
-            DeliveryCommandBatch batch = new DeliveryCommandBatch(offer.deliveryQueueKey(), offer.commands());
+        public List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer) {
+            DeliveryCommandBatch batch = new DeliveryCommandBatch(offer.adapterMailboxKey(), offer.commands());
             if (!running) {
                 return batch.items().stream()
                         .map(item -> outcome(batch, item, DispatchOutcomeStatus.SHUTDOWN, true, "handoff is stopped"))
@@ -313,6 +449,62 @@ class MassApplicationDistributedTransportTest {
         public void shutdown() {
             running = false;
         }
+
+        @Override
+        public void claimMailboxConsumer(AdapterMailboxConsumerLease lease) {
+            claimedConsumers.add(lease);
+        }
+
+        @Override
+        public void releaseMailboxConsumer(AdapterMailboxConsumerLease lease) {
+            releasedConsumers.add(lease);
+        }
+
+        private List<String> claimedMailboxKeys() {
+            synchronized (claimedConsumers) {
+                return claimedConsumers.stream()
+                        .map(AdapterMailboxConsumerLease::adapterMailboxKey)
+                        .toList();
+            }
+        }
+
+        private List<AdapterMailboxConsumerLease> claimedConsumerLeases() {
+            synchronized (claimedConsumers) {
+                return List.copyOf(claimedConsumers);
+            }
+        }
+
+        private boolean awaitMailboxClaimCount(String adapterMailboxKey,
+                                               int expected,
+                                               long timeout,
+                                               TimeUnit unit) throws InterruptedException {
+            long deadline = System.nanoTime() + unit.toNanos(timeout);
+            while (System.nanoTime() < deadline) {
+                synchronized (claimedConsumers) {
+                    if (mailboxClaimCount(adapterMailboxKey) >= expected) {
+                        return true;
+                    }
+                }
+                Thread.sleep(10L);
+            }
+            synchronized (claimedConsumers) {
+                return mailboxClaimCount(adapterMailboxKey) >= expected;
+            }
+        }
+
+        private long mailboxClaimCount(String adapterMailboxKey) {
+            return claimedConsumers.stream()
+                    .filter(lease -> adapterMailboxKey.equals(lease.adapterMailboxKey()))
+                    .count();
+        }
+
+        private List<String> releasedMailboxKeys() {
+            synchronized (releasedConsumers) {
+                return releasedConsumers.stream()
+                        .map(AdapterMailboxConsumerLease::adapterMailboxKey)
+                        .toList();
+            }
+        }
     }
 
     private static final class RecordingAdapterBootstrap implements TransportAdapterBootstrap {
@@ -337,7 +529,9 @@ class MassApplicationDistributedTransportTest {
                             adapter.adapterId(),
                             WorkerTransportHints.REALTIME,
                             adapter
-                    ).build())
+                    )
+                            .adapterMailboxKey(adapter.adapterId())
+                            .build())
                     .build();
         }
     }

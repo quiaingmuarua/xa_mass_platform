@@ -226,18 +226,18 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
     }
 
     @Override
-    public DispatchOutcome enqueue(String adapterId, String deliveryQueueKey, QueuedPulledDispatch item) {
-        String normalizedDeliveryQueueKey = normalizeDeliveryQueueKey(deliveryQueueKey);
+    public DispatchOutcome enqueue(String adapterMailboxKey, QueuedPulledDispatch item) {
+        String normalizedAdapterMailboxKey = normalizeDeliveryQueueKey(adapterMailboxKey);
         String normalizedSelectedWorkerId = item == null
                 ? null
                 : TransportDeliveryAddressing.normalizeText(item.selectedWorkerId());
-        if (item == null || normalizedDeliveryQueueKey == null) {
+        if (item == null || normalizedAdapterMailboxKey == null) {
             localInvalidItems.incrementAndGet();
             return DispatchOutcome.invalid(
                     item != null ? item.deliveryId() : null,
                     normalizedSelectedWorkerId,
                     item != null ? item.correlationRef() : null,
-                    "deliveryQueueKey must not be blank"
+                    "adapterMailboxKey must not be blank"
             );
         }
         if (normalizedSelectedWorkerId == null) {
@@ -263,7 +263,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
         }
 
         QueuedPulledDispatch normalizedItem = normalizeItem(item, normalizedSelectedWorkerId);
-        String encodedKeyPart = codec.encodeKeyPart(new DeliveryQueueKey(normalizedDeliveryQueueKey));
+        String encodedKeyPart = codec.encodeKeyPart(new DeliveryQueueKey(normalizedAdapterMailboxKey));
         try {
             Object rawResponse = commands.eval(
                     OFFER_SCRIPT,
@@ -296,13 +296,13 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
     }
 
     @Override
-    public List<QueuedPulledDispatch> drain(String deliveryQueueKey, String selectedWorkerId, int maxItems) {
-        String normalizedDeliveryQueueKey = normalizeDeliveryQueueKey(deliveryQueueKey);
+    public List<QueuedPulledDispatch> drain(String adapterMailboxKey, String selectedWorkerId, int maxItems) {
+        String normalizedAdapterMailboxKey = normalizeDeliveryQueueKey(adapterMailboxKey);
         String normalizedSelectedWorkerId = TransportDeliveryAddressing.normalizeText(selectedWorkerId);
-        if (normalizedDeliveryQueueKey == null || normalizedSelectedWorkerId == null || maxItems <= 0 || !running.get()) {
+        if (normalizedAdapterMailboxKey == null || normalizedSelectedWorkerId == null || maxItems <= 0 || !running.get()) {
             return List.of();
         }
-        String encodedKeyPart = codec.encodeKeyPart(new DeliveryQueueKey(normalizedDeliveryQueueKey));
+        String encodedKeyPart = codec.encodeKeyPart(new DeliveryQueueKey(normalizedAdapterMailboxKey));
         try {
             Object rawResponse = commands.eval(
                     DRAIN_BY_WORKER_SCRIPT,
@@ -326,21 +326,21 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
     }
 
     @Override
-    public TransportDeliveryPollResult poll(String deliveryQueueKey,
+    public TransportDeliveryPollResult poll(String adapterMailboxKey,
                                             String selectedWorkerId,
                                             int maxItems,
                                             long timeout,
                                             TimeUnit unit) throws InterruptedException {
-        String normalizedDeliveryQueueKey = normalizeDeliveryQueueKey(deliveryQueueKey);
+        String normalizedAdapterMailboxKey = normalizeDeliveryQueueKey(adapterMailboxKey);
         String normalizedSelectedWorkerId = TransportDeliveryAddressing.normalizeText(selectedWorkerId);
-        if (normalizedDeliveryQueueKey == null || normalizedSelectedWorkerId == null || maxItems <= 0) {
+        if (normalizedAdapterMailboxKey == null || normalizedSelectedWorkerId == null || maxItems <= 0) {
             return TransportDeliveryPollResult.invalidRequest();
         }
         if (!running.get()) {
             return TransportDeliveryPollResult.shutdown();
         }
         if (timeout <= 0) {
-            List<QueuedPulledDispatch> drained = drain(normalizedDeliveryQueueKey, normalizedSelectedWorkerId, maxItems);
+            List<QueuedPulledDispatch> drained = drain(normalizedAdapterMailboxKey, normalizedSelectedWorkerId, maxItems);
             if (!running.get()) {
                 return TransportDeliveryPollResult.shutdown();
             }
@@ -351,7 +351,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         long sleepMillis = 10L;
         while (running.get()) {
-            List<QueuedPulledDispatch> drained = drain(normalizedDeliveryQueueKey, normalizedSelectedWorkerId, maxItems);
+            List<QueuedPulledDispatch> drained = drain(normalizedAdapterMailboxKey, normalizedSelectedWorkerId, maxItems);
             if (!drained.isEmpty()) {
                 return TransportDeliveryPollResult.deliveredView(drained);
             }
@@ -481,7 +481,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
                     item.deliveryId(),
                     item.selectedWorkerId(),
                     item.correlationRef(),
-                    reason == null ? "deliveryQueueKey must not be blank" : reason
+                    reason == null ? "adapterMailboxKey must not be blank" : reason
             );
             default -> unavailable(item, reason == null ? "delivery queue returned unsupported response: " + code : reason);
         };

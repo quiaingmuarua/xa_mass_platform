@@ -335,6 +335,11 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public TransportBuilder adapterMailboxConsumerLeaseMillis(long adapterMailboxConsumerLeaseMillis) {
+            config.setAdapterMailboxConsumerLeaseMillis(adapterMailboxConsumerLeaseMillis);
+            return this;
+        }
+
         public TransportBuilder transportRuntimeRole(TransportRuntimeRole runtimeRole) {
             config.setRuntimeRole(runtimeRole);
             return this;

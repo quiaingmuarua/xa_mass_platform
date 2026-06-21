@@ -22,7 +22,7 @@ class TransportAssignedDeliverySubmitterTest {
                 failures
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(List.of(command("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = submitter.submit(routed(command("msg-1", "worker-1")));
 
         assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE), statuses(outcomes));
         assertEquals(1, failures.events.size());
@@ -39,7 +39,7 @@ class TransportAssignedDeliverySubmitterTest {
                 failures
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(List.of(command("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = submitter.submit(routed(command("msg-1", "worker-1")));
 
         assertEquals(List.of(DispatchOutcomeStatus.UNAVAILABLE), statuses(outcomes));
         assertEquals(1, failures.events.size());
@@ -47,14 +47,14 @@ class TransportAssignedDeliverySubmitterTest {
     }
 
     @Test
-    void groupsCommandsByBucketDerivedQueueKeyOnly() {
+    void groupsCommandsByAdapterMailboxKeyOnly() {
         FakeHandoff handoff = new FakeHandoff();
         TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(
                 handoff,
                 new RecordingFailureHandler()
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(List.of(
+        List<DispatchOutcome> outcomes = submitter.submit(routed(
                 command("msg-1", "worker-1"),
                 command("msg-2", "worker-2"),
                 command("msg-3", "worker-3")
@@ -66,12 +66,12 @@ class TransportAssignedDeliverySubmitterTest {
                 DispatchOutcomeStatus.QUEUED
         ), statuses(outcomes));
         assertEquals(1, handoff.offered.size());
-        assertEquals(DeliveryCommandFixtures.queueKey(), handoff.offered.getFirst().deliveryQueueKey());
+        assertEquals(DeliveryCommandFixtures.mailboxKey(), handoff.offered.getFirst().adapterMailboxKey());
         assertEquals(List.of("msg-1", "msg-2", "msg-3"), DeliveryCommandFixtures.messages(handoff.offered.getFirst()));
     }
 
     @Test
-    void bucketQueueDerivationDoesNotChangeSelectedWorker() {
+    void adapterMailboxGroupingDoesNotChangeSelectedWorker() {
         FakeHandoff handoff = new FakeHandoff();
         TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(
                 handoff,
@@ -80,11 +80,11 @@ class TransportAssignedDeliverySubmitterTest {
 
         DeliveryCommand command = command("msg-1", "worker-selected");
 
-        submitter.submit(List.of(command));
+        submitter.submit(routed(command));
 
         DeliveryCommand offered = handoff.offered.getFirst().items().getFirst();
         assertEquals("worker-selected", offered.getSelectedWorkerId());
-        assertEquals(DeliveryCommandFixtures.queueKey(), handoff.offered.getFirst().deliveryQueueKey());
+        assertEquals(DeliveryCommandFixtures.mailboxKey(), handoff.offered.getFirst().adapterMailboxKey());
     }
 
     private static DeliveryCommand command(String messageId, String selectedWorkerId) {
@@ -95,17 +95,21 @@ class TransportAssignedDeliverySubmitterTest {
         return outcomes.stream().map(DispatchOutcome::getStatus).toList();
     }
 
+    private static List<AdapterMailboxDeliveryCommand> routed(DeliveryCommand... commands) {
+        return DeliveryCommandFixtures.routed(commands);
+    }
+
     private static final class FakeHandoff implements TransportDeliveryCommandHandoff {
         private final List<DeliveryCommandBatch> offered = new ArrayList<>();
         private boolean backpressure;
         private RuntimeException failure;
 
         @Override
-        public List<DispatchOutcome> offer(DeliveryQueueOffer offer) {
+        public List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer) {
             if (failure != null) {
                 throw failure;
             }
-            DeliveryCommandBatch batch = new DeliveryCommandBatch(offer.deliveryQueueKey(), offer.commands());
+            DeliveryCommandBatch batch = new DeliveryCommandBatch(offer.adapterMailboxKey(), offer.commands());
             offered.add(batch);
             if (backpressure) {
                 return batch.items().stream()

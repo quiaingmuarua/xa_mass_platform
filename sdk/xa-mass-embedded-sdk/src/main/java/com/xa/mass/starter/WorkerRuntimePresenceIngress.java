@@ -38,6 +38,7 @@ final class WorkerRuntimePresenceIngress implements WorkerPresenceIngress {
         WorkerPresenceChange change = workerPresenceRuntime.sessionConnected(
                 normalized.workerId(),
                 normalized.adapterId(),
+                normalized.adapterMailboxKey(),
                 normalized.routeKey(),
                 normalized.sessionToken(),
                 normalized.observedAtMillis(),
@@ -53,6 +54,7 @@ final class WorkerRuntimePresenceIngress implements WorkerPresenceIngress {
         WorkerPresenceChange change = workerPresenceRuntime.sessionHeartbeat(
                 normalized.workerId(),
                 normalized.adapterId(),
+                normalized.adapterMailboxKey(),
                 normalized.routeKey(),
                 normalized.sessionToken(),
                 normalized.observedAtMillis(),
@@ -70,6 +72,7 @@ final class WorkerRuntimePresenceIngress implements WorkerPresenceIngress {
         WorkerPresenceChange change = workerPresenceRuntime.sessionDisconnected(
                 normalized.workerId(),
                 normalized.adapterId(),
+                normalized.adapterMailboxKey(),
                 normalized.routeKey(),
                 normalized.sessionToken(),
                 normalized.observedAtMillis(),

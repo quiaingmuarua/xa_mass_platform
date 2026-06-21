@@ -3,11 +3,11 @@ package com.xa.mass.transport.runtime.delivery;
 /**
  * Handoff-owned command reference claimed by a local consumer.
  */
-public record DeliveryCommandReference(String deliveryQueueKey,
+public record DeliveryCommandReference(String adapterMailboxKey,
                                        String commandId) {
 
     public DeliveryCommandReference {
-        deliveryQueueKey = requireText(deliveryQueueKey, "deliveryQueueKey");
+        adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
         commandId = requireText(commandId, "commandId");
     }
 

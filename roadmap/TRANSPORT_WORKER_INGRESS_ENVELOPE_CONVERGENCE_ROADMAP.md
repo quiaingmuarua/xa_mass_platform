@@ -1,6 +1,12 @@
 # Transport Worker Ingress Envelope Convergence Roadmap
 
-Status: proposed direction document.
+Status: superseded by
+`TRANSPORT_ROUTING_ENVELOPE_ADAPTER_MAILBOX_CONVERGENCE_ROADMAP.md`.
+
+This document is kept as historical worker-ingress inventory only. Do not
+implement the `WorkerIngress` / `ingressCode` target shape from this roadmap.
+The current direction is `RoutingEnvelope(target, payload, diagnostics)` with
+target-owner payload decoding.
 
 ## Summary
 

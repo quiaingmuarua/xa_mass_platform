@@ -34,12 +34,12 @@ class TransportRedisKeyspaceGuardTest {
                 "bucket:<encodedDeliveryBucketId>:deadlines",
                 "q:<encodedDeliveryQueueKey>",
                 "meta:<encodedDeliveryQueueKey>",
-                "q:<encodedDeliveryQueueKey>:commands",
-                "q:<encodedDeliveryQueueKey>:command-retention-deadlines",
-                "q:<encodedDeliveryQueueKey>:ready-commands",
-                "q:<encodedDeliveryQueueKey>:inflight-commands",
-                "selected-worker-consumers:<encodedDeliveryQueueKey>",
-                "selected-worker-consumer-deadlines:<encodedDeliveryQueueKey>"
+                "mailbox:<encodedAdapterMailboxKey>:commands",
+                "mailbox:<encodedAdapterMailboxKey>:command-retention-deadlines",
+                "mailbox:<encodedAdapterMailboxKey>:ready-commands",
+                "mailbox:<encodedAdapterMailboxKey>:inflight-commands",
+                "mailbox-consumers",
+                "mailbox-consumer-deadlines"
         )) {
             assertTrue(content.contains(keyFamily), () -> "missing transport Redis key family manifest entry: " + keyFamily);
         }
@@ -99,8 +99,10 @@ class TransportRedisKeyspaceGuardTest {
 
         assertTrue(!content.contains("q:<routeKey>"),
                 "transport boundary baseline must not document routeKey-only delivery queues");
-        assertTrue(content.contains("selected-worker-consumers:<encodedDeliveryQueueKey>"),
-                "transport boundary baseline must document selected-worker delivery consumer evidence");
+        assertTrue(content.contains("mailbox-consumers"),
+                "transport boundary baseline must document mailbox delivery consumer evidence");
+        assertTrue(!content.contains("selected-worker-consumers:<encodedDeliveryQueueKey>"),
+                "transport boundary baseline must not document selected-worker delivery consumer evidence");
         assertTrue(!content.contains("q:<encodedDeliveryQueueKey>:worker:<encodedSelectedWorkerId>:ready-commands"),
                 "delivery-command handoff must not document selected-worker physical ready queues");
         assertTrue(!content.contains("worker-index"),

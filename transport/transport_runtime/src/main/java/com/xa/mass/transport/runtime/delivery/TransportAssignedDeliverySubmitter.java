@@ -30,7 +30,7 @@ public final class TransportAssignedDeliverySubmitter {
         this.failureHandler = failureHandler;
     }
 
-    public List<DispatchOutcome> submit(List<DeliveryCommand> commands) {
+    public List<DispatchOutcome> submit(List<AdapterMailboxDeliveryCommand> commands) {
         Objects.requireNonNull(commands, "commands");
         if (commands.isEmpty()) {
             return List.of();
@@ -38,26 +38,12 @@ public final class TransportAssignedDeliverySubmitter {
         List<DispatchOutcome> outcomes = new ArrayList<>();
         Map<String, DeliveryBatchBuilder> batches = new LinkedHashMap<>();
 
-        for (DeliveryCommand command : commands) {
-            DeliveryCommand normalizedCommand = Objects.requireNonNull(command, "command");
-            String deliveryQueueKey;
-            try {
-                deliveryQueueKey = AssignedDeliveryCommandQueueKey.queueKeyFor(normalizedCommand.getDeliveryBucketId());
-            } catch (RuntimeException e) {
-                String reason = e.getMessage() == null || e.getMessage().isBlank()
-                        ? "delivery bucket id is invalid for transport queue addressing"
-                        : e.getMessage();
-                DispatchOutcome outcome = DispatchOutcome.fromCommand(
-                        normalizedCommand,
-                        DispatchOutcomeStatus.INVALID,
-                        false,
-                        reason
-                );
-                outcomes.add(outcome);
-                continue;
-            }
+        for (AdapterMailboxDeliveryCommand routedCommand : commands) {
+            AdapterMailboxDeliveryCommand normalized = Objects.requireNonNull(routedCommand, "routedCommand");
+            DeliveryCommand normalizedCommand = normalized.command();
+            String adapterMailboxKey = normalized.adapterMailboxKey();
             DeliveryBatchBuilder batch = batches.computeIfAbsent(
-                    deliveryQueueKey,
+                    adapterMailboxKey,
                     DeliveryBatchBuilder::new
             );
             batch.items.add(normalizedCommand);
@@ -74,7 +60,7 @@ public final class TransportAssignedDeliverySubmitter {
 
     private List<DispatchOutcome> offerBatch(DeliveryCommandBatch batch) {
         try {
-            List<DispatchOutcome> offered = handoff.offer(new DeliveryQueueOffer(batch.deliveryQueueKey(), batch.items()));
+            List<DispatchOutcome> offered = handoff.offer(new AdapterMailboxDeliveryOffer(batch.adapterMailboxKey(), batch.items()));
             if (offered == null || offered.isEmpty()) {
                 return List.of();
             }
@@ -82,8 +68,8 @@ public final class TransportAssignedDeliverySubmitter {
                     .filter(Objects::nonNull)
                     .toList();
         } catch (RuntimeException e) {
-            logger.warn("Delivery command handoff offer failed: deliveryQueueKey={}, items={}, reason={}",
-                    batch.deliveryQueueKey(), batch.items().size(), e.getMessage());
+            logger.warn("Delivery command handoff offer failed: adapterMailboxKey={}, items={}, reason={}",
+                    batch.adapterMailboxKey(), batch.items().size(), e.getMessage());
             String reason = e.getMessage() == null || e.getMessage().isBlank()
                     ? "delivery command handoff offer failed"
                     : "delivery command handoff offer failed: " + e.getMessage();
@@ -124,15 +110,15 @@ public final class TransportAssignedDeliverySubmitter {
     }
 
     private static final class DeliveryBatchBuilder {
-        private final String deliveryQueueKey;
+        private final String adapterMailboxKey;
         private final List<DeliveryCommand> items = new ArrayList<>();
 
-        private DeliveryBatchBuilder(String deliveryQueueKey) {
-            this.deliveryQueueKey = deliveryQueueKey;
+        private DeliveryBatchBuilder(String adapterMailboxKey) {
+            this.adapterMailboxKey = adapterMailboxKey;
         }
 
         private DeliveryCommandBatch toBatch() {
-            return new DeliveryCommandBatch(deliveryQueueKey, items);
+            return new DeliveryCommandBatch(adapterMailboxKey, items);
         }
     }
 }

@@ -275,14 +275,18 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void pollingPullQueuePlacementDoesNotUseAdapterId() throws IOException {
+    void pollingPullQueuePlacementUsesAdapterMailboxNotDeliveryBucket() throws IOException {
         Path deliveryService = repoRoot().resolve(
                 "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryService.java");
         String source = Files.readString(deliveryService);
-        assertTrue(source.contains("AssignedDeliveryCommandQueueKey.queueKeyFor(deliveryBucketId)"),
-                "Polling pull queue placement must derive from deliveryBucketId");
-        assertTrue(!source.contains("resolveDeliveryQueueKey(adapterId)"),
-                "Polling pull queue placement must not derive from adapterId");
+        assertTrue(source.contains("enqueueForMailbox"),
+                "Polling pull queue placement must use explicit adapter mailbox input");
+        assertTrue(source.contains("pollMailboxItemResult"),
+                "Polling pull demux must poll by adapter mailbox plus selected worker");
+        assertTrue(!source.contains("AssignedDeliveryCommandQueueKey"),
+                "Polling pull queue placement must not derive from deliveryBucketId");
+        assertTrue(!source.contains("resolveDeliveryQueueKey("),
+                "Polling pull queue placement must not keep bucket-derived queue helpers");
 
         assertNoProductionSourceContains(
                 List.of(
@@ -821,11 +825,43 @@ class TransportConvergenceArchitectureGuardTest {
                 List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/TaskDispatchDeliveryCommandSubmitter.java")),
                 "TransportPacket",
                 "TaskDispatchItem",
+                "TransportEndpointLease",
+                "RouteOwner",
+                "adapterId",
                 "routeKey",
                 "deliveryQueueKey",
                 "targetTransportNodeId",
+                "transportNodeId",
+                "connectionId",
+                "sessionToken",
                 "connectionToken",
                 "\"unknown\""
+        );
+    }
+
+    @Test
+    void selectedWorkerMailboxEvidenceMainlineStaysPointLookupOnly() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerDeliveryTargetView.java"),
+                        repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/SelectedWorkerDeliveryTargetEvidence.java")
+                ),
+                "List<",
+                "Map<",
+                "list",
+                "stats",
+                "snapshot",
+                "count",
+                "inspect"
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("xa-mass-base/src/main/java/com/xa/mass/base/runtime/dispatch/TaskDispatchBinding.java")),
+                "adapterMailboxKey"
+        );
+        assertNoTextFilesContain(
+                List.of(repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/presence/InMemoryWorkerPresenceRuntime.java")),
+                "public synchronized int activeSessionCount",
+                "public int activeSessionCount"
         );
     }
 

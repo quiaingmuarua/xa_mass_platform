@@ -73,8 +73,8 @@ class RedisTransportDeliveryStoreTest {
 
     @Test
     void enqueueDrainAndPollUseSelectedWorkerSelectorUnderSharedDeliveryQueue() throws Exception {
-        DispatchOutcome first = store.enqueue(" Polling ", " Queue-A ", queued(" Queue-A ", item("msg-1", " worker-1 ")));
-        store.enqueue("polling", "Queue-A", queued("Queue-A", item("msg-2", "worker-2")));
+        DispatchOutcome first = store.enqueue(" Queue-A ", queued(" Queue-A ", item("msg-1", " worker-1 ")));
+        store.enqueue("Queue-A", queued("Queue-A", item("msg-2", "worker-2")));
 
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
         assertEquals("worker-1", first.getSelectedWorkerId());
@@ -95,13 +95,13 @@ class RedisTransportDeliveryStoreTest {
 
     @Test
     void enqueueRejectsInvalidAndBackpressureStates() {
-        DispatchOutcome invalid = store.enqueue("polling", "polling", invalidQueued("polling", item("msg-1", null)));
-        DispatchOutcome first = store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-1")));
-        DispatchOutcome second = store.enqueue("polling", "polling", queued("polling", item("msg-3", "worker-1")));
-        DispatchOutcome third = store.enqueue("polling", "polling", queued("polling", item("msg-4", "worker-1")));
-        DispatchOutcome fourth = store.enqueue("polling", "polling", queued("polling", item("msg-5", "worker-2")));
-        DispatchOutcome fifth = store.enqueue("polling", "polling", queued("polling", item("msg-6", "worker-3")));
-        DispatchOutcome sixth = store.enqueue("polling", "polling", queued("polling", item("msg-7", "worker-4")));
+        DispatchOutcome invalid = store.enqueue("polling", invalidQueued("polling", item("msg-1", null)));
+        DispatchOutcome first = store.enqueue("polling", queued("polling", item("msg-2", "worker-1")));
+        DispatchOutcome second = store.enqueue("polling", queued("polling", item("msg-3", "worker-1")));
+        DispatchOutcome third = store.enqueue("polling", queued("polling", item("msg-4", "worker-1")));
+        DispatchOutcome fourth = store.enqueue("polling", queued("polling", item("msg-5", "worker-2")));
+        DispatchOutcome fifth = store.enqueue("polling", queued("polling", item("msg-6", "worker-3")));
+        DispatchOutcome sixth = store.enqueue("polling", queued("polling", item("msg-7", "worker-4")));
 
         assertEquals(DispatchOutcomeStatus.INVALID, invalid.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
@@ -116,8 +116,8 @@ class RedisTransportDeliveryStoreTest {
 
     @Test
     void statsExposeDeliveryQueueBreakdownAndShutdownClearing() {
-        store.enqueue("polling", "polling", queued("polling", item("msg-1", "worker-1")));
-        store.enqueue("polling", "polling", queued("polling", item("msg-2", "worker-2")));
+        store.enqueue("polling", queued("polling", item("msg-1", "worker-1")));
+        store.enqueue("polling", queued("polling", item("msg-2", "worker-2")));
 
         TransportDeliveryStoreStats queued = store.stats();
         assertEquals(2, queued.getQueuedItems());

@@ -17,13 +17,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * In-process non-blocking delivery command handoff.
  */
 public final class InMemoryTransportDeliveryCommandHandoff implements TransportDeliveryCommandHandoff,
-        DeliveryCommandConsumerRegistry {
+        AdapterMailboxConsumerRegistry {
 
     private static final long DEFAULT_VISIBILITY_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30L);
 
-    private final LinkedBlockingQueue<DeliveryCommandBatch> queue;
+    private final Map<String, LinkedBlockingQueue<DeliveryCommandBatch>> readyByMailbox = new ConcurrentHashMap<>();
     private final Map<String, InflightClaim> inflightByCommandId = new ConcurrentHashMap<>();
-    private final Map<String, ConsumerEvidence> consumerByBucketWorker = new ConcurrentHashMap<>();
+    private final Map<String, MailboxConsumerEvidence> mailboxConsumers = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final int capacity;
     private final long visibilityTimeoutMillis;
@@ -41,11 +41,10 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         }
         this.capacity = capacity;
         this.visibilityTimeoutMillis = visibilityTimeoutMillis;
-        this.queue = new LinkedBlockingQueue<>(capacity);
     }
 
     @Override
-    public List<DispatchOutcome> offer(DeliveryQueueOffer offer) {
+    public List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer) {
         Objects.requireNonNull(offer, "offer");
         reclaimExpiredInflight();
         if (!running.get()) {
@@ -57,12 +56,21 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
                             "delivery command handoff is stopped"))
                     .toList();
         }
+        if (currentEvidence(offer.adapterMailboxKey()) == null) {
+            return offer.commands().stream()
+                    .map(item -> DispatchOutcome.fromCommand(
+                            item,
+                            DispatchOutcomeStatus.UNAVAILABLE,
+                            true,
+                            "adapter mailbox has no active consumer"))
+                    .toList();
+        }
         List<DispatchOutcome> outcomes = new ArrayList<>(offer.commands().size());
         for (DeliveryCommand command : offer.commands()) {
             DeliveryCommandBatch batch = new DeliveryCommandBatch(
-                    offer.deliveryQueueKey(),
+                    offer.adapterMailboxKey(),
                     List.of(new DeliveryCommandReference(
-                            offer.deliveryQueueKey(),
+                            offer.adapterMailboxKey(),
                             command.getCommandId()
                     )),
                     List.of(command)
@@ -81,10 +89,10 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
     @Override
     public DeliveryCommandBatch poll(long timeoutMillis) throws InterruptedException {
         reclaimExpiredInflight();
-        if (!running.get() && queue.isEmpty()) {
+        if (!running.get() && readyQueuesEmpty()) {
             return null;
         }
-        DeliveryCommandBatch batch = queue.poll(Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
+        DeliveryCommandBatch batch = pollLocalMailboxBatch(Math.max(0L, timeoutMillis));
         if (batch == null) {
             return null;
         }
@@ -111,54 +119,47 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
     @Override
     public void shutdown() {
         running.set(false);
-        queue.clear();
+        readyByMailbox.clear();
         inflightByCommandId.clear();
-        consumerByBucketWorker.clear();
+        mailboxConsumers.clear();
     }
 
     @Override
-    public void claimConsumer(DeliveryCommandConsumerClaim claim) {
-        Objects.requireNonNull(claim, "claim");
-        String deliveryQueueKey = AssignedDeliveryCommandQueueKey.queueKeyFor(claim.deliveryBucketId());
-        consumerByBucketWorker.put(
-                selectedWorkerConsumerKey(deliveryQueueKey, claim.selectedWorkerId()),
-                new ConsumerEvidence(
-                        claim.endpointLeaseId(),
-                        claim.leaseExpireAtEpochMillis()
-                )
-        );
+    public void claimMailboxConsumer(AdapterMailboxConsumerLease lease) {
+        Objects.requireNonNull(lease, "lease");
+        mailboxConsumers.put(lease.adapterMailboxKey(), new MailboxConsumerEvidence(
+                lease.consumerId(),
+                lease.generation(),
+                lease.leaseDeadlineEpochMillis()
+        ));
     }
 
     @Override
-    public void releaseConsumer(DeliveryCommandConsumerClaim claim) {
-        Objects.requireNonNull(claim, "claim");
-        String deliveryQueueKey = AssignedDeliveryCommandQueueKey.queueKeyFor(claim.deliveryBucketId());
-        consumerByBucketWorker.computeIfPresent(selectedWorkerConsumerKey(deliveryQueueKey, claim.selectedWorkerId()),
-                (ignored, current) -> claim.endpointLeaseId().equals(current.endpointLeaseId()) ? null : current);
+    public void releaseMailboxConsumer(AdapterMailboxConsumerLease lease) {
+        Objects.requireNonNull(lease, "lease");
+        mailboxConsumers.computeIfPresent(lease.adapterMailboxKey(),
+                (ignored, current) -> lease.consumerId().equals(current.consumerId()) ? null : current);
     }
 
-    private ConsumerEvidence currentEvidence(String deliveryQueueKey, String selectedWorkerId) {
-        String key = selectedWorkerConsumerKey(deliveryQueueKey, selectedWorkerId);
-        ConsumerEvidence evidence = consumerByBucketWorker.get(key);
+    private MailboxConsumerEvidence currentEvidence(String adapterMailboxKey) {
+        MailboxConsumerEvidence evidence = mailboxConsumers.get(adapterMailboxKey);
         if (evidence == null) {
             return null;
         }
-        if (evidence.leaseExpireAtEpochMillis() <= System.currentTimeMillis()) {
-            consumerByBucketWorker.remove(key, evidence);
+        if (evidence.leaseDeadlineEpochMillis() <= System.currentTimeMillis()) {
+            mailboxConsumers.remove(adapterMailboxKey, evidence);
             return null;
         }
         return evidence;
     }
 
-    private static String selectedWorkerConsumerKey(String deliveryQueueKey, String selectedWorkerId) {
-        return deliveryQueueKey + "\n" + selectedWorkerId;
-    }
-
     private boolean offerReadyBatch(DeliveryCommandBatch batch) {
-        if (queue.size() + inflightByCommandId.size() >= capacity) {
+        String mailboxKey = batch.adapterMailboxKey();
+        LinkedBlockingQueue<DeliveryCommandBatch> readyQueue = queueForMailbox(mailboxKey);
+        if (readyQueue.size() + inflightClaimsForMailbox(mailboxKey) >= capacity) {
             return false;
         }
-        return queue.offer(batch);
+        return readyQueue.offer(batch);
     }
 
     private void reclaimExpiredInflight() {
@@ -169,9 +170,64 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
                 continue;
             }
             if (inflightByCommandId.remove(entry.getKey(), claim)) {
-                queue.offer(claim.batch());
+                queueForMailbox(claim.batch().adapterMailboxKey()).offer(claim.batch());
             }
         }
+    }
+
+    private DeliveryCommandBatch pollLocalMailboxBatch(long timeoutMillis) throws InterruptedException {
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        do {
+            for (String mailboxKey : activeMailboxKeys()) {
+                DeliveryCommandBatch batch = queueForMailbox(mailboxKey).poll();
+                if (batch != null) {
+                    return batch;
+                }
+            }
+            if (timeoutMillis <= 0L) {
+                return null;
+            }
+            long remaining = deadlineNanos - System.nanoTime();
+            if (remaining <= 0L) {
+                return null;
+            }
+            TimeUnit.MILLISECONDS.sleep(Math.min(TimeUnit.NANOSECONDS.toMillis(remaining), 50L));
+            timeoutMillis = TimeUnit.NANOSECONDS.toMillis(remaining);
+        } while (running.get());
+        return null;
+    }
+
+    private LinkedBlockingQueue<DeliveryCommandBatch> queueForMailbox(String adapterMailboxKey) {
+        return readyByMailbox.computeIfAbsent(adapterMailboxKey, ignored -> new LinkedBlockingQueue<>());
+    }
+
+    private List<String> activeMailboxKeys() {
+        List<String> keys = new ArrayList<>();
+        for (String mailboxKey : mailboxConsumers.keySet()) {
+            if (currentEvidence(mailboxKey) != null) {
+                keys.add(mailboxKey);
+            }
+        }
+        return keys;
+    }
+
+    private boolean readyQueuesEmpty() {
+        for (LinkedBlockingQueue<DeliveryCommandBatch> queue : readyByMailbox.values()) {
+            if (!queue.isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private long inflightClaimsForMailbox(String adapterMailboxKey) {
+        long count = 0L;
+        for (InflightClaim claim : inflightByCommandId.values()) {
+            if (adapterMailboxKey.equals(claim.batch().adapterMailboxKey())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static DeliveryCommandReference firstReference(DeliveryCommandBatch batch) {
@@ -187,8 +243,9 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         inflightByCommandId.replaceAll((ignored, claim) -> new InflightClaim(claim.batch(), expiredAt));
     }
 
-    private record ConsumerEvidence(String endpointLeaseId,
-                                    long leaseExpireAtEpochMillis) {
+    private record MailboxConsumerEvidence(String consumerId,
+                                           long generation,
+                                           long leaseDeadlineEpochMillis) {
     }
 
     private record InflightClaim(DeliveryCommandBatch batch,

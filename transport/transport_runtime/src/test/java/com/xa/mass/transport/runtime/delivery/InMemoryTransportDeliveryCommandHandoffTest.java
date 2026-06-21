@@ -21,7 +21,7 @@ class InMemoryTransportDeliveryCommandHandoffTest {
     void offerAndPollRoundTrip() throws Exception {
         InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(2);
         claim(handoff, "worker-1", "node-1", "websocket");
-        DeliveryQueueOffer offer = DeliveryCommandFixtures.offer(
+        AdapterMailboxDeliveryOffer offer = DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         );
 
@@ -32,7 +32,7 @@ class InMemoryTransportDeliveryCommandHandoffTest {
 
         DeliveryCommandBatch polled = handoff.poll(100L);
         assertNotNull(polled);
-        assertEquals(DeliveryCommandFixtures.queueKey(), polled.deliveryQueueKey());
+        assertEquals(DeliveryCommandFixtures.mailboxKey(), polled.adapterMailboxKey());
         assertEquals("worker-1", polled.items().getFirst().getSelectedWorkerId());
         assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(polled));
     }
@@ -52,6 +52,55 @@ class InMemoryTransportDeliveryCommandHandoffTest {
                         DeliveryCommandFixtures.command("msg-2", "worker-2", "node-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
+    }
+
+    @Test
+    void backpressureIsScopedByAdapterMailboxQueue() {
+        InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(1);
+        claimMailbox(handoff, "mailbox-1", "consumer-1", 1L);
+        claimMailbox(handoff, "mailbox-2", "consumer-2", 1L);
+
+        assertEquals(
+                List.of(DispatchOutcomeStatus.QUEUED),
+                handoff.offer(new AdapterMailboxDeliveryOffer(
+                        "mailbox-1",
+                        List.of(DeliveryCommandFixtures.command("msg-1", "worker-1", null))
+                )).stream().map(outcome -> outcome.getStatus()).toList()
+        );
+        assertEquals(
+                List.of(DispatchOutcomeStatus.QUEUED),
+                handoff.offer(new AdapterMailboxDeliveryOffer(
+                        "mailbox-2",
+                        List.of(DeliveryCommandFixtures.command("msg-2", "worker-2", null))
+                )).stream().map(outcome -> outcome.getStatus()).toList()
+        );
+    }
+
+    @Test
+    void staleMailboxQueueDoesNotBlockActiveMailboxPoll() throws Exception {
+        InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(2);
+        claimMailbox(handoff, "mailbox-stale", "consumer-stale", 1L);
+        claimMailbox(handoff, "mailbox-active", "consumer-active", 1L);
+        handoff.offer(new AdapterMailboxDeliveryOffer(
+                "mailbox-stale",
+                List.of(DeliveryCommandFixtures.command("msg-stale", "worker-stale", null))
+        ));
+        handoff.offer(new AdapterMailboxDeliveryOffer(
+                "mailbox-active",
+                List.of(DeliveryCommandFixtures.command("msg-active", "worker-active", null))
+        ));
+
+        handoff.releaseMailboxConsumer(new AdapterMailboxConsumerLease(
+                "mailbox-stale",
+                "consumer-stale",
+                1L,
+                0L
+        ));
+        DeliveryCommandBatch active = handoff.poll(0L);
+
+        assertNotNull(active);
+        assertEquals("mailbox-active", active.adapterMailboxKey());
+        assertEquals(List.of("msg-active"), DeliveryCommandFixtures.messages(active));
     }
 
     @Test
@@ -92,27 +141,29 @@ class InMemoryTransportDeliveryCommandHandoffTest {
     }
 
     @Test
-    void offerQueuesWithoutProducerSideConsumerEvidenceLookup() throws Exception {
+    void offerWithoutMailboxConsumerReturnsUnavailable() {
         InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(1);
 
         assertEquals(
-                List.of(DispatchOutcomeStatus.QUEUED),
+                List.of(DispatchOutcomeStatus.UNAVAILABLE),
                 handoff.offer(DeliveryCommandFixtures.offer(
                         DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
-        DeliveryCommandBatch polled = handoff.poll(100L);
-        assertNotNull(polled);
-        assertEquals("worker-1", polled.items().getFirst().getSelectedWorkerId());
     }
 
     @Test
-    void staleReleaseDoesNotRemoveNewConsumerEvidenceOnSameQueueConsumer() {
+    void staleReleaseDoesNotRemoveNewMailboxConsumerLease() {
         InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(2);
-        claim(handoff, "worker-1", "node-1", "conn-old", "websocket");
-        claim(handoff, "worker-1", "node-1", "conn-new", "websocket");
+        claim(handoff, "consumer-old", 1L);
+        claim(handoff, "consumer-new", 2L);
 
-        handoff.releaseConsumer(new DeliveryCommandConsumerClaim("bucket-1", "worker-1", "conn-old", 0L));
+        handoff.releaseMailboxConsumer(new AdapterMailboxConsumerLease(
+                DeliveryCommandFixtures.mailboxKey(),
+                "consumer-old",
+                1L,
+                0L
+        ));
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
@@ -126,7 +177,7 @@ class InMemoryTransportDeliveryCommandHandoffTest {
                               String workerId,
                               String endpointLeaseId,
                               String endpointDriverId) {
-        claim(handoff, workerId, endpointLeaseId, endpointLeaseId, endpointDriverId);
+        claim(handoff, "consumer-1", 1L);
     }
 
     private static void claim(InMemoryTransportDeliveryCommandHandoff handoff,
@@ -134,10 +185,23 @@ class InMemoryTransportDeliveryCommandHandoffTest {
                               String endpointLeaseId,
                               String consumerEvidenceId,
                               String endpointDriverId) {
-        handoff.claimConsumer(new DeliveryCommandConsumerClaim(
-                "bucket-1",
-                workerId,
-                consumerEvidenceId,
+        claim(handoff, consumerEvidenceId, 1L);
+    }
+
+    private static void claim(InMemoryTransportDeliveryCommandHandoff handoff,
+                              String consumerId,
+                              long generation) {
+        claimMailbox(handoff, DeliveryCommandFixtures.mailboxKey(), consumerId, generation);
+    }
+
+    private static void claimMailbox(InMemoryTransportDeliveryCommandHandoff handoff,
+                                     String mailboxKey,
+                                     String consumerId,
+                                     long generation) {
+        handoff.claimMailboxConsumer(new AdapterMailboxConsumerLease(
+                mailboxKey,
+                consumerId,
+                generation,
                 System.currentTimeMillis() + 30_000L
         ));
     }

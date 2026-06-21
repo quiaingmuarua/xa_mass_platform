@@ -43,10 +43,12 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
     @Override
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
+        String adapterMailboxKey = config.getAdapterId();
         WebSocketSessionStore sessionStore = new WebSocketSessionStore(config.getAdapterId());
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(config.getAdapterId());
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
+                config.getAdapterId(),
+                adapterMailboxKey);
         evidenceDriver.setEndpointLeaseStore(context.getEndpointLeaseStore());
-        evidenceDriver.setDeliveryCommandConsumerRegistry(context.getDeliveryCommandConsumerRegistry());
         evidenceDriver.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
         WebSocketSessionRefreshLoop refreshLoop =
                 new WebSocketSessionRefreshLoop(config.getAdapterId(), sessionStore, evidenceDriver);
@@ -79,6 +81,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                             com.xa.mass.transport.WorkerTransportHints.REALTIME,
                             commandExecutor
                     )
+                    .adapterMailboxKey(adapterMailboxKey)
                     .protocol(WebSocketAdapterConfig.PROTOCOL)
                     .build());
             contribution.addRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(

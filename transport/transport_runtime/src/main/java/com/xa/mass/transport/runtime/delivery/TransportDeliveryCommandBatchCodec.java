@@ -25,7 +25,7 @@ final class TransportDeliveryCommandBatchCodec {
                 .map(this::toCommandRecord)
                 .toList();
         return gson.toJson(new DeliveryCommandBatchRecord(
-                batch.deliveryQueueKey(),
+                batch.adapterMailboxKey(),
                 items
         ));
     }
@@ -35,13 +35,13 @@ final class TransportDeliveryCommandBatchCodec {
             throw new IllegalArgumentException("json must not be blank");
         }
         DecodedDeliveryCommandBatchRecord record = gson.fromJson(json, DecodedDeliveryCommandBatchRecord.class);
-        if (record == null || record.deliveryQueueKey == null || record.items == null || record.items.isEmpty()) {
+        if (record == null || record.adapterMailboxKey == null || record.items == null || record.items.isEmpty()) {
             throw new IllegalArgumentException("encoded delivery command batch is incomplete");
         }
         List<DeliveryCommand> items = record.items.stream()
                 .map(this::fromCommandRecord)
                 .toList();
-        return new DeliveryCommandBatch(record.deliveryQueueKey, items);
+        return new DeliveryCommandBatch(record.adapterMailboxKey, items);
     }
 
     private DeliveryCommandRecord toCommandRecord(DeliveryCommand command) {
@@ -71,7 +71,7 @@ final class TransportDeliveryCommandBatchCodec {
         );
     }
 
-    private record DeliveryCommandBatchRecord(String deliveryQueueKey,
+    private record DeliveryCommandBatchRecord(String adapterMailboxKey,
                                               List<DeliveryCommandRecord> items) {
     }
 
@@ -85,7 +85,7 @@ final class TransportDeliveryCommandBatchCodec {
     }
 
     private static final class DecodedDeliveryCommandBatchRecord {
-        private String deliveryQueueKey;
+        private String adapterMailboxKey;
         private List<DecodedDeliveryCommandRecord> items;
     }
 

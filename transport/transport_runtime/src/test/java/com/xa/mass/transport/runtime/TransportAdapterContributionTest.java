@@ -75,7 +75,9 @@ class TransportAdapterContributionTest {
                         "websocket",
                         WorkerTransportHints.POLLING,
                         executor()
-                ).build())
+                )
+                        .adapterMailboxKey("websocket")
+                        .build())
                 .build();
 
         IllegalStateException error = assertThrows(
@@ -101,6 +103,7 @@ class TransportAdapterContributionTest {
 
     private static TransportBinding binding(String adapterId) {
         return TransportBinding.builder(adapterId, WorkerTransportHints.REALTIME, executor())
+                .adapterMailboxKey(adapterId)
                 .protocol(adapterId)
                 .build();
     }

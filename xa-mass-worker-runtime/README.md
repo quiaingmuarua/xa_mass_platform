@@ -105,6 +105,12 @@ Worker runtime does not own transport delivery identity:
   endpoint lease ids, session handles, and delivery queue keys are not worker
   selection inputs. If they affect scheduling, they must first be projected into
   bounded worker-runtime evidence.
+- `WorkerDeliveryTargetView` is the narrow worker-runtime delivery evidence
+  surface for the post-selection handoff: point lookup from `selectedWorkerId`
+  to an opaque `adapterMailboxKey`. Embedded runtimes may derive it from local
+  worker session presence; split runtimes must use an explicit injected view or
+  a future worker-runtime-owned shared projection. It is not a worker list,
+  mailbox list, statistics surface, endpoint inventory, or scheduling view.
 
 ## Worker Runtime State Dimensions
 

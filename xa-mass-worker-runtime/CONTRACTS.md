@@ -184,6 +184,8 @@ Owned contracts:
 
 - `WorkerSchedulingViewRuntime`
 - `WorkerReachabilityView`
+- `WorkerDeliveryTargetView`
+- `SelectedWorkerDeliveryTargetEvidence`
 - `WorkerReachabilityState`
 - `WorkerReadinessState`
 - `WorkerOccupancyState`
@@ -200,6 +202,14 @@ Evidence is read-only worker-runtime input and diagnostic output. Engine
 scheduling must not read it directly as a worker-selection input; selected
 handles are the engine hot-path contract. Evidence must not mutate worker
 lifecycle truth.
+
+`WorkerDeliveryTargetView` is the post-selection delivery evidence contract.
+It resolves an already selected worker to an opaque adapter mailbox target.
+SDK/starter delivery integration may consume it after assignment; engine
+selection must not read adapter mailboxes, endpoint leases, route keys,
+connection ids, session handles, transport node ids, or adapter ids as worker
+selection truth. The contract is point lookup only and must not grow list,
+count, stats, snapshot, or inspection APIs.
 
 Reachability, readiness, and occupancy are separate dimensions. `UNKNOWN`
 reachability is an observation gap; only `ONLINE` is reachable for scheduling.
