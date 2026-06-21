@@ -141,47 +141,47 @@ public final class SelectedWorkerHandle {
         return exclusiveWorkerLock;
     }
 
-    public String eventBindingKey() {
+    String eventBindingKey() {
         return eventBindingKey;
     }
 
-    public String workerCandidateSource() {
+    String workerCandidateSource() {
         return workerCandidateSource;
     }
 
-    public String workerSchedulingResourceId() {
+    String workerSchedulingResourceId() {
         return workerSchedulingResourceId;
     }
 
-    public String workerSchedulingRoutingTags() {
+    String workerSchedulingRoutingTags() {
         return workerSchedulingRoutingTags;
     }
 
-    public Map<String, String> workerSchedulingAttributes() {
+    Map<String, String> workerSchedulingAttributes() {
         return workerSchedulingAttributes;
     }
 
-    public Boolean workerSchedulingMatchesRoutingCode() {
+    Boolean workerSchedulingMatchesRoutingCode() {
         return workerSchedulingMatchesRoutingCode;
     }
 
-    public Double candidateScore() {
+    Double candidateScore() {
         return candidateScore;
     }
 
-    public Integer workerActiveLeaseCount() {
+    Integer workerActiveLeaseCount() {
         return workerActiveLeaseCount;
     }
 
-    public Integer workerReservedCount() {
+    Integer workerReservedCount() {
         return workerReservedCount;
     }
 
-    public Integer workerDeclaredCapacity() {
+    Integer workerDeclaredCapacity() {
         return workerDeclaredCapacity;
     }
 
-    public Double workerEstimatedLoadRatio() {
+    Double workerEstimatedLoadRatio() {
         return workerEstimatedLoadRatio;
     }
 

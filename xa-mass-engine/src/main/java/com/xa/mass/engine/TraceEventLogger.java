@@ -14,6 +14,7 @@ import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
+import com.xa.mass.worker.runtime.selection.SelectedWorkerTraceEvidence;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
 import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -341,24 +342,25 @@ public final class TraceEventLogger {
         if (task == null || selectedWorker == null) {
             return;
         }
+        SelectedWorkerTraceEvidence evidence = SelectedWorkerTraceEvidence.from(selectedWorker);
         Map<String, Object> attrs = attrs(
                 "trigger", trigger,
                 "source", source,
                 "reason", reason,
                 "result", "SUCCESS",
                 "workerGroupId", selectedWorker.workerGroupId(),
-                "eventBindingKey", selectedWorker.eventBindingKey(),
-                "workerCandidateSource", selectedWorker.workerCandidateSource(),
-                "workerSchedulingResourceId", selectedWorker.workerSchedulingResourceId(),
-                "workerSchedulingRoutingTags", selectedWorker.workerSchedulingRoutingTags(),
-                "workerSchedulingAttributes", selectedWorker.workerSchedulingAttributes(),
-                "workerSchedulingMatchesRoutingCode", selectedWorker.workerSchedulingMatchesRoutingCode(),
+                "eventBindingKey", evidence.eventBindingKey(),
+                "workerCandidateSource", evidence.workerCandidateSource(),
+                "workerSchedulingResourceId", evidence.workerSchedulingResourceId(),
+                "workerSchedulingRoutingTags", evidence.workerSchedulingRoutingTags(),
+                "workerSchedulingAttributes", evidence.workerSchedulingAttributes(),
+                "workerSchedulingMatchesRoutingCode", evidence.workerSchedulingMatchesRoutingCode(),
                 "candidateRank", Math.max(candidateRank, 0),
-                "candidateScore", selectedWorker.candidateScore(),
-                "workerActiveLeaseCount", selectedWorker.workerActiveLeaseCount(),
-                "workerReservedCount", selectedWorker.workerReservedCount(),
-                "workerDeclaredCapacity", selectedWorker.workerDeclaredCapacity(),
-                "workerEstimatedLoadRatio", selectedWorker.workerEstimatedLoadRatio(),
+                "candidateScore", evidence.candidateScore(),
+                "workerActiveLeaseCount", evidence.workerActiveLeaseCount(),
+                "workerReservedCount", evidence.workerReservedCount(),
+                "workerDeclaredCapacity", evidence.workerDeclaredCapacity(),
+                "workerEstimatedLoadRatio", evidence.workerEstimatedLoadRatio(),
                 "exclusiveWorkerLock", selectedWorker.exclusiveWorkerLock()
         );
         putTaskRuntimeProfile(attrs, task);
