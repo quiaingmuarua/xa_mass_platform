@@ -34,7 +34,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
 
     @Override
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
-        String adapterMailboxKey = config.getAdapterId();
+        String adapterMailboxKey = context.adapterMailboxKey(config.getAdapterId());
         SocketSessionManager sessionManager = resolveSessionManager(context, adapterMailboxKey);
         SocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
                 new SocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionManager);
@@ -77,10 +77,11 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
 
     private SocketSessionManager resolveSessionManager(TransportAdapterBootstrapContext context,
                                                        String adapterMailboxKey) {
-        SocketSessionManager sessionManager = new SocketSessionManager(config.getAdapterId(), adapterMailboxKey);
-        sessionManager.setEndpointLeaseStore(context.getEndpointLeaseStore());
-        sessionManager.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
-        return sessionManager;
+        return new SocketSessionManager(
+                config.getAdapterId(),
+                adapterMailboxKey,
+                context.sessionEvidencePublisher(config.getAdapterId(), adapterMailboxKey)
+        );
     }
 
     private static final class SocketRawWorkerMessageChannel implements RawWorkerMessageChannel {

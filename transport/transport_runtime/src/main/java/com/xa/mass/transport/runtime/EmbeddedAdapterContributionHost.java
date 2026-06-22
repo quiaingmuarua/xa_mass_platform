@@ -4,6 +4,8 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,20 +13,22 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Embedded Java runtime unit for one adapter contribution.
+ * Embedded Java host unit for one adapter contribution.
  */
-public final class EmbeddedAdapterContributionRuntime {
+public final class EmbeddedAdapterContributionHost {
 
     private final List<TransportBinding> bindings;
     private final List<ManagedTransportAdapter> managedTransportAdapters;
     private final List<TransportServer> transportServers;
-    private final List<AdapterMailboxLeaseRuntime> mailboxLeaseRuntimes;
+    private final List<AdapterMailboxMount> mailboxMounts;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public EmbeddedAdapterContributionRuntime(TransportAdapterContribution contribution,
-                                              AdapterMailboxConsumerRegistry mailboxConsumerRegistry,
-                                              long mailboxConsumerLeaseMillis,
-                                              RuntimeTaskExecutor runtimeTaskExecutor) {
+    public EmbeddedAdapterContributionHost(TransportAdapterContribution contribution,
+                                           TransportDeliveryCommandHandoff handoff,
+                                           TransportDeliveryFailureHandler failureHandler,
+                                           AdapterMailboxConsumerRegistry mailboxConsumerRegistry,
+                                           long mailboxConsumerAvailabilityMillis,
+                                           RuntimeTaskExecutor runtimeTaskExecutor) {
         TransportAdapterContribution resolved = contribution != null
                 ? contribution
                 : TransportAdapterContribution.empty();
@@ -34,16 +38,26 @@ public final class EmbeddedAdapterContributionRuntime {
         AdapterMailboxConsumerRegistry registry = mailboxConsumerRegistry != null
                 ? mailboxConsumerRegistry
                 : NoopAdapterMailboxConsumerRegistry.INSTANCE;
-        List<AdapterMailboxLeaseRuntime> leaseRuntimes = new ArrayList<>();
-        for (TransportBinding binding : bindings) {
-            leaseRuntimes.add(new AdapterMailboxLeaseRuntime(
-                    binding,
-                    registry,
-                    mailboxConsumerLeaseMillis,
-                    Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor")
-            ));
+        RuntimeTaskExecutor executor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
+        List<AdapterMailboxMount> mounts = new ArrayList<>();
+        if (handoff != null) {
+            for (TransportBinding binding : bindings) {
+                MailboxConsumerAvailabilityPublisher availabilityPublisher = new MailboxConsumerAvailabilityPublisher(
+                        binding,
+                        registry,
+                        mailboxConsumerAvailabilityMillis,
+                        executor
+                );
+                mounts.add(new AdapterMailboxMount(
+                        binding,
+                        handoff,
+                        availabilityPublisher,
+                        failureHandler,
+                        executor
+                ));
+            }
         }
-        this.mailboxLeaseRuntimes = List.copyOf(leaseRuntimes);
+        this.mailboxMounts = List.copyOf(mounts);
     }
 
     public List<TransportBinding> bindings() {
@@ -65,8 +79,8 @@ public final class EmbeddedAdapterContributionRuntime {
                     throw new RuntimeException("Failed to start transport server", e);
                 }
             }
-            for (AdapterMailboxLeaseRuntime mailboxLeaseRuntime : mailboxLeaseRuntimes) {
-                mailboxLeaseRuntime.start();
+            for (AdapterMailboxMount mailboxMount : mailboxMounts) {
+                mailboxMount.start();
             }
         } catch (RuntimeException e) {
             stop();
@@ -79,9 +93,9 @@ public final class EmbeddedAdapterContributionRuntime {
             return;
         }
         RuntimeException failure = null;
+        failure = stopMailboxMounts(failure);
         failure = stopServers(failure);
         failure = stopManagedAdapters(failure);
-        failure = stopMailboxLeases(failure);
         if (failure != null) {
             throw failure;
         }
@@ -91,7 +105,7 @@ public final class EmbeddedAdapterContributionRuntime {
         return running.get()
                 && managedTransportAdapters.stream().allMatch(ManagedTransportAdapter::isRunning)
                 && transportServers.stream().allMatch(TransportServer::isRunning)
-                && mailboxLeaseRuntimes.stream().allMatch(AdapterMailboxLeaseRuntime::isRunning);
+                && mailboxMounts.stream().allMatch(AdapterMailboxMount::isRunning);
     }
 
     private RuntimeException stopServers(RuntimeException failure) {
@@ -118,10 +132,10 @@ public final class EmbeddedAdapterContributionRuntime {
         return failure;
     }
 
-    private RuntimeException stopMailboxLeases(RuntimeException failure) {
-        for (AdapterMailboxLeaseRuntime mailboxLeaseRuntime : mailboxLeaseRuntimes) {
+    private RuntimeException stopMailboxMounts(RuntimeException failure) {
+        for (AdapterMailboxMount mailboxMount : mailboxMounts) {
             try {
-                mailboxLeaseRuntime.stop();
+                mailboxMount.stop();
             } catch (RuntimeException e) {
                 failure = append(failure, e);
             }

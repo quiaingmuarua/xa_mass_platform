@@ -3,33 +3,37 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Embedded adapter runtime collection owned by starter assembly.
+ * Embedded adapter host collection owned by starter assembly.
  */
-public final class EmbeddedAdapterRuntimeSet {
+public final class EmbeddedAdapterHostSet {
 
-    private static final EmbeddedAdapterRuntimeSet EMPTY = new EmbeddedAdapterRuntimeSet(List.of());
+    private static final EmbeddedAdapterHostSet EMPTY = new EmbeddedAdapterHostSet(List.of());
 
-    private final List<EmbeddedAdapterContributionRuntime> runtimes;
+    private final List<EmbeddedAdapterContributionHost> hosts;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    private EmbeddedAdapterRuntimeSet(List<EmbeddedAdapterContributionRuntime> runtimes) {
-        this.runtimes = List.copyOf(runtimes);
+    private EmbeddedAdapterHostSet(List<EmbeddedAdapterContributionHost> hosts) {
+        this.hosts = List.copyOf(hosts);
     }
 
-    public static EmbeddedAdapterRuntimeSet empty() {
+    public static EmbeddedAdapterHostSet empty() {
         return EMPTY;
     }
 
-    public static EmbeddedAdapterRuntimeSet fromContributions(
+    public static EmbeddedAdapterHostSet fromContributions(
             List<TransportAdapterContribution> contributions,
+            TransportDeliveryCommandHandoff handoff,
+            TransportDeliveryFailureHandler failureHandler,
             AdapterMailboxConsumerRegistry mailboxConsumerRegistry,
-            long mailboxConsumerLeaseMillis,
+            long mailboxConsumerAvailabilityMillis,
             RuntimeTaskExecutor runtimeTaskExecutor) {
         if (contributions == null || contributions.isEmpty()) {
             return empty();
@@ -37,22 +41,24 @@ public final class EmbeddedAdapterRuntimeSet {
         AdapterMailboxConsumerRegistry registry = mailboxConsumerRegistry != null
                 ? mailboxConsumerRegistry
                 : NoopAdapterMailboxConsumerRegistry.INSTANCE;
-        List<EmbeddedAdapterContributionRuntime> runtimes = new ArrayList<>();
+        List<EmbeddedAdapterContributionHost> hosts = new ArrayList<>();
         for (TransportAdapterContribution contribution : contributions) {
-            runtimes.add(new EmbeddedAdapterContributionRuntime(
+            hosts.add(new EmbeddedAdapterContributionHost(
                     contribution,
+                    handoff,
+                    failureHandler,
                     registry,
-                    mailboxConsumerLeaseMillis,
+                    mailboxConsumerAvailabilityMillis,
                     runtimeTaskExecutor
             ));
         }
-        return new EmbeddedAdapterRuntimeSet(runtimes);
+        return new EmbeddedAdapterHostSet(hosts);
     }
 
     public List<TransportBinding> bindings() {
         List<TransportBinding> bindings = new ArrayList<>();
-        for (EmbeddedAdapterContributionRuntime runtime : runtimes) {
-            bindings.addAll(runtime.bindings());
+        for (EmbeddedAdapterContributionHost host : hosts) {
+            bindings.addAll(host.bindings());
         }
         return List.copyOf(bindings);
     }
@@ -62,8 +68,8 @@ public final class EmbeddedAdapterRuntimeSet {
             return;
         }
         try {
-            for (EmbeddedAdapterContributionRuntime runtime : runtimes) {
-                runtime.start();
+            for (EmbeddedAdapterContributionHost host : hosts) {
+                host.start();
             }
         } catch (RuntimeException e) {
             stop();
@@ -76,9 +82,9 @@ public final class EmbeddedAdapterRuntimeSet {
             return;
         }
         RuntimeException failure = null;
-        for (EmbeddedAdapterContributionRuntime runtime : runtimes) {
+        for (EmbeddedAdapterContributionHost host : hosts) {
             try {
-                runtime.stop();
+                host.stop();
             } catch (RuntimeException e) {
                 if (failure == null) {
                     failure = e;
@@ -93,6 +99,6 @@ public final class EmbeddedAdapterRuntimeSet {
     }
 
     public boolean isRunning() {
-        return !running.get() || runtimes.stream().allMatch(EmbeddedAdapterContributionRuntime::isRunning);
+        return running.get() && hosts.stream().allMatch(EmbeddedAdapterContributionHost::isRunning);
     }
 }

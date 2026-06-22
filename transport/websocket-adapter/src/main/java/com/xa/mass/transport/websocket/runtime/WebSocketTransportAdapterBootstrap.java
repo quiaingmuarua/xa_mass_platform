@@ -43,13 +43,10 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
     @Override
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
-        String adapterMailboxKey = config.getAdapterId();
+        String adapterMailboxKey = context.adapterMailboxKey(config.getAdapterId());
         WebSocketSessionStore sessionStore = new WebSocketSessionStore(config.getAdapterId());
         WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
-                config.getAdapterId(),
-                adapterMailboxKey);
-        evidenceDriver.setEndpointLeaseStore(context.getEndpointLeaseStore());
-        evidenceDriver.setWorkerPresenceIngress(context.getWorkerPresenceIngress());
+                context.sessionEvidencePublisher(config.getAdapterId(), adapterMailboxKey));
         WebSocketSessionRefreshLoop refreshLoop =
                 new WebSocketSessionRefreshLoop(config.getAdapterId(), sessionStore, evidenceDriver);
         WebSocketSessionController sessionController = new WebSocketSessionController(

@@ -420,12 +420,11 @@ class TransportConvergenceArchitectureGuardTest {
                 ".protocol(pollingAdapter.protocol())"
         );
 
-        Path listener = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/embedded/TransportDeliveryCommandListener.java");
-        String listenerSource = Files.readString(listener);
-        assertTrue(!listenerSource.contains("Map<AdapterCommandExecutor"),
-                "Delivery command listener must group by adapter binding identity, not executor instance");
-        assertTrue(!listenerSource.contains("putIfAbsent(executor"),
-                "Delivery command listener must not store adapter identity by executor instance");
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/embedded/TransportDeliveryCommandListener.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandHandoffPump.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandBatchListener.java")
+        );
     }
 
     @Test
@@ -449,22 +448,94 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void embeddedAdapterMailboxLeaseLifecycleHasSingleRuntimeOwner() throws IOException {
+    void concreteAdapterBootstrapsReceiveNarrowRuntimeCapabilities() throws IOException {
+        Path bootstrapContext = repoRoot().resolve(
+                "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrapContext.java");
+        String contextSource = Files.readString(bootstrapContext);
+        assertTrue(contextSource.contains("adapterMailboxKey("),
+                "Adapter bootstrap context must own adapter mailbox key resolution");
+        assertTrue(contextSource.contains("sessionEvidencePublisher("),
+                "Adapter bootstrap context must expose session evidence through a narrow publisher");
+        assertTrue(contextSource.contains("pullDeliveryBuffer("),
+                "Adapter bootstrap context must expose polling pull delivery through a mailbox-scoped buffer");
+        assertTrue(!contextSource.contains("getEndpointLeaseStore(")
+                        && !contextSource.contains("getWorkerPresenceIngress(")
+                        && !contextSource.contains("getDeliveryService("),
+                "Adapter bootstrap context must not expose broad transport owner getters to concrete adapters");
+
+        Path pollingBootstrap = repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingTransportAdapterBootstrap.java");
+        Path websocketBootstrap = repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java");
+        Path socketBootstrap = repoRoot().resolve(
+                "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java");
+
+        String pollingSource = Files.readString(pollingBootstrap);
+        assertTrue(pollingSource.contains("context.adapterMailboxKey(")
+                        && pollingSource.contains("context.sessionEvidencePublisher(")
+                        && pollingSource.contains("context.pullDeliveryBuffer("),
+                "Polling bootstrap must consume host-owned mailbox key, session-evidence, and pull-buffer capabilities");
+        String websocketSource = Files.readString(websocketBootstrap);
+        assertTrue(websocketSource.contains("context.adapterMailboxKey(")
+                        && websocketSource.contains("context.sessionEvidencePublisher("),
+                "WebSocket bootstrap must consume host-owned mailbox key and session evidence through narrow capabilities");
+        String socketSource = Files.readString(socketBootstrap);
+        assertTrue(socketSource.contains("context.adapterMailboxKey(")
+                        && socketSource.contains("context.sessionEvidencePublisher("),
+                "Socket bootstrap must consume host-owned mailbox key and session evidence through narrow capabilities");
+
+        assertNoProductionSourceContains(
+                List.of(pollingBootstrap, websocketBootstrap, socketBootstrap),
+                "getEndpointLeaseStore(",
+                "getWorkerPresenceIngress(",
+                "getDeliveryService(",
+                "TransportEndpointLeaseStore",
+                "WorkerPresenceIngress",
+                "TransportDeliveryService",
+                "String adapterMailboxKey = config.getAdapterId()",
+                "String adapterMailboxKey = metadata.adapterId()"
+        );
+
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingDeliveryExecutor.java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingDeliveryPullChannel.java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingSessionEvidenceDriver.java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceDriver.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java")
+                ),
+                "TransportEndpointLeaseStore",
+                "WorkerPresenceIngress",
+                "TransportDeliveryService"
+        );
+    }
+
+    @Test
+    void embeddedAdapterMailboxAvailabilityHasSingleHostOwner() throws IOException {
+        Path handoff = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandHandoff.java");
+        String handoffSource = Files.readString(handoff);
+        assertTrue(handoffSource.contains("poll(String adapterMailboxKey, long timeoutMillis)"),
+                "Delivery command handoff must expose mailbox-scoped poll only");
+        assertTrue(!handoffSource.contains("poll(long timeoutMillis)"),
+                "Delivery command handoff must not keep an unscoped production poll entry");
+
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java")),
-                "new AdapterMailboxConsumerLease",
+                "TransportDeliveryCommandHandoffPump",
+                "TransportDeliveryCommandListener",
+                "new AdapterMailboxConsumerAvailability",
                 "claimedAdapterMailboxConsumers",
                 "claimAdapterMailboxConsumers(",
                 "refreshAdapterMailboxConsumer",
                 "releaseAdapterMailboxConsumers(",
-                "claimMailboxConsumer("
+                "publishMailboxConsumerAvailability("
         );
 
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrapContext.java")),
                 "AdapterMailboxConsumerRegistry",
                 "getAdapterMailboxConsumerRegistry",
-                "claimMailboxConsumer("
+                "publishMailboxConsumerAvailability("
         );
 
         assertNoProductionSourceContains(
@@ -474,14 +545,14 @@ class TransportConvergenceArchitectureGuardTest {
                         repoRoot().resolve("transport/socket-adapter/src/main/java")
                 ),
                 "AdapterMailboxConsumerRegistry",
-                "claimMailboxConsumer("
+                "publishMailboxConsumerAvailability("
         );
 
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/EmbeddedAdapterContributionRuntime.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/EmbeddedAdapterRuntimeSet.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/AdapterMailboxLeaseRuntime.java")
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/EmbeddedAdapterContributionHost.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/EmbeddedAdapterHostSet.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/MailboxConsumerAvailabilityPublisher.java")
                 ),
                 "com.xa.mass.transport.websocket",
                 "com.xa.mass.transport.socket",
@@ -907,15 +978,11 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void deliveryCommandListenerDoesNotResolveRouteOwnerEndpointForAssignedDelivery() throws IOException {
-        assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/embedded/TransportDeliveryCommandListener.java")),
-                "WorkerDispatchRouteOwnerView",
-                "endpointForSelectedWorker",
-                "RouteConsumerEndpoint",
-                "AdapterEndpoint",
-                "targetTransportNodeId",
-                "connectionId"
+    void globalDeliveryCommandListenerAndPumpDoNotReappear() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/embedded/TransportDeliveryCommandListener.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandHandoffPump.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryCommandBatchListener.java")
         );
     }
 

@@ -149,7 +149,7 @@ class TaskDispatchDeliveryCommandSubmitterTest {
         }
 
         @Override
-        public DeliveryCommandBatch poll(long timeoutMillis) {
+        public DeliveryCommandBatch poll(String adapterMailboxKey, long timeoutMillis) {
             return null;
         }
 

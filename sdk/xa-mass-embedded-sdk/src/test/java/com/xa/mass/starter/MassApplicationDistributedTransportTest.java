@@ -10,7 +10,6 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
@@ -18,7 +17,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
 import com.xa.mass.transport.runtime.delivery.DeliveryCommandReference;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerLease;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerAvailability;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxDeliveryOffer;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
@@ -144,12 +143,12 @@ class MassApplicationDistributedTransportTest {
     }
 
     @Test
-    void transportConsumerDrainsOnlyLocallyReadySelectedWorkerBatches() throws Exception {
+    void transportConsumerDrainsItsAdapterMailbox() throws Exception {
         EngineConfig engine = new EngineConfig();
         engine.setEnabled(false);
 
-        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff("worker-1");
-        handoff.enqueue(deliveryBatch("msg-remote", "worker-2"));
+        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff();
+        handoff.enqueue(deliveryBatch("msg-other-mailbox", "worker-2", "other-mailbox"));
         handoff.enqueue(deliveryBatch("msg-local", "worker-1"));
         RecordingAdapter adapter = new RecordingAdapter("websocket", 1);
         TransportConfig transport = disabledTransportConsumerTransport();
@@ -162,21 +161,21 @@ class MassApplicationDistributedTransportTest {
 
         app.start();
         try {
-            assertTrue(adapter.awaitDispatch(2, TimeUnit.SECONDS), "transport consumer should drain bucket queue and demux selected worker locally");
+            assertTrue(adapter.awaitDispatch(2, TimeUnit.SECONDS), "transport consumer should drain its adapter mailbox");
             assertEquals(List.of("msg-local"), adapter.dispatchedMessageIds());
             assertEquals(List.of("worker-1"), adapter.dispatchedWorkerIds());
-            assertEquals(List.of("msg-remote"), messages(handoff.pollForSelectedWorker("worker-2")));
+            assertEquals(List.of("msg-other-mailbox"), messages(handoff.pollForMailbox("other-mailbox")));
         } finally {
             app.stop();
         }
     }
 
     @Test
-    void transportConsumerReleasesMailboxConsumerLeaseOnStop() {
+    void transportConsumerRemovesMailboxConsumerAvailabilityOnStop() {
         EngineConfig engine = new EngineConfig();
         engine.setEnabled(false);
 
-        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff("worker-1");
+        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff();
         RecordingAdapter adapter = new RecordingAdapter("websocket", 0);
         TransportConfig transport = disabledTransportConsumerTransport();
         transport.setDeliveryCommandHandoffFactory(() -> handoff);
@@ -195,14 +194,14 @@ class MassApplicationDistributedTransportTest {
     }
 
     @Test
-    void transportConsumerRefreshesMailboxConsumerLease() throws Exception {
+    void transportConsumerRefreshesMailboxConsumerAvailability() throws Exception {
         EngineConfig engine = new EngineConfig();
         engine.setEnabled(false);
 
-        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff("worker-1");
+        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff();
         RecordingAdapter adapter = new RecordingAdapter("websocket", 0);
         TransportConfig transport = disabledTransportConsumerTransport();
-        transport.setAdapterMailboxConsumerLeaseMillis(300L);
+        transport.setAdapterMailboxConsumerAvailabilityMillis(300L);
         transport.setDeliveryCommandHandoffFactory(() -> handoff);
         transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
@@ -213,15 +212,15 @@ class MassApplicationDistributedTransportTest {
         app.start();
         try {
             assertTrue(handoff.awaitMailboxClaimCount(adapterMailboxKey(), 2, 2, TimeUnit.SECONDS));
-            List<AdapterMailboxConsumerLease> claims = handoff.claimedConsumerLeases().stream()
+            List<AdapterMailboxConsumerAvailability> claims = handoff.claimedConsumerAvailabilities().stream()
                     .filter(lease -> adapterMailboxKey().equals(lease.adapterMailboxKey()))
                     .toList();
             assertTrue(claims.size() >= 2);
-            AdapterMailboxConsumerLease first = claims.getFirst();
-            AdapterMailboxConsumerLease last = claims.getLast();
+            AdapterMailboxConsumerAvailability first = claims.getFirst();
+            AdapterMailboxConsumerAvailability last = claims.getLast();
             assertEquals(first.adapterMailboxKey(), last.adapterMailboxKey());
             assertEquals(first.consumerId(), last.consumerId());
-            assertTrue(last.leaseDeadlineEpochMillis() > first.leaseDeadlineEpochMillis());
+            assertTrue(last.availableUntilEpochMillis() > first.availableUntilEpochMillis());
         } finally {
             app.stop();
         }
@@ -282,10 +281,14 @@ class MassApplicationDistributedTransportTest {
     }
 
     private static DeliveryCommandBatch deliveryBatch(String messageId, String workerId) {
+        return deliveryBatch(messageId, workerId, adapterMailboxKey());
+    }
+
+    private static DeliveryCommandBatch deliveryBatch(String messageId, String workerId, String adapterMailboxKey) {
         DeliveryCommand command = deliveryCommand(messageId, workerId);
         return new DeliveryCommandBatch(
-                adapterMailboxKey(),
-                List.of(new DeliveryCommandReference(adapterMailboxKey(), command.getCommandId())),
+                adapterMailboxKey,
+                List.of(new DeliveryCommandReference(adapterMailboxKey, command.getCommandId())),
                 List.of(command)
         );
     }
@@ -380,7 +383,7 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public DeliveryCommandBatch poll(long timeoutMillis) {
+        public DeliveryCommandBatch poll(String adapterMailboxKey, long timeoutMillis) {
             return null;
         }
 
@@ -391,16 +394,14 @@ class MassApplicationDistributedTransportTest {
 
     private static final class LocalDeliveryCommandHandoff implements TransportDeliveryCommandHandoff,
             AdapterMailboxConsumerRegistry {
-        private final String localSelectedWorkerId;
         private final Queue<DeliveryCommandBatch> batches = new ConcurrentLinkedQueue<>();
-        private final List<AdapterMailboxConsumerLease> claimedConsumers =
+        private final List<AdapterMailboxConsumerAvailability> claimedConsumers =
                 Collections.synchronizedList(new ArrayList<>());
-        private final List<AdapterMailboxConsumerLease> releasedConsumers =
+        private final List<AdapterMailboxConsumerAvailability> releasedConsumers =
                 Collections.synchronizedList(new ArrayList<>());
         private volatile boolean running = true;
 
-        private LocalDeliveryCommandHandoff(String localSelectedWorkerId) {
-            this.localSelectedWorkerId = localSelectedWorkerId;
+        private LocalDeliveryCommandHandoff() {
         }
 
         private void enqueue(DeliveryCommandBatch batch) {
@@ -422,10 +423,10 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public DeliveryCommandBatch poll(long timeoutMillis) throws InterruptedException {
+        public DeliveryCommandBatch poll(String adapterMailboxKey, long timeoutMillis) throws InterruptedException {
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
             do {
-                DeliveryCommandBatch local = pollForSelectedWorker(localSelectedWorkerId);
+                DeliveryCommandBatch local = pollForMailbox(adapterMailboxKey);
                 if (local != null || timeoutMillis <= 0L) {
                     return local;
                 }
@@ -434,10 +435,9 @@ class MassApplicationDistributedTransportTest {
             return null;
         }
 
-        private DeliveryCommandBatch pollForSelectedWorker(String selectedWorkerId) {
+        private DeliveryCommandBatch pollForMailbox(String adapterMailboxKey) {
             for (DeliveryCommandBatch batch : List.copyOf(batches)) {
-                if (!batch.items().isEmpty()
-                        && batch.items().getFirst().getSelectedWorkerId().equals(selectedWorkerId)
+                if (adapterMailboxKey.equals(batch.adapterMailboxKey())
                         && batches.remove(batch)) {
                     return batch;
                 }
@@ -451,24 +451,24 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public void claimMailboxConsumer(AdapterMailboxConsumerLease lease) {
+        public void publishMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
             claimedConsumers.add(lease);
         }
 
         @Override
-        public void releaseMailboxConsumer(AdapterMailboxConsumerLease lease) {
+        public void removeMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
             releasedConsumers.add(lease);
         }
 
         private List<String> claimedMailboxKeys() {
             synchronized (claimedConsumers) {
                 return claimedConsumers.stream()
-                        .map(AdapterMailboxConsumerLease::adapterMailboxKey)
+                        .map(AdapterMailboxConsumerAvailability::adapterMailboxKey)
                         .toList();
             }
         }
 
-        private List<AdapterMailboxConsumerLease> claimedConsumerLeases() {
+        private List<AdapterMailboxConsumerAvailability> claimedConsumerAvailabilities() {
             synchronized (claimedConsumers) {
                 return List.copyOf(claimedConsumers);
             }
@@ -501,7 +501,7 @@ class MassApplicationDistributedTransportTest {
         private List<String> releasedMailboxKeys() {
             synchronized (releasedConsumers) {
                 return releasedConsumers.stream()
-                        .map(AdapterMailboxConsumerLease::adapterMailboxKey)
+                        .map(AdapterMailboxConsumerAvailability::adapterMailboxKey)
                         .toList();
             }
         }
@@ -516,14 +516,13 @@ class MassApplicationDistributedTransportTest {
 
         @Override
         public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
-            context.getEndpointLeaseStore().claimEndpointLease(new TransportEndpointLeaseClaim(
+            context.sessionEvidencePublisher(adapter.adapterId(), adapter.adapterId()).claimEndpoint(
                     "worker-1",
                     "demo-workers",
-                    adapter.adapterId(),
                     "route-worker-1",
                     "session-worker-1",
                     "test"
-            ));
+            );
             return TransportAdapterContribution.builder()
                     .addTransportBinding(TransportBinding.builder(
                             adapter.adapterId(),

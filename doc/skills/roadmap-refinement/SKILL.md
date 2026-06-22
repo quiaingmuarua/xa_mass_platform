@@ -93,6 +93,47 @@ asks for a full review.
 - Do not trust a roadmap `Status:` line without checking current code and, when
   useful, recent commits or archive location.
 
+## Decision Gate
+
+Before creating, repairing, or executing a boundary roadmap, walk the request
+through this order. Do not skip to guardrails or automation before the owner
+and mechanism are stable.
+
+1. **Question**
+   - Name the owner that owns the production decision or runtime truth.
+   - State whether the work protects a production invariant or only agent
+     convenience.
+   - Explain how the system fails without the change.
+   - Classify the fact as `truth`, `projection`, `evidence`, `hint`,
+     `residue`, or `experimental`.
+2. **Delete**
+   - Prefer deleting an old DTO, wrapper, bridge, fallback, alias, or stale
+     test path before adding a replacement.
+   - Reuse an existing owner seam when it already expresses the invariant.
+   - Prefer moving ownership over adding fields to make two owners agree.
+3. **Simplify**
+   - Keep the remaining seam narrow enough that the caller sees only what it
+     owns.
+   - Let only the target owner parse payload or domain fields.
+   - Forbid intermediate layers from reading domain fields just to preserve an
+     old route, lifecycle, or projection path.
+4. **Accelerate**
+   - Pick the smallest proof that can fail when the owner invariant is wrong.
+   - Prefer owner-focused tests first; add representative cross-boundary proof
+     only when the risk crosses the boundary.
+   - Treat a green CI run as support evidence, not proof, when it preserves
+     compatibility behavior or lacks a focused invariant.
+5. **Automate**
+   - Add guards only after the owner truth is stable enough to freeze.
+   - Prefer negative guards that block old imports, old symbols, fallback
+     paths, fat DTOs, and projection-to-mainline leaks.
+   - Do not guard provisional class names, temporary lifecycle states, or
+     implementation shape before the mechanism is settled.
+
+Lifecycle state deserves extra caution: it can protect a mature mechanism, but
+it must not become owner truth before the owner, writer, consumer, failure
+semantics, migration behavior, and proof are named.
+
 ## Convergence Rhythm
 
 Boundary roadmaps follow layered convergence, not a flat checklist.
@@ -430,6 +471,12 @@ For every boundary decision, prefer at least one guard:
 - route naming guard
 - proof registry or testing index update
 
+Guard stable owner invariants and forbidden regressions, not temporary
+implementation shape. Prefer guards that fail when projection, diagnostics,
+compatibility paths, fallback logic, or transport/session facts re-enter a
+runtime mainline. Do not add guards that force a provisional lifecycle enum,
+class name, or wrapper to remain after the next convergence slice.
+
 Verification candidates should be concrete commands. If exact tests are not
 known yet, say they must be corrected after inventory.
 
@@ -536,10 +583,16 @@ changed.
 - Treating a direction doc as proof of current behavior.
 - Combining projection, rule, worker lifecycle, and task shell work into one
   roadmap because they all touch storage.
+- Promoting lifecycle state into owner truth before the mechanism, writer,
+  consumer, failure semantics, and proof are stable.
+- Adding local lifecycle/status fields so each module appears self-contained
+  while two modules still own the same runtime fact.
 - Leaving "or document it" as an escape hatch for a known production boundary
   problem.
 - Creating compatibility aliases inside the repo after moving all callers.
 - Letting tests preserve old vocabulary as a hidden second API.
+- Treating CI green as validation when tests or guards preserve the removed
+  mechanism, projection, fallback, or fat DTO.
 - Hiding production dependency removal under a documentation-only slice.
 - Writing acceptance criteria that cannot fail.
 - Starting with a large rename before call sites and owner decisions are known.
@@ -567,6 +620,8 @@ Before finishing a roadmap refinement:
 - Public SDK/API breaking changes are called out when present.
 - File, class, method, and route names match current code.
 - Non-goals prevent scope creep.
+- The Decision Gate was applied: owner, invariant, failure mode, fact lane,
+  deletion opportunity, narrow seam, minimum proof, and guard timing are clear.
 - First slice inventories ambiguous caller/dependency sets.
 - Each slice has scope and acceptance.
 - Multi-phase roadmaps distinguish slice acceptance from roadmap completion

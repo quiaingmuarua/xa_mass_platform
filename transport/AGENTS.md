@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-06-18
+Last updated: 2026-06-22
 
 Status: current transport owner handoff.
 
@@ -23,11 +23,17 @@ entry for `transport/`.
   stay compatible with future remote adapter processes. Java-only object wiring
   belongs to embedded adapter support; cross-process facts must be typed
   delivery commands, endpoint lease evidence, routing result-ingress envelopes,
-  delivery outcomes, diagnostics, or lifecycle observations.
+  delivery outcomes, diagnostics, or session/availability observations.
 - `transport` is a pure delivery executor. It owns correct assigned-worker
   delivery, queue claim/ack consistency, endpoint/session evidence, and delivery
   outcomes; it does not own retry, reassign, compensation, worker lifecycle,
-  worker scheduling, or task payload schema.
+  worker scheduling, adapter health lifecycle, restart/failover/migration, or
+  task payload schema.
+- Transport/adapter lifecycle control must stay minimal. Local resource
+  start/stop and mailbox availability proof are allowed; watchdogs, monitor
+  loops, reconciliation, takeover, migration, and restart policy require a
+  separate side-channel owner and must not be mixed into command drain,
+  final-hop send, session stores, or result ingress.
 - `WorkerGroup` owns event capability and the scheduling entry boundary.
   `Worker` owns execution identity plus scheduling evidence. Adapters cannot
   expand either capability or worker universe; they only expose final-hop
@@ -76,9 +82,9 @@ entry for `transport/`.
 - route-only endpoint helpers may exist inside one concrete adapter for
   raw/manual side channels. Task dispatch must use selected-worker addressing:
   producer-side delivery integration consumes worker-runtime mailbox evidence,
-  handoff readiness is finite mailbox-level consumer lease evidence, and push
-  adapters dispatch by concrete adapter command executors using a worker-id-only
-  local session lookup rather than a route-only fallback.
+  handoff readiness is finite mailbox-level consumer availability evidence, and
+  push adapters dispatch by concrete adapter command executors using a
+  worker-id-only local session lookup rather than a route-only fallback.
 - `WorkerEndpointRegistry` has been removed. Do not reintroduce a generic
   assigned-delivery endpoint interface; raw/manual route delivery uses
   `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`, not the
@@ -115,21 +121,32 @@ entry for `transport/`.
   data rather than Java object wiring.
 - Concrete embedded Java adapters expose assigned delivery through runtime
   embedded-support `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`.
-  Adapter metadata, server lifecycle, raw/manual channels, diagnostics, and
+  Adapter metadata, protocol resource start/stop, raw/manual channels,
+  diagnostics, and
   pull channels are explicit binding/contribution facts, not executor facts.
 - `AdapterCommandExecutor` is the embedded Java final-hop SPI, not the
   transport-neutral remote adapter contract. Do not make transport core depend
   on executor-local connection/session classes, late-bound handler setters, or
   adapter-owned registries.
-- `EmbeddedAdapterRuntimeSet` and `EmbeddedAdapterContributionRuntime` own
-  embedded Java adapter lifecycle around contribution-owned managed resources
-  and servers. `AdapterMailboxLeaseRuntime` owns only mailbox consumer claim,
-  refresh, and release for one command-delivery binding. `MassApplication`
-  assembles and starts/stops these runtime units; concrete adapter bootstraps
-  must not receive or call `AdapterMailboxConsumerRegistry`.
+- `EmbeddedAdapterHostSet` and `EmbeddedAdapterContributionHost` are
+  current embedded Java adapter host-support classes around contribution-owned
+  managed resources and servers. Their stable role is host mounting with the
+  application, not adapter health supervision, restart, failover, migration, or
+  mailbox placement. `MailboxConsumerAvailabilityPublisher` owns only narrow mailbox
+  consumer availability claim, refresh, and release for one command-delivery
+  binding. `MassApplication` assembles and starts/stops these host-support
+  units; concrete adapter bootstraps must not receive or call
+  `AdapterMailboxConsumerRegistry`.
+- Concrete adapter bootstraps receive narrow runtime capabilities from
+  `TransportAdapterBootstrapContext`: host-owned adapter mailbox key
+  resolution, session evidence publisher, mailbox-scoped pull delivery buffer,
+  result ingress channel, and runtime task executor where needed. They must not
+  receive raw endpoint lease stores, worker-presence ingress, generic delivery
+  services, mailbox registries, or handoff internals, and they must not mint
+  mailbox keys from adapter id or protocol values themselves.
 - Concrete adapters may observe protocol sessions and send to selected workers,
   but endpoint lease evidence is projected by `TransportEndpointLeasePublisher`,
-  mailbox consumer evidence is claimed by embedded adapter runtime lifecycle,
+  mailbox consumer availability is claimed by embedded adapter host support,
   and worker session-presence observations are projected by
   `WorkerPresenceSessionPublisher`.
   WebSocket now splits this into explicit session store, server handle, command
@@ -143,11 +160,12 @@ entry for `transport/`.
   `adapterMailboxKey`, handoff-owned command references, and command items
   only. It does not carry bucket, lane, target node, adapter route, connection,
   or endpoint lease facts.
-- Runtime embedded-support `TransportDeliveryCommandListener` consumes
-  adapter-mailbox handoff references, resolves the local adapter binding by
-  mailbox, and invokes the final-hop adapter SPI. Core handoff pumping depends
-  only on the narrow batch-listener callback; the final-hop adapter SPI consumes
-  `DeliveryCommand` directly and sends by selected worker.
+- Runtime embedded-support `AdapterMailboxMount` drains one adapter mailbox,
+  owns local handoff ack/failure emission for that mailbox, and invokes the
+  binding's final-hop adapter SPI. `MassApplication` assembles the embedded
+  host set; it must not recreate a global delivery-command pump/listener. The
+  final-hop adapter SPI consumes `DeliveryCommand` directly and sends by
+  selected worker.
 - `DeliveryPullResult` / `PulledDeliveryMessage` are the transport-core pull
   shapes. They carry status plus opaque delivery messages only. Task-shaped
   worker invocation/poll result DTOs live at the SDK/server public worker

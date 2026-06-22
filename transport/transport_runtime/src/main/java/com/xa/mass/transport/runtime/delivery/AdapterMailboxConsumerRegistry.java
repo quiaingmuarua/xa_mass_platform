@@ -6,7 +6,7 @@ package com.xa.mass.transport.runtime.delivery;
  */
 public interface AdapterMailboxConsumerRegistry {
 
-    void claimMailboxConsumer(AdapterMailboxConsumerLease lease);
+    void publishMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease);
 
-    void releaseMailboxConsumer(AdapterMailboxConsumerLease lease);
+    void removeMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease);
 }

@@ -9,6 +9,7 @@ import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.polling.runtime.PollingSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.routing.RoutingEnvelope;
 import com.xa.mass.transport.routing.RoutingOwnerKinds;
@@ -186,12 +187,12 @@ class EmbeddedPullWorkerSessionTest {
 
     private static PullSessionEvidenceDriver evidenceDriver(InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                                             WorkerPresenceIngress presenceIngress) {
-        return new PollingSessionEvidenceDriver(
+        return new PollingSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
                 "polling",
                 "polling",
                 endpointLeaseStore,
                 presenceIngress
-        );
+        ));
     }
 
     private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {

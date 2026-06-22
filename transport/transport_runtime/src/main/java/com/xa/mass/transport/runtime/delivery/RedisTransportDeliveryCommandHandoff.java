@@ -191,20 +191,29 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     }
 
     @Override
-    public DeliveryCommandBatch poll(long timeoutMillis) throws InterruptedException {
+    public DeliveryCommandBatch poll(String adapterMailboxKey, long timeoutMillis) throws InterruptedException {
+        String mailboxKey = normalizeRequired(adapterMailboxKey, "adapterMailboxKey");
         if (!running.get()) {
+            return null;
+        }
+        LocalMailboxConsumerEvidence local = localConsumers.get(mailboxKey);
+        if (local == null || local.availableUntilEpochMillis() <= System.currentTimeMillis()) {
+            if (local != null) {
+                localConsumers.remove(mailboxKey, local);
+            }
             return null;
         }
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
         do {
-            for (String adapterMailboxKey : pollQueuesSnapshot()) {
-                reclaimExpiredInflight(adapterMailboxKey);
-                String encodedReference = claimReadyReference(adapterMailboxKey);
-                if (encodedReference != null && !encodedReference.isBlank()) {
-                    DeliveryCommandBatch claimed = materializeClaimedReference(adapterMailboxKey, encodedReference);
-                    if (claimed != null) {
-                        return claimed;
-                    }
+            if (currentMailboxConsumerEvidence(mailboxKey, System.currentTimeMillis()) == null) {
+                return null;
+            }
+            reclaimExpiredInflight(mailboxKey);
+            String encodedReference = claimReadyReference(mailboxKey);
+            if (encodedReference != null && !encodedReference.isBlank()) {
+                DeliveryCommandBatch claimed = materializeClaimedReference(mailboxKey, encodedReference);
+                if (claimed != null) {
+                    return claimed;
                 }
             }
             if (timeoutMillis <= 0L) {
@@ -233,7 +242,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         DeliveryCommandBatch stored = codec.decode(json);
         DeliveryCommand command = stored.items().getFirst();
         LocalMailboxConsumerEvidence local = localConsumers.get(reference.adapterMailboxKey());
-        if (local != null && local.leaseDeadlineEpochMillis() <= System.currentTimeMillis()) {
+        if (local != null && local.availableUntilEpochMillis() <= System.currentTimeMillis()) {
             localConsumers.remove(local.adapterMailboxKey(), local);
             local = null;
         }
@@ -272,22 +281,22 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     }
 
     @Override
-    public void claimMailboxConsumer(AdapterMailboxConsumerLease lease) {
+    public void publishMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
         Objects.requireNonNull(lease, "lease");
         LocalMailboxConsumerEvidence local = new LocalMailboxConsumerEvidence(
                 lease.adapterMailboxKey(),
                 lease.consumerId(),
                 lease.generation(),
-                lease.leaseDeadlineEpochMillis()
+                lease.availableUntilEpochMillis()
         );
         localConsumers.put(lease.adapterMailboxKey(), local);
         commands.hset(mailboxConsumersKey(), lease.adapterMailboxKey(), encodeConsumerEvidence(lease));
-        commands.zadd(mailboxConsumerDeadlinesKey(), lease.leaseDeadlineEpochMillis(), lease.adapterMailboxKey());
+        commands.zadd(mailboxConsumerDeadlinesKey(), lease.availableUntilEpochMillis(), lease.adapterMailboxKey());
         commands.sadd(queuesKey(), lease.adapterMailboxKey());
     }
 
     @Override
-    public void releaseMailboxConsumer(AdapterMailboxConsumerLease lease) {
+    public void removeMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
         Objects.requireNonNull(lease, "lease");
         localConsumers.computeIfPresent(lease.adapterMailboxKey(),
                 (ignored, current) -> lease.consumerId().equals(current.consumerId()) ? null : current);
@@ -360,7 +369,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
     }
 
     void claimConsumerForTest(String adapterMailboxKey, String consumerId) {
-        claimMailboxConsumer(new AdapterMailboxConsumerLease(
+        publishMailboxConsumerAvailability(new AdapterMailboxConsumerAvailability(
                 adapterMailboxKey,
                 consumerId,
                 1L,
@@ -410,7 +419,7 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
             commands.zrem(mailboxConsumerDeadlinesKey(), normalizedMailboxKey);
             return null;
         }
-        if (evidence.leaseDeadlineEpochMillis() <= nowEpochMillis) {
+        if (evidence.availableUntilEpochMillis() <= nowEpochMillis) {
             commands.hdel(mailboxConsumersKey(), normalizedMailboxKey);
             commands.zrem(mailboxConsumerDeadlinesKey(), normalizedMailboxKey);
             return null;
@@ -454,21 +463,6 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         return namespacePrefix + ":queues";
     }
 
-    private List<String> pollQueuesSnapshot() {
-        List<String> queues = new ArrayList<>();
-        for (LocalMailboxConsumerEvidence local : List.copyOf(localConsumers.values())) {
-            if (local.leaseDeadlineEpochMillis() <= System.currentTimeMillis()) {
-                localConsumers.remove(local.adapterMailboxKey(), local);
-                continue;
-            }
-            if (currentMailboxConsumerEvidence(local.adapterMailboxKey(), System.currentTimeMillis()) != null
-                    && !queues.contains(local.adapterMailboxKey())) {
-                queues.add(local.adapterMailboxKey());
-            }
-        }
-        return queues;
-    }
-
     private static String encodeToken(String value) {
         return TOKEN_ENCODER.encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
@@ -497,12 +491,12 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
         );
     }
 
-    private static String encodeConsumerEvidence(AdapterMailboxConsumerLease lease) {
+    private static String encodeConsumerEvidence(AdapterMailboxConsumerAvailability lease) {
         return String.join("|",
                 CONSUMER_EVIDENCE_VERSION,
                 encodeToken(lease.consumerId()),
                 Long.toString(lease.generation()),
-                Long.toString(lease.leaseDeadlineEpochMillis())
+                Long.toString(lease.availableUntilEpochMillis())
         );
     }
 
@@ -545,12 +539,12 @@ public final class RedisTransportDeliveryCommandHandoff implements TransportDeli
 
     private record MailboxConsumerEvidence(String consumerId,
                                            long generation,
-                                           long leaseDeadlineEpochMillis) {
+                                           long availableUntilEpochMillis) {
     }
 
     private record LocalMailboxConsumerEvidence(String adapterMailboxKey,
                                                 String consumerId,
                                                 long generation,
-                                                long leaseDeadlineEpochMillis) {
+                                                long availableUntilEpochMillis) {
     }
 }

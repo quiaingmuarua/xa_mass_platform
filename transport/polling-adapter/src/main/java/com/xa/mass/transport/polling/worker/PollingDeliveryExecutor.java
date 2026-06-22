@@ -2,7 +2,7 @@ package com.xa.mass.transport.polling.worker;
 
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
+import com.xa.mass.transport.runtime.delivery.AdapterPullDeliveryBuffer;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,12 +18,11 @@ public final class PollingDeliveryExecutor implements AdapterCommandExecutor {
 
     private static final Logger logger = LoggerFactory.getLogger(PollingDeliveryExecutor.class);
 
-    private final String adapterMailboxKey;
-    private final TransportDeliveryService deliveryService;
+    private final AdapterPullDeliveryBuffer deliveryBuffer;
 
-    public PollingDeliveryExecutor(String adapterMailboxKey, TransportDeliveryService deliveryService) {
-        this.adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
-        this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
+    public PollingDeliveryExecutor(String adapterMailboxKey, AdapterPullDeliveryBuffer deliveryBuffer) {
+        requireText(adapterMailboxKey, "adapterMailboxKey");
+        this.deliveryBuffer = Objects.requireNonNull(deliveryBuffer, "deliveryBuffer");
     }
 
     @Override
@@ -31,7 +30,7 @@ public final class PollingDeliveryExecutor implements AdapterCommandExecutor {
         if (commands == null || commands.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = deliveryService.enqueueForMailbox(adapterMailboxKey, commands);
+        List<DispatchOutcome> outcomes = deliveryBuffer.enqueue(commands);
         for (DispatchOutcome outcome : outcomes) {
             if (outcome.isRetryable()) {
                 logger.warn("Polling delivery rejected: selectedWorkerId={}, deliveryId={}, status={}, reason={}",

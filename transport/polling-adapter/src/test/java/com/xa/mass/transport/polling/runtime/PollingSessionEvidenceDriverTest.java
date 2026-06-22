@@ -3,6 +3,7 @@ package com.xa.mass.transport.polling.runtime;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
 
@@ -19,12 +20,12 @@ class PollingSessionEvidenceDriverTest {
     void connectHeartbeatDisconnectPublishPresenceAndEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore(30_000L);
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        PollingSessionEvidenceDriver driver = new PollingSessionEvidenceDriver(
+        PollingSessionEvidenceDriver driver = new PollingSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
                 "polling-default",
                 "polling-mailbox",
                 endpointLeaseStore,
                 presenceIngress
-        );
+        ));
 
         assertTrue(driver.connect("worker-1", "bucket-1", routeKey(), "conn-1", "connected"));
         var connected = endpointLeaseStore.currentEndpointLease("bucket-1", "worker-1").orElseThrow();
@@ -33,12 +34,12 @@ class PollingSessionEvidenceDriverTest {
         assertEquals(List.of("CONNECTED:worker-1:polling-default:polling-mailbox:" + routeKey() + ":conn-1:connected:conn-1"),
                 presenceIngress.events);
 
-        PollingSessionEvidenceDriver staleDriver = new PollingSessionEvidenceDriver(
+        PollingSessionEvidenceDriver staleDriver = new PollingSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
                 "polling-default",
                 "polling-mailbox",
                 endpointLeaseStore,
                 new RecordingWorkerPresenceIngress()
-        );
+        ));
         assertFalse(staleDriver.heartbeat("worker-1", "bucket-1", routeKey(), "stale-conn", "stale-heartbeat"));
         assertTrue(driver.heartbeat("worker-1", "bucket-1", routeKey(), "conn-1", "heartbeat"));
         assertEquals(List.of(

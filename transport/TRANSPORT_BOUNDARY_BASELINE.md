@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-06-18
+Last updated: 2026-06-22
 
 Status: current transport boundary baseline.
 
@@ -47,7 +47,8 @@ writing, session evidence observation, and final-hop send attempts for already
 selected workers. Current embedded Java adapters are one deployment shape, not
 the transport contract. Facts that a future remote adapter process cannot
 provide through typed delivery commands, endpoint lease evidence, result
-ingress envelopes, delivery outcomes, diagnostics, or lifecycle observations
+ingress envelopes, delivery outcomes, diagnostics, or session/availability
+observations
 must stay in embedded adapter support rather than transport-neutral APIs.
 
 ## Stable Concepts
@@ -58,9 +59,9 @@ Transport should stay centered on these concepts only:
   adapter command execution callback returning `DispatchOutcome`. The executor
   owns only the local final-hop attempt and lives with runtime embedded adapter
   support, not in `transport_api`. Adapter id, transport hint, protocol label,
-  pull channel, server lifecycle, diagnostics, and raw/manual side-channels are
-  binding or contribution metadata, not executor facts. This SPI is not the
-  remote-adapter contract; transport core must not require executor-local
+  pull channel, protocol resource start/stop, diagnostics, and raw/manual
+  side-channels are binding or contribution metadata, not executor facts. This
+  SPI is not the remote-adapter contract; transport core must not require executor-local
   connection/session classes or adapter-owned registries.
 - `TransportBinding`: explicit runtime binding for adapter id, transport hint,
   protocol label, command executor, optional pull channel, and pull-session
@@ -71,18 +72,23 @@ Transport should stay centered on these concepts only:
   contributed bindings, managed adapters, servers, raw/manual channels, and
   diagnostics. Runtime input context and adapter-produced outputs must not share
   mutable single-slot state.
-- `EmbeddedAdapterRuntimeSet` / `EmbeddedAdapterContributionRuntime`: embedded
-  Java adapter lifecycle owners around one or more adapter contributions. They
-  start and stop contribution-owned managed resources and servers without
+- `EmbeddedAdapterHostSet` / `EmbeddedAdapterContributionHost`: current
+  embedded Java adapter host-support classes around one or more adapter
+  contributions. Their stable role is host mounting: start/stop
+  contribution-owned managed resources and servers with the application without
   making one binding own shared protocol resources.
-- `AdapterMailboxLeaseRuntime`: embedded runtime owner for mailbox consumer
-  claim, refresh, and release for one command-delivery binding. It does not own
+  They are not adapter health, restart, migration, or failover lifecycle
+  owners.
+- `MailboxConsumerAvailabilityPublisher`: current embedded host-support class for narrow
+  mailbox consumer availability claim, refresh, and release for one
+  command-delivery binding. This is queue-safety evidence only. It does not own
   dispatch queues, selected-worker session maps, task result decode, endpoint
-  lease projection, worker scheduling, or concrete protocol state.
+  lease projection, worker scheduling, concrete protocol state, adapter health,
+  restart, migration, or mailbox placement policy.
 - `PollingDeliveryExecutor`: polling adapter command executor. It owns only
   `DeliveryCommand` enqueue into the polling delivery buffer and dispatch
   outcome normalization/logging. It must not own pull polling, endpoint lease
-  projection, worker-presence projection, or mailbox consumer leases.
+  projection, worker-presence projection, or mailbox consumer availability.
 - `PollingDeliveryPullChannel`: polling adapter pull-channel implementation. It
   owns only worker pull-buffer demux by adapter mailbox plus `selectedWorkerId`
   and status mapping into `DeliveryPullResult`. It must not own command
@@ -95,8 +101,9 @@ Transport should stay centered on these concepts only:
 - `TransportEndpointLeasePublisher`: runtime owner that projects adapter
   session facts into endpoint lease evidence. Concrete adapters should not
   duplicate endpoint lease record construction. Mailbox-level handoff consumer
-  leases are claimed by embedded adapter runtime lifecycle, not by endpoint
-  lease projection.
+  availability is claimed by embedded adapter host support when the handoff
+  requires it, not by endpoint lease projection and not as adapter lifecycle
+  truth.
 - `WorkerPresenceSessionPublisher`: runtime owner that projects adapter
   connect/heartbeat/disconnect observations into worker session-presence
   ingress. Concrete adapters may observe sessions, but they do not own worker
@@ -135,16 +142,17 @@ Transport should stay centered on these concepts only:
   engine/starter assembly and transport. Producers offer
   `AdapterMailboxDeliveryOffer(adapterMailboxKey, commands)` after
   worker-runtime delivery target evidence resolves the already selected worker
-  to an adapter mailbox. Handoff implementations own mailbox consumer lease
-  evidence, mailbox ready references, mailbox inflight references, ack/requeue,
-  and mailbox availability outcomes. Mailbox consumer leases are finite runtime
-  leases refreshed by embedded adapter runtime lifecycle; they are not eternal
-  process claims.
-- `TransportDeliveryCommandBatchListener`: narrow core callback used by the
-  handoff pump after a batch is materialized. The embedded Java implementation
-  is `TransportDeliveryCommandListener`; it bridges endpoint lease evidence to
-  local adapter command executors and is not part of transport-neutral command
-  or queue storage shape.
+  to an adapter mailbox. Handoff implementations own mailbox consumer
+  availability evidence, mailbox ready references, mailbox inflight references,
+  ack/requeue, and mailbox availability outcomes. Mailbox consumer availability
+  is finite runtime proof refreshed by embedded host support; it is not an
+  eternal process claim and not adapter lifecycle truth.
+- `AdapterMailboxMount`: embedded host-support drain owner for one adapter
+  mailbox. It polls `TransportDeliveryCommandHandoff` by `adapterMailboxKey`,
+  invokes the local binding's `AdapterCommandExecutor`, emits retryable
+  delivery failure evidence, and completes the handoff batch only after local
+  outcome handling succeeds. There is no production global
+  delivery-command pump/listener owner.
 - `DeliveryPullResult`: explicit transport pull-path status plus delivered
   `PulledDeliveryMessage` items. SDK/server worker polling projects those
   messages into `WorkerInvocation` and `WorkerPollResult`; task-shaped pull DTOs
@@ -192,6 +200,26 @@ owner truth is in `../xa-mass-engine/doc/baseline/EVENT_OWNER_BOUNDARY.md`.
 Transport may carry command delivery later, but it must not own command
 lifecycle state.
 
+## Lifecycle Discipline
+
+Transport and adapters are transmission owners by default, not lifecycle policy
+owners. They may observe protocol sessions, maintain local resource state,
+publish endpoint/session evidence, publish mailbox consumer availability when a
+handoff requires it, and return delivery outcomes. They must not infer or own
+worker lifecycle, adapter health lifecycle, adapter restart/failover/migration,
+task retry, compensation, final recovery, or scheduling policy.
+
+Embedded adapter host support may start resources with the application and close
+them when the application stops. It must not become an adapter supervisor or
+state machine owner. If future external adapters need monitoring,
+reconciliation, takeover, migration, or health management, that work needs a
+separate owner and side-channel contract. Do not mix those loops into command
+drain, final-hop send, endpoint lease writes, session stores, or result ingress.
+
+Stats, list, count, inspect, and watch APIs are diagnostics only. They must not
+be used as delivery correctness proof, scheduling input, lifecycle truth, or
+hot-path recovery logic.
+
 ## Module Ownership
 
 `transport_api` owns stable contracts used across adapters and runtime:
@@ -202,7 +230,9 @@ lifecycle state.
 
 `transport_runtime` owns runtime-only coordination:
 
-- embedded Java adapter command callback and binding assembly
+- embedded Java adapter command callback, binding assembly, and host-support
+  wiring
+- host-owned adapter mailbox key resolution for embedded adapter bootstraps
 - adapter binding and registration resolution
 - canonical adapter-id resolution; old aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not adapter identities
 - canonical transport-hint resolution; adapter labels such as `websocket`,
@@ -215,13 +245,15 @@ lifecycle state.
 - result ingress envelope queueing, buffering, and runtime logging; result
   payload decoding, correlation, and lease/attempt validation live in
   SDK/starter or engine-owned result code
-- core delivery-command handoff pumping through a narrow batch-listener
-  callback; embedded Java adapter dispatch from already resolved
-  delivery-command batches lives in runtime embedded-support
+- core delivery-command handoff claim/ack semantics. Current embedded assembly
+  drains delivery commands through mailbox-scoped embedded adapter host mounts,
+  not a starter-owned global pump/listener. `AdapterMailboxMount` owns the
+  handoff poll/dispatch/ack loop for one command-delivery binding.
 - engine-to-transport delivery-command handoff queue/store ownership after
   assignment; current embedded default wiring is an in-memory
   `TransportDeliveryCommandHandoff`, while split runtimes use Redis
-  delivery-command adapter-mailbox queues plus mailbox consumer lease evidence
+  delivery-command adapter-mailbox queues plus mailbox consumer availability
+  evidence
 - producer-side starter assembly translates immutable `TaskDispatchContext +
   TaskDispatchBinding` assignment facts into minimal `DeliveryCommand` values.
   The binding-level worker-group context remains `deliveryBucketId`, and
@@ -242,11 +274,15 @@ lifecycle state.
 
 Concrete adapters own protocol I/O only:
 
-- server/session/endpoint lifecycle for their protocol
+- protocol connection/session open/close resources for their protocol
 - frame or request/response codec
 - endpoint connect/disconnect/heartbeat lease refresh into
-  transport-owned endpoint lease evidence
-- calls into runtime delivery and result-ingest contracts
+  transport-owned endpoint lease evidence through adapter-session evidence
+  publisher capabilities
+- calls into runtime delivery and result-ingest contracts through narrow
+  adapter bootstrap capabilities, not broad runtime owner surfaces; concrete
+  adapters consume host-resolved mailbox keys and do not mint mailbox keys from
+  adapter id or protocol values themselves
 - accept/read/write loops submitted through the runtime executor context when they block
 
 Adapter process identity is intentionally narrow. `adapterId` identifies a
@@ -356,7 +392,7 @@ The split runtime uses three transport/runtime channels:
   `adapterMailboxKey` through worker-runtime delivery target evidence and
   submits `AdapterMailboxDeliveryOffer(adapterMailboxKey, commands)`.
   Multi-process adapter mode stores commands under that mailbox queue and wakes
-  only the mailbox consumer that currently owns the mailbox lease.
+  only the mailbox consumer with current availability proof.
   `DeliveryCommandBatch` at the consumer boundary carries a mailbox key,
   optional handoff references, and materialized commands; it does not carry
   lane or target-node facts. Redis dispatch queue ownership is not routeKey
@@ -404,21 +440,25 @@ capability, rule, lock, admission, and worker-runtime evidence. Only after
 assignment has produced a concrete selected worker does delivery integration
 resolve `selectedWorkerId -> adapterMailboxKey` from worker-runtime evidence and
 submit commands to the adapter-mailbox delivery-command queue. Mailbox consumer
-wakeup is owned by the handoff through finite mailbox lease evidence;
+wakeup is owned by the handoff through finite mailbox availability evidence;
 adapter/session connection handles stay inside adapter-owned endpoint
-registries. Missing or expired mailbox evidence goes through engine-owned
+registries. Missing or expired mailbox availability goes through engine-owned
 compensation/retry; transport does not re-schedule or mutate task lifecycle.
 
 SDK/starter assembly exposes three runtime roles:
 
-- `EMBEDDED`: engine, local handoff pump, transport runtime, adapters, and local
-  result ingest run in one JVM
+- `EMBEDDED`: engine, local delivery-command handoff, transport runtime,
+  embedded adapter host set, adapters, and local result ingest run in one JVM.
+  Command drain runs through adapter mailbox host mounts, not a starter-owned
+  global pump.
 - `ENGINE_PRODUCER`: engine runs and submits delivery-command batches into the
   configured handoff; it drains result and delivery-failure inboxes back into
   local engine ports, but does not start transport adapters
 - `TRANSPORT_CONSUMER`: transport adapters, endpoint lease store, delivery
-  store, and delivery-command handoff pump run without starting the engine;
-  results and retryable delivery failures are enqueued for engine-side draining
+  store, embedded adapter host set, and delivery-command handoff consumers run
+  without starting the engine; results and retryable delivery failures are
+  enqueued for engine-side draining. Command drain runs through adapter mailbox
+  host mounts.
 
 Transport consumers consume already resolved delivery targets. They must not
 call worker runtime, engine, or server APIs for worker lookup, worker
@@ -524,20 +564,24 @@ payload and selected-worker endpoint evidence. Task shell metadata such as task
 name, project, and user id must not be copied into `DeliveryCommand`, transport
 pull results, or handoff codecs as parallel truth.
 
-`TransportPacket` remains the internal flat transport envelope for result and
-worker-system-event shapes, while task-dispatch wire frames are assembled at
-final-hop delivery from `DeliveryCommand`. Starter-side command
-construction must not create a packet-backed delivery command. The
-delivery-command handoff codec and polling queue codec must not serialize a
-generic task-dispatch `TransportPacket` as the item payload.
+`TransportPacket` remains limited packet codec support for worker-system-event
+and legacy packet-shaped frames. It is not the task-dispatch command carrier
+and is not the result-ingress mainline carrier. Result ingress uses
+`RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)`; starter-owned
+code decodes the opaque payload. Task-dispatch wire frames are assembled at
+final-hop delivery from `DeliveryCommand`. Starter-side command construction
+must not create a packet-backed delivery command. The delivery-command handoff
+codec and polling queue codec must not serialize a generic task-dispatch
+`TransportPacket` as the item payload.
 
 `TransportPacket.payload` is a JSON object boundary, not an arbitrary JVM
 object slot. Durable queue codecs must be able to round-trip packet payloads
 without relying on Java-local runtime types. Packet identity rules are
-type-specific and part of the transport contract: `TASK_DISPATCH` requires
-`taskId`, `messageId`, and `eventCode`; `TASK_RESULT` requires `taskId` and
-`messageId`; `WORKER_SYSTEM_EVENT` requires `eventCode`. Allowed payload values
-are JSON-safe primitives plus nested JSON-safe object or array shapes only:
+type-specific legacy packet validation, not assigned-delivery or result-ingress
+routing truth: `TASK_DISPATCH` requires `taskId`, `messageId`, and `eventCode`;
+`TASK_RESULT` requires `taskId` and `messageId`; `WORKER_SYSTEM_EVENT` requires
+`eventCode`. Allowed payload values are JSON-safe primitives plus nested
+JSON-safe object or array shapes only:
 `String`, `Number`, `Boolean`, `null`, `Map<String, Object>`, and lists/arrays
 composed from the same value set. Transport must reject unsupported JVM-only
 objects at payload assembly time instead of letting different codecs or queue
@@ -708,10 +752,10 @@ Retryable dispatch outcomes must carry delivery id,
 `selectedWorkerId`, opaque correlation, status, retryability, reason, and time;
 transport trace ids are diagnostics and must not double as compensation keys.
 
-Assignment-to-transport handoff is also part of the hot path. The embedded
-runtime uses an in-memory `TransportDeliveryCommandHandoff` plus
-`TransportDeliveryCommandHandoffPump`; split runtime uses Redis-backed
-delivery-command handoffs with the same producer/consumer contract. Producer
+Assignment-to-transport handoff is also part of the hot path. Embedded and
+split runtime both use adapter-mailbox `TransportDeliveryCommandHandoff`
+contracts: producers offer to an `adapterMailboxKey`, and embedded adapter
+hosts mount mailbox-scoped drains that poll only their mailbox. Producer
 handoff is a bounded offer that returns delivery outcomes such as backpressure,
 not a blocking engine hot-path call. Do not reintroduce direct synchronous
 engine->transport callback coupling as a parallel mainline, do not treat any
@@ -745,23 +789,21 @@ also part of the runtime contract: after shutdown the store rejects new
 delivery, clears in-memory backlog, and wakes waiting pollers without changing
 engine-owned task lifecycle state.
 
-For Redis-ready queue diagnostics, treat the stats contract in two tiers:
-
-- hard contract fields:
-  `queuedItems`, `queueCount`, and `maxQueuedItems`
-- best-effort diagnostics:
-  `queueByAdapter` legacy breakdown, `waitingPollers`,
-  `oldestQueuedAgeMillis`, `enqueuedItems`,
-  `drainedItems`, `backpressureRejectedItems`, `invalidItems`,
-  `unavailableItems`, `shutdownClearedItems`, and nested breakdown mirrors of
-  those values
+For Redis-ready queue diagnostics, stats are a side-channel only. They must not
+drive command admission, selected-worker correctness, lifecycle, retry,
+reassign, or completion proof. Current diagnostics expose `queuedItems`,
+`queueCount`, `maxQueuedItems`, `queueByAdapter`, `waitingPollers`,
+`oldestQueuedAgeMillis`, `enqueuedItems`, `drainedItems`,
+`backpressureRejectedItems`, `invalidItems`, `unavailableItems`,
+`shutdownClearedItems`, and nested breakdown mirrors. These fields are useful
+operator evidence, not transport owner truth.
 
 `queueByAdapter` keeps its legacy field name for existing diagnostics, but it
-is not queue ownership truth. Current assigned polling delivery aggregates
-that field under the adapter mailbox queue key, while the actual drain selector
-remains `selectedWorkerId`. Best-effort diagnostics must remain meaningful, but
-future distributed queue implementations are not required to preserve the exact
-local JVM waiter or snapshot timing model of the current in-memory store.
+is not queue ownership truth. Current assigned polling delivery aggregates that
+field under the adapter mailbox queue key, while the actual drain selector
+remains `selectedWorkerId`. Future distributed queue implementations are not
+required to preserve the exact local JVM waiter, snapshot timing, or every
+diagnostic counter shape of the current in-memory store.
 
 Queue mechanics such as keyed FIFO storage, blocking poll coordination,
 per-key/global admission, and queue snapshot counters may live under

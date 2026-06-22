@@ -3,6 +3,7 @@ package com.xa.mass.transport.socket.dispatcher;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,7 @@ class SocketTaskDispatchChannelTest {
 
     @Test
     void dispatchReturnsEndpointOfflineWhenWorkerSessionIsMissing() {
-        SocketTaskDispatchChannel channel = channel(new SocketSessionManager("socket", "socket"));
+        SocketTaskDispatchChannel channel = channel(sessionManager());
 
         List<DispatchOutcome> outcomes = channel.dispatch(List.of(request("msg-1", "worker-1")));
 
@@ -46,7 +47,7 @@ class SocketTaskDispatchChannelTest {
     }
 
     private SocketSessionManager sessionManagerWithWorker(String workerId) {
-        SocketSessionManager sessionManager = new SocketSessionManager("socket", "socket");
+        SocketSessionManager sessionManager = sessionManager();
         Socket socket = mock(Socket.class);
         when(socket.isConnected()).thenReturn(true);
         when(socket.isClosed()).thenReturn(false);
@@ -59,6 +60,14 @@ class SocketTaskDispatchChannelTest {
                 new BufferedWriter(new StringWriter())
         );
         return sessionManager;
+    }
+
+    private SocketSessionManager sessionManager() {
+        return new SocketSessionManager(
+                "socket",
+                "socket",
+                AdapterSessionEvidencePublisher.noop("socket", "socket")
+        );
     }
 
     private DeliveryCommand request(String correlationSuffix, String workerId) {

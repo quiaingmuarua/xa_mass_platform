@@ -1,89 +1,59 @@
 package com.xa.mass.transport.websocket.session;
 
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.lease.TransportEndpointLeasePublisher;
-import com.xa.mass.transport.runtime.lease.WorkerPresenceSessionPublisher;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 
 import java.util.List;
 
 public final class WebSocketSessionEvidenceDriver {
 
-    private final TransportEndpointLeasePublisher endpointLeasePublisher;
-    private final WorkerPresenceSessionPublisher workerPresencePublisher;
+    private final AdapterSessionEvidencePublisher sessionEvidencePublisher;
 
-    public WebSocketSessionEvidenceDriver(String adapterId, String adapterMailboxKey) {
-        this.endpointLeasePublisher = new TransportEndpointLeasePublisher(adapterId);
-        this.workerPresencePublisher = new WorkerPresenceSessionPublisher(adapterId, adapterMailboxKey);
-    }
-
-    public void setEndpointLeaseStore(TransportEndpointLeaseStore endpointLeaseStore) {
-        endpointLeasePublisher.setEndpointLeaseStore(endpointLeaseStore);
-    }
-
-    public void setWorkerPresenceIngress(WorkerPresenceIngress workerPresenceIngress) {
-        workerPresencePublisher.setWorkerPresenceIngress(workerPresenceIngress);
+    public WebSocketSessionEvidenceDriver(AdapterSessionEvidencePublisher sessionEvidencePublisher) {
+        this.sessionEvidencePublisher = java.util.Objects.requireNonNull(sessionEvidencePublisher,
+                "sessionEvidencePublisher");
     }
 
     public long getLeaseMillis() {
-        return endpointLeasePublisher.getLeaseMillis();
+        return sessionEvidencePublisher.leaseMillis();
     }
 
     public void connected(WebSocketSessionStore.SessionSnapshot session, String reason) {
-        workerPresencePublisher.sessionConnected(
-                session.workerId(),
-                session.endpointAddress(),
-                session.sessionHandle(),
-                reason,
-                session.sessionHandle()
-        );
-        endpointLeasePublisher.claim(
+        sessionEvidencePublisher.connected(
                 session.workerId(),
                 session.deliveryBucketId(),
                 session.endpointAddress(),
                 session.sessionHandle(),
-                reason
+                reason,
+                session.sessionHandle()
         );
     }
 
     public void heartbeat(WebSocketSessionStore.SessionSnapshot session, String reason) {
-        workerPresencePublisher.sessionHeartbeat(
-                session.workerId(),
-                session.endpointAddress(),
-                session.sessionHandle(),
-                reason,
-                session.sessionHandle()
-        );
-        endpointLeasePublisher.refresh(
+        sessionEvidencePublisher.heartbeat(
                 session.workerId(),
                 session.deliveryBucketId(),
                 session.endpointAddress(),
                 session.sessionHandle(),
-                reason
+                reason,
+                session.sessionHandle()
         );
     }
 
     public void disconnected(WebSocketSessionStore.SessionSnapshot session, String reason) {
-        workerPresencePublisher.sessionDisconnected(
-                session.workerId(),
-                session.endpointAddress(),
-                session.sessionHandle(),
-                reason,
-                session.sessionHandle()
-        );
-        endpointLeasePublisher.release(
+        sessionEvidencePublisher.disconnected(
                 session.workerId(),
                 session.deliveryBucketId(),
                 session.endpointAddress(),
                 session.sessionHandle(),
-                reason
+                reason,
+                session.sessionHandle()
         );
     }
 
     public void projectActiveSessions(List<WebSocketSessionStore.SessionSnapshot> sessions, String reason) {
         for (WebSocketSessionStore.SessionSnapshot session : sessions) {
             if (session != null) {
-                endpointLeasePublisher.claim(
+                sessionEvidencePublisher.claimEndpoint(
                         session.workerId(),
                         session.deliveryBucketId(),
                         session.endpointAddress(),

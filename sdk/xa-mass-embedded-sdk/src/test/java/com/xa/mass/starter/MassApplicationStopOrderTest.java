@@ -13,7 +13,7 @@ import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.ManagedTransportAdapter;
-import com.xa.mass.transport.runtime.EmbeddedAdapterRuntimeSet;
+import com.xa.mass.transport.runtime.EmbeddedAdapterHostSet;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
@@ -60,9 +60,9 @@ class MassApplicationStopOrderTest {
         when(transportServer.isRunning()).thenReturn(false);
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
-        EmbeddedAdapterRuntimeSet runtimeSet = startedRuntimeSet(adapter, transportServer);
+        EmbeddedAdapterHostSet runtimeSet = startedRuntimeSet(adapter, transportServer);
         order.clear();
-        inject(app, "embeddedAdapterRuntimeSet", runtimeSet);
+        inject(app, "embeddedAdapterHostSet", runtimeSet);
         setApplicationRunning(app, true);
 
         app.stop();
@@ -86,9 +86,9 @@ class MassApplicationStopOrderTest {
         doAnswer(inv -> { order.add("transport"); return null; }).when(transportServer).stop();
 
         MassApplication app = new MassApplication(engine, enabledWebSocket(), enabledEngine());
-        EmbeddedAdapterRuntimeSet runtimeSet = startedRuntimeSet(adapter, transportServer);
+        EmbeddedAdapterHostSet runtimeSet = startedRuntimeSet(adapter, transportServer);
         order.clear();
-        inject(app, "embeddedAdapterRuntimeSet", runtimeSet);
+        inject(app, "embeddedAdapterHostSet", runtimeSet);
         setApplicationRunning(app, true);
 
         app.stop();
@@ -106,8 +106,8 @@ class MassApplicationStopOrderTest {
         TransportServer transportServer = mock(TransportServer.class);
 
         MassApplication app = new MassApplication(engine, enabledWebSocket(), enabledEngine());
-        EmbeddedAdapterRuntimeSet runtimeSet = startedRuntimeSet(adapter, transportServer);
-        inject(app, "embeddedAdapterRuntimeSet", runtimeSet);
+        EmbeddedAdapterHostSet runtimeSet = startedRuntimeSet(adapter, transportServer);
+        inject(app, "embeddedAdapterHostSet", runtimeSet);
         setApplicationRunning(app, true);
 
         app.stop();
@@ -367,14 +367,16 @@ class MassApplicationStopOrderTest {
         }
     }
 
-    private EmbeddedAdapterRuntimeSet startedRuntimeSet(ManagedTransportAdapter managedTransportAdapter,
+    private EmbeddedAdapterHostSet startedRuntimeSet(ManagedTransportAdapter managedTransportAdapter,
                                                         TransportServer transportServer) {
         TransportAdapterContribution contribution = TransportAdapterContribution.builder()
                 .addManagedTransportAdapter(managedTransportAdapter)
                 .addTransportServer(transportServer)
                 .build();
-        EmbeddedAdapterRuntimeSet runtimeSet = EmbeddedAdapterRuntimeSet.fromContributions(
+        EmbeddedAdapterHostSet runtimeSet = EmbeddedAdapterHostSet.fromContributions(
                 List.of(contribution),
+                null,
+                null,
                 NoopAdapterMailboxConsumerRegistry.INSTANCE,
                 30_000L,
                 new NoopRuntimeTaskExecutor()

@@ -5,9 +5,9 @@ import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
 import com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch;
+import com.xa.mass.transport.runtime.delivery.AdapterPullDeliveryBuffer;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollStatus;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.List;
 import java.util.Objects;
@@ -17,15 +17,13 @@ import java.util.Objects;
  */
 public final class PollingDeliveryPullChannel implements DeliveryPullChannel {
 
-    private final String adapterMailboxKey;
-    private final TransportDeliveryService deliveryService;
+    private final AdapterPullDeliveryBuffer deliveryBuffer;
 
-    public PollingDeliveryPullChannel(String adapterMailboxKey, TransportDeliveryService deliveryService) {
+    public PollingDeliveryPullChannel(String adapterMailboxKey, AdapterPullDeliveryBuffer deliveryBuffer) {
         if (adapterMailboxKey == null || adapterMailboxKey.isBlank()) {
             throw new IllegalArgumentException("adapterMailboxKey must not be blank");
         }
-        this.adapterMailboxKey = adapterMailboxKey.trim();
-        this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
+        this.deliveryBuffer = Objects.requireNonNull(deliveryBuffer, "deliveryBuffer");
     }
 
     @Override
@@ -38,8 +36,7 @@ public final class PollingDeliveryPullChannel implements DeliveryPullChannel {
                 || maxMessages <= 0) {
             return DeliveryPullResult.invalidRequest();
         }
-        TransportDeliveryPollResult result = deliveryService.pollMailboxItemResult(
-                adapterMailboxKey,
+        TransportDeliveryPollResult result = deliveryBuffer.poll(
                 selectedWorkerId,
                 maxMessages,
                 timeoutMillis

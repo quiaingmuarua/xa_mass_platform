@@ -3,6 +3,7 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
 import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
 import com.xa.mass.transport.websocket.session.WebSocketSessionRefreshLoop;
@@ -47,7 +48,8 @@ class WebSocketTaskDispatchChannelTest {
     @Test
     void returnsEndpointOfflineWhenSessionStoreHasNoWorker() {
         WebSocketSessionStore sessionStore = new WebSocketSessionStore("websocket");
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver("websocket", "websocket");
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
+                AdapterSessionEvidencePublisher.noop("websocket", "websocket"));
         WebSocketSessionController controller = new WebSocketSessionController(
                 sessionStore,
                 evidenceDriver,
@@ -72,7 +74,8 @@ class WebSocketTaskDispatchChannelTest {
 
     private SessionFixture sessionWithWorker(String workerId) {
         WebSocketSessionStore sessionStore = new WebSocketSessionStore("websocket");
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver("websocket", "websocket");
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
+                AdapterSessionEvidencePublisher.noop("websocket", "websocket"));
         WebSocketSessionController controller = new WebSocketSessionController(
                 sessionStore,
                 evidenceDriver,

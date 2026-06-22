@@ -2,6 +2,7 @@ package com.xa.mass.transport.websocket.server;
 
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessage;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
@@ -283,7 +284,8 @@ class DispatcherInboundHandlerTest {
 
     private WebSocketSessionController newSessionController(String adapterId) {
         sessionStore = new WebSocketSessionStore(adapterId);
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(adapterId, adapterId);
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
+                AdapterSessionEvidencePublisher.noop(adapterId, adapterId));
         WebSocketSessionRefreshLoop refreshLoop =
                 new WebSocketSessionRefreshLoop(adapterId, sessionStore, evidenceDriver);
         return new WebSocketSessionController(sessionStore, evidenceDriver, refreshLoop);
@@ -389,7 +391,8 @@ class WebSocketServerImplDisconnectTest {
 
     private WebSocketSessionController newSessionController(String adapterId) {
         sessionStore = new WebSocketSessionStore(adapterId);
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(adapterId, adapterId);
+        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
+                AdapterSessionEvidencePublisher.noop(adapterId, adapterId));
         WebSocketSessionRefreshLoop refreshLoop =
                 new WebSocketSessionRefreshLoop(adapterId, sessionStore, evidenceDriver);
         return new WebSocketSessionController(sessionStore, evidenceDriver, refreshLoop);

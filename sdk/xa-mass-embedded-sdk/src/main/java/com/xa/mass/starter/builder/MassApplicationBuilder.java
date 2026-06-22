@@ -335,8 +335,8 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder adapterMailboxConsumerLeaseMillis(long adapterMailboxConsumerLeaseMillis) {
-            config.setAdapterMailboxConsumerLeaseMillis(adapterMailboxConsumerLeaseMillis);
+        public TransportBuilder adapterMailboxConsumerAvailabilityMillis(long adapterMailboxConsumerAvailabilityMillis) {
+            config.setAdapterMailboxConsumerAvailabilityMillis(adapterMailboxConsumerAvailabilityMillis);
             return this;
         }
 

@@ -1,11 +1,8 @@
 package com.xa.mass.transport.socket.session;
 
 import com.xa.mass.transport.WorkerEndpointSnapshot;
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
-import com.xa.mass.transport.runtime.lease.TransportEndpointLeasePublisher;
-import com.xa.mass.transport.runtime.lease.WorkerPresenceSessionPublisher;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,17 +26,17 @@ public final class SocketSessionManager {
     private final String adapterMailboxKey;
     private final RouteEndpointIndex<String, SocketWorkerEndpoint> routeIndex = new RouteEndpointIndex<>();
     private final ConcurrentMap<String, String> deliveryBucketByEndpoint = new ConcurrentHashMap<>();
-    private final TransportEndpointLeasePublisher endpointLeasePublisher;
-    private final WorkerPresenceSessionPublisher workerPresencePublisher;
+    private final AdapterSessionEvidencePublisher sessionEvidencePublisher;
 
-    public SocketSessionManager(String adapterId, String adapterMailboxKey) {
+    public SocketSessionManager(String adapterId,
+                                String adapterMailboxKey,
+                                AdapterSessionEvidencePublisher sessionEvidencePublisher) {
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must not be blank");
         }
         this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
         this.adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
-        this.endpointLeasePublisher = new TransportEndpointLeasePublisher(this.adapterId);
-        this.workerPresencePublisher = new WorkerPresenceSessionPublisher(this.adapterId, this.adapterMailboxKey);
+        this.sessionEvidencePublisher = Objects.requireNonNull(sessionEvidencePublisher, "sessionEvidencePublisher");
     }
 
     public synchronized void addSession(String deliveryBucketId,
@@ -70,14 +67,14 @@ public final class SocketSessionManager {
                 routeKey, workerId, endpointId, routeIndex.routeCount());
         if (result.currentEntry().endpoint().isActive()) {
             String reason = "socket connected";
-            workerPresencePublisher.sessionConnected(
+            sessionEvidencePublisher.connected(
                     workerId,
+                    normalizedDeliveryBucketId,
                     routeKey,
                     endpointId,
                     reason,
                     endpointId
             );
-            endpointLeasePublisher.claim(workerId, normalizedDeliveryBucketId, routeKey, endpointId, reason);
         }
         if (previousForWorker != null) {
             logger.warn("Existing socket endpoint for routeKey={} workerId={} found. Replacing session.",
@@ -105,15 +102,15 @@ public final class SocketSessionManager {
                 binding.routeKey(), binding.workerId(), endpointId);
         if (result.removedCurrentRoute()) {
             if (publishPresence) {
-                workerPresencePublisher.sessionDisconnected(
+                sessionEvidencePublisher.disconnected(
                         binding.workerId(),
+                        deliveryBucketId,
                         binding.routeKey(),
                         endpointId,
                         reason,
                         endpointId
                 );
             }
-            endpointLeasePublisher.release(binding.workerId(), deliveryBucketId, binding.routeKey(), endpointId, reason);
         }
     }
 
@@ -196,19 +193,13 @@ public final class SocketSessionManager {
         for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : entries) {
             if (entry.endpoint().isActive()) {
                 String reason = "socket adapter shutdown";
-                workerPresencePublisher.sessionDisconnected(
-                        entry.workerId(),
-                        entry.routeKey(),
-                        entry.handle(),
-                        reason,
-                        entry.handle()
-                );
-                endpointLeasePublisher.release(
+                sessionEvidencePublisher.disconnected(
                         entry.workerId(),
                         deliveryBucketByEndpoint.get(entry.handle()),
                         entry.routeKey(),
                         entry.handle(),
-                        reason
+                        reason,
+                        entry.handle()
                 );
             }
         }
@@ -256,17 +247,6 @@ public final class SocketSessionManager {
         return null;
     }
 
-    public void setEndpointLeaseStore(TransportEndpointLeaseStore endpointLeaseStore) {
-        synchronized (this) {
-            endpointLeasePublisher.setEndpointLeaseStore(endpointLeaseStore);
-            projectActiveSessionsToEndpointLease("socket endpoint lease store replaced");
-        }
-    }
-
-    public void setWorkerPresenceIngress(WorkerPresenceIngress workerPresenceIngress) {
-        workerPresencePublisher.setWorkerPresenceIngress(workerPresenceIngress);
-    }
-
     public void recordHeartbeat(String routeKey, String workerId, String endpointId, String reason, String traceId) {
         RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> current = currentEntryForHandle(endpointId);
         if (current == null
@@ -274,19 +254,13 @@ public final class SocketSessionManager {
                 || !Objects.equals(normalizeNullable(workerId), current.workerId())) {
             return;
         }
-        workerPresencePublisher.sessionHeartbeat(
-                current.workerId(),
-                current.routeKey(),
-                endpointId,
-                reason,
-                traceId
-        );
-        endpointLeasePublisher.refresh(
+        sessionEvidencePublisher.heartbeat(
                 current.workerId(),
                 deliveryBucketByEndpoint.get(endpointId),
                 current.routeKey(),
                 endpointId,
-                reason
+                reason,
+                traceId
         );
     }
 
@@ -321,22 +295,6 @@ public final class SocketSessionManager {
             }
         }
         return null;
-    }
-
-    private void projectActiveSessionsToEndpointLease(String reason) {
-        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entries()) {
-            SocketWorkerEndpoint endpoint = entry.endpoint();
-            if (endpoint == null || !endpoint.isActive()) {
-                continue;
-            }
-            endpointLeasePublisher.claim(
-                    entry.workerId(),
-                    deliveryBucketByEndpoint.get(entry.handle()),
-                    entry.routeKey(),
-                    entry.handle(),
-                    reason
-            );
-        }
     }
 
     private void closeQuietly(SocketWorkerEndpoint endpoint) {

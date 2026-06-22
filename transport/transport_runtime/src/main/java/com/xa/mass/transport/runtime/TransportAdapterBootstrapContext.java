@@ -4,7 +4,9 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
+import com.xa.mass.transport.runtime.delivery.AdapterPullDeliveryBuffer;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 
 import java.util.Objects;
 
@@ -36,16 +38,24 @@ public final class TransportAdapterBootstrapContext {
         return resultIngressChannel;
     }
 
-    public WorkerPresenceIngress getWorkerPresenceIngress() {
-        return workerPresenceIngress;
+    public String adapterMailboxKey(String adapterId) {
+        if (adapterId == null || adapterId.isBlank()) {
+            throw new IllegalArgumentException("adapterId must not be blank");
+        }
+        return adapterId.trim();
     }
 
-    public TransportEndpointLeaseStore getEndpointLeaseStore() {
-        return endpointLeaseStore;
+    public AdapterSessionEvidencePublisher sessionEvidencePublisher(String adapterId, String adapterMailboxKey) {
+        return new AdapterSessionEvidencePublisher(
+                adapterId,
+                adapterMailboxKey,
+                endpointLeaseStore,
+                workerPresenceIngress
+        );
     }
 
-    public TransportDeliveryService getDeliveryService() {
-        return deliveryService;
+    public AdapterPullDeliveryBuffer pullDeliveryBuffer(String adapterMailboxKey) {
+        return new AdapterPullDeliveryBuffer(adapterMailboxKey, deliveryService);
     }
 
     public RuntimeTaskExecutor getRuntimeTaskExecutor() {

@@ -1,6 +1,6 @@
 # Transport High-Volume Event Design
 
-Last updated: 2026-06-17
+Last updated: 2026-06-22
 
 Status: design/reference only, not current runtime truth.
 
@@ -27,10 +27,10 @@ High-volume transport should stay on this mainline:
 ```text
 engine assignment
   -> DeliveryCommand
-  -> TransportDeliveryCommandListener
-  -> TransportDeliveryService
-  -> TransportDeliveryStore
-  -> adapter drain/send
+  -> AdapterMailboxMount
+  -> AdapterCommandExecutor
+  -> adapter final-hop send
+     or polling TransportDeliveryService / TransportDeliveryStore
   -> worker
   -> RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)
   -> TransportResultIngressChannel / TransportResultIngressHandler

@@ -11,7 +11,7 @@ public interface TransportDeliveryCommandHandoff {
 
     List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer);
 
-    DeliveryCommandBatch poll(long timeoutMillis) throws InterruptedException;
+    DeliveryCommandBatch poll(String adapterMailboxKey, long timeoutMillis) throws InterruptedException;
 
     default void complete(DeliveryCommandBatch batch, List<DispatchOutcome> outcomes) {
     }

@@ -55,7 +55,7 @@ public class TransportConfig {
     private int eventRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private long eventHandlerTimeoutMillis;
     private long endpointLeaseMillis = 30_000L;
-    private long adapterMailboxConsumerLeaseMillis = 30_000L;
+    private long adapterMailboxConsumerAvailabilityMillis = 30_000L;
     private TransportRuntimeRole runtimeRole = TransportRuntimeRole.EMBEDDED;
 
     public TransportConfig() {
@@ -91,7 +91,7 @@ public class TransportConfig {
         this.eventRuntimeMaxPendingTasks = source.eventRuntimeMaxPendingTasks;
         this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
         this.endpointLeaseMillis = source.endpointLeaseMillis;
-        this.adapterMailboxConsumerLeaseMillis = source.adapterMailboxConsumerLeaseMillis;
+        this.adapterMailboxConsumerAvailabilityMillis = source.adapterMailboxConsumerAvailabilityMillis;
         this.runtimeRole = source.runtimeRole;
     }
 
@@ -235,15 +235,15 @@ public class TransportConfig {
         this.endpointLeaseMillis = endpointLeaseMillis;
     }
 
-    public long getAdapterMailboxConsumerLeaseMillis() {
-        return adapterMailboxConsumerLeaseMillis;
+    public long getAdapterMailboxConsumerAvailabilityMillis() {
+        return adapterMailboxConsumerAvailabilityMillis;
     }
 
-    public void setAdapterMailboxConsumerLeaseMillis(long adapterMailboxConsumerLeaseMillis) {
-        if (adapterMailboxConsumerLeaseMillis <= 0L) {
-            throw new IllegalArgumentException("adapterMailboxConsumerLeaseMillis must be greater than 0");
+    public void setAdapterMailboxConsumerAvailabilityMillis(long adapterMailboxConsumerAvailabilityMillis) {
+        if (adapterMailboxConsumerAvailabilityMillis <= 0L) {
+            throw new IllegalArgumentException("adapterMailboxConsumerAvailabilityMillis must be greater than 0");
         }
-        this.adapterMailboxConsumerLeaseMillis = adapterMailboxConsumerLeaseMillis;
+        this.adapterMailboxConsumerAvailabilityMillis = adapterMailboxConsumerAvailabilityMillis;
     }
 
     public void setWorkerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {

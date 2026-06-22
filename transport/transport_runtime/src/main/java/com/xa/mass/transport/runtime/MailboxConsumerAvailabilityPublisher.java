@@ -1,7 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerLease;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerAvailability;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import org.slf4j.Logger;
@@ -13,31 +13,31 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Embedded-runtime owner for one adapter mailbox consumer lease.
+ * Publishes narrow queue-consumer availability for one adapter mailbox.
  */
-public final class AdapterMailboxLeaseRuntime {
+public final class MailboxConsumerAvailabilityPublisher {
 
-    private static final Logger logger = LoggerFactory.getLogger(AdapterMailboxLeaseRuntime.class);
+    private static final Logger logger = LoggerFactory.getLogger(MailboxConsumerAvailabilityPublisher.class);
     private static final long MIN_REFRESH_INTERVAL_MILLIS = 100L;
 
     private final TransportBinding binding;
     private final AdapterMailboxConsumerRegistry registry;
-    private final long leaseMillis;
+    private final long availabilityMillis;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private volatile AdapterMailboxConsumerLease currentLease;
+    private volatile AdapterMailboxConsumerAvailability currentAvailability;
     private volatile Future<?> refreshTask;
 
-    public AdapterMailboxLeaseRuntime(TransportBinding binding,
+    public MailboxConsumerAvailabilityPublisher(TransportBinding binding,
                                       AdapterMailboxConsumerRegistry registry,
-                                      long leaseMillis,
+                                      long availabilityMillis,
                                       RuntimeTaskExecutor runtimeTaskExecutor) {
         this.binding = Objects.requireNonNull(binding, "binding");
         this.registry = registry != null ? registry : NoopAdapterMailboxConsumerRegistry.INSTANCE;
-        if (leaseMillis <= 0L) {
-            throw new IllegalArgumentException("leaseMillis must be greater than 0");
+        if (availabilityMillis <= 0L) {
+            throw new IllegalArgumentException("availabilityMillis must be greater than 0");
         }
-        this.leaseMillis = leaseMillis;
+        this.availabilityMillis = availabilityMillis;
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
     }
 
@@ -49,7 +49,7 @@ public final class AdapterMailboxLeaseRuntime {
         if (!running.compareAndSet(false, true)) {
             return;
         }
-        claimNextLease();
+        publishNextAvailability();
         if (registry != NoopAdapterMailboxConsumerRegistry.INSTANCE) {
             refreshTask = runtimeTaskExecutor.submit(this::runRefreshLoop);
         }
@@ -64,14 +64,14 @@ public final class AdapterMailboxLeaseRuntime {
         if (task != null) {
             task.cancel(true);
         }
-        AdapterMailboxConsumerLease lease = currentLease;
-        currentLease = null;
-        if (lease != null && registry != NoopAdapterMailboxConsumerRegistry.INSTANCE) {
+        AdapterMailboxConsumerAvailability availability = currentAvailability;
+        currentAvailability = null;
+        if (availability != null && registry != NoopAdapterMailboxConsumerRegistry.INSTANCE) {
             try {
-                registry.releaseMailboxConsumer(lease);
+                registry.removeMailboxConsumerAvailability(availability);
             } catch (RuntimeException e) {
-                logger.warn("Failed to release adapter mailbox consumer lease: adapterMailboxKey={}, reason={}",
-                        lease.adapterMailboxKey(), e.getMessage());
+                logger.warn("Failed to release adapter mailbox consumer availability: adapterMailboxKey={}, reason={}",
+                        availability.adapterMailboxKey(), e.getMessage());
             }
         }
     }
@@ -83,34 +83,34 @@ public final class AdapterMailboxLeaseRuntime {
     private void runRefreshLoop() {
         long refreshIntervalMillis = Math.max(
                 MIN_REFRESH_INTERVAL_MILLIS,
-                Math.max(1L, leaseMillis / 3L)
+                Math.max(1L, availabilityMillis / 3L)
         );
         while (running.get() && !Thread.currentThread().isInterrupted()) {
             try {
                 TimeUnit.MILLISECONDS.sleep(refreshIntervalMillis);
-                claimNextLease();
+                publishNextAvailability();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (RuntimeException e) {
-                logger.warn("Failed to refresh adapter mailbox consumer lease: adapterMailboxKey={}, reason={}",
+                logger.warn("Failed to refresh adapter mailbox consumer availability: adapterMailboxKey={}, reason={}",
                         binding.getAdapterMailboxKey(), e.getMessage());
             }
         }
     }
 
-    private void claimNextLease() {
+    private void publishNextAvailability() {
         if (registry == NoopAdapterMailboxConsumerRegistry.INSTANCE) {
             return;
         }
-        AdapterMailboxConsumerLease previous = currentLease;
-        AdapterMailboxConsumerLease next = new AdapterMailboxConsumerLease(
+        AdapterMailboxConsumerAvailability previous = currentAvailability;
+        AdapterMailboxConsumerAvailability next = new AdapterMailboxConsumerAvailability(
                 binding.getAdapterMailboxKey(),
                 consumerId(binding),
                 previous == null ? 1L : previous.generation(),
-                System.currentTimeMillis() + leaseMillis
+                System.currentTimeMillis() + availabilityMillis
         );
-        registry.claimMailboxConsumer(next);
-        currentLease = next;
+        registry.publishMailboxConsumerAvailability(next);
+        currentAvailability = next;
     }
 
     private static String consumerId(TransportBinding binding) {

@@ -30,7 +30,7 @@ class InMemoryTransportDeliveryCommandHandoffTest {
                 handoff.offer(offer).stream().map(outcome -> outcome.getStatus()).toList()
         );
 
-        DeliveryCommandBatch polled = handoff.poll(100L);
+        DeliveryCommandBatch polled = handoff.poll(DeliveryCommandFixtures.mailboxKey(), 100L);
         assertNotNull(polled);
         assertEquals(DeliveryCommandFixtures.mailboxKey(), polled.adapterMailboxKey());
         assertEquals("worker-1", polled.items().getFirst().getSelectedWorkerId());
@@ -90,13 +90,13 @@ class InMemoryTransportDeliveryCommandHandoffTest {
                 List.of(DeliveryCommandFixtures.command("msg-active", "worker-active", null))
         ));
 
-        handoff.releaseMailboxConsumer(new AdapterMailboxConsumerLease(
+        handoff.removeMailboxConsumerAvailability(new AdapterMailboxConsumerAvailability(
                 "mailbox-stale",
                 "consumer-stale",
                 1L,
                 0L
         ));
-        DeliveryCommandBatch active = handoff.poll(0L);
+        DeliveryCommandBatch active = handoff.poll("mailbox-active", 0L);
 
         assertNotNull(active);
         assertEquals("mailbox-active", active.adapterMailboxKey());
@@ -111,13 +111,13 @@ class InMemoryTransportDeliveryCommandHandoffTest {
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
 
-        DeliveryCommandBatch first = handoff.poll(100L);
+        DeliveryCommandBatch first = handoff.poll(DeliveryCommandFixtures.mailboxKey(), 100L);
         assertNotNull(first);
         assertEquals(1L, handoff.inflightClaimsForTest());
-        assertNull(handoff.poll(0L));
+        assertNull(handoff.poll(DeliveryCommandFixtures.mailboxKey(), 0L));
 
         handoff.expireInflightForTest();
-        DeliveryCommandBatch redelivered = handoff.poll(100L);
+        DeliveryCommandBatch redelivered = handoff.poll(DeliveryCommandFixtures.mailboxKey(), 100L);
 
         assertNotNull(redelivered);
         assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(redelivered));
@@ -131,13 +131,13 @@ class InMemoryTransportDeliveryCommandHandoffTest {
         handoff.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "node-1")
         ));
-        DeliveryCommandBatch batch = handoff.poll(100L);
+        DeliveryCommandBatch batch = handoff.poll(DeliveryCommandFixtures.mailboxKey(), 100L);
 
         assertNotNull(batch);
         handoff.complete(batch, List.of());
 
         assertEquals(0L, handoff.inflightClaimsForTest());
-        assertNull(handoff.poll(0L));
+        assertNull(handoff.poll(DeliveryCommandFixtures.mailboxKey(), 0L));
     }
 
     @Test
@@ -153,12 +153,12 @@ class InMemoryTransportDeliveryCommandHandoffTest {
     }
 
     @Test
-    void staleReleaseDoesNotRemoveNewMailboxConsumerLease() {
+    void staleAvailabilityRemovalDoesNotRemoveNewMailboxConsumer() {
         InMemoryTransportDeliveryCommandHandoff handoff = new InMemoryTransportDeliveryCommandHandoff(2);
         claim(handoff, "consumer-old", 1L);
         claim(handoff, "consumer-new", 2L);
 
-        handoff.releaseMailboxConsumer(new AdapterMailboxConsumerLease(
+        handoff.removeMailboxConsumerAvailability(new AdapterMailboxConsumerAvailability(
                 DeliveryCommandFixtures.mailboxKey(),
                 "consumer-old",
                 1L,
@@ -198,7 +198,7 @@ class InMemoryTransportDeliveryCommandHandoffTest {
                                      String mailboxKey,
                                      String consumerId,
                                      long generation) {
-        handoff.claimMailboxConsumer(new AdapterMailboxConsumerLease(
+        handoff.publishMailboxConsumerAvailability(new AdapterMailboxConsumerAvailability(
                 mailboxKey,
                 consumerId,
                 generation,

@@ -102,11 +102,13 @@ addressing as external routing contracts.
   `AdapterMailboxDeliveryCommand(adapterMailboxKey, command)` groups to
   `TransportDeliveryCommandHandoff`.
 - In-memory and Redis delivery-command handoff now queue by
-  `adapterMailboxKey` and use mailbox-level `AdapterMailboxConsumerLease`
+  `adapterMailboxKey` and use mailbox-level `AdapterMailboxConsumerAvailability`
   availability, not selected-worker consumer indexes.
-- `TransportDeliveryCommandListener` consumes adapter-mailbox batches, resolves
-  a local `TransportBinding` by `adapterMailboxKey`, then calls embedded
-  `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`.
+- `AdapterMailboxMount` consumes adapter-mailbox batches from a mailbox-scoped
+  handoff poll, invokes the local binding's embedded
+  `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`, emits retryable
+  delivery-failure evidence, and completes the handoff batch after outcome
+  handling.
 - Endpoint lease publishers no longer project handoff-private selected-worker
   consumer evidence.
 - Polling final-hop uses the adapter mailbox as the pull-buffer queue address;
@@ -396,8 +398,7 @@ Scope:
   `TaskDispatchDeliveryCommandSubmitter`,
   `TransportAssignedDeliverySubmitter`,
   `TransportDeliveryCommandHandoff`,
-  `TransportDeliveryCommandListener`, adapter command executors, and polling
-  pull buffers.
+  `AdapterMailboxMount`, adapter command executors, and polling pull buffers.
 - Inventory current selected-worker consumer evidence:
   `DeliveryCommandConsumerClaim`, `DeliveryCommandConsumerRegistry`,
   memory/Redis selected-worker consumer indexes, ready refs, and inflight refs.
@@ -516,7 +517,7 @@ Scope:
 - Replace selected-worker consumer evidence with mailbox-level consumer lease:
 
 ```text
-AdapterMailboxConsumerLease
+AdapterMailboxConsumerAvailability
   adapterMailboxKey
   consumerId
   generation
@@ -706,7 +707,7 @@ green while the roadmap is implemented:
 - `MassApplicationDistributedTransportTest`
 - `TransportConvergenceArchitectureGuardTest`
 - `TransportAssignedDeliverySubmitterTest`
-- `TransportDeliveryCommandListenerTest`
+- `AdapterMailboxMountTest`
 - `InMemoryTransportDeliveryCommandHandoffTest`
 - `RedisTransportDeliveryCommandHandoffTest`
 - `WebSocketTaskDispatchChannelTest`

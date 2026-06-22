@@ -7,12 +7,12 @@ public enum NoopAdapterMailboxConsumerRegistry implements AdapterMailboxConsumer
     INSTANCE;
 
     @Override
-    public void claimMailboxConsumer(AdapterMailboxConsumerLease lease) {
+    public void publishMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
         // No command handoff is present in this runtime role.
     }
 
     @Override
-    public void releaseMailboxConsumer(AdapterMailboxConsumerLease lease) {
+    public void removeMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
         // No command handoff is present in this runtime role.
     }
 }

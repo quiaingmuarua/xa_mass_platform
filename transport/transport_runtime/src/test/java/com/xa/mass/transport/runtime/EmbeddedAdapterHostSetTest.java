@@ -5,8 +5,11 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerLease;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerAvailability;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxDeliveryOffer;
+import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.junit.jupiter.api.Test;
 
@@ -17,12 +20,13 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class EmbeddedAdapterRuntimeSetTest {
+class EmbeddedAdapterHostSetTest {
 
     @Test
-    void contributionRuntimeOwnsSharedResourcesAndPerBindingMailboxLeases() {
+    void contributionHostOwnsSharedResourcesAndPerBindingMailboxAvailability() {
         List<String> events = new ArrayList<>();
         RecordingMailboxRegistry registry = new RecordingMailboxRegistry(events);
         RecordingRuntimeTaskExecutor executor = new RecordingRuntimeTaskExecutor();
@@ -37,16 +41,18 @@ class EmbeddedAdapterRuntimeSetTest {
                 .addTransportBinding(bindingTwo)
                 .build();
 
-        EmbeddedAdapterRuntimeSet runtimeSet = EmbeddedAdapterRuntimeSet.fromContributions(
+        EmbeddedAdapterHostSet hostSet = EmbeddedAdapterHostSet.fromContributions(
                 List.of(contribution),
+                new IdleHandoff(),
+                event -> true,
                 registry,
                 30_000L,
                 executor
         );
 
-        assertEquals(List.of(bindingOne, bindingTwo), runtimeSet.bindings());
+        assertEquals(List.of(bindingOne, bindingTwo), hostSet.bindings());
 
-        runtimeSet.start();
+        hostSet.start();
 
         assertEquals(List.of(
                 "managed-start:managed",
@@ -54,21 +60,22 @@ class EmbeddedAdapterRuntimeSetTest {
                 "claim:mailbox-a",
                 "claim:mailbox-b"
         ), events);
-        assertEquals(2, executor.submittedTasks);
-        assertTrue(runtimeSet.isRunning());
+        assertEquals(4, executor.submittedTasks);
+        assertTrue(hostSet.isRunning());
 
-        runtimeSet.stop();
+        hostSet.stop();
 
         assertEquals(List.of(
                 "managed-start:managed",
                 "server-start:server",
                 "claim:mailbox-a",
                 "claim:mailbox-b",
-                "server-stop:server",
-                "managed-stop:managed",
                 "release:mailbox-a",
-                "release:mailbox-b"
+                "release:mailbox-b",
+                "server-stop:server",
+                "managed-stop:managed"
         ), events);
+        assertFalse(hostSet.isRunning());
     }
 
     private static TransportBinding binding(String adapterId, String adapterMailboxKey) {
@@ -138,13 +145,29 @@ class EmbeddedAdapterRuntimeSetTest {
         }
 
         @Override
-        public void claimMailboxConsumer(AdapterMailboxConsumerLease lease) {
+        public void publishMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
             events.add("claim:" + lease.adapterMailboxKey());
         }
 
         @Override
-        public void releaseMailboxConsumer(AdapterMailboxConsumerLease lease) {
+        public void removeMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
             events.add("release:" + lease.adapterMailboxKey());
+        }
+    }
+
+    private static final class IdleHandoff implements TransportDeliveryCommandHandoff {
+        @Override
+        public List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer) {
+            return List.of();
+        }
+
+        @Override
+        public DeliveryCommandBatch poll(String adapterMailboxKey, long timeoutMillis) {
+            return null;
+        }
+
+        @Override
+        public void shutdown() {
         }
     }
 

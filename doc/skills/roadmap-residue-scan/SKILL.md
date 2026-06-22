@@ -64,6 +64,10 @@ Classify every hit:
 | doc residue | docs describe removed or stale path | fix or archive |
 | compatibility alias | old and new paths both live | blocking unless external compatibility is required |
 | fallback path | code silently falls back to old owner/source | blocking for boundary work |
+| projection promoted to mainline | read model, diagnostic snapshot, trace evidence, or report output drives mutation, scheduling, lifecycle, retry, result, or delivery decisions | blocking finding |
+| super-fat model | a DTO/model carries facts owned by multiple modules across mutation, hot path, or public default surfaces | blocking on mutation/hot path; medium on explicit diagnostics |
+| premature lifecycle owner | lifecycle/status/state fields harden before mechanism owner, writer, consumer, failure semantics, migration behavior, and proof are stable | blocking for boundary work |
+| CI compatibility preservation | tests, fixtures, guards, or build rules preserve removed behavior to keep CI green | blocking when it protects old strategy or owner truth |
 | generated/build artifact | target/classes, reports, generated output | ignore unless committed |
 | historical archive | under archive or explicitly historical | report only if it is referenced as active |
 | stale status | roadmap status disagrees with code/proof | fix status or flag |
@@ -89,11 +93,19 @@ Classify every hit:
    the old path alive.
 8. Check tests for hidden compatibility tracks: old helper names, old route
    names, old storage names, or assertions against removed read models.
+   Also check whether tests or architecture guards protect the old mechanism
+   instead of the target owner invariant. A green test that preserves removed
+   projection, fallback, lifecycle, or fat-model behavior is residue.
 9. Verify guards promised by the relevant slice or guard/proof section:
    - the guard exists as an actual test or build rule
    - it checks the stated violation condition, not only happy path behavior
    - the roadmap verification commands include or reference the guard
-10. Run or recommend the roadmap's verification commands. Missing, stale, or
+10. Check for facts that crossed lanes during the migration:
+    - projection, diagnostics, trace, or reports used as write truth
+    - evidence fields that now drive policy or lifecycle decisions
+    - lifecycle/status fields introduced before the mechanism owner stabilized
+    - super-fat DTOs that make two owners carry the same fact
+11. Run or recommend the roadmap's verification commands. Missing, stale, or
     broken verification commands are residue.
 
 If review findings are persisted in files, PR comments, issue comments, or a
@@ -168,7 +180,9 @@ Conclusion: <complete / complete after fixes / not complete>
 Severity meanings:
 
 - **Blocking**: production residue, duplicate owner, fallback path,
-  compatibility alias, or stale status that would mislead execution.
+  compatibility alias, projection promoted to mainline, premature lifecycle
+  owner, CI compatibility preservation, or stale status that would mislead
+  execution.
 - **Medium**: test/doc residue likely to confuse future work, but not a live
   production path.
 - **Low**: archive-only references, wording cleanup, or optional clarity.
@@ -181,7 +195,10 @@ When the user asks to fix residue:
 - Do not redesign the owner boundary; return to roadmap refinement if needed.
 - Remove old paths instead of preserving aliases unless external compatibility
   is explicitly required.
-- Update guards when possible so the same residue cannot return.
+- Update guards when the target owner invariant is stable enough to freeze.
+  Prefer negative guards against old symbols, forbidden imports, fallback
+  paths, projection-to-mainline leaks, and fat DTOs. Do not guard provisional
+  lifecycle states or temporary implementation class names.
 - Update docs/indexes when status or active references change.
 - Run focused verification after edits.
 
@@ -196,6 +213,9 @@ Search for:
 - old status labels
 - old roadmap titles
 - `compat`, `compatibility`, `legacy`, `fallback`, `alias`, `deprecated`
+- `projection`, `snapshot`, `diagnostic`, `view`, `report`, `history`
+- `lifecycle`, `status`, `state`, `phase`, `heartbeat`, `lease`, `presence`
+- `DTO`, `Record`, `Snapshot`, `Context`, `View`, `Meta`
 - old module artifact ids in build files
 - test helper names that preserve old vocabulary
 
@@ -219,6 +239,12 @@ Before declaring a roadmap complete:
 - Roadmap status matches code and proof.
 - Archive docs are not referenced as current truth.
 - Promised guards exist and test the stated violation conditions.
+- Guards protect stable owner invariants or forbidden regressions, not
+  provisional implementation names or temporary lifecycle states.
+- No projection, diagnostic, trace, report, or compatibility read model drives
+  runtime mutation, scheduling, delivery, retry, result, or lifecycle truth.
+- No super-fat DTO remains in mutation or hot-path contracts when the roadmap
+  claims a narrow owner seam.
 - Verification commands pass.
 - Skipped commands are acceptable only for named infrastructure limitations,
   such as Docker or an external database being unavailable. Missing test

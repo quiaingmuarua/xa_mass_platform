@@ -66,7 +66,7 @@ public class TransportRuntimeComposition {
     private final int eventRuntimeMaxPendingTasks;
     private final long eventHandlerTimeoutMillis;
     private final long endpointLeaseMillis;
-    private final long adapterMailboxConsumerLeaseMillis;
+    private final long adapterMailboxConsumerAvailabilityMillis;
     private final TransportRuntimeRole runtimeRole;
 
     private transient TransportRegistrationResolver registrationResolver;
@@ -99,7 +99,7 @@ public class TransportRuntimeComposition {
         this.eventRuntimeMaxPendingTasks = source.getEventRuntimeMaxPendingTasks();
         this.eventHandlerTimeoutMillis = source.getEventHandlerTimeoutMillis();
         this.endpointLeaseMillis = source.getEndpointLeaseMillis();
-        this.adapterMailboxConsumerLeaseMillis = source.getAdapterMailboxConsumerLeaseMillis();
+        this.adapterMailboxConsumerAvailabilityMillis = source.getAdapterMailboxConsumerAvailabilityMillis();
         this.runtimeRole = source.getRuntimeRole();
     }
 
@@ -253,8 +253,8 @@ public class TransportRuntimeComposition {
         return runtimeRole;
     }
 
-    public long getAdapterMailboxConsumerLeaseMillis() {
-        return adapterMailboxConsumerLeaseMillis;
+    public long getAdapterMailboxConsumerAvailabilityMillis() {
+        return adapterMailboxConsumerAvailabilityMillis;
     }
 
     public int getEventRuntimeMaxPendingTasks() {

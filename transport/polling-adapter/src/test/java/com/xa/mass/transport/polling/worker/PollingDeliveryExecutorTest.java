@@ -6,6 +6,7 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.polling.runtime.PollingTransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.AdapterPullDeliveryBuffer;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.junit.jupiter.api.Test;
 
@@ -65,15 +66,18 @@ class PollingDeliveryExecutorTest {
     }
 
     private Fixture fixture() {
-        TransportDeliveryService deliveryService = new TransportDeliveryService(
+        AdapterPullDeliveryBuffer deliveryBuffer = new AdapterPullDeliveryBuffer(
+                PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID,
+                new TransportDeliveryService(
                 new InMemoryTransportDeliveryStore(
                         InMemoryTransportDeliveryStore.DEFAULT_MAX_QUEUED_ITEMS,
                         MAX_INBOX_SIZE
                 )
+                )
         );
         return new Fixture(
-                new PollingDeliveryExecutor(PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID, deliveryService),
-                new PollingDeliveryPullChannel(PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID, deliveryService)
+                new PollingDeliveryExecutor(PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID, deliveryBuffer),
+                new PollingDeliveryPullChannel(PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID, deliveryBuffer)
         );
     }
 

@@ -4,16 +4,16 @@ package com.xa.mass.transport.runtime.delivery;
  * Transport-internal evidence that this runtime can consume one adapter
  * mailbox.
  */
-public record AdapterMailboxConsumerLease(String adapterMailboxKey,
+public record AdapterMailboxConsumerAvailability(String adapterMailboxKey,
                                           String consumerId,
                                           long generation,
-                                          long leaseDeadlineEpochMillis) {
+                                          long availableUntilEpochMillis) {
 
-    public AdapterMailboxConsumerLease {
+    public AdapterMailboxConsumerAvailability {
         adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
         consumerId = requireText(consumerId, "consumerId");
         generation = Math.max(0L, generation);
-        leaseDeadlineEpochMillis = Math.max(0L, leaseDeadlineEpochMillis);
+        availableUntilEpochMillis = Math.max(0L, availableUntilEpochMillis);
     }
 
     private static String requireText(String value, String fieldName) {

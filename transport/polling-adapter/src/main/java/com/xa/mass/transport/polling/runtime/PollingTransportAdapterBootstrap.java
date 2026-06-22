@@ -42,20 +42,17 @@ public final class PollingTransportAdapterBootstrap implements TransportAdapterB
                 PROTOCOL,
                 WorkerTransportHints.POLLING
         );
-        String adapterMailboxKey = metadata.adapterId();
+        String adapterMailboxKey = context.adapterMailboxKey(metadata.adapterId());
         PollingSessionEvidenceDriver sessionEvidenceDriver = new PollingSessionEvidenceDriver(
-                metadata.adapterId(),
-                adapterMailboxKey,
-                context.getEndpointLeaseStore(),
-                context.getWorkerPresenceIngress()
+                context.sessionEvidencePublisher(metadata.adapterId(), adapterMailboxKey)
         );
         PollingDeliveryExecutor deliveryExecutor = new PollingDeliveryExecutor(
                 metadata.adapterId(),
-                context.getDeliveryService()
+                context.pullDeliveryBuffer(adapterMailboxKey)
         );
         PollingDeliveryPullChannel pullChannel = new PollingDeliveryPullChannel(
                 metadata.adapterId(),
-                context.getDeliveryService()
+                context.pullDeliveryBuffer(adapterMailboxKey)
         );
         TransportBinding binding = TransportBinding.builder(
                         metadata.adapterId(),

@@ -1,8 +1,10 @@
 package com.xa.mass.transport.socket.session;
 
+import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
 
@@ -30,9 +32,7 @@ class SocketSessionManagerTest {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore =
                 new InMemoryTransportEndpointLeaseStore(30_000L);
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
-        manager.setEndpointLeaseStore(endpointLeaseStore);
-        manager.setWorkerPresenceIngress(presenceIngress);
+        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, presenceIngress);
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
                 activeSocket(), mock(BufferedWriter.class));
@@ -61,7 +61,7 @@ class SocketSessionManagerTest {
 
     @Test
     void adapterScopedRouteLookupUsesConfiguredAdapterId() {
-        SocketSessionManager manager = new SocketSessionManager("socket-edge", "socket-edge");
+        SocketSessionManager manager = manager("socket-edge", "socket-edge");
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
                 activeSocket(), mock(BufferedWriter.class));
@@ -74,7 +74,7 @@ class SocketSessionManagerTest {
 
     @Test
     void selectedWorkerSendUsesWorkerIndexUnderSharedRouteKey() throws IOException {
-        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
+        SocketSessionManager manager = manager("socket", "socket");
         BufferedWriter firstWriter = mock(BufferedWriter.class);
         BufferedWriter secondWriter = mock(BufferedWriter.class);
 
@@ -91,9 +91,7 @@ class SocketSessionManagerTest {
     void staleEndpointHeartbeatAndDisconnectDoNotOverrideReplacementEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
-        manager.setEndpointLeaseStore(endpointLeaseStore);
-        manager.setWorkerPresenceIngress(presenceIngress);
+        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, presenceIngress);
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-old",
                 activeSocket(), mock(BufferedWriter.class));
@@ -133,8 +131,7 @@ class SocketSessionManagerTest {
     @Test
     void shutdownReleasesEndpointLeaseBeforeClearingRoutes() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
-        manager.setEndpointLeaseStore(endpointLeaseStore);
+        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, NoopWorkerPresenceIngress.INSTANCE);
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
                 activeSocket(), mock(BufferedWriter.class));
@@ -147,8 +144,7 @@ class SocketSessionManagerTest {
     @Test
     void replacingSelectedWorkerWithDifferentRouteRetiresOldEndpoint() throws IOException {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
-        manager.setEndpointLeaseStore(endpointLeaseStore);
+        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, NoopWorkerPresenceIngress.INSTANCE);
         BufferedWriter oldWriter = mock(BufferedWriter.class);
         BufferedWriter newWriter = mock(BufferedWriter.class);
         Socket oldSocket = activeSocket();
@@ -167,22 +163,6 @@ class SocketSessionManagerTest {
     }
 
     @Test
-    void setEndpointLeaseStoreReprojectsActiveSocketSessions() {
-        InMemoryTransportEndpointLeaseStore firstStore =
-                new InMemoryTransportEndpointLeaseStore(30_000L);
-        InMemoryTransportEndpointLeaseStore secondStore =
-                new InMemoryTransportEndpointLeaseStore(30_000L);
-        SocketSessionManager manager = new SocketSessionManager("socket", "socket");
-        manager.setEndpointLeaseStore(firstStore);
-
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
-                activeSocket(), mock(BufferedWriter.class));
-        manager.setEndpointLeaseStore(secondStore);
-
-        assertEquals("route-1", endpoint(secondStore, "worker-1").endpointAddress());
-        assertEquals("endpoint-1", endpoint(secondStore, "worker-1").endpointLeaseId());
-    }
-
     private static TransportEndpointLeaseViewRecord endpoint(InMemoryTransportEndpointLeaseStore store,
                                                              String workerId) {
         return store.currentEndpointLease(DELIVERY_BUCKET_ID, workerId).orElseThrow();
@@ -197,6 +177,30 @@ class SocketSessionManagerTest {
         when(socket.isConnected()).thenReturn(true);
         when(socket.isClosed()).thenReturn(false);
         return socket;
+    }
+
+    private static SocketSessionManager manager(String adapterId, String adapterMailboxKey) {
+        return new SocketSessionManager(
+                adapterId,
+                adapterMailboxKey,
+                AdapterSessionEvidencePublisher.noop(adapterId, adapterMailboxKey)
+        );
+    }
+
+    private static SocketSessionManager manager(String adapterId,
+                                                String adapterMailboxKey,
+                                                InMemoryTransportEndpointLeaseStore endpointLeaseStore,
+                                                WorkerPresenceIngress presenceIngress) {
+        return new SocketSessionManager(
+                adapterId,
+                adapterMailboxKey,
+                new AdapterSessionEvidencePublisher(
+                        adapterId,
+                        adapterMailboxKey,
+                        endpointLeaseStore,
+                        presenceIngress
+                )
+        );
     }
 
     private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {

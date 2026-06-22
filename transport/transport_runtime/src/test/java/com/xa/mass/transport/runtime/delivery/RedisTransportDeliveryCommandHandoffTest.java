@@ -74,7 +74,7 @@ class RedisTransportDeliveryCommandHandoffTest {
                         DeliveryCommandFixtures.command("msg-1", "worker-1", "ignored")
                 )).stream().map(outcome -> outcome.getStatus()).toList());
 
-        DeliveryCommandBatch batch = consumerOne.poll(500L);
+        DeliveryCommandBatch batch = consumerOne.poll(DeliveryCommandFixtures.mailboxKey(), 500L);
 
         assertNotNull(batch);
         assertEquals(DeliveryCommandFixtures.mailboxKey(), batch.adapterMailboxKey());
@@ -138,8 +138,8 @@ class RedisTransportDeliveryCommandHandoffTest {
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "ignored")
         ));
 
-        assertNull(consumerTwo.poll(50L));
-        DeliveryCommandBatch batch = consumerOne.poll(500L);
+        assertNull(consumerTwo.poll(DeliveryCommandFixtures.mailboxKey(), 50L));
+        DeliveryCommandBatch batch = consumerOne.poll(DeliveryCommandFixtures.mailboxKey(), 500L);
 
         assertNotNull(batch);
         assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(batch));
@@ -151,7 +151,7 @@ class RedisTransportDeliveryCommandHandoffTest {
         producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "ignored")
         ));
-        DeliveryCommandBatch batch = consumerOne.poll(500L);
+        DeliveryCommandBatch batch = consumerOne.poll(DeliveryCommandFixtures.mailboxKey(), 500L);
 
         assertNotNull(batch);
         assertEquals(1L, producer.inflightReferencesForTest(DeliveryCommandFixtures.mailboxKey()));
@@ -159,7 +159,7 @@ class RedisTransportDeliveryCommandHandoffTest {
 
         assertEquals(0, producer.queuedBatches(DeliveryCommandFixtures.mailboxKey()));
         assertEquals(0L, producer.inflightReferencesForTest(DeliveryCommandFixtures.mailboxKey()));
-        assertNull(consumerOne.poll(50L));
+        assertNull(consumerOne.poll(DeliveryCommandFixtures.mailboxKey(), 50L));
     }
 
     @Test
@@ -170,7 +170,7 @@ class RedisTransportDeliveryCommandHandoffTest {
         ));
 
         assertEquals(1L, producer.readyReferencesForTest(DeliveryCommandFixtures.mailboxKey()));
-        DeliveryCommandBatch batch = consumerOne.poll(500L);
+        DeliveryCommandBatch batch = consumerOne.poll(DeliveryCommandFixtures.mailboxKey(), 500L);
 
         assertNotNull(batch);
         assertEquals(0L, producer.readyReferencesForTest(DeliveryCommandFixtures.mailboxKey()));
@@ -185,12 +185,12 @@ class RedisTransportDeliveryCommandHandoffTest {
         producer.offer(DeliveryCommandFixtures.offer(
                 DeliveryCommandFixtures.command("msg-1", "worker-1", "ignored")
         ));
-        DeliveryCommandBatch first = consumerOne.poll(500L);
+        DeliveryCommandBatch first = consumerOne.poll(DeliveryCommandFixtures.mailboxKey(), 500L);
 
         assertNotNull(first);
         assertEquals(1L, producer.inflightReferencesForTest(DeliveryCommandFixtures.mailboxKey()));
         producer.expireInflightForTest(DeliveryCommandFixtures.mailboxKey());
-        DeliveryCommandBatch redelivered = consumerOne.poll(500L);
+        DeliveryCommandBatch redelivered = consumerOne.poll(DeliveryCommandFixtures.mailboxKey(), 500L);
 
         assertNotNull(redelivered);
         assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(redelivered));
@@ -206,10 +206,10 @@ class RedisTransportDeliveryCommandHandoffTest {
         ));
         consumerTwo.claimConsumerForTest(DeliveryCommandFixtures.mailboxKey(), "consumer-2");
 
-        assertNull(consumerOne.poll(50L));
+        assertNull(consumerOne.poll(DeliveryCommandFixtures.mailboxKey(), 50L));
         assertEquals(0L, producer.inflightReferencesForTest(DeliveryCommandFixtures.mailboxKey()));
         assertEquals(1L, producer.readyReferencesForTest(DeliveryCommandFixtures.mailboxKey()));
-        DeliveryCommandBatch batch = consumerTwo.poll(500L);
+        DeliveryCommandBatch batch = consumerTwo.poll(DeliveryCommandFixtures.mailboxKey(), 500L);
 
         assertNotNull(batch);
         assertEquals(List.of("msg-1"), DeliveryCommandFixtures.messages(batch));
@@ -218,21 +218,21 @@ class RedisTransportDeliveryCommandHandoffTest {
     }
 
     @Test
-    void staleReleaseDoesNotRemoveNewMailboxConsumerLease() {
-        consumerOne.claimMailboxConsumer(new AdapterMailboxConsumerLease(
+    void staleAvailabilityRemovalDoesNotRemoveNewMailboxConsumer() {
+        consumerOne.publishMailboxConsumerAvailability(new AdapterMailboxConsumerAvailability(
                 DeliveryCommandFixtures.mailboxKey(),
                 "consumer-old",
                 1L,
                 System.currentTimeMillis() + 30_000L
         ));
-        consumerOne.claimMailboxConsumer(new AdapterMailboxConsumerLease(
+        consumerOne.publishMailboxConsumerAvailability(new AdapterMailboxConsumerAvailability(
                 DeliveryCommandFixtures.mailboxKey(),
                 "consumer-new",
                 2L,
                 System.currentTimeMillis() + 30_000L
         ));
 
-        consumerOne.releaseMailboxConsumer(new AdapterMailboxConsumerLease(
+        consumerOne.removeMailboxConsumerAvailability(new AdapterMailboxConsumerAvailability(
                 DeliveryCommandFixtures.mailboxKey(),
                 "consumer-old",
                 1L,
@@ -258,7 +258,7 @@ class RedisTransportDeliveryCommandHandoffTest {
                 commandBatch.items().getFirst().getCommandId()
         );
 
-        assertNull(consumerOne.poll(50L));
+        assertNull(consumerOne.poll(DeliveryCommandFixtures.mailboxKey(), 50L));
         assertEquals(0L, producer.inflightReferencesForTest(DeliveryCommandFixtures.mailboxKey()));
         assertEquals(0L, producer.readyReferencesForTest(DeliveryCommandFixtures.mailboxKey()));
     }
@@ -268,7 +268,7 @@ class RedisTransportDeliveryCommandHandoffTest {
         consumerOne.claimConsumerForTest(DeliveryCommandFixtures.mailboxKey(), "consumer-1");
         producer.pushReadyReferenceForTest(DeliveryCommandFixtures.mailboxKey(), "not-a-valid-reference");
 
-        assertNull(consumerOne.poll(50L));
+        assertNull(consumerOne.poll(DeliveryCommandFixtures.mailboxKey(), 50L));
         assertEquals(0L, producer.inflightReferencesForTest(DeliveryCommandFixtures.mailboxKey()));
         assertEquals(0L, producer.readyReferencesForTest(DeliveryCommandFixtures.mailboxKey()));
     }

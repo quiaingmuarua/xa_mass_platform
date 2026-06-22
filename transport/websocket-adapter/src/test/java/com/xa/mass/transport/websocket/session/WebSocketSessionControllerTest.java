@@ -1,8 +1,10 @@
 package com.xa.mass.transport.websocket.session;
 
+import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import io.netty.channel.Channel;
@@ -75,8 +77,7 @@ class WebSocketSessionControllerTest {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore =
                 new InMemoryTransportEndpointLeaseStore(30_000L);
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
-        evidenceDriver.setWorkerPresenceIngress(presenceIngress);
+        manager = newController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore, presenceIngress);
         Channel channel = mockActiveChannel("worker-1");
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
@@ -99,7 +100,8 @@ class WebSocketSessionControllerTest {
     void disconnectingOneGroupRouteConsumerKeepsPeerEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore =
                 new InMemoryTransportEndpointLeaseStore(30_000L);
-        evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
+        manager = newController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore,
+                NoopWorkerPresenceIngress.INSTANCE);
         Channel firstChannel = mockActiveChannel("worker-1");
         Channel secondChannel = mockActiveChannel("worker-2");
 
@@ -132,7 +134,9 @@ class WebSocketSessionControllerTest {
     @Test
     void replacingWorkerChannelKeepsConnectionCountStable() {
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        evidenceDriver.setWorkerPresenceIngress(presenceIngress);
+        manager = newController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID,
+                new InMemoryTransportEndpointLeaseStore(30_000L),
+                presenceIngress);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
 
@@ -171,7 +175,8 @@ class WebSocketSessionControllerTest {
     @Test
     void replacingSelectedWorkerWithDifferentRouteRetiresOldEndpoint() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
+        manager = newController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore,
+                NoopWorkerPresenceIngress.INSTANCE);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
 
@@ -190,7 +195,8 @@ class WebSocketSessionControllerTest {
     @Test
     void retiredWebSocketChannelCannotReclaimEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
+        manager = newController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore,
+                NoopWorkerPresenceIngress.INSTANCE);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
 
@@ -207,7 +213,8 @@ class WebSocketSessionControllerTest {
     @Test
     void removingStaleChannelDoesNotReleaseReplacementEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
+        manager = newController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore,
+                NoopWorkerPresenceIngress.INSTANCE);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
 
@@ -244,7 +251,8 @@ class WebSocketSessionControllerTest {
     @Test
     void shutdownReleasesEndpointLeaseBeforeClearingRoutes() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
+        manager = newController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore,
+                NoopWorkerPresenceIngress.INSTANCE);
         Channel channel = mockActiveChannel("worker-1");
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
@@ -257,7 +265,8 @@ class WebSocketSessionControllerTest {
     @Test
     void activeWebSocketSessionRefreshesEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore(1_200L);
-        evidenceDriver.setEndpointLeaseStore(endpointLeaseStore);
+        manager = newController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore,
+                NoopWorkerPresenceIngress.INSTANCE);
         Channel channel = mockActiveChannel("worker-1");
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
@@ -269,21 +278,6 @@ class WebSocketSessionControllerTest {
     }
 
     @Test
-    void evidenceDriverReprojectsActiveWebSocketSessions() {
-        InMemoryTransportEndpointLeaseStore firstStore = new InMemoryTransportEndpointLeaseStore(30_000L);
-        InMemoryTransportEndpointLeaseStore secondStore = new InMemoryTransportEndpointLeaseStore(30_000L);
-        evidenceDriver.setEndpointLeaseStore(firstStore);
-        Channel channel = mockActiveChannel("worker-1");
-
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
-        evidenceDriver.setEndpointLeaseStore(secondStore);
-        evidenceDriver.projectActiveSessions(sessionStore.activeSessionSnapshots(), "websocket endpoint lease store replaced");
-
-        assertTrue(hasEndpoint(secondStore, "worker-1"));
-        assertEquals("route-1", endpoint(secondStore, "worker-1").endpointAddress());
-        assertEquals("worker-1", endpoint(secondStore, "worker-1").endpointLeaseId());
-    }
-
     private static TransportEndpointLeaseViewRecord endpoint(InMemoryTransportEndpointLeaseStore store, String workerId) {
         return store.currentEndpointLease(DELIVERY_BUCKET_ID, workerId).orElseThrow();
     }
@@ -302,8 +296,20 @@ class WebSocketSessionControllerTest {
     }
 
     private WebSocketSessionController newController(String adapterId) {
+        return newController(adapterId, new InMemoryTransportEndpointLeaseStore(30_000L),
+                NoopWorkerPresenceIngress.INSTANCE);
+    }
+
+    private WebSocketSessionController newController(String adapterId,
+                                                     InMemoryTransportEndpointLeaseStore endpointLeaseStore,
+                                                     WorkerPresenceIngress presenceIngress) {
         sessionStore = new WebSocketSessionStore(adapterId);
-        evidenceDriver = new WebSocketSessionEvidenceDriver(adapterId, adapterId);
+        evidenceDriver = new WebSocketSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
+                adapterId,
+                adapterId,
+                endpointLeaseStore,
+                presenceIngress
+        ));
         WebSocketSessionRefreshLoop refreshLoop =
                 new WebSocketSessionRefreshLoop(adapterId, sessionStore, evidenceDriver);
         return new WebSocketSessionController(sessionStore, evidenceDriver, refreshLoop);

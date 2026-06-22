@@ -3,24 +3,35 @@
 Use only for XA Mass Platform roadmaps, or when the current repo explicitly
 documents the same owner split.
 
-- Engine owns task lifecycle, scheduling decisions, rule evaluation,
-  allocation budget, dispatch binding, result convergence, and terminal policy.
+- Engine owns task lifecycle, task-side scheduling intent, assignment
+  orchestration, allocation budget, dispatch binding, result convergence,
+  retry, and terminal policy.
 - Worker runtime owns worker lifecycle, declaration ports, candidate source,
-  scheduling evidence, admission, dispatch gates, and worker report projection.
-- Transport owns protocol sessions, connection presence, and delivery
-  mechanics.
+  scheduling evidence, admission, dispatch gates, worker report projection, and
+  worker-fact predicate/ranking mechanics behind `WorkerSelectionRuntime`.
+- Transport owns transport-neutral queue, handoff, dispatch outcome,
+  result-ingress, and system-event mechanics. It also owns protocol/session and
+  endpoint evidence as delivery facts, but it must not choose workers or own
+  `selectedWorkerId -> adapterMailboxKey` placement.
+- Concrete adapters own final-hop protocol IO, local session/pull-buffer lookup,
+  frame/request parsing, and adapter-local diagnostics.
 - Storage modules implement persistence adapters and may own storage contracts
   only when the stored data is not a higher-level runtime/domain contract.
 - Server and SDK own assembly, bootstrap, admin API, and product shell surfaces.
 - Trace/archive owns durable history and analytics evidence, not hot-path
   runtime truth.
+- Lifecycle state is not owner truth by default. Promote lifecycle/status fields
+  only after the mechanism, writer, consumer, failure semantics, migration or
+  shutdown behavior, and proof are named. Before that, classify them as
+  projection, evidence, diagnostics, or residue.
 
 ## Scheduling Plane Rules
 
-- Scheduling Plane work must preserve strategy/mechanism separation. Strategy
-  owns resolved scheduling intent and limits; runtime mechanisms own queue,
-  lease, retry, candidate enumeration, ranking, reservation, locks, live worker
-  evidence, and admission.
+- Scheduling Plane work must preserve strategy/mechanism separation. Task-side
+  strategy owns resolved scheduling intent and limits; worker-runtime selection
+  owns candidate acquisition, worker-fact predicates, ranking, reservation,
+  locks, live worker evidence, admission, selected handles, and selected-worker
+  accounting behind the minimal selection contract.
 - A single computed default strategy is acceptable. Do not start by adding a
   catalog, binding table, plug-in framework, or public policy configuration
   until at least two concrete variants, caller-visible cost, storage owner,
@@ -36,6 +47,11 @@ documents the same owner split.
   be collapsed into worker scheduling policy or rule DSL.
 - Trace, assignment records, and diagnostics may prove a Scheduling Plane
   decision, but they must not become the source of scheduling truth.
+- Read models, snapshots, diagnostics, and compatibility DTOs must not become
+  task lifecycle, scheduling, delivery, retry, result, or terminal truth.
+- In-repo compatibility is not a requirement during convergence. Replace
+  callers and remove old paths instead of preserving aliases, fallbacks, or
+  parallel fat models.
 
 Apply the repo handoff and module README/CONTRACTS files first. If those files
 contradict this reference, report the gap and follow current code plus active

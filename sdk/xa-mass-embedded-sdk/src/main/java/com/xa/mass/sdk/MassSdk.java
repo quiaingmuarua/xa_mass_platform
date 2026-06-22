@@ -228,8 +228,8 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions adapterMailboxConsumerLeaseMillis(long adapterMailboxConsumerLeaseMillis) {
-            delegate.adapterMailboxConsumerLeaseMillis(adapterMailboxConsumerLeaseMillis);
+        public TransportOptions adapterMailboxConsumerAvailabilityMillis(long adapterMailboxConsumerAvailabilityMillis) {
+            delegate.adapterMailboxConsumerAvailabilityMillis(adapterMailboxConsumerAvailabilityMillis);
             return this;
         }
 

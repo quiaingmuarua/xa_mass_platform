@@ -87,12 +87,16 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
     }
 
     @Override
-    public DeliveryCommandBatch poll(long timeoutMillis) throws InterruptedException {
+    public DeliveryCommandBatch poll(String adapterMailboxKey, long timeoutMillis) throws InterruptedException {
+        String mailboxKey = normalizeRequired(adapterMailboxKey, "adapterMailboxKey");
         reclaimExpiredInflight();
-        if (!running.get() && readyQueuesEmpty()) {
+        if (currentEvidence(mailboxKey) == null) {
             return null;
         }
-        DeliveryCommandBatch batch = pollLocalMailboxBatch(Math.max(0L, timeoutMillis));
+        if (!running.get() && readyQueueEmpty(mailboxKey)) {
+            return null;
+        }
+        DeliveryCommandBatch batch = pollLocalMailboxBatch(mailboxKey, Math.max(0L, timeoutMillis));
         if (batch == null) {
             return null;
         }
@@ -125,17 +129,17 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
     }
 
     @Override
-    public void claimMailboxConsumer(AdapterMailboxConsumerLease lease) {
+    public void publishMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
         Objects.requireNonNull(lease, "lease");
         mailboxConsumers.put(lease.adapterMailboxKey(), new MailboxConsumerEvidence(
                 lease.consumerId(),
                 lease.generation(),
-                lease.leaseDeadlineEpochMillis()
+                lease.availableUntilEpochMillis()
         ));
     }
 
     @Override
-    public void releaseMailboxConsumer(AdapterMailboxConsumerLease lease) {
+    public void removeMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
         Objects.requireNonNull(lease, "lease");
         mailboxConsumers.computeIfPresent(lease.adapterMailboxKey(),
                 (ignored, current) -> lease.consumerId().equals(current.consumerId()) ? null : current);
@@ -146,7 +150,7 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         if (evidence == null) {
             return null;
         }
-        if (evidence.leaseDeadlineEpochMillis() <= System.currentTimeMillis()) {
+        if (evidence.availableUntilEpochMillis() <= System.currentTimeMillis()) {
             mailboxConsumers.remove(adapterMailboxKey, evidence);
             return null;
         }
@@ -175,14 +179,16 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         }
     }
 
-    private DeliveryCommandBatch pollLocalMailboxBatch(long timeoutMillis) throws InterruptedException {
+    private DeliveryCommandBatch pollLocalMailboxBatch(String adapterMailboxKey,
+                                                       long timeoutMillis) throws InterruptedException {
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         do {
-            for (String mailboxKey : activeMailboxKeys()) {
-                DeliveryCommandBatch batch = queueForMailbox(mailboxKey).poll();
-                if (batch != null) {
-                    return batch;
-                }
+            if (currentEvidence(adapterMailboxKey) == null) {
+                return null;
+            }
+            DeliveryCommandBatch batch = queueForMailbox(adapterMailboxKey).poll();
+            if (batch != null) {
+                return batch;
             }
             if (timeoutMillis <= 0L) {
                 return null;
@@ -201,23 +207,9 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         return readyByMailbox.computeIfAbsent(adapterMailboxKey, ignored -> new LinkedBlockingQueue<>());
     }
 
-    private List<String> activeMailboxKeys() {
-        List<String> keys = new ArrayList<>();
-        for (String mailboxKey : mailboxConsumers.keySet()) {
-            if (currentEvidence(mailboxKey) != null) {
-                keys.add(mailboxKey);
-            }
-        }
-        return keys;
-    }
-
-    private boolean readyQueuesEmpty() {
-        for (LinkedBlockingQueue<DeliveryCommandBatch> queue : readyByMailbox.values()) {
-            if (!queue.isEmpty()) {
-                return false;
-            }
-        }
-        return true;
+    private boolean readyQueueEmpty(String adapterMailboxKey) {
+        LinkedBlockingQueue<DeliveryCommandBatch> queue = readyByMailbox.get(adapterMailboxKey);
+        return queue == null || queue.isEmpty();
     }
 
     private long inflightClaimsForMailbox(String adapterMailboxKey) {
@@ -234,6 +226,13 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
         return batch != null && !batch.references().isEmpty() ? batch.references().getFirst() : null;
     }
 
+    private static String normalizeRequired(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
+    }
+
     long inflightClaimsForTest() {
         return inflightByCommandId.size();
     }
@@ -245,7 +244,7 @@ public final class InMemoryTransportDeliveryCommandHandoff implements TransportD
 
     private record MailboxConsumerEvidence(String consumerId,
                                            long generation,
-                                           long leaseDeadlineEpochMillis) {
+                                           long availableUntilEpochMillis) {
     }
 
     private record InflightClaim(DeliveryCommandBatch batch,
