@@ -5,11 +5,14 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.xa.mass.sdk.worker.WorkerResultSubmission;
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.routing.RoutingEnvelope;
+import com.xa.mass.transport.routing.RoutingOwnerKinds;
+import com.xa.mass.transport.routing.RoutingTarget;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Starter-owned codec between worker result callback shape and opaque transport
@@ -21,8 +24,6 @@ public final class TaskResultCallbackCodec {
     private static final String RESULT_CODE_FIELD = "resultCode";
     private static final String RESULT_FIELD = "result";
     private static final String MESSAGE_FIELD = "message";
-    private static final String ATTEMPT_ID_FIELD = "attemptId";
-    private static final String LEASE_TOKEN_FIELD = "leaseToken";
     private static final String TRACE_ID_FIELD = "traceId";
 
     private final Gson gson;
@@ -41,33 +42,36 @@ public final class TaskResultCallbackCodec {
         this.deliveryCorrelationCodec = Objects.requireNonNull(deliveryCorrelationCodec, "deliveryCorrelationCodec");
     }
 
-    public TransportResultIngressEnvelope toEnvelope(WorkerResultSubmission request,
-                                                     String partitionKey,
-                                                     Map<String, String> diagnostics) {
+    public RoutingEnvelope toEnvelope(WorkerResultSubmission request,
+                                      Map<String, String> diagnostics) {
         Objects.requireNonNull(request, "request");
-        return TransportResultIngressEnvelope.received(
+        return new RoutingEnvelope(
+                UUID.randomUUID().toString(),
+                RoutingTarget.resultIngress(request.resultCorrelationRef()),
                 encodeWorkerResultRequestPayload(request),
-                null,
-                partitionKey,
-                diagnostics
+                diagnostics,
+                System.currentTimeMillis()
         );
     }
 
-    public TaskResultCallbackCommand decode(TransportResultIngressEnvelope envelope) {
+    public TaskResultCallbackCommand decode(RoutingEnvelope envelope) {
         Objects.requireNonNull(envelope, "envelope");
-        TaskResultCallbackCommand payload = decodePayload(envelope.getPayload());
-        CorrelationRecord correlation = decodeCorrelation(envelope.getCorrelation());
-        String traceId = firstNonBlank(correlation.traceId(), envelope.diagnostic(TRACE_ID_FIELD));
-        String attemptId = firstNonBlank(correlation.attemptId(), payload.attemptId());
+        validateResultIngressTarget(envelope);
+        DecodedPayload payload = decodePayload(envelope.payload());
+        if (!payload.resultCorrelationRef().equals(envelope.target().ownerRef())) {
+            throw new IllegalArgumentException("result envelope target ownerRef must match payload resultCorrelationRef");
+        }
+        TaskResultCallbackCommand command = payload.command();
+        String traceId = diagnostic(envelope, TRACE_ID_FIELD);
         return new TaskResultCallbackCommand(
-                payload.taskId(),
-                payload.messageId(),
-                payload.success(),
-                payload.detail(),
-                payload.errorCode(),
-                payload.output(),
-                attemptId,
-                correlation.leaseToken(),
+                command.taskId(),
+                command.messageId(),
+                command.success(),
+                command.detail(),
+                command.errorCode(),
+                command.output(),
+                command.attemptId(),
+                command.leaseToken(),
                 traceId
         );
     }
@@ -87,7 +91,7 @@ public final class TaskResultCallbackCodec {
         }
     }
 
-    private TaskResultCallbackCommand decodePayload(String payloadJson) {
+    private DecodedPayload decodePayload(String payloadJson) {
         JsonObject payload = parseObject(payloadJson, "payload");
         Boolean success = readBoolean(payload, TransportPacket.PAYLOAD_SUCCESS);
         if (success == null) {
@@ -103,28 +107,32 @@ public final class TaskResultCallbackCodec {
                 readString(payload, MESSAGE_FIELD)
         );
         String resultCode = readString(payload, RESULT_CODE_FIELD);
-        return new TaskResultCallbackCommand(
-                deliveryCorrelation.taskId(),
-                deliveryCorrelation.messageId(),
-                success,
-                success ? null : result,
-                resultCode,
-                success && result != null ? Map.of(RESULT_FIELD, result) : Map.of(),
-                deliveryCorrelation.attemptId(),
-                null,
-                null);
+        return new DecodedPayload(
+                resultCorrelationRef,
+                new TaskResultCallbackCommand(
+                        deliveryCorrelation.taskId(),
+                        deliveryCorrelation.messageId(),
+                        success,
+                        success ? null : result,
+                        resultCode,
+                        success && result != null ? Map.of(RESULT_FIELD, result) : Map.of(),
+                        deliveryCorrelation.attemptId(),
+                        null,
+                        null)
+        );
     }
 
-    private CorrelationRecord decodeCorrelation(String correlationJson) {
-        if (correlationJson == null || correlationJson.isBlank()) {
-            return CorrelationRecord.EMPTY;
+    private static void validateResultIngressTarget(RoutingEnvelope envelope) {
+        if (envelope.target() == null || !RoutingOwnerKinds.RESULT_INGRESS.equals(envelope.target().ownerKind())) {
+            throw new IllegalArgumentException("result envelope target ownerKind must be result-ingress");
         }
-        JsonObject correlation = parseObject(correlationJson, "correlation");
-        return new CorrelationRecord(
-                readString(correlation, ATTEMPT_ID_FIELD),
-                readString(correlation, LEASE_TOKEN_FIELD),
-                readString(correlation, TRACE_ID_FIELD)
-        );
+    }
+
+    private static String diagnostic(RoutingEnvelope envelope, String key) {
+        if (envelope.diagnostics() == null || key == null || key.isBlank()) {
+            return null;
+        }
+        return envelope.diagnostics().get(key);
     }
 
     private JsonObject parseObject(String json, String fieldName) {
@@ -172,9 +180,7 @@ public final class TaskResultCallbackCodec {
         return null;
     }
 
-    private record CorrelationRecord(String attemptId,
-                                     String leaseToken,
-                                     String traceId) {
-        private static final CorrelationRecord EMPTY = new CorrelationRecord(null, null, null);
+    private record DecodedPayload(String resultCorrelationRef,
+                                  TaskResultCallbackCommand command) {
     }
 }

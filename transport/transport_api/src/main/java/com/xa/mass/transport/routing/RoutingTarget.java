@@ -19,6 +19,10 @@ public record RoutingTarget(String ownerKind,
         return new RoutingTarget(RoutingOwnerKinds.ENGINE, resultCorrelationRef);
     }
 
+    public static RoutingTarget resultIngress(String resultCorrelationRef) {
+        return new RoutingTarget(RoutingOwnerKinds.RESULT_INGRESS, resultCorrelationRef);
+    }
+
     private static String requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " must not be blank");

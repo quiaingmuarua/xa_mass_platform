@@ -5,14 +5,10 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
-import com.google.gson.reflect.TypeToken;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.packet.TransportPacket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.lang.reflect.Type;
-import java.util.Map;
 
 /**
  * Adapter-local line-delimited JSON codec for the socket adapter.
@@ -26,8 +22,6 @@ public final class SocketTransportFrameCodec {
     private static final String TRACE_ID_FIELD = "traceId";
     private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
     private static final String EVENT_CODE_FIELD = "eventCode";
-    private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
-    }.getType();
 
     private final Gson gson;
 
@@ -87,7 +81,8 @@ public final class SocketTransportFrameCodec {
                 && extractEventCode(frame) == null
                 && readString(frame, RESULT_CORRELATION_REF_FIELD) != null
                 && extractResultCorrelationRef(frame) != null
-                && hasBoolean(frame, TransportPacket.PAYLOAD_SUCCESS);
+                && !isHelloFrame(frame)
+                && !isHeartbeatFrame(frame);
     }
 
     public String encodeCanonicalTaskDispatch(DeliveryCommand command) {
@@ -102,34 +97,7 @@ public final class SocketTransportFrameCodec {
         if (resultCorrelationRef == null) {
             throw new IllegalArgumentException(RESULT_CORRELATION_REF_FIELD + " is required");
         }
-        Boolean success = readBoolean(frame, TransportPacket.PAYLOAD_SUCCESS);
-        if (success == null) {
-            throw new IllegalArgumentException(TransportPacket.PAYLOAD_SUCCESS + " is required");
-        }
         return gson.toJson(frame);
-    }
-
-    private JsonObject readJsonObject(JsonObject object, String field) {
-        if (object == null || !object.has(field) || object.get(field).isJsonNull()) {
-            return new JsonObject();
-        }
-        JsonElement element = object.get(field);
-        return element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
-    }
-
-    private Boolean readBoolean(JsonObject object, String field) {
-        if (object == null || !object.has(field) || object.get(field).isJsonNull()) {
-            return null;
-        }
-        try {
-            return object.get(field).getAsBoolean();
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private boolean hasBoolean(JsonObject object, String field) {
-        return readBoolean(object, field) != null;
     }
 
     private String readString(JsonObject object, String field) {
@@ -144,19 +112,4 @@ public final class SocketTransportFrameCodec {
         }
     }
 
-    private static String firstNonBlank(String first, String second) {
-        if (first != null && !first.isBlank()) {
-            return first;
-        }
-        if (second != null && !second.isBlank()) {
-            return second;
-        }
-        return null;
-    }
-
-    private static void put(JsonObject frame, String field, String value) {
-        if (value != null) {
-            frame.addProperty(field, value);
-        }
-    }
 }

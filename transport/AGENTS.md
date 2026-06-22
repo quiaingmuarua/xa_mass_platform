@@ -22,7 +22,7 @@ entry for `transport/`.
 - Current adapters are embedded Java modules, but the transport boundary should
   stay compatible with future remote adapter processes. Java-only object wiring
   belongs to embedded adapter support; cross-process facts must be typed
-  delivery commands, endpoint lease evidence, result ingress envelopes,
+  delivery commands, endpoint lease evidence, routing result-ingress envelopes,
   delivery outcomes, diagnostics, or lifecycle observations.
 - `transport` is a pure delivery executor. It owns correct assigned-worker
   delivery, queue claim/ack consistency, endpoint/session evidence, and delivery
@@ -227,7 +227,7 @@ Prefer these after transport changes:
 
 ```bash
 ./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDeliveryCommandHandoffTest,TransportDeliveryCommandBatchCodecTest,RedisTransportDeliveryCommandHandoffTest,RedisTransportDeliveryFailureChannelTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,RouteEndpointIndexTest,TransportConvergenceArchitectureGuardTest
-./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,TransportResultIngressEnvelopeTest,WebSocketInputProcessorTest,WebSocketFrameReadersTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,WebSocketSessionControllerTest
+./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,RoutingEnvelopeTest,WebSocketInputProcessorTest,WebSocketFrameReadersTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,WebSocketSessionControllerTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest,EmbeddedPullWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 

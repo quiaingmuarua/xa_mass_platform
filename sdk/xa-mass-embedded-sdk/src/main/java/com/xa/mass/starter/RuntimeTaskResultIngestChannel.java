@@ -4,7 +4,7 @@ import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.transport.channel.TransportResultIngressHandler;
 import com.xa.mass.transport.channel.TransportResultIngressOutcome;
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -39,11 +39,11 @@ public final class RuntimeTaskResultIngestChannel implements TransportResultIngr
     }
 
     @Override
-    public TransportResultIngressOutcome handle(TransportResultIngressEnvelope envelope) {
+    public TransportResultIngressOutcome handle(RoutingEnvelope envelope) {
         return handleResult(envelope).toTransportOutcome();
     }
 
-    public ResultIngressHandleOutcome handleResult(TransportResultIngressEnvelope envelope) {
+    public ResultIngressHandleOutcome handleResult(RoutingEnvelope envelope) {
         if (envelope == null) {
             return ResultIngressHandleOutcome.RETRYABLE_FAILURE;
         }
@@ -51,8 +51,8 @@ public final class RuntimeTaskResultIngestChannel implements TransportResultIngr
         try {
             command = callbackCodec.decode(envelope);
         } catch (IllegalArgumentException ex) {
-            logger.warn("Rejecting invalid task result ingress payload: ingressId={}, message={}",
-                    envelope.getIngressId(), ex.getMessage());
+            logger.warn("Rejecting invalid task result ingress payload: envelopeId={}, message={}",
+                    envelope.envelopeId(), ex.getMessage());
             return ResultIngressHandleOutcome.PERMANENT_REJECT;
         }
         String previousTraceId = MDC.get(TRACE_ID_MDC_KEY);
@@ -61,12 +61,12 @@ public final class RuntimeTaskResultIngestChannel implements TransportResultIngr
             if (traceId != null) {
                 MDC.put(TRACE_ID_MDC_KEY, traceId);
             }
-            logger.debug("Handle task result ingress: ingressId={}, taskId={}, messageId={}, traceId={}",
-                    envelope.getIngressId(), command.taskId(), command.messageId(), traceId);
+            logger.debug("Handle task result ingress: envelopeId={}, taskId={}, messageId={}, traceId={}",
+                    envelope.envelopeId(), command.taskId(), command.messageId(), traceId);
             IdentityValidationOutcome identityValidation = validateAttemptIdentity(envelope, command);
             if (identityValidation == IdentityValidationOutcome.ACCEPTED_NOOP) {
-                logger.info("Ignoring task result after identity validation failure: ingressId={}, taskId={}, messageId={}, traceId={}",
-                        envelope.getIngressId(), command.taskId(), command.messageId(), traceId);
+                logger.info("Ignoring task result after identity validation failure: envelopeId={}, taskId={}, messageId={}, traceId={}",
+                        envelope.envelopeId(), command.taskId(), command.messageId(), traceId);
                 return ResultIngressHandleOutcome.HANDLED_NOOP;
             }
             boolean applied = taskResultIngestFacade.ingestTaskResult(
@@ -79,8 +79,8 @@ public final class RuntimeTaskResultIngestChannel implements TransportResultIngr
             );
             return applied ? ResultIngressHandleOutcome.HANDLED_APPLIED : ResultIngressHandleOutcome.PERMANENT_REJECT;
         } catch (RuntimeException ex) {
-            logger.error("Runtime task result ingest failed: ingressId={}, taskId={}, messageId={}",
-                    envelope.getIngressId(), command.taskId(), command.messageId(), ex);
+            logger.error("Runtime task result ingest failed: envelopeId={}, taskId={}, messageId={}",
+                    envelope.envelopeId(), command.taskId(), command.messageId(), ex);
             return ResultIngressHandleOutcome.RETRYABLE_FAILURE;
         } finally {
             if (previousTraceId == null || previousTraceId.isBlank()) {
@@ -91,7 +91,7 @@ public final class RuntimeTaskResultIngestChannel implements TransportResultIngr
         }
     }
 
-    private IdentityValidationOutcome validateAttemptIdentity(TransportResultIngressEnvelope envelope,
+    private IdentityValidationOutcome validateAttemptIdentity(RoutingEnvelope envelope,
                                                               TaskResultCallbackCommand command) {
         String attemptId = command.attemptId();
         String leaseToken = command.leaseToken();
@@ -102,12 +102,12 @@ public final class RuntimeTaskResultIngestChannel implements TransportResultIngr
                 taskResultIngestFacade.getResultCorrelation(command.taskId(), command.messageId());
         if (correlation == null || !correlation.activeLeasePresent()) {
             logger.debug("Result ingress identity has no active runtime lease; delegating to engine duplicate/late/no-lease classification: taskId={}, messageId={}, ingressAttemptId={}, ingressLeaseToken={}, diagnostics={}",
-                    command.taskId(), command.messageId(), attemptId, leaseToken, envelope.getDiagnostics());
+                    command.taskId(), command.messageId(), attemptId, leaseToken, envelope.diagnostics());
             return IdentityValidationOutcome.VALID;
         }
         if (leaseToken != null && !leaseToken.equals(correlation.leaseToken())) {
             logger.warn("Result ingress lease identity mismatch: taskId={}, messageId={}, ingressLeaseToken={}, activeLeaseToken={}, diagnostics={}",
-                    command.taskId(), command.messageId(), leaseToken, correlation.leaseToken(), envelope.getDiagnostics());
+                    command.taskId(), command.messageId(), leaseToken, correlation.leaseToken(), envelope.diagnostics());
             return IdentityValidationOutcome.ACCEPTED_NOOP;
         } else if (leaseToken != null) {
             logger.debug("Result ingress lease identity validated: taskId={}, messageId={}, leaseToken={}",
@@ -124,7 +124,7 @@ public final class RuntimeTaskResultIngestChannel implements TransportResultIngr
         if (!attemptId.equals(correlation.projectedAttemptId())) {
             logger.warn("Result ingress attempt identity mismatch: taskId={}, messageId={}, ingressAttemptId={}, projectedAttemptId={}, diagnostics={}",
                     command.taskId(), command.messageId(), attemptId, correlation.projectedAttemptId(),
-                    envelope.getDiagnostics());
+                    envelope.diagnostics());
             return IdentityValidationOutcome.ACCEPTED_NOOP;
         }
         logger.debug("Result ingress attempt identity validated: taskId={}, messageId={}, attemptId={}",

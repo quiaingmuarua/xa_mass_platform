@@ -4,7 +4,7 @@ import com.xa.mass.base.exception.CommandException;
 import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.base.exception.ValidationException;
 import com.google.gson.JsonObject;
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,7 +54,7 @@ public final class WebSocketInputProcessor {
             return true;
         }
         try {
-            TransportResultIngressEnvelope envelope = context.getResultFrameReader().toEnvelope(frame);
+            RoutingEnvelope envelope = context.getResultFrameReader().toEnvelope(frame);
             boolean accepted = context.getResultIngressChannel().ingest(envelope);
             if (!accepted) {
                 throw new IllegalStateException("task result ingest channel rejected inbound canonical task result");

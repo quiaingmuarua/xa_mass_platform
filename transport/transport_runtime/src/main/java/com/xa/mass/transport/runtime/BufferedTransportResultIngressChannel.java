@@ -3,7 +3,7 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.TransportResultIngressHandler;
 import com.xa.mass.transport.channel.TransportResultIngressOutcome;
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +26,7 @@ public final class BufferedTransportResultIngressChannel implements TransportRes
     private static final int MAX_DRAIN_BATCH = 64;
 
     private final TransportResultIngressHandler delegate;
-    private final LinkedBlockingQueue<TransportResultIngressEnvelope> queue;
+    private final LinkedBlockingQueue<RoutingEnvelope> queue;
     private volatile boolean shutdown;
     private final Thread drainerThread;
 
@@ -46,14 +46,14 @@ public final class BufferedTransportResultIngressChannel implements TransportRes
     }
 
     @Override
-    public boolean ingest(TransportResultIngressEnvelope envelope) {
+    public boolean ingest(RoutingEnvelope envelope) {
         if (envelope == null || shutdown) {
             return false;
         }
         boolean offered = queue.offer(envelope);
         if (!offered) {
-            logger.warn("Result ingress buffer full ({} capacity); falling back to synchronous ingress ingressId={}",
-                    queue.size(), envelope.getIngressId());
+            logger.warn("Result ingress buffer full ({} capacity); falling back to synchronous ingress envelopeId={}",
+                    queue.size(), envelope.envelopeId());
             return handle(envelope).ackable();
         }
         return true;
@@ -73,15 +73,11 @@ public final class BufferedTransportResultIngressChannel implements TransportRes
         }
     }
 
-    int pendingCount() {
-        return queue.size();
-    }
-
     private void drain() {
-        List<TransportResultIngressEnvelope> batch = new ArrayList<>(MAX_DRAIN_BATCH);
+        List<RoutingEnvelope> batch = new ArrayList<>(MAX_DRAIN_BATCH);
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                TransportResultIngressEnvelope item = queue.poll(200, TimeUnit.MILLISECONDS);
+                RoutingEnvelope item = queue.poll(200, TimeUnit.MILLISECONDS);
                 if (item != null) {
                     batch.clear();
                     batch.add(item);
@@ -101,23 +97,23 @@ public final class BufferedTransportResultIngressChannel implements TransportRes
         }
     }
 
-    private void processBatch(List<TransportResultIngressEnvelope> batch) {
-        for (TransportResultIngressEnvelope item : batch) {
+    private void processBatch(List<RoutingEnvelope> batch) {
+        for (RoutingEnvelope item : batch) {
             TransportResultIngressOutcome outcome = handle(item);
             if (!outcome.ackable() && !shutdown) {
-                logger.warn("Result ingress delegate returned retryable outcome; requeueing ingressId={}",
-                        item.getIngressId());
+                logger.warn("Result ingress delegate returned retryable outcome; requeueing envelopeId={}",
+                        item.envelopeId());
                 queue.offer(item);
             }
         }
     }
 
-    private TransportResultIngressOutcome handle(TransportResultIngressEnvelope item) {
+    private TransportResultIngressOutcome handle(RoutingEnvelope item) {
         try {
             TransportResultIngressOutcome outcome = delegate.handle(item);
             return outcome != null ? outcome : TransportResultIngressOutcome.RETRYABLE_FAILURE;
         } catch (RuntimeException ex) {
-            logger.error("Result ingress delegate failed for ingressId={}", item.getIngressId(), ex);
+            logger.error("Result ingress delegate failed for envelopeId={}", item.envelopeId(), ex);
             return TransportResultIngressOutcome.RETRYABLE_FAILURE;
         }
     }

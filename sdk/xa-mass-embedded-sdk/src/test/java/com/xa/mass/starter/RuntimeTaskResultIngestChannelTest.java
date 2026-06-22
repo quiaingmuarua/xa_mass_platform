@@ -4,7 +4,8 @@ import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.sdk.worker.WorkerResultSubmission;
 import com.xa.mass.transport.channel.TransportResultIngressOutcome;
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
+import com.xa.mass.transport.routing.RoutingTarget;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
@@ -196,7 +197,13 @@ class RuntimeTaskResultIngestChannelTest {
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(new RecordingResultIngestFacade(null));
 
         ResultIngressHandleOutcome handled = channel.handleResult(
-                TransportResultIngressEnvelope.received("{", null, "msg-1", null)
+                new RoutingEnvelope(
+                        "env-invalid",
+                        RoutingTarget.resultIngress("msg-1"),
+                        "{",
+                        Map.of(),
+                        System.currentTimeMillis()
+                )
         );
 
         assertEquals(ResultIngressHandleOutcome.PERMANENT_REJECT, handled);
@@ -224,8 +231,8 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals(TransportResultIngressOutcome.ACKNOWLEDGED, handled.toTransportOutcome());
     }
 
-    private static TransportResultIngressEnvelope envelope(WorkerResultSubmission request) {
-        return CODEC.toEnvelope(request, request.resultCorrelationRef(), Map.of("adapterId", "polling"));
+    private static RoutingEnvelope envelope(WorkerResultSubmission request) {
+        return CODEC.toEnvelope(request, Map.of("adapterId", "polling"));
     }
 
     private static WorkerResultSubmission request(String taskId,

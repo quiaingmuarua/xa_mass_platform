@@ -26,7 +26,7 @@ Transport owns delivery mechanics for workers:
 - local adapter binding registration and final-hop adapter resolution by
   transport-owned adapter identity
 - task dispatch delivery, queueing, draining, and dispatch outcomes
-- task result ingress queuing and relay through opaque transport envelopes
+- task result ingress queuing and relay through opaque routing envelopes
 - session-presence ingress for adapter connect/disconnect/heartbeat
   observations; worker-runtime owns derived reachability and registry slot
   heartbeat freshness, while endpoint lease refresh does not decide worker
@@ -116,9 +116,9 @@ Transport should stay centered on these concepts only:
   delivery. Assigned polling pull delivery uses the worker id supplied by the
   poll request as the drain constraint, with routeKey kept as opaque
   endpoint/result metadata outside the queue value.
-- `TransportResultIngressEnvelope`: opaque result ingress carrier. Transport
-  may buffer, enqueue, and diagnose it, but task-shaped payload parsing
-  and result correctness belong above transport.
+- `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)`: opaque
+  result ingress carrier. Transport may buffer, enqueue, and diagnose it, but
+  task-shaped payload parsing and result correctness belong above transport.
 - `TransportResultIngressChannel` / `TransportResultIngressHandler` /
   `TransportResultIngressOutcome`: result ingress producer/consumer seams and
   ackability outcome used by local buffers and Redis inbox pumps.
@@ -358,10 +358,11 @@ The split runtime uses three transport/runtime channels:
   and must not be the only queue isolation key for assigned polling task
   delivery.
 - result/compensation inboxes: transport writes opaque
-  `TransportResultIngressEnvelope` values and retryable delivery-failure events
-  to Redis-backed inboxes; the engine process drains those inboxes into
-  starter-owned result callback decoding and engine-owned result ingest and
-  assignment compensation ports. Result lifecycle ownership is defined in
+  `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)` values and
+  retryable delivery-failure events to Redis-backed inboxes; the engine process
+  drains those inboxes into starter-owned result callback decoding and
+  engine-owned result ingest and assignment compensation ports. Result lifecycle
+  ownership is defined in
   [../doc/TASK_LIFECYCLE_BASELINE.md](../doc/TASK_LIFECYCLE_BASELINE.md).
 
 These queues are runtime-state queues. They must be bounded and must preserve
@@ -538,14 +539,15 @@ needs to unwrap a worker-facing wrapper such as the current SDK
 from the dispatch payload itself, not from unrelated task metadata like
 `_sdk.payloadType`.
 
-`TransportResultIngressEnvelope` is an opaque transport carrier, not a
-task-result schema. It carries only transport ingress id, opaque payload,
-opaque correlation, optional partition key, diagnostics, and receive time.
+`RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)` is the opaque
+transport result-ingress carrier, not a task-result schema. It carries carrier
+identity, routing target, opaque payload, diagnostics, and creation time.
 Adapters and polling sessions may include route key, adapter id, trace id, or
 similar facts only as diagnostics; transport must not parse them to decide task
 result correctness. Starter-owned `TaskResultCallbackCodec` decodes the opaque
-payload/correlation into a `TaskResultCallbackCommand`, then engine-owned
-result ingress validates attempt or lease identity before mutating runtime
+payload, validates that the envelope target owner ref matches the payload
+`resultCorrelationRef`, and creates a `TaskResultCallbackCommand`; engine-owned
+result ingress then validates attempt or lease identity before mutating runtime
 truth. SDK/server worker submit paths use `WorkerResultSubmission`, not
 transport-owned result DTOs.
 

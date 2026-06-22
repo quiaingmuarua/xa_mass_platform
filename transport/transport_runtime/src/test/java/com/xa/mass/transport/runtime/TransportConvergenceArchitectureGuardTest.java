@@ -1121,11 +1121,13 @@ class TransportConvergenceArchitectureGuardTest {
         assertPathsDoNotExist(
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/TaskResultIngestChannel.java"),
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TaskResultReport.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TransportResultIngressEnvelope.java"),
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TransportResultEnvelope.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/BufferedTaskResultIngestChannel.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTaskResultIngestChannel.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TaskResultIngestInboxPump.java"),
-                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportResultEnvelopeCodec.java")
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportResultEnvelopeCodec.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportResultIngressEnvelopeCodec.java")
         );
         assertNoProductionSourceContains(
                 List.of(
@@ -1136,12 +1138,52 @@ class TransportConvergenceArchitectureGuardTest {
                         repoRoot().resolve("transport/websocket-adapter/src/main/java")
                 ),
                 "TaskResultReport",
+                "TransportResultIngressEnvelope",
                 "TransportResultEnvelope",
                 "TaskResultIngestChannel",
                 "RedisTaskResultIngestChannel",
                 "BufferedTaskResultIngestChannel",
                 "TaskResultIngestInboxPump"
         );
+    }
+
+    @Test
+    void resultIngressMainlineUsesRoutingEnvelopeAndAdaptersDoNotParseResultSemantics() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java"),
+                        repoRoot().resolve("xa-mass-server/src/main/java")
+                ),
+                "TransportResultIngressEnvelope"
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketResultIngressFrameReader.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/protocol/SocketTransportFrameCodec.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/server/SocketTransportServer.java")
+                ),
+                "PAYLOAD_SUCCESS",
+                "SUCCESS_FIELD",
+                "readBoolean(",
+                "\"success\""
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/BufferedTransportResultIngressChannel.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTransportResultIngressChannel.java")
+                ),
+                "pendingCount(",
+                "queuedResults("
+        );
+        String targetSource = Files.readString(repoRoot().resolve(
+                "transport/transport_api/src/main/java/com/xa/mass/transport/routing/RoutingTarget.java"));
+        assertTrue(targetSource.contains("resultIngress"),
+                "Result ingress must use a named RoutingTarget factory instead of engine target");
     }
 
     @Test

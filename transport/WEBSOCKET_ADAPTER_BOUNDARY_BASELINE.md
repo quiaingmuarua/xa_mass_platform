@@ -97,7 +97,8 @@ Hard rules:
   handle
 - keep `WebSocketSessionStore`, `WebSocketSessionEvidenceDriver`, and
   `WebSocketSessionRefreshLoop` as separate adapter-local roles
-- route inbound result shells into opaque `TransportResultIngressEnvelope`
+- route inbound result shells into opaque
+  `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)`
   values through `TransportResultIngressChannel`
 - bind WebSocket worker session identity only during handshake/session-open;
   normal text frames must read the channel-bound session identity and must not

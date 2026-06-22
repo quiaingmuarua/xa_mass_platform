@@ -31,11 +31,14 @@ class RoutingEnvelopeTest {
     void targetAllowsOnlyKnownOwnerKinds() {
         RoutingTarget adapter = RoutingTarget.adapter("mailbox-1");
         RoutingTarget engine = RoutingTarget.engine("corr-1");
+        RoutingTarget resultIngress = RoutingTarget.resultIngress("corr-2");
 
         assertEquals(RoutingOwnerKinds.ADAPTER, adapter.ownerKind());
         assertEquals("mailbox-1", adapter.ownerRef());
         assertEquals(RoutingOwnerKinds.ENGINE, engine.ownerKind());
         assertEquals("corr-1", engine.ownerRef());
+        assertEquals(RoutingOwnerKinds.RESULT_INGRESS, resultIngress.ownerKind());
+        assertEquals("corr-2", resultIngress.ownerRef());
         assertThrows(IllegalArgumentException.class, () -> new RoutingTarget("worker", "worker-1"));
     }
 

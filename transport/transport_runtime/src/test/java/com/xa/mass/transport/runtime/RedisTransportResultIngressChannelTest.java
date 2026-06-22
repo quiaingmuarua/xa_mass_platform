@@ -1,6 +1,7 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
+import com.xa.mass.transport.routing.RoutingTarget;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import org.junit.jupiter.api.AfterEach;
@@ -59,18 +60,18 @@ class RedisTransportResultIngressChannelTest {
 
     @Test
     void resultEnvelopeRoundTripsAcrossInstancesAndCompletes() throws Exception {
-        TransportResultIngressEnvelope envelope = envelope("task-result-json", "msg-1");
+        RoutingEnvelope envelope = envelope("task-result-json", "corr-1");
 
         assertTrue(writer.ingest(envelope));
         ClaimedTransportResultIngress claimed = reader.poll(1000L);
 
         assertNotNull(claimed);
-        assertEquals("task-result-json", claimed.envelope().getPayload());
-        assertEquals("msg-1", claimed.envelope().getPartitionKey());
-        assertEquals("trace-1", claimed.envelope().diagnostic("traceId"));
+        assertEquals("task-result-json", claimed.envelope().payload());
+        assertEquals("corr-1", claimed.envelope().target().ownerRef());
+        assertEquals("trace-1", claimed.envelope().diagnostics().get("traceId"));
 
         reader.complete(claimed);
-        assertEquals(0, writer.queuedResults());
+        assertNull(reader.poll(100L));
     }
 
     @Test
@@ -81,7 +82,7 @@ class RedisTransportResultIngressChannelTest {
         ClaimedTransportResultIngress claimed = reader.poll(1000L);
 
         assertNotNull(claimed);
-        assertEquals("msg-1", claimed.envelope().getPartitionKey());
+        assertEquals("msg-1", claimed.envelope().target().ownerRef());
     }
 
     @Test
@@ -94,7 +95,7 @@ class RedisTransportResultIngressChannelTest {
         ClaimedTransportResultIngress secondClaim = reader.poll(1000L);
 
         assertNotNull(secondClaim);
-        assertEquals(firstClaim.envelope().getPayload(), secondClaim.envelope().getPayload());
+        assertEquals(firstClaim.envelope().payload(), secondClaim.envelope().payload());
         reader.complete(secondClaim);
     }
 
@@ -105,7 +106,7 @@ class RedisTransportResultIngressChannelTest {
         ClaimedTransportResultIngress claimed = reader.poll(100L);
 
         assertNull(claimed);
-        assertEquals(0, writer.queuedResults());
+        assertNull(reader.poll(100L));
     }
 
     @Test
@@ -116,15 +117,16 @@ class RedisTransportResultIngressChannelTest {
         ClaimedTransportResultIngress claimed = reader.poll(100L);
 
         assertNull(claimed);
-        assertEquals(0, writer.queuedResults());
+        assertNull(reader.poll(100L));
     }
 
-    private static TransportResultIngressEnvelope envelope(String payload, String partitionKey) {
-        return TransportResultIngressEnvelope.received(
+    private static RoutingEnvelope envelope(String payload, String resultCorrelationRef) {
+        return new RoutingEnvelope(
+                UUID.randomUUID().toString(),
+                RoutingTarget.resultIngress(resultCorrelationRef),
                 payload,
-                "{\"attemptId\":\"attempt-1\"}",
-                partitionKey,
-                Map.of("traceId", "trace-1")
+                Map.of("traceId", "trace-1"),
+                System.currentTimeMillis()
         );
     }
 }

@@ -1,6 +1,6 @@
 package com.xa.mass.transport.channel;
 
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
 
 /**
  * Consumer side of worker result ingress used by local buffers and inbox pumps.
@@ -8,5 +8,5 @@ import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 @FunctionalInterface
 public interface TransportResultIngressHandler {
 
-    TransportResultIngressOutcome handle(TransportResultIngressEnvelope envelope);
+    TransportResultIngressOutcome handle(RoutingEnvelope envelope);
 }

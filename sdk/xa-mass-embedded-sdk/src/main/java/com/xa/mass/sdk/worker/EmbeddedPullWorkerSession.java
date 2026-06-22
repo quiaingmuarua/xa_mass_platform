@@ -167,7 +167,6 @@ public final class EmbeddedPullWorkerSession {
         Objects.requireNonNull(request, "request");
         return resultIngressChannel.ingest(resultCallbackCodec.toEnvelope(
                 request,
-                request.resultCorrelationRef(),
                 Map.of()
         ));
     }

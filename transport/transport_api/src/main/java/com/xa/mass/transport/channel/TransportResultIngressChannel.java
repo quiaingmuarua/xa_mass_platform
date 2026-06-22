@@ -1,6 +1,6 @@
 package com.xa.mass.transport.channel;
 
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
 
 /**
  * Transport-owned producer side of worker result ingress.
@@ -8,5 +8,5 @@ import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 @FunctionalInterface
 public interface TransportResultIngressChannel {
 
-    boolean ingest(TransportResultIngressEnvelope envelope);
+    boolean ingest(RoutingEnvelope envelope);
 }

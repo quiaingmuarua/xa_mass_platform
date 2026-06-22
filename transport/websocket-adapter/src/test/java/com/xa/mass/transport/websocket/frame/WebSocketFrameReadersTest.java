@@ -2,7 +2,8 @@ package com.xa.mass.transport.websocket.frame;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
+import com.xa.mass.transport.routing.RoutingOwnerKinds;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -68,16 +69,21 @@ class WebSocketFrameReadersTest {
         frame.add("output", payload("status", "SUCCESS"));
 
         assertTrue(reader.isResultFrame(frame));
-        TransportResultIngressEnvelope envelope = reader.toEnvelope(frame);
+        RoutingEnvelope envelope = reader.toEnvelope(frame);
 
-        assertEquals("websocket", envelope.diagnostic("adapterId"));
-        assertEquals("inline-route", envelope.diagnostic("routeKey"));
-        assertEquals("corr-1", envelope.getPartitionKey());
-        JsonObject payload = JsonParser.parseString(envelope.getPayload()).getAsJsonObject();
+        assertEquals(RoutingOwnerKinds.RESULT_INGRESS, envelope.target().ownerKind());
+        assertEquals("corr-1", envelope.target().ownerRef());
+        assertEquals("websocket", envelope.diagnostics().get("adapterId"));
+        assertEquals("inline-route", envelope.diagnostics().get("routeKey"));
+        JsonObject payload = JsonParser.parseString(envelope.payload()).getAsJsonObject();
         assertEquals("corr-1", payload.get("resultCorrelationRef").getAsString());
         assertFalse(payload.has("taskId"));
         assertFalse(payload.has("messageId"));
         assertTrue(payload.get("success").getAsBoolean());
+
+        JsonObject resultShellWithoutSuccess = new JsonObject();
+        resultShellWithoutSuccess.addProperty("resultCorrelationRef", "corr-2");
+        assertTrue(reader.isResultFrame(resultShellWithoutSuccess));
     }
 
     private JsonObject payload(Object... keyValues) {

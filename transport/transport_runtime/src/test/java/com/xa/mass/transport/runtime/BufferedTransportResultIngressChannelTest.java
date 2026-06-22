@@ -1,7 +1,8 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.TransportResultIngressOutcome;
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
+import com.xa.mass.transport.routing.RoutingTarget;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -20,7 +21,7 @@ class BufferedTransportResultIngressChannelTest {
     @Test
     void envelopeIsDeliveredAsynchronouslyToDelegate() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
-        List<TransportResultIngressEnvelope> received = new CopyOnWriteArrayList<>();
+        List<RoutingEnvelope> received = new CopyOnWriteArrayList<>();
         BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(envelope -> {
             received.add(envelope);
             latch.countDown();
@@ -31,7 +32,7 @@ class BufferedTransportResultIngressChannelTest {
 
         assertTrue(accepted);
         assertTrue(latch.await(2, TimeUnit.SECONDS), "delegate must receive the envelope within 2s");
-        assertEquals("payload-1", received.getFirst().getPayload());
+        assertEquals("payload-1", received.getFirst().payload());
 
         channel.shutdown();
     }
@@ -47,7 +48,7 @@ class BufferedTransportResultIngressChannelTest {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            processed.add(envelope.getPartitionKey());
+            processed.add(envelope.target().ownerRef());
             return TransportResultIngressOutcome.ACKNOWLEDGED;
         }, 100);
         for (int i = 0; i < itemCount; i++) {
@@ -67,8 +68,8 @@ class BufferedTransportResultIngressChannelTest {
         CountDownLatch synchronousFallback = new CountDownLatch(1);
         List<String> received = new CopyOnWriteArrayList<>();
         BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(envelope -> {
-            received.add(envelope.getPartitionKey());
-            if ("msg-0".equals(envelope.getPartitionKey())) {
+            received.add(envelope.target().ownerRef());
+            if ("msg-0".equals(envelope.target().ownerRef())) {
                 firstDispatchStarted.countDown();
                 try {
                     blocker.await();
@@ -76,7 +77,7 @@ class BufferedTransportResultIngressChannelTest {
                     Thread.currentThread().interrupt();
                 }
             }
-            if ("msg-overflow".equals(envelope.getPartitionKey())) {
+            if ("msg-overflow".equals(envelope.target().ownerRef())) {
                 synchronousFallback.countDown();
             }
             return TransportResultIngressOutcome.ACKNOWLEDGED;
@@ -116,13 +117,17 @@ class BufferedTransportResultIngressChannelTest {
 
     @Test
     void nullEnvelopeReturnsFalseWithoutEnqueuing() {
+        AtomicInteger delegateCalls = new AtomicInteger();
         BufferedTransportResultIngressChannel channel =
-                new BufferedTransportResultIngressChannel(envelope -> TransportResultIngressOutcome.ACKNOWLEDGED);
+                new BufferedTransportResultIngressChannel(envelope -> {
+                    delegateCalls.incrementAndGet();
+                    return TransportResultIngressOutcome.ACKNOWLEDGED;
+                });
 
         assertFalse(channel.ingest(null));
-        assertEquals(0, channel.pendingCount());
 
         channel.shutdown();
+        assertEquals(0, delegateCalls.get());
     }
 
     @Test
@@ -134,12 +139,13 @@ class BufferedTransportResultIngressChannelTest {
         assertFalse(channel.ingest(envelope("payload", "msg-1")));
     }
 
-    private static TransportResultIngressEnvelope envelope(String payload, String partitionKey) {
-        return TransportResultIngressEnvelope.received(
+    private static RoutingEnvelope envelope(String payload, String resultCorrelationRef) {
+        return new RoutingEnvelope(
+                java.util.UUID.randomUUID().toString(),
+                RoutingTarget.resultIngress(resultCorrelationRef),
                 payload,
-                null,
-                partitionKey,
-                Map.of("traceId", partitionKey + "-trace")
+                Map.of("traceId", resultCorrelationRef + "-trace"),
+                System.currentTimeMillis()
         );
     }
 }

@@ -1,8 +1,8 @@
 # Transport Routing Envelope And Adapter Mailbox Convergence Roadmap
 
 Status: slice complete, roadmap active; embedded adapter-mailbox dispatch
-mainline is implemented and verified. Distributed worker delivery target
-evidence, routing-envelope carrier convergence for dispatch/result, and
+mainline and result `RoutingEnvelope` ingress are implemented and verified.
+Distributed worker delivery target evidence, dispatch carrier convergence, and
 external-adapter process phases remain.
 
 ## Summary
@@ -41,7 +41,7 @@ dispatch:
   payload          = assignment-derived adapter dispatch payload
 
 result:
-  target.ownerKind = engine
+  target.ownerKind = result-ingress
   target.ownerRef  = result correlation / partition key
   payload          = starter/engine-owned result callback payload
 ```
@@ -58,11 +58,11 @@ into one implementation pass.
 ## Relation To Existing Roadmaps
 
 This roadmap supersedes the target shape in
-`TRANSPORT_WORKER_INGRESS_ENVELOPE_CONVERGENCE_ROADMAP.md`. That older roadmap
-only covered worker-to-platform ingress and introduced `ingressCode`. The new
-direction is broader and simpler: route by target owner, let the target owner
-decode payload, and keep business classification inside the owner-owned
-payload.
+`../doc/archive/transport/2026-06-22_TRANSPORT_WORKER_INGRESS_ENVELOPE_CONVERGENCE_ROADMAP.md`.
+That older roadmap only covered worker-to-platform ingress and introduced
+`ingressCode`. The new direction is broader and simpler: route by target owner,
+let the target owner decode payload, and keep business classification inside
+the owner-owned payload.
 
 This roadmap also intentionally supersedes the bucket-derived dispatch queue
 direction from earlier delivery-queue convergence work. The first dispatch
@@ -112,15 +112,14 @@ addressing as external routing contracts.
 - Polling final-hop uses the adapter mailbox as the pull-buffer queue address;
   `selectedWorkerId` remains an entry-level demux constraint.
 - WebSocket/socket/polling result paths currently normalize worker results
-  into `TransportResultIngressEnvelope`.
-- `RuntimeTaskResultIngestChannel` decodes `TransportResultIngressEnvelope`
+  into `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)`.
+- `RuntimeTaskResultIngestChannel` decodes result `RoutingEnvelope` payloads
   using starter-owned `TaskResultCallbackCodec`, then calls
   `TaskResultIngestFacade`.
-- `TransportResultIngressEnvelope` is already opaque to transport, but it is a
-  result-specific carrier. It is not a general routing envelope.
-- `RoutingEnvelope` has been added as the neutral carrier vocabulary, but
-  dispatch and result queues still use their existing command/envelope carriers.
-  Routing-envelope carrier replacement remains a later phase.
+- `TransportResultIngressEnvelope` has been removed from production code.
+- `RoutingEnvelope` is the result inbox carrier. Dispatch still uses
+  `DeliveryCommand` / adapter-mailbox handoff records as the transport-owned
+  assigned-delivery shape.
 - The only production `WorkerDeliveryTargetView` implementation is currently
   the in-memory worker presence runtime. Split runtime tests can inject a fake
   view, but a shared/runtime projection is not yet a completed truth. That
@@ -208,7 +207,7 @@ stay coarse and stable. Initial owner kinds are:
 
 ```text
 adapter
-engine
+result-ingress
 ```
 
 `transport` is the queue/carrier owner in this roadmap, not a V1 payload target
@@ -222,7 +221,8 @@ protocol, or payload categories, not payload-owner layers.
 - for `adapter`, it is the adapter mailbox key minted by adapter
   runtime/process lifecycle and selected through worker-runtime delivery target
   evidence;
-- for `engine`, it is the result partition/correlation key.
+- for `result-ingress`, it is the result partition/correlation key consumed by
+  the starter result bridge before engine result apply.
 
 `RoutingEnvelope.payload` is opaque to the queue layer and to non-target
 owners. The target owner or its bridge may decode it.
@@ -303,7 +303,7 @@ routeKey, endpointAddress, connection id, session handle, or queue owner facts.
 
 ```text
 worker result frame / pull submit
-  -> adapter normalizes to RoutingEnvelope(target = engine:<resultCorrelationRef>,
+  -> adapter normalizes to RoutingEnvelope(target = result-ingress:<resultCorrelationRef>,
                                           payload = starter-owned result callback payload)
   -> result routing queue / inbox
   -> starter-owned result bridge
@@ -317,10 +317,9 @@ JSON containing `resultCorrelationRef`, `success`, `resultCode`, and `result`.
 Transport does not parse those fields. Engine/starter decides whether a failed
 result is final, retryable, or compensating evidence.
 
-`target.ownerKind = engine` means the logical result destination is engine
-result handling. It does not mean the engine module must directly own callback
-JSON parsing. The starter-owned result bridge may decode the payload and then
-call the engine result facade.
+`target.ownerKind = result-ingress` means the current payload is owned by the
+starter result bridge before engine result apply. It must not be mislabeled as
+`engine` unless a future engine-owned result payload schema is approved.
 
 The bridge must validate that `target.ownerRef` matches the decoded
 `resultCorrelationRef`, or derive `ownerRef` from the decoded payload before
@@ -375,9 +374,10 @@ as a post-assignment routing engine. First make worker-runtime capable of
 projecting selected-worker delivery target evidence, then carry the opaque
 mailbox key through assignment.
 
-Do not start by deleting `DeliveryCommand` or `TransportResultIngressEnvelope`.
-First add the routing envelope contract and prove one path can translate
-through it without changing engine behavior.
+Do not start by deleting `DeliveryCommand`. It remains the assigned-delivery
+intent while dispatch mailbox convergence proceeds. Result ingress has already
+converged to `RoutingEnvelope`; do not restore `TransportResultIngressEnvelope`
+as a compatibility carrier.
 
 Do not start by building a remote adapter process. That would add lifecycle,
 security, and deployment noise before the routing contract is stable.
@@ -597,23 +597,30 @@ Acceptance:
   mandatory new tests are created rather than hidden behind
   `-Dsurefire.failIfNoSpecifiedTests=false`.
 
-## RTE-5 Result Routing Alignment Later
+## RTE-5 Result Routing Alignment
+
+Status: implemented and archived at
+`../doc/archive/transport/2026-06-22_TRANSPORT_RESULT_ROUTING_ENVELOPE_CONVERGENCE_ROADMAP.md`.
 
 Scope:
 
-- Align result ingress to `RoutingEnvelope(target = engine:<resultCorrelationRef>)`
-  after dispatch mailbox convergence is stable.
+- Result routing is owned by
+  `../doc/archive/transport/2026-06-22_TRANSPORT_RESULT_ROUTING_ENVELOPE_CONVERGENCE_ROADMAP.md`.
+- Result ingress is aligned to
+  `RoutingEnvelope(target = result-ingress:<resultCorrelationRef>)`.
 - Keep task-result payload parsing in `TaskResultCallbackCodec` /
   starter-owned result bridge.
 - Keep success/failure/result code inside the task-result payload, not on
   `RoutingEnvelope`.
-- Delete or narrow `TransportResultIngressEnvelope` only after production
-  result callers no longer need it as the result inbox carrier.
+- Keep `TransportResultIngressEnvelope` deleted after production result callers
+  have moved to `RoutingEnvelope`.
 
 Acceptance:
 
 - Result inbox proof uses `RoutingEnvelope` when this phase lands.
-- No adapter module parses engine result payload for retry/finality decisions.
+- Result target owner is `result-ingress`, not `engine`, unless a future
+  engine-owned result payload schema is approved separately.
+- No adapter module parses task-result payload for retry/finality decisions.
 - Result inbox ack/retry semantics still use `TransportResultIngressOutcome`
   or its successor, not boolean success/failure fields inside routing.
 
@@ -762,7 +769,7 @@ Full roadmap completion additionally requires:
   enough to mark this roadmap complete.
 - Dispatch and result ingress both use `RoutingEnvelope` at the transport
   queue/process-boundary layer.
-- `TransportResultIngressEnvelope` is either deleted or reduced to an internal
-  bridge with no adapter producers.
+- `TransportResultIngressEnvelope` is deleted or kept out of production
+  transport APIs.
 - The independent adapter process roadmap can start from the routing envelope
   and adapter mailbox protocol instead of redesigning dispatch/result carriers.

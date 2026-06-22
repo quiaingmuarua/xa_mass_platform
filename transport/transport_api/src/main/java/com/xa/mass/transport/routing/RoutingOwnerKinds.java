@@ -7,13 +7,16 @@ public final class RoutingOwnerKinds {
 
     public static final String ADAPTER = "adapter";
     public static final String ENGINE = "engine";
+    public static final String RESULT_INGRESS = "result-ingress";
 
     private RoutingOwnerKinds() {
     }
 
     public static String requireKnownOwnerKind(String ownerKind) {
         String normalized = requireText(ownerKind, "ownerKind").toLowerCase(java.util.Locale.ROOT);
-        if (!ADAPTER.equals(normalized) && !ENGINE.equals(normalized)) {
+        if (!ADAPTER.equals(normalized)
+                && !ENGINE.equals(normalized)
+                && !RESULT_INGRESS.equals(normalized)) {
             throw new IllegalArgumentException("unknown routing owner kind: " + ownerKind);
         }
         return normalized;

@@ -1,8 +1,8 @@
 package com.xa.mass.transport.socket.server;
 
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
-import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
+import com.xa.mass.transport.routing.RoutingOwnerKinds;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
@@ -138,7 +138,7 @@ class SocketTransportServerTest {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager =
                 new SocketSessionManager(SocketAdapterConfig.DEFAULT_ADAPTER_ID, SocketAdapterConfig.DEFAULT_ADAPTER_ID);
-        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
+        AtomicReference<RoutingEnvelope> capturedEnvelope = new AtomicReference<>();
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
                 "127.0.0.1",
@@ -146,12 +146,9 @@ class SocketTransportServerTest {
                 10,
                 sessionManager,
                 new SocketTransportFrameCodec(),
-                new TransportResultIngressChannel() {
-                    @Override
-                    public boolean ingest(TransportResultIngressEnvelope envelope) {
-                        capturedEnvelope.set(envelope);
-                        return true;
-                    }
+                envelope -> {
+                    capturedEnvelope.set(envelope);
+                    return true;
                 },
                 executor
         );
@@ -172,13 +169,14 @@ class SocketTransportServerTest {
 
                 waitUntil(() -> capturedEnvelope.get() != null,
                         "canonical socket result should be ingested");
-                assertEquals("socket", capturedEnvelope.get().diagnostic("adapterId"));
-                assertEquals("socket-route-9", capturedEnvelope.get().diagnostic("routeKey"));
-                assertEquals("corr-1", capturedEnvelope.get().diagnostic("traceId"));
-                assertEquals("corr-1", capturedEnvelope.get().getPartitionKey());
-                assertTrue(capturedEnvelope.get().getPayload().contains("\"resultCorrelationRef\":\"corr-1\""));
-                assertFalse(capturedEnvelope.get().getPayload().contains("\"taskId\""));
-                assertFalse(capturedEnvelope.get().getPayload().contains("\"messageId\""));
+                assertEquals(RoutingOwnerKinds.RESULT_INGRESS, capturedEnvelope.get().target().ownerKind());
+                assertEquals("corr-1", capturedEnvelope.get().target().ownerRef());
+                assertEquals("socket", capturedEnvelope.get().diagnostics().get("adapterId"));
+                assertEquals("socket-route-9", capturedEnvelope.get().diagnostics().get("routeKey"));
+                assertEquals("corr-1", capturedEnvelope.get().diagnostics().get("traceId"));
+                assertTrue(capturedEnvelope.get().payload().contains("\"resultCorrelationRef\":\"corr-1\""));
+                assertFalse(capturedEnvelope.get().payload().contains("\"taskId\""));
+                assertFalse(capturedEnvelope.get().payload().contains("\"messageId\""));
             }
         } finally {
             server.stop();

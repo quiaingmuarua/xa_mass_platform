@@ -4,7 +4,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
+import com.xa.mass.transport.routing.RoutingOwnerKinds;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,7 +59,7 @@ class WebSocketInputProcessorTest {
 
     @Test
     void canonicalTaskResultIngestsWithoutOutput() {
-        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
+        AtomicReference<RoutingEnvelope> capturedEnvelope = new AtomicReference<>();
         context = createContext(envelope -> {
             capturedEnvelope.set(envelope);
             return true;
@@ -69,15 +70,16 @@ class WebSocketInputProcessorTest {
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertEquals("websocket", capturedEnvelope.get().diagnostic("adapterId"));
-        assertEquals("route-1", capturedEnvelope.get().diagnostic("routeKey"));
-        assertEquals("corr-1", capturedEnvelope.get().getPartitionKey());
+        assertEquals("websocket", capturedEnvelope.get().diagnostics().get("adapterId"));
+        assertEquals("route-1", capturedEnvelope.get().diagnostics().get("routeKey"));
+        assertEquals(RoutingOwnerKinds.RESULT_INGRESS, capturedEnvelope.get().target().ownerKind());
+        assertEquals("corr-1", capturedEnvelope.get().target().ownerRef());
         assertPayload(capturedEnvelope.get(), "corr-1", true, "ok");
     }
 
     @Test
     void canonicalTaskResultDoesNotUseSessionRouteMetadata() {
-        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
+        AtomicReference<RoutingEnvelope> capturedEnvelope = new AtomicReference<>();
         context = createContext(envelope -> {
             capturedEnvelope.set(envelope);
             return true;
@@ -97,14 +99,14 @@ class WebSocketInputProcessorTest {
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertNull(capturedEnvelope.get().diagnostic("routeKey"));
-        assertEquals("corr-1", capturedEnvelope.get().getPartitionKey());
+        assertNull(capturedEnvelope.get().diagnostics().get("routeKey"));
+        assertEquals("corr-1", capturedEnvelope.get().target().ownerRef());
         assertPayload(capturedEnvelope.get(), "corr-1", true, "ok");
     }
 
     @Test
     void canonicalTaskResultCanReuseParsedInboundFrame() {
-        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
+        AtomicReference<RoutingEnvelope> capturedEnvelope = new AtomicReference<>();
         context = createContext(envelope -> {
             capturedEnvelope.set(envelope);
             return true;
@@ -126,14 +128,14 @@ class WebSocketInputProcessorTest {
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertNull(capturedEnvelope.get().diagnostic("routeKey"));
-        assertEquals("corr-1", capturedEnvelope.get().getPartitionKey());
+        assertNull(capturedEnvelope.get().diagnostics().get("routeKey"));
+        assertEquals("corr-1", capturedEnvelope.get().target().ownerRef());
         assertPayload(capturedEnvelope.get(), "corr-1", true, "ok");
     }
 
     @Test
     void canonicalTaskResultPrefersInlineRouteKeyOverSessionMetadata() {
-        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
+        AtomicReference<RoutingEnvelope> capturedEnvelope = new AtomicReference<>();
         context = createContext(envelope -> {
             capturedEnvelope.set(envelope);
             return true;
@@ -154,7 +156,7 @@ class WebSocketInputProcessorTest {
 
         assertTrue(result);
         assertNotNull(capturedEnvelope.get());
-        assertEquals("inline-route", capturedEnvelope.get().diagnostic("routeKey"));
+        assertEquals("inline-route", capturedEnvelope.get().diagnostics().get("routeKey"));
     }
 
     @Test
@@ -169,7 +171,7 @@ class WebSocketInputProcessorTest {
 
     @Test
     void canonicalTaskResultWithoutCorrelationRefIsRejectedWithoutIngest() {
-        AtomicReference<TransportResultIngressEnvelope> capturedEnvelope = new AtomicReference<>();
+        AtomicReference<RoutingEnvelope> capturedEnvelope = new AtomicReference<>();
         context = createContext(envelope -> {
             capturedEnvelope.set(envelope);
             return true;
@@ -200,11 +202,11 @@ class WebSocketInputProcessorTest {
         );
     }
 
-    private void assertPayload(TransportResultIngressEnvelope envelope,
+    private void assertPayload(RoutingEnvelope envelope,
                                String resultCorrelationRef,
                                boolean success,
                                String detail) {
-        JsonObject payload = JsonParser.parseString(envelope.getPayload()).getAsJsonObject();
+        JsonObject payload = JsonParser.parseString(envelope.payload()).getAsJsonObject();
         assertEquals(resultCorrelationRef, payload.get("resultCorrelationRef").getAsString());
         assertFalse(payload.has("taskId"));
         assertFalse(payload.has("messageId"));

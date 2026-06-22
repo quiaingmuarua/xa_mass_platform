@@ -1,11 +1,13 @@
 package com.xa.mass.transport.websocket.frame;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
+import com.xa.mass.transport.routing.RoutingEnvelope;
+import com.xa.mass.transport.routing.RoutingTarget;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Builds opaque result ingress envelopes from WebSocket worker result frames.
@@ -14,9 +16,9 @@ public final class WebSocketResultIngressFrameReader {
 
     private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
     private static final String EVENT_CODE_FIELD = "eventCode";
+    private static final String TYPE_FIELD = "type";
     private static final String ROUTE_KEY_FIELD = "routeKey";
     private static final String TRACE_ID_FIELD = "traceId";
-    private static final String SUCCESS_FIELD = "success";
 
     private final String adapterId;
     private final WebSocketJsonFrameParser parser;
@@ -30,27 +32,25 @@ public final class WebSocketResultIngressFrameReader {
         return frame != null
                 && parser.readString(frame, EVENT_CODE_FIELD) == null
                 && parser.readString(frame, RESULT_CORRELATION_REF_FIELD) != null
-                && parser.readBoolean(frame, SUCCESS_FIELD) != null;
+                && !isControlFrame(frame);
     }
 
-    public TransportResultIngressEnvelope toEnvelope(JsonObject frame) {
+    public RoutingEnvelope toEnvelope(JsonObject frame) {
         String resultCorrelationRef = parser.readString(frame, RESULT_CORRELATION_REF_FIELD);
         if (resultCorrelationRef == null) {
             throw new IllegalArgumentException(RESULT_CORRELATION_REF_FIELD + " is required");
-        }
-        if (parser.readBoolean(frame, SUCCESS_FIELD) == null) {
-            throw new IllegalArgumentException(SUCCESS_FIELD + " is required");
         }
         String routeKey = WebSocketStringValues.firstNonBlank(parser.readString(frame, ROUTE_KEY_FIELD));
         String traceId = WebSocketStringValues.firstNonBlank(
                 parser.readString(frame, TRACE_ID_FIELD),
                 resultCorrelationRef
         );
-        return TransportResultIngressEnvelope.received(
+        return new RoutingEnvelope(
+                UUID.randomUUID().toString(),
+                RoutingTarget.resultIngress(resultCorrelationRef),
                 parser.toJson(frame),
-                null,
-                resultCorrelationRef,
-                diagnostics(routeKey, traceId)
+                diagnostics(routeKey, traceId),
+                System.currentTimeMillis()
         );
     }
 
@@ -68,6 +68,14 @@ public final class WebSocketResultIngressFrameReader {
 
     public String project(JsonObject frame) {
         return parser.readString(frame, "project");
+    }
+
+    private boolean isControlFrame(JsonObject frame) {
+        String type = parser.readString(frame, TYPE_FIELD);
+        return type != null && switch (type.toLowerCase(java.util.Locale.ROOT)) {
+            case "hello", "handshake", "heartbeat" -> true;
+            default -> false;
+        };
     }
 
     private Map<String, String> diagnostics(String routeKey, String traceId) {

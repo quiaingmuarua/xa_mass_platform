@@ -30,7 +30,7 @@ classes and are not protected by a single lifecycle contract.
   transport servers, stop managed transport adapters, stop transport node
   heartbeat, stop distributed transport inboxes/handoffs by role, drain the
   result ingest buffer, then stop `MassEngine`.
-- `BufferedTaskResultIngestChannel` documents a hard ordering rule:
+- `BufferedTransportResultIngressChannel` documents a hard ordering rule:
   `shutdown()` must run before stopping the engine so queued worker results are
   drained into engine result convergence.
 - `MassEngine.stop()` stops `EngineRuntimeBridge`, then
@@ -172,7 +172,7 @@ The exact names can change during inventory, but the order must remain visible:
    - stop worker command maintenance delivery/retry scans
 
 3. **Drain Accepted Result Ingress**
-   - drain `BufferedTaskResultIngestChannel`
+   - drain `BufferedTransportResultIngressChannel`
    - stop distributed result inbox pumps after their accepted messages are
      handed to the local result ingest channel
    - record unprocessed counts when bounded drain cannot finish
@@ -379,7 +379,7 @@ Goal: protect accepted worker results during shutdown.
 
 Scope:
 
-- Verify `MassApplication.stop()` drains `BufferedTaskResultIngestChannel`
+- Verify `MassApplication.stop()` drains `BufferedTransportResultIngressChannel`
   before `MassEngine.stop()` for all runtime roles that use the buffer.
 - Verify distributed inbox pumps stop in the correct order relative to buffer
   drain for engine-producer mode.

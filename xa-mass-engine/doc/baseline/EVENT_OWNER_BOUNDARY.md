@@ -40,7 +40,7 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | `WorkerGroupRecord` / `EventBinding` / `EventKey` | worker capability line | capability truth and candidate-source inputs | response semantics, result finality |
 | task dispatch handoff | assignment/transport boundary | already-bound task work delivery view | worker matching, allocation, finality |
 | `TaskResultReport` | task result payload | worker task-result input | worker command ack, worker state report |
-| `TransportResultEnvelope` | transport ingress metadata | adapter/route/attempt context around task results | final result classification |
+| `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)` | transport result-ingress carrier | opaque routing target, payload, diagnostics, and creation time around worker result payloads | final result classification, task-result schema decoding |
 | `WorkerPresenceIngress` | transport session-presence ingress | worker session connect/heartbeat/disconnect observations projected into worker-runtime reachability, plus connected/heartbeat refresh of registry-owned slot heartbeat freshness | endpoint-lease delivery feasibility, command lifecycle, state projection, capability truth, worker resource status |
 | `WorkerReachabilityView` | worker-runtime read model | dispatchability evidence | transport endpoint leases, device state, load, command status |
 | `WorkerRegistry` / `WorkerSlot` | scheduling resource owner | active/reserved task-work capacity and exclusive execution-lane evidence | reachability, device state, command lifecycle |

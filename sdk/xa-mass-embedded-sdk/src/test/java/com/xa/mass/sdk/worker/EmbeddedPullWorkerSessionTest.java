@@ -7,10 +7,11 @@ import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.transport.model.TransportResultIngressEnvelope;
 import com.xa.mass.transport.polling.runtime.PollingSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
+import com.xa.mass.transport.routing.RoutingEnvelope;
+import com.xa.mass.transport.routing.RoutingOwnerKinds;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -63,7 +64,7 @@ class EmbeddedPullWorkerSessionTest {
     @Test
     void submitResultUsesOpaqueCorrelationWithoutTransportDiagnostics() {
         TransportResultIngressChannel resultIngestChannel = mock(TransportResultIngressChannel.class);
-        when(resultIngestChannel.ingest(any(TransportResultIngressEnvelope.class))).thenReturn(true);
+        when(resultIngestChannel.ingest(any(RoutingEnvelope.class))).thenReturn(true);
 
         EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
@@ -77,18 +78,19 @@ class EmbeddedPullWorkerSessionTest {
 
         session.submitResult(item, true, "ok");
 
-        var captured = org.mockito.ArgumentCaptor.forClass(TransportResultIngressEnvelope.class);
+        var captured = org.mockito.ArgumentCaptor.forClass(RoutingEnvelope.class);
         verify(resultIngestChannel).ingest(captured.capture());
-        assertNull(captured.getValue().diagnostic("routeKey"));
-        assertNull(captured.getValue().diagnostic("adapterId"));
-        assertEquals(item.getResultCorrelationRef(), captured.getValue().getPartitionKey());
-        assertTrue(captured.getValue().getPayload().contains("\"resultCorrelationRef\":\"" + item.getResultCorrelationRef() + "\""));
+        assertNull(captured.getValue().diagnostics().get("routeKey"));
+        assertNull(captured.getValue().diagnostics().get("adapterId"));
+        assertEquals(RoutingOwnerKinds.RESULT_INGRESS, captured.getValue().target().ownerKind());
+        assertEquals(item.getResultCorrelationRef(), captured.getValue().target().ownerRef());
+        assertTrue(captured.getValue().payload().contains("\"resultCorrelationRef\":\"" + item.getResultCorrelationRef() + "\""));
     }
 
     @Test
     void submitResultWithCorrelationRefDoesNotExposeTransportDiagnostics() {
         TransportResultIngressChannel resultIngestChannel = mock(TransportResultIngressChannel.class);
-        when(resultIngestChannel.ingest(any(TransportResultIngressEnvelope.class))).thenReturn(true);
+        when(resultIngestChannel.ingest(any(RoutingEnvelope.class))).thenReturn(true);
 
         EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
@@ -96,13 +98,14 @@ class EmbeddedPullWorkerSessionTest {
         String resultCorrelationRef = correlation("msg-1", "attempt-1");
         session.submitResult(resultCorrelationRef, true, null, "ok");
 
-        var captured = org.mockito.ArgumentCaptor.forClass(TransportResultIngressEnvelope.class);
+        var captured = org.mockito.ArgumentCaptor.forClass(RoutingEnvelope.class);
         verify(resultIngestChannel).ingest(captured.capture());
-        assertNull(captured.getValue().diagnostic("routeKey"));
-        assertNull(captured.getValue().diagnostic("adapterId"));
-        assertEquals(resultCorrelationRef, captured.getValue().getPartitionKey());
-        assertTrue(captured.getValue().getPayload().contains("\"resultCorrelationRef\":\"" + resultCorrelationRef + "\""));
-        assertTrue(captured.getValue().getPayload().contains("\"result\":\"ok\""));
+        assertNull(captured.getValue().diagnostics().get("routeKey"));
+        assertNull(captured.getValue().diagnostics().get("adapterId"));
+        assertEquals(RoutingOwnerKinds.RESULT_INGRESS, captured.getValue().target().ownerKind());
+        assertEquals(resultCorrelationRef, captured.getValue().target().ownerRef());
+        assertTrue(captured.getValue().payload().contains("\"resultCorrelationRef\":\"" + resultCorrelationRef + "\""));
+        assertTrue(captured.getValue().payload().contains("\"result\":\"ok\""));
     }
 
     @Test

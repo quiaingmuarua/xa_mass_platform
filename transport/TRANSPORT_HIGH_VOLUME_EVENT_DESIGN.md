@@ -32,7 +32,7 @@ engine assignment
   -> TransportDeliveryStore
   -> adapter drain/send
   -> worker
-  -> TransportResultIngressEnvelope
+  -> RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)
   -> TransportResultIngressChannel / TransportResultIngressHandler
   -> engine lifecycle
 ```
@@ -45,7 +45,7 @@ Permanent transport concepts remain:
 - `QueuedPulledDispatch`
 - `TransportDeliveryService`
 - `TransportDeliveryStore`
-- `TransportResultIngressEnvelope`
+- `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)`
 - `TransportResultIngressChannel`
 - `TransportResultIngressHandler`
 
