@@ -151,13 +151,22 @@ Worker runtime owns:
   scheduling/runtime projection that says the selected worker currently maps to
   one opaque adapter mailbox.
 
-Adapter runtime / adapter process owns:
+Delivery-target strategy / embedded assembly owns:
 
-- adapter mailbox identity minting and lifecycle
-- mailbox consumer lease/heartbeat for the running adapter process
-- mailbox stability across ordinary worker reconnects
-- mailbox generation changes when a worker is moved to another adapter process
-  or when a mailbox deployment identity changes
+- choosing the opaque adapter mailbox key for a deployment or embedded binding
+- deciding when a selected worker's delivery target moves to another mailbox
+- projecting `selectedWorkerId -> adapterMailboxKey` through worker-runtime
+  delivery target evidence
+- keeping mailbox key choice out of task assignment and out of concrete adapter
+  business logic
+
+Adapter host / adapter process owns:
+
+- mounting and consuming the mailbox key it is configured with
+- publishing mailbox consumer availability only when the handoff requires a
+  bounded queue-safety fact
+- keeping ordinary worker reconnects local to adapter session state instead of
+  changing worker identity or task assignment
 
 Transport routing owns:
 
@@ -190,16 +199,17 @@ inside concrete adapter/runtime evidence, but routing across queues and future
 process boundaries should use `RoutingEnvelope.target`.
 
 `adapterMailboxKey` is not an `adapterId` rename. It is a stable delivery
-mailbox address for an adapter process/runtime mailbox. It is not a protocol
-type, connection id, session handle, route key, endpoint lease id, worker id,
-or public worker registration field. A worker reconnect must not change the
-worker identity or force a new mailbox key. A worker migration to another
-adapter process changes worker-runtime delivery target evidence generation.
-For embedded Java adapters, the mailbox key must be an explicit
-`TransportBinding` / `TransportAdapterContribution` fact before it is used by
-worker-runtime evidence. The short-term default may derive from the configured
-adapter id, but only as an embedded default source; it is not conceptual
-identity with `adapterId`.
+mailbox address consumed by an adapter host. It is chosen by deployment,
+assembly, or worker-runtime delivery-target strategy, not by concrete adapter
+protocol/session code. It is not a protocol type, connection id, session
+handle, route key, endpoint lease id, worker id, or public worker registration
+field. A worker reconnect must not change the worker identity or force a new
+mailbox key. A worker migration to another mailbox changes worker-runtime
+delivery target evidence generation. For embedded Java adapters, the mailbox
+key must be an explicit `TransportBinding` / `TransportAdapterContribution`
+fact before it is used by worker-runtime evidence. The short-term default may
+derive from the configured adapter id, but only as an embedded default source;
+it is not conceptual identity with `adapterId`.
 
 ## Boundary Decision
 
@@ -220,9 +230,10 @@ protocol, or payload categories, not payload-owner layers.
 
 `RoutingEnvelope.target.ownerRef` is the target-owner routing handle:
 
-- for `adapter`, it is the adapter mailbox key minted by adapter
-  runtime/process lifecycle and selected through worker-runtime delivery target
-  evidence;
+- for `adapter`, it is the adapter mailbox key selected through
+  worker-runtime delivery target evidence. In embedded mode the key is an
+  explicit binding/contribution fact supplied by configuration or assembly; it
+  is not derived by the concrete adapter from protocol/session state;
 - for `result-ingress`, it is the result partition/correlation key consumed by
   the starter result bridge before engine result apply.
 
@@ -283,9 +294,10 @@ WorkerDeliveryTargetView.resolve(selectedWorkerId)
 
 The exact class name may change during implementation, but the owner decision
 does not: worker-runtime owns the projection that maps the selected worker to a
-current adapter mailbox. Adapter runtime/process owns the mailbox identity
-itself. Transport consumes the mailbox address as an opaque physical delivery
-target.
+current adapter mailbox. Deployment/assembly owns the mailbox-key strategy.
+The adapter host consumes the configured mailbox and performs local worker
+session demux. Transport consumes the mailbox address as an opaque physical
+delivery target.
 
 The adapter dispatch payload should be the minimal data that the adapter needs
 to deliver to the already selected worker:

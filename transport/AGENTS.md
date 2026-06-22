@@ -24,11 +24,16 @@ entry for `transport/`.
   belongs to embedded adapter support; cross-process facts must be typed
   delivery commands, endpoint lease evidence, routing result-ingress envelopes,
   delivery outcomes, diagnostics, or session/availability observations.
-- `transport` is a pure delivery executor. It owns correct assigned-worker
-  delivery, queue claim/ack consistency, endpoint/session evidence, and delivery
-  outcomes; it does not own retry, reassign, compensation, worker lifecycle,
-  worker scheduling, adapter health lifecycle, restart/failover/migration, or
-  task payload schema.
+- `transport` is a pure delivery executor. It owns best-effort assigned-worker
+  delivery attempts, bounded queue admission, queue claim/ack consistency,
+  mailbox/session feasibility checks, endpoint/session evidence, and observable
+  delivery outcomes or failure evidence. It must not actively drop a known
+  failed offer, unavailable mailbox, missing endpoint, or adapter final-hop
+  failure without a `DispatchOutcome` or retryable failure event. Accepted work
+  that later sees no worker consumption, process completion, or result is
+  resolved by engine-owned task attempt timeout/retry, not by transport retry,
+  reassign, compensation, worker lifecycle, worker scheduling, adapter health
+  lifecycle, restart/failover/migration, or task payload schema.
 - Transport/adapter lifecycle control must stay minimal. Local resource
   start/stop and mailbox availability proof are allowed; watchdogs, monitor
   loops, reconciliation, takeover, migration, and restart policy require a

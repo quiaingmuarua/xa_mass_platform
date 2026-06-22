@@ -74,19 +74,28 @@ Task item dispatch boundary:
   `TaskDispatchBinding.workerId`
 - transport carries that value as `selectedWorkerId`, a delivery constraint, not
   scheduling truth or worker lifecycle truth
-- `routeKey` is opaque connection/domain metadata and may be worker-group,
-  adapter-lane, shared, or another assembly-owned rule; transport must not
-  decode it or rely on it for worker correctness
-- `deliveryQueueKey` is only queue/storage/batching partitioning. It may be
-  shared by many workers; assigned delivery correctness comes from the
-  command-level `selectedWorkerId` plus endpoint/session lease feasibility, not
-  from queue key uniqueness.
-- delivery infeasible for the selected worker is engine-owned retry or
-  compensation input, not permission for transport to select another worker
+- delivery integration resolves that selected worker through worker-runtime
+  delivery target evidence into an opaque `adapterMailboxKey`; engine/base
+  assignment does not carry mailbox, adapter, route, connection, or session
+  facts
+- transport queues by `adapterMailboxKey` and preserves `selectedWorkerId` as
+  the final-hop correctness constraint; concrete adapters demux that selected
+  worker to a local session, channel, or pull buffer
+- `routeKey`, `deliveryQueueKey`, connection ids, endpoint lease ids, and
+  session handles are not assigned-dispatch routing contracts. If they remain
+  inside adapter/session diagnostics, they must not drive worker correctness or
+  producer-side queue choice.
+- transport is a best-effort delivery executor, not the message reliability
+  owner. Known offer rejection, unavailable mailbox, missing endpoint, corrupt
+  dispatch input, or adapter final-hop failure must become a `DispatchOutcome`
+  or retryable failure evidence; accepted work with no later worker consumption
+  or result falls back to engine-owned task attempt timeout, retry, reassign,
+  and compensation.
 - engine must not select workers by transport implementation identifiers such
-  as `adapterId`, `routeKey`, `connectionId`, endpoint lease ids, or session
-  handles. If delivery reachability is needed for scheduling, expose it as
-  worker-runtime scheduling evidence instead of raw transport facts.
+  as `adapterId`, `adapterMailboxKey`, `routeKey`, `connectionId`, endpoint
+  lease ids, or session handles. If delivery reachability is needed for
+  scheduling, expose it as worker-runtime scheduling evidence instead of raw
+  transport facts.
 
 ## 0.1 Abstraction Test
 

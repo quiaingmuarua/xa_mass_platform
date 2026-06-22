@@ -761,10 +761,17 @@ not a blocking engine hot-path call. Do not reintroduce direct synchronous
 engine->transport callback coupling as a parallel mainline, do not treat any
 handoff queue as a second runtime ready queue, and do not treat transport as a
 retry, reassign, compensation, attempt-timeout, or final-recovery owner.
-Transport owns only delivery-executor consistency: accepted commands are not
-claimed by the wrong consumer, ready refs enter inflight before materialization,
-`complete` acks local handoff state, and final-hop execution returns delivery
-outcome or failure evidence.
+Transport owns only delivery-executor consistency and observable delivery
+attempt failure. Accepted commands are not claimed by the wrong consumer, ready
+refs enter inflight before materialization, `complete` acks local handoff state,
+and final-hop execution returns delivery outcome or failure evidence. Transport
+must not actively discard a known failed offer, unavailable mailbox, missing
+endpoint, invalid dispatch item, or adapter final-hop failure without returning
+a `DispatchOutcome` or publishing retryable delivery failure evidence. Once a
+command has been accepted into the transport attempt path, lack of later worker
+consumption, process completion, or task result is not a transport retry loop;
+engine-owned task attempt timeout, retry, reassign, and compensation remain the
+fallback.
 
 Runtime delivery stores must enforce explicit admission control. Delivery-
 command handoff stores use adapter-mailbox queue admission plus local claim/ack
