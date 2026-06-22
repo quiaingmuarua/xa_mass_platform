@@ -22,8 +22,8 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
-import com.xa.mass.transport.runtime.ManagedTransportAdapter;
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointInspector;
+import com.xa.mass.transport.runtime.EmbeddedAdapterRuntimeSet;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
@@ -37,7 +37,6 @@ import com.xa.mass.transport.runtime.TransportResultIngressInboxPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoffPump;
 import com.xa.mass.transport.runtime.embedded.TransportDeliveryCommandListener;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerLease;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
@@ -48,7 +47,6 @@ import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureInboxPump;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
-import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
@@ -69,8 +67,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -83,15 +79,12 @@ public class MassApplication {
     private static final Gson TRANSPORT_JSON = new Gson();
     private static final int DEFAULT_DISPATCH_HANDOFF_CAPACITY =
             Integer.getInteger("xa.mass.engine.dispatchHandoffCapacity", 10_000);
-    private static final long MIN_ADAPTER_MAILBOX_CONSUMER_REFRESH_INTERVAL_MILLIS = 100L;
 
     private final TransportRuntimeComposition transportRuntimeComposition;
     private final EngineConfig engineConfig;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final MassEventRuntime eventRuntime;
-    private final List<ManagedTransportAdapter> managedTransportAdapters = new ArrayList<>();
     private final Map<String, RawWorkerMessageChannel> rawWorkerMessageChannelsByAdapterId = new LinkedHashMap<>();
-    private final List<TransportServer> transportServers = new ArrayList<>();
 
     private final MassEngine engine;
     private MessageTransporter<String, TransportOutboundMessage> messageTransporter;
@@ -101,10 +94,7 @@ public class MassApplication {
     private TransportDeliveryService transportDeliveryService;
     private TransportDeliveryCommandHandoff transportDeliveryCommandHandoff;
     private TransportDeliveryCommandHandoffPump transportDeliveryCommandHandoffPump;
-    private AdapterMailboxConsumerRegistry adapterMailboxConsumerRegistry = NoopAdapterMailboxConsumerRegistry.INSTANCE;
-    private final Object adapterMailboxConsumerLeaseLock = new Object();
-    private final List<AdapterMailboxConsumerLease> claimedAdapterMailboxConsumers = new ArrayList<>();
-    private Future<?> adapterMailboxConsumerRefreshTask;
+    private EmbeddedAdapterRuntimeSet embeddedAdapterRuntimeSet = EmbeddedAdapterRuntimeSet.empty();
     private RedisTransportResultIngressChannel taskResultInbox;
     private TransportResultIngressInboxPump taskResultInboxPump;
     private RedisTransportDeliveryFailureChannel deliveryFailureInbox;
@@ -135,8 +125,7 @@ public class MassApplication {
         try {
             TaskDispatchBatchListener taskDispatchListener = initializeComponents();
 
-            startManagedTransportAdapters();
-            startTransportServer();
+            startEmbeddedAdapterRuntimeSet();
             startEngine(taskDispatchListener);
 
             MDC.clear();
@@ -161,8 +150,7 @@ public class MassApplication {
 
         try {
             try {
-                stopTransportServers();
-                stopManagedTransportAdapters();
+                stopEmbeddedAdapterRuntimeSet();
                 TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
                 if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
                     stopTaskDispatchHandoff();
@@ -202,18 +190,12 @@ public class MassApplication {
             logger.warn("Failed to stop engine after startup failure", cleanupError);
         }
         try {
+            stopEmbeddedAdapterRuntimeSet();
             stopTaskDispatchHandoff();
             stopDistributedTransportInboxes();
-            stopTransportServers();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
-            logger.warn("Failed to stop transport servers after startup failure", cleanupError);
-        }
-        try {
-            stopManagedTransportAdapters();
-        } catch (Exception cleanupError) {
-            startupFailure.addSuppressed(cleanupError);
-            logger.warn("Failed to stop managed transport adapters after startup failure", cleanupError);
+            logger.warn("Failed to stop embedded adapter runtime after startup failure", cleanupError);
         }
         try {
             drainResultIngestBuffer();
@@ -251,11 +233,8 @@ public class MassApplication {
         logger.info("Initializing core components");
 
         try {
-            managedTransportAdapters.clear();
             rawWorkerMessageChannelsByAdapterId.clear();
-            transportServers.clear();
-            clearClaimedAdapterMailboxConsumers();
-            adapterMailboxConsumerRegistry = NoopAdapterMailboxConsumerRegistry.INSTANCE;
+            embeddedAdapterRuntimeSet = EmbeddedAdapterRuntimeSet.empty();
             startEventRuntimeTaskExecutor();
             endpointInspector = new CompositeWorkerEndpointInspector();
             logger.info("Worker endpoint inspector initialized");
@@ -287,10 +266,10 @@ public class MassApplication {
                     mailboxConsumerRegistry = registry;
                 }
             }
-            adapterMailboxConsumerRegistry = mailboxConsumerRegistry;
             TaskDispatchBatchListener taskDispatchListener = null;
             TransportResultIngressChannel resultIngressChannel = null;
             List<TransportBinding> adapterBindings = new ArrayList<>();
+            List<TransportAdapterContribution> adapterContributions = new ArrayList<>();
             if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 taskResultInbox = transportRuntimeComposition.resolveTaskResultInbox();
                 resultIngressChannel = taskResultInbox;
@@ -333,7 +312,6 @@ public class MassApplication {
                             presenceIngress,
                             endpointLeaseStore,
                             deliveryService,
-                            mailboxConsumerRegistry,
                             transportRuntimeTaskExecutor
                     );
                     TransportAdapterContribution contribution = transportAdapterBootstrap.contribute(bootstrapContext);
@@ -341,7 +319,7 @@ public class MassApplication {
                         contribution = TransportAdapterContribution.empty();
                     }
                     contribution.validateAgainst(transportAdapterBootstrap.descriptor());
-                    registerTransportAdapterContribution(contribution, adapterBindings);
+                    registerTransportAdapterContribution(contribution, adapterBindings, adapterContributions);
                 }
             }
 
@@ -350,10 +328,14 @@ public class MassApplication {
                         resultIngressChannel,
                         endpointLeaseStore,
                         deliveryService,
-                        mailboxConsumerRegistry,
                         adapterBindings
                 );
-                claimAdapterMailboxConsumers(mailboxConsumerRegistry, adapterBindings);
+                embeddedAdapterRuntimeSet = EmbeddedAdapterRuntimeSet.fromContributions(
+                        adapterContributions,
+                        mailboxConsumerRegistry,
+                        transportRuntimeComposition.getAdapterMailboxConsumerLeaseMillis(),
+                        transportRuntimeTaskExecutor
+                );
                 configureRealtimeWorkerCommandDelivery();
             }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
@@ -451,132 +433,6 @@ public class MassApplication {
         }
     }
 
-    private void claimAdapterMailboxConsumers(AdapterMailboxConsumerRegistry registry,
-                                              List<TransportBinding> adapterBindings) {
-        if (registry == null
-                || registry == NoopAdapterMailboxConsumerRegistry.INSTANCE
-                || adapterBindings == null
-                || adapterBindings.isEmpty()) {
-            return;
-        }
-        long leaseMillis = transportRuntimeComposition.getAdapterMailboxConsumerLeaseMillis();
-        long deadline = System.currentTimeMillis() + leaseMillis;
-        List<AdapterMailboxConsumerLease> claimed = new ArrayList<>();
-        for (TransportBinding binding : adapterBindings) {
-            if (binding == null) {
-                continue;
-            }
-            AdapterMailboxConsumerLease lease = new AdapterMailboxConsumerLease(
-                    binding.getAdapterMailboxKey(),
-                    "embedded:" + binding.getAdapterMailboxKey(),
-                    1L,
-                    deadline
-            );
-            registry.claimMailboxConsumer(lease);
-            claimed.add(lease);
-        }
-        synchronized (adapterMailboxConsumerLeaseLock) {
-            claimedAdapterMailboxConsumers.clear();
-            claimedAdapterMailboxConsumers.addAll(claimed);
-        }
-        if (!claimed.isEmpty()) {
-            startAdapterMailboxConsumerRefreshLoop(registry, leaseMillis);
-        }
-    }
-
-    private void releaseAdapterMailboxConsumers() {
-        stopAdapterMailboxConsumerRefreshLoop();
-        List<AdapterMailboxConsumerLease> leases = snapshotClaimedAdapterMailboxConsumers();
-        clearClaimedAdapterMailboxConsumers();
-        AdapterMailboxConsumerRegistry registry = adapterMailboxConsumerRegistry;
-        adapterMailboxConsumerRegistry = NoopAdapterMailboxConsumerRegistry.INSTANCE;
-        if (registry == null || registry == NoopAdapterMailboxConsumerRegistry.INSTANCE || leases.isEmpty()) {
-            return;
-        }
-        for (AdapterMailboxConsumerLease lease : leases) {
-            try {
-                registry.releaseMailboxConsumer(lease);
-            } catch (RuntimeException e) {
-                logger.warn("Failed to release adapter mailbox consumer lease: adapterMailboxKey={}, reason={}",
-                        lease.adapterMailboxKey(), e.getMessage());
-            }
-        }
-    }
-
-    private void startAdapterMailboxConsumerRefreshLoop(AdapterMailboxConsumerRegistry registry, long leaseMillis) {
-        if (registry == null
-                || registry == NoopAdapterMailboxConsumerRegistry.INSTANCE
-                || transportRuntimeTaskExecutor == null) {
-            return;
-        }
-        stopAdapterMailboxConsumerRefreshLoop();
-        long refreshIntervalMillis = Math.max(
-                MIN_ADAPTER_MAILBOX_CONSUMER_REFRESH_INTERVAL_MILLIS,
-                Math.max(1L, leaseMillis / 3L)
-        );
-        adapterMailboxConsumerRefreshTask = transportRuntimeTaskExecutor.submit(
-                () -> runAdapterMailboxConsumerRefreshLoop(registry, leaseMillis, refreshIntervalMillis)
-        );
-    }
-
-    private void runAdapterMailboxConsumerRefreshLoop(AdapterMailboxConsumerRegistry registry,
-                                                      long leaseMillis,
-                                                      long refreshIntervalMillis) {
-        while (running.get() && !Thread.currentThread().isInterrupted()) {
-            try {
-                TimeUnit.MILLISECONDS.sleep(refreshIntervalMillis);
-                refreshAdapterMailboxConsumerLeases(registry, leaseMillis);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } catch (RuntimeException e) {
-                logger.warn("Failed to refresh adapter mailbox consumer leases: {}", e.getMessage());
-            }
-        }
-    }
-
-    private void refreshAdapterMailboxConsumerLeases(AdapterMailboxConsumerRegistry registry, long leaseMillis) {
-        List<AdapterMailboxConsumerLease> leases = snapshotClaimedAdapterMailboxConsumers();
-        if (leases.isEmpty()) {
-            return;
-        }
-        long deadline = System.currentTimeMillis() + leaseMillis;
-        List<AdapterMailboxConsumerLease> refreshed = new ArrayList<>(leases.size());
-        for (AdapterMailboxConsumerLease lease : leases) {
-            AdapterMailboxConsumerLease next = new AdapterMailboxConsumerLease(
-                    lease.adapterMailboxKey(),
-                    lease.consumerId(),
-                    lease.generation(),
-                    deadline
-            );
-            registry.claimMailboxConsumer(next);
-            refreshed.add(next);
-        }
-        synchronized (adapterMailboxConsumerLeaseLock) {
-            claimedAdapterMailboxConsumers.clear();
-            claimedAdapterMailboxConsumers.addAll(refreshed);
-        }
-    }
-
-    private void stopAdapterMailboxConsumerRefreshLoop() {
-        Future<?> task = adapterMailboxConsumerRefreshTask;
-        adapterMailboxConsumerRefreshTask = null;
-        if (task != null) {
-            task.cancel(true);
-        }
-    }
-
-    private List<AdapterMailboxConsumerLease> snapshotClaimedAdapterMailboxConsumers() {
-        synchronized (adapterMailboxConsumerLeaseLock) {
-            return List.copyOf(claimedAdapterMailboxConsumers);
-        }
-    }
-
-    private void clearClaimedAdapterMailboxConsumers() {
-        synchronized (adapterMailboxConsumerLeaseLock) {
-            claimedAdapterMailboxConsumers.clear();
-        }
-    }
-
     private TaskDispatchDeliveryFailure toDeliveryFailure(TransportDeliveryFailureEvent event) {
         DispatchOutcome outcome = event.outcome();
         TaskDispatchDeliveryCorrelation correlation =
@@ -625,16 +481,8 @@ public class MassApplication {
         }
     }
 
-    private void startManagedTransportAdapters() {
-        logger.info("Starting managed transport adapters");
-        if (managedTransportAdapters.isEmpty()) {
-            logger.info("No managed transport adapters configured for current runtime");
-            return;
-        }
-        for (ManagedTransportAdapter managedTransportAdapter : managedTransportAdapters) {
-            managedTransportAdapter.start();
-        }
-        logger.info("Managed transport adapters started");
+    private void startEmbeddedAdapterRuntimeSet() {
+        embeddedAdapterRuntimeSet.start();
     }
 
     private void startEngine(TaskDispatchBatchListener taskDispatchListener) {
@@ -655,32 +503,10 @@ public class MassApplication {
         }
     }
 
-    private void startTransportServer() {
-        logger.info("Starting transport servers");
-        if (transportServers.isEmpty()) {
-            logger.info("No transport server configured for current runtime");
-            return;
-        }
-        for (TransportServer transportServer : transportServers) {
-            try {
-                transportServer.start();
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to start transport server", e);
-            }
-        }
-        logger.info("Transport servers started: count={}", transportServers.size());
-    }
-
-    private void stopManagedTransportAdapters() throws Exception {
-        for (ManagedTransportAdapter managedTransportAdapter : managedTransportAdapters) {
-            managedTransportAdapter.stop();
-        }
-    }
-
-    private void stopTransportServers() throws Exception {
-        for (TransportServer transportServer : transportServers) {
-            transportServer.stop();
-        }
+    private void stopEmbeddedAdapterRuntimeSet() {
+        EmbeddedAdapterRuntimeSet runtimeSet = embeddedAdapterRuntimeSet;
+        embeddedAdapterRuntimeSet = EmbeddedAdapterRuntimeSet.empty();
+        runtimeSet.stop();
     }
 
     private void drainResultIngestBuffer() {
@@ -715,7 +541,6 @@ public class MassApplication {
         if (pump != null) {
             pump.stop();
         }
-        releaseAdapterMailboxConsumers();
         TransportDeliveryCommandHandoff handoff = transportDeliveryCommandHandoff;
         transportDeliveryCommandHandoff = null;
         if (handoff != null) {
@@ -809,18 +634,6 @@ public class MassApplication {
         );
     }
 
-    private void registerManagedTransportAdapter(ManagedTransportAdapter managedTransportAdapter) {
-        if (managedTransportAdapter != null) {
-            managedTransportAdapters.add(managedTransportAdapter);
-        }
-    }
-
-    private void registerTransportServer(TransportServer transportServer) {
-        if (transportServer != null) {
-            transportServers.add(transportServer);
-        }
-    }
-
     private void registerRawWorkerMessageChannel(RawWorkerMessageChannel rawWorkerMessageChannel) {
         if (rawWorkerMessageChannel != null) {
             String adapterId = requireRawWorkerMessageAdapterId(rawWorkerMessageChannel);
@@ -848,19 +661,15 @@ public class MassApplication {
     }
 
     private void registerTransportAdapterContribution(TransportAdapterContribution contribution,
-                                                      List<TransportBinding> adapterBindings) {
+                                                      List<TransportBinding> adapterBindings,
+                                                      List<TransportAdapterContribution> adapterContributions) {
         TransportAdapterContribution next = contribution != null
                 ? contribution
                 : TransportAdapterContribution.empty();
+        adapterContributions.add(next);
         adapterBindings.addAll(next.getTransportBindings());
-        for (ManagedTransportAdapter managedTransportAdapter : next.getManagedTransportAdapters()) {
-            registerManagedTransportAdapter(managedTransportAdapter);
-        }
         for (RawWorkerMessageChannel rawWorkerMessageChannel : next.getRawWorkerMessageChannels()) {
             registerRawWorkerMessageChannel(rawWorkerMessageChannel);
-        }
-        for (TransportServer transportServer : next.getTransportServers()) {
-            registerTransportServer(transportServer);
         }
         for (WorkerEndpointInspector inspector : next.getEndpointInspectors()) {
             registerWorkerEndpointInspector(inspector);
@@ -871,8 +680,7 @@ public class MassApplication {
         boolean engineExpected = engineConfig.isEnabled()
                 && transportRuntimeComposition.getRuntimeRole() != TransportRuntimeRole.TRANSPORT_CONSUMER;
         return running.get()
-                && managedTransportAdapters.stream().allMatch(ManagedTransportAdapter::isRunning)
-                && transportServers.stream().allMatch(TransportServer::isRunning)
+                && embeddedAdapterRuntimeSet.isRunning()
                 && (!engineExpected || engine == null || engine.isRunning());
     }
 

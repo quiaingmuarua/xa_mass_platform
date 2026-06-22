@@ -449,6 +449,47 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
+    void embeddedAdapterMailboxLeaseLifecycleHasSingleRuntimeOwner() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java")),
+                "new AdapterMailboxConsumerLease",
+                "claimedAdapterMailboxConsumers",
+                "claimAdapterMailboxConsumers(",
+                "refreshAdapterMailboxConsumer",
+                "releaseAdapterMailboxConsumers(",
+                "claimMailboxConsumer("
+        );
+
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrapContext.java")),
+                "AdapterMailboxConsumerRegistry",
+                "getAdapterMailboxConsumerRegistry",
+                "claimMailboxConsumer("
+        );
+
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java")
+                ),
+                "AdapterMailboxConsumerRegistry",
+                "claimMailboxConsumer("
+        );
+
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/EmbeddedAdapterContributionRuntime.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/EmbeddedAdapterRuntimeSet.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/AdapterMailboxLeaseRuntime.java")
+                ),
+                "com.xa.mass.transport.websocket",
+                "com.xa.mass.transport.socket",
+                "com.xa.mass.transport.polling"
+        );
+    }
+
+    @Test
     void coreDeliveryAndLeasePackagesDoNotImportEmbeddedAdapterAssembly() throws IOException {
         assertNoProductionSourceContains(
                 List.of(

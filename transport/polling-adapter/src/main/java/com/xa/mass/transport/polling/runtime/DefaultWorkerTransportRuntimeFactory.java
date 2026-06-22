@@ -5,8 +5,6 @@ import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.List;
@@ -25,26 +23,12 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
                                            TransportEndpointLeaseStore endpointLeaseStore,
                                            TransportDeliveryService deliveryService,
                                            List<TransportBinding> adapterBindings) {
-        return create(resultIngressChannel,
-                endpointLeaseStore,
-                deliveryService,
-                NoopAdapterMailboxConsumerRegistry.INSTANCE,
-                adapterBindings);
-    }
-
-    @Override
-    public TransportRuntimeRegistry create(TransportResultIngressChannel resultIngressChannel,
-                                           TransportEndpointLeaseStore endpointLeaseStore,
-                                           TransportDeliveryService deliveryService,
-                                           AdapterMailboxConsumerRegistry adapterMailboxConsumerRegistry,
-                                           List<TransportBinding> adapterBindings) {
         List<TransportBinding> bindings = adapterBindings == null
                 ? List.of()
                 : List.copyOf(adapterBindings);
         return new TransportRuntimeRegistry(
                 resultIngressChannel,
                 endpointLeaseStore,
-                adapterMailboxConsumerRegistry,
                 bindings
         );
     }

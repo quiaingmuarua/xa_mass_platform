@@ -2,8 +2,6 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 
 import java.util.IdentityHashMap;
@@ -29,7 +27,6 @@ public final class TransportRuntimeRegistry {
 
     private final TransportResultIngressChannel resultIngressChannel;
     private final TransportEndpointLeaseStore endpointLeaseStore;
-    private final AdapterMailboxConsumerRegistry adapterMailboxConsumerRegistry;
     private final List<TransportBinding> bindings;
     private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
@@ -39,21 +36,8 @@ public final class TransportRuntimeRegistry {
     public TransportRuntimeRegistry(TransportResultIngressChannel resultIngressChannel,
                                     TransportEndpointLeaseStore endpointLeaseStore,
                                     List<TransportBinding> bindings) {
-        this(resultIngressChannel,
-                endpointLeaseStore,
-                NoopAdapterMailboxConsumerRegistry.INSTANCE,
-                bindings);
-    }
-
-    public TransportRuntimeRegistry(TransportResultIngressChannel resultIngressChannel,
-                                    TransportEndpointLeaseStore endpointLeaseStore,
-                                    AdapterMailboxConsumerRegistry adapterMailboxConsumerRegistry,
-                                    List<TransportBinding> bindings) {
         this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
-        this.adapterMailboxConsumerRegistry = adapterMailboxConsumerRegistry != null
-                ? adapterMailboxConsumerRegistry
-                : NoopAdapterMailboxConsumerRegistry.INSTANCE;
         this.bindings = List.copyOf(bindings);
         if (this.bindings.isEmpty()) {
             throw new IllegalArgumentException("At least one transport binding is required");

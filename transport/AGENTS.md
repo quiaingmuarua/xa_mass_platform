@@ -121,10 +121,17 @@ entry for `transport/`.
   transport-neutral remote adapter contract. Do not make transport core depend
   on executor-local connection/session classes, late-bound handler setters, or
   adapter-owned registries.
+- `EmbeddedAdapterRuntimeSet` and `EmbeddedAdapterContributionRuntime` own
+  embedded Java adapter lifecycle around contribution-owned managed resources
+  and servers. `AdapterMailboxLeaseRuntime` owns only mailbox consumer claim,
+  refresh, and release for one command-delivery binding. `MassApplication`
+  assembles and starts/stops these runtime units; concrete adapter bootstraps
+  must not receive or call `AdapterMailboxConsumerRegistry`.
 - Concrete adapters may observe protocol sessions and send to selected workers,
   but endpoint lease evidence is projected by `TransportEndpointLeasePublisher`,
-  mailbox consumer evidence is claimed by runtime composition, and worker
-  session-presence observations are projected by `WorkerPresenceSessionPublisher`.
+  mailbox consumer evidence is claimed by embedded adapter runtime lifecycle,
+  and worker session-presence observations are projected by
+  `WorkerPresenceSessionPublisher`.
   WebSocket now splits this into explicit session store, server handle, command
   executor, evidence driver, and refresh-loop roles. Assigned delivery lookup
   inside the adapter is worker-id-only; `deliveryBucketId` remains upstream

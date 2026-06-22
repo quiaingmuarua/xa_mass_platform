@@ -1,6 +1,8 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
+import com.xa.mass.base.runtime.RuntimeTaskExecutor;
+import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
 import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryResult;
 import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryStatus;
 import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
@@ -11,6 +13,7 @@ import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.ManagedTransportAdapter;
+import com.xa.mass.transport.runtime.EmbeddedAdapterRuntimeSet;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
@@ -21,6 +24,7 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +33,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -53,8 +60,9 @@ class MassApplicationStopOrderTest {
         when(transportServer.isRunning()).thenReturn(false);
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
-        inject(app, "managedTransportAdapters", new ArrayList<>(List.of(adapter)));
-        inject(app, "transportServers", new ArrayList<>(List.of(transportServer)));
+        EmbeddedAdapterRuntimeSet runtimeSet = startedRuntimeSet(adapter, transportServer);
+        order.clear();
+        inject(app, "embeddedAdapterRuntimeSet", runtimeSet);
         setApplicationRunning(app, true);
 
         app.stop();
@@ -78,8 +86,9 @@ class MassApplicationStopOrderTest {
         doAnswer(inv -> { order.add("transport"); return null; }).when(transportServer).stop();
 
         MassApplication app = new MassApplication(engine, enabledWebSocket(), enabledEngine());
-        inject(app, "managedTransportAdapters", new ArrayList<>(List.of(adapter)));
-        inject(app, "transportServers", new ArrayList<>(List.of(transportServer)));
+        EmbeddedAdapterRuntimeSet runtimeSet = startedRuntimeSet(adapter, transportServer);
+        order.clear();
+        inject(app, "embeddedAdapterRuntimeSet", runtimeSet);
         setApplicationRunning(app, true);
 
         app.stop();
@@ -97,8 +106,8 @@ class MassApplicationStopOrderTest {
         TransportServer transportServer = mock(TransportServer.class);
 
         MassApplication app = new MassApplication(engine, enabledWebSocket(), enabledEngine());
-        inject(app, "managedTransportAdapters", new ArrayList<>(List.of(adapter)));
-        inject(app, "transportServers", new ArrayList<>(List.of(transportServer)));
+        EmbeddedAdapterRuntimeSet runtimeSet = startedRuntimeSet(adapter, transportServer);
+        inject(app, "embeddedAdapterRuntimeSet", runtimeSet);
         setApplicationRunning(app, true);
 
         app.stop();
@@ -358,6 +367,22 @@ class MassApplicationStopOrderTest {
         }
     }
 
+    private EmbeddedAdapterRuntimeSet startedRuntimeSet(ManagedTransportAdapter managedTransportAdapter,
+                                                        TransportServer transportServer) {
+        TransportAdapterContribution contribution = TransportAdapterContribution.builder()
+                .addManagedTransportAdapter(managedTransportAdapter)
+                .addTransportServer(transportServer)
+                .build();
+        EmbeddedAdapterRuntimeSet runtimeSet = EmbeddedAdapterRuntimeSet.fromContributions(
+                List.of(contribution),
+                NoopAdapterMailboxConsumerRegistry.INSTANCE,
+                30_000L,
+                new NoopRuntimeTaskExecutor()
+        );
+        runtimeSet.start();
+        return runtimeSet;
+    }
+
     private Map<String, RawWorkerMessageChannel> rawChannels(RawWorkerMessageChannel... channels) {
         Map<String, RawWorkerMessageChannel> byAdapterId = new LinkedHashMap<>();
         for (RawWorkerMessageChannel channel : channels) {
@@ -513,6 +538,32 @@ class MassApplicationStopOrderTest {
         @Override
         public boolean isRunning() {
             return false;
+        }
+    }
+
+    private static final class NoopRuntimeTaskExecutor implements RuntimeTaskExecutor {
+        @Override
+        public Future<?> submit(Runnable task) {
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public <T> Future<T> submit(Callable<T> task) {
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public void shutdown() {
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) {
+            return true;
+        }
+
+        @Override
+        public RuntimeTaskExecutorStatistics getStatistics() {
+            return new RuntimeTaskExecutorStatistics(0, 0, 0, 0, 0, 1);
         }
     }
 }

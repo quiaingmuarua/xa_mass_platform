@@ -71,6 +71,14 @@ Transport should stay centered on these concepts only:
   contributed bindings, managed adapters, servers, raw/manual channels, and
   diagnostics. Runtime input context and adapter-produced outputs must not share
   mutable single-slot state.
+- `EmbeddedAdapterRuntimeSet` / `EmbeddedAdapterContributionRuntime`: embedded
+  Java adapter lifecycle owners around one or more adapter contributions. They
+  start and stop contribution-owned managed resources and servers without
+  making one binding own shared protocol resources.
+- `AdapterMailboxLeaseRuntime`: embedded runtime owner for mailbox consumer
+  claim, refresh, and release for one command-delivery binding. It does not own
+  dispatch queues, selected-worker session maps, task result decode, endpoint
+  lease projection, worker scheduling, or concrete protocol state.
 - `PollingDeliveryExecutor`: polling adapter command executor. It owns only
   `DeliveryCommand` enqueue into the polling delivery buffer and dispatch
   outcome normalization/logging. It must not own pull polling, endpoint lease
@@ -87,7 +95,8 @@ Transport should stay centered on these concepts only:
 - `TransportEndpointLeasePublisher`: runtime owner that projects adapter
   session facts into endpoint lease evidence. Concrete adapters should not
   duplicate endpoint lease record construction. Mailbox-level handoff consumer
-  leases are claimed by runtime composition, not by endpoint lease projection.
+  leases are claimed by embedded adapter runtime lifecycle, not by endpoint
+  lease projection.
 - `WorkerPresenceSessionPublisher`: runtime owner that projects adapter
   connect/heartbeat/disconnect observations into worker session-presence
   ingress. Concrete adapters may observe sessions, but they do not own worker
@@ -129,7 +138,8 @@ Transport should stay centered on these concepts only:
   to an adapter mailbox. Handoff implementations own mailbox consumer lease
   evidence, mailbox ready references, mailbox inflight references, ack/requeue,
   and mailbox availability outcomes. Mailbox consumer leases are finite runtime
-  leases refreshed by runtime composition; they are not eternal process claims.
+  leases refreshed by embedded adapter runtime lifecycle; they are not eternal
+  process claims.
 - `TransportDeliveryCommandBatchListener`: narrow core callback used by the
   handoff pump after a batch is materialized. The embedded Java implementation
   is `TransportDeliveryCommandListener`; it bridges endpoint lease evidence to
