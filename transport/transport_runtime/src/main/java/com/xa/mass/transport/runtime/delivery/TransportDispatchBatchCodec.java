@@ -30,6 +30,11 @@ final class TransportDispatchBatchCodec {
         ));
     }
 
+    String encodeItem(DispatchRoutingItem item) {
+        Objects.requireNonNull(item, "item");
+        return gson.toJson(DispatchRoutingItemRecord.from(item));
+    }
+
     DispatchRoutingBatch decode(String json) {
         if (json == null || json.isBlank()) {
             throw new IllegalArgumentException("json must not be blank");
@@ -45,6 +50,14 @@ final class TransportDispatchBatchCodec {
                 new RoutingTarget(record.target.ownerKind, record.target.ownerRef),
                 items
         );
+    }
+
+    DispatchRoutingItem decodeItem(String json) {
+        if (json == null || json.isBlank()) {
+            throw new IllegalArgumentException("json must not be blank");
+        }
+        DecodedDispatchRoutingItemRecord record = gson.fromJson(json, DecodedDispatchRoutingItemRecord.class);
+        return fromItemRecord(record);
     }
 
     private static DispatchRoutingItem fromItemRecord(DecodedDispatchRoutingItemRecord record) {

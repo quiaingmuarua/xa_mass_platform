@@ -4,7 +4,7 @@ Status: slice complete, roadmap active; embedded adapter-mailbox dispatch
 mainline and result `RoutingEnvelope` ingress are implemented and verified.
 Distributed worker delivery target evidence and external-adapter process phases
 remain. Dispatch carrier convergence is superseded and implemented by
-`TRANSPORT_DISPATCH_ROUTING_ENVELOPE_CARRIER_CONVERGENCE_ROADMAP.md`.
+`../doc/archive/transport/2026-06-22_TRANSPORT_DISPATCH_ROUTING_ENVELOPE_CARRIER_CONVERGENCE_ROADMAP.md`.
 
 ## Summary
 
@@ -105,11 +105,11 @@ addressing as external routing contracts.
 - In-memory and Redis delivery-command handoff now queue by
   `adapterMailboxKey` and use mailbox-level `AdapterMailboxConsumerAvailability`
   availability, not selected-worker consumer indexes.
-- `AdapterMailboxMount` consumes adapter-mailbox batches from a mailbox-scoped
-  handoff poll, invokes the local binding's embedded
-  `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`, emits retryable
-  delivery-failure evidence, and completes the handoff batch after outcome
-  handling.
+- Adapter-owned mailbox consumers consume adapter-mailbox items from a
+  mailbox-scoped dispatch handoff poll, invoke the concrete adapter's embedded
+  `AdapterCommandExecutor.dispatch(List<DispatchRoutingItem>)`, and emit
+  retryable delivery-failure evidence for known final-hop failures. There is no
+  central mailbox mount or dispatch ack/complete owner.
 - Endpoint lease publishers no longer project handoff-private selected-worker
   consumer evidence.
 - Polling final-hop uses the adapter mailbox as the pull-buffer queue address;
@@ -173,7 +173,7 @@ Transport routing owns:
 
 - queue carrier shape
 - adapter mailbox enqueue/drain mechanics
-- minimal claim/ack consistency for accepted messages
+- bounded admission plus destructive mailbox poll mechanics
 - delivery outcomes and failure evidence
 - mailbox consumer availability, not worker-to-mailbox selection
 
@@ -410,8 +410,9 @@ Scope:
 - Inventory dispatch producers and consumers:
   `TaskDispatchRoutingSubmitter`,
   `TransportAssignedDeliverySubmitter`,
-  `TransportDeliveryCommandHandoff`,
-  `AdapterMailboxMount`, adapter command executors, and polling pull buffers.
+  `TransportDispatchHandoff`,
+  adapter-owned mailbox consumers, adapter command executors, and polling pull
+  buffers.
 - Inventory current selected-worker consumer evidence:
   `DeliveryCommandConsumerClaim`, `DeliveryCommandConsumerRegistry`,
   memory/Redis selected-worker consumer indexes, ready refs, and inflight refs.
@@ -543,7 +544,7 @@ AdapterMailboxConsumerAvailability
 - Redis and in-memory handoff implementations use the same mailbox-key model.
 - Handoff records must carry delivery outcome facts outside the opaque adapter
   payload, so transport can emit backpressure, unavailable mailbox, no
-  consumer, invalid envelope, and claim/ack failures without parsing adapter
+  consumer, invalid envelope, and destructive-poll corruption without parsing adapter
   payload:
 
 ```text
@@ -720,7 +721,7 @@ green while the roadmap is implemented:
 - `MassApplicationDistributedTransportTest`
 - `TransportConvergenceArchitectureGuardTest`
 - `TransportAssignedDeliverySubmitterTest`
-- `AdapterMailboxMountTest`
+- `AdapterMailboxConsumerLoopTest`
 - `InMemoryTransportDeliveryCommandHandoffTest`
 - `RedisTransportDeliveryCommandHandoffTest`
 - `WebSocketTaskDispatchChannelTest`

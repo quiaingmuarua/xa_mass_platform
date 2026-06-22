@@ -34,6 +34,7 @@ import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.BufferedTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.TransportResultIngressInboxPump;
+import com.xa.mass.transport.runtime.embedded.TransportDeliveryFailureEvidenceSink;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
@@ -298,7 +299,11 @@ public class MassApplication {
                             resultIngressChannel,
                             presenceIngress,
                             endpointLeaseStore,
-                            transportRuntimeTaskExecutor
+                            transportRuntimeTaskExecutor,
+                            transportDispatchHandoff == null ? null : transportDispatchHandoff::poll,
+                            new TransportDeliveryFailureEvidenceSink(adapterHostFailureHandler),
+                            mailboxConsumerRegistry,
+                            transportRuntimeComposition.getAdapterMailboxConsumerAvailabilityMillis()
                     );
                     TransportAdapterContribution contribution = transportAdapterBootstrap.contribute(bootstrapContext);
                     if (contribution == null) {
@@ -316,12 +321,7 @@ public class MassApplication {
                         adapterBindings
                 );
                 embeddedAdapterHostSet = EmbeddedAdapterHostSet.fromContributions(
-                        adapterContributions,
-                        transportDispatchHandoff,
-                        adapterHostFailureHandler,
-                        mailboxConsumerRegistry,
-                        transportRuntimeComposition.getAdapterMailboxConsumerAvailabilityMillis(),
-                        transportRuntimeTaskExecutor
+                        adapterContributions
                 );
                 configureRealtimeWorkerCommandDelivery();
             }

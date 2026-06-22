@@ -75,12 +75,16 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                     new WebSocketTaskDispatchChannel(sessionController);
             contribution.addTransportBinding(TransportBinding.builder(
                             config.getAdapterId(),
-                            com.xa.mass.transport.WorkerTransportHints.REALTIME,
-                            commandExecutor
+                            com.xa.mass.transport.WorkerTransportHints.REALTIME
                     )
                     .adapterMailboxKey(adapterMailboxKey)
                     .protocol(WebSocketAdapterConfig.PROTOCOL)
                     .build());
+            contribution.addAdapterMailboxConsumer(context.adapterMailboxConsumer(
+                    adapterMailboxKey,
+                    config.getAdapterId(),
+                    commandExecutor
+            ));
             contribution.addRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(
                     config.getAdapterId(),
                     rawRouteEndpointRegistry

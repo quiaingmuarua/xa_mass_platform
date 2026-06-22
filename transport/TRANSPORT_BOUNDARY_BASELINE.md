@@ -122,9 +122,10 @@ Transport should stay centered on these concepts only:
   facts are not item fields.
 - `DispatchRoutingBatch`: producer/serialized dispatch handoff record for one
   adapter mailbox. It carries `RoutingTarget(adapter-mailbox,<mailbox>)` and
-  flat `DispatchRoutingItem` values. `ClaimedDispatchRoutingBatch` adds
-  handoff-owned references when the backing store needs ack; those references
-  are not producer fields or serialized queue values.
+  flat `DispatchRoutingItem` values. Handoff implementations store item values
+  under the mailbox queue and expose bounded destructive mailbox poll. There is
+  no assigned-dispatch claim wrapper, ack, visibility timeout, or requeue owner
+  in transport.
 - Polling pending pull-buffer values use `DispatchRoutingItem` directly and
   project to `PulledDeliveryMessage` only at the pull API boundary. This buffer
   is owned by `polling-adapter`, not transport core. It does not serialize
@@ -136,21 +137,20 @@ Transport should stay centered on these concepts only:
 - `TransportResultIngressChannel` / `TransportResultIngressHandler` /
   `TransportResultIngressOutcome`: result ingress producer/consumer seams and
   ackability outcome used by local buffers and Redis inbox pumps.
-- `TransportDispatchHandoff`: post-claim dispatch queue between
+- `TransportDispatchHandoff`: best-effort dispatch queue between
   engine/starter assembly and transport. Producers offer
   `DispatchRoutingBatch(target=adapter-mailbox:<key>, items)` after
   worker-runtime delivery target evidence resolves the already selected worker
-  to an adapter mailbox. Handoff implementations own mailbox consumer
-  availability evidence, mailbox ready references, mailbox inflight references,
-  ack/requeue, and mailbox availability outcomes. Mailbox consumer availability
-  is finite runtime proof refreshed by embedded host support; it is not an
-  eternal process claim and not adapter lifecycle truth.
-- `AdapterMailboxMount`: embedded host-support drain owner for one adapter
-  mailbox. It polls `TransportDispatchHandoff` by `adapterMailboxKey`,
-  invokes the local binding's `AdapterCommandExecutor`, emits retryable
-  delivery failure evidence, and completes the handoff batch only after local
-  outcome handling succeeds. There is no production global
-  dispatch pump/listener owner.
+  to an adapter mailbox. Handoff implementations own bounded queue admission,
+  destructive mailbox poll, mailbox consumer availability evidence, and
+  availability/backpressure outcomes. Mailbox consumer availability is finite
+  queue-safety proof refreshed by adapter-owned mailbox consumers; it is not an
+  adapter health monitor, lifecycle truth, or recovery owner.
+- Adapter-owned mailbox consumers are embedded-support contributions owned by
+  concrete adapter bootstraps. A consumer polls one mailbox through
+  `TransportDispatchHandoff`, invokes the local `AdapterCommandExecutor`, and
+  emits retryable delivery failure evidence for known final-hop failures. There
+  is no production global dispatch pump/listener or central mailbox mount.
 - `DeliveryPullResult`: explicit transport pull-path status plus delivered
   `PulledDeliveryMessage` items. SDK/server worker polling projects those
   messages into `WorkerInvocation` and `WorkerPollResult`; task-shaped pull DTOs
@@ -244,10 +244,12 @@ hot-path recovery logic.
 - result ingress envelope queueing, buffering, and runtime logging; result
   payload decoding, correlation, and lease/attempt validation live in
   SDK/starter or engine-owned result code
-- core dispatch handoff claim/ack semantics. Current embedded assembly drains
-  flat dispatch batches through mailbox-scoped embedded adapter host mounts, not
-  a starter-owned global pump/listener. `AdapterMailboxMount` owns the handoff
-  poll/dispatch/ack loop for one adapter-mailbox binding.
+- core dispatch handoff bounded admission and destructive mailbox poll
+  semantics. Current embedded assembly drains flat dispatch items through
+  adapter-owned mailbox consumers, not a starter-owned global pump/listener or
+  central mount. Known final-hop failures are emitted as failure evidence; if
+  evidence emission fails after destructive poll, engine task-attempt timeout is
+  the recovery path.
 - engine-to-transport dispatch handoff queue/store ownership after assignment;
   current embedded default wiring is an in-memory `TransportDispatchHandoff`,
   while split runtimes use Redis adapter-mailbox dispatch queues plus mailbox
@@ -391,9 +393,9 @@ The split runtime uses three transport/runtime channels:
   submits `DispatchRoutingBatch(target=adapter-mailbox:<key>, items)`.
   Multi-process adapter mode stores flat items under that mailbox queue and wakes
   only the mailbox consumer with current availability proof.
-  `ClaimedDispatchRoutingBatch` at the consumer boundary carries the flat batch
-  plus handoff references; it does not carry lane or target-node facts. Redis
-  dispatch queue ownership is not routeKey cardinality.
+  The consumer boundary destructively polls flat items by mailbox; there is no
+  assigned-dispatch inflight claim, ack, requeue, lane, or target-node fact.
+  Redis dispatch queue ownership is not routeKey cardinality.
 - polling pending pull buffer: polling adapter routes `DispatchRoutingItem`
   values into a polling-adapter-owned buffer by adapter mailbox plus the
   engine-selected `selectedWorkerId`. The mailbox key is supplied by buffer
@@ -416,9 +418,9 @@ and terminal convergence.
 
 `DispatchRoutingBatch` is the producer and process-boundary handoff payload.
 It contains one adapter-mailbox `RoutingTarget` and flat `DispatchRoutingItem`
-values. `ClaimedDispatchRoutingBatch` adds handoff-owned references when the
-backing store needs ack. The Redis/process-boundary codec serializes mailbox
-facts once; per-item records must not repeat `adapterId`, `deliveryQueueKey`,
+values. The Redis/process-boundary codec stores item values under the mailbox
+queue and serializes mailbox facts once; per-item records must not repeat
+`adapterId`, `deliveryQueueKey`,
 `deliveryBucketId`, `targetTransportNodeId`, `routeKey`, `connectionId`, or
 `connectionToken`, and must not wrap another encoded task-dispatch batch string
 such as `taskBatchJson`. Large item bodies continue to use `payloadRef` when
@@ -446,16 +448,16 @@ SDK/starter assembly exposes three runtime roles:
 
 - `EMBEDDED`: engine, local dispatch handoff, transport runtime,
   embedded adapter host set, adapters, and local result ingest run in one JVM.
-  Command drain runs through adapter mailbox host mounts, not a starter-owned
-  global pump.
+  Command drain runs through adapter-owned mailbox consumers, not a
+  starter-owned global pump.
 - `ENGINE_PRODUCER`: engine runs and submits flat dispatch batches into the
   configured handoff; it drains result and delivery-failure inboxes back into
   local engine ports, but does not start transport adapters
 - `TRANSPORT_CONSUMER`: transport adapters, endpoint lease store, delivery
   store, embedded adapter host set, and dispatch handoff consumers run
   without starting the engine; results and retryable delivery failures are
-  enqueued for engine-side draining. Command drain runs through adapter mailbox
-  host mounts.
+  enqueued for engine-side draining. Command drain runs through adapter-owned
+  mailbox consumers.
 
 Transport consumers consume already resolved delivery targets. They must not
 call worker runtime, engine, or server APIs for worker lookup, worker
@@ -503,7 +505,7 @@ default component namespaces are:
 | --- | --- | --- |
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` | `bucket:<encodedDeliveryBucketId>:workers`, `bucket:<encodedDeliveryBucketId>:deadlines` |
 | polling-delivery | `xa:mass:transport:polling-delivery:v1` | `polling:<encodedAdapterMailboxKey>:worker:<encodedSelectedWorkerId>:q`, `queues`, `stats` |
-| dispatch | `xa:mass:transport:dispatch:v1` | `mailbox:<encodedAdapterMailboxKey>:commands`, `mailbox:<encodedAdapterMailboxKey>:command-retention-deadlines`, `mailbox:<encodedAdapterMailboxKey>:ready-commands`, `mailbox:<encodedAdapterMailboxKey>:inflight-commands`, `mailbox-consumers`, `mailbox-consumer-deadlines`, `queues` |
+| dispatch | `xa:mass:transport:dispatch:v1` | `mailbox:<encodedAdapterMailboxKey>:ready-commands`, `mailbox-consumers`, `mailbox-consumer-deadlines`, `queues` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
 
@@ -741,7 +743,7 @@ attempts. Storage implementations should provide bounded lookups for:
 ```
 
 Dispatch is also a hot path. Dispatch handoff queues store
-mailbox-targeted flat item batches plus handoff-owned claim references. They
+mailbox-targeted flat dispatch items under mailbox-scoped queues. They
 must not deep-copy worker pull DTOs, endpoint leases, or generic task-dispatch
 `TransportPacket` payloads as the handoff item shape. Adapter delivery receives
 `DispatchRoutingItem` with selected-worker opaque payload; concrete push adapters
@@ -754,16 +756,18 @@ transport trace ids are diagnostics and must not double as compensation keys.
 Assignment-to-transport handoff is also part of the hot path. Embedded and
 split runtime both use adapter-mailbox `TransportDispatchHandoff`
 contracts: producers offer to an `adapterMailboxKey`, and embedded adapter
-hosts mount mailbox-scoped drains that poll only their mailbox. Producer
+hosts contribute adapter-owned consumers that destructively poll only their
+mailbox. Producer
 handoff is a bounded offer that returns delivery outcomes such as backpressure,
 not a blocking engine hot-path call. Do not reintroduce direct synchronous
 engine->transport callback coupling as a parallel mainline, do not treat any
 handoff queue as a second runtime ready queue, and do not treat transport as a
 retry, reassign, compensation, attempt-timeout, or final-recovery owner.
 Transport owns only delivery-executor consistency and observable delivery
-attempt failure. Accepted items are not claimed by the wrong consumer, ready
-refs enter inflight before materialization, `complete` acks local handoff state,
-and final-hop execution returns delivery outcome or failure evidence. Transport
+attempt failure. Offered items are admitted only to the target mailbox queue,
+adapter-owned consumers destructively poll their own mailbox, and final-hop
+execution returns delivery outcome or failure evidence when the failure is
+known. Transport
 must not actively discard a known failed offer, unavailable mailbox, missing
 endpoint, invalid dispatch item, or adapter final-hop failure without returning
 a `DispatchOutcome` or publishing retryable delivery failure evidence. Once an
@@ -773,8 +777,8 @@ engine-owned task attempt timeout, retry, reassign, and compensation remain the
 fallback.
 
 Transport delivery executors must enforce explicit admission control. Dispatch
-handoff stores use adapter-mailbox queue admission plus local claim/ack
-consistency; polling pending pull buffers keep selected-worker slots as polling
+handoff stores use adapter-mailbox queue admission plus destructive mailbox
+poll; polling pending pull buffers keep selected-worker slots as polling
 adapter implementation details, but those slots are not the engine-to-transport
 handoff address.
 Polling pending pull-buffer stats are polling-adapter diagnostics only. Push

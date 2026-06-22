@@ -13,8 +13,6 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RedisTransportDispatchHandoffTest {
@@ -74,12 +72,10 @@ class RedisTransportDispatchHandoffTest {
                         DispatchRoutingFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList());
 
-        ClaimedDispatchRoutingBatch batch = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 500L);
+        List<DispatchRoutingItem> batch = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 64, 500L);
 
-        assertNotNull(batch);
-        assertEquals(DispatchRoutingFixtures.mailboxKey(), batch.adapterMailboxKey());
         assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(batch));
-        assertEquals("worker-1", batch.items().getFirst().selectedWorkerId());
+        assertEquals("worker-1", batch.getFirst().selectedWorkerId());
     }
 
     @Test
@@ -98,8 +94,6 @@ class RedisTransportDispatchHandoffTest {
         ));
         List<String> keys = producerConnection.sync().keys(namespacePrefix + ":*");
 
-        assertTrue(keys.stream().anyMatch(key -> key.contains(":mailbox:") && key.endsWith(":commands")));
-        assertTrue(keys.stream().anyMatch(key -> key.endsWith(":command-retention-deadlines")));
         assertTrue(keys.stream().anyMatch(key -> key.endsWith(":queues")));
         assertTrue(keys.stream().anyMatch(key -> key.contains(":mailbox:") && key.endsWith(":ready-commands")));
         assertTrue(keys.stream().anyMatch(key -> key.endsWith(":mailbox-consumers")));
@@ -107,6 +101,9 @@ class RedisTransportDispatchHandoffTest {
         assertFalse(keys.stream().anyMatch(key -> key.contains(":selected-worker-consumers:")));
         assertFalse(keys.stream().anyMatch(key -> key.contains(":worker:") && key.endsWith(":ready-commands")));
         assertFalse(keys.stream().anyMatch(key -> key.contains(":worker:") && key.endsWith(":inflight-commands")));
+        assertFalse(keys.stream().anyMatch(key -> key.endsWith(":command-retention-deadlines")));
+        assertFalse(keys.stream().anyMatch(key -> key.endsWith(":commands")));
+        assertFalse(keys.stream().anyMatch(key -> key.endsWith(":inflight-commands")));
         assertFalse(keys.stream().anyMatch(key -> key.contains(":queue-consumers:")));
         assertFalse(keys.stream().anyMatch(key -> key.contains(":lane:")));
         assertFalse(keys.stream().anyMatch(key -> key.endsWith(":ready-lanes")));
@@ -132,65 +129,33 @@ class RedisTransportDispatchHandoffTest {
         consumerOne.claimConsumerForTest(DispatchRoutingFixtures.mailboxKey(), "consumer-1");
         producer.offer(DispatchRoutingFixtures.batch(DispatchRoutingFixtures.item("msg-1", "worker-1")));
 
-        assertNull(consumerTwo.poll(DispatchRoutingFixtures.mailboxKey(), 50L));
-        ClaimedDispatchRoutingBatch batch = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 500L);
+        assertTrue(consumerTwo.poll(DispatchRoutingFixtures.mailboxKey(), 64, 50L).isEmpty());
+        List<DispatchRoutingItem> batch = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 64, 500L);
 
-        assertNotNull(batch);
         assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(batch));
     }
 
     @Test
-    void completeAcknowledgesClaimedItem() throws Exception {
+    void pollIsDestructiveAndDoesNotRequireAck() throws Exception {
         consumerOne.claimConsumerForTest(DispatchRoutingFixtures.mailboxKey(), "consumer-1");
         producer.offer(DispatchRoutingFixtures.batch(DispatchRoutingFixtures.item("msg-1", "worker-1")));
-        ClaimedDispatchRoutingBatch batch = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 500L);
 
-        assertNotNull(batch);
-        assertEquals(1L, producer.inflightReferencesForTest(DispatchRoutingFixtures.mailboxKey()));
-        consumerOne.complete(batch, List.of());
+        List<DispatchRoutingItem> batch = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 64, 500L);
 
+        assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(batch));
         assertEquals(0, producer.queuedBatches(DispatchRoutingFixtures.mailboxKey()));
-        assertEquals(0L, producer.inflightReferencesForTest(DispatchRoutingFixtures.mailboxKey()));
-        assertNull(consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 50L));
+        assertTrue(consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 64, 50L).isEmpty());
     }
 
     @Test
-    void uncompletedClaimReturnsToReadyAfterVisibilityTimeout() throws Exception {
+    void corruptReadyValueIsDroppedWithoutBlockingLaterItems() throws Exception {
         consumerOne.claimConsumerForTest(DispatchRoutingFixtures.mailboxKey(), "consumer-1");
-        producer.offer(DispatchRoutingFixtures.batch(DispatchRoutingFixtures.item("msg-1", "worker-1")));
-        ClaimedDispatchRoutingBatch first = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 500L);
+        producer.pushRawReadyValueForTest(DispatchRoutingFixtures.mailboxKey(), "not-json");
+        producer.pushReadyItemForTest(DispatchRoutingFixtures.mailboxKey(),
+                DispatchRoutingFixtures.item("msg-1", "worker-1"));
 
-        assertNotNull(first);
-        assertEquals(1L, producer.inflightReferencesForTest(DispatchRoutingFixtures.mailboxKey()));
-        producer.expireInflightForTest(DispatchRoutingFixtures.mailboxKey());
-        ClaimedDispatchRoutingBatch redelivered = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 500L);
+        List<DispatchRoutingItem> batch = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 64, 500L);
 
-        assertNotNull(redelivered);
-        assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(redelivered));
-        assertEquals(1L, producer.inflightReferencesForTest(DispatchRoutingFixtures.mailboxKey()));
-        consumerOne.complete(redelivered, List.of());
-    }
-
-    @Test
-    void missingPayloadDoesNotLeaveInflightClaimStuck() throws Exception {
-        DispatchRoutingItem item = DispatchRoutingFixtures.item("msg-1", "worker-1");
-        consumerOne.claimConsumerForTest(DispatchRoutingFixtures.mailboxKey(), "consumer-1");
-        producer.offer(DispatchRoutingFixtures.batch(item));
-        producer.deleteDispatchPayloadForTest(DispatchRoutingFixtures.mailboxKey(), item.deliveryId());
-
-        assertNull(consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 500L));
-
-        assertEquals(0L, producer.inflightReferencesForTest(DispatchRoutingFixtures.mailboxKey()));
-        assertEquals(0L, producer.readyReferencesForTest(DispatchRoutingFixtures.mailboxKey()));
-    }
-
-    @Test
-    void invalidReadyReferenceDoesNotLeaveInflightClaimStuck() throws Exception {
-        consumerOne.claimConsumerForTest(DispatchRoutingFixtures.mailboxKey(), "consumer-1");
-        producer.pushReadyReferenceForTest(DispatchRoutingFixtures.mailboxKey(), "not-a-valid-reference");
-
-        assertNull(consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 500L));
-
-        assertEquals(0L, producer.inflightReferencesForTest(DispatchRoutingFixtures.mailboxKey()));
+        assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(batch));
     }
 }

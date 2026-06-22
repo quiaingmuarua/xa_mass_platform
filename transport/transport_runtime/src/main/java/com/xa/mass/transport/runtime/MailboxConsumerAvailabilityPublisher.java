@@ -20,7 +20,8 @@ public final class MailboxConsumerAvailabilityPublisher {
     private static final Logger logger = LoggerFactory.getLogger(MailboxConsumerAvailabilityPublisher.class);
     private static final long MIN_REFRESH_INTERVAL_MILLIS = 100L;
 
-    private final TransportBinding binding;
+    private final String adapterMailboxKey;
+    private final String consumerId;
     private final AdapterMailboxConsumerRegistry registry;
     private final long availabilityMillis;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
@@ -28,11 +29,13 @@ public final class MailboxConsumerAvailabilityPublisher {
     private volatile AdapterMailboxConsumerAvailability currentAvailability;
     private volatile Future<?> refreshTask;
 
-    public MailboxConsumerAvailabilityPublisher(TransportBinding binding,
-                                      AdapterMailboxConsumerRegistry registry,
-                                      long availabilityMillis,
-                                      RuntimeTaskExecutor runtimeTaskExecutor) {
-        this.binding = Objects.requireNonNull(binding, "binding");
+    public MailboxConsumerAvailabilityPublisher(String adapterMailboxKey,
+                                                String consumerId,
+                                                AdapterMailboxConsumerRegistry registry,
+                                                long availabilityMillis,
+                                                RuntimeTaskExecutor runtimeTaskExecutor) {
+        this.adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
+        this.consumerId = requireText(consumerId, "consumerId");
         this.registry = registry != null ? registry : NoopAdapterMailboxConsumerRegistry.INSTANCE;
         if (availabilityMillis <= 0L) {
             throw new IllegalArgumentException("availabilityMillis must be greater than 0");
@@ -41,8 +44,12 @@ public final class MailboxConsumerAvailabilityPublisher {
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
     }
 
-    public TransportBinding binding() {
-        return binding;
+    public String adapterMailboxKey() {
+        return adapterMailboxKey;
+    }
+
+    public String consumerId() {
+        return consumerId;
     }
 
     public void start() {
@@ -93,7 +100,7 @@ public final class MailboxConsumerAvailabilityPublisher {
                 Thread.currentThread().interrupt();
             } catch (RuntimeException e) {
                 logger.warn("Failed to refresh adapter mailbox consumer availability: adapterMailboxKey={}, reason={}",
-                        binding.getAdapterMailboxKey(), e.getMessage());
+                        adapterMailboxKey, e.getMessage());
             }
         }
     }
@@ -104,8 +111,8 @@ public final class MailboxConsumerAvailabilityPublisher {
         }
         AdapterMailboxConsumerAvailability previous = currentAvailability;
         AdapterMailboxConsumerAvailability next = new AdapterMailboxConsumerAvailability(
-                binding.getAdapterMailboxKey(),
-                consumerId(binding),
+                adapterMailboxKey,
+                consumerId,
                 previous == null ? 1L : previous.generation(),
                 System.currentTimeMillis() + availabilityMillis
         );
@@ -113,7 +120,10 @@ public final class MailboxConsumerAvailabilityPublisher {
         currentAvailability = next;
     }
 
-    private static String consumerId(TransportBinding binding) {
-        return "embedded:" + binding.getAdapterMailboxKey();
+    private static String requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 }

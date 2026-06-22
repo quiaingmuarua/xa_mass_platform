@@ -577,7 +577,11 @@ class MassSdkTest {
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
-                    runtimeTaskExecutor
+                    runtimeTaskExecutor,
+                    (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),
+                    ignored -> { },
+                    com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry.INSTANCE,
+                    30_000L
             );
             contribution = adapterBootstrap(runtimeComposition, "socket").contribute(bootstrapContext);
         } finally {
@@ -604,7 +608,11 @@ class MassSdkTest {
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
-                    runtimeTaskExecutor
+                    runtimeTaskExecutor,
+                    (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),
+                    ignored -> { },
+                    com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry.INSTANCE,
+                    30_000L
             );
             contribution = adapterBootstrap(runtimeComposition, "websocket").contribute(bootstrapContext);
         } finally {
@@ -633,7 +641,11 @@ class MassSdkTest {
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
-                    runtimeTaskExecutor
+                    runtimeTaskExecutor,
+                    (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),
+                    ignored -> { },
+                    com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry.INSTANCE,
+                    30_000L
             );
             contribution = adapterBootstrap(runtimeComposition, "ws-public").contribute(bootstrapContext);
         } finally {
@@ -664,7 +676,11 @@ class MassSdkTest {
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
-                    runtimeTaskExecutor
+                    runtimeTaskExecutor,
+                    (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),
+                    ignored -> { },
+                    com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry.INSTANCE,
+                    30_000L
             );
             contribution = adapterBootstrap(runtimeComposition, "socket-edge").contribute(bootstrapContext);
         } finally {
@@ -3303,7 +3319,7 @@ class MassSdkTest {
     }
 
     private static TransportBinding canonicalRouteBinding(StubPushOnlyAdapter adapter) {
-        return TransportBinding.builder(adapter.adapterId(), adapter.transportHint(), adapter)
+        return TransportBinding.builder(adapter.adapterId(), adapter.transportHint())
                 .adapterMailboxKey(adapter.adapterId())
                 .protocol(adapter.protocol())
                 .build();
@@ -3311,7 +3327,7 @@ class MassSdkTest {
 
     private static TransportBinding canonicalRouteBinding(StubPullCapableAdapter adapter,
                                                           DeliveryPullChannel deliveryPullChannel) {
-        return TransportBinding.builder(adapter.adapterId(), adapter.transportHint(), adapter)
+        return TransportBinding.builder(adapter.adapterId(), adapter.transportHint())
                 .adapterMailboxKey(adapter.adapterId())
                 .protocol(adapter.protocol())
                 .deliveryPullChannel(deliveryPullChannel)

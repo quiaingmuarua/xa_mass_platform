@@ -6,9 +6,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InMemoryTransportDispatchHandoffTest {
 
@@ -29,10 +28,8 @@ class InMemoryTransportDispatchHandoffTest {
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
 
-        ClaimedDispatchRoutingBatch polled = handoff.poll(DispatchRoutingFixtures.mailboxKey(), 100L);
-        assertNotNull(polled);
-        assertEquals(DispatchRoutingFixtures.mailboxKey(), polled.adapterMailboxKey());
-        assertEquals("worker-1", polled.items().getFirst().selectedWorkerId());
+        List<DispatchRoutingItem> polled = handoff.poll(DispatchRoutingFixtures.mailboxKey(), 64, 100L);
+        assertEquals("worker-1", polled.getFirst().selectedWorkerId());
         assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(polled));
     }
 
@@ -75,40 +72,17 @@ class InMemoryTransportDispatchHandoffTest {
     }
 
     @Test
-    void uncompletedClaimReturnsToReadyAfterVisibilityTimeout() throws Exception {
-        InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(2, 30_000L);
+    void pollIsDestructiveAndDoesNotRequireAck() throws Exception {
+        InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(2);
         claim(handoff, "consumer-1", 1L);
         handoff.offer(DispatchRoutingFixtures.batch(
                 DispatchRoutingFixtures.item("msg-1", "worker-1")
         ));
 
-        ClaimedDispatchRoutingBatch first = handoff.poll(DispatchRoutingFixtures.mailboxKey(), 100L);
-        assertNotNull(first);
-        assertEquals(1L, handoff.inflightClaimsForTest());
-        assertNull(handoff.poll(DispatchRoutingFixtures.mailboxKey(), 0L));
+        List<DispatchRoutingItem> batch = handoff.poll(DispatchRoutingFixtures.mailboxKey(), 64, 100L);
 
-        handoff.expireInflightForTest();
-        ClaimedDispatchRoutingBatch redelivered = handoff.poll(DispatchRoutingFixtures.mailboxKey(), 100L);
-
-        assertNotNull(redelivered);
-        assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(redelivered));
-        assertEquals(1L, handoff.inflightClaimsForTest());
-    }
-
-    @Test
-    void completeAcknowledgesClaimedItem() throws Exception {
-        InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(2, 30_000L);
-        claim(handoff, "consumer-1", 1L);
-        handoff.offer(DispatchRoutingFixtures.batch(
-                DispatchRoutingFixtures.item("msg-1", "worker-1")
-        ));
-        ClaimedDispatchRoutingBatch batch = handoff.poll(DispatchRoutingFixtures.mailboxKey(), 100L);
-
-        assertNotNull(batch);
-        handoff.complete(batch, List.of());
-
-        assertEquals(0L, handoff.inflightClaimsForTest());
-        assertNull(handoff.poll(DispatchRoutingFixtures.mailboxKey(), 0L));
+        assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(batch));
+        assertTrue(handoff.poll(DispatchRoutingFixtures.mailboxKey(), 64, 0L).isEmpty());
     }
 
     @Test

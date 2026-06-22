@@ -114,7 +114,7 @@ class TransportRegistrationResolverTest {
     }
 
     private static TransportBinding binding(String adapterId, String transportHint) {
-        return TransportBinding.builder(adapterId, transportHint, commands -> java.util.List.of())
+        return TransportBinding.builder(adapterId, transportHint)
                 .adapterMailboxKey(adapterId)
                 .build();
     }

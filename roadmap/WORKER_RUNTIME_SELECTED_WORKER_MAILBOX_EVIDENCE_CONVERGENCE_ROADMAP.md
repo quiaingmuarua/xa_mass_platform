@@ -114,8 +114,8 @@ Engine/starter may consume that evidence after worker selection. They must not
 derive mailbox targets from endpoint leases, route keys, connection ids,
 session handles, transport node ids, adapter ids, or delivery bucket ids.
 
-Transport owns mailbox queueing, claim/ack consistency, mailbox consumer
-availability, and delivery outcomes. Transport does not own
+Transport owns mailbox queueing, destructive mailbox poll mechanics, mailbox
+consumer availability, and delivery outcomes. Transport does not own
 `selectedWorkerId -> adapterMailboxKey`.
 
 Concrete adapters own protocol sessions and final-hop local demux by worker id.

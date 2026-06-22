@@ -267,7 +267,6 @@ class TransportConvergenceArchitectureGuardTest {
                 "\":route:\"",
                 "ready-routes",
                 "routeQueueKey(",
-                "commands.lpop(",
                 "ready-lanes",
                 "targetTransportNodeId",
                 "\":lane:\""
@@ -328,8 +327,7 @@ class TransportConvergenceArchitectureGuardTest {
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DispatchRoutingItem.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DispatchRoutingBatch.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DispatchHandoffReference.java")),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DispatchRoutingBatch.java")),
                 "deliveryBucketId",
                 "deliveryQueueKey",
                 "targetTransportNodeId",
@@ -390,7 +388,9 @@ class TransportConvergenceArchitectureGuardTest {
                 "implements WorkerAdapter",
                 "getWorkerAdapter(",
                 "resolveDispatchAdapter(",
-                "resolveCommandExecutorByAdapterId("
+                "resolveCommandExecutorByAdapterId(",
+                "registerCommandExecutor(",
+                "resolveCommandExecutor("
         );
 
         Path binding = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportBinding.java");
@@ -399,8 +399,10 @@ class TransportConvergenceArchitectureGuardTest {
                 "TransportBinding must own adapter id metadata explicitly");
         assertTrue(bindingSource.contains("private final String transportHint;"),
                 "TransportBinding must own transport hint metadata explicitly");
-        assertTrue(bindingSource.contains("private final AdapterCommandExecutor commandExecutor;"),
-                "TransportBinding must own the command executor separately");
+        assertTrue(!bindingSource.contains("AdapterCommandExecutor"),
+                "TransportBinding must not own adapter command executors");
+        assertTrue(!bindingSource.contains("getCommandExecutor("),
+                "TransportBinding must not expose adapter command executors");
         assertTrue(!bindingSource.contains("adapterId()"),
                 "TransportBinding must not read adapter id from the executor");
         assertTrue(!bindingSource.contains("transportHint()"),
@@ -528,10 +530,14 @@ class TransportConvergenceArchitectureGuardTest {
     void embeddedAdapterMailboxAvailabilityHasSingleHostOwner() throws IOException {
         Path handoff = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDispatchHandoff.java");
         String handoffSource = Files.readString(handoff);
-        assertTrue(handoffSource.contains("poll(String adapterMailboxKey, long timeoutMillis)"),
+        assertTrue(handoffSource.contains("poll(String adapterMailboxKey"),
                 "Transport dispatch handoff must expose mailbox-scoped poll only");
+        assertTrue(handoffSource.contains("int maxItems"),
+                "Transport dispatch handoff poll must be bounded by caller-provided maxItems");
         assertTrue(!handoffSource.contains("poll(long timeoutMillis)"),
                 "Transport dispatch handoff must not keep an unscoped production poll entry");
+        assertTrue(!handoffSource.contains("complete("),
+                "Transport dispatch handoff must not keep queue ack/complete for assigned dispatch");
 
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java")),
@@ -547,7 +553,6 @@ class TransportConvergenceArchitectureGuardTest {
 
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrapContext.java")),
-                "AdapterMailboxConsumerRegistry",
                 "getAdapterMailboxConsumerRegistry",
                 "publishMailboxConsumerAvailability("
         );

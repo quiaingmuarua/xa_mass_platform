@@ -328,8 +328,7 @@ class MassApplicationStopOrderTest {
     }
 
     private TransportBinding transportBinding(String adapterId, String transportHint) {
-        AdapterCommandExecutor executor = commands -> List.of();
-        return TransportBinding.builder(adapterId, transportHint, executor)
+        return TransportBinding.builder(adapterId, transportHint)
                 .adapterMailboxKey(adapterId)
                 .protocol(adapterId)
                 .build();
@@ -372,14 +371,7 @@ class MassApplicationStopOrderTest {
                 .addManagedTransportAdapter(managedTransportAdapter)
                 .addTransportServer(transportServer)
                 .build();
-        EmbeddedAdapterHostSet runtimeSet = EmbeddedAdapterHostSet.fromContributions(
-                List.of(contribution),
-                null,
-                null,
-                NoopAdapterMailboxConsumerRegistry.INSTANCE,
-                30_000L,
-                new NoopRuntimeTaskExecutor()
-        );
+        EmbeddedAdapterHostSet runtimeSet = EmbeddedAdapterHostSet.fromContributions(List.of(contribution));
         runtimeSet.start();
         return runtimeSet;
     }

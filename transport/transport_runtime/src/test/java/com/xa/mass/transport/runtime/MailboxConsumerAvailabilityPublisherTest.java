@@ -1,7 +1,6 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
-import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerAvailability;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import org.junit.jupiter.api.Test;
@@ -23,9 +22,8 @@ class MailboxConsumerAvailabilityPublisherTest {
         VirtualThreadRuntimeTaskExecutor executor =
                 new VirtualThreadRuntimeTaskExecutor("mailbox-availability-test-", 10);
         MailboxConsumerAvailabilityPublisher publisher = new MailboxConsumerAvailabilityPublisher(
-                TransportBinding.builder("websocket", WorkerTransportHints.REALTIME, commands -> List.of())
-                        .adapterMailboxKey("mailbox-a")
-                        .build(),
+                "mailbox-a",
+                "websocket",
                 registry,
                 300L,
                 executor

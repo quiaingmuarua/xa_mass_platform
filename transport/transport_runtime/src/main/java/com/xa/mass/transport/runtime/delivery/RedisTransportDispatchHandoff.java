@@ -3,7 +3,6 @@ package com.xa.mass.transport.runtime.delivery;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
-import io.lettuce.core.Range;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -20,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Redis-backed non-blocking dispatch handoff.
+ * Redis-backed best-effort dispatch handoff.
  */
 public final class RedisTransportDispatchHandoff implements TransportDispatchHandoff,
         AdapterMailboxConsumerRegistry,
@@ -28,49 +27,27 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
 
     public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.DISPATCH;
     public static final int DEFAULT_MAX_QUEUED_ITEMS_PER_QUEUE = 100_000;
-    private static final long DEFAULT_DISPATCH_RETENTION_MILLIS = TimeUnit.MINUTES.toMillis(10L);
-    private static final long DEFAULT_VISIBILITY_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30L);
+
     private static final long POLL_SLEEP_MILLIS = 50L;
-    private static final String MEMBER_SEPARATOR = "\u001f";
     private static final String CONSUMER_EVIDENCE_VERSION = "v3";
     private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder TOKEN_DECODER = Base64.getUrlDecoder();
     private static final String OFFER_DISPATCH_SCRIPT = """
-            local dispatchStoreKey = KEYS[1]
-            local dispatchRetentionDeadlineKey = KEYS[2]
-            local readyDispatchKey = KEYS[3]
-            local queuesKey = KEYS[4]
+            local readyDispatchKey = KEYS[1]
+            local queuesKey = KEYS[2]
             local maxQueuedItems = tonumber(ARGV[1])
-            local deliveryId = ARGV[2]
-            local value = ARGV[3]
-            local retentionDeadlineMillis = tonumber(ARGV[4])
-            local adapterMailboxKey = ARGV[5]
-            local referenceValue = ARGV[6]
+            local value = ARGV[2]
+            local adapterMailboxKey = ARGV[3]
             if maxQueuedItems <= 0 then
               return {'BACKPRESSURE', 'queue capacity is exhausted'}
             end
-            local queuedItems = redis.call('HLEN', dispatchStoreKey)
+            local queuedItems = redis.call('LLEN', readyDispatchKey)
             if queuedItems >= maxQueuedItems then
               return {'BACKPRESSURE', 'dispatch queue backlog is full'}
             end
-            if redis.call('HEXISTS', dispatchStoreKey, deliveryId) == 0 then
-              redis.call('HSET', dispatchStoreKey, deliveryId, value)
-              redis.call('ZADD', dispatchRetentionDeadlineKey, retentionDeadlineMillis, deliveryId)
-            end
-            redis.call('RPUSH', readyDispatchKey, referenceValue)
+            redis.call('RPUSH', readyDispatchKey, value)
             redis.call('SADD', queuesKey, adapterMailboxKey)
             return {'QUEUED', ''}
-            """;
-    private static final String CLAIM_READY_REFERENCE_SCRIPT = """
-            local readyDispatchKey = KEYS[1]
-            local inflightDispatchKey = KEYS[2]
-            local visibilityDeadlineMillis = tonumber(ARGV[1])
-            local referenceValue = redis.call('LPOP', readyDispatchKey)
-            if not referenceValue then
-              return nil
-            end
-            redis.call('ZADD', inflightDispatchKey, visibilityDeadlineMillis, referenceValue)
-            return referenceValue
             """;
 
     private final RedisClient redisClient;
@@ -153,29 +130,17 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
                     .toList();
         }
         List<DispatchOutcome> outcomes = new ArrayList<>(itemsToOffer.size());
-        long now = System.currentTimeMillis();
-        long retentionDeadline = now + DEFAULT_DISPATCH_RETENTION_MILLIS;
         for (DispatchRoutingItem item : itemsToOffer) {
-            DispatchHandoffReference reference = new DispatchHandoffReference(
-                    adapterMailboxKey,
-                    item.deliveryId()
-            );
-            DispatchRoutingBatch itemBatch = new DispatchRoutingBatch(batch.target(), List.of(item));
             Object raw = commands.eval(
                     OFFER_DISPATCH_SCRIPT,
                     ScriptOutputType.MULTI,
                     new String[]{
-                            dispatchStoreKey(adapterMailboxKey),
-                            dispatchRetentionDeadlineKey(adapterMailboxKey),
                             readyDispatchKey(adapterMailboxKey),
                             queuesKey()
                     },
                     Integer.toString(maxQueuedItemsPerQueue),
-                    item.deliveryId(),
-                    codec.encode(itemBatch),
-                    Long.toString(retentionDeadline),
-                    adapterMailboxKey,
-                    encodeReference(reference)
+                    codec.encodeItem(item),
+                    adapterMailboxKey
             );
             List<?> values = raw instanceof List<?> list ? list : List.of();
             String status = values.isEmpty() ? "BACKPRESSURE" : String.valueOf(values.getFirst());
@@ -191,93 +156,59 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
     }
 
     @Override
-    public ClaimedDispatchRoutingBatch poll(String adapterMailboxKey, long timeoutMillis) throws InterruptedException {
+    public List<DispatchRoutingItem> poll(String adapterMailboxKey,
+                                          int maxItems,
+                                          long timeoutMillis) throws InterruptedException {
         String mailboxKey = normalizeRequired(adapterMailboxKey, "adapterMailboxKey");
+        if (maxItems < 1) {
+            throw new IllegalArgumentException("maxItems must be greater than 0");
+        }
         if (!running.get()) {
-            return null;
+            return List.of();
         }
         LocalMailboxConsumerEvidence local = localConsumers.get(mailboxKey);
         if (local == null || local.availableUntilEpochMillis() <= System.currentTimeMillis()) {
             if (local != null) {
                 localConsumers.remove(mailboxKey, local);
             }
-            return null;
+            return List.of();
         }
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
         do {
             if (currentMailboxConsumerEvidence(mailboxKey, System.currentTimeMillis()) == null) {
-                return null;
+                return List.of();
             }
-            reclaimExpiredInflight(mailboxKey);
-            String encodedReference = claimReadyReference(mailboxKey);
-            if (encodedReference != null && !encodedReference.isBlank()) {
-                ClaimedDispatchRoutingBatch claimed = materializeClaimedReference(mailboxKey, encodedReference);
-                if (claimed != null) {
-                    return claimed;
-                }
+            List<DispatchRoutingItem> items = pollReadyItems(mailboxKey, maxItems);
+            if (!items.isEmpty()) {
+                return items;
             }
             if (timeoutMillis <= 0L) {
-                return null;
+                return List.of();
             }
             long remainingNanos = deadlineNanos - System.nanoTime();
             if (remainingNanos <= 0L) {
-                return null;
+                return List.of();
             }
             Thread.sleep(Math.min(POLL_SLEEP_MILLIS, Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos))));
         } while (running.get());
-        return null;
+        return List.of();
     }
 
-    private ClaimedDispatchRoutingBatch materializeClaimedReference(String claimedAdapterMailboxKey,
-                                                                   String encodedReference) {
-        DispatchHandoffReference reference = decodeReference(encodedReference);
-        if (reference == null) {
-            removeInflightClaim(claimedAdapterMailboxKey, encodedReference);
-            return null;
-        }
-        String json = commands.hget(dispatchStoreKey(reference.adapterMailboxKey()), reference.deliveryId());
-        if (json == null || json.isBlank()) {
-            removeInflightClaim(claimedAdapterMailboxKey, encodedReference);
-            return null;
-        }
-        DispatchRoutingBatch stored = codec.decode(json);
-        LocalMailboxConsumerEvidence local = localConsumers.get(reference.adapterMailboxKey());
-        if (local != null && local.availableUntilEpochMillis() <= System.currentTimeMillis()) {
-            localConsumers.remove(local.adapterMailboxKey(), local);
-            local = null;
-        }
-        MailboxConsumerEvidence currentConsumer = currentMailboxConsumerEvidence(
-                reference.adapterMailboxKey(),
-                System.currentTimeMillis()
-        );
-        if (currentConsumer == null
-                || local == null
-                || !local.consumerId().equals(currentConsumer.consumerId())) {
-            if (local != null) {
-                localConsumers.remove(local.adapterMailboxKey(), local);
+    private List<DispatchRoutingItem> pollReadyItems(String adapterMailboxKey, int maxItems) {
+        List<DispatchRoutingItem> items = new ArrayList<>(maxItems);
+        String readyKey = readyDispatchKey(adapterMailboxKey);
+        for (int i = 0; i < maxItems; i++) {
+            String encoded = commands.lpop(readyKey);
+            if (encoded == null) {
+                break;
             }
-            removeInflightClaim(claimedAdapterMailboxKey, encodedReference);
-            commands.rpush(readyDispatchKey(reference.adapterMailboxKey()), encodedReference);
-            return null;
+            try {
+                items.add(codec.decodeItem(encoded));
+            } catch (RuntimeException ignored) {
+                // Corrupt handoff entries are dropped as store-local corruption.
+            }
         }
-        if (!reference.adapterMailboxKey().equals(stored.adapterMailboxKey())) {
-            removeInflightClaim(claimedAdapterMailboxKey, encodedReference);
-            return null;
-        }
-        return new ClaimedDispatchRoutingBatch(stored, List.of(reference));
-    }
-
-    @Override
-    public void complete(ClaimedDispatchRoutingBatch batch, List<DispatchOutcome> outcomes) {
-        if (batch == null || batch.references().isEmpty()) {
-            return;
-        }
-        for (DispatchHandoffReference reference : batch.references()) {
-            String encodedReference = encodeReference(reference);
-            commands.zrem(inflightDispatchKey(reference.adapterMailboxKey()), encodedReference);
-            commands.hdel(dispatchStoreKey(reference.adapterMailboxKey()), reference.deliveryId());
-            commands.zrem(dispatchRetentionDeadlineKey(reference.adapterMailboxKey()), reference.deliveryId());
-        }
+        return List.copyOf(items);
     }
 
     @Override
@@ -325,44 +256,24 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
     }
 
     int queuedBatches(String adapterMailboxKey) {
-        return Math.toIntExact(commands.hlen(dispatchStoreKey(adapterMailboxKey)));
+        return Math.toIntExact(commands.llen(readyDispatchKey(adapterMailboxKey)));
     }
 
-    long readyReferencesForTest(String adapterMailboxKey) {
+    long readyItemsForTest(String adapterMailboxKey) {
         return commands.llen(readyDispatchKey(adapterMailboxKey));
     }
 
-    long inflightReferencesForTest(String adapterMailboxKey) {
-        return commands.zcard(inflightDispatchKey(adapterMailboxKey));
+    void pushReadyItemForTest(String adapterMailboxKey, DispatchRoutingItem item) {
+        commands.rpush(readyDispatchKey(adapterMailboxKey), codec.encodeItem(item));
     }
 
-    void expireInflightForTest(String adapterMailboxKey) {
-        String inflightKey = inflightDispatchKey(adapterMailboxKey);
-        long expiredAt = System.currentTimeMillis() - 1L;
-        for (String encodedReference : commands.zrange(inflightKey, 0, -1)) {
-            commands.zadd(inflightKey, expiredAt, encodedReference);
-        }
-    }
-
-    void deleteDispatchPayloadForTest(String adapterMailboxKey, String deliveryId) {
-        commands.hdel(dispatchStoreKey(adapterMailboxKey), deliveryId);
-        commands.zrem(dispatchRetentionDeadlineKey(adapterMailboxKey), deliveryId);
-    }
-
-    void pushReadyReferenceForTest(String adapterMailboxKey, String encodedReference) {
-        commands.rpush(readyDispatchKey(adapterMailboxKey), encodedReference);
-    }
-
-    String encodeReferenceForTest(DispatchHandoffReference reference) {
-        return encodeReference(reference);
+    void pushRawReadyValueForTest(String adapterMailboxKey, String value) {
+        commands.rpush(readyDispatchKey(adapterMailboxKey), value);
     }
 
     void clearForTest(String adapterMailboxKey) {
         String normalizedMailboxKey = normalizeRequired(adapterMailboxKey, "adapterMailboxKey");
         commands.del(readyDispatchKey(normalizedMailboxKey));
-        commands.del(inflightDispatchKey(normalizedMailboxKey));
-        commands.del(dispatchStoreKey(normalizedMailboxKey));
-        commands.del(dispatchRetentionDeadlineKey(normalizedMailboxKey));
         commands.hdel(mailboxConsumersKey(), normalizedMailboxKey);
         commands.zrem(mailboxConsumerDeadlinesKey(), normalizedMailboxKey);
         commands.srem(queuesKey(), normalizedMailboxKey);
@@ -375,39 +286,6 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
                 1L,
                 System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5L)
         ));
-    }
-
-    private String claimReadyReference(String adapterMailboxKey) {
-        Object raw = commands.eval(
-                CLAIM_READY_REFERENCE_SCRIPT,
-                ScriptOutputType.VALUE,
-                new String[]{
-                        readyDispatchKey(adapterMailboxKey),
-                        inflightDispatchKey(adapterMailboxKey)
-                },
-                Long.toString(System.currentTimeMillis() + DEFAULT_VISIBILITY_TIMEOUT_MILLIS)
-        );
-        return raw instanceof String value ? value : null;
-    }
-
-    private void removeInflightClaim(String adapterMailboxKey, String encodedReference) {
-        commands.zrem(inflightDispatchKey(adapterMailboxKey), encodedReference);
-    }
-
-    private void reclaimExpiredInflight(String adapterMailboxKey) {
-        long now = System.currentTimeMillis();
-        List<String> expired = commands.zrangebyscore(
-                inflightDispatchKey(adapterMailboxKey),
-                Range.create(Double.NEGATIVE_INFINITY, (double) now)
-        );
-        for (String encodedReference : expired) {
-            if (commands.zrem(inflightDispatchKey(adapterMailboxKey), encodedReference) > 0L) {
-                DispatchHandoffReference reference = decodeReference(encodedReference);
-                if (reference != null && commands.hexists(dispatchStoreKey(reference.adapterMailboxKey()), reference.deliveryId())) {
-                    commands.rpush(readyDispatchKey(reference.adapterMailboxKey()), encodedReference);
-                }
-            }
-        }
     }
 
     private MailboxConsumerEvidence currentMailboxConsumerEvidence(String adapterMailboxKey, long nowEpochMillis) {
@@ -427,28 +305,10 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
         return evidence;
     }
 
-    private String dispatchStoreKey(String adapterMailboxKey) {
-        return namespacePrefix
-                + ":mailbox:" + encodeToken(normalizeRequired(adapterMailboxKey, "adapterMailboxKey"))
-                + ":commands";
-    }
-
-    private String dispatchRetentionDeadlineKey(String adapterMailboxKey) {
-        return namespacePrefix
-                + ":mailbox:" + encodeToken(normalizeRequired(adapterMailboxKey, "adapterMailboxKey"))
-                + ":command-retention-deadlines";
-    }
-
     private String readyDispatchKey(String adapterMailboxKey) {
         return namespacePrefix
                 + ":mailbox:" + encodeToken(normalizeRequired(adapterMailboxKey, "adapterMailboxKey"))
                 + ":ready-commands";
-    }
-
-    private String inflightDispatchKey(String adapterMailboxKey) {
-        return namespacePrefix
-                + ":mailbox:" + encodeToken(normalizeRequired(adapterMailboxKey, "adapterMailboxKey"))
-                + ":inflight-commands";
     }
 
     private String mailboxConsumersKey() {
@@ -469,26 +329,6 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
 
     private static String decodeToken(String value) {
         return new String(TOKEN_DECODER.decode(value), StandardCharsets.UTF_8);
-    }
-
-    private static String encodeReference(DispatchHandoffReference reference) {
-        return encodeToken(reference.adapterMailboxKey())
-                + MEMBER_SEPARATOR
-                + encodeToken(reference.deliveryId());
-    }
-
-    private static DispatchHandoffReference decodeReference(String encoded) {
-        if (encoded == null || encoded.isBlank()) {
-            return null;
-        }
-        String[] parts = encoded.split(MEMBER_SEPARATOR, -1);
-        if (parts.length != 2) {
-            return null;
-        }
-        return new DispatchHandoffReference(
-                decodeToken(parts[0]),
-                decodeToken(parts[1])
-        );
     }
 
     private static String encodeConsumerEvidence(AdapterMailboxConsumerAvailability lease) {

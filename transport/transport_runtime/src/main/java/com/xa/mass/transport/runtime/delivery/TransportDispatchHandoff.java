@@ -11,10 +11,9 @@ public interface TransportDispatchHandoff {
 
     List<DispatchOutcome> offer(DispatchRoutingBatch batch);
 
-    ClaimedDispatchRoutingBatch poll(String adapterMailboxKey, long timeoutMillis) throws InterruptedException;
-
-    default void complete(ClaimedDispatchRoutingBatch batch, List<DispatchOutcome> outcomes) {
-    }
+    List<DispatchRoutingItem> poll(String adapterMailboxKey,
+                                   int maxItems,
+                                   long timeoutMillis) throws InterruptedException;
 
     void shutdown();
 }

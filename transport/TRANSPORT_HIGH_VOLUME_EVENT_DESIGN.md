@@ -28,7 +28,7 @@ The older shape below is no longer current runtime truth:
 ```text
 engine assignment
   -> DispatchRoutingBatch(target=adapter-mailbox:<key>)
-  -> AdapterMailboxMount
+  -> adapter-owned mailbox consumer
   -> AdapterCommandExecutor
   -> adapter final-hop send
      or polling-adapter-owned pending pull buffer

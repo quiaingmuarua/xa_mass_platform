@@ -126,8 +126,8 @@ class TransportAssignedDeliverySubmitterTest {
         }
 
         @Override
-        public ClaimedDispatchRoutingBatch poll(String adapterMailboxKey, long timeoutMillis) {
-            return null;
+        public List<DispatchRoutingItem> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
+            return List.of();
         }
 
         @Override

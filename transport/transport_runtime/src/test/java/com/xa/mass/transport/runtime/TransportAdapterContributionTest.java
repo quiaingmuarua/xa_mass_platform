@@ -3,9 +3,7 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
-import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterMailboxConsumer;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,6 +20,7 @@ class TransportAdapterContributionTest {
         TransportBinding bindingTwo = binding("ws-internal");
         ManagedTransportAdapter managedAdapter = managedAdapter();
         TransportServer server = server();
+        AdapterMailboxConsumer mailboxConsumer = mailboxConsumer("mailbox-a");
         RawWorkerMessageChannel rawChannel = rawChannel("ws-public");
         WorkerEndpointInspector inspector = List::of;
 
@@ -29,6 +28,7 @@ class TransportAdapterContributionTest {
                 .addTransportBinding(bindingOne)
                 .addTransportBinding(bindingTwo)
                 .addManagedTransportAdapter(managedAdapter)
+                .addAdapterMailboxConsumer(mailboxConsumer)
                 .addTransportServer(server)
                 .addRawWorkerMessageChannel(rawChannel)
                 .addEndpointInspector(inspector)
@@ -36,6 +36,7 @@ class TransportAdapterContributionTest {
 
         assertEquals(List.of(bindingOne, bindingTwo), contribution.getTransportBindings());
         assertEquals(List.of(managedAdapter), contribution.getManagedTransportAdapters());
+        assertEquals(List.of(mailboxConsumer), contribution.getAdapterMailboxConsumers());
         assertEquals(List.of(server), contribution.getTransportServers());
         assertEquals(List.of(rawChannel), contribution.getRawWorkerMessageChannels());
         assertEquals(List.of(inspector), contribution.getEndpointInspectors());
@@ -74,8 +75,7 @@ class TransportAdapterContributionTest {
         TransportAdapterContribution contribution = TransportAdapterContribution.builder()
                 .addTransportBinding(TransportBinding.builder(
                         "websocket",
-                        WorkerTransportHints.POLLING,
-                        executor()
+                        WorkerTransportHints.POLLING
                 )
                         .adapterMailboxKey("websocket")
                         .build())
@@ -103,22 +103,36 @@ class TransportAdapterContributionTest {
     }
 
     private static TransportBinding binding(String adapterId) {
-        return TransportBinding.builder(adapterId, WorkerTransportHints.REALTIME, executor())
+        return TransportBinding.builder(adapterId, WorkerTransportHints.REALTIME)
                 .adapterMailboxKey(adapterId)
                 .protocol(adapterId)
                 .build();
     }
 
-    private static AdapterCommandExecutor executor() {
-        return items -> items == null
-                ? List.of()
-                : items.stream()
-                .map(item -> DispatchOutcomeFactory.fromItem(item, DispatchOutcomeStatus.DELIVERED, false, null))
-                .toList();
-    }
-
     private static ManagedTransportAdapter managedAdapter() {
         return new ManagedTransportAdapter() {
+            @Override
+            public void start() {
+            }
+
+            @Override
+            public void stop() {
+            }
+
+            @Override
+            public boolean isRunning() {
+                return false;
+            }
+        };
+    }
+
+    private static AdapterMailboxConsumer mailboxConsumer(String mailboxKey) {
+        return new AdapterMailboxConsumer() {
+            @Override
+            public String adapterMailboxKey() {
+                return mailboxKey;
+            }
+
             @Override
             public void start() {
             }

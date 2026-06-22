@@ -48,12 +48,16 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                     );
             contribution.addTransportBinding(TransportBinding.builder(
                             config.getAdapterId(),
-                            com.xa.mass.transport.WorkerTransportHints.REALTIME,
-                            commandExecutor
+                            com.xa.mass.transport.WorkerTransportHints.REALTIME
                     )
                     .adapterMailboxKey(adapterMailboxKey)
                     .protocol(SocketAdapterConfig.PROTOCOL)
                     .build());
+            contribution.addAdapterMailboxConsumer(context.adapterMailboxConsumer(
+                    adapterMailboxKey,
+                    config.getAdapterId(),
+                    commandExecutor
+            ));
             contribution.addRawWorkerMessageChannel(new SocketRawWorkerMessageChannel(
                     config.getAdapterId(),
                     rawRouteEndpointRegistry

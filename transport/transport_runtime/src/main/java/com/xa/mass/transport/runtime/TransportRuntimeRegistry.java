@@ -2,9 +2,7 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +29,6 @@ public final class TransportRuntimeRegistry {
     private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
     private final Map<String, TransportBinding> bindingByAdapterMailboxKey;
-    private final Map<AdapterCommandExecutor, String> adapterIdByCommandExecutor;
 
     public TransportRuntimeRegistry(TransportResultIngressChannel resultIngressChannel,
                                     TransportEndpointLeaseStore endpointLeaseStore,
@@ -45,9 +42,7 @@ public final class TransportRuntimeRegistry {
         this.registrationResolver = TransportRegistrationResolver.fromBindings(this.bindings);
         this.bindingByAdapterId = new LinkedHashMap<>();
         this.bindingByAdapterMailboxKey = new LinkedHashMap<>();
-        this.adapterIdByCommandExecutor = new IdentityHashMap<>();
         for (TransportBinding binding : this.bindings) {
-            registerCommandExecutor(binding);
             registerAdapterId(binding.getAdapterId(), binding);
             registerAdapterMailboxKey(binding.getAdapterMailboxKey(), binding);
         }
@@ -73,10 +68,6 @@ public final class TransportRuntimeRegistry {
 
     public String resolveTransportHint(String requestedAdapterId, String transportHint) {
         return resolveBinding(requestedAdapterId, transportHint).getTransportHint();
-    }
-
-    public AdapterCommandExecutor resolveCommandExecutor(String requestedAdapterId, String transportHint) {
-        return resolveBinding(requestedAdapterId, transportHint).getCommandExecutor();
     }
 
     public TransportBinding resolveBindingByAdapterId(String adapterId) {
@@ -195,17 +186,6 @@ public final class TransportRuntimeRegistry {
             return null;
         }
         return adapterMailboxKey.trim();
-    }
-
-    private void registerCommandExecutor(TransportBinding binding) {
-        AdapterCommandExecutor executor = binding.getCommandExecutor();
-        String existingAdapterId = adapterIdByCommandExecutor.get(executor);
-        if (existingAdapterId != null && !existingAdapterId.equals(binding.getAdapterId())) {
-            throw new IllegalArgumentException("Adapter command executor instance is shared by adapters '"
-                    + existingAdapterId + "' and '" + binding.getAdapterId()
-                    + "'; each adapter binding must own a distinct executor instance");
-        }
-        adapterIdByCommandExecutor.put(executor, binding.getAdapterId());
     }
 
 }

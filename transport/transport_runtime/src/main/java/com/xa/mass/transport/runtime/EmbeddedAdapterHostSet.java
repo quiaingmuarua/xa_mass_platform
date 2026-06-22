@@ -1,11 +1,5 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.base.runtime.RuntimeTaskExecutor;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -29,28 +23,13 @@ public final class EmbeddedAdapterHostSet {
     }
 
     public static EmbeddedAdapterHostSet fromContributions(
-            List<TransportAdapterContribution> contributions,
-            TransportDispatchHandoff handoff,
-            TransportDeliveryFailureHandler failureHandler,
-            AdapterMailboxConsumerRegistry mailboxConsumerRegistry,
-            long mailboxConsumerAvailabilityMillis,
-            RuntimeTaskExecutor runtimeTaskExecutor) {
+            List<TransportAdapterContribution> contributions) {
         if (contributions == null || contributions.isEmpty()) {
             return empty();
         }
-        AdapterMailboxConsumerRegistry registry = mailboxConsumerRegistry != null
-                ? mailboxConsumerRegistry
-                : NoopAdapterMailboxConsumerRegistry.INSTANCE;
         List<EmbeddedAdapterContributionHost> hosts = new ArrayList<>();
         for (TransportAdapterContribution contribution : contributions) {
-            hosts.add(new EmbeddedAdapterContributionHost(
-                    contribution,
-                    handoff,
-                    failureHandler,
-                    registry,
-                    mailboxConsumerAvailabilityMillis,
-                    runtimeTaskExecutor
-            ));
+            hosts.add(new EmbeddedAdapterContributionHost(contribution));
         }
         return new EmbeddedAdapterHostSet(hosts);
     }

@@ -4,7 +4,6 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -34,34 +33,12 @@ class TransportRuntimeRegistryTest {
     }
 
     @Test
-    void constructorRejectsSharedCommandExecutorAcrossAdapterBindings() {
-        AdapterCommandExecutor sharedExecutor = commands -> java.util.List.of();
-
-        IllegalArgumentException error = assertThrows(
-                IllegalArgumentException.class,
-                () -> new TransportRuntimeRegistry(
-                        mock(TransportResultIngressChannel.class),
-                        new InMemoryTransportEndpointLeaseStore(),
-                        List.of(
-                                binding("websocket", WorkerTransportHints.REALTIME, sharedExecutor),
-                                binding("socket", WorkerTransportHints.REALTIME, sharedExecutor)
-                        )
-                )
-        );
-
-        assertEquals("Adapter command executor instance is shared by adapters 'websocket' and 'socket'; "
-                        + "each adapter binding must own a distinct executor instance",
-                error.getMessage());
-    }
-
-    @Test
     void transportBindingRequiresExplicitAdapterMailboxKey() {
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
                 () -> TransportBinding.builder(
                                 "websocket",
-                                WorkerTransportHints.REALTIME,
-                                commands -> java.util.List.of()
+                                WorkerTransportHints.REALTIME
                         )
                         .build()
         );
@@ -75,8 +52,7 @@ class TransportRuntimeRegistryTest {
                 IllegalArgumentException.class,
                 () -> TransportBinding.builder(
                         "polling-custom",
-                        WorkerTransportHints.POLLING,
-                        commands -> java.util.List.of()
+                        WorkerTransportHints.POLLING
                         )
                         .adapterMailboxKey("polling-custom")
                         .deliveryPullChannel((deliveryBucketId, selectedWorkerId, maxMessages, timeoutMillis) ->
@@ -88,13 +64,7 @@ class TransportRuntimeRegistryTest {
     }
 
     private static TransportBinding binding(String adapterId, String transportHint) {
-        return binding(adapterId, transportHint, commands -> java.util.List.of());
-    }
-
-    private static TransportBinding binding(String adapterId,
-                                            String transportHint,
-                                            AdapterCommandExecutor commandExecutor) {
-        return TransportBinding.builder(adapterId, transportHint, commandExecutor)
+        return TransportBinding.builder(adapterId, transportHint)
                 .adapterMailboxKey(adapterId)
                 .build();
     }

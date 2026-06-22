@@ -2,6 +2,7 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
+import com.xa.mass.transport.runtime.embedded.AdapterMailboxConsumer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +20,7 @@ public final class TransportAdapterContribution {
     private static final TransportAdapterContribution EMPTY = builder().build();
 
     private final List<TransportBinding> transportBindings;
+    private final List<AdapterMailboxConsumer> adapterMailboxConsumers;
     private final List<ManagedTransportAdapter> managedTransportAdapters;
     private final List<TransportServer> transportServers;
     private final List<RawWorkerMessageChannel> rawWorkerMessageChannels;
@@ -26,6 +28,7 @@ public final class TransportAdapterContribution {
 
     private TransportAdapterContribution(Builder builder) {
         this.transportBindings = List.copyOf(builder.transportBindings);
+        this.adapterMailboxConsumers = List.copyOf(builder.adapterMailboxConsumers);
         this.managedTransportAdapters = List.copyOf(builder.managedTransportAdapters);
         this.transportServers = List.copyOf(builder.transportServers);
         this.rawWorkerMessageChannels = List.copyOf(builder.rawWorkerMessageChannels);
@@ -46,6 +49,10 @@ public final class TransportAdapterContribution {
 
     public List<ManagedTransportAdapter> getManagedTransportAdapters() {
         return managedTransportAdapters;
+    }
+
+    public List<AdapterMailboxConsumer> getAdapterMailboxConsumers() {
+        return adapterMailboxConsumers;
     }
 
     public List<TransportServer> getTransportServers() {
@@ -80,6 +87,7 @@ public final class TransportAdapterContribution {
 
     public static final class Builder {
         private final List<TransportBinding> transportBindings = new ArrayList<>();
+        private final List<AdapterMailboxConsumer> adapterMailboxConsumers = new ArrayList<>();
         private final List<ManagedTransportAdapter> managedTransportAdapters = new ArrayList<>();
         private final List<TransportServer> transportServers = new ArrayList<>();
         private final List<RawWorkerMessageChannel> rawWorkerMessageChannels = new ArrayList<>();
@@ -95,6 +103,13 @@ public final class TransportAdapterContribution {
         public Builder addManagedTransportAdapter(ManagedTransportAdapter adapter) {
             if (adapter != null) {
                 managedTransportAdapters.add(adapter);
+            }
+            return this;
+        }
+
+        public Builder addAdapterMailboxConsumer(AdapterMailboxConsumer consumer) {
+            if (consumer != null) {
+                adapterMailboxConsumers.add(consumer);
             }
             return this;
         }

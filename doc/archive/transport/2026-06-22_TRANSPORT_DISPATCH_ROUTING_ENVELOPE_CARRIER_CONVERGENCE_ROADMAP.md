@@ -1,6 +1,6 @@
 # Transport Dispatch Routing Carrier Model Convergence Roadmap
 
-Status: mainline implemented; final residue verification remains active.
+Status: complete; archived 2026-06-22 after flat dispatch carrier convergence.
 
 ## Summary
 
@@ -61,7 +61,7 @@ Transport dispatch owner:
 ```text
 RoutingTarget(adapter-mailbox, adapterMailboxKey)
   + DispatchRoutingItem(selectedWorkerId, opaque payload, correlation, timing)
-  + mailbox handoff offer / claim / ack
+  + mailbox handoff offer / current claim / current ack
   + DispatchOutcome
 ```
 
@@ -107,6 +107,14 @@ This roadmap must not reopen:
 - embedded adapter host lifecycle
 - result ingress payload schema
 - adapter process authentication, registration, or supervision
+
+Follow-up note:
+
+`TRANSPORT_ADAPTER_OWNED_MAILBOX_CONSUMPTION_CONVERGENCE_ROADMAP.md`
+intentionally supersedes this roadmap's current claim/ack handoff semantics.
+This roadmap remains the flat dispatch carrier record; the follow-up roadmap
+owns the decision to remove `complete(...)`, inflight references, and central
+`AdapterMailboxMount` consumption.
 
 ## Current Implementation Facts
 

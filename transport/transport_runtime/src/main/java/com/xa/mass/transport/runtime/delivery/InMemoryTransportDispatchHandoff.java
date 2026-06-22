@@ -18,34 +18,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class InMemoryTransportDispatchHandoff implements TransportDispatchHandoff,
         AdapterMailboxConsumerRegistry {
 
-    private static final long DEFAULT_VISIBILITY_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30L);
-
-    private final Map<String, LinkedBlockingQueue<ClaimedDispatchRoutingBatch>> readyByMailbox = new ConcurrentHashMap<>();
-    private final Map<String, InflightClaim> inflightByDeliveryId = new ConcurrentHashMap<>();
+    private final Map<String, LinkedBlockingQueue<DispatchRoutingItem>> readyByMailbox = new ConcurrentHashMap<>();
     private final Map<String, MailboxConsumerEvidence> mailboxConsumers = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final int capacity;
-    private final long visibilityTimeoutMillis;
 
     public InMemoryTransportDispatchHandoff(int capacity) {
-        this(capacity, DEFAULT_VISIBILITY_TIMEOUT_MILLIS);
-    }
-
-    InMemoryTransportDispatchHandoff(int capacity, long visibilityTimeoutMillis) {
         if (capacity < 1) {
             throw new IllegalArgumentException("capacity must be greater than 0");
         }
-        if (visibilityTimeoutMillis < 1L) {
-            throw new IllegalArgumentException("visibilityTimeoutMillis must be greater than 0");
-        }
         this.capacity = capacity;
-        this.visibilityTimeoutMillis = visibilityTimeoutMillis;
     }
 
     @Override
     public List<DispatchOutcome> offer(DispatchRoutingBatch batch) {
         Objects.requireNonNull(batch, "batch");
-        reclaimExpiredInflight();
         if (!running.get()) {
             return batch.items().stream()
                     .map(item -> DispatchOutcomeFactory.fromItem(
@@ -66,11 +53,7 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
         }
         List<DispatchOutcome> outcomes = new ArrayList<>(batch.items().size());
         for (DispatchRoutingItem item : batch.items()) {
-            ClaimedDispatchRoutingBatch claimed = new ClaimedDispatchRoutingBatch(
-                    new DispatchRoutingBatch(batch.target(), List.of(item)),
-                    List.of(new DispatchHandoffReference(batch.adapterMailboxKey(), item.deliveryId()))
-            );
-            boolean accepted = offerReadyBatch(claimed);
+            boolean accepted = offerReadyItem(batch.adapterMailboxKey(), item);
             outcomes.add(DispatchOutcomeFactory.fromItem(
                     item,
                     accepted ? DispatchOutcomeStatus.QUEUED : DispatchOutcomeStatus.BACKPRESSURE,
@@ -82,44 +65,26 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
     }
 
     @Override
-    public ClaimedDispatchRoutingBatch poll(String adapterMailboxKey, long timeoutMillis) throws InterruptedException {
+    public List<DispatchRoutingItem> poll(String adapterMailboxKey,
+                                          int maxItems,
+                                          long timeoutMillis) throws InterruptedException {
         String mailboxKey = normalizeRequired(adapterMailboxKey, "adapterMailboxKey");
-        reclaimExpiredInflight();
+        if (maxItems < 1) {
+            throw new IllegalArgumentException("maxItems must be greater than 0");
+        }
         if (currentEvidence(mailboxKey) == null) {
-            return null;
+            return List.of();
         }
         if (!running.get() && readyQueueEmpty(mailboxKey)) {
-            return null;
+            return List.of();
         }
-        ClaimedDispatchRoutingBatch batch = pollLocalMailboxBatch(mailboxKey, Math.max(0L, timeoutMillis));
-        if (batch == null) {
-            return null;
-        }
-        DispatchHandoffReference reference = firstReference(batch);
-        if (reference != null) {
-            inflightByDeliveryId.put(
-                    reference.deliveryId(),
-                    new InflightClaim(batch, System.currentTimeMillis() + visibilityTimeoutMillis)
-            );
-        }
-        return batch;
-    }
-
-    @Override
-    public void complete(ClaimedDispatchRoutingBatch batch, List<DispatchOutcome> outcomes) {
-        if (batch == null || batch.references().isEmpty()) {
-            return;
-        }
-        for (DispatchHandoffReference reference : batch.references()) {
-            inflightByDeliveryId.remove(reference.deliveryId());
-        }
+        return pollLocalMailboxItems(mailboxKey, maxItems, Math.max(0L, timeoutMillis));
     }
 
     @Override
     public void shutdown() {
         running.set(false);
         readyByMailbox.clear();
-        inflightByDeliveryId.clear();
         mailboxConsumers.clear();
     }
 
@@ -152,73 +117,50 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
         return evidence;
     }
 
-    private boolean offerReadyBatch(ClaimedDispatchRoutingBatch batch) {
-        String mailboxKey = batch.adapterMailboxKey();
-        LinkedBlockingQueue<ClaimedDispatchRoutingBatch> readyQueue = queueForMailbox(mailboxKey);
-        if (readyQueue.size() + inflightClaimsForMailbox(mailboxKey) >= capacity) {
+    private boolean offerReadyItem(String adapterMailboxKey, DispatchRoutingItem item) {
+        LinkedBlockingQueue<DispatchRoutingItem> readyQueue = queueForMailbox(adapterMailboxKey);
+        if (readyQueue.size() >= capacity) {
             return false;
         }
-        return readyQueue.offer(batch);
+        return readyQueue.offer(item);
     }
 
-    private void reclaimExpiredInflight() {
-        long now = System.currentTimeMillis();
-        for (Map.Entry<String, InflightClaim> entry : inflightByDeliveryId.entrySet()) {
-            InflightClaim claim = entry.getValue();
-            if (claim.visibilityDeadlineEpochMillis() > now) {
-                continue;
-            }
-            if (inflightByDeliveryId.remove(entry.getKey(), claim)) {
-                queueForMailbox(claim.batch().adapterMailboxKey()).offer(claim.batch());
-            }
-        }
-    }
-
-    private ClaimedDispatchRoutingBatch pollLocalMailboxBatch(String adapterMailboxKey,
-                                                             long timeoutMillis) throws InterruptedException {
+    private List<DispatchRoutingItem> pollLocalMailboxItems(String adapterMailboxKey,
+                                                           int maxItems,
+                                                           long timeoutMillis) throws InterruptedException {
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        List<DispatchRoutingItem> items = new ArrayList<>(maxItems);
         do {
             if (currentEvidence(adapterMailboxKey) == null) {
-                return null;
+                return List.copyOf(items);
             }
-            ClaimedDispatchRoutingBatch batch = queueForMailbox(adapterMailboxKey).poll();
-            if (batch != null) {
-                return batch;
+            LinkedBlockingQueue<DispatchRoutingItem> queue = queueForMailbox(adapterMailboxKey);
+            DispatchRoutingItem first = queue.poll();
+            if (first != null) {
+                items.add(first);
+                queue.drainTo(items, maxItems - items.size());
+                return List.copyOf(items);
             }
             if (timeoutMillis <= 0L) {
-                return null;
+                return List.of();
             }
             long remaining = deadlineNanos - System.nanoTime();
             if (remaining <= 0L) {
-                return null;
+                return List.of();
             }
             TimeUnit.MILLISECONDS.sleep(Math.min(TimeUnit.NANOSECONDS.toMillis(remaining), 50L));
             timeoutMillis = TimeUnit.NANOSECONDS.toMillis(remaining);
         } while (running.get());
-        return null;
+        return List.of();
     }
 
-    private LinkedBlockingQueue<ClaimedDispatchRoutingBatch> queueForMailbox(String adapterMailboxKey) {
+    private LinkedBlockingQueue<DispatchRoutingItem> queueForMailbox(String adapterMailboxKey) {
         return readyByMailbox.computeIfAbsent(adapterMailboxKey, ignored -> new LinkedBlockingQueue<>());
     }
 
     private boolean readyQueueEmpty(String adapterMailboxKey) {
-        LinkedBlockingQueue<ClaimedDispatchRoutingBatch> queue = readyByMailbox.get(adapterMailboxKey);
+        LinkedBlockingQueue<DispatchRoutingItem> queue = readyByMailbox.get(adapterMailboxKey);
         return queue == null || queue.isEmpty();
-    }
-
-    private long inflightClaimsForMailbox(String adapterMailboxKey) {
-        long count = 0L;
-        for (InflightClaim claim : inflightByDeliveryId.values()) {
-            if (adapterMailboxKey.equals(claim.batch().adapterMailboxKey())) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private static DispatchHandoffReference firstReference(ClaimedDispatchRoutingBatch batch) {
-        return batch != null && !batch.references().isEmpty() ? batch.references().getFirst() : null;
     }
 
     private static String normalizeRequired(String value, String fieldName) {
@@ -228,21 +170,8 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
         return value.trim();
     }
 
-    long inflightClaimsForTest() {
-        return inflightByDeliveryId.size();
-    }
-
-    void expireInflightForTest() {
-        long expiredAt = System.currentTimeMillis() - 1L;
-        inflightByDeliveryId.replaceAll((ignored, claim) -> new InflightClaim(claim.batch(), expiredAt));
-    }
-
     private record MailboxConsumerEvidence(String consumerId,
                                            long generation,
                                            long availableUntilEpochMillis) {
-    }
-
-    private record InflightClaim(ClaimedDispatchRoutingBatch batch,
-                                 long visibilityDeadlineEpochMillis) {
     }
 }

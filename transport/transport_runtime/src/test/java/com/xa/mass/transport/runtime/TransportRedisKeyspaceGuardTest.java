@@ -31,10 +31,7 @@ class TransportRedisKeyspaceGuardTest {
         for (String keyFamily : List.of(
                 "bucket:<encodedDeliveryBucketId>:workers",
                 "bucket:<encodedDeliveryBucketId>:deadlines",
-                "mailbox:<encodedAdapterMailboxKey>:commands",
-                "mailbox:<encodedAdapterMailboxKey>:command-retention-deadlines",
                 "mailbox:<encodedAdapterMailboxKey>:ready-commands",
-                "mailbox:<encodedAdapterMailboxKey>:inflight-commands",
                 "mailbox-consumers",
                 "mailbox-consumer-deadlines"
         )) {

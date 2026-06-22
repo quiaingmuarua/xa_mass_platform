@@ -28,28 +28,18 @@ final class DispatchRoutingFixtures {
         return new DispatchRoutingBatch(RoutingTarget.adapterMailbox(mailboxKey()), List.of(items));
     }
 
-    static ClaimedDispatchRoutingBatch claimed(DispatchRoutingItem... items) {
-        List<DispatchRoutingItem> itemList = List.of(items);
-        return new ClaimedDispatchRoutingBatch(
-                new DispatchRoutingBatch(RoutingTarget.adapterMailbox(mailboxKey()), itemList),
-                itemList.stream()
-                        .map(item -> new DispatchHandoffReference(mailboxKey(), item.deliveryId()))
-                        .toList()
-        );
-    }
-
     static String mailboxKey() {
         return "mailbox-1";
     }
 
-    static List<String> messages(ClaimedDispatchRoutingBatch batch) {
+    static List<String> messages(DispatchRoutingBatch batch) {
         return batch.items().stream()
                 .map(item -> messageId(item.payload()))
                 .toList();
     }
 
-    static List<String> messages(DispatchRoutingBatch batch) {
-        return batch.items().stream()
+    static List<String> messages(List<DispatchRoutingItem> items) {
+        return items.stream()
                 .map(item -> messageId(item.payload()))
                 .toList();
     }

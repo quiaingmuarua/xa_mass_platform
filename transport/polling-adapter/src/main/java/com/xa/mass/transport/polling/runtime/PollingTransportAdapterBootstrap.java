@@ -77,8 +77,7 @@ public final class PollingTransportAdapterBootstrap implements TransportAdapterB
         );
         TransportBinding binding = TransportBinding.builder(
                         metadata.adapterId(),
-                        metadata.transportHint(),
-                        deliveryExecutor
+                        metadata.transportHint()
                 )
                 .adapterMailboxKey(adapterMailboxKey)
                 .protocol(metadata.protocol())
@@ -87,6 +86,11 @@ public final class PollingTransportAdapterBootstrap implements TransportAdapterB
                 .build();
         return TransportAdapterContribution.builder()
                 .addTransportBinding(binding)
+                .addAdapterMailboxConsumer(context.adapterMailboxConsumer(
+                        adapterMailboxKey,
+                        metadata.adapterId(),
+                        deliveryExecutor
+                ))
                 .addManagedTransportAdapter(new PollingPendingDeliveryBufferHandle(pendingDeliveryBuffer))
                 .build();
     }

@@ -25,7 +25,7 @@ entry for `transport/`.
   delivery commands, endpoint lease evidence, routing result-ingress envelopes,
   delivery outcomes, diagnostics, or session/availability observations.
 - `transport` is a pure delivery executor. It owns best-effort assigned-worker
-  delivery attempts, bounded queue admission, queue claim/ack consistency,
+  delivery attempts, bounded queue admission, destructive mailbox poll mechanics,
   mailbox/session feasibility checks, endpoint/session evidence, and observable
   delivery outcomes or failure evidence. It must not actively drop a known
   failed offer, unavailable mailbox, missing endpoint, or adapter final-hop
@@ -164,16 +164,16 @@ entry for `transport/`.
   delivery path.
 - `DispatchRoutingBatch` is the producer/serialized dispatch carrier:
   `RoutingTarget(adapter-mailbox, adapterMailboxKey)` plus flat
-  `DispatchRoutingItem` values. `ClaimedDispatchRoutingBatch` adds
-  handoff-owned claim references only after consumer materialization. These
-  records do not carry bucket, lane, target node, adapter route, connection,
-  or endpoint lease facts.
-- Runtime embedded-support `AdapterMailboxMount` drains one adapter mailbox,
-  owns local handoff ack/failure emission for that mailbox, and invokes the
-  binding's final-hop adapter SPI. `MassApplication` assembles the embedded
-  host set; it must not recreate a global dispatch pump/listener. The
-  final-hop adapter SPI consumes `DispatchRoutingItem` directly and sends by
-  selected worker.
+  `DispatchRoutingItem` values. The handoff queue stores item values under one
+  adapter mailbox and exposes bounded destructive `poll(adapterMailboxKey,
+  maxItems, timeout)` to adapter-owned consumers. These records do not carry
+  bucket, lane, target node, adapter route, connection, or endpoint lease facts.
+- Embedded adapter support contributes explicit adapter-owned mailbox
+  consumers. The consumer loop polls one mailbox, invokes the adapter final-hop
+  SPI with `DispatchRoutingItem`, and emits known retryable failure evidence.
+  There is no production global dispatch pump/listener or central mailbox
+  drain object; `MassApplication` only assembles and starts the contributed
+  embedded host resources.
 - `DeliveryPullResult` / `PulledDeliveryMessage` are the transport-core pull
   shapes. They carry status plus opaque delivery messages only. Task-shaped
   worker invocation/poll result DTOs live at the SDK/server public worker
