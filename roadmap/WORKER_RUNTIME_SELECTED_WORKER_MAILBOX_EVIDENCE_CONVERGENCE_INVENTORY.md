@@ -21,12 +21,12 @@ inspection to the delivery target mainline.
 
 | Symbol | Current Owner | Current Caller | Classification | Target |
 | --- | --- | --- | --- | --- |
-| `WorkerDeliveryTargetView` | worker-runtime evidence | `TaskDispatchDeliveryCommandSubmitter`, injected test fixtures | dispatch-facing point lookup | Keep as the only producer-side delivery target read contract. |
+| `WorkerDeliveryTargetView` | worker-runtime evidence | `TaskDispatchRoutingSubmitter`, injected test fixtures | dispatch-facing point lookup | Keep as the only producer-side delivery target read contract. |
 | `SelectedWorkerDeliveryTargetEvidence` | worker-runtime evidence | submitter and worker-runtime tests | selected-worker mailbox evidence | Keep narrow; do not add list/stat/view fields. |
 | `WorkerPresenceRuntime` | worker-runtime presence | `WorkerRuntimePresenceIngress`, tests, embedded assembly | presence ingress plus embedded default delivery target view | Keep local/embedded default only; do not treat as distributed truth. |
 | `InMemoryWorkerPresenceRuntime` | worker-runtime embedded implementation | `EngineConfig` default, tests | local projection | Valid for embedded runtime where producer and session observations share a process. Not proof of split-runtime truth. |
 | `EngineConfig.workerDeliveryTargetView` | SDK/starter assembly | `MassApplication` submitter assembly | injection seam | Formalize as split producer contract and guard missing explicit view. |
-| `TaskDispatchDeliveryCommandSubmitter` | SDK/starter delivery integration | engine assignment output | delivery integration consumer | Consume `WorkerDeliveryTargetView` only after engine selects `selectedWorkerId`. |
+| `TaskDispatchRoutingSubmitter` | SDK/starter delivery integration | engine assignment output | delivery integration consumer | Consume `WorkerDeliveryTargetView` only after engine selects `selectedWorkerId`. |
 
 ## Presence Writers
 

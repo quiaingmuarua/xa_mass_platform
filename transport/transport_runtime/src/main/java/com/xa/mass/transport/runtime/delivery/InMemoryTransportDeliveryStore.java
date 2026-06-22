@@ -70,7 +70,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     @Override
-    public DispatchOutcome enqueue(String adapterMailboxKey, QueuedPulledDispatch item) {
+    public DispatchOutcome enqueue(String adapterMailboxKey, DispatchRoutingItem item) {
         String normalizedAdapterMailboxKey = normalizeMailboxKey(adapterMailboxKey);
         String normalizedSelectedWorkerId = item == null
                 ? null
@@ -106,7 +106,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
             );
         }
 
-        QueuedPulledDispatch normalizedItem = normalizeItem(item, normalizedSelectedWorkerId);
+        DispatchRoutingItem normalizedItem = normalizeItem(item, normalizedSelectedWorkerId);
         while (true) {
             BucketState bucket = bucketState(normalizedAdapterMailboxKey);
             synchronized (bucket) {
@@ -159,7 +159,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     @Override
-    public List<QueuedPulledDispatch> drain(String adapterMailboxKey, String selectedWorkerId, int maxItems) {
+    public List<DispatchRoutingItem> drain(String adapterMailboxKey, String selectedWorkerId, int maxItems) {
         String normalizedAdapterMailboxKey = normalizeMailboxKey(adapterMailboxKey);
         String normalizedSelectedWorkerId = TransportDeliveryAddressing.normalizeText(selectedWorkerId);
         if (normalizedAdapterMailboxKey == null || normalizedSelectedWorkerId == null || maxItems <= 0 || !running.get()) {
@@ -170,7 +170,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
             return List.of();
         }
         synchronized (bucket) {
-            List<QueuedPulledDispatch> drained = drainMatchingLocked(bucket, normalizedSelectedWorkerId, maxItems);
+            List<DispatchRoutingItem> drained = drainMatchingLocked(bucket, normalizedSelectedWorkerId, maxItems);
             if (!drained.isEmpty()) {
                 releaseGlobalSlots(drained.size());
                 drainedItems.addAndGet(drained.size());
@@ -196,7 +196,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
             return TransportDeliveryPollResult.shutdown();
         }
         if (timeout <= 0) {
-            List<QueuedPulledDispatch> drained = drain(normalizedAdapterMailboxKey, normalizedSelectedWorkerId, maxItems);
+            List<DispatchRoutingItem> drained = drain(normalizedAdapterMailboxKey, normalizedSelectedWorkerId, maxItems);
             return drained.isEmpty() ? TransportDeliveryPollResult.empty() : TransportDeliveryPollResult.deliveredView(drained);
         }
 
@@ -217,7 +217,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 if (!running.get()) {
                     return TransportDeliveryPollResult.shutdown();
                 }
-                List<QueuedPulledDispatch> drained = drainMatchingLocked(bucket, normalizedSelectedWorkerId, maxItems);
+                List<DispatchRoutingItem> drained = drainMatchingLocked(bucket, normalizedSelectedWorkerId, maxItems);
                 if (drained.isEmpty()) {
                     return TransportDeliveryPollResult.empty();
                 }
@@ -339,11 +339,11 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         return buckets.computeIfAbsent(deliveryQueueKey, ignored -> new BucketState());
     }
 
-    private static List<QueuedPulledDispatch> drainMatchingLocked(BucketState bucket, String selectedWorkerId, int maxItems) {
-        List<QueuedPulledDispatch> drained = new ArrayList<>(Math.max(1, maxItems));
+    private static List<DispatchRoutingItem> drainMatchingLocked(BucketState bucket, String selectedWorkerId, int maxItems) {
+        List<DispatchRoutingItem> drained = new ArrayList<>(Math.max(1, maxItems));
         var iterator = bucket.items.iterator();
         while (iterator.hasNext() && drained.size() < maxItems) {
-            QueuedPulledDispatch item = iterator.next();
+            DispatchRoutingItem item = iterator.next();
             if (!Objects.equals(selectedWorkerId, item.selectedWorkerId())) {
                 continue;
             }
@@ -354,7 +354,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     private static boolean hasMatchingItem(BucketState bucket, String selectedWorkerId) {
-        for (QueuedPulledDispatch item : bucket.items) {
+        for (DispatchRoutingItem item : bucket.items) {
             if (Objects.equals(selectedWorkerId, item.selectedWorkerId())) {
                 return true;
             }
@@ -364,7 +364,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
 
     private static long oldestCreatedAt(BucketState bucket) {
         long oldest = Long.MAX_VALUE;
-        for (QueuedPulledDispatch item : bucket.items) {
+        for (DispatchRoutingItem item : bucket.items) {
             oldest = Math.min(oldest, item.createdAtEpochMillis());
         }
         return oldest == Long.MAX_VALUE ? 0L : oldest;
@@ -408,15 +408,16 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         cachedSnapshotAtMillis = 0L;
     }
 
-    private static QueuedPulledDispatch normalizeItem(QueuedPulledDispatch item, String normalizedSelectedWorkerId) {
+    private static DispatchRoutingItem normalizeItem(DispatchRoutingItem item, String normalizedSelectedWorkerId) {
         if (Objects.equals(normalizedSelectedWorkerId, item.selectedWorkerId())) {
             return item;
         }
-        return new QueuedPulledDispatch(
+        return new DispatchRoutingItem(
                 item.deliveryId(),
                 normalizedSelectedWorkerId,
                 item.payload(),
                 item.correlationRef(),
+                item.deadlineEpochMillis(),
                 item.createdAtEpochMillis()
         );
     }
@@ -426,7 +427,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     }
 
     private static final class BucketState {
-        private final ArrayDeque<QueuedPulledDispatch> items = new ArrayDeque<>();
+        private final ArrayDeque<DispatchRoutingItem> items = new ArrayDeque<>();
         private int waiters;
     }
 }

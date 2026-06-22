@@ -4,10 +4,10 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxDeliveryOffer;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
+import com.xa.mass.transport.runtime.delivery.ClaimedDispatchRoutingBatch;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingBatch;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
@@ -21,13 +21,13 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class TaskDispatchDeliveryCommandSubmitterTest {
+class TaskDispatchRoutingSubmitterTest {
 
     @Test
     void missingDeliveryTargetEvidenceEmitsOneFailureAndDoesNotOfferHandoff() {
         RecordingFailureHandler failures = new RecordingFailureHandler();
         RecordingHandoff handoff = new RecordingHandoff();
-        TaskDispatchDeliveryCommandSubmitter submitter = submitter(
+        TaskDispatchRoutingSubmitter submitter = submitter(
                 selectedWorkerId -> Optional.empty(),
                 handoff,
                 failures
@@ -43,7 +43,7 @@ class TaskDispatchDeliveryCommandSubmitterTest {
     void expiredDeliveryTargetEvidenceEmitsOneFailureAndDoesNotOfferHandoff() {
         RecordingFailureHandler failures = new RecordingFailureHandler();
         RecordingHandoff handoff = new RecordingHandoff();
-        TaskDispatchDeliveryCommandSubmitter submitter = submitter(
+        TaskDispatchRoutingSubmitter submitter = submitter(
                 selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                         selectedWorkerId,
                         "mailbox-a",
@@ -66,7 +66,7 @@ class TaskDispatchDeliveryCommandSubmitterTest {
     void mismatchedDeliveryTargetEvidenceEmitsOneFailureAndDoesNotOfferHandoff() {
         RecordingFailureHandler failures = new RecordingFailureHandler();
         RecordingHandoff handoff = new RecordingHandoff();
-        TaskDispatchDeliveryCommandSubmitter submitter = submitter(
+        TaskDispatchRoutingSubmitter submitter = submitter(
                 selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                         "other-worker",
                         "mailbox-a",
@@ -85,11 +85,11 @@ class TaskDispatchDeliveryCommandSubmitterTest {
         assertSingleFailure(failures, "worker-1", "selected worker delivery target does not match assignment worker");
     }
 
-    private static TaskDispatchDeliveryCommandSubmitter submitter(
+    private static TaskDispatchRoutingSubmitter submitter(
             com.xa.mass.worker.runtime.evidence.WorkerDeliveryTargetView view,
             RecordingHandoff handoff,
             RecordingFailureHandler failures) {
-        return new TaskDispatchDeliveryCommandSubmitter(
+        return new TaskDispatchRoutingSubmitter(
                 new TransportAssignedDeliverySubmitter(handoff, failures),
                 failures,
                 view
@@ -139,17 +139,17 @@ class TaskDispatchDeliveryCommandSubmitterTest {
         }
     }
 
-    private static final class RecordingHandoff implements TransportDeliveryCommandHandoff {
+    private static final class RecordingHandoff implements TransportDispatchHandoff {
         private int offers;
 
         @Override
-        public List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer) {
+        public List<DispatchOutcome> offer(DispatchRoutingBatch batch) {
             offers++;
             return List.of();
         }
 
         @Override
-        public DeliveryCommandBatch poll(String adapterMailboxKey, long timeoutMillis) {
+        public ClaimedDispatchRoutingBatch poll(String adapterMailboxKey, long timeoutMillis) {
             return null;
         }
 

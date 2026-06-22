@@ -1,7 +1,8 @@
 package com.xa.mass.transport.socket.dispatcher;
 
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
@@ -30,34 +31,34 @@ public final class SocketTaskDispatchChannel implements AdapterCommandExecutor {
     }
 
     @Override
-    public List<DispatchOutcome> dispatch(List<DeliveryCommand> commands) {
-        if (commands == null || commands.isEmpty()) {
+    public List<DispatchOutcome> dispatch(List<DispatchRoutingItem> items) {
+        if (items == null || items.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = new ArrayList<>(commands.size());
-        for (DeliveryCommand command : commands) {
-            outcomes.add(dispatchOne(command));
+        List<DispatchOutcome> outcomes = new ArrayList<>(items.size());
+        for (DispatchRoutingItem item : items) {
+            outcomes.add(dispatchOne(item));
         }
         return Collections.unmodifiableList(outcomes);
     }
 
-    private DispatchOutcome dispatchOne(DeliveryCommand command) {
-        if (command == null) {
-            return DispatchOutcome.invalid((DeliveryCommand) null, "request must not be null");
+    private DispatchOutcome dispatchOne(DispatchRoutingItem item) {
+        if (item == null) {
+            return DispatchOutcome.invalid(null, null, null, "request must not be null");
         }
         try {
-            String rawJson = frameCodec.encodeCanonicalTaskDispatch(command);
-            boolean sent = sessionManager.sendToWorker(command.getSelectedWorkerId(), rawJson);
+            String rawJson = frameCodec.encodeCanonicalTaskDispatch(item);
+            boolean sent = sessionManager.sendToWorker(item.selectedWorkerId(), rawJson);
             if (!sent) {
                 logger.warn("Socket outbound skipped because endpoint is unavailable: selectedWorkerId={}, traceId={}",
-                        command.getSelectedWorkerId(), null);
-                return DispatchOutcome.noEndpoint(command, "endpoint is unavailable");
+                        item.selectedWorkerId(), null);
+                return DispatchOutcomeFactory.noEndpoint(item, "endpoint is unavailable");
             }
-            return DispatchOutcome.delivered(command);
+            return DispatchOutcomeFactory.delivered(item);
         } catch (RuntimeException e) {
             logger.warn("Socket outbound failed: selectedWorkerId={}, reason={}",
-                    command.getSelectedWorkerId(), e.getMessage());
-            return DispatchOutcome.failed(command, e.getMessage(), true);
+                    item.selectedWorkerId(), e.getMessage());
+            return DispatchOutcomeFactory.failed(item, e.getMessage(), true);
         }
     }
 }

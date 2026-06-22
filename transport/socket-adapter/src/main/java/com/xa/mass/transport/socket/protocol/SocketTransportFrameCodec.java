@@ -5,8 +5,8 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,11 +85,11 @@ public final class SocketTransportFrameCodec {
                 && !isHeartbeatFrame(frame);
     }
 
-    public String encodeCanonicalTaskDispatch(DeliveryCommand command) {
-        if (command == null) {
-            throw new IllegalArgumentException("command must not be null");
+    public String encodeCanonicalTaskDispatch(DispatchRoutingItem item) {
+        if (item == null) {
+            throw new IllegalArgumentException("item must not be null");
         }
-        return command.getPayload();
+        return item.payload();
     }
 
     public String encodeCanonicalTaskResultPayload(JsonObject frame) {

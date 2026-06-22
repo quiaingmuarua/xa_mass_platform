@@ -81,7 +81,7 @@ class RedisTransportDeliveryStoreTest {
         assertEquals(List.of("msg-1"), messageIds(store.drain("Queue-A", "worker-1", 10)));
         assertTrue(store.drain("Queue-A", "worker-1", 10).isEmpty());
 
-        CompletableFuture<List<QueuedPulledDispatch>> polled = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<List<DispatchRoutingItem>> polled = CompletableFuture.supplyAsync(() -> {
             try {
                 return store.poll("Queue-A", "worker-2", 10, 1, TimeUnit.SECONDS).getItems();
             } catch (InterruptedException ex) {
@@ -139,18 +139,19 @@ class RedisTransportDeliveryStoreTest {
         return new DispatchFixture(messageId, workerId);
     }
 
-    private QueuedPulledDispatch queued(String adapterId, DispatchFixture item) {
+    private DispatchRoutingItem queued(String adapterId, DispatchFixture item) {
         String deliveryId = "delivery-" + adapterId + "-" + item.messageId();
-        return new QueuedPulledDispatch(
+        return new DispatchRoutingItem(
                 deliveryId,
                 item.workerId(),
                 payload(item),
                 correlation(item),
+                0L,
                 1L
         );
     }
 
-    private QueuedPulledDispatch invalidQueued(String adapterId, DispatchFixture item) {
+    private DispatchRoutingItem invalidQueued(String adapterId, DispatchFixture item) {
         return null;
     }
 
@@ -162,7 +163,7 @@ class RedisTransportDeliveryStoreTest {
         return "corr-" + item.messageId();
     }
 
-    private List<String> messageIds(List<QueuedPulledDispatch> items) {
+    private List<String> messageIds(List<DispatchRoutingItem> items) {
         return items.stream()
                 .map(item -> messageId(item.payload()))
                 .toList();

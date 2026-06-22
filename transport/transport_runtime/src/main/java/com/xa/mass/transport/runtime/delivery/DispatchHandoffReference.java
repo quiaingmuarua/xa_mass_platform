@@ -1,14 +1,14 @@
 package com.xa.mass.transport.runtime.delivery;
 
 /**
- * Handoff-owned command reference claimed by a local consumer.
+ * Store-owned claim reference used for handoff ack/requeue hygiene.
  */
-public record DeliveryCommandReference(String adapterMailboxKey,
-                                       String commandId) {
+public record DispatchHandoffReference(String adapterMailboxKey,
+                                       String deliveryId) {
 
-    public DeliveryCommandReference {
+    public DispatchHandoffReference {
         adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
-        commandId = requireText(commandId, "commandId");
+        deliveryId = requireText(deliveryId, "deliveryId");
     }
 
     private static String requireText(String value, String fieldName) {

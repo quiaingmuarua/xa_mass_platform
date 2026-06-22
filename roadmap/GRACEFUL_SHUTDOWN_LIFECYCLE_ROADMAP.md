@@ -53,7 +53,7 @@ classes and are not protected by a single lifecycle contract.
   when the session manager stops.
 - Redis runtime components such as `RedisWorkerRegistry`,
   `RedisTaskWorkRuntime`, `RedisTaskResultRuntime`, and
-  `RedisTransportDeliveryCommandHandoff` own close/shutdown state, often guarded
+  `RedisTransportDispatchHandoff` own close/shutdown state, often guarded
   by `AtomicBoolean`.
 - Existing lifecycle order is therefore real, but it is implicit and split
   across SDK assembly, engine kernel, task manager, transport runtime, and
@@ -448,7 +448,7 @@ Scope:
   - `RedisWorkerRegistry`
   - `RedisTaskWorkRuntime`
   - `RedisTaskResultRuntime`
-  - `RedisTransportDeliveryCommandHandoff`
+  - `RedisTransportDispatchHandoff`
   - Redis transport inboxes and dispatch handoffs
 - Ensure close happens after dependent pumps/watchdogs are stopped or drained.
 - Verify shared client/connection ownership where components may close the same

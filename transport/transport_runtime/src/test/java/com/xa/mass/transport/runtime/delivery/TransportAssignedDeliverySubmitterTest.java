@@ -1,6 +1,5 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import org.junit.jupiter.api.Test;
@@ -22,7 +21,7 @@ class TransportAssignedDeliverySubmitterTest {
                 failures
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(routed(command("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = submitter.submit(List.of(batch(item("msg-1", "worker-1"))));
 
         assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE), statuses(outcomes));
         assertEquals(1, failures.events.size());
@@ -39,7 +38,7 @@ class TransportAssignedDeliverySubmitterTest {
                 failures
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(routed(command("msg-1", "worker-1")));
+        List<DispatchOutcome> outcomes = submitter.submit(List.of(batch(item("msg-1", "worker-1"))));
 
         assertEquals(List.of(DispatchOutcomeStatus.UNAVAILABLE), statuses(outcomes));
         assertEquals(1, failures.events.size());
@@ -47,18 +46,18 @@ class TransportAssignedDeliverySubmitterTest {
     }
 
     @Test
-    void groupsCommandsByAdapterMailboxKeyOnly() {
+    void submitsOneMailboxBatchWithoutSelectedWorkerRegrouping() {
         FakeHandoff handoff = new FakeHandoff();
         TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(
                 handoff,
                 new RecordingFailureHandler()
         );
 
-        List<DispatchOutcome> outcomes = submitter.submit(routed(
-                command("msg-1", "worker-1"),
-                command("msg-2", "worker-2"),
-                command("msg-3", "worker-3")
-        ));
+        List<DispatchOutcome> outcomes = submitter.submit(List.of(batch(
+                item("msg-1", "worker-1"),
+                item("msg-2", "worker-2"),
+                item("msg-3", "worker-3")
+        )));
 
         assertEquals(List.of(
                 DispatchOutcomeStatus.QUEUED,
@@ -66,8 +65,8 @@ class TransportAssignedDeliverySubmitterTest {
                 DispatchOutcomeStatus.QUEUED
         ), statuses(outcomes));
         assertEquals(1, handoff.offered.size());
-        assertEquals(DeliveryCommandFixtures.mailboxKey(), handoff.offered.getFirst().adapterMailboxKey());
-        assertEquals(List.of("msg-1", "msg-2", "msg-3"), DeliveryCommandFixtures.messages(handoff.offered.getFirst()));
+        assertEquals(DispatchRoutingFixtures.mailboxKey(), handoff.offered.getFirst().adapterMailboxKey());
+        assertEquals(List.of("msg-1", "msg-2", "msg-3"), DispatchRoutingFixtures.messages(handoff.offered.getFirst()));
     }
 
     @Test
@@ -78,42 +77,39 @@ class TransportAssignedDeliverySubmitterTest {
                 new RecordingFailureHandler()
         );
 
-        DeliveryCommand command = command("msg-1", "worker-selected");
+        submitter.submit(List.of(batch(item("msg-1", "worker-selected"))));
 
-        submitter.submit(routed(command));
-
-        DeliveryCommand offered = handoff.offered.getFirst().items().getFirst();
-        assertEquals("worker-selected", offered.getSelectedWorkerId());
-        assertEquals(DeliveryCommandFixtures.mailboxKey(), handoff.offered.getFirst().adapterMailboxKey());
+        DispatchRoutingItem offered = handoff.offered.getFirst().items().getFirst();
+        assertEquals("worker-selected", offered.selectedWorkerId());
+        assertEquals(DispatchRoutingFixtures.mailboxKey(), handoff.offered.getFirst().adapterMailboxKey());
     }
 
-    private static DeliveryCommand command(String messageId, String selectedWorkerId) {
-        return DeliveryCommandFixtures.command(messageId, selectedWorkerId, null, "route-" + selectedWorkerId);
+    private static DispatchRoutingItem item(String messageId, String selectedWorkerId) {
+        return DispatchRoutingFixtures.item(messageId, selectedWorkerId);
+    }
+
+    private static DispatchRoutingBatch batch(DispatchRoutingItem... items) {
+        return DispatchRoutingFixtures.batch(items);
     }
 
     private static List<DispatchOutcomeStatus> statuses(List<DispatchOutcome> outcomes) {
         return outcomes.stream().map(DispatchOutcome::getStatus).toList();
     }
 
-    private static List<AdapterMailboxDeliveryCommand> routed(DeliveryCommand... commands) {
-        return DeliveryCommandFixtures.routed(commands);
-    }
-
-    private static final class FakeHandoff implements TransportDeliveryCommandHandoff {
-        private final List<DeliveryCommandBatch> offered = new ArrayList<>();
+    private static final class FakeHandoff implements TransportDispatchHandoff {
+        private final List<DispatchRoutingBatch> offered = new ArrayList<>();
         private boolean backpressure;
         private RuntimeException failure;
 
         @Override
-        public List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer) {
+        public List<DispatchOutcome> offer(DispatchRoutingBatch batch) {
             if (failure != null) {
                 throw failure;
             }
-            DeliveryCommandBatch batch = new DeliveryCommandBatch(offer.adapterMailboxKey(), offer.commands());
             offered.add(batch);
             if (backpressure) {
                 return batch.items().stream()
-                        .map(item -> DispatchOutcome.fromCommand(
+                        .map(item -> DispatchOutcomeFactory.fromItem(
                                 item,
                                 DispatchOutcomeStatus.BACKPRESSURE,
                                 true,
@@ -121,7 +117,7 @@ class TransportAssignedDeliverySubmitterTest {
                         .toList();
             }
             return batch.items().stream()
-                    .map(item -> DispatchOutcome.fromCommand(
+                    .map(item -> DispatchOutcomeFactory.fromItem(
                             item,
                             DispatchOutcomeStatus.QUEUED,
                             false,
@@ -130,7 +126,7 @@ class TransportAssignedDeliverySubmitterTest {
         }
 
         @Override
-        public DeliveryCommandBatch poll(String adapterMailboxKey, long timeoutMillis) {
+        public ClaimedDispatchRoutingBatch poll(String adapterMailboxKey, long timeoutMillis) {
             return null;
         }
 

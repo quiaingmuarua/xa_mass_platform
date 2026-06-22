@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Objects;
 
-final class RedisQueuedPulledDispatchCodec {
+final class RedisDispatchRoutingItemCodec {
 
     private static final Base64.Encoder KEY_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder KEY_DECODER = Base64.getUrlDecoder();
@@ -18,11 +18,11 @@ final class RedisQueuedPulledDispatchCodec {
 
     private final Gson gson;
 
-    RedisQueuedPulledDispatchCodec() {
+    RedisDispatchRoutingItemCodec() {
         this(new GsonBuilder().create());
     }
 
-    RedisQueuedPulledDispatchCodec(Gson gson) {
+    RedisDispatchRoutingItemCodec(Gson gson) {
         this.gson = Objects.requireNonNull(gson, "gson");
     }
 
@@ -42,9 +42,9 @@ final class RedisQueuedPulledDispatchCodec {
         return encodeKeyToken(selectedWorkerId);
     }
 
-    String encodeStoredValue(KeyedQueueEntry<QueuedPulledDispatch> entry) {
+    String encodeStoredValue(KeyedQueueEntry<DispatchRoutingItem> entry) {
         Objects.requireNonNull(entry, "entry");
-        QueuedPulledDispatch item = Objects.requireNonNull(entry.value(), "entry.value");
+        DispatchRoutingItem item = Objects.requireNonNull(entry.value(), "entry.value");
         String encodedValue = VALUE_ENCODER.encodeToString(encodeEntry(entry));
         return entry.createdAtEpochMillis()
                 + String.valueOf(STORED_VALUE_DELIMITER)
@@ -53,7 +53,7 @@ final class RedisQueuedPulledDispatchCodec {
                 + encodedValue;
     }
 
-    KeyedQueueEntry<QueuedPulledDispatch> decodeStoredValue(String storedValue) {
+    KeyedQueueEntry<DispatchRoutingItem> decodeStoredValue(String storedValue) {
         if (storedValue == null || storedValue.isBlank()) {
             throw new IllegalArgumentException("stored queue value must not be blank");
         }
@@ -66,26 +66,27 @@ final class RedisQueuedPulledDispatchCodec {
         return decodeEntry(VALUE_DECODER.decode(encodedValue));
     }
 
-    byte[] encodeEntry(KeyedQueueEntry<QueuedPulledDispatch> entry) {
+    byte[] encodeEntry(KeyedQueueEntry<DispatchRoutingItem> entry) {
         Objects.requireNonNull(entry, "entry");
-        QueuedPulledDispatch item = Objects.requireNonNull(entry.value(), "entry.value");
-        RedisQueuedPulledDispatchRecord record = new RedisQueuedPulledDispatchRecord(
+        DispatchRoutingItem item = Objects.requireNonNull(entry.value(), "entry.value");
+        RedisDispatchRoutingItemRecord record = new RedisDispatchRoutingItemRecord(
                 item.deliveryId(),
                 item.selectedWorkerId(),
                 item.payload(),
                 item.correlationRef(),
+                item.deadlineEpochMillis(),
                 item.createdAtEpochMillis()
         );
         return gson.toJson(record).getBytes(StandardCharsets.UTF_8);
     }
 
-    KeyedQueueEntry<QueuedPulledDispatch> decodeEntry(byte[] bytes) {
+    KeyedQueueEntry<DispatchRoutingItem> decodeEntry(byte[] bytes) {
         if (bytes == null || bytes.length == 0) {
             throw new IllegalArgumentException("bytes must not be empty");
         }
-        DecodedRedisQueuedPulledDispatchRecord record = gson.fromJson(
+        DecodedRedisDispatchRoutingItemRecord record = gson.fromJson(
                 new String(bytes, StandardCharsets.UTF_8),
-                DecodedRedisQueuedPulledDispatchRecord.class
+                DecodedRedisDispatchRoutingItemRecord.class
         );
         if (record == null
                 || record.deliveryId == null
@@ -94,11 +95,12 @@ final class RedisQueuedPulledDispatchCodec {
                 || record.correlationRef == null) {
             throw new IllegalArgumentException("encoded queued dispatch record is incomplete");
         }
-        QueuedPulledDispatch item = new QueuedPulledDispatch(
+        DispatchRoutingItem item = new DispatchRoutingItem(
                 record.deliveryId,
                 record.selectedWorkerId,
                 record.payload,
                 record.correlationRef,
+                record.deadlineEpochMillis,
                 record.createdAtEpochMillis
         );
         return new KeyedQueueEntry<>(item, item.createdAtEpochMillis());
@@ -118,18 +120,20 @@ final class RedisQueuedPulledDispatchCodec {
         return new String(KEY_DECODER.decode(token), StandardCharsets.UTF_8);
     }
 
-    private record RedisQueuedPulledDispatchRecord(String deliveryId,
-                                                   String selectedWorkerId,
-                                                   String payload,
-                                                   String correlationRef,
-                                                   long createdAtEpochMillis) {
+    private record RedisDispatchRoutingItemRecord(String deliveryId,
+                                                  String selectedWorkerId,
+                                                  String payload,
+                                                  String correlationRef,
+                                                  long deadlineEpochMillis,
+                                                  long createdAtEpochMillis) {
     }
 
-    private static final class DecodedRedisQueuedPulledDispatchRecord {
+    private static final class DecodedRedisDispatchRoutingItemRecord {
         private String deliveryId;
         private String selectedWorkerId;
         private String payload;
         private String correlationRef;
+        private long deadlineEpochMillis;
         private long createdAtEpochMillis;
     }
 }

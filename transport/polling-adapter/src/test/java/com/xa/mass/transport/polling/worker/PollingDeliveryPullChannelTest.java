@@ -2,9 +2,9 @@ package com.xa.mass.transport.polling.worker;
 
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.polling.runtime.PollingTransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.delivery.AdapterPullDeliveryBuffer;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.junit.jupiter.api.Test;
@@ -60,10 +60,9 @@ class PollingDeliveryPullChannelTest {
         );
     }
 
-    private DeliveryCommand request(String messageId, String workerId) {
-        return new DeliveryCommand(
+    private DispatchRoutingItem request(String messageId, String workerId) {
+        return new DispatchRoutingItem(
                 "delivery-" + messageId,
-                BUCKET,
                 workerId,
                 "{\"messageId\":\"" + messageId + "\"}",
                 "corr-" + messageId,

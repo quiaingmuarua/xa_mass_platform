@@ -14,8 +14,8 @@ entry for `transport/`.
 - `transport_runtime` owns shared runtime assembly, embedded Java adapter
   support, and delivery semantics.
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
-- Transport core and adapter are different layers. Transport core owns minimal
-  assigned-delivery commands, delivery queues/stores, endpoint lease evidence,
+- Transport core and adapter are different layers. Transport core owns flat
+  assigned-dispatch routing items, dispatch queues/stores, endpoint lease evidence,
   result ingress, and delivery outcomes. A concrete adapter owns protocol
   server/client I/O, local session indexes, protocol frames, and final-hop send
   attempts for already selected workers.
@@ -63,8 +63,8 @@ entry for `transport/`.
   or another owner-level rule, and must not depend on routeKey cardinality for
   wrong-worker prevention.
 - `selectedWorkerId` is the engine-selected execution target carried into
-  transport as a delivery constraint. Delivery-command handoff keeps it as a
-  command field for dispatcher demux and final-hop endpoint/session lookup; it
+  transport as a delivery constraint. Dispatch handoff keeps it as an
+  item field for dispatcher demux and final-hop endpoint/session lookup; it
   must not become a second physical queue address, scheduling input, lifecycle
   mutation, or route-key minting rule.
 - Assigned-delivery physical queueing is addressed by opaque
@@ -113,11 +113,12 @@ entry for `transport/`.
   derived reachability and registry slot heartbeat freshness. Endpoint leases
   remain delivery feasibility evidence and must not become worker lifecycle
   truth, worker state-report truth, slot heartbeat truth, or capability truth.
-- `DeliveryCommand` is the assigned-item delivery intent. It carries only
-  `deliveryBucketId`, `selectedWorkerId`, an opaque worker payload, opaque
-  delivery correlation, and item timing/id facts. Task shell metadata such as
-  `taskName`, `project`, and `userId`, plus adapter, queue, node, endpoint,
-  connection, and session facts are not command fields.
+- `DispatchRoutingItem` is the assigned-item delivery carrier inside an
+  adapter-mailbox dispatch batch. It carries only delivery id,
+  `selectedWorkerId`, an opaque worker payload, opaque delivery correlation,
+  and item timing/deadline facts. Task shell metadata such as `taskName`,
+  `project`, and `userId`, plus adapter, queue, node, endpoint, connection,
+  session, and `deliveryBucketId` facts are not item fields.
 - Transport core changes must pass the embedded-adapter independence pressure
   test: if a fact cannot be stably provided by a future cross-language adapter,
   it is not a transport-core contract; if it is only needed by embedded Java
@@ -125,7 +126,7 @@ entry for `transport/`.
   process boundary, it must be typed queue, evidence, outcome, or result-ingress
   data rather than Java object wiring.
 - Concrete embedded Java adapters expose assigned delivery through runtime
-  embedded-support `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`.
+  embedded-support `AdapterCommandExecutor.dispatch(List<DispatchRoutingItem>)`.
   Adapter metadata, protocol resource start/stop, raw/manual channels,
   diagnostics, and
   pull channels are explicit binding/contribution facts, not executor facts.
@@ -161,26 +162,28 @@ entry for `transport/`.
   Socket uses the same adapter-local final-hop rule through its session manager;
   there is no generic selected-worker endpoint-registry wrapper on the assigned
   delivery path.
-- `DeliveryCommandBatch` is consumer-local handoff materialization:
-  `adapterMailboxKey`, handoff-owned command references, and command items
-  only. It does not carry bucket, lane, target node, adapter route, connection,
+- `DispatchRoutingBatch` is the producer/serialized dispatch carrier:
+  `RoutingTarget(adapter-mailbox, adapterMailboxKey)` plus flat
+  `DispatchRoutingItem` values. `ClaimedDispatchRoutingBatch` adds
+  handoff-owned claim references only after consumer materialization. These
+  records do not carry bucket, lane, target node, adapter route, connection,
   or endpoint lease facts.
 - Runtime embedded-support `AdapterMailboxMount` drains one adapter mailbox,
   owns local handoff ack/failure emission for that mailbox, and invokes the
   binding's final-hop adapter SPI. `MassApplication` assembles the embedded
-  host set; it must not recreate a global delivery-command pump/listener. The
-  final-hop adapter SPI consumes `DeliveryCommand` directly and sends by
+  host set; it must not recreate a global dispatch pump/listener. The
+  final-hop adapter SPI consumes `DispatchRoutingItem` directly and sends by
   selected worker.
 - `DeliveryPullResult` / `PulledDeliveryMessage` are the transport-core pull
   shapes. They carry status plus opaque delivery messages only. Task-shaped
   worker invocation/poll result DTOs live at the SDK/server public worker
   boundary, where the SDK-owned payload and correlation codecs decode them.
-- `QueuedPulledDispatch` is the current polling queue value. It carries only
-  delivery id, selected worker, payload, correlation, and timing; packet, route,
-  endpoint, taskName/project/userId, and deliveryQueueKey are not serialized in
-  the Redis queue value.
+- Polling pull stores use `DispatchRoutingItem` as the adapter-local queued
+  value and project directly to `PulledDeliveryMessage` at the pull API
+  boundary. Packet, route, endpoint, taskName/project/userId, and
+  deliveryQueueKey are not serialized in the Redis queue value.
 - Queue mechanics may live under `platform_infra`; transport still owns
-  `DeliveryCommand`, `DeliveryCommandBatch`, `QueuedPulledDispatch`,
+  `DispatchRoutingBatch`, `DispatchRoutingItem`, `TransportDispatchHandoff`,
   `TransportDeliveryStore`, and `DispatchOutcome`.
   `DispatchOutcome` is the single delivery-failure fact owner; failure inbox
   events wrap the outcome instead of maintaining group/item snapshot copies.
@@ -256,7 +259,7 @@ Use this order for transport changes:
 Prefer these after transport changes:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDeliveryCommandHandoffTest,TransportDeliveryCommandBatchCodecTest,RedisTransportDeliveryCommandHandoffTest,RedisTransportDeliveryFailureChannelTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,RouteEndpointIndexTest,TransportConvergenceArchitectureGuardTest
+./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDispatchHandoffTest,TransportDispatchBatchCodecTest,RedisTransportDispatchHandoffTest,RedisTransportDeliveryFailureChannelTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,RouteEndpointIndexTest,TransportConvergenceArchitectureGuardTest
 ./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,RoutingEnvelopeTest,WebSocketInputProcessorTest,WebSocketFrameReadersTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,WebSocketSessionControllerTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest,EmbeddedPullWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
 ```

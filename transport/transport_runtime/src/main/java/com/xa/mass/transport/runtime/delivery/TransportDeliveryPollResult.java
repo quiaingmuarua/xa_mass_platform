@@ -6,14 +6,14 @@ import java.util.Objects;
 public final class TransportDeliveryPollResult {
 
     private final TransportDeliveryPollStatus status;
-    private final List<QueuedPulledDispatch> items;
+    private final List<DispatchRoutingItem> items;
 
-    private TransportDeliveryPollResult(TransportDeliveryPollStatus status, List<QueuedPulledDispatch> items) {
+    private TransportDeliveryPollResult(TransportDeliveryPollStatus status, List<DispatchRoutingItem> items) {
         this(status, items, false);
     }
 
     private TransportDeliveryPollResult(TransportDeliveryPollStatus status,
-                                        List<QueuedPulledDispatch> items,
+                                        List<DispatchRoutingItem> items,
                                         boolean trustedView) {
         this.status = Objects.requireNonNull(status, "status");
         if (items == null || items.isEmpty()) {
@@ -24,7 +24,7 @@ public final class TransportDeliveryPollResult {
     }
 
     public static TransportDeliveryPollResult of(TransportDeliveryPollStatus status,
-                                                 List<QueuedPulledDispatch> items) {
+                                                 List<DispatchRoutingItem> items) {
         Objects.requireNonNull(status, "status");
         return switch (status) {
             case DELIVERED -> delivered(items);
@@ -35,14 +35,14 @@ public final class TransportDeliveryPollResult {
         };
     }
 
-    public static TransportDeliveryPollResult delivered(List<QueuedPulledDispatch> items) {
+    public static TransportDeliveryPollResult delivered(List<DispatchRoutingItem> items) {
         if (items == null || items.isEmpty()) {
             throw new IllegalArgumentException("delivered poll result must include at least one item");
         }
         return new TransportDeliveryPollResult(TransportDeliveryPollStatus.DELIVERED, items);
     }
 
-    static TransportDeliveryPollResult deliveredView(List<QueuedPulledDispatch> items) {
+    static TransportDeliveryPollResult deliveredView(List<DispatchRoutingItem> items) {
         if (items == null || items.isEmpty()) {
             throw new IllegalArgumentException("delivered poll result must include at least one item");
         }
@@ -69,7 +69,7 @@ public final class TransportDeliveryPollResult {
         return status;
     }
 
-    public List<QueuedPulledDispatch> getItems() {
+    public List<DispatchRoutingItem> getItems() {
         return items;
     }
 }

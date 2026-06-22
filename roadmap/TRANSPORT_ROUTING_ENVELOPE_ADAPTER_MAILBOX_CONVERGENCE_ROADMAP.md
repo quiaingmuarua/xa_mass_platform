@@ -2,8 +2,9 @@
 
 Status: slice complete, roadmap active; embedded adapter-mailbox dispatch
 mainline and result `RoutingEnvelope` ingress are implemented and verified.
-Distributed worker delivery target evidence, dispatch carrier convergence, and
-external-adapter process phases remain.
+Distributed worker delivery target evidence and external-adapter process phases
+remain. Dispatch carrier convergence is superseded and implemented by
+`TRANSPORT_DISPATCH_ROUTING_ENVELOPE_CARRIER_CONVERGENCE_ROADMAP.md`.
 
 ## Summary
 
@@ -36,7 +37,7 @@ uses the selected worker plus a worker-runtime supplied adapter mailbox target:
 
 ```text
 dispatch:
-  target.ownerKind = adapter
+  target.ownerKind = adapter-mailbox
   target.ownerRef  = adapter mailbox key
   payload          = assignment-derived adapter dispatch payload
 
@@ -86,9 +87,9 @@ addressing as external routing contracts.
 ## Current Implementation State
 
 - Engine assignment still reaches transport through
-  `TaskDispatchDeliveryCommandSubmitter`; engine/base assignment remains
+  `TaskDispatchRoutingSubmitter`; engine/base assignment remains
   mailbox-free.
-- `TaskDispatchDeliveryCommandSubmitter` converts `TaskDispatchBinding` into
+- `TaskDispatchRoutingSubmitter` converts `TaskDispatchBinding` into
   `DeliveryCommand(...)`, then resolves the already selected worker through
   worker-runtime `WorkerDeliveryTargetView` to obtain an opaque
   `adapterMailboxKey`; the resolved evidence must still match the selected
@@ -407,7 +408,7 @@ result carrier and external-adapter follow-up inventory.
 Scope:
 
 - Inventory dispatch producers and consumers:
-  `TaskDispatchDeliveryCommandSubmitter`,
+  `TaskDispatchRoutingSubmitter`,
   `TransportAssignedDeliverySubmitter`,
   `TransportDeliveryCommandHandoff`,
   `AdapterMailboxMount`, adapter command executors, and polling pull buffers.
@@ -509,7 +510,7 @@ Acceptance:
   selected worker to `adapterMailboxKey`.
 - `TaskDispatchBinding` / engine assignment output does not grow
   `adapterMailboxKey` or raw endpoint/session fields.
-- `TaskDispatchDeliveryCommandSubmitter` or its successor does not call
+- `TaskDispatchRoutingSubmitter` or its successor does not call
   endpoint lease lookup, route-owner lookup, adapter registry lookup, or
   mailbox resolver APIs.
 - Missing, stale, or expired delivery target evidence is observable as

@@ -1,6 +1,5 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import org.junit.jupiter.api.Test;
@@ -12,9 +11,9 @@ class TransportDeliveryFailureEventCodecTest {
 
     @Test
     void encodesFailureSnapshotWithoutFullCommandOrPacketPayload() {
-        DeliveryCommand command = DeliveryCommandFixtures.command("msg-no-owner", "worker-1", null);
-        DispatchOutcome outcome = DispatchOutcome.fromCommand(
-                command,
+        DispatchRoutingItem item = DispatchRoutingFixtures.item("msg-no-owner", "worker-1");
+        DispatchOutcome outcome = DispatchOutcomeFactory.fromItem(
+                item,
                 DispatchOutcomeStatus.NO_ENDPOINT,
                 true,
                 "transport endpoint is unavailable after assignment"
@@ -34,9 +33,9 @@ class TransportDeliveryFailureEventCodecTest {
         assertFalse(json.contains("\"attemptId\""), json);
         assertFalse(json.contains("groupContext"), json);
         assertFalse(json.contains("itemSnapshot"), json);
-        assertEquals(command.getCommandId(), decoded.outcome().getDeliveryId());
+        assertEquals(item.deliveryId(), decoded.outcome().getDeliveryId());
         assertEquals("worker-1", decoded.outcome().getSelectedWorkerId());
-        assertEquals(command.getCorrelationRef(), decoded.outcome().getCorrelationRef());
+        assertEquals(item.correlationRef(), decoded.outcome().getCorrelationRef());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, decoded.outcome().getStatus());
         assertFalse(json.contains("transportNodeId"), json);
         assertFalse(json.contains("connectionId"), json);

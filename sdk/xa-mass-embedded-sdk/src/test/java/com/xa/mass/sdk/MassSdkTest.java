@@ -535,7 +535,7 @@ class MassSdkTest {
                 TransportRuntimeComposition.class
         );
 
-        assertCapturedNamespace(runtimeComposition, "deliveryCommandHandoffFactory", RedisTransportNamespaces.DELIVERY_COMMAND);
+        assertCapturedNamespace(runtimeComposition, "dispatchHandoffFactory", RedisTransportNamespaces.DISPATCH);
         assertCapturedNamespace(runtimeComposition, "taskResultInboxFactory", RedisTransportNamespaces.RESULT_INBOX);
         assertCapturedNamespace(runtimeComposition, "deliveryFailureInboxFactory", RedisTransportNamespaces.DELIVERY_FAILURE);
         assertCapturedNamespace(runtimeComposition, "endpointLeaseStoreFactory", RedisTransportNamespaces.ENDPOINT_LEASE);
@@ -3513,9 +3513,12 @@ class MassSdkTest {
 
         @Override
         public List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
-                List<com.xa.mass.transport.model.DeliveryCommand> commands) {
-            return commands == null ? List.of() : commands.stream()
-                    .map(com.xa.mass.transport.model.DispatchOutcome::delivered)
+                List<com.xa.mass.transport.runtime.delivery.DispatchRoutingItem> items) {
+            return items == null ? List.of() : items.stream()
+                    .map(item -> com.xa.mass.transport.model.DispatchOutcome.delivered(
+                            item.deliveryId(),
+                            item.selectedWorkerId(),
+                            item.correlationRef()))
                     .toList();
         }
     }
@@ -3636,7 +3639,7 @@ class MassSdkTest {
         @Override
         public com.xa.mass.transport.model.DispatchOutcome enqueue(
                 String adapterMailboxKey,
-                com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch item) {
+                com.xa.mass.transport.runtime.delivery.DispatchRoutingItem item) {
             return com.xa.mass.transport.model.DispatchOutcome.queued(
                     item != null ? item.deliveryId() : null,
                     item != null ? item.selectedWorkerId() : null,
@@ -3645,9 +3648,9 @@ class MassSdkTest {
         }
 
         @Override
-        public List<com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch> drain(String adapterMailboxKey,
-                                                                                       String selectedWorkerId,
-                                                                                       int maxItems) {
+        public List<com.xa.mass.transport.runtime.delivery.DispatchRoutingItem> drain(String adapterMailboxKey,
+                                                                                      String selectedWorkerId,
+                                                                                      int maxItems) {
             return List.of();
         }
 

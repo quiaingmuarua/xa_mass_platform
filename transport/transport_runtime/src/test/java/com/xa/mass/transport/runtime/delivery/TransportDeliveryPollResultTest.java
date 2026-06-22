@@ -30,13 +30,14 @@ class TransportDeliveryPollResultTest {
         assertEquals(List.of(), result.getItems());
     }
 
-    private static QueuedPulledDispatch item(String messageId, String workerId) {
+    private static DispatchRoutingItem item(String messageId, String workerId) {
         String deliveryId = "delivery-" + messageId;
-        return new QueuedPulledDispatch(
+        return new DispatchRoutingItem(
                 deliveryId,
                 workerId,
                 "{\"messageId\":\"" + messageId + "\"}",
                 "corr-" + messageId,
+                0L,
                 1L
         );
     }

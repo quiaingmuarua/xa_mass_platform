@@ -1,7 +1,8 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
 import org.slf4j.Logger;
@@ -26,33 +27,33 @@ public final class WebSocketTaskDispatchChannel implements AdapterCommandExecuto
     }
 
     @Override
-    public List<DispatchOutcome> dispatch(List<DeliveryCommand> commands) {
-        if (commands == null || commands.isEmpty()) {
+    public List<DispatchOutcome> dispatch(List<DispatchRoutingItem> items) {
+        if (items == null || items.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = new ArrayList<>(commands.size());
-        for (DeliveryCommand command : commands) {
-            outcomes.add(dispatchOne(command));
+        List<DispatchOutcome> outcomes = new ArrayList<>(items.size());
+        for (DispatchRoutingItem item : items) {
+            outcomes.add(dispatchOne(item));
         }
         return Collections.unmodifiableList(outcomes);
     }
 
-    private DispatchOutcome dispatchOne(DeliveryCommand command) {
-        if (command == null) {
-            return DispatchOutcome.invalid((DeliveryCommand) null, "request must not be null");
+    private DispatchOutcome dispatchOne(DispatchRoutingItem item) {
+        if (item == null) {
+            return DispatchOutcome.invalid(null, null, null, "request must not be null");
         }
         try {
-            boolean sent = sessionController.sendTextToWorker(command.getSelectedWorkerId(), command.getPayload());
+            boolean sent = sessionController.sendTextToWorker(item.selectedWorkerId(), item.payload());
             if (sent) {
-                return DispatchOutcome.delivered(command);
+                return DispatchOutcomeFactory.delivered(item);
             }
             logger.warn("WebSocket outbound skipped because endpoint is unavailable: selectedWorkerId={}, traceId={}",
-                    command.getSelectedWorkerId(), null);
-            return DispatchOutcome.noEndpoint(command, "endpoint is unavailable");
+                    item.selectedWorkerId(), null);
+            return DispatchOutcomeFactory.noEndpoint(item, "endpoint is unavailable");
         } catch (RuntimeException e) {
             logger.warn("WebSocket outbound failed: selectedWorkerId={}, reason={}",
-                    command.getSelectedWorkerId(), e.getMessage());
-            return DispatchOutcome.failed(command, e.getMessage(), true);
+                    item.selectedWorkerId(), e.getMessage());
+            return DispatchOutcomeFactory.failed(item, e.getMessage(), true);
         }
     }
 }

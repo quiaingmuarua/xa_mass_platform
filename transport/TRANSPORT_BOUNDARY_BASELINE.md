@@ -55,7 +55,7 @@ must stay in embedded adapter support rather than transport-neutral APIs.
 
 Transport should stay centered on these concepts only:
 
-- `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`: embedded Java
+- `AdapterCommandExecutor.dispatch(List<DispatchRoutingItem>)`: embedded Java
   adapter command execution callback returning `DispatchOutcome`. The executor
   owns only the local final-hop attempt and lives with runtime embedded adapter
   support, not in `transport_api`. Adapter id, transport hint, protocol label,
@@ -86,7 +86,7 @@ Transport should stay centered on these concepts only:
   lease projection, worker scheduling, concrete protocol state, adapter health,
   restart, migration, or mailbox placement policy.
 - `PollingDeliveryExecutor`: polling adapter command executor. It owns only
-  `DeliveryCommand` enqueue into the polling delivery buffer and dispatch
+  `DispatchRoutingItem` enqueue into the polling delivery buffer and dispatch
   outcome normalization/logging. It must not own pull polling, endpoint lease
   projection, worker-presence projection, or mailbox consumer availability.
 - `PollingDeliveryPullChannel`: polling adapter pull-channel implementation. It
@@ -114,20 +114,21 @@ Transport should stay centered on these concepts only:
   retryability, reason, and time. It must not expose adapter id, delivery queue
   key, route key, connection id, endpoint lease evidence, or task-shaped
   message/attempt fields.
-- `DeliveryCommand`: assigned-item delivery intent. It carries item identity,
-  `deliveryBucketId`, `selectedWorkerId`, an opaque worker payload, opaque
-  delivery correlation, deadline, and creation timestamp. Task shell metadata,
-  adapter, lane, target node, endpoint lease, connection, session, packet, and
-  structured task payload facts are not command fields.
-- `DeliveryCommandBatch`: consumer-local handoff record for one adapter
-  mailbox. It carries `adapterMailboxKey`, handoff-owned command references
-  when the backing store needs ack, and minimal `DeliveryCommand` items. It does
-  not carry delivery bucket, lane, target node, route, connection, or lease
-  facts.
-- `QueuedPulledDispatch`: current polling queue value and pull DTO source. It
-  carries delivery id, selected worker, payload, correlation, and timing only;
-  it does not serialize packets, routeKey, endpoint evidence, deliveryQueueKey,
-  taskName, project, userId, or task payload fields as transport-owned facts.
+- `DispatchRoutingItem`: assigned-item delivery carrier inside an
+  adapter-mailbox dispatch batch. It carries delivery id, `selectedWorkerId`,
+  opaque worker payload, opaque delivery correlation, deadline, and creation
+  timestamp. Task shell metadata, delivery bucket, adapter, lane, target node,
+  endpoint lease, connection, session, packet, and structured task payload
+  facts are not item fields.
+- `DispatchRoutingBatch`: producer/serialized dispatch handoff record for one
+  adapter mailbox. It carries `RoutingTarget(adapter-mailbox,<mailbox>)` and
+  flat `DispatchRoutingItem` values. `ClaimedDispatchRoutingBatch` adds
+  handoff-owned references when the backing store needs ack; those references
+  are not producer fields or serialized queue values.
+- Polling delivery store values use `DispatchRoutingItem` directly and project
+  to `PulledDeliveryMessage` only at the pull API boundary. They do not
+  serialize packets, routeKey, endpoint evidence, deliveryQueueKey, taskName,
+  project, userId, or task payload fields as transport-owned facts.
 - `TransportDeliveryStore`: runtime-owned queueing/drain/poll seam for transport
   delivery. Assigned polling pull delivery uses the worker id supplied by the
   poll request as the drain constraint, with routeKey kept as opaque
@@ -138,9 +139,9 @@ Transport should stay centered on these concepts only:
 - `TransportResultIngressChannel` / `TransportResultIngressHandler` /
   `TransportResultIngressOutcome`: result ingress producer/consumer seams and
   ackability outcome used by local buffers and Redis inbox pumps.
-- `TransportDeliveryCommandHandoff`: post-claim delivery queue between
+- `TransportDispatchHandoff`: post-claim dispatch queue between
   engine/starter assembly and transport. Producers offer
-  `AdapterMailboxDeliveryOffer(adapterMailboxKey, commands)` after
+  `DispatchRoutingBatch(target=adapter-mailbox:<key>, items)` after
   worker-runtime delivery target evidence resolves the already selected worker
   to an adapter mailbox. Handoff implementations own mailbox consumer
   availability evidence, mailbox ready references, mailbox inflight references,
@@ -148,11 +149,11 @@ Transport should stay centered on these concepts only:
   is finite runtime proof refreshed by embedded host support; it is not an
   eternal process claim and not adapter lifecycle truth.
 - `AdapterMailboxMount`: embedded host-support drain owner for one adapter
-  mailbox. It polls `TransportDeliveryCommandHandoff` by `adapterMailboxKey`,
+  mailbox. It polls `TransportDispatchHandoff` by `adapterMailboxKey`,
   invokes the local binding's `AdapterCommandExecutor`, emits retryable
   delivery failure evidence, and completes the handoff batch only after local
   outcome handling succeeds. There is no production global
-  delivery-command pump/listener owner.
+  dispatch pump/listener owner.
 - `DeliveryPullResult`: explicit transport pull-path status plus delivered
   `PulledDeliveryMessage` items. SDK/server worker polling projects those
   messages into `WorkerInvocation` and `WorkerPollResult`; task-shaped pull DTOs
@@ -165,7 +166,7 @@ Transport should stay centered on these concepts only:
   bucket from adapterId, routeKey, connection/session id, or worker id.
 - `TransportEndpointLeaseView`: narrow diagnostic read surface for current
   `deliveryBucketId + workerId` endpoint metadata. General view records do not
-  expose lease deadlines; endpoint lease stores do not own delivery-command
+  expose lease deadlines; endpoint lease stores do not own dispatch
   handoff consumer leases.
 - `WorkerPresenceIngress`: transport-neutral ingress seam for worker session
   connect/disconnect/heartbeat observations. It is not an endpoint lease
@@ -245,17 +246,16 @@ hot-path recovery logic.
 - result ingress envelope queueing, buffering, and runtime logging; result
   payload decoding, correlation, and lease/attempt validation live in
   SDK/starter or engine-owned result code
-- core delivery-command handoff claim/ack semantics. Current embedded assembly
-  drains delivery commands through mailbox-scoped embedded adapter host mounts,
-  not a starter-owned global pump/listener. `AdapterMailboxMount` owns the
-  handoff poll/dispatch/ack loop for one command-delivery binding.
-- engine-to-transport delivery-command handoff queue/store ownership after
-  assignment; current embedded default wiring is an in-memory
-  `TransportDeliveryCommandHandoff`, while split runtimes use Redis
-  delivery-command adapter-mailbox queues plus mailbox consumer availability
-  evidence
+- core dispatch handoff claim/ack semantics. Current embedded assembly drains
+  flat dispatch batches through mailbox-scoped embedded adapter host mounts, not
+  a starter-owned global pump/listener. `AdapterMailboxMount` owns the handoff
+  poll/dispatch/ack loop for one adapter-mailbox binding.
+- engine-to-transport dispatch handoff queue/store ownership after assignment;
+  current embedded default wiring is an in-memory `TransportDispatchHandoff`,
+  while split runtimes use Redis adapter-mailbox dispatch queues plus mailbox
+  consumer availability evidence
 - producer-side starter assembly translates immutable `TaskDispatchContext +
-  TaskDispatchBinding` assignment facts into minimal `DeliveryCommand` values.
+  TaskDispatchBinding` assignment facts into flat `DispatchRoutingItem` values.
   The binding-level worker-group context remains `deliveryBucketId`, and
   binding-level `workerId` becomes `selectedWorkerId`, the engine-selected
   execution constraint. Starter owns worker-payload encoding and opaque
@@ -302,7 +302,7 @@ stale evidence is a retryable delivery-failure input, not permission to reselect
 workers or mark workers offline. Shared-store implementations such as Redis
 must preserve the same endpoint lease semantics as the in-memory default. Only
 one current endpoint lease may own a given `(deliveryBucketId, workerId)` pair;
-delivery-command handoff consumer evidence decides which local consumer may
+dispatch handoff consumer availability decides which local consumer may
 drain one adapter mailbox.
 SDK/operator worker inspection must not read endpoint lease projections;
 it reads worker runtime lifecycle state. Engine and SDK inspection must not
@@ -385,19 +385,18 @@ plane owner.
 
 The split runtime uses three transport/runtime channels:
 
-- dispatch handoff: engine/starter assembly submits delivery-command batches
+- dispatch handoff: engine/starter assembly submits flat dispatch batches
   after claim, attempt creation, lease, and worker binding have already
   happened; transport drains only this small assigned window. Delivery
   integration resolves the already selected worker to an opaque
   `adapterMailboxKey` through worker-runtime delivery target evidence and
-  submits `AdapterMailboxDeliveryOffer(adapterMailboxKey, commands)`.
-  Multi-process adapter mode stores commands under that mailbox queue and wakes
+  submits `DispatchRoutingBatch(target=adapter-mailbox:<key>, items)`.
+  Multi-process adapter mode stores flat items under that mailbox queue and wakes
   only the mailbox consumer with current availability proof.
-  `DeliveryCommandBatch` at the consumer boundary carries a mailbox key,
-  optional handoff references, and materialized commands; it does not carry
-  lane or target-node facts. Redis dispatch queue ownership is not routeKey
-  cardinality.
-- delivery inbox: polling transport routes `QueuedPulledDispatch` values into
+  `ClaimedDispatchRoutingBatch` at the consumer boundary carries the flat batch
+  plus handoff references; it does not carry lane or target-node facts. Redis
+  dispatch queue ownership is not routeKey cardinality.
+- delivery inbox: polling transport routes `DispatchRoutingItem` values into
   `TransportDeliveryStore` by adapter mailbox plus the engine-selected
   `selectedWorkerId`. The mailbox key is supplied by queue/store context, not
   repeated in every value. `routeKey` remains opaque endpoint/result metadata
@@ -417,15 +416,15 @@ durable task lifecycle truth. `TaskWorkRuntime` remains the only owner of ready
 membership, delayed visibility, active lease, retry timing, result application,
 and terminal convergence.
 
-`DeliveryCommandBatch` is a consumer-local handoff payload. It contains only
-the adapter mailbox key, handoff-owned command references when the backing store
-needs ack, and minimal delivery commands. The Redis/process-boundary codec
-serializes mailbox facts once; per-command records must not repeat
-`adapterId`, `deliveryQueueKey`, `targetTransportNodeId`, `routeKey`,
-`connectionId`, or `connectionToken`, and must not wrap another encoded
-task-dispatch batch string such as `taskBatchJson`. Large item bodies continue
-to use `payloadRef` when needed; the handoff queue is not a copy of a
-million-item task queue.
+`DispatchRoutingBatch` is the producer and process-boundary handoff payload.
+It contains one adapter-mailbox `RoutingTarget` and flat `DispatchRoutingItem`
+values. `ClaimedDispatchRoutingBatch` adds handoff-owned references when the
+backing store needs ack. The Redis/process-boundary codec serializes mailbox
+facts once; per-item records must not repeat `adapterId`, `deliveryQueueKey`,
+`deliveryBucketId`, `targetTransportNodeId`, `routeKey`, `connectionId`, or
+`connectionToken`, and must not wrap another encoded task-dispatch batch string
+such as `taskBatchJson`. Large item bodies continue to use `payloadRef` when
+needed; the handoff queue is not a copy of a million-item task queue.
 
 Worker runtime state is not a queue. Transport endpoint lease state contains
 current endpoint metadata for a concrete delivery bucket and worker:
@@ -439,7 +438,7 @@ Engine matching still selects a worker from control-plane registration,
 capability, rule, lock, admission, and worker-runtime evidence. Only after
 assignment has produced a concrete selected worker does delivery integration
 resolve `selectedWorkerId -> adapterMailboxKey` from worker-runtime evidence and
-submit commands to the adapter-mailbox delivery-command queue. Mailbox consumer
+submit flat dispatch items to the adapter-mailbox dispatch queue. Mailbox consumer
 wakeup is owned by the handoff through finite mailbox availability evidence;
 adapter/session connection handles stay inside adapter-owned endpoint
 registries. Missing or expired mailbox availability goes through engine-owned
@@ -447,15 +446,15 @@ compensation/retry; transport does not re-schedule or mutate task lifecycle.
 
 SDK/starter assembly exposes three runtime roles:
 
-- `EMBEDDED`: engine, local delivery-command handoff, transport runtime,
+- `EMBEDDED`: engine, local dispatch handoff, transport runtime,
   embedded adapter host set, adapters, and local result ingest run in one JVM.
   Command drain runs through adapter mailbox host mounts, not a starter-owned
   global pump.
-- `ENGINE_PRODUCER`: engine runs and submits delivery-command batches into the
+- `ENGINE_PRODUCER`: engine runs and submits flat dispatch batches into the
   configured handoff; it drains result and delivery-failure inboxes back into
   local engine ports, but does not start transport adapters
 - `TRANSPORT_CONSUMER`: transport adapters, endpoint lease store, delivery
-  store, embedded adapter host set, and delivery-command handoff consumers run
+  store, embedded adapter host set, and dispatch handoff consumers run
   without starting the engine; results and retryable delivery failures are
   enqueued for engine-side draining. Command drain runs through adapter mailbox
   host mounts.
@@ -487,7 +486,7 @@ Endpoint lease semantics are also part of the transport contract:
   in the bucket; stale heartbeat or disconnect events from an older lease must
   never revoke a newer active endpoint after reconnect or endpoint takeover.
 - `claimEndpointLease(...)` replaces the current endpoint lease for exactly
-  one `deliveryBucketId + workerId` pair. It does not claim delivery-command
+  one `deliveryBucketId + workerId` pair. It does not claim dispatch
   handoff consumer evidence.
 - `refreshEndpointLease(...)` extends only the matching current endpoint lease.
 - `releaseEndpointLease(...)` removes only the matching current endpoint lease;
@@ -506,7 +505,7 @@ default component namespaces are:
 | --- | --- | --- |
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` | `bucket:<encodedDeliveryBucketId>:workers`, `bucket:<encodedDeliveryBucketId>:deadlines` |
 | delivery | `xa:mass:transport:delivery:v1` | `q:<encodedAdapterMailboxKey>`, `meta:<encodedAdapterMailboxKey>`, `queues`, `stats` |
-| delivery-command | `xa:mass:transport:delivery-command:v1` | `mailbox:<encodedAdapterMailboxKey>:commands`, `mailbox:<encodedAdapterMailboxKey>:command-retention-deadlines`, `mailbox:<encodedAdapterMailboxKey>:ready-commands`, `mailbox:<encodedAdapterMailboxKey>:inflight-commands`, `mailbox-consumers`, `mailbox-consumer-deadlines`, `queues` |
+| dispatch | `xa:mass:transport:dispatch:v1` | `mailbox:<encodedAdapterMailboxKey>:commands`, `mailbox:<encodedAdapterMailboxKey>:command-retention-deadlines`, `mailbox:<encodedAdapterMailboxKey>:ready-commands`, `mailbox:<encodedAdapterMailboxKey>:inflight-commands`, `mailbox-consumers`, `mailbox-consumer-deadlines`, `queues` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
 
@@ -537,11 +536,12 @@ derive scheduling/admission truth in its Redis keyspace.
 
 ## Model Boundaries
 
-`DeliveryCommand` is the internal assigned-delivery item. It is not a full
+`DispatchRoutingItem` is the internal assigned-dispatch item. It is not a full
 transport route, a worker API response, a task item read model, or a packet
-envelope. Its stable target fields are command id, delivery bucket id, selected
-worker id, opaque worker payload, opaque delivery correlation, item deadline,
-and creation timestamp.
+envelope. Its stable fields are delivery id, selected worker id, opaque worker
+payload, opaque delivery correlation, item deadline, and creation timestamp.
+The adapter mailbox is carried once by `DispatchRoutingBatch.target`, not by
+each item.
 
 `TaskDispatchContent` and `TaskDispatchExecutionContext` have been removed
 from the transport API. Do not recreate them as compatibility aliases, wrapper
@@ -549,29 +549,29 @@ payloads, or protected transport models.
 
 `TaskDispatchContext` is no longer a transport runtime handoff object.
 SDK/starter assembly consumes the task-level dispatch snapshot plus concrete
-`TaskDispatchBinding` values and translates them into minimal
-`DeliveryCommand` items carrying upstream delivery bucket context and the
-engine-selected worker constraint.
-Transport runtime consumes delivery commands and resolved batches only.
+`TaskDispatchBinding` values, resolves worker-runtime delivery target evidence,
+and translates the already selected worker into flat `DispatchRoutingItem`
+values inside an adapter-mailbox `DispatchRoutingBatch`.
+Transport runtime consumes dispatch batches and flat items only.
 
 `PulledDeliveryMessage` is the transport-core pull value. SDK/server worker
 polling projects it into `WorkerInvocation`, not into a task-shaped transport
-DTO. `WorkerInvocation` is not the internal delivery-command handoff payload
+DTO. `WorkerInvocation` is not the internal dispatch handoff payload
 and not a transport metadata carrier. Worker identity comes from the poll
 session/path, and route/session/endpoint facts stay inside transport delivery.
 WebSocket/socket worker frames are final-hop wire projections from the opaque
 payload and selected-worker endpoint evidence. Task shell metadata such as task
-name, project, and user id must not be copied into `DeliveryCommand`, transport
+name, project, and user id must not be copied into `DispatchRoutingItem`, transport
 pull results, or handoff codecs as parallel truth.
 
 `TransportPacket` remains limited packet codec support for worker-system-event
-and legacy packet-shaped frames. It is not the task-dispatch command carrier
+and legacy packet-shaped frames. It is not the task-dispatch carrier
 and is not the result-ingress mainline carrier. Result ingress uses
 `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)`; starter-owned
 code decodes the opaque payload. Task-dispatch wire frames are assembled at
-final-hop delivery from `DeliveryCommand`. Starter-side command construction
-must not create a packet-backed delivery command. The delivery-command handoff
-codec and polling queue codec must not serialize a generic task-dispatch
+final-hop delivery from `DispatchRoutingItem`. Starter-side dispatch
+construction must not create a packet-backed dispatch item. The dispatch
+handoff codec and polling queue codec must not serialize a generic task-dispatch
 `TransportPacket` as the item payload.
 
 `TransportPacket.payload` is a JSON object boundary, not an arbitrary JVM
@@ -669,8 +669,8 @@ Current runtime rules:
   protocol uses routeKey as the endpoint address. Push assigned delivery must
   not require routeKey when selected-worker session addressing is available.
   Queued polling delivery must not rely on routeKey as the only isolation key.
-- assigned delivery-command handoff queues are addressed by `adapterMailboxKey`.
-  Each queued command carries `selectedWorkerId`; the adapter dispatcher demuxes
+- assigned dispatch handoff queues are addressed by `adapterMailboxKey`.
+  Each queued item carries `selectedWorkerId`; the adapter dispatcher demuxes
   by that field and uses adapter-local session state before final-hop delivery.
   `selectedWorkerId` is not a second physical queue address.
 - for assigned task delivery, `selectedWorkerId` is the worker correctness
@@ -703,10 +703,10 @@ WRB convergence note:
 - Redis-backed endpoint lease state uses bucket-local worker metadata plus
   bucket-local deadline indexes. It does not expose route-key owner scans or
   producer-side dispatch lookup.
-- Assigned delivery-command handoff queues are adapter-mailbox scoped. Adapter
+- Assigned dispatch handoff queues are adapter-mailbox scoped. Adapter
   or route changes must not make routeKey the worker correctness key;
   wrong-worker prevention comes from the `selectedWorkerId` carried by each
-  command and the adapter-local final-hop session lookup.
+  item and the adapter-local final-hop session lookup.
 - `adapterId` and connection/session handles remain transport-internal
   endpoint/session evidence. They must stay in endpoint/session values or queue
   metadata, not become the route-key minting rule.
@@ -741,19 +741,19 @@ attempts. Storage implementations should provide bounded lookups for:
 (taskId, messageId) -> latest-attempt compatibility residue view
 ```
 
-Dispatch is also a hot path. Delivery-command handoff queues store
-bucket-scoped command payloads plus handoff-owned command references. They
+Dispatch is also a hot path. Dispatch handoff queues store
+mailbox-targeted flat item batches plus handoff-owned claim references. They
 must not deep-copy worker pull DTOs, endpoint leases, or generic task-dispatch
 `TransportPacket` payloads as the handoff item shape. Adapter delivery receives
-`DeliveryCommand` with selected-worker opaque payload; concrete push adapters
+`DispatchRoutingItem` with selected-worker opaque payload; concrete push adapters
 use the selected worker id as their single local final-hop lookup key, while
-polling queue delivery should converge to opaque pulled delivery messages.
+polling queue delivery projects directly to opaque pulled delivery messages.
 Retryable dispatch outcomes must carry delivery id,
 `selectedWorkerId`, opaque correlation, status, retryability, reason, and time;
 transport trace ids are diagnostics and must not double as compensation keys.
 
 Assignment-to-transport handoff is also part of the hot path. Embedded and
-split runtime both use adapter-mailbox `TransportDeliveryCommandHandoff`
+split runtime both use adapter-mailbox `TransportDispatchHandoff`
 contracts: producers offer to an `adapterMailboxKey`, and embedded adapter
 hosts mount mailbox-scoped drains that poll only their mailbox. Producer
 handoff is a bounded offer that returns delivery outcomes such as backpressure,
@@ -762,19 +762,19 @@ engine->transport callback coupling as a parallel mainline, do not treat any
 handoff queue as a second runtime ready queue, and do not treat transport as a
 retry, reassign, compensation, attempt-timeout, or final-recovery owner.
 Transport owns only delivery-executor consistency and observable delivery
-attempt failure. Accepted commands are not claimed by the wrong consumer, ready
+attempt failure. Accepted items are not claimed by the wrong consumer, ready
 refs enter inflight before materialization, `complete` acks local handoff state,
 and final-hop execution returns delivery outcome or failure evidence. Transport
 must not actively discard a known failed offer, unavailable mailbox, missing
 endpoint, invalid dispatch item, or adapter final-hop failure without returning
-a `DispatchOutcome` or publishing retryable delivery failure evidence. Once a
-command has been accepted into the transport attempt path, lack of later worker
+a `DispatchOutcome` or publishing retryable delivery failure evidence. Once an
+item has been accepted into the transport attempt path, lack of later worker
 consumption, process completion, or task result is not a transport retry loop;
 engine-owned task attempt timeout, retry, reassign, and compensation remain the
 fallback.
 
-Runtime delivery stores must enforce explicit admission control. Delivery-
-command handoff stores use adapter-mailbox queue admission plus local claim/ack
+Runtime delivery stores must enforce explicit admission control. Dispatch
+handoff stores use adapter-mailbox queue admission plus local claim/ack
 consistency; polling pull stores may keep selected-worker indexes as adapter
 pull implementation details, but those indexes are not the engine-to-transport
 handoff address.
@@ -815,7 +815,7 @@ diagnostic counter shape of the current in-memory store.
 Queue mechanics such as keyed FIFO storage, blocking poll coordination,
 per-key/global admission, and queue snapshot counters may live under
 `platform_infra` so long as transport semantics remain owned by
-`TransportDeliveryStore`, `QueuedPulledDispatch`, and `DispatchOutcome`.
+`TransportDeliveryStore`, `DispatchRoutingItem`, and `DispatchOutcome`.
 Embedded runtime composition may choose between the default in-memory delivery
 store and a Redis-backed transport delivery store, but that selection belongs
 to SDK/starter assembly rather than transport-facing adapter contracts.

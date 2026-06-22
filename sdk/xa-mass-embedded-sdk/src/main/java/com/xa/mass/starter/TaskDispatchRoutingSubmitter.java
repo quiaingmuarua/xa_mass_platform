@@ -3,10 +3,11 @@ package com.xa.mass.starter;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxDeliveryCommand;
+import com.xa.mass.transport.routing.RoutingTarget;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingBatch;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
@@ -16,17 +17,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
  * Starter-owned translator from engine assignment bindings to transport
- * delivery commands.
+ * dispatch routing batches.
  */
-final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchListener {
+final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
 
-    private static final Logger logger = LoggerFactory.getLogger(TaskDispatchDeliveryCommandSubmitter.class);
+    private static final Logger logger = LoggerFactory.getLogger(TaskDispatchRoutingSubmitter.class);
 
     private final TransportAssignedDeliverySubmitter assignedDeliverySubmitter;
     private final TransportDeliveryFailureHandler failureHandler;
@@ -34,9 +37,9 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
     private final TaskDispatchPayloadEncoder payloadEncoder = new TaskDispatchPayloadEncoder();
     private final TaskDispatchDeliveryCorrelationCodec correlationCodec = new TaskDispatchDeliveryCorrelationCodec();
 
-    TaskDispatchDeliveryCommandSubmitter(TransportAssignedDeliverySubmitter assignedDeliverySubmitter,
-                                         TransportDeliveryFailureHandler failureHandler,
-                                         WorkerDeliveryTargetView deliveryTargetView) {
+    TaskDispatchRoutingSubmitter(TransportAssignedDeliverySubmitter assignedDeliverySubmitter,
+                                  TransportDeliveryFailureHandler failureHandler,
+                                  WorkerDeliveryTargetView deliveryTargetView) {
         this.assignedDeliverySubmitter = Objects.requireNonNull(assignedDeliverySubmitter, "assignedDeliverySubmitter");
         this.failureHandler = failureHandler;
         this.deliveryTargetView = deliveryTargetView != null
@@ -49,48 +52,50 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
         if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
             return;
         }
-        List<AdapterMailboxDeliveryCommand> commands = new ArrayList<>();
+        Map<String, List<DispatchRoutingItem>> itemsByMailbox = new LinkedHashMap<>();
         List<TaskDispatchBinding> invalidBindings = new ArrayList<>();
         for (TaskDispatchBinding binding : dispatchBindings) {
             if (binding == null) {
                 continue;
             }
-            String deliveryBucketId = normalize(binding.workerGroupId());
             String selectedWorkerId = normalize(binding.workerId());
-            if (deliveryBucketId == null || selectedWorkerId == null) {
+            if (selectedWorkerId == null) {
                 invalidBindings.add(binding);
                 continue;
             }
-            DeliveryCommand command = toCommand(task, binding, deliveryBucketId, selectedWorkerId);
+            DispatchRoutingItem item = toItem(task, binding, selectedWorkerId);
             SelectedWorkerDeliveryTargetEvidence target = deliveryTargetView
                     .resolveDeliveryTarget(selectedWorkerId)
                     .orElse(null);
             if (target == null || !target.isDeliverable(System.currentTimeMillis())) {
-                compensateDeliveryTargetFailure(command, "selected worker has no current adapter mailbox target");
+                compensateDeliveryTargetFailure(item, "selected worker has no current adapter mailbox target");
                 continue;
             }
             if (!selectedWorkerId.equals(target.workerId())) {
-                compensateDeliveryTargetFailure(command, "selected worker delivery target does not match assignment worker");
+                compensateDeliveryTargetFailure(item, "selected worker delivery target does not match assignment worker");
                 continue;
             }
-            commands.add(new AdapterMailboxDeliveryCommand(target.adapterMailboxKey(), command));
+            itemsByMailbox.computeIfAbsent(target.adapterMailboxKey(), ignored -> new ArrayList<>()).add(item);
         }
 
         compensateInvalidBindings(task, invalidBindings, "delivery command translation failed before transport handoff");
-        if (commands.isEmpty()) {
+        if (itemsByMailbox.isEmpty()) {
             return;
         }
-        assignedDeliverySubmitter.submit(commands);
+        List<DispatchRoutingBatch> batches = itemsByMailbox.entrySet().stream()
+                .map(entry -> new DispatchRoutingBatch(
+                        RoutingTarget.adapterMailbox(entry.getKey()),
+                        entry.getValue()))
+                .toList();
+        assignedDeliverySubmitter.submit(batches);
     }
 
-    private DeliveryCommand toCommand(TaskDispatchContext task,
-                                      TaskDispatchBinding binding,
-                                      String deliveryBucketId,
-                                      String selectedWorkerId) {
+    private DispatchRoutingItem toItem(TaskDispatchContext task,
+                                       TaskDispatchBinding binding,
+                                       String selectedWorkerId) {
         String correlationRef = correlationCodec.encode(task, binding);
-        return new DeliveryCommand(
+        return new DispatchRoutingItem(
                 UUID.randomUUID().toString(),
-                deliveryBucketId,
                 selectedWorkerId,
                 payloadEncoder.encode(task, binding, correlationRef),
                 correlationRef,
@@ -128,20 +133,23 @@ final class TaskDispatchDeliveryCommandSubmitter implements TaskDispatchBatchLis
         }
     }
 
-    private void compensateDeliveryTargetFailure(DeliveryCommand command, String detail) {
-        if (command == null) {
+    private void compensateDeliveryTargetFailure(DispatchRoutingItem item, String detail) {
+        if (item == null) {
             return;
         }
         if (failureHandler == null) {
             logger.warn("Cannot compensate delivery target failure because no failure handler is configured: deliveryId={}, selectedWorkerId={}, detail={}",
-                    command.getCommandId(), command.getSelectedWorkerId(), detail);
+                    item.deliveryId(), item.selectedWorkerId(), detail);
             return;
         }
-        DispatchOutcome outcome = DispatchOutcome.fromCommand(
-                command,
+        DispatchOutcome outcome = new DispatchOutcome(
+                item.deliveryId(),
+                item.selectedWorkerId(),
+                item.correlationRef(),
                 DispatchOutcomeStatus.NO_ENDPOINT,
                 true,
-                detail
+                detail,
+                System.currentTimeMillis()
         );
         boolean handled = failureHandler.handle(new TransportDeliveryFailureEvent(outcome, detail));
         if (!handled) {

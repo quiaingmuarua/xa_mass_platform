@@ -34,7 +34,7 @@ import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.BufferedTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.TransportResultIngressInboxPump;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
@@ -90,7 +90,7 @@ public class MassApplication {
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportEndpointLeaseStore endpointLeaseStore;
     private TransportDeliveryService transportDeliveryService;
-    private TransportDeliveryCommandHandoff transportDeliveryCommandHandoff;
+    private TransportDispatchHandoff transportDispatchHandoff;
     private EmbeddedAdapterHostSet embeddedAdapterHostSet = EmbeddedAdapterHostSet.empty();
     private RedisTransportResultIngressChannel taskResultInbox;
     private TransportResultIngressInboxPump taskResultInboxPump;
@@ -150,7 +150,7 @@ public class MassApplication {
                 stopEmbeddedAdapterHostSet();
                 TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
                 if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                    stopTaskDispatchHandoff();
+                    stopDispatchHandoff();
                     stopDistributedTransportInboxes();
                 } else if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
                     stopDistributedTransportInboxes();
@@ -161,7 +161,7 @@ public class MassApplication {
                     engine.stop();
                 }
             } finally {
-                stopTaskDispatchHandoff();
+                stopDispatchHandoff();
                 closeDistributedTransportInboxes();
                 stopTransportDeliveryService();
                 stopEndpointLeaseStore();
@@ -188,7 +188,7 @@ public class MassApplication {
         }
         try {
             stopEmbeddedAdapterHostSet();
-            stopTaskDispatchHandoff();
+            stopDispatchHandoff();
             stopDistributedTransportInboxes();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
@@ -256,10 +256,10 @@ public class MassApplication {
             TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
             validateWorkerDeliveryTargetViewConfiguration(runtimeRole);
             AdapterMailboxConsumerRegistry mailboxConsumerRegistry = NoopAdapterMailboxConsumerRegistry.INSTANCE;
-            if (requiresTaskDispatchHandoff(runtimeRole)) {
-                transportDeliveryCommandHandoff =
-                        transportRuntimeComposition.resolveTransportDeliveryCommandHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
-                if (transportDeliveryCommandHandoff instanceof AdapterMailboxConsumerRegistry registry) {
+            if (requiresDispatchHandoff(runtimeRole)) {
+                transportDispatchHandoff =
+                        transportRuntimeComposition.resolveTransportDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
+                if (transportDispatchHandoff instanceof AdapterMailboxConsumerRegistry registry) {
                     mailboxConsumerRegistry = registry;
                 }
             }
@@ -333,7 +333,7 @@ public class MassApplication {
                 );
                 embeddedAdapterHostSet = EmbeddedAdapterHostSet.fromContributions(
                         adapterContributions,
-                        transportDeliveryCommandHandoff,
+                        transportDispatchHandoff,
                         adapterHostFailureHandler,
                         mailboxConsumerRegistry,
                         transportRuntimeComposition.getAdapterMailboxConsumerAvailabilityMillis(),
@@ -342,12 +342,12 @@ public class MassApplication {
                 configureRealtimeWorkerCommandDelivery();
             }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                taskDispatchListener = createDispatchSubmitter(transportDeliveryCommandHandoff);
+                taskDispatchListener = createDispatchSubmitter(transportDispatchHandoff);
             }
             return taskDispatchListener;
         } catch (Exception e) {
             try {
-                stopTaskDispatchHandoff();
+                stopDispatchHandoff();
                 stopDistributedTransportInboxes();
                 stopTransportDeliveryService();
                 stopTransportRuntimeTaskExecutor();
@@ -394,7 +394,7 @@ public class MassApplication {
         };
     }
 
-    private boolean requiresTaskDispatchHandoff(TransportRuntimeRole runtimeRole) {
+    private boolean requiresDispatchHandoff(TransportRuntimeRole runtimeRole) {
         return runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER
                 || (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER);
     }
@@ -424,12 +424,12 @@ public class MassApplication {
         );
     }
 
-    private TaskDispatchBatchListener createDispatchSubmitter(TransportDeliveryCommandHandoff handoff) {
+    private TaskDispatchBatchListener createDispatchSubmitter(TransportDispatchHandoff handoff) {
         TransportAssignedDeliverySubmitter assignedDeliverySubmitter = new TransportAssignedDeliverySubmitter(
                 handoff,
                 createTransportDeliveryFailureHandler()
         );
-        return new TaskDispatchDeliveryCommandSubmitter(
+        return new TaskDispatchRoutingSubmitter(
                 assignedDeliverySubmitter,
                 createTransportDeliveryFailureHandler(),
                 engineConfig.getWorkerDeliveryTargetView()
@@ -512,9 +512,9 @@ public class MassApplication {
         }
     }
 
-    private void stopTaskDispatchHandoff() {
-        TransportDeliveryCommandHandoff handoff = transportDeliveryCommandHandoff;
-        transportDeliveryCommandHandoff = null;
+    private void stopDispatchHandoff() {
+        TransportDispatchHandoff handoff = transportDispatchHandoff;
+        transportDispatchHandoff = null;
         if (handoff != null) {
             handoff.shutdown();
         }

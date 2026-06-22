@@ -28,9 +28,9 @@ import java.util.concurrent.TimeUnit;
  */
 public interface TransportDeliveryStore {
 
-    DispatchOutcome enqueue(String adapterMailboxKey, QueuedPulledDispatch item);
+    DispatchOutcome enqueue(String adapterMailboxKey, DispatchRoutingItem item);
 
-    List<QueuedPulledDispatch> drain(String adapterMailboxKey, String selectedWorkerId, int maxItems);
+    List<DispatchRoutingItem> drain(String adapterMailboxKey, String selectedWorkerId, int maxItems);
 
     TransportDeliveryPollResult poll(String adapterMailboxKey,
                                      String selectedWorkerId,

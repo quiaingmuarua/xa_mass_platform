@@ -3,14 +3,19 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxDeliveryOffer;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerAvailability;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
+import com.xa.mass.transport.runtime.delivery.ClaimedDispatchRoutingBatch;
+import com.xa.mass.transport.runtime.delivery.DispatchHandoffReference;
+import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingBatch;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
+import com.xa.mass.transport.routing.RoutingTarget;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -34,9 +39,9 @@ class AdapterMailboxMountTest {
         RecordingHandoff handoff = new RecordingHandoff();
         RecordingCommandExecutor commandExecutor = new RecordingCommandExecutor(DispatchOutcomeStatus.DELIVERED);
         AdapterMailboxMount mount = mount("mailbox-a", commandExecutor, handoff, event -> true);
-        DeliveryCommandBatch batch = batch(
+        ClaimedDispatchRoutingBatch batch = claimed(
                 "mailbox-a",
-                command("msg-1", "worker-1")
+                item("msg-1", "worker-1")
         );
 
         try {
@@ -47,8 +52,8 @@ class AdapterMailboxMountTest {
             assertTrue(handoff.awaitComplete(2, TimeUnit.SECONDS));
 
             assertTrue(handoff.polledMailboxes().contains("mailbox-a"));
-            assertEquals(List.of("cmd-msg-1"), commandIds(commandExecutor.dispatched()));
-            assertEquals(List.of("cmd-msg-1"), commandIds(handoff.completed().getFirst()));
+            assertEquals(List.of("cmd-msg-1"), itemIds(commandExecutor.dispatched()));
+            assertEquals(List.of("cmd-msg-1"), itemIds(handoff.completed().getFirst()));
         } finally {
             mount.stop();
         }
@@ -60,9 +65,9 @@ class AdapterMailboxMountTest {
         RecordingCommandExecutor commandExecutor = new RecordingCommandExecutor(DispatchOutcomeStatus.UNAVAILABLE);
         RecordingFailureHandler failures = new RecordingFailureHandler();
         AdapterMailboxMount mount = mount("mailbox-a", commandExecutor, handoff, failures);
-        DeliveryCommandBatch batch = batch(
+        ClaimedDispatchRoutingBatch batch = claimed(
                 "mailbox-a",
-                command("msg-1", "worker-1")
+                item("msg-1", "worker-1")
         );
 
         try {
@@ -85,7 +90,7 @@ class AdapterMailboxMountTest {
         List<String> events = new ArrayList<>();
         RecordingFutureExecutor executor = new RecordingFutureExecutor(events);
         RecordingAvailabilityRegistry registry = new RecordingAvailabilityRegistry(events);
-        TransportBinding binding = TransportBinding.builder("websocket", WorkerTransportHints.REALTIME, commands -> List.of())
+        TransportBinding binding = TransportBinding.builder("websocket", WorkerTransportHints.REALTIME, items -> List.of())
                 .adapterMailboxKey("mailbox-a")
                 .protocol("websocket")
                 .build();
@@ -112,14 +117,16 @@ class AdapterMailboxMountTest {
                 "mailbox drain must stop before availability is released");
     }
 
-    private static DeliveryCommandBatch batch(String adapterMailboxKey, DeliveryCommand command) {
-        return new DeliveryCommandBatch(adapterMailboxKey, List.of(command));
+    private static ClaimedDispatchRoutingBatch claimed(String adapterMailboxKey, DispatchRoutingItem item) {
+        return new ClaimedDispatchRoutingBatch(
+                new DispatchRoutingBatch(RoutingTarget.adapterMailbox(adapterMailboxKey), List.of(item)),
+                List.of(new DispatchHandoffReference(adapterMailboxKey, item.deliveryId()))
+        );
     }
 
-    private static DeliveryCommand command(String messageId, String selectedWorkerId) {
-        return new DeliveryCommand(
+    private static DispatchRoutingItem item(String messageId, String selectedWorkerId) {
+        return new DispatchRoutingItem(
                 "cmd-" + messageId,
-                "demo-workers",
                 selectedWorkerId,
                 "{\"input\":1}",
                 "corr-" + messageId,
@@ -128,8 +135,8 @@ class AdapterMailboxMountTest {
         );
     }
 
-    private static List<String> commandIds(DeliveryCommandBatch batch) {
-        return batch.items().stream().map(DeliveryCommand::getCommandId).toList();
+    private static List<String> itemIds(ClaimedDispatchRoutingBatch batch) {
+        return batch.items().stream().map(DispatchRoutingItem::deliveryId).toList();
     }
 
     private static AdapterMailboxMount mount(String adapterMailboxKey,
@@ -149,27 +156,27 @@ class AdapterMailboxMountTest {
         );
     }
 
-    private static final class RecordingHandoff implements TransportDeliveryCommandHandoff {
-        private final BlockingQueue<DeliveryCommandBatch> ready = new LinkedBlockingQueue<>();
+    private static final class RecordingHandoff implements TransportDispatchHandoff {
+        private final BlockingQueue<ClaimedDispatchRoutingBatch> ready = new LinkedBlockingQueue<>();
         private final List<String> polledMailboxes = java.util.Collections.synchronizedList(new ArrayList<>());
-        private final List<DeliveryCommandBatch> completed = java.util.Collections.synchronizedList(new ArrayList<>());
+        private final List<ClaimedDispatchRoutingBatch> completed = java.util.Collections.synchronizedList(new ArrayList<>());
         private final CountDownLatch completeLatch = new CountDownLatch(1);
 
-        private void enqueue(DeliveryCommandBatch batch) {
+        private void enqueue(ClaimedDispatchRoutingBatch batch) {
             ready.add(batch);
         }
 
         @Override
-        public List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer) {
+        public List<DispatchOutcome> offer(DispatchRoutingBatch batch) {
             return List.of();
         }
 
         @Override
-        public DeliveryCommandBatch poll(String adapterMailboxKey, long timeoutMillis) throws InterruptedException {
+        public ClaimedDispatchRoutingBatch poll(String adapterMailboxKey, long timeoutMillis) throws InterruptedException {
             polledMailboxes.add(adapterMailboxKey);
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
             do {
-                DeliveryCommandBatch batch = ready.poll(Math.max(1L, timeoutMillis), TimeUnit.MILLISECONDS);
+                ClaimedDispatchRoutingBatch batch = ready.poll(Math.max(1L, timeoutMillis), TimeUnit.MILLISECONDS);
                 if (batch == null) {
                     return null;
                 }
@@ -184,7 +191,7 @@ class AdapterMailboxMountTest {
         }
 
         @Override
-        public void complete(DeliveryCommandBatch batch, List<DispatchOutcome> outcomes) {
+        public void complete(ClaimedDispatchRoutingBatch batch, List<DispatchOutcome> outcomes) {
             completed.add(batch);
             completeLatch.countDown();
         }
@@ -203,7 +210,7 @@ class AdapterMailboxMountTest {
             }
         }
 
-        private List<DeliveryCommandBatch> completed() {
+        private List<ClaimedDispatchRoutingBatch> completed() {
             synchronized (completed) {
                 return List.copyOf(completed);
             }
@@ -213,19 +220,19 @@ class AdapterMailboxMountTest {
     private static final class RecordingCommandExecutor implements com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor {
         private final DispatchOutcomeStatus status;
         private final CountDownLatch latch = new CountDownLatch(1);
-        private volatile DeliveryCommandBatch dispatched;
+        private volatile ClaimedDispatchRoutingBatch dispatched;
 
         private RecordingCommandExecutor(DispatchOutcomeStatus status) {
             this.status = status;
         }
 
         @Override
-        public List<DispatchOutcome> dispatch(List<DeliveryCommand> commands) {
-            dispatched = new DeliveryCommandBatch("mailbox-a", commands);
+        public List<DispatchOutcome> dispatch(List<DispatchRoutingItem> items) {
+            dispatched = claimed("mailbox-a", items.getFirst());
             latch.countDown();
-            return commands.stream()
-                    .map(command -> DispatchOutcome.fromCommand(
-                            command,
+            return items.stream()
+                    .map(item -> DispatchOutcomeFactory.fromItem(
+                            item,
                             status,
                             status != DispatchOutcomeStatus.DELIVERED,
                             status == DispatchOutcomeStatus.DELIVERED ? null : "test failure"))
@@ -236,7 +243,7 @@ class AdapterMailboxMountTest {
             return latch.await(timeout, unit);
         }
 
-        private DeliveryCommandBatch dispatched() {
+        private ClaimedDispatchRoutingBatch dispatched() {
             return dispatched;
         }
     }
@@ -290,7 +297,7 @@ class AdapterMailboxMountTest {
         }
     }
 
-    private static final class RecordingAvailabilityRegistry implements com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry {
+    private static final class RecordingAvailabilityRegistry implements AdapterMailboxConsumerRegistry {
         private final List<String> events;
 
         private RecordingAvailabilityRegistry(List<String> events) {
@@ -298,12 +305,12 @@ class AdapterMailboxMountTest {
         }
 
         @Override
-        public void publishMailboxConsumerAvailability(com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerAvailability availability) {
+        public void publishMailboxConsumerAvailability(AdapterMailboxConsumerAvailability availability) {
             events.add("claim:" + availability.adapterMailboxKey());
         }
 
         @Override
-        public void removeMailboxConsumerAvailability(com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerAvailability availability) {
+        public void removeMailboxConsumerAvailability(AdapterMailboxConsumerAvailability availability) {
             events.add("release:" + availability.adapterMailboxKey());
         }
     }

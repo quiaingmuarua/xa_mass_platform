@@ -8,9 +8,9 @@ import java.nio.charset.StandardCharsets;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-class RedisQueuedPulledDispatchCodecTest {
+class RedisDispatchRoutingItemCodecTest {
 
-    private final RedisQueuedPulledDispatchCodec codec = new RedisQueuedPulledDispatchCodec();
+    private final RedisDispatchRoutingItemCodec codec = new RedisDispatchRoutingItemCodec();
 
     @Test
     void keyPartRoundTripsWithSpecialCharacters() {
@@ -24,12 +24,13 @@ class RedisQueuedPulledDispatchCodecTest {
     }
 
     @Test
-    void queuedDispatchEntryRoundTripsThroughJsonBytesWithoutPacketResidue() {
-        QueuedPulledDispatch item = new QueuedPulledDispatch(
+    void dispatchItemEntryRoundTripsThroughJsonBytesWithoutPacketResidue() {
+        DispatchRoutingItem item = new DispatchRoutingItem(
                 "delivery-1",
                 "worker-1",
                 "{\"messageId\":\"msg-1\",\"input\":{\"target\":\"https://example.test\"}}",
                 "corr-1",
+                0L,
                 1_234L
         );
 
@@ -43,7 +44,7 @@ class RedisQueuedPulledDispatchCodecTest {
         assertFalse(json.contains("project"));
         assertFalse(json.contains("userId"));
 
-        KeyedQueueEntry<QueuedPulledDispatch> decoded = codec.decodeEntry(encoded);
+        KeyedQueueEntry<DispatchRoutingItem> decoded = codec.decodeEntry(encoded);
 
         assertEquals("delivery-1", decoded.value().deliveryId());
         assertEquals("worker-1", decoded.value().selectedWorkerId());
@@ -55,18 +56,19 @@ class RedisQueuedPulledDispatchCodecTest {
 
     @Test
     void storedValueCarriesSelectedWorkerAsValueDemuxNotKeyPart() {
-        QueuedPulledDispatch item = new QueuedPulledDispatch(
+        DispatchRoutingItem item = new DispatchRoutingItem(
                 "delivery-1",
                 "worker/route:cn?demo=1",
                 "{\"messageId\":\"msg-1\"}",
                 "corr-1",
+                0L,
                 1_234L
         );
 
         String storedValue = codec.encodeStoredValue(new KeyedQueueEntry<>(item, item.createdAtEpochMillis()));
 
         assertFalse(storedValue.contains("worker-index"));
-        KeyedQueueEntry<QueuedPulledDispatch> decoded = codec.decodeStoredValue(storedValue);
+        KeyedQueueEntry<DispatchRoutingItem> decoded = codec.decodeStoredValue(storedValue);
         assertEquals("worker/route:cn?demo=1", decoded.value().selectedWorkerId());
         assertEquals("delivery-1", decoded.value().deliveryId());
     }

@@ -1,6 +1,5 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 
 import java.util.ArrayList;
@@ -24,14 +23,14 @@ public final class TransportDeliveryService {
         this.deliveryStore = Objects.requireNonNull(deliveryStore, "deliveryStore");
     }
 
-    public List<DispatchOutcome> enqueueForMailbox(String adapterMailboxKey, List<DeliveryCommand> commands) {
+    public List<DispatchOutcome> enqueueForMailbox(String adapterMailboxKey, List<DispatchRoutingItem> items) {
         String normalizedMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
-        if (commands == null || commands.isEmpty()) {
+        if (items == null || items.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = new ArrayList<>(commands.size());
-        for (DeliveryCommand command : commands) {
-            if (command == null) {
+        List<DispatchOutcome> outcomes = new ArrayList<>(items.size());
+        for (DispatchRoutingItem item : items) {
+            if (item == null) {
                 outcomes.add(DispatchOutcome.invalid(
                         null,
                         null,
@@ -40,7 +39,7 @@ public final class TransportDeliveryService {
                 ));
                 continue;
             }
-            outcomes.add(deliveryStore.enqueue(normalizedMailboxKey, QueuedPulledDispatch.from(command)));
+            outcomes.add(deliveryStore.enqueue(normalizedMailboxKey, item));
         }
         return Collections.unmodifiableList(outcomes);
     }

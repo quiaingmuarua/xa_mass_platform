@@ -1,6 +1,5 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import io.lettuce.core.RedisClient;
@@ -59,15 +58,15 @@ class RedisTransportDeliveryFailureChannelTest {
 
     @Test
     void failureEventRoundTripsAcrossInstances() throws Exception {
-        DeliveryCommand command = DeliveryCommandFixtures.command("msg-1", "worker-1", "node-a");
-        TransportDeliveryFailureEvent failure = failureEvent(command, "node-a", "route-1", "adapter unavailable");
+        DispatchRoutingItem item = DispatchRoutingFixtures.item("msg-1", "worker-1");
+        TransportDeliveryFailureEvent failure = failureEvent(item, "adapter unavailable");
 
         assertTrue(writer.handle(failure));
 
         TransportDeliveryFailureEvent event = reader.pollFailure(1000L);
 
         assertNotNull(event);
-        assertEquals(command.getCommandId(), event.outcome().getDeliveryId());
+        assertEquals(item.deliveryId(), event.outcome().getDeliveryId());
         assertEquals("worker-1", event.outcome().getSelectedWorkerId());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, event.outcome().getStatus());
         assertEquals("adapter unavailable", event.detail());
@@ -75,44 +74,40 @@ class RedisTransportDeliveryFailureChannelTest {
 
     @Test
     void fullInboxRejectsWithoutDroppingExistingFailure() throws Exception {
-        DeliveryCommand first = DeliveryCommandFixtures.command("msg-1", "worker-1", "node-a");
-        DeliveryCommand second = DeliveryCommandFixtures.command("msg-2", "worker-2", "node-a");
+        DispatchRoutingItem first = DispatchRoutingFixtures.item("msg-1", "worker-1");
+        DispatchRoutingItem second = DispatchRoutingFixtures.item("msg-2", "worker-2");
 
-        assertTrue(writer.handle(failureEvent(first, "node-a", "route-1", "first")));
-        assertFalse(writer.handle(failureEvent(second, "node-a", "route-2", "second")));
+        assertTrue(writer.handle(failureEvent(first, "first")));
+        assertFalse(writer.handle(failureEvent(second, "second")));
 
         TransportDeliveryFailureEvent event = reader.pollFailure(1000L);
 
         assertNotNull(event);
-        assertEquals(first.getCommandId(), event.outcome().getDeliveryId());
-        assertEquals(first.getCorrelationRef(), event.outcome().getCorrelationRef());
+        assertEquals(first.deliveryId(), event.outcome().getDeliveryId());
+        assertEquals(first.correlationRef(), event.outcome().getCorrelationRef());
     }
 
     @Test
     void noOwnerFailureRoundTripsWithoutTargetTransportNode() throws Exception {
-        DeliveryCommand command = DeliveryCommandFixtures.command("msg-no-owner", "worker-1", null);
+        DispatchRoutingItem item = DispatchRoutingFixtures.item("msg-no-owner", "worker-1");
 
         assertTrue(writer.handle(failureEvent(
-                command,
-                null,
-                null,
+                item,
                 "transport endpoint is unavailable after assignment"
         )));
 
         TransportDeliveryFailureEvent event = reader.pollFailure(1000L);
 
         assertNotNull(event);
-        assertEquals(command.getCommandId(), event.outcome().getDeliveryId());
+        assertEquals(item.deliveryId(), event.outcome().getDeliveryId());
         assertEquals("worker-1", event.outcome().getSelectedWorkerId());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, event.outcome().getStatus());
     }
 
-    private static TransportDeliveryFailureEvent failureEvent(DeliveryCommand command,
-                                                              String targetTransportNodeId,
-                                                              String routeKey,
+    private static TransportDeliveryFailureEvent failureEvent(DispatchRoutingItem item,
                                                               String reason) {
-        DispatchOutcome outcome = DispatchOutcome.fromCommand(
-                command,
+        DispatchOutcome outcome = DispatchOutcomeFactory.fromItem(
+                item,
                 DispatchOutcomeStatus.NO_ENDPOINT,
                 true,
                 reason

@@ -1,8 +1,8 @@
 package com.xa.mass.transport.polling.worker;
 
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.delivery.AdapterPullDeliveryBuffer;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,11 +26,11 @@ public final class PollingDeliveryExecutor implements AdapterCommandExecutor {
     }
 
     @Override
-    public List<DispatchOutcome> dispatch(List<DeliveryCommand> commands) {
-        if (commands == null || commands.isEmpty()) {
+    public List<DispatchOutcome> dispatch(List<DispatchRoutingItem> items) {
+        if (items == null || items.isEmpty()) {
             return List.of();
         }
-        List<DispatchOutcome> outcomes = deliveryBuffer.enqueue(commands);
+        List<DispatchOutcome> outcomes = deliveryBuffer.enqueue(items);
         for (DispatchOutcome outcome : outcomes) {
             if (outcome.isRetryable()) {
                 logger.warn("Polling delivery rejected: selectedWorkerId={}, deliveryId={}, status={}, reason={}",

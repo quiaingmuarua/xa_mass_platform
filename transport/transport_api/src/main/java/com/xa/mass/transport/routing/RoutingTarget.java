@@ -15,6 +15,10 @@ public record RoutingTarget(String ownerKind,
         return new RoutingTarget(RoutingOwnerKinds.ADAPTER, adapterMailboxKey);
     }
 
+    public static RoutingTarget adapterMailbox(String adapterMailboxKey) {
+        return new RoutingTarget(RoutingOwnerKinds.ADAPTER_MAILBOX, adapterMailboxKey);
+    }
+
     public static RoutingTarget engine(String resultCorrelationRef) {
         return new RoutingTarget(RoutingOwnerKinds.ENGINE, resultCorrelationRef);
     }

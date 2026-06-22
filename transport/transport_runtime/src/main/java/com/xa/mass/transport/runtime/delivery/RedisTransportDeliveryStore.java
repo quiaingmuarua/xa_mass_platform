@@ -155,7 +155,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
     private final StatefulRedisConnection<String, String> connection;
     private final RedisCommands<String, String> commands;
     private final RedisKeyedQueueNamespace namespace;
-    private final RedisQueuedPulledDispatchCodec codec = new RedisQueuedPulledDispatchCodec();
+    private final RedisDispatchRoutingItemCodec codec = new RedisDispatchRoutingItemCodec();
     private final boolean ownsClient;
     private final int maxQueuedItems;
     private final int maxItemsPerRoute;
@@ -226,7 +226,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
     }
 
     @Override
-    public DispatchOutcome enqueue(String adapterMailboxKey, QueuedPulledDispatch item) {
+    public DispatchOutcome enqueue(String adapterMailboxKey, DispatchRoutingItem item) {
         String normalizedAdapterMailboxKey = normalizeDeliveryQueueKey(adapterMailboxKey);
         String normalizedSelectedWorkerId = item == null
                 ? null
@@ -262,7 +262,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
             );
         }
 
-        QueuedPulledDispatch normalizedItem = normalizeItem(item, normalizedSelectedWorkerId);
+        DispatchRoutingItem normalizedItem = normalizeItem(item, normalizedSelectedWorkerId);
         String encodedKeyPart = codec.encodeKeyPart(new DeliveryQueueKey(normalizedAdapterMailboxKey));
         try {
             Object rawResponse = commands.eval(
@@ -296,7 +296,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
     }
 
     @Override
-    public List<QueuedPulledDispatch> drain(String adapterMailboxKey, String selectedWorkerId, int maxItems) {
+    public List<DispatchRoutingItem> drain(String adapterMailboxKey, String selectedWorkerId, int maxItems) {
         String normalizedAdapterMailboxKey = normalizeDeliveryQueueKey(adapterMailboxKey);
         String normalizedSelectedWorkerId = TransportDeliveryAddressing.normalizeText(selectedWorkerId);
         if (normalizedAdapterMailboxKey == null || normalizedSelectedWorkerId == null || maxItems <= 0 || !running.get()) {
@@ -340,7 +340,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
             return TransportDeliveryPollResult.shutdown();
         }
         if (timeout <= 0) {
-            List<QueuedPulledDispatch> drained = drain(normalizedAdapterMailboxKey, normalizedSelectedWorkerId, maxItems);
+            List<DispatchRoutingItem> drained = drain(normalizedAdapterMailboxKey, normalizedSelectedWorkerId, maxItems);
             if (!running.get()) {
                 return TransportDeliveryPollResult.shutdown();
             }
@@ -351,7 +351,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         long sleepMillis = 10L;
         while (running.get()) {
-            List<QueuedPulledDispatch> drained = drain(normalizedAdapterMailboxKey, normalizedSelectedWorkerId, maxItems);
+            List<DispatchRoutingItem> drained = drain(normalizedAdapterMailboxKey, normalizedSelectedWorkerId, maxItems);
             if (!drained.isEmpty()) {
                 return TransportDeliveryPollResult.deliveredView(drained);
             }
@@ -457,7 +457,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
         }
     }
 
-    private DispatchOutcome mapOfferResponse(Object rawResponse, QueuedPulledDispatch item) {
+    private DispatchOutcome mapOfferResponse(Object rawResponse, DispatchRoutingItem item) {
         if (!(rawResponse instanceof List<?> values) || values.isEmpty()) {
             return unavailable(item, "delivery queue returned no response");
         }
@@ -487,7 +487,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
         };
     }
 
-    private List<QueuedPulledDispatch> mapDrainResponse(Object rawResponse) {
+    private List<DispatchRoutingItem> mapDrainResponse(Object rawResponse) {
         if (!(rawResponse instanceof List<?> values) || values.isEmpty()) {
             return List.of();
         }
@@ -495,7 +495,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
         if (!Objects.equals(code, "DRAINED") || values.size() <= 2) {
             return List.of();
         }
-        List<QueuedPulledDispatch> drained = new ArrayList<>(values.size() - 2);
+        List<DispatchRoutingItem> drained = new ArrayList<>(values.size() - 2);
         for (Object rawValue : values.subList(2, values.size())) {
             if (rawValue == null) {
                 continue;
@@ -505,7 +505,7 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
         return List.copyOf(drained);
     }
 
-    private DispatchOutcome unavailable(QueuedPulledDispatch item, String reason) {
+    private DispatchOutcome unavailable(DispatchRoutingItem item, String reason) {
         localUnavailableItems.incrementAndGet();
         return new DispatchOutcome(
                 item.deliveryId(),
@@ -518,15 +518,16 @@ public final class RedisTransportDeliveryStore implements TransportDeliveryStore
         );
     }
 
-    private static QueuedPulledDispatch normalizeItem(QueuedPulledDispatch item, String normalizedSelectedWorkerId) {
+    private static DispatchRoutingItem normalizeItem(DispatchRoutingItem item, String normalizedSelectedWorkerId) {
         if (Objects.equals(normalizedSelectedWorkerId, item.selectedWorkerId())) {
             return item;
         }
-        return new QueuedPulledDispatch(
+        return new DispatchRoutingItem(
                 item.deliveryId(),
                 normalizedSelectedWorkerId,
                 item.payload(),
                 item.correlationRef(),
+                item.deadlineEpochMillis(),
                 item.createdAtEpochMillis()
         );
     }

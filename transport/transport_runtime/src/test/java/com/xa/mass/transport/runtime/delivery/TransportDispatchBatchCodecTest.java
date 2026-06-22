@@ -5,19 +5,18 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-class TransportDeliveryCommandBatchCodecTest {
+class TransportDispatchBatchCodecTest {
 
     @Test
-    void encodesCommandBatchWithoutTopLevelRouteKeyOrNestedTaskBatchJson() {
-        DeliveryCommandBatch batch = DeliveryCommandFixtures.batch(
-                "node-1",
-                DeliveryCommandFixtures.command("msg-1", "worker-1", null),
-                DeliveryCommandFixtures.command("msg-2", "worker-2", null)
+    void encodesDispatchBatchWithoutLegacyCommandOrBucketFields() {
+        DispatchRoutingBatch batch = DispatchRoutingFixtures.batch(
+                DispatchRoutingFixtures.item("msg-1", "worker-1"),
+                DispatchRoutingFixtures.item("msg-2", "worker-2")
         );
-        TransportDeliveryCommandBatchCodec codec = new TransportDeliveryCommandBatchCodec();
+        TransportDispatchBatchCodec codec = new TransportDispatchBatchCodec();
 
         String json = codec.encode(batch);
-        DeliveryCommandBatch decoded = codec.decode(json);
+        DispatchRoutingBatch decoded = codec.decode(json);
 
         assertFalse(json.contains("taskBatchJson"), json);
         assertFalse(json.contains("TaskDispatchContentRecord"), json);
@@ -30,17 +29,17 @@ class TransportDeliveryCommandBatchCodecTest {
         assertFalse(json.contains("\"leaseExpireAtEpochMillis\""), json);
         assertEquals(0, occurrences(json, "\"adapterId\""));
         assertEquals(0, occurrences(json, "\"deliveryQueueKey\""));
-        assertEquals(1, occurrences(json, "\"adapterMailboxKey\""));
-        assertEquals(2, occurrences(json, "\"deliveryBucketId\""));
+        assertEquals(0, occurrences(json, "\"adapterMailboxKey\""));
+        assertEquals(0, occurrences(json, "\"deliveryBucketId\""));
         assertEquals(0, occurrences(json, "\"deliveryLaneKey\""));
         assertEquals(0, occurrences(json, "\"targetTransportNodeId\""));
-        assertEquals(DeliveryCommandFixtures.mailboxKey(), decoded.adapterMailboxKey());
-        assertEquals("msg-1", DeliveryCommandFixtures.messageId(decoded.commands().get(0).getPayload()));
-        assertEquals("msg-2", DeliveryCommandFixtures.messageId(decoded.commands().get(1).getPayload()));
-        assertEquals("worker-1", decoded.commands().get(0).getSelectedWorkerId());
-        assertEquals("worker-2", decoded.commands().get(1).getSelectedWorkerId());
-        assertEquals("corr-msg-1", decoded.commands().get(0).getCorrelationRef());
-        assertEquals("corr-msg-2", decoded.commands().get(1).getCorrelationRef());
+        assertEquals(DispatchRoutingFixtures.mailboxKey(), decoded.adapterMailboxKey());
+        assertEquals("msg-1", DispatchRoutingFixtures.messageId(decoded.items().get(0).payload()));
+        assertEquals("msg-2", DispatchRoutingFixtures.messageId(decoded.items().get(1).payload()));
+        assertEquals("worker-1", decoded.items().get(0).selectedWorkerId());
+        assertEquals("worker-2", decoded.items().get(1).selectedWorkerId());
+        assertEquals("corr-msg-1", decoded.items().get(0).correlationRef());
+        assertEquals("corr-msg-2", decoded.items().get(1).correlationRef());
     }
 
     private static int occurrences(String value, String token) {

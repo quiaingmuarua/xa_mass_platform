@@ -1,6 +1,5 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 
 import java.util.List;
@@ -23,8 +22,8 @@ public final class AdapterPullDeliveryBuffer {
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
     }
 
-    public List<DispatchOutcome> enqueue(List<DeliveryCommand> commands) {
-        return deliveryService.enqueueForMailbox(adapterMailboxKey, commands);
+    public List<DispatchOutcome> enqueue(List<DispatchRoutingItem> items) {
+        return deliveryService.enqueueForMailbox(adapterMailboxKey, items);
     }
 
     public TransportDeliveryPollResult poll(String selectedWorkerId, int maxItems, long timeoutMillis) {

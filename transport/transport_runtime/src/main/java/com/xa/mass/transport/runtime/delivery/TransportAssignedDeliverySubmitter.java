@@ -1,16 +1,14 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.routing.RoutingOwnerKinds;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -21,36 +19,36 @@ public final class TransportAssignedDeliverySubmitter {
 
     private static final Logger logger = LoggerFactory.getLogger(TransportAssignedDeliverySubmitter.class);
 
-    private final TransportDeliveryCommandHandoff handoff;
+    private final TransportDispatchHandoff handoff;
     private final TransportDeliveryFailureHandler failureHandler;
 
-    public TransportAssignedDeliverySubmitter(TransportDeliveryCommandHandoff handoff,
+    public TransportAssignedDeliverySubmitter(TransportDispatchHandoff handoff,
                                               TransportDeliveryFailureHandler failureHandler) {
         this.handoff = Objects.requireNonNull(handoff, "handoff");
         this.failureHandler = failureHandler;
     }
 
-    public List<DispatchOutcome> submit(List<AdapterMailboxDeliveryCommand> commands) {
-        Objects.requireNonNull(commands, "commands");
-        if (commands.isEmpty()) {
+    public List<DispatchOutcome> submit(List<DispatchRoutingBatch> batches) {
+        Objects.requireNonNull(batches, "batches");
+        if (batches.isEmpty()) {
             return List.of();
         }
         List<DispatchOutcome> outcomes = new ArrayList<>();
-        Map<String, DeliveryBatchBuilder> batches = new LinkedHashMap<>();
 
-        for (AdapterMailboxDeliveryCommand routedCommand : commands) {
-            AdapterMailboxDeliveryCommand normalized = Objects.requireNonNull(routedCommand, "routedCommand");
-            DeliveryCommand normalizedCommand = normalized.command();
-            String adapterMailboxKey = normalized.adapterMailboxKey();
-            DeliveryBatchBuilder batch = batches.computeIfAbsent(
-                    adapterMailboxKey,
-                    DeliveryBatchBuilder::new
-            );
-            batch.items.add(normalizedCommand);
-        }
-
-        for (DeliveryBatchBuilder builder : batches.values()) {
-            DeliveryCommandBatch batch = builder.toBatch();
+        for (DispatchRoutingBatch batch : batches) {
+            DispatchRoutingBatch normalized = Objects.requireNonNull(batch, "batch");
+            if (!RoutingOwnerKinds.ADAPTER_MAILBOX.equals(normalized.target().ownerKind())) {
+                List<DispatchOutcome> invalid = normalized.items().stream()
+                        .map(item -> DispatchOutcomeFactory.fromItem(
+                                item,
+                                DispatchOutcomeStatus.INVALID,
+                                false,
+                                "dispatch batch target must be adapter-mailbox"))
+                        .toList();
+                outcomes.addAll(invalid);
+                handleRetryableFailures(invalid);
+                continue;
+            }
             List<DispatchOutcome> offeredOutcomes = offerBatch(batch);
             outcomes.addAll(offeredOutcomes);
             handleRetryableFailures(offeredOutcomes);
@@ -58,9 +56,9 @@ public final class TransportAssignedDeliverySubmitter {
         return Collections.unmodifiableList(outcomes);
     }
 
-    private List<DispatchOutcome> offerBatch(DeliveryCommandBatch batch) {
+    private List<DispatchOutcome> offerBatch(DispatchRoutingBatch batch) {
         try {
-            List<DispatchOutcome> offered = handoff.offer(new AdapterMailboxDeliveryOffer(batch.adapterMailboxKey(), batch.items()));
+            List<DispatchOutcome> offered = handoff.offer(batch);
             if (offered == null || offered.isEmpty()) {
                 return List.of();
             }
@@ -68,13 +66,13 @@ public final class TransportAssignedDeliverySubmitter {
                     .filter(Objects::nonNull)
                     .toList();
         } catch (RuntimeException e) {
-            logger.warn("Delivery command handoff offer failed: adapterMailboxKey={}, items={}, reason={}",
+            logger.warn("Dispatch handoff offer failed: adapterMailboxKey={}, items={}, reason={}",
                     batch.adapterMailboxKey(), batch.items().size(), e.getMessage());
             String reason = e.getMessage() == null || e.getMessage().isBlank()
-                    ? "delivery command handoff offer failed"
-                    : "delivery command handoff offer failed: " + e.getMessage();
+                    ? "dispatch handoff offer failed"
+                    : "dispatch handoff offer failed: " + e.getMessage();
             return batch.items().stream()
-                    .map(item -> DispatchOutcome.fromCommand(
+                    .map(item -> DispatchOutcomeFactory.fromItem(
                             item,
                             DispatchOutcomeStatus.UNAVAILABLE,
                             true,
@@ -109,16 +107,4 @@ public final class TransportAssignedDeliverySubmitter {
         return outcome;
     }
 
-    private static final class DeliveryBatchBuilder {
-        private final String adapterMailboxKey;
-        private final List<DeliveryCommand> items = new ArrayList<>();
-
-        private DeliveryBatchBuilder(String adapterMailboxKey) {
-            this.adapterMailboxKey = adapterMailboxKey;
-        }
-
-        private DeliveryCommandBatch toBatch() {
-            return new DeliveryCommandBatch(adapterMailboxKey, items);
-        }
-    }
 }

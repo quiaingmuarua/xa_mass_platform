@@ -10,7 +10,6 @@ import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.ManagedTransportAdapter;
 import com.xa.mass.transport.runtime.EmbeddedAdapterHostSet;

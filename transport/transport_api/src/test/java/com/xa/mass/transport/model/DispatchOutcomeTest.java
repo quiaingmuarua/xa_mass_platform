@@ -15,9 +15,7 @@ class DispatchOutcomeTest {
 
     @Test
     void deliveredCopiesOnlyStableDeliveryIdentityAndCorrelation() {
-        DeliveryCommand command = command();
-
-        DispatchOutcome outcome = DispatchOutcome.delivered(command);
+        DispatchOutcome outcome = DispatchOutcome.delivered("delivery-1", "worker-1", "corr-1");
 
         assertEquals("delivery-1", outcome.getDeliveryId());
         assertEquals("worker-1", outcome.getSelectedWorkerId());
@@ -30,15 +28,13 @@ class DispatchOutcomeTest {
 
     @Test
     void factoryMethodsSetRetryabilityDefaults() {
-        DeliveryCommand command = command();
-
         assertFalse(DispatchOutcome.queued("delivery-1", "worker-1", "corr-1").isRetryable());
-        assertTrue(DispatchOutcome.noEndpoint(command, "offline").isRetryable());
+        assertTrue(DispatchOutcome.noEndpoint("delivery-1", "worker-1", "corr-1", "offline").isRetryable());
         assertTrue(DispatchOutcome.backpressure("delivery-1", "worker-1", "corr-1", "full").isRetryable());
-        assertFalse(DispatchOutcome.invalid(command, "bad").isRetryable());
-        assertTrue(DispatchOutcome.unavailable(command, "missing").isRetryable());
-        assertFalse(DispatchOutcome.failed(command, "bad frame", false).isRetryable());
-        assertTrue(DispatchOutcome.failed(command, "io", true).isRetryable());
+        assertFalse(DispatchOutcome.invalid("delivery-1", "worker-1", "corr-1", "bad").isRetryable());
+        assertTrue(DispatchOutcome.unavailable("delivery-1", "worker-1", "corr-1", "missing").isRetryable());
+        assertFalse(DispatchOutcome.failed("delivery-1", "worker-1", "corr-1", "bad frame", false).isRetryable());
+        assertTrue(DispatchOutcome.failed("delivery-1", "worker-1", "corr-1", "io", true).isRetryable());
     }
 
     @Test
@@ -101,15 +97,4 @@ class DispatchOutcomeTest {
         assertFalse(methods.contains("getAttemptNo"));
     }
 
-    private DeliveryCommand command() {
-        return new DeliveryCommand(
-                "delivery-1",
-                "bucket-1",
-                "worker-1",
-                "{\"messageId\":\"msg-1\"}",
-                "corr-1",
-                0L,
-                10L
-        );
-    }
 }

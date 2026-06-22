@@ -5,11 +5,13 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerAvailability;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxDeliveryOffer;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.ClaimedDispatchRoutingBatch;
+import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingBatch;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.junit.jupiter.api.Test;
 
@@ -86,9 +88,11 @@ class EmbeddedAdapterHostSetTest {
     }
 
     private static AdapterCommandExecutor executor() {
-        return commands -> commands == null
+        return items -> items == null
                 ? List.of()
-                : commands.stream().map(DispatchOutcome::delivered).toList();
+                : items.stream()
+                .map(item -> DispatchOutcomeFactory.fromItem(item, DispatchOutcomeStatus.DELIVERED, false, null))
+                .toList();
     }
 
     private static ManagedTransportAdapter managedAdapter(List<String> events, String name) {
@@ -155,14 +159,14 @@ class EmbeddedAdapterHostSetTest {
         }
     }
 
-    private static final class IdleHandoff implements TransportDeliveryCommandHandoff {
+    private static final class IdleHandoff implements TransportDispatchHandoff {
         @Override
-        public List<DispatchOutcome> offer(AdapterMailboxDeliveryOffer offer) {
+        public List<DispatchOutcome> offer(DispatchRoutingBatch batch) {
             return List.of();
         }
 
         @Override
-        public DeliveryCommandBatch poll(String adapterMailboxKey, long timeoutMillis) {
+        public ClaimedDispatchRoutingBatch poll(String adapterMailboxKey, long timeoutMillis) {
             return null;
         }
 

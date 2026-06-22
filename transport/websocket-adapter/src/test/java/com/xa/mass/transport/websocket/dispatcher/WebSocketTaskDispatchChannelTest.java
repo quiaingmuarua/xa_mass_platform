@@ -1,8 +1,8 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
 import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
@@ -28,12 +28,12 @@ class WebSocketTaskDispatchChannelTest {
     @Test
     void publishesDispatchItemsDirectlyToSessionStoreEndpoint() {
         SessionFixture fixture = sessionWithWorker("worker-1");
-        DeliveryCommand command = request();
+        DispatchRoutingItem item = request();
 
         WebSocketTaskDispatchChannel publisher =
                 new WebSocketTaskDispatchChannel(fixture.controller());
 
-        List<DispatchOutcome> outcomes = publisher.dispatch(List.of(command));
+        List<DispatchOutcome> outcomes = publisher.dispatch(List.of(item));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
@@ -41,7 +41,7 @@ class WebSocketTaskDispatchChannelTest {
         ArgumentCaptor<TextWebSocketFrame> captor = ArgumentCaptor.forClass(TextWebSocketFrame.class);
         verify(fixture.channel()).writeAndFlush(captor.capture());
 
-        assertEquals(command.getPayload(), captor.getValue().text());
+        assertEquals(item.payload(), captor.getValue().text());
         fixture.controller().shutdown();
     }
 
@@ -98,10 +98,9 @@ class WebSocketTaskDispatchChannelTest {
         return ch;
     }
 
-    private DeliveryCommand request() {
-        return new DeliveryCommand(
+    private DispatchRoutingItem request() {
+        return new DispatchRoutingItem(
                 "delivery-msg-1",
-                "bucket-1",
                 "worker-1",
                 """
                 {
@@ -121,4 +120,3 @@ class WebSocketTaskDispatchChannelTest {
         );
     }
 }
-

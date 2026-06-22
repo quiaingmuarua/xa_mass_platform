@@ -191,7 +191,7 @@ class InMemoryTransportDeliveryStoreTest {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
         DispatchFixture item = item("msg-1", "worker-1");
 
-        CompletableFuture<List<QueuedPulledDispatch>> polled = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<List<DispatchRoutingItem>> polled = CompletableFuture.supplyAsync(() -> {
             try {
                 return store.poll("polling", "worker-1", 10, 1, TimeUnit.SECONDS).getItems();
             } catch (InterruptedException e) {
@@ -210,13 +210,13 @@ class InMemoryTransportDeliveryStoreTest {
     void enqueueWakesOnePollerPerQueuedItemForSameWorker() throws Exception {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
 
-        CompletableFuture<List<QueuedPulledDispatch>> firstPoller = pollAsync(store, "worker-1");
-        CompletableFuture<List<QueuedPulledDispatch>> secondPoller = pollAsync(store, "worker-1");
+        CompletableFuture<List<DispatchRoutingItem>> firstPoller = pollAsync(store, "worker-1");
+        CompletableFuture<List<DispatchRoutingItem>> secondPoller = pollAsync(store, "worker-1");
 
         waitUntil(() -> store.stats().getWaitingPollers() == 2);
         store.enqueue("polling", queued("polling", item("msg-1", "worker-1")));
 
-        CompletableFuture<List<QueuedPulledDispatch>> completed =
+        CompletableFuture<List<DispatchRoutingItem>> completed =
                 CompletableFuture.anyOf(firstPoller, secondPoller).thenApply(result -> castItems(result));
         assertEquals(List.of("msg-1"), messageIds(completed.get(1, TimeUnit.SECONDS)));
         assertEquals(1, store.stats().getWaitingPollers());
@@ -236,7 +236,7 @@ class InMemoryTransportDeliveryStoreTest {
     void statsTrackWaitingPollers() throws Exception {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
 
-        CompletableFuture<List<QueuedPulledDispatch>> polled = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<List<DispatchRoutingItem>> polled = CompletableFuture.supplyAsync(() -> {
             try {
                 return store.poll("polling", "worker-1", 10, 1, TimeUnit.SECONDS).getItems();
             } catch (InterruptedException e) {
@@ -275,7 +275,7 @@ class InMemoryTransportDeliveryStoreTest {
     void shutdownWakesWaitingPollersAndClearsQueuedItems() throws Exception {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
         store.enqueue("polling", queued("polling", item("queued", "worker-2")));
-        CompletableFuture<List<QueuedPulledDispatch>> polled = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<List<DispatchRoutingItem>> polled = CompletableFuture.supplyAsync(() -> {
             try {
                 return store.poll("polling", "worker-1", 10, 30, TimeUnit.SECONDS).getItems();
             } catch (InterruptedException e) {
@@ -355,22 +355,23 @@ class InMemoryTransportDeliveryStoreTest {
         return new DispatchFixture(messageId, workerId);
     }
 
-    private QueuedPulledDispatch queued(String adapterId, DispatchFixture item) {
+    private DispatchRoutingItem queued(String adapterId, DispatchFixture item) {
         return queued(adapterId, item, 1L);
     }
 
-    private QueuedPulledDispatch queued(String adapterId, DispatchFixture item, long createdAtEpochMillis) {
+    private DispatchRoutingItem queued(String adapterId, DispatchFixture item, long createdAtEpochMillis) {
         String deliveryId = "delivery-" + adapterId + "-" + item.messageId();
-        return new QueuedPulledDispatch(
+        return new DispatchRoutingItem(
                 deliveryId,
                 item.workerId(),
                 payload(item),
                 correlation(item),
+                0L,
                 createdAtEpochMillis
         );
     }
 
-    private QueuedPulledDispatch invalidQueued(String adapterId, DispatchFixture item) {
+    private DispatchRoutingItem invalidQueued(String adapterId, DispatchFixture item) {
         return null;
     }
 
@@ -382,7 +383,7 @@ class InMemoryTransportDeliveryStoreTest {
         return "corr-" + item.messageId();
     }
 
-    private CompletableFuture<List<QueuedPulledDispatch>> pollAsync(InMemoryTransportDeliveryStore store, String workerId) {
+    private CompletableFuture<List<DispatchRoutingItem>> pollAsync(InMemoryTransportDeliveryStore store, String workerId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 return store.poll("polling", workerId, 10, 2, TimeUnit.SECONDS).getItems();
@@ -394,11 +395,11 @@ class InMemoryTransportDeliveryStoreTest {
     }
 
     @SuppressWarnings("unchecked")
-    private List<QueuedPulledDispatch> castItems(Object result) {
-        return (List<QueuedPulledDispatch>) result;
+    private List<DispatchRoutingItem> castItems(Object result) {
+        return (List<DispatchRoutingItem>) result;
     }
 
-    private List<String> messageIds(List<QueuedPulledDispatch> items) {
+    private List<String> messageIds(List<DispatchRoutingItem> items) {
         return items.stream()
                 .map(item -> messageId(item.payload()))
                 .toList();

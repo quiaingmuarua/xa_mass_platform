@@ -1,64 +1,103 @@
-# Transport Dispatch Routing Envelope Carrier Convergence Roadmap
+# Transport Dispatch Routing Carrier Model Convergence Roadmap
 
-Status: proposed direction document.
+Status: mainline implemented; final residue verification remains active.
 
 ## Summary
 
-Converge assigned-task dispatch so its routed payload carrier matches result
-ingress:
+Converge assigned-task dispatch to one flat transport-runtime carrier instead
+of first moving through an envelope/context tuple and then flattening again.
+
+This roadmap intentionally merges the previous envelope-carrier draft and the
+flat-dispatch-model draft into one execution path. The target is:
 
 ```text
-RoutingEnvelope(target = adapter:<adapterMailboxKey>,
-                payload = opaque worker-facing payload)
+RoutingTarget               = ownerKind + ownerRef
+DispatchRoutingBatch        = target + flat dispatch items
+ClaimedDispatchRoutingBatch = dispatch batch + handoff claim references
+DispatchRoutingItem         = selected-worker delivery item
+DispatchOutcome             = delivery attempt outcome from item facts
+PulledDeliveryMessage       = transport API pull output projection only
 ```
 
-The goal is not to start an external adapter process yet. The goal is to make
-the transport queue/process-boundary item independent from embedded Java
-`DeliveryCommand` object wiring, while preserving an explicit transport-owned
-outcome context. A future embedded or external adapter host should be able to
-consume the same mailbox-targeted envelope without another dispatch model
-rewrite.
+Result ingress continues to use `RoutingEnvelope`. Assigned dispatch does not.
+Dispatch already has a concrete selected worker and a mailbox target, so a
+flat selected-worker item inside a mailbox-targeted batch is enough.
 
-Current dispatch is already mailbox-addressed, but the carrier is still split
-across:
+Before this convergence, dispatch moved the same facts through too many
+shapes:
 
 ```text
-AdapterMailboxDeliveryCommand
+DeliveryCommand
 AdapterMailboxDeliveryOffer
 DeliveryCommandBatch
-DeliveryCommand
 DeliveryCommandReference
+TransportDeliveryCommandBatchCodec
+AdapterCommandExecutor.dispatch(List<DeliveryCommand>)
+QueuedPulledDispatch
+PulledDeliveryMessage
+DispatchOutcome
 ```
 
-This roadmap narrows that shape:
+The convergence goal is to remove the repeated Java model hops and the
+remaining `DeliveryCommand` process-boundary role without adding a new wrapper
+that will be deleted in the next phase.
+
+## Owner Review
+
+Scheduling owner:
 
 ```text
-DispatchRoutingItem        = transport-owned queue/process-boundary item
-RoutingEnvelope            = routed opaque payload carrier
-RoutingTarget.adapter(...) = physical mailbox target
-worker-facing payload      = starter-owned opaque worker invocation payload
-DispatchOutcomeContext     = transport-owned failure/outcome identity
+workerGroup / task policy / worker-runtime evidence -> selectedWorkerId
 ```
 
-`RoutingEnvelope` is not a task model, worker model, lifecycle model,
-diagnostics model, or statistics surface. Payload parsing belongs to the
-target owner that created the payload. Transport handoff may route, claim,
-ack, and emit delivery outcomes from `DispatchOutcomeContext` without decoding
-payload. The embedded adapter bridge may build the current Java executor input
-from `DispatchOutcomeContext` plus the opaque payload string, but it must not
-become a task-payload decoder.
+Worker-runtime delivery-evidence owner:
+
+```text
+selectedWorkerId -> adapterMailboxKey
+```
+
+Transport dispatch owner:
+
+```text
+RoutingTarget(adapter-mailbox, adapterMailboxKey)
+  + DispatchRoutingItem(selectedWorkerId, opaque payload, correlation, timing)
+  + mailbox handoff offer / claim / ack
+  + DispatchOutcome
+```
+
+Adapter owner:
+
+```text
+selectedWorkerId -> local worker session / pull buffer
+protocol final-hop send / poll delivery
+```
+
+Result owner:
+
+```text
+RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)
+starter result bridge -> engine result convergence
+```
+
+Dispatch and result ingress may share `RoutingTarget` vocabulary, but they do
+not need the same carrier. Result ingress is a routed opaque envelope.
+Assigned dispatch is a selected-worker delivery item in a mailbox-targeted
+batch.
 
 ## Relation To Current Roadmaps
 
-This roadmap follows the mailbox dispatch work in
+This roadmap follows
 `TRANSPORT_ROUTING_ENVELOPE_ADAPTER_MAILBOX_CONVERGENCE_ROADMAP.md`.
 
-That roadmap made `adapterMailboxKey` the assigned-delivery physical target and
-removed bucket-derived queue ownership from the dispatch mainline. This
-roadmap is the next carrier convergence step: keep the mailbox target, but move
-the queue/process-boundary item from transport-specific delivery-command
-batches to a transport-owned `DispatchRoutingItem` that pairs
-`RoutingEnvelope` with explicit outcome context.
+That roadmap made `adapterMailboxKey` the assigned-delivery physical target
+and removed bucket-derived queue ownership from the dispatch mainline. This
+roadmap keeps that mailbox target and converges the remaining dispatch carrier
+models.
+
+The previous `TRANSPORT_RUNTIME_FLAT_DISPATCH_MODEL_CONVERGENCE_ROADMAP.md`
+draft is merged here. Do not keep a second flat-model roadmap in active
+`roadmap/`; it would create two implementation orders for the same owner
+boundary.
 
 This roadmap must not reopen:
 
@@ -69,610 +108,484 @@ This roadmap must not reopen:
 - result ingress payload schema
 - adapter process authentication, registration, or supervision
 
-## Current Code Observations
+## Current Implementation Facts
 
-- `RoutingEnvelope` and `RoutingTarget` already exist in `transport_api` and
-  are used by result ingress.
-- `RoutingTarget.adapter(adapterMailboxKey)` already names the adapter mailbox
-  target owner.
-- `TaskDispatchDeliveryCommandSubmitter` currently builds `DeliveryCommand`,
-  resolves the selected worker through `WorkerDeliveryTargetView`, and submits
-  `AdapterMailboxDeliveryCommand(adapterMailboxKey, command)`.
-- `TransportAssignedDeliverySubmitter` groups commands by mailbox and offers
-  `AdapterMailboxDeliveryOffer(adapterMailboxKey, List<DeliveryCommand>)`.
-- `TransportDeliveryCommandHandoff` currently accepts
-  `AdapterMailboxDeliveryOffer`, exposes mailbox-scoped
-  `poll(adapterMailboxKey, timeout)`, returns `DeliveryCommandBatch`, and
-  completes batches after local outcomes.
-- `DeliveryCommandBatch` stores `adapterMailboxKey`, handoff references, and
-  `List<DeliveryCommand>`.
-- `TransportDeliveryCommandBatchCodec` serializes `DeliveryCommand` fields
-  directly inside a batch JSON record.
-- `AdapterMailboxMount` polls by mailbox key, dispatches the batch's
-  `DeliveryCommand` items into the embedded Java `AdapterCommandExecutor`, and
-  emits delivery-failure evidence from `DispatchOutcome`.
-- `DispatchOutcome` is currently built from `DeliveryCommand`, so immediate
-  offer/backpressure/unavailable failures rely on command fields for delivery
-  id, selected worker id, and correlation.
-- The remaining convergence problem is not mailbox-scoped drain. It is that
-  `DeliveryCommand` still acts as queue carrier, embedded executor input, and
-  outcome identity source at the same time.
+- Assigned dispatch uses `DispatchRoutingBatch` targeted to
+  `RoutingTarget.adapterMailbox(adapterMailboxKey)`.
+- `DispatchRoutingItem` is the flat selected-worker dispatch carrier for
+  handoff, adapter executors, and polling pull-buffer admission.
+- `ClaimedDispatchRoutingBatch` carries handoff claim references after
+  materialization; producer offers and serialized queue values do not carry
+  claim references.
+- `TransportDispatchHandoff` is mailbox-scoped and replaces the old
+  delivery-command handoff contract.
+- `AdapterCommandExecutor.dispatch(...)` consumes
+  `List<DispatchRoutingItem>`.
+- Polling pull stores use `DispatchRoutingItem` directly and project to
+  `PulledDeliveryMessage` at the pull API boundary.
+- `DeliveryCommand`, `DeliveryCommandBatch`, `DeliveryCommandReference`,
+  `AdapterMailboxDeliveryOffer`, `TransportDeliveryCommandHandoff`,
+  `TransportDeliveryCommandBatchCodec`, and `QueuedPulledDispatch` have no
+  production assigned-dispatch carrier role.
 
-## Owner Review
+## Before Convergence
 
-Scheduling owner:
-
-```text
-workerGroup / task policy / worker runtime evidence -> selectedWorkerId
-```
-
-Worker-runtime evidence owner:
-
-```text
-selectedWorkerId -> adapterMailboxKey
-```
-
-Transport dispatch carrier owner:
-
-```text
-DispatchRoutingItem + RoutingEnvelope target + queue claim/ack + outcome context
-```
-
-Adapter owner:
-
-```text
-selectedWorkerId -> local worker session or pull buffer
-protocol final-hop send / poll delivery
-wire frame construction from context + opaque worker-facing payload
-```
-
-Result owner:
-
-```text
-RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)
-starter result bridge -> engine result convergence
-```
-
-`DeliveryCommand` currently straddles two roles:
-
-- assigned-worker delivery intent
-- embedded Java executor input
-- queue carrier item and outcome-context source
-
-That is acceptable as an intermediate implementation, but it is not the final
-process-boundary shape. The queue item should be a transport-owned
-`DispatchRoutingItem` that contains a `RoutingEnvelope` and explicit outcome
-context. Delivery outcome identity must not be recovered by parsing
-target-owned payload or by reading diagnostics.
+- `DeliveryCommand` lives in `transport_api` and currently carries
+  `commandId`, `deliveryBucketId`, `selectedWorkerId`, opaque `payload`,
+  `correlationRef`, deadline, and creation time.
+- `DeliveryCommand.deliveryBucketId` is upstream scheduling/index context. It
+  is not needed by push adapters for final-hop send and should not be required
+  by embedded adapter executor input.
+- `AdapterMailboxDeliveryOffer` is a producer-side batch wrapper carrying
+  `adapterMailboxKey + List<DeliveryCommand>`.
+- `DeliveryCommandBatch` is the consumer-side handoff batch carrying
+  `adapterMailboxKey`, handoff references, and `List<DeliveryCommand>`.
+- `TransportDeliveryCommandBatchCodec` serializes `adapterMailboxKey` plus
+  every `DeliveryCommand`, including `deliveryBucketId`.
+- `TransportDeliveryCommandHandoff` exposes command-shaped offer/poll/complete
+  methods and therefore freezes `DeliveryCommand` as the process-boundary
+  carrier.
+- `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)` makes the same
+  command model the embedded adapter final-hop SPI.
+- `QueuedPulledDispatch.from(DeliveryCommand)` copies the same selected-worker
+  delivery facts into a polling queue value, and `PulledDeliveryMessage` copies
+  nearly the same facts again for the pull API output.
+- `RoutingTarget` already exists with `ownerKind` and `ownerRef`, but current
+  dispatch code treats `RoutingTarget.adapter(adapterMailboxKey)` as a mailbox
+  target. The target kind should eventually say mailbox, not generic adapter.
 
 ## Boundary Decision
 
-V1 dispatch queue item:
+`RoutingTarget` means:
 
 ```text
-DispatchRoutingItem
-  envelope: RoutingEnvelope
-  outcomeContext: DispatchOutcomeContext
+ownerKind = target owner namespace
+ownerRef  = that owner's mailbox / partition / inbox key
 ```
 
-`DispatchRoutingItem` is the serialized queue/process-boundary record when
-dispatch crosses a handoff store. `RoutingEnvelope` is the only routed opaque
-payload carrier inside that record; it is not the only serialized queue record.
-Handoff references such as command ids, ready refs, and inflight refs remain
-handoff-owned claim metadata and are not adapter payload.
+For assigned dispatch, the target is the adapter mailbox:
 
-V1 routed payload carrier:
+```text
+RoutingTarget(ownerKind = "adapter-mailbox",
+              ownerRef  = adapterMailboxKey)
+```
+
+The first implementation slice should use `adapter-mailbox` directly. Do not
+extend the existing generic `adapter` owner kind for assigned dispatch, because
+the target is a queue/inbox address, not adapter capability, protocol type, or
+lifecycle owner.
+
+`ownerRef` may be a worker id only when `ownerKind` explicitly names a worker
+or selected-worker target. It is not valid to infer worker semantics from an
+adapter-mailbox target.
+
+Flat dispatch batch:
 
 ```java
-RoutingEnvelope(
-    envelopeId = deliveryId,
-    target = RoutingTarget.adapter(adapterMailboxKey),
-    payload = opaque worker-facing payload,
-    diagnostics = bounded diagnostics only,
-    createdAtEpochMillis = carrier creation time
-)
+record DispatchRoutingBatch(
+    RoutingTarget target,
+    List<DispatchRoutingItem> items
+) {}
 ```
 
-V1 outcome context:
+Claimed/materialized handoff batch:
 
-```text
-DispatchOutcomeContext
-  deliveryId
-  selectedWorkerId
-  correlationRef
-  createdAtEpochMillis / deadline if needed for delivery observation
+```java
+record ClaimedDispatchRoutingBatch(
+    DispatchRoutingBatch batch,
+    List<DispatchHandoffReference> references
+) {}
 ```
 
-The exact class name can change, but the rule cannot: immediate handoff
-failures must be able to produce `DispatchOutcome` without decoding
-`RoutingEnvelope.payload` and without reading `diagnostics`.
+Flat dispatch item:
 
-V1 worker-facing payload:
-
-```text
-eventCode
-input
-sharedConfig
-resultCorrelationRef
+```java
+record DispatchRoutingItem(
+    String deliveryId,
+    String selectedWorkerId,
+    String payload,
+    String correlationRef,
+    long deadlineEpochMillis,
+    long createdAtEpochMillis
+) {}
 ```
 
-The worker-facing payload is the existing starter-owned dispatch frame encoded
-by `TaskDispatchPayloadEncoder` or its successor. It is opaque to
-`transport_runtime` handoff and mount code. It must not carry delivery
-identity, selected-worker identity, task shell metadata, route, endpoint,
-connection, session, queue, created/deadline, or adapter facts.
+Rules:
 
-The embedded executor or a future external adapter frame may still need
-`selectedWorkerId`, `deliveryId`, timing, and correlation for final-hop
-addressing and outcome creation. Those facts come from `DispatchOutcomeContext`
-and the mailbox target, not by duplicating them inside the opaque
-worker-facing payload.
+- Batch target owns mailbox placement. Items do not repeat mailbox placement.
+- `selectedWorkerId` is the correctness identity selected by engine. It is not
+  a physical queue key and not worker lifecycle truth.
+- `payload` is starter-owned worker-facing payload and remains opaque to
+  transport handoff, claim, ack, and mailbox mount code.
+- `deliveryBucketId` does not belong in the flat dispatch item unless a later
+  owner decision proves a concrete transport-runtime consumer that cannot use
+  batch target, selected worker, payload, correlation, or timing.
+- `DispatchOutcome` must be creatable from `DispatchRoutingItem` without
+  decoding payload or reading diagnostics. Because `DispatchOutcome` is a
+  `transport_api` type and `DispatchRoutingItem` is a `transport_runtime`
+  carrier, item-to-outcome helpers belong in `transport_runtime`, not on
+  `DispatchOutcome`.
+- Handoff references such as ready refs and inflight refs stay handoff-store
+  metadata. They appear only on claimed/materialized consumer batches, not on
+  producer offers or serialized queue values.
+- Handoff references are not producer item fields, worker payload, adapter
+  final-hop inputs, or result correlation.
 
-V1 embedded Java executor input:
+## Target Serialization
 
-```text
-AdapterDispatchCommand
-  deliveryId
-  selectedWorkerId
-  payload
-  correlationRef
-  createdAtEpochMillis / deadline if needed by final-hop outcome observation
+Redis and other process-boundary handoff codecs should serialize one flat
+batch shape:
+
+```json
+{
+  "target": {
+    "ownerKind": "adapter-mailbox",
+    "ownerRef": "mailbox-a"
+  },
+  "items": [
+    {
+      "deliveryId": "d-1",
+      "selectedWorkerId": "worker-1",
+      "payload": "...opaque worker payload...",
+      "correlationRef": "corr-1",
+      "deadlineEpochMillis": 10000,
+      "createdAtEpochMillis": 9000
+    }
+  ]
+}
 ```
 
-The exact class name can change. The rule cannot: embedded Java adapters must
-not require `deliveryBucketId` or any bucket/queue owner fact to attempt a
-final-hop send. During transition, `DeliveryCommand` may remain as an old
-producer intent or old handoff carrier, but `AdapterMailboxMount` must build a
-bucket-free executor input before invoking `AdapterCommandExecutor`.
-
-Identity consistency rule:
-
-- `DispatchOutcomeContext.deliveryId` must match
-  `RoutingEnvelope.envelopeId`.
-- `RoutingEnvelope.target.ownerRef` must match the mailbox being offered,
-  stored, claimed, and mounted.
-- Starter delivery integration must build the worker-facing payload and
-  `DispatchOutcomeContext` from the same correlation source. If it can decode
-  or inspect the worker-facing payload during construction, it must validate
-  payload `resultCorrelationRef` against `DispatchOutcomeContext.correlationRef`
-  before submitting the item.
-- `transport_runtime` bridge code does not re-parse the worker-facing payload
-  to validate identity. If a future target-owned adapter protocol deliberately
-  adds delivery identity to its own wire frame, that target bridge owns the
-  consistency check before final-hop send.
-- Handoff offer/claim/ack code must not perform this payload validation; it
-  still treats payload as opaque.
-
-Owner-kind scope:
-
-- dispatch V1 uses `RoutingTarget.adapter(...)`;
-- result mainline uses `RoutingTarget.resultIngress(...)`;
-- the existing `engine` owner kind in `RoutingOwnerKinds` is out of scope for
-  dispatch carrier proof and must not be used as a dispatch target.
-
-Forbidden top-level `RoutingEnvelope` fields:
-
-- `selectedWorkerId`
-- `deliveryBucketId`
-- `adapterId`
-- `routeKey`
-- `connectionId`
-- `sessionHandle`
-- endpoint lease id
-- task id / message id / attempt id
-- result success/failure fields
-- queue stats/list/count fields
-
-Forbidden dispatch carrier behavior:
-
-- deriving adapter mailbox from `deliveryBucketId`
-- storing selected worker as a physical queue key
-- parsing target-owned payload in handoff offer/claim/ack paths
-- using diagnostics to build `DispatchOutcome`
-- adding adapter health or lifecycle state to the dispatch carrier
+No nested dispatch `RoutingEnvelope`. No serialized outcome-context tuple. No
+serialized handoff references in producer offers or queue values. No duplicate
+`adapterMailboxKey` inside every item.
 
 ## Target Flow
 
 ```text
 TaskDispatchBinding
   -> starter dispatch translation
-  -> starter-owned worker-facing payload + result correlation encoding
+  -> starter-owned opaque worker payload + correlationRef
   -> WorkerDeliveryTargetView.resolveDeliveryTarget(selectedWorkerId)
-  -> DispatchOutcomeContext(deliveryId, selectedWorkerId, correlationRef)
-  -> RoutingEnvelope(target=adapter:<adapterMailboxKey>,
-                     payload=<opaque worker-facing payload>)
-  -> DispatchRoutingItem(envelope, outcomeContext)
-  -> TransportDeliveryCommandHandoff.offer(adapterMailboxKey, items)
+  -> DispatchRoutingItem(deliveryId, selectedWorkerId, payload, correlationRef, timing)
+  -> DispatchRoutingBatch(target=adapter-mailbox:<adapterMailboxKey>, items)
+  -> TransportDispatchHandoff.offer(batch)
   -> mailbox queue / ready / inflight / ack
   -> AdapterMailboxMount.poll(adapterMailboxKey)
-  -> adapter-target bridge validates envelope target and context
-  -> bridge builds embedded executor input from context + opaque payload
-  -> AdapterCommandExecutor.dispatch(...)
+  -> AdapterCommandExecutor.dispatch(List<DispatchRoutingItem>)
+  -> concrete adapter selected-worker final hop
   -> DispatchOutcome
-  -> delivery failure evidence when retryable
+  -> retryable delivery failure evidence when needed
 ```
 
-Transport remains the delivery executor. It owns queue admission, claim, ack,
-mailbox availability, and delivery outcomes. It does not own worker selection,
-retry, reassign, compensation, final result policy, adapter process lifecycle,
-or business payload schema.
+Transport remains a best-effort delivery executor. It owns bounded offer,
+mailbox claim/ack hygiene, final-hop outcome collection, and observable known
+delivery failure. It does not own worker selection, retry, reassign,
+compensation, final task result policy, adapter process supervision, or
+business payload schema.
 
 ## Observable Failure Boundary
 
-Transport owns best-effort delivery attempts, not guaranteed worker execution.
-Its invariant is:
+Known delivery-attempt failures must become `DispatchOutcome` or retryable
+failure evidence:
 
-```text
-known delivery-attempt failures must become DispatchOutcome or failure evidence
-accepted items without later completion are engine attempt-timeout concerns
-```
+- bounded offer rejection / backpressure
+- unavailable mailbox consumer
+- invalid or corrupt dispatch item
+- no selected-worker endpoint or pull buffer slot in the adapter
+- adapter final-hop send/admission failure
+- known handoff claim/ack failure attributable to an item
 
-Transport must return or publish observable delivery evidence for:
-
-- offer rejected by bounded admission or backpressure
-- mailbox unavailable or no active mailbox consumer
-- invalid dispatch item or corrupt routing item
-- selected worker not found in adapter-local session/pull state
-- adapter final-hop send/admit failure
-- handoff claim/ack failure when the failure is known and attributable to a
-  dispatch item
-
-Transport must not turn these into silent drops, diagnostics-only logs, or
-payload-dependent guesses.
-
-Transport does not own:
-
-- worker eventually polling an accepted item
-- worker process completing execution
-- result eventually arriving
-- retry/reassign/compensation after attempt timeout
-- recovery after a process crash where no durable delivery outcome exists
-
-Those are engine/task-attempt concerns. The dispatch carrier work in this
-roadmap exists partly to make this boundary executable: `DispatchOutcomeContext`
-must live beside the opaque envelope so offer, mailbox, claim, and final-hop
-failure evidence can be produced without parsing adapter payload or diagnostics.
+Accepted items that later produce no worker consumption, no process
+completion, or no result are engine/task-attempt timeout concerns. Transport
+does not add crash-loss prevention, durable retry ownership, reassign, or final
+recovery in this roadmap.
 
 ## Non-Goals
 
-- Do not implement external adapter process registration or lifecycle.
-- Do not add adapter process auth, permissions, tenant routing, encryption, or
-  remote deployment packaging.
-- Do not change worker selection, worker scheduling, or task lifecycle.
-- Do not move retry/reassign/compensation into transport.
+- Do not implement external adapter process registration.
+- Do not add adapter lifecycle, health, restart, failover, or migration.
+- Do not change worker selection or worker-runtime evidence ownership.
 - Do not change public Java worker handler APIs.
-- Do not turn `RoutingEnvelope` into a generic business event model.
-- Do not add `source`, `ingressCode`, success/failure fields, or content-type
-  negotiation in this roadmap.
-- Do not add statistics, list, count, snapshot, inspect, or dashboard APIs to
-  the dispatch carrier.
-- Do not keep old delivery-command carrier classes as compatibility aliases
-  after production callers move.
+- Do not move retry, reassign, compensation, or task timeout into transport.
+- Do not change result-ingress `RoutingEnvelope` behavior.
+- Do not introduce content-type negotiation or task-shaped payload parsing in
+  transport runtime.
+- Do not add compatibility aliases for old dispatch carrier classes after
+  callers are moved.
 
 ## Do Not Start With
 
-Do not start by deleting `DeliveryCommand`.
-
-First separate its current roles:
+Do not start by adding another context object such as:
 
 ```text
-routed payload       -> RoutingEnvelope
-payload role         -> starter-owned worker-facing payload
-outcome identity     -> DispatchOutcomeContext
-executor input       -> AdapterDispatchCommand or equivalent bucket-free input
-queue record         -> DispatchRoutingItem(envelope, outcomeContext)
+RoutingEnvelope + DispatchOutcomeContext + AdapterDispatchCommand
 ```
 
-Deleting or renaming `DeliveryCommand` before the carrier and outcome context
-are explicit will either break dispatch or force another wrapper that hides the
-same mixed owner problem.
+That keeps the same problem: delivery facts are copied between models and then
+serialized as a tuple.
+
+Start by deciding the single flat wire item and the single target placement
+owner. Then move handoff, mount, adapter executors, and polling projections to
+that shape.
+
+Do not start by deleting `DeliveryCommand` before the field roles and caller
+sets are inventoried. Deleting first will either break dispatch or force a new
+wrapper that hides the same mixed owner problem.
 
 Do not start by building a remote adapter process. That adds lifecycle,
-security, process supervision, and deployment policy before the queue carrier
-is stable.
+security, process supervision, and deployment policy before the carrier is
+stable.
 
-Do not start by adding diagnostics to make tests easier. If a fact is required
-for delivery outcome correctness, it belongs in outcome context, not
-diagnostics. If a fact is only operator evidence, it must stay off the
-dispatch mainline.
+Do not add diagnostics to make tests easier. If a fact is required for delivery
+outcome correctness, it belongs in the flat item. If a fact is only operator
+evidence, it must stay off the dispatch mainline.
 
-## DREC-0 - Inventory And Role Classification
+## DRC-0 - Inventory And Field Classification
 
 Scope:
 
-- Inventory every production and test use of:
-  `DeliveryCommand`, `AdapterMailboxDeliveryCommand`,
-  `AdapterMailboxDeliveryOffer`, `DeliveryCommandBatch`,
-  `DeliveryCommandReference`, `TransportDeliveryCommandBatchCodec`,
-  `TransportDeliveryCommandHandoff`, `TransportAssignedDeliverySubmitter`, and
-  `AdapterMailboxMount`.
-- Inventory polling pull projection path:
-  `AdapterPullDeliveryBuffer`, `TransportDeliveryService`,
-  `QueuedPulledDispatch`, `PulledDeliveryMessage`,
-  `PollingDeliveryExecutor`, and `PollingDeliveryPullChannel`.
-- Classify each field of `DeliveryCommand` as:
-  carrier identity, routing target, adapter payload, outcome context, timing
-  observation, or residue.
-- Classify polling pull-store values as adapter-local pull projection, not
-  engine-to-adapter handoff carrier. The roadmap must not accidentally delete
-  or guard against legal pull-store projections while removing handoff carrier
+- Inventory production and test usages of:
+  `DeliveryCommand`, `AdapterMailboxDeliveryOffer`,
+  `DeliveryCommandBatch`, `DeliveryCommandReference`,
+  `TransportDeliveryCommandBatchCodec`, `TransportDeliveryCommandHandoff`,
+  `TransportAssignedDeliverySubmitter`, `AdapterCommandExecutor`,
+  `QueuedPulledDispatch`, `PulledDeliveryMessage`, `DispatchOutcome`,
+  `TransportDeliveryStore`, `AdapterPullDeliveryBuffer`, and concrete adapter
+  command executors.
+- Classify each field as one of:
+  target placement, selected-worker correctness, opaque payload, correlation,
+  timing/deadline, handoff claim metadata, pull API projection, diagnostics, or
   residue.
-- Inventory `DispatchOutcome.fromCommand(...)` call sites and determine which
-  should move to explicit outcome context.
-- Inventory `AdapterCommandExecutor.dispatch(...)` and concrete adapter
-  executor inputs. Classify `DeliveryCommand.deliveryBucketId` as carrier
-  residue, not executor input.
-- Inventory Redis and in-memory handoff value shapes, ready references,
-  inflight references, and completion semantics.
-- Inventory tests/guards that currently protect `DeliveryCommand` as the queue
-  item shape.
+- Identify all codecs that currently serialize `DeliveryCommand` as the
+  process-boundary carrier.
+- Identify tests that protect old model names instead of owner invariants.
+- Classify `DeliveryCommand.deliveryBucketId` explicitly.
 
 Acceptance:
 
-- Inventory proves which facts must remain outside opaque payload so handoff
-  can produce offer/backpressure/unavailable outcomes without payload decode.
-- Inventory separates production carrier shape from embedded Java executor
-  input.
-- Inventory proves the embedded executor can receive final-hop input without
-  `deliveryBucketId` or bucket/queue owner facts.
+- Inventory proves which facts are required to produce `DispatchOutcome`
+  without payload decode.
+- Inventory separates handoff target placement from selected-worker
+  correctness identity.
+- Inventory identifies every serialized carrier and every model-copy hop.
 - Inventory separates engine-to-adapter handoff carrier from adapter-local
   polling pull-store projection.
-- Inventory identifies any broad source scans that would block this carrier
-  migration and proposes narrower guards.
-- No code behavior changes are required in this slice.
+- No behavior change is required in this slice.
 
-## DREC-1 - Carrier Codec, Outcome Context, And Executor Input
+## DRC-1 - Introduce Flat Dispatch Carrier
 
 Scope:
 
-- Keep worker-facing payload encoding owned by starter integration
-  (`TaskDispatchPayloadEncoder` or successor). This codec remains outside
-  `transport_runtime`.
-- Add a narrow transport-owned carrier codec for
-  `DispatchRoutingItem(envelope, outcomeContext)`. It may serialize the opaque
-  payload string but must not parse task payload fields.
-- Add explicit dispatch outcome context for transport handoff failures.
-- Add or rename the embedded Java final-hop input to a bucket-free shape such
-  as `AdapterDispatchCommand(deliveryId, selectedWorkerId, payload,
-  correlationRef, createdAt/deadline...)`.
-- Change `AdapterCommandExecutor` and concrete embedded adapters to consume
-  that bucket-free input instead of `DeliveryCommand`.
-- Change producer-side translation so it can build:
-
-```text
-RoutingEnvelope(target=adapter:<adapterMailboxKey>, payload=<encoded payload>)
-DispatchOutcomeContext(deliveryId, selectedWorkerId, correlationRef, ...)
-DispatchRoutingItem(envelope, outcomeContext)
-```
-
-- Keep the embedded Java final-hop executor working through a bridge that
-  constructs the current adapter execution input from `DispatchOutcomeContext`,
-  the mounted mailbox target, and the opaque worker-facing payload.
-- Define and test the identity consistency rule between
-  `DispatchOutcomeContext`, `RoutingEnvelope.envelopeId`, and
-  `RoutingEnvelope.target`.
+- Add `DispatchRoutingItem` in `transport_runtime` as the flat assigned
+  delivery item.
+- Add `DispatchRoutingBatch` carrying `RoutingTarget` and flat items.
+- Add `ClaimedDispatchRoutingBatch` as the handoff materialization result that
+  combines a dispatch batch with store-owned claim references.
+- Add `adapter-mailbox` to `RoutingOwnerKinds`; do not overload generic
+  `adapter` for assigned dispatch.
+- Add runtime-local `DispatchOutcomeFactory` or equivalent helper methods that
+  consume `DispatchRoutingItem` and call the field-level `DispatchOutcome`
+  constructor/factories.
+- Keep result-ingress `RoutingEnvelope` untouched.
 
 Acceptance:
 
-- Immediate producer/handoff failures can create `DispatchOutcome` without
-  reading `RoutingEnvelope.payload`.
-- Offer rejection, mailbox unavailable, corrupt routing item, no endpoint, and
-  adapter final-hop failure all have an observable `DispatchOutcome` or
-  retryable delivery-failure event.
-- Adapter final-hop failures can still create `DispatchOutcome` from
-  `DispatchOutcomeContext`.
-- The adapter-target bridge rejects mismatched envelope target/context before
-  invoking an adapter executor.
-- `AdapterCommandExecutor` no longer accepts `DeliveryCommand` and no executor
-  input requires `deliveryBucketId`.
-- No bridge fabricates, copies, or reintroduces `deliveryBucketId` to satisfy
-  adapter executor construction.
-- The starter-owned payload encoder round-trips the current worker-facing
-  dispatch payload
-  without adding task shell metadata, route, endpoint, connection, session, or
-  adapter id fields. `transport_runtime` tests may assert payload opacity but
-  must not depend on starter internals.
-- `RoutingEnvelope.diagnostics` is not used for outcome correctness.
-- This slice may keep `DeliveryCommand` as transitional producer intent or old
-  handoff carrier until DREC-2, but it must not remain embedded Java executor
-  input and must no longer be the only source of outcome identity.
+- `DispatchRoutingItem` has only delivery id, selected worker, opaque payload,
+  opaque correlation, deadline, and created time.
+- `DispatchRoutingItem` does not contain mailbox key, route key, adapter id,
+  connection id, endpoint lease id, session handle, task shell metadata, or
+  `deliveryBucketId`.
+- `DispatchRoutingBatch` target validation rejects blank or unknown owner
+  kinds and non-mailbox dispatch targets.
+- `RoutingOwnerKinds` contains `adapter-mailbox`, and `RoutingTarget` exposes
+  `adapterMailbox(adapterMailboxKey)` or an equivalent explicit factory.
+- Assigned dispatch code does not call `RoutingTarget.adapter(...)`.
+- Existing result-ingress `RoutingEnvelope` tests remain green after adding the
+  new owner kind.
+- Producer offers and serialized queue values do not contain handoff claim
+  references.
+- Immediate offer/backpressure/unavailable outcomes can be built from flat item
+  fields.
 
-## DREC-2 - Handoff Carrier Pivot
+## DRC-2 - Handoff, Mount, And Executor Carrier Pivot
 
 Scope:
 
-- Replace `AdapterMailboxDeliveryOffer(List<DeliveryCommand>)` with a
-  mailbox-targeted `DispatchRoutingItem` offer shape.
-- Replace `DeliveryCommandBatch(List<DeliveryCommand>)` with a batch that
-  carries `DispatchRoutingItem` values plus handoff references.
-- Decide the offer mailbox source explicitly:
-  either group offers from each item's `RoutingEnvelope.target.ownerRef`, or
-  keep a batch/offer-level `adapterMailboxKey` and validate every item target
-  matches it before admission.
-- Update in-memory and Redis handoff implementations and codecs.
-- Keep mailbox-level availability and mailbox-scoped poll semantics unchanged.
-- Preserve local store hygiene for claim/ack/requeue. This protects
-  wrong-consumer prevention and observable known failures only; it is not a
-  durable message reliability, process-crash recovery, retry policy, or final
-  recovery guarantee.
+- Replace `AdapterMailboxDeliveryOffer` with a dispatch batch/offer shape based
+  on `RoutingTarget + DispatchRoutingItem`.
+- Replace `DeliveryCommandBatch` with `DispatchRoutingBatch` for offered and
+  serialized queue values, and `ClaimedDispatchRoutingBatch` for consumer claim
+  results that need ack references.
+- Replace `TransportDeliveryCommandBatchCodec` with a codec that serializes
+  the flat batch shape.
+- Change `AdapterMailboxMount` to poll `ClaimedDispatchRoutingBatch`, complete
+  claimed batches, and dispatch flat items without constructing
+  `DeliveryCommand`.
+- Change `AdapterCommandExecutor.dispatch(...)` to consume
+  `List<DispatchRoutingItem>`.
+- Update WebSocket and socket final-hop dispatch to use
+  `DispatchRoutingItem.selectedWorkerId()` for local session lookup and
+  `DispatchRoutingItem.payload()` as the wire payload.
+- Update polling final-hop enqueue to consume `DispatchRoutingItem`.
+- Delete any adapter-local command DTO that only copies fields from
+  `DispatchRoutingItem`.
+- Rename `TransportDeliveryCommandHandoff` and related configuration only when
+  the code actually stops carrying delivery commands.
+- Keep mailbox-level availability proof and mailbox-scoped poll semantics
+  unchanged.
 
 Acceptance:
 
-- Handoff queue values serialize `DispatchRoutingItem`.
-- Each serialized `DispatchRoutingItem` contains one `RoutingEnvelope` and one
-  `DispatchOutcomeContext`.
-- The physical queue address remains `adapterMailboxKey`.
-- If a handoff API accepts a batch/offer-level mailbox key, every item
-  `RoutingEnvelope.target.ownerKind/ownerRef` must be `adapter:<same key>`.
-  Mismatches are invalid/corrupt dispatch input and must not be enqueued.
-- `selectedWorkerId` is not a queue key and is not a top-level
-  `RoutingEnvelope` field.
-- Redis ready/inflight references remain handoff-owned and do not duplicate
-  payload schema facts.
-- Offer/backpressure/unavailable outcomes use explicit outcome context.
-- Known handoff offer/claim failures either return `DispatchOutcome`, publish
-  retryable failure evidence, or retain handoff state for normal claim/ack
-  retry; they must not be logged and silently dropped.
-- Existing dispatch E2E behavior remains unchanged for embedded adapters.
+- Handoff queue values no longer serialize `DeliveryCommand`.
+- Redis queue values contain one flat batch shape and one opaque payload string
+  per item.
+- Redis queue values do not contain ready refs, inflight refs, or other ack
+  metadata; those are attached only after claim/materialization.
+- Handoff offer/claim/ack paths do not parse payload or diagnostics.
+- Known handoff failures either return `DispatchOutcome`, publish retryable
+  failure evidence, or retain normal handoff state for retryable claim/ack
+  hygiene.
+- Adapter executors do not receive `DeliveryCommand`, `RoutingEnvelope`,
+  context tuples, mailbox target facts, route key, connection id, endpoint
+  lease id, session handle, adapter id, or `deliveryBucketId`.
+- Push adapters still prove selected-worker final-hop demux.
+- Polling final-hop enqueue does not decode worker payload.
+- Adapter final-hop failures build `DispatchOutcome` from flat item facts.
+- No compatibility wrapper keeps old `DeliveryCommand` carrier path alive.
 
-## DREC-3 - Adapter Mailbox Mount And Embedded Executor Bridge
+## DRC-3 - Polling Projection Collapse
 
 Scope:
 
-- Update `AdapterMailboxMount` to poll routing-envelope batches.
-- Validate each claimed envelope target is `adapter:<mountedMailboxKey>`.
-- Do not decode task payload in `transport_runtime`. The adapter-target bridge
-  treats `RoutingEnvelope.payload` as an opaque worker-facing string.
-- Construct embedded executor input from `DispatchOutcomeContext`, the mounted
-  mailbox target, and the opaque worker-facing payload.
-- Treat envelope/context mismatch as corrupt or invalid delivery input and do
-  not call the adapter executor.
-- Keep `AdapterCommandExecutor` as the embedded Java final-hop SPI unless a
-  separate roadmap replaces it.
-- Ensure concrete adapters still receive only the minimal assigned-worker
-  execution input they need.
-- Keep polling pull-store values (`QueuedPulledDispatch` and
-  `PulledDeliveryMessage`) as adapter-local projections. They may be assembled
-  after the adapter-target bridge builds pull-buffer input, but they are not
-  engine-to-adapter handoff
-  carriers.
+- Decide whether `QueuedPulledDispatch` remains a real store-value boundary or
+  is only a duplicate of `DispatchRoutingItem`.
+- If it is only a duplicate, make polling store use `DispatchRoutingItem` and
+  project directly to `PulledDeliveryMessage` at the API pull boundary.
+- Keep `PulledDeliveryMessage` as the transport API output projection.
 
 Acceptance:
 
-- A mismatched envelope target is treated as handoff corruption/invalid
-  delivery and does not call the adapter executor.
-- `AdapterMailboxMount` does not parse the worker-facing payload to recover
-  delivery identity, selected worker, correlation, timing, or outcome facts.
-- Adapter modules do not parse `RoutingEnvelope` for non-adapter target kinds.
-- WebSocket/socket/polling final-hop tests still prove selected-worker demux.
-- `AdapterMailboxMount` does not inspect task shell metadata, result payload
-  schema, diagnostics, stats, endpoint leases, or worker-runtime stores.
+- Polling workers sharing a mailbox still receive only their
+  `selectedWorkerId` items.
+- Polling queue values do not contain mailbox, route, adapter, connection,
+  endpoint, task shell, or lifecycle fields.
+- Polling projection does not decode worker payload to build pull output.
+- `PulledDeliveryMessage` remains API projection only, not the handoff carrier.
 
-## DREC-4 - Remove Old Carrier Residue
+## DRC-4 - Remove Residue And Guards
 
 Scope:
 
-- Delete or narrow old carrier-only classes:
-  `AdapterMailboxDeliveryCommand`, `AdapterMailboxDeliveryOffer`,
-  `DeliveryCommandBatch`, and `TransportDeliveryCommandBatchCodec`, unless
-  their names and fields are still accurate after the carrier pivot.
-- Rename handoff/config/API surfaces whose names still imply
-  `DeliveryCommand` is the handoff carrier, including
-  `TransportDeliveryCommandHandoff`, `deliveryCommandHandoffFactory`,
-  `redisDeliveryCommandHandoff(...)`, and related tests/guards. Target names
-  should describe dispatch handoff, not delivery-command carrier shape.
-- Narrow or remove `DispatchOutcome.fromCommand(...)` if outcome context
-  replaces command-derived outcome identity.
-- Keep or rename polling pull-store projection classes only according to their
-  actual adapter-local role; do not delete them merely because they contain
-  delivery identity fields.
-- Update transport docs, proof registry, and architecture guards.
-- Archive or update roadmaps that still describe `DeliveryCommand` as the
-  process-boundary carrier.
+- Delete or narrow old models after callers move:
+  `DeliveryCommand`, `AdapterMailboxDeliveryOffer`, `DeliveryCommandBatch`,
+  `TransportDeliveryCommandBatchCodec`, `TransportDeliveryCommandHandoff`, and
+  `QueuedPulledDispatch` if it is not a real store boundary.
+- Update `transport/AGENTS.md`, `transport/TRANSPORT_BOUNDARY_BASELINE.md`,
+  and proof registry wording from delivery-command carrier to flat dispatch
+  routing carrier.
+- Add architecture guards against reintroducing nested dispatch carrier
+  tuples, delivery-command handoff carriers, or task-shaped transport payload
+  projections.
 
 Acceptance:
 
-- Production handoff APIs no longer accept or return `DeliveryCommand` as the
-  queue carrier.
-- Public/starter configuration no longer exposes delivery-command handoff names
-  after the carrier pivot; no compatibility alias keeps old names alive.
-- No compatibility wrapper keeps the old carrier path alive.
-- Architecture guards fail if handoff codecs serialize `DeliveryCommand`
-  records as top-level queue items after the pivot.
-- Architecture guards fail if handoff code parses worker-facing payload to
-  build offer/claim failure outcomes.
-- Owner docs say dispatch and result ingress both use `RoutingEnvelope` at the
-  transport queue/process-boundary layer.
+- No production handoff codec serializes `DeliveryCommand`.
+- No adapter executor consumes a model whose only role is copying fields from
+  flat dispatch items.
+- `AdapterMailboxMount`, handoff APIs/codecs, and concrete adapter executor
+  paths no longer import or consume `DeliveryCommand`.
+- If `DeliveryCommand` is retained by a separate owner decision, guards must
+  allow it only outside assigned-dispatch handoff, mailbox mount, and adapter
+  executor paths.
+- No compatibility alias keeps old carrier paths alive.
+- Owner docs say result ingress uses `RoutingEnvelope`; assigned dispatch uses
+  flat `DispatchRoutingBatch/DispatchRoutingItem` with `RoutingTarget`.
 
 ## Guard Targets
 
-- `DispatchRoutingItem` is the only dispatch handoff queue item after DREC-2.
-- `RoutingEnvelope` is the only routed opaque payload carrier inside a dispatch
-  handoff item.
-- `RoutingEnvelope.target.ownerKind` for dispatch is `adapter`.
-- `RoutingEnvelope.target.ownerRef` for dispatch is `adapterMailboxKey`.
-- `DispatchOutcomeContext` is the only handoff-owned source for immediate
-  offer/claim/ack failure outcomes.
-- Handoff offer/claim/ack code must not parse payload.
-- Handoff offer/claim/ack code must not use diagnostics for routing,
-  compensation, lifecycle, or outcome identity.
-- Adapter-target bridge code must validate envelope target/context and must not
-  recover delivery identity from the worker-facing payload before calling
-  embedded executors.
-- `AdapterCommandExecutor` must not accept `DeliveryCommand`; embedded adapter
-  executor input must not contain `deliveryBucketId`.
-- Worker-facing dispatch payload must not contain route key, endpoint address,
-  connection id, session handle, endpoint lease id, adapter id, task shell
-  metadata, selected-worker identity, delivery id, timing/deadline, or
-  queue-owner facts.
-- Producer-side dispatch must keep resolving mailbox through
-  `WorkerDeliveryTargetView`; no endpoint lease, route-owner, adapter
-  registry, or route-key lookup may return.
-- Stats/list/count/snapshot/inspect APIs must stay off the dispatch carrier
-  mainline.
+- Assigned dispatch carrier must be flat.
+- Dispatch `RoutingTarget.ownerKind` must identify the mailbox/inbox owner, not
+  worker capability, protocol type, or lifecycle owner.
+- Assigned dispatch must use `RoutingTarget.adapterMailbox(...)` or equivalent;
+  `RoutingTarget.adapter(...)` is not an assigned-dispatch target.
+- `selectedWorkerId` must stay an item-level correctness identity and must not
+  become the physical queue key.
+- Handoff target placement must appear once: batch/offer target, not every
+  item.
+- Handoff claim references must not appear in producer offers, serialized queue
+  values, worker payloads, or adapter executor inputs.
+- Handoff offer/claim/ack paths must not parse worker payload.
+- `transport_api` must not import `transport_runtime`; `DispatchOutcome` must
+  not depend on `DispatchRoutingItem`.
+- Worker-facing payload must not contain mailbox key, route key, adapter id,
+  connection id, session handle, endpoint lease id, delivery id, selected
+  worker id, `deliveryBucketId`, or transport timing fields.
+- Adapter executors must not depend on `deliveryBucketId`, route key,
+  adapter id, connection id, session handle, endpoint lease id, or mailbox key
+  to attempt assigned final-hop delivery.
+- No statistics, list, count, snapshot, inspect, adapter lifecycle, or worker
+  scheduling facts may enter the dispatch carrier mainline.
 
-## Verification Candidates
+## Current Verification
 
-These commands are candidates and must be corrected after DREC-0 inventory.
-Mandatory new test classes should be created before using them as completion
-proof; do not rely on `failIfNoSpecifiedTests=false` for mandatory proof.
+Mandatory tests must be named explicitly. Do not rely on
+`failIfNoSpecifiedTests=false` for transport runtime carrier proof.
 
-Baseline compile smoke:
+Compile smoke:
 
 ```powershell
-.\mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/websocket-adapter,transport/socket-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests test-compile
+.\mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests compile
+.\mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests test-compile
 ```
 
 Carrier and handoff proof:
 
 ```powershell
-.\mvnw -q -pl transport/transport_api,transport/transport_runtime -am test "-Dtest=RoutingEnvelopeTest,DispatchRoutingItemTest,DispatchOutcomeContextTest,AdapterDispatchCommandTest,DispatchRoutingItemCodecTest,TransportDispatchRoutingEnvelopeCarrierTest,TransportDeliveryCommandBatchCodecTest,InMemoryTransportDeliveryCommandHandoffTest,RedisTransportDeliveryCommandHandoffTest,AdapterMailboxMountTest,TransportAssignedDeliverySubmitterTest,TransportConvergenceArchitectureGuardTest"
+.\mvnw -q -pl transport/transport_api,transport/transport_runtime test "-Dtest=DispatchOutcomeTest,RedisTransportNamespacesTest,DispatchRoutingItemTest,DispatchRoutingBatchTest,ClaimedDispatchRoutingBatchTest,DispatchOutcomeFactoryTest,TransportDispatchBatchCodecTest,InMemoryTransportDispatchHandoffTest,RedisTransportDispatchHandoffTest,AdapterMailboxMountTest,TransportAssignedDeliverySubmitterTest,TransportDeliveryServiceTest,InMemoryTransportDeliveryStoreTest,RedisDispatchRoutingItemCodecTest,TransportDeliveryPollResultTest,TransportDeliveryFailureEventCodecTest,RedisTransportDeliveryFailureChannelTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest"
 ```
 
-Adapter behavior proof:
+Adapter proof:
 
 ```powershell
-.\mvnw -q -pl transport/polling-adapter,transport/websocket-adapter,transport/socket-adapter -am test "-Dtest=PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,WebSocketSessionControllerTest,SocketSessionManagerTest" "-Dsurefire.failIfNoSpecifiedTests=false"
+.\mvnw -q -pl transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter,sdk/xa-mass-embedded-sdk -am test "-Dtest=WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,TaskDispatchRoutingSubmitterTest,MassApplicationDistributedTransportTest,MassSdkTest" "-Dsurefire.failIfNoSpecifiedTests=false"
 ```
 
-Starter/integration proof:
+Cross-runner compile proof:
 
 ```powershell
-.\mvnw -q -pl sdk/xa-mass-embedded-sdk -am test "-Dtest=TaskDispatchPayloadEncoderTest,TaskDispatchDeliveryCommandSubmitterTest,MassApplicationDistributedTransportTest,EmbeddedPullWorkerSessionTest" "-Dsurefire.failIfNoSpecifiedTests=false"
+.\mvnw -q -pl xa-mass-testing -am -DskipTests compile
 ```
 
-Cross-module compile proof:
+Residue checks:
 
 ```powershell
-.\mvnw -q -pl xa-mass-testing,integrations/xa-mass-scenario-launcher,integrations/xa-mass-worker-pack -am -DskipTests compile
+rg -n "DeliveryCommand|AdapterMailboxDeliveryOffer|DeliveryCommandBatch|TransportDeliveryCommandBatchCodec|TransportDeliveryCommandHandoff" transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/AdapterMailboxMount.java transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/embedded transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery --glob "*.java"
+rg -n "RoutingTarget\\.adapter\\(|RoutingEnvelope|DispatchOutcomeContext|AdapterDispatchCommand" transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/AdapterMailboxMount.java transport/*-adapter/src/main/java --glob "*.java"
+rg -n "DeliveryCommand|AdapterMailboxDeliveryOffer|DeliveryCommandBatch|TransportDeliveryCommandBatchCodec|TransportDeliveryCommandHandoff|QueuedPulledDispatch|RedisQueuedPulledDispatchCodec" transport sdk/xa-mass-embedded-sdk/src/main xa-mass-server/src/main integrations -g "*.java"
+rg -n "import com\\.xa\\.mass\\.transport\\.runtime" transport/transport_api/src/main/java --glob "*.java"
 ```
+
+Expected final-state matches: no assigned-dispatch handoff, mailbox mount, or
+adapter executor usage of removed model names. Broad repo-wide matches in
+archived roadmaps or explicit negative architecture guards are not production
+carrier residue.
 
 ## Completion Criteria
 
-- Dispatch and result ingress both use `RoutingEnvelope` at the transport
-  routed opaque payload layer.
-- Dispatch handoff queue records use `DispatchRoutingItem` or an equivalent
-  transport-owned record pairing `RoutingEnvelope` with
-  `DispatchOutcomeContext`.
-- Dispatch target routing is `RoutingTarget.adapter(adapterMailboxKey)`.
-- Transport handoff does not use `DeliveryCommand` as the carrier item.
-- Embedded Java `AdapterCommandExecutor` does not use `DeliveryCommand` as
-  executor input, and no executor input requires `deliveryBucketId`.
-- Worker-facing dispatch payload remains opaque to handoff offer/claim/ack and
-  `transport_runtime` mount paths.
-- Immediate handoff failures produce `DispatchOutcome` from explicit
-  transport-owned outcome context, not payload decode or diagnostics.
-- Adapter-target bridge validates envelope target/context and builds executor
-  input from context plus opaque payload before invoking embedded executors.
-- Known offer, mailbox, no-endpoint, invalid/corrupt item, and adapter final-hop
-  failures are observable through `DispatchOutcome` or delivery failure
-  evidence.
-- Accepted items with no later worker consumption or result are handled by
-  engine-owned attempt timeout/retry rather than transport retry loops.
-- Adapter final-hop outcomes still carry delivery id, selected worker,
-  correlation, status, retryability, reason, and time.
-- Embedded Java adapters continue to work without becoming the remote adapter
-  protocol.
+- Assigned dispatch uses one flat transport-runtime carrier:
+  `DispatchRoutingBatch(target, items)` plus flat `DispatchRoutingItem`.
+- Handoff claim references appear only in claim/materialization records, not in
+  producer offers or serialized queue values.
+- Dispatch target placement is represented once by `RoutingTarget`.
+- `RoutingTarget.ownerKind/ownerRef` semantics are documented and guarded.
+- Result ingress continues to use `RoutingEnvelope`; assigned dispatch does
+  not.
+- Handoff codecs encode the worker-facing payload once as an opaque string.
+- `DispatchOutcome` can be produced from flat item facts without payload
+  decode.
+- Adapter executors consume flat selected-worker delivery items directly.
+- Polling pull projection does not keep a duplicate internal DTO unless a real
+  store/protocol seam proves it is needed.
 - No old carrier path remains as a compatibility alias, wrapper, or fallback.
-- No statistics, list, count, snapshot, inspect, adapter lifecycle, or worker
-  scheduling facts enter the dispatch carrier mainline.
+- Transport remains a best-effort delivery executor and does not absorb worker
+  selection, task retry, compensation, adapter lifecycle, or payload schema.

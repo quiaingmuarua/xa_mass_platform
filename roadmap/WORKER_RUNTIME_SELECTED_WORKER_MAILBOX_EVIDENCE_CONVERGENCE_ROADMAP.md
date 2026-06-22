@@ -61,13 +61,13 @@ the selected-worker-to-mailbox projection.
 
 ## Current Code Observations
 
-- `TaskDispatchDeliveryCommandSubmitter` resolves
+- `TaskDispatchRoutingSubmitter` resolves
   `WorkerDeliveryTargetView.resolveDeliveryTarget(selectedWorkerId)` after
   engine assignment and before transport handoff.
 - `SelectedWorkerDeliveryTargetEvidence` currently carries `workerId`,
   `adapterMailboxKey`, reachability state, generation, observed time, and
   expiry.
-- `TaskDispatchDeliveryCommandSubmitter` already rejects missing, stale, or
+- `TaskDispatchRoutingSubmitter` already rejects missing, stale, or
   mismatched evidence and emits delivery failure evidence for engine
   compensation.
 - `InMemoryWorkerPresenceRuntime` is currently the only production
@@ -398,7 +398,7 @@ Scope:
 - Guard scope should target the delivery-target mainline packages and callers:
   `WorkerDeliveryTargetView`, `SelectedWorkerDeliveryTargetEvidence`,
   worker-runtime delivery-target projection/store implementations,
-  `TaskDispatchDeliveryCommandSubmitter`, and profile assembly that wires the
+  `TaskDispatchRoutingSubmitter`, and profile assembly that wires the
   view. Do not use broad repository-wide scans that would block unrelated
   diagnostics or test helpers.
 
@@ -425,7 +425,7 @@ proof must not rely on missing test classes hidden by
 
 ```powershell
 .\mvnw -q -pl xa-mass-worker-runtime -DskipTests compile
-.\mvnw -q -pl sdk/xa-mass-embedded-sdk -am test "-Dtest=WorkerRuntimePresenceIngressTest,MassApplicationDistributedTransportTest,TaskDispatchDeliveryCommandSubmitterTest" "-Dsurefire.failIfNoSpecifiedTests=false"
+.\mvnw -q -pl sdk/xa-mass-embedded-sdk -am test "-Dtest=WorkerRuntimePresenceIngressTest,MassApplicationDistributedTransportTest,TaskDispatchRoutingSubmitterTest" "-Dsurefire.failIfNoSpecifiedTests=false"
 .\mvnw -q -pl transport/transport_runtime -am test "-Dtest=TransportConvergenceArchitectureGuardTest" "-Dsurefire.failIfNoSpecifiedTests=false"
 ```
 
@@ -447,7 +447,7 @@ Mandatory proof additions before this roadmap can be marked complete:
 - A split-profile assembly test must prove producer startup fails when a
   required delivery target view is absent, or explicitly documents and verifies
   injection mode.
-- `TaskDispatchDeliveryCommandSubmitterTest` or equivalent must prove missing,
+- `TaskDispatchRoutingSubmitterTest` or equivalent must prove missing,
   expired, and mismatched delivery target evidence each emit one producer-side
   delivery failure outcome.
 - If SWME-1B lands, shared projection tests must prove point lookup by

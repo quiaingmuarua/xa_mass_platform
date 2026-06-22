@@ -1,10 +1,11 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.runtime.delivery.DeliveryCommandBatch;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.ClaimedDispatchRoutingBatch;
+import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import org.slf4j.Logger;
@@ -27,7 +28,7 @@ public final class AdapterMailboxMount {
     private static final long POLL_TIMEOUT_MILLIS = 250L;
 
     private final TransportBinding binding;
-    private final TransportDeliveryCommandHandoff handoff;
+    private final TransportDispatchHandoff handoff;
     private final MailboxConsumerAvailabilityPublisher availabilityPublisher;
     private final TransportDeliveryFailureHandler failureHandler;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
@@ -35,7 +36,7 @@ public final class AdapterMailboxMount {
     private volatile Future<?> drainLoop;
 
     public AdapterMailboxMount(TransportBinding binding,
-                               TransportDeliveryCommandHandoff handoff,
+                               TransportDispatchHandoff handoff,
                                MailboxConsumerAvailabilityPublisher availabilityPublisher,
                                TransportDeliveryFailureHandler failureHandler,
                                RuntimeTaskExecutor runtimeTaskExecutor) {
@@ -82,7 +83,7 @@ public final class AdapterMailboxMount {
         String adapterMailboxKey = binding.getAdapterMailboxKey();
         while (running.get()) {
             try {
-                DeliveryCommandBatch batch = handoff.poll(adapterMailboxKey, POLL_TIMEOUT_MILLIS);
+                ClaimedDispatchRoutingBatch batch = handoff.poll(adapterMailboxKey, POLL_TIMEOUT_MILLIS);
                 if (batch == null) {
                     continue;
                 }
@@ -102,7 +103,7 @@ public final class AdapterMailboxMount {
         }
     }
 
-    private List<DispatchOutcome> dispatch(DeliveryCommandBatch batch) {
+    private List<DispatchOutcome> dispatch(ClaimedDispatchRoutingBatch batch) {
         if (batch.items().isEmpty()) {
             return List.of();
         }
@@ -120,10 +121,10 @@ public final class AdapterMailboxMount {
         return resolved;
     }
 
-    private List<DispatchOutcome> unavailableOutcomes(List<DeliveryCommand> commands, String reason) {
-        List<DispatchOutcome> outcomes = new ArrayList<>(commands.size());
-        for (DeliveryCommand command : commands) {
-            outcomes.add(DispatchOutcome.unavailable(command, reason));
+    private List<DispatchOutcome> unavailableOutcomes(List<DispatchRoutingItem> items, String reason) {
+        List<DispatchOutcome> outcomes = new ArrayList<>(items.size());
+        for (DispatchRoutingItem item : items) {
+            outcomes.add(DispatchOutcomeFactory.unavailable(item, reason));
         }
         return Collections.unmodifiableList(outcomes);
     }

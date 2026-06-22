@@ -1,6 +1,5 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.model.DeliveryCommand;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import org.junit.jupiter.api.Test;
@@ -28,7 +27,7 @@ class TransportDeliveryServiceTest {
     @Test
     void pollUsesCanonicalMailboxAndWorkerKeys() {
         TransportDeliveryService service = service();
-        service.enqueueForMailbox(" " + MAILBOX + " ", List.of(request("delivery-msg-1", BUCKET, "msg-1", " worker-1 ")));
+        service.enqueueForMailbox(" " + MAILBOX + " ", List.of(request("delivery-msg-1", "msg-1", " worker-1 ")));
 
         assertEquals(List.of("msg-1"), service.pollMailboxItemResult(MAILBOX, "worker-1", 10, 0).getItems().stream()
                 .map(item -> messageId(item.payload()))
@@ -38,7 +37,7 @@ class TransportDeliveryServiceTest {
     @Test
     void pollingQueueKeyComesFromAdapterMailboxNotDeliveryBucket() {
         TransportDeliveryService service = service();
-        service.enqueueForMailbox(MAILBOX, List.of(request("delivery-msg-1", BUCKET, "msg-1", "worker-1")));
+        service.enqueueForMailbox(MAILBOX, List.of(request("delivery-msg-1", "msg-1", "worker-1")));
 
         assertTrue(service.pollMailboxItemResult(BUCKET, "worker-1", 10, 0).getItems().isEmpty());
         assertEquals(List.of("msg-1"), service.pollMailboxItemResult(MAILBOX, "worker-1", 10, 0).getItems().stream()
@@ -49,7 +48,7 @@ class TransportDeliveryServiceTest {
     @Test
     void selectedWorkerPollDoesNotDrainAnotherWorkerSharingRouteKey() {
         TransportDeliveryService service = service();
-        service.enqueueForMailbox(MAILBOX, List.of(request("delivery-msg-1", BUCKET, "msg-1", "worker-2")));
+        service.enqueueForMailbox(MAILBOX, List.of(request("delivery-msg-1", "msg-1", "worker-2")));
 
         assertTrue(service.pollMailboxItemResult(MAILBOX, "worker-1", 10, 0).getItems().isEmpty());
         assertEquals(List.of("msg-1"), service.pollMailboxItemResult(MAILBOX, "worker-2", 10, 0).getItems().stream()
@@ -116,17 +115,15 @@ class TransportDeliveryServiceTest {
         return outcomes.stream().map(DispatchOutcome::getStatus).toList();
     }
 
-    private DeliveryCommand request(String messageId, String workerId) {
-        return request("delivery-" + messageId, BUCKET, messageId, workerId);
+    private DispatchRoutingItem request(String messageId, String workerId) {
+        return request("delivery-" + messageId, messageId, workerId);
     }
 
-    private DeliveryCommand request(String deliveryId,
-                                    String deliveryBucketId,
-                                    String messageId,
-                                    String workerId) {
-        return new DeliveryCommand(
+    private DispatchRoutingItem request(String deliveryId,
+                                        String messageId,
+                                        String workerId) {
+        return new DispatchRoutingItem(
                 deliveryId,
-                deliveryBucketId,
                 workerId,
                 "{\"messageId\":\"" + messageId + "\"}",
                 "corr-" + messageId,
@@ -139,4 +136,3 @@ class TransportDeliveryServiceTest {
         return payload.replace("{\"messageId\":\"", "").replace("\"}", "");
     }
 }
-

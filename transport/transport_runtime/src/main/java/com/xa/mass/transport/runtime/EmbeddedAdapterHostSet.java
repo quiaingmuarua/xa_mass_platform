@@ -3,7 +3,7 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 
 import java.util.ArrayList;
@@ -30,7 +30,7 @@ public final class EmbeddedAdapterHostSet {
 
     public static EmbeddedAdapterHostSet fromContributions(
             List<TransportAdapterContribution> contributions,
-            TransportDeliveryCommandHandoff handoff,
+            TransportDispatchHandoff handoff,
             TransportDeliveryFailureHandler failureHandler,
             AdapterMailboxConsumerRegistry mailboxConsumerRegistry,
             long mailboxConsumerAvailabilityMillis,

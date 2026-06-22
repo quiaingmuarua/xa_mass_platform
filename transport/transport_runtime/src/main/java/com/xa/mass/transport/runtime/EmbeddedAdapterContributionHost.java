@@ -4,7 +4,7 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 
 import java.util.ArrayList;
@@ -24,7 +24,7 @@ public final class EmbeddedAdapterContributionHost {
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     public EmbeddedAdapterContributionHost(TransportAdapterContribution contribution,
-                                           TransportDeliveryCommandHandoff handoff,
+                                           TransportDispatchHandoff handoff,
                                            TransportDeliveryFailureHandler failureHandler,
                                            AdapterMailboxConsumerRegistry mailboxConsumerRegistry,
                                            long mailboxConsumerAvailabilityMillis,

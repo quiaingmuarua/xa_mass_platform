@@ -4,8 +4,8 @@ import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
-import com.xa.mass.transport.runtime.delivery.QueuedPulledDispatch;
 import com.xa.mass.transport.runtime.delivery.AdapterPullDeliveryBuffer;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollStatus;
 
@@ -57,12 +57,18 @@ public final class PollingDeliveryPullChannel implements DeliveryPullChannel {
         };
     }
 
-    private static List<PulledDeliveryMessage> toPulledItems(List<QueuedPulledDispatch> items) {
+    private static List<PulledDeliveryMessage> toPulledItems(List<DispatchRoutingItem> items) {
         if (items == null || items.isEmpty()) {
             return List.of();
         }
         return items.stream()
-                .map(QueuedPulledDispatch::toPulledDeliveryMessage)
+                .map(item -> new PulledDeliveryMessage(
+                        item.deliveryId(),
+                        item.selectedWorkerId(),
+                        item.payload(),
+                        item.correlationRef(),
+                        item.createdAtEpochMillis()
+                ))
                 .toList();
     }
 }

@@ -3,7 +3,8 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.junit.jupiter.api.Test;
 
@@ -109,9 +110,11 @@ class TransportAdapterContributionTest {
     }
 
     private static AdapterCommandExecutor executor() {
-        return commands -> commands == null
+        return items -> items == null
                 ? List.of()
-                : commands.stream().map(DispatchOutcome::delivered).toList();
+                : items.stream()
+                .map(item -> DispatchOutcomeFactory.fromItem(item, DispatchOutcomeStatus.DELIVERED, false, null))
+                .toList();
     }
 
     private static ManagedTransportAdapter managedAdapter() {

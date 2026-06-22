@@ -12,9 +12,9 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
-import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.InMemoryTransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryCommandHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
@@ -55,7 +55,7 @@ public class TransportRuntimeComposition {
     private final List<SocketAdapterConfig> supplementalSocketAdapterConfigs;
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private final Supplier<TransportDeliveryStore> deliveryStoreFactory;
-    private final Supplier<TransportDeliveryCommandHandoff> deliveryCommandHandoffFactory;
+    private final Supplier<TransportDispatchHandoff> dispatchHandoffFactory;
     private final Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory;
     private final Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
     private final TransportAdapterBootstrap primaryTransportAdapterBootstrap;
@@ -88,7 +88,7 @@ public class TransportRuntimeComposition {
                 .toList();
         this.workerTransportRuntimeFactory = source.getWorkerTransportRuntimeFactory();
         this.deliveryStoreFactory = source.deliveryStoreFactory();
-        this.deliveryCommandHandoffFactory = source.deliveryCommandHandoffFactory();
+        this.dispatchHandoffFactory = source.getDispatchHandoffFactory();
         this.taskResultInboxFactory = source.taskResultInboxFactory();
         this.deliveryFailureInboxFactory = source.deliveryFailureInboxFactory();
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
@@ -174,10 +174,10 @@ public class TransportRuntimeComposition {
                 : new InMemoryTransportDeliveryStore(maxDeliveryQueuedItems, maxDeliveryItemsPerRoute);
     }
 
-    public TransportDeliveryCommandHandoff resolveTransportDeliveryCommandHandoff(int defaultCapacity) {
-        return deliveryCommandHandoffFactory != null
-                ? deliveryCommandHandoffFactory.get()
-                : new InMemoryTransportDeliveryCommandHandoff(defaultCapacity);
+    public TransportDispatchHandoff resolveTransportDispatchHandoff(int defaultCapacity) {
+        return dispatchHandoffFactory != null
+                ? dispatchHandoffFactory.get()
+                : new InMemoryTransportDispatchHandoff(defaultCapacity);
     }
 
     public RedisTransportResultIngressChannel resolveTaskResultInbox() {
@@ -409,4 +409,3 @@ public class TransportRuntimeComposition {
                                       boolean registrationIncluded) {
     }
 }
-
