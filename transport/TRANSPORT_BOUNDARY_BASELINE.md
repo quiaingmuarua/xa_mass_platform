@@ -63,8 +63,8 @@ Transport should stay centered on these concepts only:
   side-channels are binding or contribution metadata, not executor facts. This
   SPI is not the remote-adapter contract; transport core must not require executor-local
   connection/session classes or adapter-owned registries.
-- `TransportBinding`: explicit runtime binding for adapter id, transport hint,
-  protocol label, command executor, optional pull channel, and pull-session
+- `TransportBinding`: explicit runtime binding for adapter id, adapter mailbox
+  key, transport hint, protocol label, optional pull channel, and pull-session
   evidence driver. A pull-capable binding must provide both the pull channel
   and the evidence driver; it must not read adapter metadata back from the
   command executor.
@@ -72,6 +72,11 @@ Transport should stay centered on these concepts only:
   contributed bindings, managed adapters, servers, raw/manual channels, and
   diagnostics. Runtime input context and adapter-produced outputs must not share
   mutable single-slot state.
+- `TransportAdapterBootstrapContext`: embedded adapter support capability
+  surface. It exposes host assignment, mailbox, session evidence, result
+  ingress, and host-resource capabilities. Concrete adapters must not receive
+  raw endpoint lease stores, worker-presence ingress, mailbox registries,
+  dispatch handoff internals, or generic delivery services through this surface.
 - `EmbeddedAdapterHostSet` / `EmbeddedAdapterContributionHost`: current
   embedded Java adapter host-support classes around one or more adapter
   contributions. Their stable role is host mounting: start/stop
@@ -230,7 +235,7 @@ hot-path recovery logic.
 
 - embedded Java adapter command callback, binding assembly, and host-support
   wiring
-- host-owned adapter mailbox key resolution for embedded adapter bootstraps
+- host-assigned adapter mailbox key capability for embedded adapter bootstraps
 - adapter binding and registration resolution
 - canonical adapter-id resolution; old aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not adapter identities
 - canonical transport-hint resolution; adapter labels such as `websocket`,
@@ -240,7 +245,7 @@ hot-path recovery logic.
   handoff
 - dispatch handoff admission control and polling-adapter-owned pending buffer
   configuration
-- runtime executor handoff into adapter bootstraps for transport-owned blocking work
+- adapter-facing host executor capability for transport-owned blocking work
 - result ingress envelope queueing, buffering, and runtime logging; result
   payload decoding, correlation, and lease/attempt validation live in
   SDK/starter or engine-owned result code
@@ -281,7 +286,7 @@ Concrete adapters own protocol I/O only:
   publisher capabilities
 - calls into runtime delivery and result-ingest contracts through narrow
   adapter bootstrap capabilities, not broad runtime owner surfaces; concrete
-  adapters consume host-resolved mailbox keys and do not mint mailbox keys from
+  adapters consume host-assigned mailbox keys and do not mint mailbox keys from
   adapter id or protocol values themselves
 - accept/read/write loops submitted through the runtime executor context when they block
 

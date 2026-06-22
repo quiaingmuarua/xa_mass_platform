@@ -6,6 +6,7 @@ import com.xa.mass.transport.runtime.embedded.AdapterMailboxConsumer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Explicit output emitted by one adapter bootstrap.
@@ -67,22 +68,42 @@ public final class TransportAdapterContribution {
         return endpointInspectors;
     }
 
-    public void validateAgainst(TransportAdapterDescriptor descriptor) {
-        if (descriptor == null) {
-            return;
-        }
+    public void validateAgainst(TransportAdapterDescriptor descriptor, String assignedMailboxKey) {
+        String mailboxKey = requireText(assignedMailboxKey, "assignedMailboxKey");
         for (TransportBinding binding : transportBindings) {
-            if (!descriptor.getAdapterId().equals(binding.getAdapterId())) {
-                throw new IllegalStateException("Transport adapter descriptor adapterId '"
-                        + descriptor.getAdapterId() + "' does not match contributed binding adapterId '"
-                        + binding.getAdapterId() + "'");
+            if (descriptor != null) {
+                if (!descriptor.getAdapterId().equals(binding.getAdapterId())) {
+                    throw new IllegalStateException("Transport adapter descriptor adapterId '"
+                            + descriptor.getAdapterId() + "' does not match contributed binding adapterId '"
+                            + binding.getAdapterId() + "'");
+                }
+                if (!descriptor.getTransportHint().equals(binding.getTransportHint())) {
+                    throw new IllegalStateException("Transport adapter descriptor transportHint '"
+                            + descriptor.getTransportHint() + "' does not match contributed binding transportHint '"
+                            + binding.getTransportHint() + "' for adapterId '" + binding.getAdapterId() + "'");
+                }
             }
-            if (!descriptor.getTransportHint().equals(binding.getTransportHint())) {
-                throw new IllegalStateException("Transport adapter descriptor transportHint '"
-                        + descriptor.getTransportHint() + "' does not match contributed binding transportHint '"
-                        + binding.getTransportHint() + "' for adapterId '" + binding.getAdapterId() + "'");
+            if (!mailboxKey.equals(binding.getAdapterMailboxKey())) {
+                throw new IllegalStateException("Transport adapter assigned mailbox key '"
+                        + mailboxKey + "' does not match contributed binding mailbox key '"
+                        + binding.getAdapterMailboxKey() + "' for adapterId '" + binding.getAdapterId() + "'");
             }
         }
+        for (AdapterMailboxConsumer consumer : adapterMailboxConsumers) {
+            if (!mailboxKey.equals(consumer.adapterMailboxKey())) {
+                throw new IllegalStateException("Transport adapter assigned mailbox key '"
+                        + mailboxKey + "' does not match contributed mailbox consumer key '"
+                        + consumer.adapterMailboxKey() + "'");
+            }
+        }
+    }
+
+    private static String requireText(String value, String fieldName) {
+        Objects.requireNonNull(value, fieldName);
+        if (value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 
     public static final class Builder {

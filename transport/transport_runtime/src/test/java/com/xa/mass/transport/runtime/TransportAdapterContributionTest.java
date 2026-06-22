@@ -63,7 +63,7 @@ class TransportAdapterContributionTest {
                 () -> contribution.validateAgainst(new TransportAdapterDescriptor(
                         "websocket",
                         WorkerTransportHints.REALTIME
-                ))
+                ), "websocket")
         );
 
         assertEquals("Transport adapter descriptor adapterId 'websocket' does not match contributed binding adapterId 'socket'",
@@ -86,7 +86,7 @@ class TransportAdapterContributionTest {
                 () -> contribution.validateAgainst(new TransportAdapterDescriptor(
                         "websocket",
                         WorkerTransportHints.REALTIME
-                ))
+                ), "websocket")
         );
 
         assertEquals("Transport adapter descriptor transportHint 'realtime' does not match contributed binding transportHint 'polling' for adapterId 'websocket'",
@@ -99,7 +99,44 @@ class TransportAdapterContributionTest {
                 .addTransportBinding(binding("websocket"))
                 .build();
 
-        contribution.validateAgainst(new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME));
+        contribution.validateAgainst(new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME),
+                "websocket");
+    }
+
+    @Test
+    void assignedMailboxMustMatchContributedBindingMailbox() {
+        TransportAdapterContribution contribution = TransportAdapterContribution.builder()
+                .addTransportBinding(binding("websocket"))
+                .build();
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> contribution.validateAgainst(new TransportAdapterDescriptor(
+                        "websocket",
+                        WorkerTransportHints.REALTIME
+                ), "mailbox-b")
+        );
+
+        assertEquals("Transport adapter assigned mailbox key 'mailbox-b' does not match contributed binding mailbox key 'websocket' for adapterId 'websocket'",
+                error.getMessage());
+    }
+
+    @Test
+    void assignedMailboxMustMatchContributedMailboxConsumer() {
+        TransportAdapterContribution contribution = TransportAdapterContribution.builder()
+                .addAdapterMailboxConsumer(mailboxConsumer("mailbox-a"))
+                .build();
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> contribution.validateAgainst(new TransportAdapterDescriptor(
+                        "websocket",
+                        WorkerTransportHints.REALTIME
+                ), "mailbox-b")
+        );
+
+        assertEquals("Transport adapter assigned mailbox key 'mailbox-b' does not match contributed mailbox consumer key 'mailbox-a'",
+                error.getMessage());
     }
 
     private static TransportBinding binding(String adapterId) {

@@ -16,11 +16,11 @@ import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import java.util.Objects;
 
 /**
- * Transport-neutral runtime assembly context handed to adapter-owned bootstrap
- * code.
+ * Host-provided adapter bootstrap capability surface.
  */
-public final class TransportAdapterBootstrapContext {
+public final class TransportAdapterBootstrapContext implements AdapterBootstrapCapabilities {
 
+    private final AdapterBootstrapAssignment assignment;
     private final TransportResultIngressChannel resultIngressChannel;
     private final WorkerPresenceIngress workerPresenceIngress;
     private final TransportEndpointLeaseStore endpointLeaseStore;
@@ -29,8 +29,15 @@ public final class TransportAdapterBootstrapContext {
     private final DeliveryFailureEvidenceSink failureEvidenceSink;
     private final AdapterMailboxConsumerRegistry mailboxConsumerRegistry;
     private final long mailboxConsumerAvailabilityMillis;
+    private final AdapterMailboxCapabilities mailboxCapabilities = new BootstrapMailboxCapabilities();
+    private final AdapterSessionEvidenceCapabilities sessionEvidenceCapabilities =
+            new BootstrapSessionEvidenceCapabilities();
+    private final AdapterIngressCapabilities ingressCapabilities = new BootstrapIngressCapabilities();
+    private final AdapterHostResources hostResources = new BootstrapHostResources();
 
-    public TransportAdapterBootstrapContext(TransportResultIngressChannel resultIngressChannel,
+    public TransportAdapterBootstrapContext(TransportAdapterDescriptor descriptor,
+                                            String adapterMailboxKey,
+                                            TransportResultIngressChannel resultIngressChannel,
                                             WorkerPresenceIngress workerPresenceIngress,
                                             TransportEndpointLeaseStore endpointLeaseStore,
                                             RuntimeTaskExecutor runtimeTaskExecutor,
@@ -38,6 +45,7 @@ public final class TransportAdapterBootstrapContext {
                                             DeliveryFailureEvidenceSink failureEvidenceSink,
                                             AdapterMailboxConsumerRegistry mailboxConsumerRegistry,
                                             long mailboxConsumerAvailabilityMillis) {
+        this.assignment = new AdapterBootstrapAssignment(descriptor, adapterMailboxKey);
         this.resultIngressChannel = resultIngressChannel;
         this.workerPresenceIngress = Objects.requireNonNull(workerPresenceIngress, "workerPresenceIngress");
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
@@ -53,36 +61,37 @@ public final class TransportAdapterBootstrapContext {
         this.mailboxConsumerAvailabilityMillis = mailboxConsumerAvailabilityMillis;
     }
 
-    public TransportResultIngressChannel getResultIngressChannel() {
-        return resultIngressChannel;
+    @Override
+    public AdapterBootstrapAssignment assignment() {
+        return assignment;
     }
 
-    public String adapterMailboxKey(String adapterId) {
-        if (adapterId == null || adapterId.isBlank()) {
-            throw new IllegalArgumentException("adapterId must not be blank");
-        }
-        return adapterId.trim();
+    @Override
+    public AdapterMailboxCapabilities mailbox() {
+        return mailboxCapabilities;
     }
 
-    public AdapterSessionEvidencePublisher sessionEvidencePublisher(String adapterId, String adapterMailboxKey) {
-        return new AdapterSessionEvidencePublisher(
-                adapterId,
-                adapterMailboxKey,
-                endpointLeaseStore,
-                workerPresenceIngress
-        );
+    @Override
+    public AdapterSessionEvidenceCapabilities sessionEvidence() {
+        return sessionEvidenceCapabilities;
     }
 
-    public RuntimeTaskExecutor getRuntimeTaskExecutor() {
-        return runtimeTaskExecutor;
+    @Override
+    public AdapterIngressCapabilities ingress() {
+        return ingressCapabilities;
     }
 
-    public AdapterMailboxConsumer adapterMailboxConsumer(String adapterMailboxKey,
-                                                         String consumerId,
-                                                         AdapterCommandExecutor commandExecutor) {
+    @Override
+    public AdapterHostResources hostResources() {
+        return hostResources;
+    }
+
+    private AdapterMailboxConsumer adapterMailboxConsumer(String consumerId,
+                                                          AdapterCommandExecutor commandExecutor) {
         if (adapterMailboxClient == null) {
             return null;
         }
+        String adapterMailboxKey = assignment.adapterMailboxKey();
         return new AdapterMailboxConsumerLoop(
                 adapterMailboxKey,
                 adapterMailboxClient,
@@ -93,8 +102,8 @@ public final class TransportAdapterBootstrapContext {
         );
     }
 
-    public MailboxConsumerAvailabilityPublisher mailboxConsumerAvailabilityPublisher(String adapterMailboxKey,
-                                                                                    String consumerId) {
+    private MailboxConsumerAvailabilityPublisher mailboxConsumerAvailabilityPublisher(String adapterMailboxKey,
+                                                                                     String consumerId) {
         return new MailboxConsumerAvailabilityPublisher(
                 adapterMailboxKey,
                 consumerId,
@@ -102,6 +111,51 @@ public final class TransportAdapterBootstrapContext {
                 mailboxConsumerAvailabilityMillis,
                 runtimeTaskExecutor
         );
+    }
+
+    private final class BootstrapMailboxCapabilities implements AdapterMailboxCapabilities {
+
+        @Override
+        public String assignedMailboxKey() {
+            return assignment.adapterMailboxKey();
+        }
+
+        @Override
+        public AdapterMailboxConsumer consumer(String consumerId, AdapterCommandExecutor commandExecutor) {
+            return adapterMailboxConsumer(consumerId, commandExecutor);
+        }
+    }
+
+    private final class BootstrapSessionEvidenceCapabilities implements AdapterSessionEvidenceCapabilities {
+
+        @Override
+        public AdapterSessionEvidencePublisher publisher() {
+            return new AdapterSessionEvidencePublisher(
+                    assignment.adapterId(),
+                    assignment.adapterMailboxKey(),
+                    endpointLeaseStore,
+                    workerPresenceIngress
+            );
+        }
+    }
+
+    private final class BootstrapIngressCapabilities implements AdapterIngressCapabilities {
+
+        @Override
+        public AdapterResultIngressSink resultIngress() {
+            if (resultIngressChannel == null) {
+                return null;
+            }
+            return resultIngressChannel::ingest;
+        }
+    }
+
+    private final class BootstrapHostResources implements AdapterHostResources {
+
+        @Override
+        public AdapterHostExecutor executor() {
+            return runtimeTaskExecutor::submit;
+        }
     }
 
 }

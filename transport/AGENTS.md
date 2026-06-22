@@ -120,11 +120,11 @@ entry for `transport/`.
   `project`, and `userId`, plus adapter, queue, node, endpoint, connection,
   session, and `deliveryBucketId` facts are not item fields.
 - Transport core changes must pass the embedded-adapter independence pressure
-  test: if a fact cannot be stably provided by a future cross-language adapter,
-  it is not a transport-core contract; if it is only needed by embedded Java
-  runtime assembly, it belongs to the embedded adapter layer; if it must cross a
-  process boundary, it must be typed queue, evidence, outcome, or result-ingress
-  data rather than Java object wiring.
+  test: internal Java adapters should be mountable through narrow host
+  capabilities, not broad runtime owner objects. Future cross-language adapters
+  remain only a pressure test: if a fact must cross a process boundary, it must
+  be typed queue, evidence, outcome, or result-ingress data rather than Java
+  object wiring.
 - Concrete embedded Java adapters expose assigned delivery through runtime
   embedded-support `AdapterCommandExecutor.dispatch(List<DispatchRoutingItem>)`.
   Adapter metadata, protocol resource start/stop, raw/manual channels,
@@ -143,13 +143,14 @@ entry for `transport/`.
   binding. `MassApplication` assembles and starts/stops these host-support
   units; concrete adapter bootstraps must not receive or call
   `AdapterMailboxConsumerRegistry`.
-- Concrete adapter bootstraps receive narrow runtime capabilities from
-  `TransportAdapterBootstrapContext`: host-owned adapter mailbox key
-  resolution, session evidence publisher, mailbox-scoped pull delivery buffer,
-  result ingress channel, and runtime task executor where needed. They must not
-  receive raw endpoint lease stores, worker-presence ingress, generic delivery
-  services, mailbox registries, or handoff internals, and they must not mint
-  mailbox keys from adapter id or protocol values themselves.
+- Concrete adapter bootstraps receive narrow role capabilities from
+  `TransportAdapterBootstrapContext`: host-assigned adapter mailbox key,
+  session evidence publisher, adapter-owned mailbox consumer construction,
+  adapter-facing result ingress sink, and adapter-facing host executor where
+  needed. They must not receive raw endpoint lease stores, worker-presence
+  ingress, generic delivery services, mailbox registries, or handoff internals,
+  and they must not mint mailbox keys from adapter id or protocol values
+  themselves.
 - Concrete adapters may observe protocol sessions and send to selected workers,
   but endpoint lease evidence is projected by `TransportEndpointLeasePublisher`,
   mailbox consumer availability is claimed by embedded adapter host support,

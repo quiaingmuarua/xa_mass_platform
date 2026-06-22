@@ -13,6 +13,7 @@ import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
+import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerAvailability;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
@@ -519,8 +520,13 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
+        public TransportAdapterDescriptor descriptor() {
+            return new TransportAdapterDescriptor(adapter.adapterId(), WorkerTransportHints.REALTIME);
+        }
+
+        @Override
         public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
-            context.sessionEvidencePublisher(adapter.adapterId(), adapter.adapterId()).claimEndpoint(
+            context.sessionEvidence().publisher().claimEndpoint(
                     "worker-1",
                     "demo-workers",
                     "route-worker-1",
@@ -532,10 +538,9 @@ class MassApplicationDistributedTransportTest {
                             adapter.adapterId(),
                             WorkerTransportHints.REALTIME
                     )
-                            .adapterMailboxKey(adapter.adapterId())
+                            .adapterMailboxKey(context.mailbox().assignedMailboxKey())
                             .build())
-                    .addAdapterMailboxConsumer(context.adapterMailboxConsumer(
-                            adapter.adapterId(),
+                    .addAdapterMailboxConsumer(context.mailbox().consumer(
                             adapter.adapterId(),
                             adapter
                     ))

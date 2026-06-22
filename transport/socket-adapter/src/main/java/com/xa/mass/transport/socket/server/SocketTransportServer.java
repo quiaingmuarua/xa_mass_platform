@@ -1,9 +1,9 @@
 package com.xa.mass.transport.socket.server;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.TransportServer;
-import com.xa.mass.transport.channel.TransportResultIngressChannel;
+import com.xa.mass.transport.runtime.AdapterHostExecutor;
+import com.xa.mass.transport.runtime.AdapterResultIngressSink;
 import com.xa.mass.transport.routing.RoutingEnvelope;
 import com.xa.mass.transport.routing.RoutingTarget;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -44,8 +44,8 @@ public final class SocketTransportServer implements TransportServer {
     private final int maxConnections;
     private final SocketSessionManager sessionManager;
     private final SocketTransportFrameCodec frameCodec;
-    private final TransportResultIngressChannel resultIngressChannel;
-    private final RuntimeTaskExecutor runtimeTaskExecutor;
+    private final AdapterResultIngressSink resultIngressSink;
+    private final AdapterHostExecutor hostExecutor;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Set<Future<?>> clientTasks = ConcurrentHashMap.newKeySet();
 
@@ -58,16 +58,16 @@ public final class SocketTransportServer implements TransportServer {
                                  int maxConnections,
                                  SocketSessionManager sessionManager,
                                  SocketTransportFrameCodec frameCodec,
-                                 TransportResultIngressChannel resultIngressChannel,
-                                 RuntimeTaskExecutor runtimeTaskExecutor) {
+                                 AdapterResultIngressSink resultIngressSink,
+                                 AdapterHostExecutor hostExecutor) {
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
         this.bindHost = bindHost;
         this.port = port;
         this.maxConnections = maxConnections;
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
         this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
-        this.resultIngressChannel = resultIngressChannel;
-        this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
+        this.resultIngressSink = resultIngressSink;
+        this.hostExecutor = Objects.requireNonNull(hostExecutor, "hostExecutor");
     }
 
     @Override
@@ -78,7 +78,7 @@ public final class SocketTransportServer implements TransportServer {
         ServerSocket created = new ServerSocket(port, 50, InetAddress.getByName(bindHost));
         try {
             this.serverSocket = created;
-            this.acceptTask = runtimeTaskExecutor.submit(this::acceptLoop);
+            this.acceptTask = hostExecutor.submit(this::acceptLoop);
             System.setProperty(BOUND_PORT_PROPERTY, String.valueOf(created.getLocalPort()));
             logger.info("Socket server started on {}:{}", bindHost, created.getLocalPort());
         } catch (RuntimeException ex) {
@@ -137,7 +137,7 @@ public final class SocketTransportServer implements TransportServer {
 
     private void submitClient(Socket client) {
         try {
-            Future<?> clientTask = runtimeTaskExecutor.submit(() -> handleClient(client));
+            Future<?> clientTask = hostExecutor.submit(() -> handleClient(client));
             clientTasks.add(clientTask);
         } catch (RejectedExecutionException ex) {
             logger.warn("Rejecting socket client because runtime executor is unavailable", ex);
@@ -184,7 +184,7 @@ public final class SocketTransportServer implements TransportServer {
                     continue;
                 }
                 if (frameCodec.isCanonicalTaskResult(frame)) {
-                    if (resultIngressChannel == null) {
+                    if (resultIngressSink == null) {
                         logger.warn("Canonical socket task result ignored because ingest channel is unavailable");
                         continue;
                     }
@@ -192,7 +192,7 @@ public final class SocketTransportServer implements TransportServer {
                     String traceId = firstNonBlank(frameCodec.extractTraceId(frame),
                             frameCodec.extractResultCorrelationRef(frame));
                     String resultCorrelationRef = frameCodec.extractResultCorrelationRef(frame);
-                    boolean accepted = resultIngressChannel.ingest(new RoutingEnvelope(
+                    boolean accepted = resultIngressSink.ingest(new RoutingEnvelope(
                             UUID.randomUUID().toString(),
                             RoutingTarget.resultIngress(resultCorrelationRef),
                             payload,

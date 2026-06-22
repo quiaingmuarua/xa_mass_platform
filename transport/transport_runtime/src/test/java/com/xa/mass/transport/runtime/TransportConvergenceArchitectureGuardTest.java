@@ -463,14 +463,23 @@ class TransportConvergenceArchitectureGuardTest {
         Path bootstrapContext = repoRoot().resolve(
                 "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrapContext.java");
         String contextSource = Files.readString(bootstrapContext);
-        assertTrue(contextSource.contains("adapterMailboxKey("),
-                "Adapter bootstrap context must own adapter mailbox key resolution");
-        assertTrue(contextSource.contains("sessionEvidencePublisher("),
-                "Adapter bootstrap context must expose session evidence through a narrow publisher");
+        assertTrue(contextSource.contains("implements AdapterBootstrapCapabilities"),
+                "Adapter bootstrap context must be a role-capability surface");
+        assertTrue(contextSource.contains("AdapterBootstrapAssignment assignment()"),
+                "Adapter bootstrap context must expose host assignment through a narrow capability");
+        assertTrue(contextSource.contains("AdapterMailboxCapabilities mailbox()"),
+                "Adapter bootstrap context must expose mailbox support through a narrow capability");
+        assertTrue(contextSource.contains("AdapterSessionEvidenceCapabilities sessionEvidence()"),
+                "Adapter bootstrap context must expose session evidence through a narrow capability");
         assertTrue(!contextSource.contains("getEndpointLeaseStore(")
                         && !contextSource.contains("getWorkerPresenceIngress(")
                         && !contextSource.contains("getDeliveryService(")
-                        && !contextSource.contains("pullDeliveryBuffer("),
+                        && !contextSource.contains("pullDeliveryBuffer(")
+                        && !contextSource.contains("public TransportResultIngressChannel getResultIngressChannel(")
+                        && !contextSource.contains("public RuntimeTaskExecutor getRuntimeTaskExecutor(")
+                        && !contextSource.contains("public String adapterMailboxKey(")
+                        && !contextSource.contains("public AdapterSessionEvidencePublisher sessionEvidencePublisher(")
+                        && !contextSource.contains("public AdapterMailboxConsumer adapterMailboxConsumer("),
                 "Adapter bootstrap context must not expose broad transport owner getters to concrete adapters");
 
         Path pollingBootstrap = repoRoot().resolve(
@@ -481,19 +490,22 @@ class TransportConvergenceArchitectureGuardTest {
                 "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java");
 
         String pollingSource = Files.readString(pollingBootstrap);
-        assertTrue(pollingSource.contains("context.adapterMailboxKey(")
-                        && pollingSource.contains("context.sessionEvidencePublisher(")
+        assertTrue(pollingSource.contains("context.mailbox().assignedMailboxKey()")
+                        && pollingSource.contains("context.sessionEvidence().publisher()")
+                        && pollingSource.contains("context.mailbox().consumer(")
                         && pollingSource.contains("PollingPendingDeliveryBuffer")
                         && pollingSource.contains("new PollingDeliveryExecutor")
                         && pollingSource.contains("new PollingDeliveryPullChannel"),
                 "Polling bootstrap must consume host-owned mailbox/session capabilities and own its pending pull buffer");
         String websocketSource = Files.readString(websocketBootstrap);
-        assertTrue(websocketSource.contains("context.adapterMailboxKey(")
-                        && websocketSource.contains("context.sessionEvidencePublisher("),
+        assertTrue(websocketSource.contains("context.mailbox().assignedMailboxKey()")
+                        && websocketSource.contains("context.sessionEvidence().publisher()")
+                        && websocketSource.contains("context.mailbox().consumer("),
                 "WebSocket bootstrap must consume host-owned mailbox key and session evidence through narrow capabilities");
         String socketSource = Files.readString(socketBootstrap);
-        assertTrue(socketSource.contains("context.adapterMailboxKey(")
-                        && socketSource.contains("context.sessionEvidencePublisher("),
+        assertTrue(socketSource.contains("context.mailbox().assignedMailboxKey()")
+                        && socketSource.contains("context.sessionEvidence().publisher()")
+                        && socketSource.contains("context.mailbox().consumer("),
                 "Socket bootstrap must consume host-owned mailbox key and session evidence through narrow capabilities");
 
         assertNoProductionSourceContains(
@@ -504,8 +516,28 @@ class TransportConvergenceArchitectureGuardTest {
                 "TransportEndpointLeaseStore",
                 "WorkerPresenceIngress",
                 "TransportDeliveryService",
+                "context.adapterMailboxKey(",
+                "context.sessionEvidencePublisher(",
+                "context.adapterMailboxConsumer(",
+                "context.getResultIngressChannel(",
+                "context.getRuntimeTaskExecutor(",
                 "String adapterMailboxKey = config.getAdapterId()",
                 "String adapterMailboxKey = metadata.adapterId()"
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        pollingBootstrap,
+                        websocketBootstrap,
+                        socketBootstrap
+                ),
+                "AdapterMailboxConsumerRegistry",
+                "TransportDispatchHandoff",
+                "RedisTransportDispatchHandoff",
+                "InMemoryTransportDispatchHandoff",
+                "TransportEndpointLeaseStore",
+                "WorkerPresenceIngress",
+                "TransportDeliveryService",
+                "TransportDeliveryStore"
         );
         assertNoProductionSourceContains(
                 List.of(websocketBootstrap, socketBootstrap),

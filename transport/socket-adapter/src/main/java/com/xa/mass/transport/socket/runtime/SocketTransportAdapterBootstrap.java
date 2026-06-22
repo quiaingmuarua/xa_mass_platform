@@ -34,7 +34,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
 
     @Override
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
-        String adapterMailboxKey = context.adapterMailboxKey(config.getAdapterId());
+        String adapterMailboxKey = context.mailbox().assignedMailboxKey();
         SocketSessionManager sessionManager = resolveSessionManager(context, adapterMailboxKey);
         SocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
                 new SocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionManager);
@@ -53,8 +53,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                     .adapterMailboxKey(adapterMailboxKey)
                     .protocol(SocketAdapterConfig.PROTOCOL)
                     .build());
-            contribution.addAdapterMailboxConsumer(context.adapterMailboxConsumer(
-                    adapterMailboxKey,
+            contribution.addAdapterMailboxConsumer(context.mailbox().consumer(
                     config.getAdapterId(),
                     commandExecutor
             ));
@@ -72,8 +71,8 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                     config.getMaxConnections(),
                     sessionManager,
                     frameCodec,
-                    context.getResultIngressChannel(),
-                    context.getRuntimeTaskExecutor()
+                    context.ingress().resultIngress(),
+                    context.hostResources().executor()
             ));
         }
         return contribution.build();
@@ -84,7 +83,7 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         return new SocketSessionManager(
                 config.getAdapterId(),
                 adapterMailboxKey,
-                context.sessionEvidencePublisher(config.getAdapterId(), adapterMailboxKey)
+                context.sessionEvidence().publisher()
         );
     }
 

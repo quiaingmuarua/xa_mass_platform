@@ -49,13 +49,13 @@ public final class WebSocketInputProcessor {
     }
 
     private boolean processCanonicalTaskResult(JsonObject frame, WebSocketInboundMessage inboundMessage) {
-        if (context.getResultIngressChannel() == null) {
+        if (context.getResultIngressSink() == null) {
             logger.warn("Canonical task result ignored because task result ingest channel is unavailable");
             return true;
         }
         try {
             RoutingEnvelope envelope = context.getResultFrameReader().toEnvelope(frame);
-            boolean accepted = context.getResultIngressChannel().ingest(envelope);
+            boolean accepted = context.getResultIngressSink().ingest(envelope);
             if (!accepted) {
                 throw new IllegalStateException("task result ingest channel rejected inbound canonical task result");
             }

@@ -36,7 +36,7 @@ class SocketTransportServerTest {
                 sessionManager(),
                 new SocketTransportFrameCodec(),
                 null,
-                executor
+                executor::submit
         );
 
         try {
@@ -71,7 +71,7 @@ class SocketTransportServerTest {
                 sessionManager,
                 new SocketTransportFrameCodec(),
                 null,
-                executor
+                executor::submit
         );
 
         try {
@@ -107,7 +107,7 @@ class SocketTransportServerTest {
                 sessionManager,
                 new SocketTransportFrameCodec(),
                 null,
-                executor
+                executor::submit
         );
 
         try {
@@ -148,7 +148,7 @@ class SocketTransportServerTest {
                     capturedEnvelope.set(envelope);
                     return true;
                 },
-                executor
+                executor::submit
         );
 
         try {
@@ -196,7 +196,7 @@ class SocketTransportServerTest {
                 sessionManager(),
                 new SocketTransportFrameCodec(),
                 null,
-                executor
+                executor::submit
         );
 
         try {

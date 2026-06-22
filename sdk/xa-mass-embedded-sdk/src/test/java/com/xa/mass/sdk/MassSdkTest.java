@@ -571,19 +571,10 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-            TransportAdapterContribution contribution;
+        TransportAdapterContribution contribution;
         try {
-            TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
-                    mock(TransportResultIngressChannel.class),
-                    NoopWorkerPresenceIngress.INSTANCE,
-                    new InMemoryTransportEndpointLeaseStore(),
-                    runtimeTaskExecutor,
-                    (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),
-                    ignored -> { },
-                    com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry.INSTANCE,
-                    30_000L
-            );
-            contribution = adapterBootstrap(runtimeComposition, "socket").contribute(bootstrapContext);
+            TransportAdapterBootstrap bootstrap = adapterBootstrap(runtimeComposition, "socket");
+            contribution = bootstrap.contribute(bootstrapContext(bootstrap, runtimeTaskExecutor));
         } finally {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
@@ -602,19 +593,10 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-            TransportAdapterContribution contribution;
+        TransportAdapterContribution contribution;
         try {
-            TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
-                    mock(TransportResultIngressChannel.class),
-                    NoopWorkerPresenceIngress.INSTANCE,
-                    new InMemoryTransportEndpointLeaseStore(),
-                    runtimeTaskExecutor,
-                    (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),
-                    ignored -> { },
-                    com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry.INSTANCE,
-                    30_000L
-            );
-            contribution = adapterBootstrap(runtimeComposition, "websocket").contribute(bootstrapContext);
+            TransportAdapterBootstrap bootstrap = adapterBootstrap(runtimeComposition, "websocket");
+            contribution = bootstrap.contribute(bootstrapContext(bootstrap, runtimeTaskExecutor));
         } finally {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
@@ -635,19 +617,10 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-            TransportAdapterContribution contribution;
+        TransportAdapterContribution contribution;
         try {
-            TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
-                    mock(TransportResultIngressChannel.class),
-                    NoopWorkerPresenceIngress.INSTANCE,
-                    new InMemoryTransportEndpointLeaseStore(),
-                    runtimeTaskExecutor,
-                    (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),
-                    ignored -> { },
-                    com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry.INSTANCE,
-                    30_000L
-            );
-            contribution = adapterBootstrap(runtimeComposition, "ws-public").contribute(bootstrapContext);
+            TransportAdapterBootstrap bootstrap = adapterBootstrap(runtimeComposition, "ws-public");
+            contribution = bootstrap.contribute(bootstrapContext(bootstrap, runtimeTaskExecutor));
         } finally {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
@@ -670,19 +643,10 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-            TransportAdapterContribution contribution;
+        TransportAdapterContribution contribution;
         try {
-            TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
-                    mock(TransportResultIngressChannel.class),
-                    NoopWorkerPresenceIngress.INSTANCE,
-                    new InMemoryTransportEndpointLeaseStore(),
-                    runtimeTaskExecutor,
-                    (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),
-                    ignored -> { },
-                    com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry.INSTANCE,
-                    30_000L
-            );
-            contribution = adapterBootstrap(runtimeComposition, "socket-edge").contribute(bootstrapContext);
+            TransportAdapterBootstrap bootstrap = adapterBootstrap(runtimeComposition, "socket-edge");
+            contribution = bootstrap.contribute(bootstrapContext(bootstrap, runtimeTaskExecutor));
         } finally {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
@@ -3268,6 +3232,24 @@ class MassSdkTest {
                         && adapterId.equals(bootstrap.descriptor().getAdapterId()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Missing adapter bootstrap for " + adapterId));
+    }
+
+    private static TransportAdapterBootstrapContext bootstrapContext(TransportAdapterBootstrap bootstrap,
+                                                                     VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor) {
+        TransportAdapterDescriptor descriptor = bootstrap.descriptor();
+        assertNotNull(descriptor, "bootstrap descriptor is required for mailbox assignment");
+        return new TransportAdapterBootstrapContext(
+                descriptor,
+                descriptor.getAdapterId(),
+                mock(TransportResultIngressChannel.class),
+                NoopWorkerPresenceIngress.INSTANCE,
+                new InMemoryTransportEndpointLeaseStore(),
+                runtimeTaskExecutor,
+                (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),
+                ignored -> { },
+                com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry.INSTANCE,
+                30_000L
+        );
     }
 
     private static void shutdownRuntimeTaskExecutor(VirtualThreadRuntimeTaskExecutor executor) {

@@ -30,6 +30,7 @@ import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
+import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.BufferedTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
@@ -293,9 +294,14 @@ public class MassApplication {
             }
 
             if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
+                int bootstrapIndex = 0;
                 for (TransportAdapterBootstrap transportAdapterBootstrap
                         : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
+                    TransportAdapterDescriptor descriptor = transportAdapterBootstrap.descriptor();
+                    String assignedMailboxKey = assignedAdapterMailboxKey(descriptor, bootstrapIndex++);
                     TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
+                            descriptor,
+                            assignedMailboxKey,
                             resultIngressChannel,
                             presenceIngress,
                             endpointLeaseStore,
@@ -309,7 +315,7 @@ public class MassApplication {
                     if (contribution == null) {
                         contribution = TransportAdapterContribution.empty();
                     }
-                    contribution.validateAgainst(transportAdapterBootstrap.descriptor());
+                    contribution.validateAgainst(descriptor, assignedMailboxKey);
                     registerTransportAdapterContribution(contribution, adapterBindings, adapterContributions);
                 }
             }
@@ -621,6 +627,13 @@ public class MassApplication {
         for (WorkerEndpointInspector inspector : next.getEndpointInspectors()) {
             registerWorkerEndpointInspector(inspector);
         }
+    }
+
+    private static String assignedAdapterMailboxKey(TransportAdapterDescriptor descriptor, int index) {
+        if (descriptor != null) {
+            return descriptor.getAdapterId();
+        }
+        return "bootstrap-" + index;
     }
 
     public boolean isRunning() {

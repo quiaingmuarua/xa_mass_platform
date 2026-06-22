@@ -3,7 +3,7 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
-import com.xa.mass.transport.channel.TransportResultIngressChannel;
+import com.xa.mass.transport.runtime.AdapterResultIngressSink;
 import com.xa.mass.transport.routing.RoutingEnvelope;
 import com.xa.mass.transport.routing.RoutingOwnerKinds;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
@@ -192,7 +192,7 @@ class WebSocketInputProcessorTest {
         assertNull(capturedEnvelope.get());
     }
 
-    private WebSocketDispatcherContext createContext(TransportResultIngressChannel taskResultIngestChannel) {
+    private WebSocketDispatcherContext createContext(AdapterResultIngressSink taskResultIngestChannel) {
         return new WebSocketDispatcherContext(
                 "websocket",
                 rawRouteEndpointRegistry,

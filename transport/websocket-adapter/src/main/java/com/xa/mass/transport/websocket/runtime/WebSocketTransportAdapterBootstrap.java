@@ -43,10 +43,10 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
     @Override
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
-        String adapterMailboxKey = context.adapterMailboxKey(config.getAdapterId());
+        String adapterMailboxKey = context.mailbox().assignedMailboxKey();
         WebSocketSessionStore sessionStore = new WebSocketSessionStore(config.getAdapterId());
         WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
-                context.sessionEvidencePublisher(config.getAdapterId(), adapterMailboxKey));
+                context.sessionEvidence().publisher());
         WebSocketSessionRefreshLoop refreshLoop =
                 new WebSocketSessionRefreshLoop(config.getAdapterId(), sessionStore, evidenceDriver);
         WebSocketSessionController sessionController = new WebSocketSessionController(
@@ -66,7 +66,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 rawRouteEndpointRegistry,
                 frameParser,
                 resultFrameReader,
-                context.getResultIngressChannel()
+                context.ingress().resultIngress()
         );
 
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
@@ -80,8 +80,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                     .adapterMailboxKey(adapterMailboxKey)
                     .protocol(WebSocketAdapterConfig.PROTOCOL)
                     .build());
-            contribution.addAdapterMailboxConsumer(context.adapterMailboxConsumer(
-                    adapterMailboxKey,
+            contribution.addAdapterMailboxConsumer(context.mailbox().consumer(
                     config.getAdapterId(),
                     commandExecutor
             ));

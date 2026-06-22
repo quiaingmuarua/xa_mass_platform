@@ -59,13 +59,13 @@ public final class PollingTransportAdapterBootstrap implements TransportAdapterB
                 PROTOCOL,
                 WorkerTransportHints.POLLING
         );
-        String adapterMailboxKey = context.adapterMailboxKey(metadata.adapterId());
+        String adapterMailboxKey = context.mailbox().assignedMailboxKey();
         PollingPendingDeliveryBuffer pendingDeliveryBuffer = Objects.requireNonNull(
                 pendingDeliveryBufferFactory.get(),
                 "pendingDeliveryBufferFactory.get"
         );
         PollingSessionEvidenceDriver sessionEvidenceDriver = new PollingSessionEvidenceDriver(
-                context.sessionEvidencePublisher(metadata.adapterId(), adapterMailboxKey)
+                context.sessionEvidence().publisher()
         );
         PollingDeliveryExecutor deliveryExecutor = new PollingDeliveryExecutor(
                 adapterMailboxKey,
@@ -86,8 +86,7 @@ public final class PollingTransportAdapterBootstrap implements TransportAdapterB
                 .build();
         return TransportAdapterContribution.builder()
                 .addTransportBinding(binding)
-                .addAdapterMailboxConsumer(context.adapterMailboxConsumer(
-                        adapterMailboxKey,
+                .addAdapterMailboxConsumer(context.mailbox().consumer(
                         metadata.adapterId(),
                         deliveryExecutor
                 ))

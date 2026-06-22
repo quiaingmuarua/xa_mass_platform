@@ -1,7 +1,7 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
-import com.xa.mass.transport.channel.TransportResultIngressChannel;
+import com.xa.mass.transport.runtime.AdapterResultIngressSink;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
 
@@ -15,18 +15,18 @@ public final class WebSocketDispatcherContext {
     private final RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry;
     private final WebSocketJsonFrameParser frameParser;
     private final WebSocketResultIngressFrameReader resultFrameReader;
-    private final TransportResultIngressChannel resultIngressChannel;
+    private final AdapterResultIngressSink resultIngressSink;
 
     public WebSocketDispatcherContext(String adapterId,
                                        RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry,
                                        WebSocketJsonFrameParser frameParser,
                                        WebSocketResultIngressFrameReader resultFrameReader,
-                                       TransportResultIngressChannel resultIngressChannel) {
+                                       AdapterResultIngressSink resultIngressSink) {
         this.adapterId = requireAdapterId(adapterId);
         this.rawRouteEndpointRegistry = rawRouteEndpointRegistry;
         this.frameParser = Objects.requireNonNull(frameParser, "frameParser");
         this.resultFrameReader = Objects.requireNonNull(resultFrameReader, "resultFrameReader");
-        this.resultIngressChannel = resultIngressChannel;
+        this.resultIngressSink = resultIngressSink;
     }
 
     public String getAdapterId() {
@@ -45,8 +45,8 @@ public final class WebSocketDispatcherContext {
         return resultFrameReader;
     }
 
-    public TransportResultIngressChannel getResultIngressChannel() {
-        return resultIngressChannel;
+    public AdapterResultIngressSink getResultIngressSink() {
+        return resultIngressSink;
     }
 
     private static String requireAdapterId(String adapterId) {
