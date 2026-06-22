@@ -4,6 +4,8 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
+import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.runtime.DefaultWorkerTransportRuntimeFactory;
 import com.xa.mass.transport.polling.runtime.PollingTransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
@@ -11,11 +13,9 @@ import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
-import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -54,14 +54,14 @@ public class TransportRuntimeComposition {
     private final List<WebSocketAdapterConfig> supplementalWebSocketAdapterConfigs;
     private final List<SocketAdapterConfig> supplementalSocketAdapterConfigs;
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
-    private final Supplier<TransportDeliveryStore> deliveryStoreFactory;
+    private final Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
     private final Supplier<TransportDispatchHandoff> dispatchHandoffFactory;
     private final Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory;
     private final Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
     private final TransportAdapterBootstrap primaryTransportAdapterBootstrap;
     private final List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps;
-    private final int maxDeliveryQueuedItems;
-    private final int maxDeliveryItemsPerRoute;
+    private final int maxPollingPendingDeliveryItems;
+    private final int maxPollingPendingDeliveryItemsPerWorker;
     private final int transportRuntimeMaxPendingTasks;
     private final int eventRuntimeMaxPendingTasks;
     private final long eventHandlerTimeoutMillis;
@@ -87,14 +87,14 @@ public class TransportRuntimeComposition {
                 .map(SocketAdapterConfig::new)
                 .toList();
         this.workerTransportRuntimeFactory = source.getWorkerTransportRuntimeFactory();
-        this.deliveryStoreFactory = source.deliveryStoreFactory();
+        this.pollingPendingDeliveryBufferFactory = source.pollingPendingDeliveryBufferFactory();
         this.dispatchHandoffFactory = source.getDispatchHandoffFactory();
         this.taskResultInboxFactory = source.taskResultInboxFactory();
         this.deliveryFailureInboxFactory = source.deliveryFailureInboxFactory();
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
-        this.maxDeliveryQueuedItems = source.getMaxDeliveryQueuedItems();
-        this.maxDeliveryItemsPerRoute = source.getMaxDeliveryItemsPerRoute();
+        this.maxPollingPendingDeliveryItems = source.getMaxPollingPendingDeliveryItems();
+        this.maxPollingPendingDeliveryItemsPerWorker = source.getMaxPollingPendingDeliveryItemsPerWorker();
         this.transportRuntimeMaxPendingTasks = source.getTransportRuntimeMaxPendingTasks();
         this.eventRuntimeMaxPendingTasks = source.getEventRuntimeMaxPendingTasks();
         this.eventHandlerTimeoutMillis = source.getEventHandlerTimeoutMillis();
@@ -168,10 +168,13 @@ public class TransportRuntimeComposition {
                 : new DefaultWorkerTransportRuntimeFactory();
     }
 
-    public TransportDeliveryStore resolveTransportDeliveryStore() {
-        return deliveryStoreFactory != null
-                ? deliveryStoreFactory.get()
-                : new InMemoryTransportDeliveryStore(maxDeliveryQueuedItems, maxDeliveryItemsPerRoute);
+    public Supplier<PollingPendingDeliveryBuffer> resolvePollingPendingDeliveryBufferFactory() {
+        return pollingPendingDeliveryBufferFactory != null
+                ? pollingPendingDeliveryBufferFactory
+                : () -> new InMemoryPollingPendingDeliveryBuffer(
+                        maxPollingPendingDeliveryItems,
+                        maxPollingPendingDeliveryItemsPerWorker
+                );
     }
 
     public TransportDispatchHandoff resolveTransportDispatchHandoff(int defaultCapacity) {
@@ -233,16 +236,16 @@ public class TransportRuntimeComposition {
         return bootstraps;
     }
 
-    public int getMaxDeliveryQueuedItems() {
-        return maxDeliveryQueuedItems;
+    public int getMaxPollingPendingDeliveryItems() {
+        return maxPollingPendingDeliveryItems;
     }
 
     public long getEventHandlerTimeoutMillis() {
         return eventHandlerTimeoutMillis;
     }
 
-    public int getMaxDeliveryItemsPerRoute() {
-        return maxDeliveryItemsPerRoute;
+    public int getMaxPollingPendingDeliveryItemsPerWorker() {
+        return maxPollingPendingDeliveryItemsPerWorker;
     }
 
     public int getTransportRuntimeMaxPendingTasks() {
@@ -323,7 +326,10 @@ public class TransportRuntimeComposition {
         List<BootstrapCandidate> candidates = new ArrayList<>();
         if (workerTransportRuntimeFactory == null) {
             candidates.add(new BootstrapCandidate(
-                    new PollingTransportAdapterBootstrap(),
+                    new PollingTransportAdapterBootstrap(
+                            PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID,
+                            resolvePollingPendingDeliveryBufferFactory()
+                    ),
                     true,
                     true
             ));

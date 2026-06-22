@@ -1,14 +1,15 @@
-package com.xa.mass.transport.runtime.delivery;
+package com.xa.mass.transport.polling.delivery;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.runtime.queue.KeyedQueueEntry;
+import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Objects;
 
-final class RedisDispatchRoutingItemCodec {
+final class PollingDispatchRoutingItemCodec {
 
     private static final Base64.Encoder KEY_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder KEY_DECODER = Base64.getUrlDecoder();
@@ -18,24 +19,24 @@ final class RedisDispatchRoutingItemCodec {
 
     private final Gson gson;
 
-    RedisDispatchRoutingItemCodec() {
+    PollingDispatchRoutingItemCodec() {
         this(new GsonBuilder().create());
     }
 
-    RedisDispatchRoutingItemCodec(Gson gson) {
+    PollingDispatchRoutingItemCodec(Gson gson) {
         this.gson = Objects.requireNonNull(gson, "gson");
     }
 
-    String encodeKeyPart(DeliveryQueueKey key) {
+    String encodeKeyPart(PollingPendingDeliveryQueueKey key) {
         Objects.requireNonNull(key, "key");
-        return encodeKeyToken(key.deliveryQueueKey());
+        return encodeKeyToken(key.queueKey());
     }
 
-    DeliveryQueueKey decodeKeyPart(String encodedKeyPart) {
+    PollingPendingDeliveryQueueKey decodeKeyPart(String encodedKeyPart) {
         if (encodedKeyPart == null || encodedKeyPart.isBlank()) {
             throw new IllegalArgumentException("encodedKeyPart must not be blank");
         }
-        return new DeliveryQueueKey(decodeKeyToken(encodedKeyPart));
+        return new PollingPendingDeliveryQueueKey(decodeKeyToken(encodedKeyPart));
     }
 
     String encodeSelectedWorkerToken(String selectedWorkerId) {

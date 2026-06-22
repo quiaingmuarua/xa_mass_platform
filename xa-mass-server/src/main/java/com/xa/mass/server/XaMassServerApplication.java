@@ -11,8 +11,8 @@ import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
-import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
+import com.xa.mass.transport.polling.delivery.RedisPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.lease.RedisTransportEndpointLeaseStore;
 import com.xa.mass.api.review.InProcessTaskReviewReportQueue;
 import com.xa.mass.api.review.InMemoryTaskReviewStore;
@@ -122,17 +122,17 @@ public class XaMassServerApplication {
     @Value("${mass.runtime.redis.max-queued-items:1000000}")
     private int runtimeRedisMaxQueuedItems;
 
-    @Value("${mass.transport.delivery.store:memory}")
-    private String transportDeliveryStore;
+    @Value("${mass.transport.polling.buffer.store:memory}")
+    private String transportPollingPendingDeliveryBufferStore;
 
-    @Value("${mass.transport.delivery.max-queued-items:100000}")
-    private int transportDeliveryMaxQueuedItems;
+    @Value("${mass.transport.polling.buffer.max-queued-items:100000}")
+    private int transportPollingPendingDeliveryMaxQueuedItems;
 
-    @Value("${mass.transport.delivery.max-items-per-route:10000}")
-    private int transportDeliveryMaxItemsPerRoute;
+    @Value("${mass.transport.polling.buffer.max-items-per-worker:10000}")
+    private int transportPollingPendingDeliveryMaxItemsPerWorker;
 
-    @Value("${mass.transport.delivery.redis.namespace:" + RedisTransportNamespaces.DELIVERY + "}")
-    private String transportDeliveryRedisNamespace;
+    @Value("${mass.transport.polling.buffer.redis.namespace:" + RedisPollingPendingDeliveryBuffer.DEFAULT_NAMESPACE_PREFIX + "}")
+    private String transportPollingPendingDeliveryRedisNamespace;
 
     @Value("${mass.transport.endpoint-lease.store:memory}")
     private String transportEndpointLeaseStore;
@@ -350,13 +350,13 @@ public class XaMassServerApplication {
         MassSdkApplication app = builder
                 .projectCatalogBootstrap(new ProjectEventCatalogRegistry())
                 .transport(transport -> {
-                    java.util.function.Supplier<TransportDeliveryStore> deliveryStoreFactory =
-                            resolveTransportDeliveryStoreFactory();
+                    java.util.function.Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory =
+                            resolvePollingPendingDeliveryBufferFactory();
                     java.util.function.Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory =
                             resolveTransportEndpointLeaseStoreFactory();
                     transport
-                        .maxDeliveryQueuedItems(transportDeliveryMaxQueuedItems)
-                        .maxDeliveryItemsPerRoute(transportDeliveryMaxItemsPerRoute)
+                        .maxPollingPendingDeliveryItems(transportPollingPendingDeliveryMaxQueuedItems)
+                        .maxPollingPendingDeliveryItemsPerWorker(transportPollingPendingDeliveryMaxItemsPerWorker)
                         .endpointLeaseMillis(transportEndpointLeaseMillis)
                         .webSocketAdapter(webSocket -> webSocket
                                 .server(massWebSocketPort)
@@ -371,8 +371,8 @@ public class XaMassServerApplication {
                                 .eventRuntimeMaxPendingTasks(eventRuntimeMaxPendingTasks)
                                 .eventHandlerTimeoutMillis(eventHandlerTimeoutMillis)
                                 .queueMode();
-                    if (deliveryStoreFactory != null) {
-                        transport.deliveryStoreFactory(deliveryStoreFactory);
+                    if (pollingPendingDeliveryBufferFactory != null) {
+                        transport.pollingPendingDeliveryBufferFactory(pollingPendingDeliveryBufferFactory);
                     }
                     if (endpointLeaseStoreFactory != null) {
                         transport.endpointLeaseStoreFactory(endpointLeaseStoreFactory);
@@ -574,22 +574,22 @@ public class XaMassServerApplication {
         return uri.toString();
     }
 
-    private java.util.function.Supplier<TransportDeliveryStore> resolveTransportDeliveryStoreFactory() {
-        String normalizedMode = normalizeInfraMode(transportDeliveryStore, "memory");
+    private java.util.function.Supplier<PollingPendingDeliveryBuffer> resolvePollingPendingDeliveryBufferFactory() {
+        String normalizedMode = normalizeInfraMode(transportPollingPendingDeliveryBufferStore, "memory");
         if ("redis".equals(normalizedMode)) {
-            return () -> new RedisTransportDeliveryStore(
+            return () -> new RedisPollingPendingDeliveryBuffer(
                     redisUri(),
-                    transportDeliveryRedisNamespace,
-                    transportDeliveryMaxQueuedItems,
-                    transportDeliveryMaxItemsPerRoute
+                    transportPollingPendingDeliveryRedisNamespace,
+                    transportPollingPendingDeliveryMaxQueuedItems,
+                    transportPollingPendingDeliveryMaxItemsPerWorker
             );
         }
-        requireDurableLocalInfraMode("mass.transport.delivery.store", "redis", normalizedMode);
+        requireDurableLocalInfraMode("mass.transport.polling.buffer.store", "redis", normalizedMode);
         if ("memory".equals(normalizedMode)) {
             return null;
         }
         throw new IllegalArgumentException(
-                "Unsupported mass.transport.delivery.store: " + transportDeliveryStore
+                "Unsupported mass.transport.polling.buffer.store: " + transportPollingPendingDeliveryBufferStore
         );
     }
 

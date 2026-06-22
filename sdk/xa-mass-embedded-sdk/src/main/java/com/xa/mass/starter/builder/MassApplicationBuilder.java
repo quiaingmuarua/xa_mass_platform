@@ -25,8 +25,8 @@ import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
-import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
+import com.xa.mass.transport.polling.delivery.RedisPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.lease.RedisTransportEndpointLeaseStore;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
@@ -202,16 +202,20 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder deliveryStoreFactory(Supplier<TransportDeliveryStore> deliveryStoreFactory) {
-            config.setDeliveryStoreFactory(Objects.requireNonNull(deliveryStoreFactory, "deliveryStoreFactory"));
+        public TransportBuilder pollingPendingDeliveryBufferFactory(
+                Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory) {
+            config.setPollingPendingDeliveryBufferFactory(Objects.requireNonNull(
+                    pollingPendingDeliveryBufferFactory,
+                    "pollingPendingDeliveryBufferFactory"
+            ));
             return this;
         }
 
-        public TransportBuilder redisDeliveryStore(String redisUri) {
-            return redisDeliveryStore(redisUri, RedisTransportDeliveryStore.DEFAULT_NAMESPACE_PREFIX);
+        public TransportBuilder redisPollingPendingDeliveryBuffer(String redisUri) {
+            return redisPollingPendingDeliveryBuffer(redisUri, RedisPollingPendingDeliveryBuffer.DEFAULT_NAMESPACE_PREFIX);
         }
 
-        public TransportBuilder redisDeliveryStore(String redisUri, String namespacePrefix) {
+        public TransportBuilder redisPollingPendingDeliveryBuffer(String redisUri, String namespacePrefix) {
             String normalizedRedisUri = Objects.requireNonNull(redisUri, "redisUri").trim();
             if (normalizedRedisUri.isBlank()) {
                 throw new IllegalArgumentException("redisUri must not be blank");
@@ -220,11 +224,11 @@ public class MassApplicationBuilder {
             if (normalizedNamespacePrefix.isBlank()) {
                 throw new IllegalArgumentException("namespacePrefix must not be blank");
             }
-            config.setDeliveryStoreFactory(() -> new RedisTransportDeliveryStore(
+            config.setPollingPendingDeliveryBufferFactory(() -> new RedisPollingPendingDeliveryBuffer(
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
-                    config.getMaxDeliveryQueuedItems(),
-                    config.getMaxDeliveryItemsPerRoute()
+                    config.getMaxPollingPendingDeliveryItems(),
+                    config.getMaxPollingPendingDeliveryItemsPerWorker()
             ));
             return this;
         }
@@ -282,7 +286,7 @@ public class MassApplicationBuilder {
                     .redisResultInbox(redisUri, RedisTransportNamespaces.RESULT_INBOX)
                     .redisDeliveryFailureInbox(redisUri, RedisTransportNamespaces.DELIVERY_FAILURE)
                     .redisEndpointLeaseStore(redisUri, RedisTransportNamespaces.ENDPOINT_LEASE)
-                    .redisDeliveryStore(redisUri, RedisTransportNamespaces.DELIVERY);
+                    .redisPollingPendingDeliveryBuffer(redisUri, RedisPollingPendingDeliveryBuffer.DEFAULT_NAMESPACE_PREFIX);
         }
 
         public TransportBuilder redisDistributedChannels(String redisUri, String namespacePrefix) {
@@ -291,7 +295,7 @@ public class MassApplicationBuilder {
                     .redisResultInbox(redisUri, normalizedNamespacePrefix + ":result-inbox")
                     .redisDeliveryFailureInbox(redisUri, normalizedNamespacePrefix + ":delivery-failure")
                     .redisEndpointLeaseStore(redisUri, normalizedNamespacePrefix + ":endpoint-lease")
-                    .redisDeliveryStore(redisUri, normalizedNamespacePrefix + ":delivery");
+                    .redisPollingPendingDeliveryBuffer(redisUri, normalizedNamespacePrefix + ":polling-delivery");
         }
 
         public TransportBuilder endpointLeaseStoreFactory(Supplier<com.xa.mass.transport.lease.TransportEndpointLeaseStore> endpointLeaseStoreFactory) {
@@ -320,13 +324,13 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder maxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
-            config.setMaxDeliveryQueuedItems(maxDeliveryQueuedItems);
+        public TransportBuilder maxPollingPendingDeliveryItems(int maxPollingPendingDeliveryItems) {
+            config.setMaxPollingPendingDeliveryItems(maxPollingPendingDeliveryItems);
             return this;
         }
 
-        public TransportBuilder maxDeliveryItemsPerRoute(int maxDeliveryItemsPerRoute) {
-            config.setMaxDeliveryItemsPerRoute(maxDeliveryItemsPerRoute);
+        public TransportBuilder maxPollingPendingDeliveryItemsPerWorker(int maxPollingPendingDeliveryItemsPerWorker) {
+            config.setMaxPollingPendingDeliveryItemsPerWorker(maxPollingPendingDeliveryItemsPerWorker);
             return this;
         }
 

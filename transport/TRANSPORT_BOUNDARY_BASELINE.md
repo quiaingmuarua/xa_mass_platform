@@ -125,14 +125,11 @@ Transport should stay centered on these concepts only:
   flat `DispatchRoutingItem` values. `ClaimedDispatchRoutingBatch` adds
   handoff-owned references when the backing store needs ack; those references
   are not producer fields or serialized queue values.
-- Polling delivery store values use `DispatchRoutingItem` directly and project
-  to `PulledDeliveryMessage` only at the pull API boundary. They do not
-  serialize packets, routeKey, endpoint evidence, deliveryQueueKey, taskName,
-  project, userId, or task payload fields as transport-owned facts.
-- `TransportDeliveryStore`: runtime-owned queueing/drain/poll seam for transport
-  delivery. Assigned polling pull delivery uses the worker id supplied by the
-  poll request as the drain constraint, with routeKey kept as opaque
-  endpoint/result metadata outside the queue value.
+- Polling pending pull-buffer values use `DispatchRoutingItem` directly and
+  project to `PulledDeliveryMessage` only at the pull API boundary. This buffer
+  is owned by `polling-adapter`, not transport core. It does not serialize
+  packets, routeKey, endpoint evidence, deliveryQueueKey, taskName, project,
+  userId, or task payload fields as transport-owned facts.
 - `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)`: opaque
   result ingress carrier. Transport may buffer, enqueue, and diagnose it, but
   task-shaped payload parsing and result correctness belong above transport.
@@ -238,10 +235,11 @@ hot-path recovery logic.
 - canonical adapter-id resolution; old aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not adapter identities
 - canonical transport-hint resolution; adapter labels such as `websocket`,
   `ws`, `push`, `pull`, or `queue` are not family aliases
-- delivery service and delivery store
+- dispatch handoff queue/store and mailbox-scoped embedded host drain
 - runtime-owned envelope identity/timestamp generation for queued dispatch
   handoff
-- delivery backlog admission control and store statistics
+- dispatch handoff admission control and polling-adapter-owned pending buffer
+  configuration
 - runtime executor handoff into adapter bootstraps for transport-owned blocking work
 - result ingress envelope queueing, buffering, and runtime logging; result
   payload decoding, correlation, and lease/attempt validation live in
@@ -396,12 +394,12 @@ The split runtime uses three transport/runtime channels:
   `ClaimedDispatchRoutingBatch` at the consumer boundary carries the flat batch
   plus handoff references; it does not carry lane or target-node facts. Redis
   dispatch queue ownership is not routeKey cardinality.
-- delivery inbox: polling transport routes `DispatchRoutingItem` values into
-  `TransportDeliveryStore` by adapter mailbox plus the engine-selected
-  `selectedWorkerId`. The mailbox key is supplied by queue/store context, not
-  repeated in every value. `routeKey` remains opaque endpoint/result metadata
-  and must not be the only queue isolation key for assigned polling task
-  delivery.
+- polling pending pull buffer: polling adapter routes `DispatchRoutingItem`
+  values into a polling-adapter-owned buffer by adapter mailbox plus the
+  engine-selected `selectedWorkerId`. The mailbox key is supplied by buffer
+  context, not repeated in every value. `routeKey` remains opaque
+  endpoint/result metadata and must not be the only isolation key for assigned
+  polling task delivery.
 - result/compensation inboxes: transport writes opaque
   `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)` values and
   retryable delivery-failure events to Redis-backed inboxes; the engine process
@@ -504,7 +502,7 @@ default component namespaces are:
 | Component | Default namespace | Retained key families |
 | --- | --- | --- |
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` | `bucket:<encodedDeliveryBucketId>:workers`, `bucket:<encodedDeliveryBucketId>:deadlines` |
-| delivery | `xa:mass:transport:delivery:v1` | `q:<encodedAdapterMailboxKey>`, `meta:<encodedAdapterMailboxKey>`, `queues`, `stats` |
+| polling-delivery | `xa:mass:transport:polling-delivery:v1` | `polling:<encodedAdapterMailboxKey>:worker:<encodedSelectedWorkerId>:q`, `queues`, `stats` |
 | dispatch | `xa:mass:transport:dispatch:v1` | `mailbox:<encodedAdapterMailboxKey>:commands`, `mailbox:<encodedAdapterMailboxKey>:command-retention-deadlines`, `mailbox:<encodedAdapterMailboxKey>:ready-commands`, `mailbox:<encodedAdapterMailboxKey>:inflight-commands`, `mailbox-consumers`, `mailbox-consumer-deadlines`, `queues` |
 | result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
@@ -530,9 +528,10 @@ Forbidden transport key families:
   `worker:occupancy:*` keys
 
 Worker runtime aggregates such as `group:{groupId}:slots` remain worker runtime
-truth. Transport may maintain endpoint lease, delivery handoff, delivery store,
-result inbox, and delivery-failure inbox runtime state; it must not preserve or
-derive scheduling/admission truth in its Redis keyspace.
+truth. Transport may maintain endpoint lease, dispatch handoff, result inbox,
+and delivery-failure inbox runtime state; polling adapter may maintain its own
+pending pull-buffer runtime state. Neither transport nor adapter runtime state
+may preserve or derive scheduling/admission truth in its Redis keyspace.
 
 ## Model Boundaries
 
@@ -718,7 +717,7 @@ Do not let transport grow these responsibilities:
 - task scheduling, matching, or worker lock ownership
 - `TaskMsgAttempt` lifecycle mutation outside engine services
 - direct task release, retry, or terminal decisions from adapters
-- adapter-specific delivery queues when `TransportDeliveryService` can own the path
+- generic transport delivery stores that hide adapter-local polling pull slots
 - worker wire payload changes for internal runtime metadata
 - protocol-specific frame/codec types in `transport_api`
 - compatibility wrappers that preserve old transport paths as parallel mainlines
@@ -773,14 +772,14 @@ consumption, process completion, or task result is not a transport retry loop;
 engine-owned task attempt timeout, retry, reassign, and compensation remain the
 fallback.
 
-Runtime delivery stores must enforce explicit admission control. Dispatch
+Transport delivery executors must enforce explicit admission control. Dispatch
 handoff stores use adapter-mailbox queue admission plus local claim/ack
-consistency; polling pull stores may keep selected-worker indexes as adapter
-pull implementation details, but those indexes are not the engine-to-transport
+consistency; polling pending pull buffers keep selected-worker slots as polling
+adapter implementation details, but those slots are not the engine-to-transport
 handoff address.
-`TransportDeliveryStoreStats` and `TransportDeliveryServiceStats` are
-queue/store-path only. Push adapter final-hop outcomes are returned by concrete
-adapter command executors and are not folded into queue diagnostics. Poll
+Polling pending pull-buffer stats are polling-adapter diagnostics only. Push
+adapter final-hop outcomes are returned by concrete adapter command executors
+and are not folded into queue diagnostics. Poll
 semantics must stay explicit enough to distinguish delivered, empty,
 invalid-request, unavailable, and shutdown results without forcing callers to
 treat every non-delivery outcome as an empty queue.
@@ -798,30 +797,22 @@ engine-owned task lifecycle state.
 
 For Redis-ready queue diagnostics, stats are a side-channel only. They must not
 drive command admission, selected-worker correctness, lifecycle, retry,
-reassign, or completion proof. Current diagnostics expose `queuedItems`,
-`queueCount`, `maxQueuedItems`, `queueByAdapter`, `waitingPollers`,
-`oldestQueuedAgeMillis`, `enqueuedItems`, `drainedItems`,
-`backpressureRejectedItems`, `invalidItems`, `unavailableItems`,
-`shutdownClearedItems`, and nested breakdown mirrors. These fields are useful
-operator evidence, not transport owner truth.
-
-`queueByAdapter` keeps its legacy field name for existing diagnostics, but it
-is not queue ownership truth. Current assigned polling delivery aggregates that
-field under the adapter mailbox queue key, while the actual drain selector
-remains `selectedWorkerId`. Future distributed queue implementations are not
-required to preserve the exact local JVM waiter, snapshot timing, or every
-diagnostic counter shape of the current in-memory store.
+reassign, or completion proof. Polling pending buffer diagnostics may expose
+queued items, queue count, mailbox/worker slot breakdowns, waiting pollers,
+age, and admission counters as adapter-local operator evidence, but those
+fields are not transport owner truth and are not required by push adapters.
 
 Queue mechanics such as keyed FIFO storage, blocking poll coordination,
 per-key/global admission, and queue snapshot counters may live under
 `platform_infra` so long as transport semantics remain owned by
-`TransportDeliveryStore`, `DispatchRoutingItem`, and `DispatchOutcome`.
-Embedded runtime composition may choose between the default in-memory delivery
-store and a Redis-backed transport delivery store, but that selection belongs
-to SDK/starter assembly rather than transport-facing adapter contracts.
-That assembly layer also owns queue-cap tuning such as total queued items and
-any adapter-store-specific selected-worker caps; transport contracts should
-consume those resolved limits rather than hard-code runtime policy.
+`TransportDispatchHandoff`, `DispatchRoutingItem`, `DispatchOutcome`, and the
+polling-adapter-owned `PollingPendingDeliveryBuffer`. Embedded runtime
+composition may choose between the default in-memory polling pending buffer and
+a Redis-backed polling pending buffer, but that selection belongs to
+SDK/starter polling adapter assembly rather than transport-facing adapter
+contracts. That assembly layer also owns polling buffer cap tuning such as
+total queued items and per-worker caps; transport contracts should consume
+resolved limits rather than hard-code runtime policy.
 
 ## Push vs Pull Delivery
 
@@ -830,9 +821,9 @@ Transport currently has two delivery executor paths:
 - push final hop: realtime adapters perform adapter-local selected-worker
   session lookup/write and return
   `DELIVERED` / `NO_ENDPOINT` / `FAILED` / `UNAVAILABLE` / `INVALID`
-- pull queue: polling or backlog-backed adapters admit an envelope into
-  `TransportDeliveryStore` and return `QUEUED` / `BACKPRESSURE_REJECTED` /
-  `UNAVAILABLE` / `INVALID`
+- pull buffer: polling adapters admit an item into
+  `PollingPendingDeliveryBuffer` and return `QUEUED` /
+  `BACKPRESSURE_REJECTED` / `UNAVAILABLE` / `INVALID`
 
 These paths intentionally share `DispatchOutcome` identity fields and status
 language, but they do not form one richer transport-owned lifecycle model.
@@ -845,7 +836,7 @@ Keep these rules:
 - queue stats such as `queueByAdapter`, backlog age, waiting pollers, and queued-item counts
   are queue-path diagnostics only; `queueByAdapter` is not canonical queue ownership truth
 - push final-hop counters, if added later, belong to concrete adapter
-  diagnostics, not `TransportDeliveryService` queue diagnostics
+  diagnostics, not polling pending-buffer diagnostics
 - do not add a transport-owned retry/lease/state machine that merges push final-hop
   and queued delivery into one second attempt lifecycle
 

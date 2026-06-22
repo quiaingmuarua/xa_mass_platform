@@ -5,7 +5,6 @@ import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.List;
 
@@ -21,7 +20,6 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
     @Override
     public TransportRuntimeRegistry create(TransportResultIngressChannel resultIngressChannel,
                                            TransportEndpointLeaseStore endpointLeaseStore,
-                                           TransportDeliveryService deliveryService,
                                            List<TransportBinding> adapterBindings) {
         List<TransportBinding> bindings = adapterBindings == null
                 ? List.of()

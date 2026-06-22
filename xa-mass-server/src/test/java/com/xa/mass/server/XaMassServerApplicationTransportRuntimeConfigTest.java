@@ -1,7 +1,7 @@
 package com.xa.mass.server;
 
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -67,12 +67,12 @@ class XaMassServerApplicationTransportRuntimeConfigTest {
     @Test
     void durableLocalProfileRejectsMemoryTransportStores() {
         XaMassServerApplication application = durableLocalApplication();
-        ReflectionTestUtils.setField(application, "transportDeliveryStore", "memory");
+        ReflectionTestUtils.setField(application, "transportPollingPendingDeliveryBufferStore", "memory");
         ReflectionTestUtils.setField(application, "transportEndpointLeaseStore", "memory");
 
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(application, "resolveTransportDeliveryStoreFactory"))
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(application, "resolvePollingPendingDeliveryBufferFactory"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("durable-local requires mass.transport.delivery.store=redis");
+                .hasMessageContaining("durable-local requires mass.transport.polling.buffer.store=redis");
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(application, "resolveTransportEndpointLeaseStoreFactory"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("durable-local requires mass.transport.endpoint-lease.store=redis");
@@ -81,24 +81,25 @@ class XaMassServerApplicationTransportRuntimeConfigTest {
     @Test
     void durableLocalProfileAcceptsRedisTransportModesWithoutInstantiatingRedis() {
         XaMassServerApplication application = durableLocalApplication();
-        ReflectionTestUtils.setField(application, "transportDeliveryStore", "redis");
+        ReflectionTestUtils.setField(application, "transportPollingPendingDeliveryBufferStore", "redis");
         ReflectionTestUtils.setField(application, "transportEndpointLeaseStore", "redis");
-        ReflectionTestUtils.setField(application, "transportDeliveryRedisNamespace", "xa:mass:test:server-delivery");
+        ReflectionTestUtils.setField(application, "transportPollingPendingDeliveryRedisNamespace",
+                "xa:mass:test:server-polling-delivery");
         ReflectionTestUtils.setField(application, "transportEndpointLeaseRedisNamespace", "xa:mass:test:server-endpoint-lease");
-        ReflectionTestUtils.setField(application, "transportDeliveryMaxQueuedItems", 100);
-        ReflectionTestUtils.setField(application, "transportDeliveryMaxItemsPerRoute", 10);
+        ReflectionTestUtils.setField(application, "transportPollingPendingDeliveryMaxQueuedItems", 100);
+        ReflectionTestUtils.setField(application, "transportPollingPendingDeliveryMaxItemsPerWorker", 10);
         ReflectionTestUtils.setField(application, "transportEndpointLeaseMillis", 1234L);
         ReflectionTestUtils.setField(application, "redisHost", "127.0.0.1");
         ReflectionTestUtils.setField(application, "redisPort", 6379);
         ReflectionTestUtils.setField(application, "redisDatabase", 0);
         ReflectionTestUtils.setField(application, "redisPassword", "");
 
-        Supplier<TransportDeliveryStore> deliveryFactory =
-                ReflectionTestUtils.invokeMethod(application, "resolveTransportDeliveryStoreFactory");
+        Supplier<PollingPendingDeliveryBuffer> pollingBufferFactory =
+                ReflectionTestUtils.invokeMethod(application, "resolvePollingPendingDeliveryBufferFactory");
         Supplier<TransportEndpointLeaseStore> endpointLeaseFactory =
                 ReflectionTestUtils.invokeMethod(application, "resolveTransportEndpointLeaseStoreFactory");
 
-        assertThat(deliveryFactory).isNotNull();
+        assertThat(pollingBufferFactory).isNotNull();
         assertThat(endpointLeaseFactory).isNotNull();
     }
 

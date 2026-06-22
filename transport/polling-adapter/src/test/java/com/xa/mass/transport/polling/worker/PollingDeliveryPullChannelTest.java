@@ -2,11 +2,10 @@ package com.xa.mass.transport.polling.worker;
 
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
+import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.runtime.PollingTransportAdapterBootstrap;
-import com.xa.mass.transport.runtime.delivery.AdapterPullDeliveryBuffer;
 import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
-import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -19,7 +18,7 @@ class PollingDeliveryPullChannelTest {
 
     @Test
     void sharedBucketDoesNotCrossConsumeSelectedWorkerItems() {
-        AdapterPullDeliveryBuffer deliveryBuffer = deliveryBuffer();
+        PollingPendingDeliveryBuffer deliveryBuffer = deliveryBuffer();
         PollingDeliveryExecutor executor = new PollingDeliveryExecutor("polling-default", deliveryBuffer);
         PollingDeliveryPullChannel pullChannel = new PollingDeliveryPullChannel(
                 PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID,
@@ -37,7 +36,7 @@ class PollingDeliveryPullChannelTest {
 
     @Test
     void pollResultPreservesDeliveredAndInvalidRequestStatuses() {
-        AdapterPullDeliveryBuffer deliveryBuffer = deliveryBuffer();
+        PollingPendingDeliveryBuffer deliveryBuffer = deliveryBuffer();
         PollingDeliveryExecutor executor = new PollingDeliveryExecutor("polling-default", deliveryBuffer);
         PollingDeliveryPullChannel pullChannel = new PollingDeliveryPullChannel(
                 PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID,
@@ -53,11 +52,8 @@ class PollingDeliveryPullChannelTest {
                 pullChannel.pollDeliveryMessagesResult(BUCKET, "worker-1", 0, 0).getStatus());
     }
 
-    private AdapterPullDeliveryBuffer deliveryBuffer() {
-        return new AdapterPullDeliveryBuffer(
-                PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID,
-                new TransportDeliveryService(new InMemoryTransportDeliveryStore())
-        );
+    private PollingPendingDeliveryBuffer deliveryBuffer() {
+        return new InMemoryPollingPendingDeliveryBuffer();
     }
 
     private DispatchRoutingItem request(String messageId, String workerId) {

@@ -27,8 +27,9 @@ mass:
     event-max-pending-tasks: 2000
   transport:
     node-id: memory-local-server
-    delivery:
-      store: memory
+    polling:
+      buffer:
+        store: memory
     endpoint-lease:
       store: memory
   websocket:

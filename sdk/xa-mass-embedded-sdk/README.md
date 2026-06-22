@@ -176,7 +176,7 @@ Redis-backed runtime channels for dispatch handoff, result ingest, and
 delivery-failure compensation. The one-argument
 `redisDistributedChannels(redisUri)` helper wires the dispatch handoff,
 result inbox, delivery-failure inbox, Redis endpoint lease store, and Redis
-delivery store under transport-owned component namespaces:
+polling pending pull buffer under owner-specific component namespaces:
 
 | Component | Default namespace |
 | --- | --- |
@@ -184,7 +184,7 @@ delivery store under transport-owned component namespaces:
 | result-inbox | `xa:mass:transport:result-inbox:v1` |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` |
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` |
-| delivery | `xa:mass:transport:delivery:v1` |
+| polling-delivery | `xa:mass:transport:polling-delivery:v1` |
 
 The two-argument overload is for a caller-owned deployment root and appends the
 component names beneath that root. It is not the default namespace shape.
@@ -453,16 +453,16 @@ must provide explicit `adapterId` before the runtime is started.
 Custom primary transport bootstraps are resolved from their own descriptor
 metadata rather than from the bundled WebSocket enable flag, so swapping the
 primary adapter does not silently erase pre-start registration identity.
-Runtime delivery backlog admission is configured through the transport builder;
-`maxDeliveryQueuedItems(...)` controls the total queued dispatch cap used by
-the resolved delivery store. The embedded mainline still defaults to the
-in-memory delivery store, but SDK composition may replace it through
-`deliveryStoreFactory(...)` or `redisDeliveryStore(redisUri[, namespacePrefix])`
-without changing transport runtime contracts.
-`maxDeliveryItemsPerRoute(...)` controls per-route backlog admission for both
-the in-memory and Redis-backed delivery stores, so per-worker polling queues
-and adapter-local route backpressure can be tuned without changing transport
-contracts.
+Polling pending pull-buffer admission is configured through the transport
+builder; `maxPollingPendingDeliveryItems(...)` controls the total queued
+polling pull backlog. The embedded mainline still defaults to the in-memory
+polling pending buffer, but SDK composition may replace it through
+`pollingPendingDeliveryBufferFactory(...)` or
+`redisPollingPendingDeliveryBuffer(redisUri[, namespacePrefix])` without
+changing dispatch handoff contracts.
+`maxPollingPendingDeliveryItemsPerWorker(...)` controls per-worker polling
+pending backlog admission for both the in-memory and Redis-backed polling
+buffers.
 Runtime executor admission is also configurable through
 `transportRuntimeMaxPendingTasks(...)` and `eventRuntimeMaxPendingTasks(...)`;
 both default to 10000 pending tasks and are reported in executor diagnostics.

@@ -3,10 +3,10 @@ package com.xa.mass.starter.config;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -23,8 +23,8 @@ import java.util.function.Supplier;
  */
 public class TransportConfig {
 
-    public static final int DEFAULT_MAX_DELIVERY_QUEUED_ITEMS = 100_000;
-    public static final int DEFAULT_MAX_DELIVERY_ITEMS_PER_ROUTE = 10_000;
+    public static final int DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS = 100_000;
+    public static final int DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS_PER_WORKER = 10_000;
     public static final int DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS = 10_000;
 
     private MessageTransporterFactory.TransporterType transporterType =
@@ -43,14 +43,14 @@ public class TransportConfig {
     private List<WebSocketAdapterConfig> supplementalWebSocketAdapterConfigs = List.of();
     private List<SocketAdapterConfig> supplementalSocketAdapterConfigs = List.of();
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
-    private Supplier<TransportDeliveryStore> deliveryStoreFactory;
+    private Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
     private Supplier<TransportDispatchHandoff> dispatchHandoffFactory;
     private Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory;
     private Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
     private TransportAdapterBootstrap primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps = List.of();
-    private int maxDeliveryQueuedItems = DEFAULT_MAX_DELIVERY_QUEUED_ITEMS;
-    private int maxDeliveryItemsPerRoute = DEFAULT_MAX_DELIVERY_ITEMS_PER_ROUTE;
+    private int maxPollingPendingDeliveryItems = DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS;
+    private int maxPollingPendingDeliveryItemsPerWorker = DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS_PER_WORKER;
     private int transportRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private int eventRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private long eventHandlerTimeoutMillis;
@@ -79,14 +79,14 @@ public class TransportConfig {
                 .map(SocketAdapterConfig::new)
                 .toList();
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
-        this.deliveryStoreFactory = source.deliveryStoreFactory;
+        this.pollingPendingDeliveryBufferFactory = source.pollingPendingDeliveryBufferFactory;
         this.dispatchHandoffFactory = source.dispatchHandoffFactory;
         this.taskResultInboxFactory = source.taskResultInboxFactory;
         this.deliveryFailureInboxFactory = source.deliveryFailureInboxFactory;
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
-        this.maxDeliveryQueuedItems = source.maxDeliveryQueuedItems;
-        this.maxDeliveryItemsPerRoute = source.maxDeliveryItemsPerRoute;
+        this.maxPollingPendingDeliveryItems = source.maxPollingPendingDeliveryItems;
+        this.maxPollingPendingDeliveryItemsPerWorker = source.maxPollingPendingDeliveryItemsPerWorker;
         this.transportRuntimeMaxPendingTasks = source.transportRuntimeMaxPendingTasks;
         this.eventRuntimeMaxPendingTasks = source.eventRuntimeMaxPendingTasks;
         this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
@@ -250,12 +250,13 @@ public class TransportConfig {
         this.workerTransportRuntimeFactory = workerTransportRuntimeFactory;
     }
 
-    public Supplier<TransportDeliveryStore> getDeliveryStoreFactory() {
-        return deliveryStoreFactory;
+    public Supplier<PollingPendingDeliveryBuffer> getPollingPendingDeliveryBufferFactory() {
+        return pollingPendingDeliveryBufferFactory;
     }
 
-    public void setDeliveryStoreFactory(Supplier<TransportDeliveryStore> deliveryStoreFactory) {
-        this.deliveryStoreFactory = deliveryStoreFactory;
+    public void setPollingPendingDeliveryBufferFactory(
+            Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory) {
+        this.pollingPendingDeliveryBufferFactory = pollingPendingDeliveryBufferFactory;
     }
 
     public Supplier<TransportDispatchHandoff> getDispatchHandoffFactory() {
@@ -313,26 +314,26 @@ public class TransportConfig {
         supplementalTransportAdapterBootstraps = List.copyOf(bootstraps);
     }
 
-    public int getMaxDeliveryQueuedItems() {
-        return maxDeliveryQueuedItems;
+    public int getMaxPollingPendingDeliveryItems() {
+        return maxPollingPendingDeliveryItems;
     }
 
-    public void setMaxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
-        if (maxDeliveryQueuedItems <= 0) {
-            throw new IllegalArgumentException("maxDeliveryQueuedItems must be positive");
+    public void setMaxPollingPendingDeliveryItems(int maxPollingPendingDeliveryItems) {
+        if (maxPollingPendingDeliveryItems <= 0) {
+            throw new IllegalArgumentException("maxPollingPendingDeliveryItems must be positive");
         }
-        this.maxDeliveryQueuedItems = maxDeliveryQueuedItems;
+        this.maxPollingPendingDeliveryItems = maxPollingPendingDeliveryItems;
     }
 
-    public int getMaxDeliveryItemsPerRoute() {
-        return maxDeliveryItemsPerRoute;
+    public int getMaxPollingPendingDeliveryItemsPerWorker() {
+        return maxPollingPendingDeliveryItemsPerWorker;
     }
 
-    public void setMaxDeliveryItemsPerRoute(int maxDeliveryItemsPerRoute) {
-        if (maxDeliveryItemsPerRoute <= 0) {
-            throw new IllegalArgumentException("maxDeliveryItemsPerRoute must be positive");
+    public void setMaxPollingPendingDeliveryItemsPerWorker(int maxPollingPendingDeliveryItemsPerWorker) {
+        if (maxPollingPendingDeliveryItemsPerWorker <= 0) {
+            throw new IllegalArgumentException("maxPollingPendingDeliveryItemsPerWorker must be positive");
         }
-        this.maxDeliveryItemsPerRoute = maxDeliveryItemsPerRoute;
+        this.maxPollingPendingDeliveryItemsPerWorker = maxPollingPendingDeliveryItemsPerWorker;
     }
 
     public long getEventHandlerTimeoutMillis() {
@@ -376,8 +377,8 @@ public class TransportConfig {
         this.eventHandlerTimeoutMillis = eventHandlerTimeoutMillis;
     }
 
-    Supplier<TransportDeliveryStore> deliveryStoreFactory() {
-        return deliveryStoreFactory;
+    Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory() {
+        return pollingPendingDeliveryBufferFactory;
     }
 
     Supplier<TransportDispatchHandoff> dispatchHandoffFactory() {

@@ -350,8 +350,8 @@ Scope:
   `TransportDeliveryCommandBatchCodec`, `TransportDeliveryCommandHandoff`,
   `TransportAssignedDeliverySubmitter`, `AdapterCommandExecutor`,
   `QueuedPulledDispatch`, `PulledDeliveryMessage`, `DispatchOutcome`,
-  `TransportDeliveryStore`, `AdapterPullDeliveryBuffer`, and concrete adapter
-  command executors.
+  polling-adapter `PollingPendingDeliveryBuffer`, and concrete adapter command
+  executors.
 - Classify each field as one of:
   target placement, selected-worker correctness, opaque payload, correlation,
   timing/deadline, handoff claim metadata, pull API projection, diagnostics, or
@@ -541,7 +541,7 @@ Compile smoke:
 Carrier and handoff proof:
 
 ```powershell
-.\mvnw -q -pl transport/transport_api,transport/transport_runtime test "-Dtest=DispatchOutcomeTest,RedisTransportNamespacesTest,DispatchRoutingItemTest,DispatchRoutingBatchTest,ClaimedDispatchRoutingBatchTest,DispatchOutcomeFactoryTest,TransportDispatchBatchCodecTest,InMemoryTransportDispatchHandoffTest,RedisTransportDispatchHandoffTest,AdapterMailboxMountTest,TransportAssignedDeliverySubmitterTest,TransportDeliveryServiceTest,InMemoryTransportDeliveryStoreTest,RedisDispatchRoutingItemCodecTest,TransportDeliveryPollResultTest,TransportDeliveryFailureEventCodecTest,RedisTransportDeliveryFailureChannelTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest"
+.\mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter test "-Dtest=DispatchOutcomeTest,RedisTransportNamespacesTest,DispatchRoutingItemTest,DispatchRoutingBatchTest,ClaimedDispatchRoutingBatchTest,DispatchOutcomeFactoryTest,TransportDispatchBatchCodecTest,InMemoryTransportDispatchHandoffTest,RedisTransportDispatchHandoffTest,AdapterMailboxMountTest,TransportAssignedDeliverySubmitterTest,InMemoryPollingPendingDeliveryBufferTest,PollingDispatchRoutingItemCodecTest,TransportDeliveryFailureEventCodecTest,RedisTransportDeliveryFailureChannelTest,TransportConvergenceArchitectureGuardTest,TransportRedisKeyspaceGuardTest"
 ```
 
 Adapter proof:

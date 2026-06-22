@@ -4,25 +4,27 @@ import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
-import com.xa.mass.transport.runtime.delivery.AdapterPullDeliveryBuffer;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryPollResult;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryPollStatus;
 import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollStatus;
 
 import java.util.List;
 import java.util.Objects;
 
 /**
- * Polling worker pull channel backed by the transport delivery buffer.
+ * Polling worker pull channel backed by the polling-adapter pending buffer.
  */
 public final class PollingDeliveryPullChannel implements DeliveryPullChannel {
 
-    private final AdapterPullDeliveryBuffer deliveryBuffer;
+    private final String adapterMailboxKey;
+    private final PollingPendingDeliveryBuffer deliveryBuffer;
 
-    public PollingDeliveryPullChannel(String adapterMailboxKey, AdapterPullDeliveryBuffer deliveryBuffer) {
+    public PollingDeliveryPullChannel(String adapterMailboxKey, PollingPendingDeliveryBuffer deliveryBuffer) {
         if (adapterMailboxKey == null || adapterMailboxKey.isBlank()) {
             throw new IllegalArgumentException("adapterMailboxKey must not be blank");
         }
+        this.adapterMailboxKey = adapterMailboxKey.trim();
         this.deliveryBuffer = Objects.requireNonNull(deliveryBuffer, "deliveryBuffer");
     }
 
@@ -36,15 +38,22 @@ public final class PollingDeliveryPullChannel implements DeliveryPullChannel {
                 || maxMessages <= 0) {
             return DeliveryPullResult.invalidRequest();
         }
-        TransportDeliveryPollResult result = deliveryBuffer.poll(
-                selectedWorkerId,
-                maxMessages,
-                timeoutMillis
-        );
+        PollingPendingDeliveryPollResult result;
+        try {
+            result = deliveryBuffer.poll(
+                    adapterMailboxKey,
+                    selectedWorkerId,
+                    maxMessages,
+                    timeoutMillis
+            );
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            result = PollingPendingDeliveryPollResult.unavailable();
+        }
         return DeliveryPullResult.of(mapStatus(result.getStatus()), toPulledItems(result.getItems()));
     }
 
-    private static DeliveryPullStatus mapStatus(TransportDeliveryPollStatus status) {
+    private static DeliveryPullStatus mapStatus(PollingPendingDeliveryPollStatus status) {
         if (status == null) {
             return DeliveryPullStatus.UNAVAILABLE;
         }

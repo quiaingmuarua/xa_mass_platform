@@ -1,4 +1,4 @@
-package com.xa.mass.transport.runtime.delivery;
+package com.xa.mass.transport.polling.delivery;
 
 /**
  * Per-adapter runtime delivery-store snapshot for queue-focused diagnostics.
@@ -9,7 +9,7 @@ package com.xa.mass.transport.runtime.delivery;
  * distributed queue implementations may approximate without reproducing the
  * exact local waiter model of the in-memory reference store.
  */
-public final class TransportDeliveryQueueStats {
+public final class PollingPendingDeliveryQueueStats {
 
     private final int queuedItems;
     private final int queueCount;
@@ -17,7 +17,7 @@ public final class TransportDeliveryQueueStats {
     private final long oldestQueuedAgeMillis;
     private final long backpressureRejectedItems;
 
-    public TransportDeliveryQueueStats(int queuedItems,
+    public PollingPendingDeliveryQueueStats(int queuedItems,
                                        int queueCount,
                                        int waitingPollers,
                                        long oldestQueuedAgeMillis,

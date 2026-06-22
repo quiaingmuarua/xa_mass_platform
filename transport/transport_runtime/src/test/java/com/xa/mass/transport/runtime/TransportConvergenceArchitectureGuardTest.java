@@ -275,24 +275,29 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void pollingPullQueuePlacementUsesAdapterMailboxNotDeliveryBucket() throws IOException {
-        Path deliveryService = repoRoot().resolve(
-                "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryService.java");
-        String source = Files.readString(deliveryService);
-        assertTrue(source.contains("enqueueForMailbox"),
-                "Polling pull queue placement must use explicit adapter mailbox input");
-        assertTrue(source.contains("pollMailboxItemResult"),
-                "Polling pull demux must poll by adapter mailbox plus selected worker");
-        assertTrue(!source.contains("AssignedDeliveryCommandQueueKey"),
-                "Polling pull queue placement must not derive from deliveryBucketId");
-        assertTrue(!source.contains("resolveDeliveryQueueKey("),
-                "Polling pull queue placement must not keep bucket-derived queue helpers");
+    void pollingPendingDeliveryBufferLivesInPollingAdapterAndUsesMailboxWorkerSlots() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryService.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryStore.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/InMemoryTransportDeliveryStore.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDeliveryStore.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisDispatchRoutingItemCodec.java")
+        );
+
+        Path buffer = repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/delivery/PollingPendingDeliveryBuffer.java");
+        String bufferSource = Files.readString(buffer);
+        assertTrue(bufferSource.contains("enqueue(String adapterMailboxKey"),
+                "Polling pending delivery enqueue must be explicitly mailbox-scoped");
+        assertTrue(bufferSource.contains("poll(String adapterMailboxKey")
+                        && bufferSource.contains("String authenticatedWorkerId"),
+                "Polling pending delivery poll must use adapter mailbox plus authenticated polling worker id");
 
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/InMemoryTransportDeliveryStore.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDeliveryStore.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisDispatchRoutingItemCodec.java")),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/delivery")),
+                "AssignedDeliveryCommandQueueKey",
+                "resolveDeliveryQueueKey(",
                 "normalizeAdapterId(value)",
                 "worker-index"
         );
@@ -460,11 +465,10 @@ class TransportConvergenceArchitectureGuardTest {
                 "Adapter bootstrap context must own adapter mailbox key resolution");
         assertTrue(contextSource.contains("sessionEvidencePublisher("),
                 "Adapter bootstrap context must expose session evidence through a narrow publisher");
-        assertTrue(contextSource.contains("pullDeliveryBuffer("),
-                "Adapter bootstrap context must expose polling pull delivery through a mailbox-scoped buffer");
         assertTrue(!contextSource.contains("getEndpointLeaseStore(")
                         && !contextSource.contains("getWorkerPresenceIngress(")
-                        && !contextSource.contains("getDeliveryService("),
+                        && !contextSource.contains("getDeliveryService(")
+                        && !contextSource.contains("pullDeliveryBuffer("),
                 "Adapter bootstrap context must not expose broad transport owner getters to concrete adapters");
 
         Path pollingBootstrap = repoRoot().resolve(
@@ -477,8 +481,10 @@ class TransportConvergenceArchitectureGuardTest {
         String pollingSource = Files.readString(pollingBootstrap);
         assertTrue(pollingSource.contains("context.adapterMailboxKey(")
                         && pollingSource.contains("context.sessionEvidencePublisher(")
-                        && pollingSource.contains("context.pullDeliveryBuffer("),
-                "Polling bootstrap must consume host-owned mailbox key, session-evidence, and pull-buffer capabilities");
+                        && pollingSource.contains("PollingPendingDeliveryBuffer")
+                        && pollingSource.contains("new PollingDeliveryExecutor")
+                        && pollingSource.contains("new PollingDeliveryPullChannel"),
+                "Polling bootstrap must consume host-owned mailbox/session capabilities and own its pending pull buffer");
         String websocketSource = Files.readString(websocketBootstrap);
         assertTrue(websocketSource.contains("context.adapterMailboxKey(")
                         && websocketSource.contains("context.sessionEvidencePublisher("),
@@ -498,6 +504,10 @@ class TransportConvergenceArchitectureGuardTest {
                 "TransportDeliveryService",
                 "String adapterMailboxKey = config.getAdapterId()",
                 "String adapterMailboxKey = metadata.adapterId()"
+        );
+        assertNoProductionSourceContains(
+                List.of(websocketBootstrap, socketBootstrap),
+                "PollingPendingDeliveryBuffer"
         );
 
         assertNoProductionSourceContains(
@@ -603,7 +613,7 @@ class TransportConvergenceArchitectureGuardTest {
         Path composition = repoRoot().resolve(
                 "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/TransportRuntimeComposition.java");
         String compositionSource = Files.readString(composition);
-        assertTrue(compositionSource.contains("new PollingTransportAdapterBootstrap()"),
+        assertTrue(compositionSource.contains("new PollingTransportAdapterBootstrap("),
                 "TransportRuntimeComposition must install the default polling adapter through bootstrap contribution");
     }
 
@@ -1029,12 +1039,12 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void redisPollingQueueValueIsFlatDispatchItemNotPacketEnvelope() throws IOException {
+    void pollingPendingDeliveryValueIsFlatDispatchItemNotPacketEnvelope() throws IOException {
         assertPathsDoNotExist(
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeCodec.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeRecord.java")
         );
-        Path codec = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisDispatchRoutingItemCodec.java");
+        Path codec = repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/delivery/PollingDispatchRoutingItemCodec.java");
         assertNoProductionSourceContains(
                 List.of(codec),
                 "TransportPacket",
@@ -1056,12 +1066,14 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void deliveryStoreDoesNotRecoverQueueKeyFromEnvelopeValue() throws IOException {
+    void pollingPendingDeliveryBufferDoesNotRecoverQueueKeyFromEnvelopeValue() throws IOException {
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/InMemoryTransportDeliveryStore.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDeliveryStore.java")),
-                "getDeliveryQueueKey("
+                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/delivery/InMemoryPollingPendingDeliveryBuffer.java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/delivery/RedisPollingPendingDeliveryBuffer.java")),
+                "getDeliveryQueueKey(",
+                "AssignedDeliveryCommandQueueKey",
+                "deliveryBucketId"
         );
     }
 
@@ -1301,9 +1313,25 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void transportDeliveryServiceDoesNotExposeWorkerFacingProjectionHelpers() throws IOException {
+    void transportRuntimeDoesNotExposeGenericPollingDeliveryStoreBoundary() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryService.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryStore.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryStoreStats.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryServiceStats.java")
+        );
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryService.java")),
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java"),
+                        repoRoot().resolve("xa-mass-server/src/main/java")
+                ),
+                "TransportDeliveryStore",
+                "TransportDeliveryService",
+                "deliveryStoreFactory",
+                "redisDeliveryStore",
+                "maxDeliveryQueuedItems",
+                "maxDeliveryItemsPerRoute",
                 "TaskDispatchItem",
                 "PulledTaskDispatch",
                 "pollDispatchViews",

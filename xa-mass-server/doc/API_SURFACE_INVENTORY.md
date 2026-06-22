@@ -129,8 +129,8 @@ Deferred decisions:
 | POST | /worker-api/v1/workers/{workerId}:poll | ExternalWorkerApiController | public-sdk-ingress | worker credential | external worker data-plane | keep; external polling | Java SDK worker sessions | keep |
 | POST | /worker-api/v1/workers/{workerId}:submit-result | ExternalWorkerApiController | public-sdk-ingress | worker credential | external worker data-plane | keep; result submit | Java SDK worker sessions | keep |
 | POST | /worker-api/v1/workers/{workerId}/commands:poll | ExternalWorkerApiController | public-sdk-ingress | worker credential | external worker data-plane | keep; command delivery poll | Java SDK | keep |
-| POST | /worker-api/v1/workers/{workerId}:report-capability | ExternalWorkerApiController | public-sdk-ingress | worker credential | external worker data-plane | keep; worker self-report | Java SDK worker sessions | keep |
-| POST | /worker-api/v1/workers/{workerId}:report-state | ExternalWorkerApiController | public-sdk-ingress | worker credential | external worker data-plane | keep; worker self-report | Java SDK worker sessions | keep |
+| POST | /worker-api/v1/workers/{workerId}:report-handler-evidence | ExternalWorkerApiController | public-sdk-ingress | worker credential | external worker data-plane | keep; worker handler evidence self-report | Java SDK worker sessions | keep |
+| POST | /worker-api/v1/workers/{workerId}:report-runtime-evidence | ExternalWorkerApiController | public-sdk-ingress | worker credential | external worker data-plane | keep; worker runtime evidence self-report | Java SDK worker sessions | keep |
 | POST | /worker-api/v1/workers/{workerId}/commands/{commandId}:ack | ExternalWorkerApiController | public-sdk-ingress | worker credential | external worker data-plane | keep; command ack | Java SDK | keep |
 
 ## Frontend Caller Drift
@@ -144,8 +144,8 @@ Deferred decisions:
 
 | Shape | Current Owner | Classification | Target |
 | --- | --- | --- | --- |
-| `POST /api/v1/runtime/workers/{workerId}/capability-reports` | removed from `WorkerApiController` | duplicate worker self-report write | use `/worker-api/v1/workers/{workerId}:report-capability` |
-| `POST /api/v1/runtime/workers/{workerId}/state-reports` | removed from `WorkerApiController` | duplicate worker self-report write | use `/worker-api/v1/workers/{workerId}:report-state` |
+| `POST /api/v1/runtime/workers/{workerId}/capability-reports` | removed from `WorkerApiController` | duplicate worker self-report write | use `/worker-api/v1/workers/{workerId}:report-handler-evidence` |
+| `POST /api/v1/runtime/workers/{workerId}/state-reports` | removed from `WorkerApiController` | duplicate worker self-report write | use `/worker-api/v1/workers/{workerId}:report-runtime-evidence` |
 | `POST /api/v1/runtime/workers/{workerId}/commands/{commandId}/ack` | removed from `WorkerApiController` | duplicate worker data-plane ack | use `/worker-api/v1/workers/{workerId}/commands/{commandId}:ack` |
 | `/internal/v1/debug/task-invocations:sync` SDK auth bypass | `ApiRouteAuthorizationCatalog` | fixed by operator-only route catalog and controller-side SDK credential rejection | keep guarded |
 | `/api/v1/runtime/**` list/detail snapshots | runtime diagnostics controllers | live runtime read cost risk | kept as operator/console diagnostics only; list responses are windowed, while owner SDK pagination remains deferred |

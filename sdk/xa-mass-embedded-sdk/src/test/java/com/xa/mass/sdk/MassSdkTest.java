@@ -97,6 +97,11 @@ import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
+import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBufferStats;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryPollResult;
+import com.xa.mass.transport.polling.delivery.RedisPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
@@ -106,11 +111,6 @@ import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
-import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
 import com.xa.mass.transport.lease.TransportEndpointLeaseConsumerEvidence;
 import com.xa.mass.transport.lease.TransportEndpointLeaseHeartbeat;
@@ -410,7 +410,6 @@ class MassSdkTest {
         config.setCustomWorkerPresenceIngress(customPresenceIngress);
         WorkerTransportRuntimeFactory customFactory = (taskResultIngestChannel,
                                                      endpointLeaseStore,
-                                                     deliveryService,
                                                      adapterBindings) -> mock(TransportRuntimeRegistry.class);
         config.setWorkerTransportRuntimeFactory(customFactory);
 
@@ -473,14 +472,14 @@ class MassSdkTest {
     }
 
     @Test
-    void runtimeCompositionResolvesCustomTransportDeliveryStoreFactory() {
+    void runtimeCompositionResolvesCustomPollingPendingDeliveryBufferFactory() {
         TransportConfig config = new TransportConfig();
-        StubTransportDeliveryStore store = new StubTransportDeliveryStore();
-        config.setDeliveryStoreFactory(() -> store);
+        StubPollingPendingDeliveryBuffer buffer = new StubPollingPendingDeliveryBuffer();
+        config.setPollingPendingDeliveryBufferFactory(() -> buffer);
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        assertSame(store, runtimeComposition.resolveTransportDeliveryStore());
+        assertSame(buffer, runtimeComposition.resolvePollingPendingDeliveryBufferFactory().get());
     }
 
     @Test
@@ -539,7 +538,11 @@ class MassSdkTest {
         assertCapturedNamespace(runtimeComposition, "taskResultInboxFactory", RedisTransportNamespaces.RESULT_INBOX);
         assertCapturedNamespace(runtimeComposition, "deliveryFailureInboxFactory", RedisTransportNamespaces.DELIVERY_FAILURE);
         assertCapturedNamespace(runtimeComposition, "endpointLeaseStoreFactory", RedisTransportNamespaces.ENDPOINT_LEASE);
-        assertCapturedNamespace(runtimeComposition, "deliveryStoreFactory", RedisTransportNamespaces.DELIVERY);
+        assertCapturedNamespace(
+                runtimeComposition,
+                "pollingPendingDeliveryBufferFactory",
+                RedisPollingPendingDeliveryBuffer.DEFAULT_NAMESPACE_PREFIX
+        );
     }
 
     @Test
@@ -574,7 +577,6 @@ class MassSdkTest {
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
-                    deliveryService(),
                     runtimeTaskExecutor
             );
             contribution = adapterBootstrap(runtimeComposition, "socket").contribute(bootstrapContext);
@@ -602,7 +604,6 @@ class MassSdkTest {
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
-                    deliveryService(),
                     runtimeTaskExecutor
             );
             contribution = adapterBootstrap(runtimeComposition, "websocket").contribute(bootstrapContext);
@@ -632,7 +633,6 @@ class MassSdkTest {
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
-                    deliveryService(),
                     runtimeTaskExecutor
             );
             contribution = adapterBootstrap(runtimeComposition, "ws-public").contribute(bootstrapContext);
@@ -664,7 +664,6 @@ class MassSdkTest {
                     mock(TransportResultIngressChannel.class),
                     NoopWorkerPresenceIngress.INSTANCE,
                     new InMemoryTransportEndpointLeaseStore(),
-                    deliveryService(),
                     runtimeTaskExecutor
             );
             contribution = adapterBootstrap(runtimeComposition, "socket-edge").contribute(bootstrapContext);
@@ -730,7 +729,6 @@ class MassSdkTest {
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         config.setWorkerTransportRuntimeFactory((taskResultIngestChannel,
                                                 endpointLeaseStore,
-                                                deliveryService,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
@@ -752,7 +750,6 @@ class MassSdkTest {
         TransportConfig config = new TransportConfig();
         config.setWorkerTransportRuntimeFactory((taskResultIngestChannel,
                                                 endpointLeaseStore,
-                                                deliveryService,
                                                 adapterBindings) -> mock(TransportRuntimeRegistry.class));
         config.setPrimaryTransportAdapterBootstrap(new DescriptorOnlyBootstrap(
                 new TransportAdapterDescriptor("custom-rt", WorkerTransportHints.REALTIME)
@@ -773,7 +770,6 @@ class MassSdkTest {
             @Override
             public TransportRuntimeRegistry create(TransportResultIngressChannel taskResultIngestChannel,
                                                    TransportEndpointLeaseStore endpointLeaseStore,
-                                                   TransportDeliveryService deliveryService,
                                                    List<TransportBinding> adapterBindings) {
                 return mock(TransportRuntimeRegistry.class);
             }
@@ -845,31 +841,31 @@ class MassSdkTest {
     }
 
     @Test
-    void transportRuntimeCompositionSnapshotsDeliveryQueueCapacity() {
+    void transportRuntimeCompositionSnapshotsPollingPendingDeliveryCapacity() {
         TransportConfig config = new TransportConfig();
-        config.setMaxDeliveryQueuedItems(42);
-        config.setMaxDeliveryItemsPerRoute(7);
+        config.setMaxPollingPendingDeliveryItems(42);
+        config.setMaxPollingPendingDeliveryItemsPerWorker(7);
         config.setEventHandlerTimeoutMillis(123);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        config.setMaxDeliveryQueuedItems(84);
-        config.setMaxDeliveryItemsPerRoute(9);
+        config.setMaxPollingPendingDeliveryItems(84);
+        config.setMaxPollingPendingDeliveryItemsPerWorker(9);
         config.setEventHandlerTimeoutMillis(456);
 
-        assertEquals(42, runtimeComposition.getMaxDeliveryQueuedItems());
-        assertEquals(7, runtimeComposition.getMaxDeliveryItemsPerRoute());
+        assertEquals(42, runtimeComposition.getMaxPollingPendingDeliveryItems());
+        assertEquals(7, runtimeComposition.getMaxPollingPendingDeliveryItemsPerWorker());
         assertEquals(123, runtimeComposition.getEventHandlerTimeoutMillis());
-        assertThrows(IllegalArgumentException.class, () -> config.setMaxDeliveryQueuedItems(0));
-        assertThrows(IllegalArgumentException.class, () -> config.setMaxDeliveryItemsPerRoute(0));
+        assertThrows(IllegalArgumentException.class, () -> config.setMaxPollingPendingDeliveryItems(0));
+        assertThrows(IllegalArgumentException.class, () -> config.setMaxPollingPendingDeliveryItemsPerWorker(0));
         assertThrows(IllegalArgumentException.class, () -> config.setEventHandlerTimeoutMillis(-1));
     }
 
     @Test
-    void massApplicationStopsCustomTransportDeliveryStore() {
-        StubTransportDeliveryStore store = new StubTransportDeliveryStore();
+    void massApplicationStopsCustomPollingPendingDeliveryBuffer() {
+        StubPollingPendingDeliveryBuffer buffer = new StubPollingPendingDeliveryBuffer();
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
-                        .deliveryStoreFactory(() -> store)
+                        .pollingPendingDeliveryBufferFactory(() -> buffer)
                         .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine.enabled(false))
                 .build();
@@ -877,15 +873,17 @@ class MassSdkTest {
         app.start();
         app.stop();
 
-        assertTrue(store.shutdownCalled.get());
+        assertTrue(buffer.shutdownCalled.get());
     }
 
     @Test
-    void sdkBuilderAcceptsRedisDeliveryStoreNamespaceOverride() {
+    void sdkBuilderAcceptsRedisPollingPendingDeliveryBufferNamespaceOverride() {
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
-                        .maxDeliveryItemsPerRoute(5)
-                        .redisDeliveryStore("redis://127.0.0.1:6379/0", "xa:mass:test:transport:delivery")
+                        .maxPollingPendingDeliveryItemsPerWorker(5)
+                        .redisPollingPendingDeliveryBuffer(
+                                "redis://127.0.0.1:6379/0",
+                                "xa:mass:test:transport:polling-delivery")
                         .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine.enabled(false))
                 .build();
@@ -1121,11 +1119,11 @@ class MassSdkTest {
             assertEquals(0, queueDetail.get("inputQueueSize"));
             assertEquals(0, queueDetail.get("outputQueueSize"));
             Map<?, ?> deliveryDiagnostics = (Map<?, ?>) queueDetail.get("deliveryDiagnostics");
-            assertEquals(true, deliveryDiagnostics.get("available"));
+            assertEquals(false, deliveryDiagnostics.get("available"));
             assertEquals(0, deliveryDiagnostics.get("queuedItems"));
             assertEquals(0, deliveryDiagnostics.get("queueCount"));
             assertEquals(0, deliveryDiagnostics.get("waitingPollers"));
-            assertEquals(100_000, deliveryDiagnostics.get("maxQueuedItems"));
+            assertEquals(0, deliveryDiagnostics.get("maxQueuedItems"));
             assertEquals(0L, deliveryDiagnostics.get("oldestQueuedAgeMillis"));
             assertEquals(0L, deliveryDiagnostics.get("enqueuedItems"));
             assertEquals(0L, deliveryDiagnostics.get("drainedItems"));
@@ -1144,21 +1142,22 @@ class MassSdkTest {
     }
 
     @Test
-    void transportDeliveryQueueCapacityCanBeConfigured() {
+    void pollingPendingDeliveryCapacityDoesNotDriveGenericQueueDiagnostics() {
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket.enabled(true).serverEnabled(false))
-                        .maxDeliveryQueuedItems(7))
+                        .maxPollingPendingDeliveryItems(7))
                 .engine(engine -> engine.enabled(false))
                 .build();
 
         try {
             app.start();
 
-        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) runtimeDiagnostics(app).getQueueDetail().get("deliveryDiagnostics");
-        assertEquals(true, deliveryDiagnostics.get("available"));
-        assertEquals(7, deliveryDiagnostics.get("maxQueuedItems"));
-        assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
+            Map<?, ?> deliveryDiagnostics =
+                    (Map<?, ?>) runtimeDiagnostics(app).getQueueDetail().get("deliveryDiagnostics");
+            assertEquals(false, deliveryDiagnostics.get("available"));
+            assertEquals(0, deliveryDiagnostics.get("maxQueuedItems"));
+            assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
         } finally {
             app.stop();
         }
@@ -2582,7 +2581,6 @@ class MassSdkTest {
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
-                                                         deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 endpointLeaseStore,
@@ -2620,7 +2618,6 @@ class MassSdkTest {
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
-                                                         deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 endpointLeaseStore,
@@ -2661,7 +2658,6 @@ class MassSdkTest {
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
-                                                         deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 endpointLeaseStore,
@@ -2699,7 +2695,6 @@ class MassSdkTest {
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
-                                                         deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 endpointLeaseStore,
@@ -2788,7 +2783,6 @@ class MassSdkTest {
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
-                                                         deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 endpointLeaseStore,
@@ -2828,7 +2822,6 @@ class MassSdkTest {
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
-                                                         deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 endpointLeaseStore,
@@ -2873,7 +2866,6 @@ class MassSdkTest {
         );
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
-                                                         deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
                 taskResultIngestChannel,
                 endpointLeaseStore,
@@ -3262,10 +3254,6 @@ class MassSdkTest {
                 .orElseThrow(() -> new AssertionError("Missing adapter bootstrap for " + adapterId));
     }
 
-    private static TransportDeliveryService deliveryService() {
-        return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
-    }
-
     private static void shutdownRuntimeTaskExecutor(VirtualThreadRuntimeTaskExecutor executor) {
         executor.shutdown();
         try {
@@ -3633,39 +3621,35 @@ class MassSdkTest {
         }
     }
 
-    private static final class StubTransportDeliveryStore implements TransportDeliveryStore {
+    private static final class StubPollingPendingDeliveryBuffer implements PollingPendingDeliveryBuffer {
         private final AtomicBoolean shutdownCalled = new AtomicBoolean(false);
 
         @Override
-        public com.xa.mass.transport.model.DispatchOutcome enqueue(
+        public List<com.xa.mass.transport.model.DispatchOutcome> enqueue(
                 String adapterMailboxKey,
-                com.xa.mass.transport.runtime.delivery.DispatchRoutingItem item) {
-            return com.xa.mass.transport.model.DispatchOutcome.queued(
-                    item != null ? item.deliveryId() : null,
-                    item != null ? item.selectedWorkerId() : null,
-                    item != null ? item.correlationRef() : null
-            );
+                List<com.xa.mass.transport.runtime.delivery.DispatchRoutingItem> items) {
+            if (items == null || items.isEmpty()) {
+                return List.of();
+            }
+            return items.stream()
+                    .map(item -> com.xa.mass.transport.model.DispatchOutcome.queued(
+                            item.deliveryId(),
+                            item.selectedWorkerId(),
+                            item.correlationRef()
+                    ))
+                    .toList();
         }
 
         @Override
-        public List<com.xa.mass.transport.runtime.delivery.DispatchRoutingItem> drain(String adapterMailboxKey,
-                                                                                      String selectedWorkerId,
-                                                                                      int maxItems) {
-            return List.of();
+        public PollingPendingDeliveryPollResult poll(String adapterMailboxKey,
+                                                     String authenticatedWorkerId,
+                                                     int maxItems,
+                                                     long timeoutMillis) {
+            return PollingPendingDeliveryPollResult.empty();
         }
 
-        @Override
-        public TransportDeliveryPollResult poll(String adapterMailboxKey,
-                                                String selectedWorkerId,
-                                                int maxItems,
-                                                long timeout,
-                                                TimeUnit unit) {
-            return TransportDeliveryPollResult.empty();
-        }
-
-        @Override
-        public TransportDeliveryStoreStats stats() {
-            return new TransportDeliveryStoreStats(0, 0, 0, 1);
+        public PollingPendingDeliveryBufferStats stats() {
+            return new PollingPendingDeliveryBufferStats(0, 0, 0, 1);
         }
 
         @Override
@@ -3740,5 +3724,4 @@ class MassSdkTest {
     private static TransportDebugOperations rawTransportDebug(MassSdkApplication app) {
         return new DefaultTransportDebugOperations(app.runtimeApplication());
     }
-
 }

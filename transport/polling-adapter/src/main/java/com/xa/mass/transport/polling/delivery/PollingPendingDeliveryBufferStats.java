@@ -1,12 +1,12 @@
-package com.xa.mass.transport.runtime.delivery;
+package com.xa.mass.transport.polling.delivery;
 
 import java.util.Map;
 
 /**
- * Runtime transport delivery diagnostics snapshot.
+ * Polling-adapter pending delivery diagnostics snapshot.
  *
- * Queue/store-path-only delivery diagnostics. Direct-send counters are owned by
- * {@link TransportDeliveryService} and assembled above the store boundary.
+ * <p>This is concrete implementation diagnostics, not a transport-core
+ * dispatch contract.
  *
  * <p>Redis-ready contract split:
  *
@@ -26,7 +26,7 @@ import java.util.Map;
  * required to preserve the exact local-JVM waiter or snapshot timing model of
  * the current in-memory store.
  */
-public final class TransportDeliveryStoreStats {
+public final class PollingPendingDeliveryBufferStats {
 
     private final int queuedItems;
     private final int queueCount;
@@ -39,16 +39,16 @@ public final class TransportDeliveryStoreStats {
     private final long invalidItems;
     private final long unavailableItems;
     private final long shutdownClearedItems;
-    private final Map<String, TransportDeliveryQueueStats> queueByAdapter;
+    private final Map<String, PollingPendingDeliveryQueueStats> queueByAdapter;
 
-    public TransportDeliveryStoreStats(int queuedItems,
+    public PollingPendingDeliveryBufferStats(int queuedItems,
                                        int queueCount,
                                        int waitingPollers,
                                        int maxQueuedItems) {
         this(queuedItems, queueCount, waitingPollers, maxQueuedItems, 0L);
     }
 
-    public TransportDeliveryStoreStats(int queuedItems,
+    public PollingPendingDeliveryBufferStats(int queuedItems,
                                        int queueCount,
                                        int waitingPollers,
                                        int maxQueuedItems,
@@ -57,7 +57,7 @@ public final class TransportDeliveryStoreStats {
                 0L, 0L, 0L);
     }
 
-    public TransportDeliveryStoreStats(int queuedItems,
+    public PollingPendingDeliveryBufferStats(int queuedItems,
                                        int queueCount,
                                        int waitingPollers,
                                        int maxQueuedItems,
@@ -70,10 +70,10 @@ public final class TransportDeliveryStoreStats {
                                        long shutdownClearedItems) {
         this(queuedItems, queueCount, waitingPollers, maxQueuedItems, oldestQueuedAgeMillis, enqueuedItems,
                 drainedItems, backpressureRejectedItems, invalidItems, unavailableItems, shutdownClearedItems,
-                Map.<String, TransportDeliveryQueueStats>of());
+                Map.<String, PollingPendingDeliveryQueueStats>of());
     }
 
-    public TransportDeliveryStoreStats(int queuedItems,
+    public PollingPendingDeliveryBufferStats(int queuedItems,
                                        int queueCount,
                                        int waitingPollers,
                                        int maxQueuedItems,
@@ -84,7 +84,7 @@ public final class TransportDeliveryStoreStats {
                                        long invalidItems,
                                        long unavailableItems,
                                        long shutdownClearedItems,
-                                       Map<String, TransportDeliveryQueueStats> queueByAdapter) {
+                                       Map<String, PollingPendingDeliveryQueueStats> queueByAdapter) {
         this.queuedItems = Math.max(0, queuedItems);
         this.queueCount = Math.max(0, queueCount);
         this.waitingPollers = Math.max(0, waitingPollers);
@@ -149,11 +149,10 @@ public final class TransportDeliveryStoreStats {
      * Queue-path only legacy breakdown.
      *
      * <p>This field keeps the old name for diagnostic API stability. It is not
-     * queue ownership truth; selected-worker delivery stores may aggregate
-     * under the shared delivery queue key instead of preserving
-     * adapter-specific queue identity.
+     * queue ownership truth; polling buffers may aggregate under the adapter
+     * mailbox instead of exposing selected-worker slots.
      */
-    public Map<String, TransportDeliveryQueueStats> getQueueByAdapter() {
+    public Map<String, PollingPendingDeliveryQueueStats> getQueueByAdapter() {
         return queueByAdapter;
     }
 }

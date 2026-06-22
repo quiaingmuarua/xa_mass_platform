@@ -2,10 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryQueueStats;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -25,16 +22,12 @@ final class TransportQueueDiagnosticsMapper {
     static Map<String, Object> toQueueDetail(int inputSize,
                                              int outputSize,
                                              boolean transporterAvailable,
-                                             boolean deliveryAvailable,
-                                             TransportDeliveryServiceStats stats,
                                              RuntimeTaskExecutor transportExecutor,
                                              RuntimeTaskExecutor eventExecutor) {
         return toQueueDetailView(
                 inputSize,
                 outputSize,
                 transporterAvailable,
-                deliveryAvailable,
-                stats,
                 transportExecutor,
                 eventExecutor
         ).toMap();
@@ -43,52 +36,33 @@ final class TransportQueueDiagnosticsMapper {
     static TransportQueueDetailView toQueueDetailView(int inputSize,
                                                       int outputSize,
                                                       boolean transporterAvailable,
-                                                      boolean deliveryAvailable,
-                                                      TransportDeliveryServiceStats stats,
                                                       RuntimeTaskExecutor transportExecutor,
                                                       RuntimeTaskExecutor eventExecutor) {
         return new TransportQueueDetailView(
                 inputSize,
                 outputSize,
                 transporterAvailable,
-                deliveryQueueDetailView(deliveryAvailable, stats),
+                deliveryQueueDetailView(),
                 runtimeExecutorDetailView(transportExecutor, eventExecutor)
         );
     }
 
-    private static DeliveryQueueDiagnosticsView deliveryQueueDetailView(boolean available,
-                                                                        TransportDeliveryServiceStats stats) {
+    private static DeliveryQueueDiagnosticsView deliveryQueueDetailView() {
         return new DeliveryQueueDiagnosticsView(
-                available,
-                stats != null ? stats.getQueuedItems() : 0,
-                stats != null ? stats.getQueueCount() : 0,
-                stats != null ? stats.getWaitingPollers() : 0,
-                stats != null ? stats.getMaxQueuedItems() : 0,
-                stats != null ? stats.getOldestQueuedAgeMillis() : 0L,
-                stats != null ? stats.getEnqueuedItems() : 0L,
-                stats != null ? stats.getDrainedItems() : 0L,
-                stats != null ? stats.getBackpressureRejectedItems() : 0L,
-                stats != null ? stats.getInvalidItems() : 0L,
-                stats != null ? stats.getUnavailableItems() : 0L,
-                stats != null ? stats.getShutdownClearedItems() : 0L,
-                queueByAdapterDetailView(stats != null ? stats.getQueueByAdapter() : Map.of())
+                false,
+                0,
+                0,
+                0,
+                0,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                Map.of()
         );
-    }
-
-    private static Map<String, QueueAdapterDiagnosticsView> queueByAdapterDetailView(
-            Map<String, TransportDeliveryQueueStats> queueByAdapter) {
-        if (queueByAdapter == null || queueByAdapter.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, QueueAdapterDiagnosticsView> map = new LinkedHashMap<>();
-        queueByAdapter.forEach((adapterId, stats) -> map.put(adapterId, new QueueAdapterDiagnosticsView(
-                stats != null ? stats.getQueuedItems() : 0,
-                stats != null ? stats.getQueueCount() : 0,
-                stats != null ? stats.getWaitingPollers() : 0,
-                stats != null ? stats.getOldestQueuedAgeMillis() : 0L,
-                stats != null ? stats.getBackpressureRejectedItems() : 0L
-        )));
-        return Map.copyOf(map);
     }
 
     private static RuntimeExecutorsDiagnosticsView runtimeExecutorDetailView(RuntimeTaskExecutor transportExecutor,

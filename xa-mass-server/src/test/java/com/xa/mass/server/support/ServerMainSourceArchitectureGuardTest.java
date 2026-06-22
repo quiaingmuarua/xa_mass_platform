@@ -371,8 +371,8 @@ class ServerMainSourceArchitectureGuardTest {
                 "durable-local storage mode must fail closed when it is memory or disabled");
         assertTrue(applicationSource.contains("requireDurableLocalInfraMode(\"mass.runtime.mode\", \"redis\""),
                 "durable-local runtime mode must fail closed unless Redis is selected");
-        assertTrue(applicationSource.contains("requireDurableLocalInfraMode(\"mass.transport.delivery.store\", \"redis\""),
-                "durable-local transport delivery must fail closed unless Redis is selected");
+        assertTrue(applicationSource.contains("requireDurableLocalInfraMode(\"mass.transport.polling.buffer.store\", \"redis\""),
+                "durable-local polling pending delivery buffer must fail closed unless Redis is selected");
         assertTrue(applicationSource.contains("requireDurableLocalInfraMode(\"mass.transport.endpoint-lease.store\", \"redis\""),
                 "durable-local transport endpoint lease store must fail closed unless Redis is selected");
     }

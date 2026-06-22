@@ -1,6 +1,6 @@
-package com.xa.mass.transport.runtime.delivery;
+package com.xa.mass.transport.polling.delivery;
 
-public enum TransportDeliveryPollStatus {
+public enum PollingPendingDeliveryPollStatus {
     /**
      * One or more envelopes were delivered for the requested queue key.
      */

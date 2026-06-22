@@ -14,9 +14,9 @@ import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.trace.sink.ExecutionEventSink;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
@@ -138,8 +138,9 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions deliveryStoreFactory(Supplier<TransportDeliveryStore> deliveryStoreFactory) {
-            delegate.deliveryStoreFactory(deliveryStoreFactory);
+        public TransportOptions pollingPendingDeliveryBufferFactory(
+                Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory) {
+            delegate.pollingPendingDeliveryBufferFactory(pollingPendingDeliveryBufferFactory);
             return this;
         }
 
@@ -148,13 +149,13 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions redisDeliveryStore(String redisUri) {
-            delegate.redisDeliveryStore(redisUri);
+        public TransportOptions redisPollingPendingDeliveryBuffer(String redisUri) {
+            delegate.redisPollingPendingDeliveryBuffer(redisUri);
             return this;
         }
 
-        public TransportOptions redisDeliveryStore(String redisUri, String namespacePrefix) {
-            delegate.redisDeliveryStore(redisUri, namespacePrefix);
+        public TransportOptions redisPollingPendingDeliveryBuffer(String redisUri, String namespacePrefix) {
+            delegate.redisPollingPendingDeliveryBuffer(redisUri, namespacePrefix);
             return this;
         }
 
@@ -213,13 +214,13 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions maxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
-            delegate.maxDeliveryQueuedItems(maxDeliveryQueuedItems);
+        public TransportOptions maxPollingPendingDeliveryItems(int maxPollingPendingDeliveryItems) {
+            delegate.maxPollingPendingDeliveryItems(maxPollingPendingDeliveryItems);
             return this;
         }
 
-        public TransportOptions maxDeliveryItemsPerRoute(int maxDeliveryItemsPerRoute) {
-            delegate.maxDeliveryItemsPerRoute(maxDeliveryItemsPerRoute);
+        public TransportOptions maxPollingPendingDeliveryItemsPerWorker(int maxPollingPendingDeliveryItemsPerWorker) {
+            delegate.maxPollingPendingDeliveryItemsPerWorker(maxPollingPendingDeliveryItemsPerWorker);
             return this;
         }
 

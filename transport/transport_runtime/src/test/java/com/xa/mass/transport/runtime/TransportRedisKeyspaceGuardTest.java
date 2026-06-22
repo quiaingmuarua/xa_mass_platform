@@ -21,7 +21,6 @@ class TransportRedisKeyspaceGuardTest {
 
         for (String namespace : List.of(
                 RedisTransportNamespaces.ENDPOINT_LEASE,
-                RedisTransportNamespaces.DELIVERY,
                 RedisTransportNamespaces.DISPATCH,
                 RedisTransportNamespaces.RESULT_INBOX,
                 RedisTransportNamespaces.DELIVERY_FAILURE
@@ -32,8 +31,6 @@ class TransportRedisKeyspaceGuardTest {
         for (String keyFamily : List.of(
                 "bucket:<encodedDeliveryBucketId>:workers",
                 "bucket:<encodedDeliveryBucketId>:deadlines",
-                "q:<encodedAdapterMailboxKey>",
-                "meta:<encodedAdapterMailboxKey>",
                 "mailbox:<encodedAdapterMailboxKey>:commands",
                 "mailbox:<encodedAdapterMailboxKey>:command-retention-deadlines",
                 "mailbox:<encodedAdapterMailboxKey>:ready-commands",

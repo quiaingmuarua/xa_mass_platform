@@ -56,8 +56,9 @@ mass:
     event-max-pending-tasks: 5000
   transport:
     node-id: durable-local-server
-    delivery:
-      store: redis
+    polling:
+      buffer:
+        store: redis
     endpoint-lease:
       store: redis
   websocket:

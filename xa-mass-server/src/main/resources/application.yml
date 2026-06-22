@@ -70,12 +70,13 @@ mass:
       max-queued-items: 1000000
   transport:
     node-id: ${random.uuid}
-    delivery:
-      store: memory
-      max-queued-items: 100000
-      max-items-per-route: 10000
-      redis:
-        namespace: xa:mass:transport:delivery:v1
+    polling:
+      buffer:
+        store: memory
+        max-queued-items: 100000
+        max-items-per-worker: 10000
+        redis:
+          namespace: xa:mass:transport:polling-delivery:v1
     endpoint-lease:
       store: memory
       lease-millis: 30000

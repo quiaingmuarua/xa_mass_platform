@@ -422,10 +422,10 @@ Observability:
 | `mass.runtime.redis.namespace` | `xa:mass:runtime:v1` | Redis namespace prefix when `mass.runtime.mode=redis` |
 | `mass.runtime.redis.max-queued-items` | `1000000` | runtime work backpressure cap for the Redis-backed work runtime |
 | `mass.transport.node-id` | random UUID | server transport runtime node id; set explicitly when comparing Redis endpoint-lease evidence across restarts |
-| `mass.transport.delivery.store` | `memory` | embedded transport delivery-store backend; `memory` or `redis` |
-| `mass.transport.delivery.max-queued-items` | `100000` | total dispatch backlog cap for the resolved transport delivery store |
-| `mass.transport.delivery.max-items-per-route` | `10000` | per-route dispatch backlog cap for polling queues and adapter-local route queues |
-| `mass.transport.delivery.redis.namespace` | `xa:mass:transport:delivery:v1` | Redis namespace prefix when `mass.transport.delivery.store=redis` |
+| `mass.transport.polling.buffer.store` | `memory` | polling-adapter pending pull-buffer backend; `memory` or `redis` |
+| `mass.transport.polling.buffer.max-queued-items` | `100000` | total polling pending pull-buffer cap |
+| `mass.transport.polling.buffer.max-items-per-worker` | `10000` | per-worker polling pending pull-buffer cap |
+| `mass.transport.polling.buffer.redis.namespace` | `xa:mass:transport:polling-delivery:v1` | Redis namespace prefix when `mass.transport.polling.buffer.store=redis` |
 | `mass.transport.endpoint-lease.store` | `memory` | embedded transport endpoint-lease backend; `memory` or `redis` |
 | `mass.transport.endpoint-lease.lease-millis` | `30000` | endpoint lease duration before stale endpoint evidence is unavailable |
 | `mass.transport.endpoint-lease.redis.namespace` | `xa:mass:transport:endpoint-lease:v1` | Redis namespace prefix when `mass.transport.endpoint-lease.store=redis` |
@@ -446,27 +446,30 @@ JDBC storage scope:
 - `durable-local` is the current default no-arg server profile and the
   single-node inspectable durable local baseline. It uses SQLite for
   control-plane storage and Redis for runtime work/result, worker registry,
-  transport delivery, and transport endpoint-lease evidence.
+  transport dispatch handoff, polling pending pull buffer, and transport
+  endpoint-lease evidence.
 - `durable-local` is fail-closed for infra mode selection: control-plane storage must be
-  JDBC-enabled, runtime must be Redis, and transport delivery/endpoint lease must be
-  Redis. Misconfiguration must fail startup instead of falling back to process
-  memory.
+  JDBC-enabled, runtime must be Redis, and transport dispatch/polling pending
+  buffer/endpoint lease runtime surfaces must be Redis. Misconfiguration must
+  fail startup instead of falling back to process memory.
 - PostgreSQL remains a manual property override path with
   `mass.storage.mode=jdbc-postgres`; it is not one of the normal server
   profiles after profile convergence.
-- task-work runtime backend, transport delivery-store backend, and transport
-  endpoint-lease backend are configured separately; `mass.runtime.mode` controls
-  engine work/result runtime, `mass.transport.delivery.store` controls dispatch
-  queue backend, and `mass.transport.endpoint-lease.store` controls endpoint
+- task-work runtime backend, transport dispatch handoff, polling pending pull
+  buffer, and transport endpoint-lease backend are configured separately;
+  `mass.runtime.mode` controls engine work/result runtime,
+  `mass.transport.polling.buffer.store` controls polling-adapter pending pull
+  storage, and `mass.transport.endpoint-lease.store` controls endpoint
   feasibility evidence
 - for restart/recovery diagnosis with local Redis, use Redis for the runtime
   surfaces you want to observe, for example
   `mass.runtime.mode=redis`,
-  `mass.transport.delivery.store=redis`, and
-  `mass.transport.endpoint-lease.store=redis`; this preserves runtime queues and
-  endpoint evidence across a server process restart, while expired leases and
-  stale endpoint leases should still converge through timeout/retry rather than
-  requiring every intermediate state to be durable
+  `mass.transport.polling.buffer.store=redis`, and
+  `mass.transport.endpoint-lease.store=redis`; this preserves runtime queues,
+  polling pending pull buffers, and endpoint evidence across a server process
+  restart, while expired leases and stale endpoint leases should still converge
+  through timeout/retry rather than requiring every intermediate state to be
+  durable
 - root `compose.yaml` is the preferred local distributed-verification shell:
   build the jar first with
   `./mvnw -pl xa-mass-server -am -DskipTests package`, then

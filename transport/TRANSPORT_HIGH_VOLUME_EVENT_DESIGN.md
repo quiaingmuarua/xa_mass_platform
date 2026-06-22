@@ -2,7 +2,8 @@
 
 Last updated: 2026-06-22
 
-Status: design/reference only, not current runtime truth.
+Status: historical design/reference only; superseded for dispatch and polling
+buffer ownership by [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md).
 
 Trust order: code, verified behavior, and
 [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md) override this
@@ -13,65 +14,63 @@ document.
 Keep transport usable under sustained load without turning it into a second task
 engine.
 
-Bias:
+Historical bias:
 
 - bounded admission over implicit buffering
 - explicit `DispatchOutcome` over hidden exception paths
 - queue/store replacement over protocol churn
 - logs, counters, and trace over scan-heavy introspection
 
-## Stable Shape
+## Superseded Shape
 
-High-volume transport should stay on this mainline:
+The older shape below is no longer current runtime truth:
 
 ```text
 engine assignment
-  -> DeliveryCommand
+  -> DispatchRoutingBatch(target=adapter-mailbox:<key>)
   -> AdapterMailboxMount
   -> AdapterCommandExecutor
   -> adapter final-hop send
-     or polling TransportDeliveryService / TransportDeliveryStore
+     or polling-adapter-owned pending pull buffer
   -> worker
   -> RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)
   -> TransportResultIngressChannel / TransportResultIngressHandler
   -> engine lifecycle
 ```
 
-Permanent transport concepts remain:
+Current transport concepts are defined in the boundary baseline. In particular:
 
-- `AdapterCommandExecutor.dispatch(List<DeliveryCommand>)`
-- `DispatchOutcome`
-- `DeliveryCommand`
-- `QueuedPulledDispatch`
-- `TransportDeliveryService`
-- `TransportDeliveryStore`
-- `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)`
-- `TransportResultIngressChannel`
-- `TransportResultIngressHandler`
+- `TransportDispatchHandoff` owns engine-to-adapter-mailbox handoff.
+- `DispatchRoutingBatch` / `DispatchRoutingItem` are the dispatch carrier.
+- `DispatchOutcome` is delivery attempt evidence.
+- Polling pending pull storage is owned by `polling-adapter`.
+- `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)` is result
+  ingress carrier.
 
-## Current Constraints
+## Historical Constraints
 
 What is already true:
 
-- transport has explicit queue admission and bounded in-memory delivery
+- transport has explicit queue admission and bounded dispatch handoff
 - direct-send and queued-send share normalized `DispatchOutcome`
-- polling is queue-first
+- polling uses adapter-owned pending pull buffers
 - realtime adapters can direct-send through shared runtime contracts
 - result ingest remains outside adapter-local lifecycle mutation
 
 What is still missing or intentionally deferred:
 
-- durable store implementation beyond memory
+- distributed dispatch and polling-buffer backend choices outside this
+  historical document
 - engine policy hook for backpressure/offline outcomes
 - strict token-based result security
 - richer durable delivery state beyond current counters and queue stats
 
-## High-Volume Rules
+## Historical High-Volume Rules
 
 Every accepted item must pass explicit admission:
 
-- per-route queue cap
-- global delivery backlog cap
+- adapter-mailbox dispatch cap
+- polling pending pull-buffer cap
 - runtime executor pending cap
 - adapter endpoint/session cap
 
@@ -84,17 +83,21 @@ Required outcome behavior:
 
 Ordering rule:
 
-- current guarantee is per `(adapterId, routeKey)` FIFO for queued delivery
+- current guarantees are defined by the dispatch handoff and polling buffer
+  implementations
 - no global ordering across workers, adapters, or tasks
 
 Durability rule:
 
-- introduce HA by replacing `TransportDeliveryStore`
+- introduce HA by replacing/operating the owning dispatch handoff or
+  polling-buffer implementation
 - do not change adapter wire protocols to get durability
 
 ## Store Direction
 
-`TransportDeliveryStore` remains the replacement seam for Redis/JDBC.
+This section is superseded. Do not reintroduce `TransportDeliveryStore` as a
+generic transport-core seam. Polling pull buffering belongs to
+`polling-adapter`; dispatch handoff belongs to transport runtime.
 
 Keep it narrow:
 
@@ -119,7 +122,8 @@ attempt count, last outcome.
 
 1. Keep current runtime bounded and observable
 2. Make queue-first realtime delivery possible behind the same transport concepts
-3. Add durable store implementation behind `TransportDeliveryStore`
+3. Add durable backend support behind the owning dispatch handoff or
+   polling-adapter pending buffer
 4. Add explicit engine policy hook for offline/backpressure handling
 5. Add stronger result security only after compatibility behavior is designed
 
@@ -127,7 +131,7 @@ attempt count, last outcome.
 
 High-volume readiness should be judged by:
 
-- delivery store admission/drain/poll/shutdown/stat tests
+- dispatch handoff and polling pending buffer admission/poll/shutdown tests
 - runtime dispatch grouping and outcome tests
 - adapter sent/offline/unavailable/backpressure tests
 - SDK load/perf runners

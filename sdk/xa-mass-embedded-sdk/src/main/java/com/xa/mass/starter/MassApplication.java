@@ -39,12 +39,9 @@ import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureInboxPump;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryServiceStats;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
@@ -89,7 +86,6 @@ public class MassApplication {
     private WorkerEndpointInspector endpointInspector;
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportEndpointLeaseStore endpointLeaseStore;
-    private TransportDeliveryService transportDeliveryService;
     private TransportDispatchHandoff transportDispatchHandoff;
     private EmbeddedAdapterHostSet embeddedAdapterHostSet = EmbeddedAdapterHostSet.empty();
     private RedisTransportResultIngressChannel taskResultInbox;
@@ -163,7 +159,6 @@ public class MassApplication {
             } finally {
                 stopDispatchHandoff();
                 closeDistributedTransportInboxes();
-                stopTransportDeliveryService();
                 stopEndpointLeaseStore();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
@@ -199,12 +194,6 @@ public class MassApplication {
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
             logger.warn("Failed to drain result ingest buffer after startup failure", cleanupError);
-        }
-        try {
-            stopTransportDeliveryService();
-        } catch (Exception cleanupError) {
-            startupFailure.addSuppressed(cleanupError);
-            logger.warn("Failed to stop transport delivery service after startup failure", cleanupError);
         }
         try {
             stopEndpointLeaseStore();
@@ -246,9 +235,6 @@ public class MassApplication {
             WorkerPresenceIngress presenceIngress = resolveWorkerPresenceIngress();
             workerPresenceIngress = presenceIngress;
             endpointLeaseStore = transportRuntimeComposition.resolveTransportEndpointLeaseStore();
-            TransportDeliveryStore deliveryStore = transportRuntimeComposition.resolveTransportDeliveryStore();
-            TransportDeliveryService deliveryService = new TransportDeliveryService(deliveryStore);
-            transportDeliveryService = deliveryService;
             transportRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
                     "transport-runtime-",
                     transportRuntimeComposition.getTransportRuntimeMaxPendingTasks()
@@ -312,7 +298,6 @@ public class MassApplication {
                             resultIngressChannel,
                             presenceIngress,
                             endpointLeaseStore,
-                            deliveryService,
                             transportRuntimeTaskExecutor
                     );
                     TransportAdapterContribution contribution = transportAdapterBootstrap.contribute(bootstrapContext);
@@ -328,7 +313,6 @@ public class MassApplication {
                 transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
                         resultIngressChannel,
                         endpointLeaseStore,
-                        deliveryService,
                         adapterBindings
                 );
                 embeddedAdapterHostSet = EmbeddedAdapterHostSet.fromContributions(
@@ -349,7 +333,6 @@ public class MassApplication {
             try {
                 stopDispatchHandoff();
                 stopDistributedTransportInboxes();
-                stopTransportDeliveryService();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
             } catch (Exception stopError) {
@@ -493,14 +476,6 @@ public class MassApplication {
             logger.info("Draining result ingest buffer");
             buffer.shutdown();
             logger.info("Result ingest buffer drained");
-        }
-    }
-
-    private void stopTransportDeliveryService() {
-        TransportDeliveryService deliveryService = transportDeliveryService;
-        transportDeliveryService = null;
-        if (deliveryService != null) {
-            deliveryService.shutdown();
         }
     }
 
@@ -831,14 +806,10 @@ public class MassApplication {
     public Map<String, Object> getTransportQueueDetail() {
         int inputSize = safeInputQueueSize(messageTransporter);
         int outputSize = safeOutputQueueSize(messageTransporter);
-        TransportDeliveryService deliveryService = transportDeliveryService;
-        TransportDeliveryServiceStats stats = deliveryService != null ? deliveryService.stats() : null;
         return TransportQueueDiagnosticsMapper.toQueueDetail(
                 inputSize,
                 outputSize,
                 messageTransporter != null,
-                deliveryService != null,
-                stats,
                 transportRuntimeTaskExecutor,
                 eventRuntimeTaskExecutor
         );

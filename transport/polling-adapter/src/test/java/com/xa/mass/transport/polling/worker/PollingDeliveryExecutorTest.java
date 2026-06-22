@@ -3,11 +3,10 @@ package com.xa.mass.transport.polling.worker;
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
+import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.runtime.PollingTransportAdapterBootstrap;
-import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
-import com.xa.mass.transport.runtime.delivery.AdapterPullDeliveryBuffer;
 import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -66,14 +65,9 @@ class PollingDeliveryExecutorTest {
     }
 
     private Fixture fixture() {
-        AdapterPullDeliveryBuffer deliveryBuffer = new AdapterPullDeliveryBuffer(
-                PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID,
-                new TransportDeliveryService(
-                new InMemoryTransportDeliveryStore(
-                        InMemoryTransportDeliveryStore.DEFAULT_MAX_QUEUED_ITEMS,
-                        MAX_INBOX_SIZE
-                )
-                )
+        PollingPendingDeliveryBuffer deliveryBuffer = new InMemoryPollingPendingDeliveryBuffer(
+                InMemoryPollingPendingDeliveryBuffer.DEFAULT_MAX_QUEUED_ITEMS,
+                MAX_INBOX_SIZE
         );
         return new Fixture(
                 new PollingDeliveryExecutor(PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID, deliveryBuffer),

@@ -184,16 +184,18 @@ entry for `transport/`.
   deliveryQueueKey are not serialized in the Redis queue value.
 - Queue mechanics may live under `platform_infra`; transport still owns
   `DispatchRoutingBatch`, `DispatchRoutingItem`, `TransportDispatchHandoff`,
-  `TransportDeliveryStore`, and `DispatchOutcome`.
+  and `DispatchOutcome`. Polling pending pull buffers are polling-adapter
+  internal storage, not transport-core handoff truth.
   `DispatchOutcome` is the single delivery-failure fact owner; failure inbox
   events wrap the outcome instead of maintaining group/item snapshot copies.
   `DispatchOutcome` reports only delivery identity, selected worker, opaque
   correlation, status, retryability, reason, and time. It must not expose
   adapter, lane, route, node, connection, endpoint evidence, or task-shaped
   message/attempt fields.
-- Embedded runtime composition currently defaults to the in-memory delivery
-  store, but SDK/starter wiring may swap in a Redis-backed
-  `TransportDeliveryStore` without changing transport-facing contracts.
+- Embedded runtime composition currently defaults to an in-memory polling
+  pending pull buffer for the bundled polling adapter, but SDK/starter wiring
+  may swap in a Redis-backed polling buffer without changing transport dispatch
+  handoff contracts.
 
 Canonical transport concepts live in
 [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md). Use that as
