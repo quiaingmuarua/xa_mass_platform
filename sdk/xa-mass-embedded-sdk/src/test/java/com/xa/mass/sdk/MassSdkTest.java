@@ -3499,7 +3499,7 @@ class MassSdkTest {
 
         @Override
         public List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
-                List<com.xa.mass.transport.runtime.delivery.DispatchRoutingItem> items) {
+                List<com.xa.mass.transport.runtime.delivery.DispatchMessage> items) {
             return items == null ? List.of() : items.stream()
                     .map(item -> com.xa.mass.transport.model.DispatchOutcome.delivered(
                             item.deliveryId(),
@@ -3625,7 +3625,7 @@ class MassSdkTest {
         @Override
         public List<com.xa.mass.transport.model.DispatchOutcome> enqueue(
                 String adapterMailboxKey,
-                List<com.xa.mass.transport.runtime.delivery.DispatchRoutingItem> items) {
+                List<com.xa.mass.transport.runtime.delivery.DispatchMessage> items) {
             if (items == null || items.isEmpty()) {
                 return List.of();
             }

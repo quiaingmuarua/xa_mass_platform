@@ -11,7 +11,7 @@ class TransportDeliveryFailureEventCodecTest {
 
     @Test
     void encodesFailureSnapshotWithoutFullCommandOrPacketPayload() {
-        DispatchRoutingItem item = DispatchRoutingFixtures.item("msg-no-owner", "worker-1");
+        DispatchMessage item = DispatchMessageFixtures.item("msg-no-owner", "worker-1");
         DispatchOutcome outcome = DispatchOutcomeFactory.fromItem(
                 item,
                 DispatchOutcomeStatus.NO_ENDPOINT,

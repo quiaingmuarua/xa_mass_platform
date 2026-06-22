@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class InMemoryTransportDispatchHandoff implements TransportDispatchHandoff,
         AdapterMailboxConsumerRegistry {
 
-    private final Map<String, LinkedBlockingQueue<DispatchRoutingItem>> readyByMailbox = new ConcurrentHashMap<>();
+    private final Map<String, LinkedBlockingQueue<DispatchMessage>> readyByMailbox = new ConcurrentHashMap<>();
     private final Map<String, MailboxConsumerEvidence> mailboxConsumers = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final int capacity;
@@ -31,7 +31,7 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
     }
 
     @Override
-    public List<DispatchOutcome> offer(DispatchRoutingBatch batch) {
+    public List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch) {
         Objects.requireNonNull(batch, "batch");
         if (!running.get()) {
             return batch.items().stream()
@@ -52,7 +52,7 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
                     .toList();
         }
         List<DispatchOutcome> outcomes = new ArrayList<>(batch.items().size());
-        for (DispatchRoutingItem item : batch.items()) {
+        for (DispatchMessage item : batch.items()) {
             boolean accepted = offerReadyItem(batch.adapterMailboxKey(), item);
             outcomes.add(DispatchOutcomeFactory.fromItem(
                     item,
@@ -65,7 +65,7 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
     }
 
     @Override
-    public List<DispatchRoutingItem> poll(String adapterMailboxKey,
+    public List<DispatchMessage> poll(String adapterMailboxKey,
                                           int maxItems,
                                           long timeoutMillis) throws InterruptedException {
         String mailboxKey = normalizeRequired(adapterMailboxKey, "adapterMailboxKey");
@@ -117,25 +117,25 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
         return evidence;
     }
 
-    private boolean offerReadyItem(String adapterMailboxKey, DispatchRoutingItem item) {
-        LinkedBlockingQueue<DispatchRoutingItem> readyQueue = queueForMailbox(adapterMailboxKey);
+    private boolean offerReadyItem(String adapterMailboxKey, DispatchMessage item) {
+        LinkedBlockingQueue<DispatchMessage> readyQueue = queueForMailbox(adapterMailboxKey);
         if (readyQueue.size() >= capacity) {
             return false;
         }
         return readyQueue.offer(item);
     }
 
-    private List<DispatchRoutingItem> pollLocalMailboxItems(String adapterMailboxKey,
+    private List<DispatchMessage> pollLocalMailboxItems(String adapterMailboxKey,
                                                            int maxItems,
                                                            long timeoutMillis) throws InterruptedException {
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
-        List<DispatchRoutingItem> items = new ArrayList<>(maxItems);
+        List<DispatchMessage> items = new ArrayList<>(maxItems);
         do {
             if (currentEvidence(adapterMailboxKey) == null) {
                 return List.copyOf(items);
             }
-            LinkedBlockingQueue<DispatchRoutingItem> queue = queueForMailbox(adapterMailboxKey);
-            DispatchRoutingItem first = queue.poll();
+            LinkedBlockingQueue<DispatchMessage> queue = queueForMailbox(adapterMailboxKey);
+            DispatchMessage first = queue.poll();
             if (first != null) {
                 items.add(first);
                 queue.drainTo(items, maxItems - items.size());
@@ -154,12 +154,12 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
         return List.of();
     }
 
-    private LinkedBlockingQueue<DispatchRoutingItem> queueForMailbox(String adapterMailboxKey) {
+    private LinkedBlockingQueue<DispatchMessage> queueForMailbox(String adapterMailboxKey) {
         return readyByMailbox.computeIfAbsent(adapterMailboxKey, ignored -> new LinkedBlockingQueue<>());
     }
 
     private boolean readyQueueEmpty(String adapterMailboxKey) {
-        LinkedBlockingQueue<DispatchRoutingItem> queue = readyByMailbox.get(adapterMailboxKey);
+        LinkedBlockingQueue<DispatchMessage> queue = readyByMailbox.get(adapterMailboxKey);
         return queue == null || queue.isEmpty();
     }
 

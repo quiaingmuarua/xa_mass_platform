@@ -55,7 +55,7 @@ must stay in embedded adapter support rather than transport-neutral APIs.
 
 Transport should stay centered on these concepts only:
 
-- `AdapterCommandExecutor.dispatch(List<DispatchRoutingItem>)`: embedded Java
+- `AdapterCommandExecutor.dispatch(List<DispatchMessage>)`: embedded Java
   adapter command execution callback returning `DispatchOutcome`. The executor
   owns only the local final-hop attempt and lives with runtime embedded adapter
   support, not in `transport_api`. Adapter id, transport hint, protocol label,
@@ -91,7 +91,7 @@ Transport should stay centered on these concepts only:
   lease projection, worker scheduling, concrete protocol state, adapter health,
   restart, migration, or mailbox placement policy.
 - `PollingDeliveryExecutor`: polling adapter command executor. It owns only
-  `DispatchRoutingItem` enqueue into the polling delivery buffer and dispatch
+  `DispatchMessage` enqueue into the polling delivery buffer and dispatch
   outcome normalization/logging. It must not own pull polling, endpoint lease
   projection, worker-presence projection, or mailbox consumer availability.
 - `PollingDeliveryPullChannel`: polling adapter pull-channel implementation. It
@@ -119,24 +119,24 @@ Transport should stay centered on these concepts only:
   retryability, reason, and time. It must not expose adapter id, delivery queue
   key, route key, connection id, endpoint lease evidence, or task-shaped
   message/attempt fields.
-- `DispatchRoutingItem`: assigned-item delivery carrier inside an
+- `DispatchMessage`: assigned-item delivery carrier inside an
   adapter-mailbox dispatch batch. It carries delivery id, `selectedWorkerId`,
   opaque worker payload, opaque delivery correlation, deadline, and creation
   timestamp. Task shell metadata, delivery bucket, adapter, lane, target node,
   endpoint lease, connection, session, packet, and structured task payload
   facts are not item fields.
-- `DispatchRoutingBatch`: producer/serialized dispatch handoff record for one
-  adapter mailbox. It carries `RoutingTarget(adapter-mailbox,<mailbox>)` and
-  flat `DispatchRoutingItem` values. Handoff implementations store item values
+- `AdapterMailboxDispatchBatch`: producer/serialized dispatch handoff record for one
+  adapter mailbox. It carries `adapterMailboxKey` and
+  flat `DispatchMessage` values. Handoff implementations store item values
   under the mailbox queue and expose bounded destructive mailbox poll. There is
   no assigned-dispatch claim wrapper, ack, visibility timeout, or requeue owner
   in transport.
-- Polling pending pull-buffer values use `DispatchRoutingItem` directly and
+- Polling pending pull-buffer values use `DispatchMessage` directly and
   project to `PulledDeliveryMessage` only at the pull API boundary. This buffer
   is owned by `polling-adapter`, not transport core. It does not serialize
   packets, routeKey, endpoint evidence, deliveryQueueKey, taskName, project,
   userId, or task payload fields as transport-owned facts.
-- `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)`: opaque
+- `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)`: opaque
   result ingress carrier. Transport may buffer, enqueue, and diagnose it, but
   task-shaped payload parsing and result correctness belong above transport.
 - `TransportResultIngressChannel` / `TransportResultIngressHandler` /
@@ -144,7 +144,7 @@ Transport should stay centered on these concepts only:
   ackability outcome used by local buffers and Redis inbox pumps.
 - `TransportDispatchHandoff`: best-effort dispatch queue between
   engine/starter assembly and transport. Producers offer
-  `DispatchRoutingBatch(target=adapter-mailbox:<key>, items)` after
+  `AdapterMailboxDispatchBatch(adapterMailboxKey=<key>, items)` after
   worker-runtime delivery target evidence resolves the already selected worker
   to an adapter mailbox. Handoff implementations own bounded queue admission,
   destructive mailbox poll, mailbox consumer availability evidence, and
@@ -260,7 +260,7 @@ hot-path recovery logic.
   while split runtimes use Redis adapter-mailbox dispatch queues plus mailbox
   consumer availability evidence
 - producer-side starter assembly translates immutable `TaskDispatchContext +
-  TaskDispatchBinding` assignment facts into flat `DispatchRoutingItem` values.
+  TaskDispatchBinding` assignment facts into flat `DispatchMessage` values.
   The binding-level worker-group context remains `deliveryBucketId`, and
   binding-level `workerId` becomes `selectedWorkerId`, the engine-selected
   execution constraint. Starter owns worker-payload encoding and opaque
@@ -395,20 +395,20 @@ The split runtime uses three transport/runtime channels:
   happened; transport drains only this small assigned window. Delivery
   integration resolves the already selected worker to an opaque
   `adapterMailboxKey` through worker-runtime delivery target evidence and
-  submits `DispatchRoutingBatch(target=adapter-mailbox:<key>, items)`.
+  submits `AdapterMailboxDispatchBatch(adapterMailboxKey=<key>, items)`.
   Multi-process adapter mode stores flat items under that mailbox queue and wakes
   only the mailbox consumer with current availability proof.
   The consumer boundary destructively polls flat items by mailbox; there is no
   assigned-dispatch inflight claim, ack, requeue, lane, or target-node fact.
   Redis dispatch queue ownership is not routeKey cardinality.
-- polling pending pull buffer: polling adapter routes `DispatchRoutingItem`
+- polling pending pull buffer: polling adapter routes `DispatchMessage`
   values into a polling-adapter-owned buffer by adapter mailbox plus the
   engine-selected `selectedWorkerId`. The mailbox key is supplied by buffer
   context, not repeated in every value. `routeKey` remains opaque
   endpoint/result metadata and must not be the only isolation key for assigned
   polling task delivery.
 - result/compensation inboxes: transport writes opaque
-  `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)` values and
+  `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)` values and
   retryable delivery-failure events to Redis-backed inboxes; the engine process
   drains those inboxes into starter-owned result callback decoding and
   engine-owned result ingest and assignment compensation ports. Result lifecycle
@@ -421,8 +421,8 @@ durable task lifecycle truth. `TaskWorkRuntime` remains the only owner of ready
 membership, delayed visibility, active lease, retry timing, result application,
 and terminal convergence.
 
-`DispatchRoutingBatch` is the producer and process-boundary handoff payload.
-It contains one adapter-mailbox `RoutingTarget` and flat `DispatchRoutingItem`
+`AdapterMailboxDispatchBatch` is the producer and process-boundary handoff payload.
+It contains one `adapterMailboxKey` and flat `DispatchMessage`
 values. The Redis/process-boundary codec stores item values under the mailbox
 queue and serializes mailbox facts once; per-item records must not repeat
 `adapterId`, `deliveryQueueKey`,
@@ -542,11 +542,11 @@ may preserve or derive scheduling/admission truth in its Redis keyspace.
 
 ## Model Boundaries
 
-`DispatchRoutingItem` is the internal assigned-dispatch item. It is not a full
+`DispatchMessage` is the internal assigned-dispatch item. It is not a full
 transport route, a worker API response, a task item read model, or a packet
 envelope. Its stable fields are delivery id, selected worker id, opaque worker
 payload, opaque delivery correlation, item deadline, and creation timestamp.
-The adapter mailbox is carried once by `DispatchRoutingBatch.target`, not by
+The adapter mailbox is carried once by `AdapterMailboxDispatchBatch.adapterMailboxKey`, not by
 each item.
 
 `TaskDispatchContent` and `TaskDispatchExecutionContext` have been removed
@@ -556,8 +556,8 @@ payloads, or protected transport models.
 `TaskDispatchContext` is no longer a transport runtime handoff object.
 SDK/starter assembly consumes the task-level dispatch snapshot plus concrete
 `TaskDispatchBinding` values, resolves worker-runtime delivery target evidence,
-and translates the already selected worker into flat `DispatchRoutingItem`
-values inside an adapter-mailbox `DispatchRoutingBatch`.
+and translates the already selected worker into flat `DispatchMessage`
+values inside an adapter-mailbox `AdapterMailboxDispatchBatch`.
 Transport runtime consumes dispatch batches and flat items only.
 
 `PulledDeliveryMessage` is the transport-core pull value. SDK/server worker
@@ -567,15 +567,15 @@ and not a transport metadata carrier. Worker identity comes from the poll
 session/path, and route/session/endpoint facts stay inside transport delivery.
 WebSocket/socket worker frames are final-hop wire projections from the opaque
 payload and selected-worker endpoint evidence. Task shell metadata such as task
-name, project, and user id must not be copied into `DispatchRoutingItem`, transport
+name, project, and user id must not be copied into `DispatchMessage`, transport
 pull results, or handoff codecs as parallel truth.
 
 `TransportPacket` remains limited packet codec support for worker-system-event
 and legacy packet-shaped frames. It is not the task-dispatch carrier
 and is not the result-ingress mainline carrier. Result ingress uses
-`RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)`; starter-owned
+`ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)`; starter-owned
 code decodes the opaque payload. Task-dispatch wire frames are assembled at
-final-hop delivery from `DispatchRoutingItem`. Starter-side dispatch
+final-hop delivery from `DispatchMessage`. Starter-side dispatch
 construction must not create a packet-backed dispatch item. The dispatch
 handoff codec and polling queue codec must not serialize a generic task-dispatch
 `TransportPacket` as the item payload.
@@ -599,13 +599,13 @@ needs to unwrap a worker-facing wrapper such as the current SDK
 from the dispatch payload itself, not from unrelated task metadata like
 `_sdk.payloadType`.
 
-`RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)` is the opaque
-transport result-ingress carrier, not a task-result schema. It carries carrier
-identity, routing target, opaque payload, diagnostics, and creation time.
+`ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)` is the opaque
+transport result-ingress carrier, not a task-result schema. It carries a
+partition key, opaque message payload, diagnostics, and creation time.
 Adapters and polling sessions may include route key, adapter id, trace id, or
 similar facts only as diagnostics; transport must not parse them to decide task
 result correctness. Starter-owned `TaskResultCallbackCodec` decodes the opaque
-payload, validates that the envelope target owner ref matches the payload
+payload, validates that `message.resultCorrelationRef` matches the payload
 `resultCorrelationRef`, and creates a `TaskResultCallbackCommand`; engine-owned
 result ingress then validates attempt or lease identity before mutating runtime
 truth. SDK/server worker submit paths use `WorkerResultSubmission`, not
@@ -751,7 +751,7 @@ Dispatch is also a hot path. Dispatch handoff queues store
 mailbox-targeted flat dispatch items under mailbox-scoped queues. They
 must not deep-copy worker pull DTOs, endpoint leases, or generic task-dispatch
 `TransportPacket` payloads as the handoff item shape. Adapter delivery receives
-`DispatchRoutingItem` with selected-worker opaque payload; concrete push adapters
+`DispatchMessage` with selected-worker opaque payload; concrete push adapters
 use the selected worker id as their single local final-hop lookup key, while
 polling queue delivery projects directly to opaque pulled delivery messages.
 Retryable dispatch outcomes must carry delivery id,
@@ -814,7 +814,7 @@ fields are not transport owner truth and are not required by push adapters.
 Queue mechanics such as keyed FIFO storage, blocking poll coordination,
 per-key/global admission, and queue snapshot counters may live under
 `platform_infra` so long as transport semantics remain owned by
-`TransportDispatchHandoff`, `DispatchRoutingItem`, `DispatchOutcome`, and the
+`TransportDispatchHandoff`, `DispatchMessage`, `DispatchOutcome`, and the
 polling-adapter-owned `PollingPendingDeliveryBuffer`. Embedded runtime
 composition may choose between the default in-memory polling pending buffer and
 a Redis-backed polling pending buffer, but that selection belongs to

@@ -2,7 +2,7 @@ package com.xa.mass.transport.polling.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -25,13 +25,13 @@ class InMemoryPollingPendingDeliveryBufferTest {
         PollingPendingDeliveryPollResult workerA = buffer.poll("mailbox-a", "worker-a", 10, 0);
         assertEquals(PollingPendingDeliveryPollStatus.DELIVERED, workerA.getStatus());
         assertEquals(List.of("delivery-a-1", "delivery-a-2"), workerA.getItems().stream()
-                .map(DispatchRoutingItem::deliveryId)
+                .map(DispatchMessage::deliveryId)
                 .toList());
 
         PollingPendingDeliveryPollResult workerB = buffer.poll("mailbox-a", "worker-b", 10, 0);
         assertEquals(PollingPendingDeliveryPollStatus.DELIVERED, workerB.getStatus());
         assertEquals(List.of("delivery-b-1"), workerB.getItems().stream()
-                .map(DispatchRoutingItem::deliveryId)
+                .map(DispatchMessage::deliveryId)
                 .toList());
     }
 
@@ -49,7 +49,7 @@ class InMemoryPollingPendingDeliveryBufferTest {
         assertEquals(DispatchOutcomeStatus.BACKPRESSURE, workerAOutcomes.get(1).getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, workerBOutcomes.get(0).getStatus());
         assertEquals(List.of("delivery-b-1"), buffer.poll("mailbox-a", "worker-b", 10, 0).getItems().stream()
-                .map(DispatchRoutingItem::deliveryId)
+                .map(DispatchMessage::deliveryId)
                 .toList());
     }
 
@@ -65,8 +65,8 @@ class InMemoryPollingPendingDeliveryBufferTest {
         assertTrue(stats.getQueueByAdapter().containsKey("mailbox-a"));
     }
 
-    private static DispatchRoutingItem item(String id, String workerId) {
-        return new DispatchRoutingItem(
+    private static DispatchMessage item(String id, String workerId) {
+        return new DispatchMessage(
                 "delivery-" + id,
                 workerId,
                 "{\"messageId\":\"" + id + "\"}",

@@ -2,7 +2,6 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.routing.RoutingOwnerKinds;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,27 +27,15 @@ public final class TransportAssignedDeliverySubmitter {
         this.failureHandler = failureHandler;
     }
 
-    public List<DispatchOutcome> submit(List<DispatchRoutingBatch> batches) {
+    public List<DispatchOutcome> submit(List<AdapterMailboxDispatchBatch> batches) {
         Objects.requireNonNull(batches, "batches");
         if (batches.isEmpty()) {
             return List.of();
         }
         List<DispatchOutcome> outcomes = new ArrayList<>();
 
-        for (DispatchRoutingBatch batch : batches) {
-            DispatchRoutingBatch normalized = Objects.requireNonNull(batch, "batch");
-            if (!RoutingOwnerKinds.ADAPTER_MAILBOX.equals(normalized.target().ownerKind())) {
-                List<DispatchOutcome> invalid = normalized.items().stream()
-                        .map(item -> DispatchOutcomeFactory.fromItem(
-                                item,
-                                DispatchOutcomeStatus.INVALID,
-                                false,
-                                "dispatch batch target must be adapter-mailbox"))
-                        .toList();
-                outcomes.addAll(invalid);
-                handleRetryableFailures(invalid);
-                continue;
-            }
+        for (AdapterMailboxDispatchBatch batch : batches) {
+            AdapterMailboxDispatchBatch normalized = Objects.requireNonNull(batch, "batch");
             List<DispatchOutcome> offeredOutcomes = offerBatch(batch);
             outcomes.addAll(offeredOutcomes);
             handleRetryableFailures(offeredOutcomes);
@@ -56,7 +43,7 @@ public final class TransportAssignedDeliverySubmitter {
         return Collections.unmodifiableList(outcomes);
     }
 
-    private List<DispatchOutcome> offerBatch(DispatchRoutingBatch batch) {
+    private List<DispatchOutcome> offerBatch(AdapterMailboxDispatchBatch batch) {
         try {
             List<DispatchOutcome> offered = handoff.offer(batch);
             if (offered == null || offered.isEmpty()) {

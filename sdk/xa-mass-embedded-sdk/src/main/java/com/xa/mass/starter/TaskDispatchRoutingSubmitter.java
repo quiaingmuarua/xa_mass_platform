@@ -5,9 +5,8 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.routing.RoutingTarget;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingBatch;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxDispatchBatch;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
@@ -52,7 +51,7 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
         if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
             return;
         }
-        Map<String, List<DispatchRoutingItem>> itemsByMailbox = new LinkedHashMap<>();
+        Map<String, List<DispatchMessage>> itemsByMailbox = new LinkedHashMap<>();
         List<TaskDispatchBinding> invalidBindings = new ArrayList<>();
         for (TaskDispatchBinding binding : dispatchBindings) {
             if (binding == null) {
@@ -63,7 +62,7 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
                 invalidBindings.add(binding);
                 continue;
             }
-            DispatchRoutingItem item = toItem(task, binding, selectedWorkerId);
+            DispatchMessage item = toItem(task, binding, selectedWorkerId);
             SelectedWorkerDeliveryTargetEvidence target = deliveryTargetView
                     .resolveDeliveryTarget(selectedWorkerId)
                     .orElse(null);
@@ -82,19 +81,19 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
         if (itemsByMailbox.isEmpty()) {
             return;
         }
-        List<DispatchRoutingBatch> batches = itemsByMailbox.entrySet().stream()
-                .map(entry -> new DispatchRoutingBatch(
-                        RoutingTarget.adapterMailbox(entry.getKey()),
+        List<AdapterMailboxDispatchBatch> batches = itemsByMailbox.entrySet().stream()
+                .map(entry -> new AdapterMailboxDispatchBatch(
+                        entry.getKey(),
                         entry.getValue()))
                 .toList();
         assignedDeliverySubmitter.submit(batches);
     }
 
-    private DispatchRoutingItem toItem(TaskDispatchContext task,
+    private DispatchMessage toItem(TaskDispatchContext task,
                                        TaskDispatchBinding binding,
                                        String selectedWorkerId) {
         String correlationRef = correlationCodec.encode(task, binding);
-        return new DispatchRoutingItem(
+        return new DispatchMessage(
                 UUID.randomUUID().toString(),
                 selectedWorkerId,
                 payloadEncoder.encode(task, binding, correlationRef),
@@ -133,7 +132,7 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
         }
     }
 
-    private void compensateDeliveryTargetFailure(DispatchRoutingItem item, String detail) {
+    private void compensateDeliveryTargetFailure(DispatchMessage item, String detail) {
         if (item == null) {
             return;
         }

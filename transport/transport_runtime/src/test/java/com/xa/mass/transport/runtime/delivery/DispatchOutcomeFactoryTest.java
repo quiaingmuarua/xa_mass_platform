@@ -11,7 +11,7 @@ class DispatchOutcomeFactoryTest {
 
     @Test
     void buildsOutcomeFromFlatItemFactsWithoutPayloadParsing() {
-        DispatchRoutingItem item = new DispatchRoutingItem(
+        DispatchMessage item = new DispatchMessage(
                 "delivery-1",
                 "worker-1",
                 "{\"selectedWorkerId\":\"wrong-worker\",\"deliveryId\":\"wrong-delivery\"}",

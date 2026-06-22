@@ -1,7 +1,12 @@
 # Transport Explicit Channel Carrier Convergence Roadmap
 
-Status: proposed direction document; supersedes the removed generic
-routing-carrier roadmap direction.
+Status: archived complete on 2026-06-22.
+
+Completion note: current facts moved into `transport/AGENTS.md`,
+`transport/TRANSPORT_BOUNDARY_BASELINE.md`, `doc/PROOF_REGISTRY.md`, and
+`doc/TASK_LIFECYCLE_BASELINE.md`. Production dispatch now uses explicit
+`AdapterMailboxDispatchBatch` / `DispatchMessage`; result ingress uses explicit
+`ResultIngressEntry` / `ResultIngressMessage`.
 
 ## Summary
 
@@ -378,8 +383,9 @@ Acceptance:
 - Inventory separates production main sources from tests/docs.
 - The roadmap names the first implementation slice from real caller count.
 - Existing proof commands are identified before code movement.
-- Active owner docs no longer describe the old generic carrier direction as
-  the target state after this roadmap is adopted.
+- Active owner docs may still describe current implementation until the
+  relevant slice lands, but they must not describe the old generic carrier as
+  the future target state after this roadmap is adopted.
 
 Suggested commands:
 
@@ -429,7 +435,7 @@ Verification candidates:
 
 ```bash
 mvn -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/socket-adapter,transport/websocket-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests compile
-mvn -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/socket-adapter,transport/websocket-adapter,sdk/xa-mass-embedded-sdk -Dtest='DispatchMessageTest,AdapterMailboxDispatchBatchTest,TransportDispatchBatchCodecTest,InMemoryTransportDispatchHandoffTest,RedisTransportDispatchHandoffTest,TransportAssignedDeliverySubmitterTest,TaskDispatchRoutingSubmitterTest,PollingDispatchRoutingItemCodecTest,PollingDeliveryExecutorTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest' test
+mvn -pl transport/transport_api,transport/transport_runtime,transport/polling-adapter,transport/socket-adapter,transport/websocket-adapter,sdk/xa-mass-embedded-sdk -am -Dtest='DispatchMessageTest,AdapterMailboxDispatchBatchTest,TransportDispatchBatchCodecTest,InMemoryTransportDispatchHandoffTest,RedisTransportDispatchHandoffTest,TransportAssignedDeliverySubmitterTest,TaskDispatchRoutingSubmitterTest,PollingDispatchRoutingItemCodecTest,PollingDeliveryExecutorTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest' test
 rg -n "RoutingTarget|ownerKind|ownerRef|DispatchRoutingItem|TransportMessage|subjectId" transport/transport_runtime/src/main/java transport/polling-adapter/src/main/java transport/socket-adapter/src/main/java transport/websocket-adapter/src/main/java sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter --glob "*.java"
 ```
 
@@ -476,7 +482,7 @@ Verification candidates:
 
 ```bash
 mvn -pl transport/transport_api,transport/transport_runtime,transport/socket-adapter,transport/websocket-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests compile
-mvn -pl transport/transport_api,transport/transport_runtime,transport/socket-adapter,transport/websocket-adapter,sdk/xa-mass-embedded-sdk -Dtest='ResultIngressMessageTest,ResultIngressDiagnosticsTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,WebSocketFrameReadersTest,WebSocketInputProcessorTest,SocketTransportServerTest,SocketTransportFrameCodecTest,TaskResultCallbackCodecTest,RuntimeTaskResultIngestChannelTest' test
+mvn -pl transport/transport_api,transport/transport_runtime,transport/socket-adapter,transport/websocket-adapter,sdk/xa-mass-embedded-sdk -am -Dtest='ResultIngressMessageTest,ResultIngressDiagnosticsTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,WebSocketFrameReadersTest,WebSocketInputProcessorTest,SocketTransportServerTest,SocketTransportFrameCodecTest,TaskResultCallbackCodecTest,RuntimeTaskResultIngestChannelTest' test
 rg -n "RoutingEnvelope|RoutingTarget|RoutingOwnerKinds|RoutingEnvelopeCodec|TransportMessage|subjectId" transport sdk/xa-mass-embedded-sdk xa-mass-server --glob "*.java" --glob "!**/target/**"
 ```
 

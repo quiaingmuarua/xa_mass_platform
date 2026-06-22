@@ -6,7 +6,7 @@ import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.runtime.PollingTransportAdapterBootstrap;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -49,7 +49,7 @@ class PollingDeliveryExecutorTest {
     @Test
     void dispatchReportsBackpressureWhenBucketQueueIsFull() {
         Fixture fixture = fixture();
-        List<DispatchRoutingItem> items = new ArrayList<>();
+        List<DispatchMessage> items = new ArrayList<>();
         for (int i = 0; i < MAX_INBOX_SIZE + 1; i++) {
             items.add(request("msg-" + i, "worker-1"));
         }
@@ -75,8 +75,8 @@ class PollingDeliveryExecutorTest {
         );
     }
 
-    private DispatchRoutingItem request(String messageId, String workerId) {
-        return new DispatchRoutingItem(
+    private DispatchMessage request(String messageId, String workerId) {
+        return new DispatchMessage(
                 "delivery-" + messageId,
                 workerId,
                 "{\"messageId\":\"" + messageId + "\"}",

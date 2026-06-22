@@ -4,8 +4,8 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingBatch;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxDispatchBatch;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
@@ -143,13 +143,13 @@ class TaskDispatchRoutingSubmitterTest {
         private int offers;
 
         @Override
-        public List<DispatchOutcome> offer(DispatchRoutingBatch batch) {
+        public List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch) {
             offers++;
             return List.of();
         }
 
         @Override
-        public List<DispatchRoutingItem> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
+        public List<DispatchMessage> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
             return List.of();
         }
 

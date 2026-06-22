@@ -65,32 +65,32 @@ class RedisTransportDispatchHandoffTest {
 
     @Test
     void offerAndPollRoundTripsByAdapterMailbox() throws Exception {
-        consumerOne.claimConsumerForTest(DispatchRoutingFixtures.mailboxKey(), "consumer-1");
+        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
 
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED),
-                producer.offer(DispatchRoutingFixtures.batch(
-                        DispatchRoutingFixtures.item("msg-1", "worker-1")
+                producer.offer(DispatchMessageFixtures.batch(
+                        DispatchMessageFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList());
 
-        List<DispatchRoutingItem> batch = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 64, 500L);
+        List<DispatchMessage> batch = consumerOne.poll(DispatchMessageFixtures.mailboxKey(), 64, 500L);
 
-        assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(batch));
+        assertEquals(List.of("msg-1"), DispatchMessageFixtures.messages(batch));
         assertEquals("worker-1", batch.getFirst().selectedWorkerId());
     }
 
     @Test
     void offerWithoutMailboxConsumerReturnsUnavailable() {
         assertEquals(List.of(DispatchOutcomeStatus.UNAVAILABLE),
-                producer.offer(DispatchRoutingFixtures.batch(
-                        DispatchRoutingFixtures.item("msg-1", "worker-1")
+                producer.offer(DispatchMessageFixtures.batch(
+                        DispatchMessageFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList());
     }
 
     @Test
     void boundedOfferUsesMailboxKeysWithoutWorkerLaneOrNodeKeys() {
-        consumerOne.claimConsumerForTest(DispatchRoutingFixtures.mailboxKey(), "consumer-1");
-        producer.offer(DispatchRoutingFixtures.batch(
-                DispatchRoutingFixtures.item("msg-1", "worker-1")
+        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
+        producer.offer(DispatchMessageFixtures.batch(
+                DispatchMessageFixtures.item("msg-1", "worker-1")
         ));
         List<String> keys = producerConnection.sync().keys(namespacePrefix + ":*");
 
@@ -114,48 +114,48 @@ class RedisTransportDispatchHandoffTest {
 
     @Test
     void fullMailboxQueueReturnsBackpressureWithoutSleepingProducer() {
-        consumerOne.claimConsumerForTest(DispatchRoutingFixtures.mailboxKey(), "consumer-1");
-        producer.offer(DispatchRoutingFixtures.batch(DispatchRoutingFixtures.item("msg-1", "worker-1")));
-        producer.offer(DispatchRoutingFixtures.batch(DispatchRoutingFixtures.item("msg-2", "worker-2")));
+        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
+        producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
+        producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-2", "worker-2")));
 
         assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE),
-                producer.offer(DispatchRoutingFixtures.batch(
-                        DispatchRoutingFixtures.item("msg-3", "worker-3")
+                producer.offer(DispatchMessageFixtures.batch(
+                        DispatchMessageFixtures.item("msg-3", "worker-3")
                 )).stream().map(outcome -> outcome.getStatus()).toList());
     }
 
     @Test
     void nonOwningConsumerCannotDestructivelyClaimMailboxItem() throws Exception {
-        consumerOne.claimConsumerForTest(DispatchRoutingFixtures.mailboxKey(), "consumer-1");
-        producer.offer(DispatchRoutingFixtures.batch(DispatchRoutingFixtures.item("msg-1", "worker-1")));
+        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
+        producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
 
-        assertTrue(consumerTwo.poll(DispatchRoutingFixtures.mailboxKey(), 64, 50L).isEmpty());
-        List<DispatchRoutingItem> batch = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 64, 500L);
+        assertTrue(consumerTwo.poll(DispatchMessageFixtures.mailboxKey(), 64, 50L).isEmpty());
+        List<DispatchMessage> batch = consumerOne.poll(DispatchMessageFixtures.mailboxKey(), 64, 500L);
 
-        assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(batch));
+        assertEquals(List.of("msg-1"), DispatchMessageFixtures.messages(batch));
     }
 
     @Test
     void pollIsDestructiveAndDoesNotRequireAck() throws Exception {
-        consumerOne.claimConsumerForTest(DispatchRoutingFixtures.mailboxKey(), "consumer-1");
-        producer.offer(DispatchRoutingFixtures.batch(DispatchRoutingFixtures.item("msg-1", "worker-1")));
+        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
+        producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
 
-        List<DispatchRoutingItem> batch = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 64, 500L);
+        List<DispatchMessage> batch = consumerOne.poll(DispatchMessageFixtures.mailboxKey(), 64, 500L);
 
-        assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(batch));
-        assertEquals(0, producer.queuedBatches(DispatchRoutingFixtures.mailboxKey()));
-        assertTrue(consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 64, 50L).isEmpty());
+        assertEquals(List.of("msg-1"), DispatchMessageFixtures.messages(batch));
+        assertEquals(0, producer.queuedBatches(DispatchMessageFixtures.mailboxKey()));
+        assertTrue(consumerOne.poll(DispatchMessageFixtures.mailboxKey(), 64, 50L).isEmpty());
     }
 
     @Test
     void corruptReadyValueIsDroppedWithoutBlockingLaterItems() throws Exception {
-        consumerOne.claimConsumerForTest(DispatchRoutingFixtures.mailboxKey(), "consumer-1");
-        producer.pushRawReadyValueForTest(DispatchRoutingFixtures.mailboxKey(), "not-json");
-        producer.pushReadyItemForTest(DispatchRoutingFixtures.mailboxKey(),
-                DispatchRoutingFixtures.item("msg-1", "worker-1"));
+        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
+        producer.pushRawReadyValueForTest(DispatchMessageFixtures.mailboxKey(), "not-json");
+        producer.pushReadyItemForTest(DispatchMessageFixtures.mailboxKey(),
+                DispatchMessageFixtures.item("msg-1", "worker-1"));
 
-        List<DispatchRoutingItem> batch = consumerOne.poll(DispatchRoutingFixtures.mailboxKey(), 64, 500L);
+        List<DispatchMessage> batch = consumerOne.poll(DispatchMessageFixtures.mailboxKey(), 64, 500L);
 
-        assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(batch));
+        assertEquals(List.of("msg-1"), DispatchMessageFixtures.messages(batch));
     }
 }

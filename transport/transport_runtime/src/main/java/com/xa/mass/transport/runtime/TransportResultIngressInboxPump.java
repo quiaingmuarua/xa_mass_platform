@@ -55,7 +55,7 @@ public final class TransportResultIngressInboxPump {
                 if (claimed == null) {
                     continue;
                 }
-                TransportResultIngressOutcome outcome = delegate.handle(claimed.envelope());
+                TransportResultIngressOutcome outcome = delegate.handle(claimed.entry());
                 if (outcome != null && outcome.ackable()) {
                     inbox.complete(claimed);
                 }

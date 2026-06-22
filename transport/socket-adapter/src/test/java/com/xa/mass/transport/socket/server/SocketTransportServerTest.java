@@ -1,8 +1,7 @@
 package com.xa.mass.transport.socket.server;
 
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
-import com.xa.mass.transport.routing.RoutingEnvelope;
-import com.xa.mass.transport.routing.RoutingOwnerKinds;
+import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -136,7 +135,7 @@ class SocketTransportServerTest {
     void canonicalTaskResultIngressUsesBoundRouteKeyAndCorrelationTraceFallback() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager = sessionManager();
-        AtomicReference<RoutingEnvelope> capturedEnvelope = new AtomicReference<>();
+        AtomicReference<ResultIngressEntry> capturedEntry = new AtomicReference<>();
         SocketTransportServer server = new SocketTransportServer(
                 "socket",
                 "127.0.0.1",
@@ -144,8 +143,8 @@ class SocketTransportServerTest {
                 10,
                 sessionManager,
                 new SocketTransportFrameCodec(),
-                envelope -> {
-                    capturedEnvelope.set(envelope);
+                entry -> {
+                    capturedEntry.set(entry);
                     return true;
                 },
                 executor::submit
@@ -165,16 +164,16 @@ class SocketTransportServerTest {
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> capturedEnvelope.get() != null,
+                waitUntil(() -> capturedEntry.get() != null,
                         "canonical socket result should be ingested");
-                assertEquals(RoutingOwnerKinds.RESULT_INGRESS, capturedEnvelope.get().target().ownerKind());
-                assertEquals("corr-1", capturedEnvelope.get().target().ownerRef());
-                assertEquals("socket", capturedEnvelope.get().diagnostics().get("adapterId"));
-                assertEquals("socket-route-9", capturedEnvelope.get().diagnostics().get("routeKey"));
-                assertEquals("corr-1", capturedEnvelope.get().diagnostics().get("traceId"));
-                assertTrue(capturedEnvelope.get().payload().contains("\"resultCorrelationRef\":\"corr-1\""));
-                assertFalse(capturedEnvelope.get().payload().contains("\"taskId\""));
-                assertFalse(capturedEnvelope.get().payload().contains("\"messageId\""));
+                assertEquals("corr-1", capturedEntry.get().partitionKey());
+                assertEquals("corr-1", capturedEntry.get().message().resultCorrelationRef());
+                assertEquals("socket", capturedEntry.get().diagnostics().get("adapterId"));
+                assertEquals("socket-route-9", capturedEntry.get().diagnostics().get("routeKey"));
+                assertEquals("corr-1", capturedEntry.get().diagnostics().get("traceId"));
+                assertTrue(capturedEntry.get().message().payload().contains("\"resultCorrelationRef\":\"corr-1\""));
+                assertFalse(capturedEntry.get().message().payload().contains("\"taskId\""));
+                assertFalse(capturedEntry.get().message().payload().contains("\"messageId\""));
             }
         } finally {
             server.stop();

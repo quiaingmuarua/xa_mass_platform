@@ -280,7 +280,7 @@ class TransportConvergenceArchitectureGuardTest {
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryStore.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/InMemoryTransportDeliveryStore.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDeliveryStore.java"),
-                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisDispatchRoutingItemCodec.java")
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisDispatchMessageCodec.java")
         );
 
         Path buffer = repoRoot().resolve(
@@ -323,11 +323,11 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void dispatchRoutingItemDoesNotRegainLaneRouteBucketOrPacketFacts() throws IOException {
+    void DispatchMessageDoesNotRegainLaneRouteBucketOrPacketFacts() throws IOException {
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DispatchRoutingItem.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DispatchRoutingBatch.java")),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DispatchMessage.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/AdapterMailboxDispatchBatch.java")),
                 "deliveryBucketId",
                 "deliveryQueueKey",
                 "targetTransportNodeId",
@@ -1051,8 +1051,8 @@ class TransportConvergenceArchitectureGuardTest {
         );
         assertSourceSliceDoesNotContain(
                 codec,
-                "private record DispatchRoutingItemRecord",
-                "private static final class DecodedDispatchRoutingBatchRecord",
+                "private record DispatchMessageRecord",
+                "private static final class DecodedAdapterMailboxDispatchBatchRecord",
                 "adapterId",
                 "deliveryQueueKey",
                 "deliveryBucketId",
@@ -1081,7 +1081,7 @@ class TransportConvergenceArchitectureGuardTest {
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeCodec.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeRecord.java")
         );
-        Path codec = repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/delivery/PollingDispatchRoutingItemCodec.java");
+        Path codec = repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/delivery/PollingDispatchMessageCodec.java");
         assertNoProductionSourceContains(
                 List.of(codec),
                 "TransportPacket",
@@ -1090,8 +1090,8 @@ class TransportConvergenceArchitectureGuardTest {
         );
         assertSourceSliceDoesNotContain(
                 codec,
-                "private record RedisDispatchRoutingItemRecord",
-                "private static final class DecodedRedisDispatchRoutingItemRecord",
+                "private record RedisDispatchMessageRecord",
+                "private static final class DecodedRedisDispatchMessageRecord",
                 "routeKey",
                 "\"workerId\"",
                 "taskName",
@@ -1311,7 +1311,13 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void resultIngressMainlineUsesRoutingEnvelopeAndAdaptersDoNotParseResultSemantics() throws IOException {
+    void resultIngressMainlineUsesExplicitEntryAndAdaptersDoNotParseResultSemantics() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/routing/RoutingEnvelope.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/routing/RoutingTarget.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/routing/RoutingOwnerKinds.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RoutingEnvelopeCodec.java")
+        );
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/transport_api/src/main/java"),
@@ -1322,7 +1328,11 @@ class TransportConvergenceArchitectureGuardTest {
                         repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java"),
                         repoRoot().resolve("xa-mass-server/src/main/java")
                 ),
-                "TransportResultIngressEnvelope"
+                "TransportResultIngressEnvelope",
+                "RoutingEnvelope",
+                "RoutingTarget",
+                "RoutingOwnerKinds",
+                "RoutingEnvelopeCodec"
         );
         assertNoProductionSourceContains(
                 List.of(
@@ -1343,10 +1353,6 @@ class TransportConvergenceArchitectureGuardTest {
                 "pendingCount(",
                 "queuedResults("
         );
-        String targetSource = Files.readString(repoRoot().resolve(
-                "transport/transport_api/src/main/java/com/xa/mass/transport/routing/RoutingTarget.java"));
-        assertTrue(targetSource.contains("resultIngress"),
-                "Result ingress must use a named RoutingTarget factory instead of engine target");
     }
 
     @Test

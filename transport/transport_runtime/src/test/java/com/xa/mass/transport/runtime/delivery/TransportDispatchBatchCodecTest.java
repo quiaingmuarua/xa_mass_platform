@@ -9,14 +9,14 @@ class TransportDispatchBatchCodecTest {
 
     @Test
     void encodesDispatchBatchWithoutLegacyCommandOrBucketFields() {
-        DispatchRoutingBatch batch = DispatchRoutingFixtures.batch(
-                DispatchRoutingFixtures.item("msg-1", "worker-1"),
-                DispatchRoutingFixtures.item("msg-2", "worker-2")
+        AdapterMailboxDispatchBatch batch = DispatchMessageFixtures.batch(
+                DispatchMessageFixtures.item("msg-1", "worker-1"),
+                DispatchMessageFixtures.item("msg-2", "worker-2")
         );
         TransportDispatchBatchCodec codec = new TransportDispatchBatchCodec();
 
         String json = codec.encode(batch);
-        DispatchRoutingBatch decoded = codec.decode(json);
+        AdapterMailboxDispatchBatch decoded = codec.decode(json);
 
         assertFalse(json.contains("taskBatchJson"), json);
         assertFalse(json.contains("TaskDispatchContentRecord"), json);
@@ -29,13 +29,13 @@ class TransportDispatchBatchCodecTest {
         assertFalse(json.contains("\"leaseExpireAtEpochMillis\""), json);
         assertEquals(0, occurrences(json, "\"adapterId\""));
         assertEquals(0, occurrences(json, "\"deliveryQueueKey\""));
-        assertEquals(0, occurrences(json, "\"adapterMailboxKey\""));
+        assertEquals(1, occurrences(json, "\"adapterMailboxKey\""));
         assertEquals(0, occurrences(json, "\"deliveryBucketId\""));
         assertEquals(0, occurrences(json, "\"deliveryLaneKey\""));
         assertEquals(0, occurrences(json, "\"targetTransportNodeId\""));
-        assertEquals(DispatchRoutingFixtures.mailboxKey(), decoded.adapterMailboxKey());
-        assertEquals("msg-1", DispatchRoutingFixtures.messageId(decoded.items().get(0).payload()));
-        assertEquals("msg-2", DispatchRoutingFixtures.messageId(decoded.items().get(1).payload()));
+        assertEquals(DispatchMessageFixtures.mailboxKey(), decoded.adapterMailboxKey());
+        assertEquals("msg-1", DispatchMessageFixtures.messageId(decoded.items().get(0).payload()));
+        assertEquals("msg-2", DispatchMessageFixtures.messageId(decoded.items().get(1).payload()));
         assertEquals("worker-1", decoded.items().get(0).selectedWorkerId());
         assertEquals("worker-2", decoded.items().get(1).selectedWorkerId());
         assertEquals("corr-msg-1", decoded.items().get(0).correlationRef());

@@ -1,10 +1,10 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.sdk.worker.WorkerResultSubmission;
+import com.xa.mass.transport.channel.ResultIngressDiagnostics;
+import com.xa.mass.transport.channel.ResultIngressEntry;
+import com.xa.mass.transport.channel.ResultIngressMessage;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.routing.RoutingEnvelope;
-import com.xa.mass.transport.routing.RoutingOwnerKinds;
-import com.xa.mass.transport.routing.RoutingTarget;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -27,15 +27,15 @@ class TaskResultCallbackCodecTest {
                 "ok"
         );
 
-        RoutingEnvelope envelope = codec.toEnvelope(request, Map.of("adapterId", "polling"));
-        TaskResultCallbackCommand decoded = codec.decode(envelope);
+        ResultIngressEntry entry = codec.toEntry(request, Map.of("adapterId", "polling"));
+        TaskResultCallbackCommand decoded = codec.decode(entry);
 
-        assertEquals(RoutingOwnerKinds.RESULT_INGRESS, envelope.target().ownerKind());
-        assertEquals(request.resultCorrelationRef(), envelope.target().ownerRef());
-        assertEquals("polling", envelope.diagnostics().get("adapterId"));
-        assertFalse(envelope.payload().contains("adapterId"));
-        assertFalse(envelope.payload().contains("taskId"));
-        assertFalse(envelope.payload().contains("messageId"));
+        assertEquals(request.resultCorrelationRef(), entry.partitionKey());
+        assertEquals(request.resultCorrelationRef(), entry.message().resultCorrelationRef());
+        assertEquals("polling", entry.diagnostics().get("adapterId"));
+        assertFalse(entry.message().payload().contains("adapterId"));
+        assertFalse(entry.message().payload().contains("taskId"));
+        assertFalse(entry.message().payload().contains("messageId"));
         assertEquals("task-1", decoded.taskId());
         assertEquals("msg-1", decoded.messageId());
         assertEquals("attempt-1", decoded.attemptId());
@@ -45,9 +45,9 @@ class TaskResultCallbackCodecTest {
     }
 
     @Test
-    void decodeUsesDiagnosticTraceFromRoutingEnvelopeDiagnostics() {
+    void decodeUsesDiagnosticTraceFromResultIngressDiagnostics() {
         String resultCorrelationRef = correlation("task-1", "msg-1", "attempt-1");
-        RoutingEnvelope envelope = envelope(
+        ResultIngressEntry entry = envelope(
                 """
                 {
                   "resultCorrelationRef": "%s",
@@ -59,7 +59,7 @@ class TaskResultCallbackCodecTest {
                 Map.of("traceId", "diagnostic-trace")
         );
 
-        TaskResultCallbackCommand decoded = codec.decode(envelope);
+        TaskResultCallbackCommand decoded = codec.decode(entry);
 
         assertEquals("failed", decoded.detail());
         assertEquals("attempt-1", decoded.attemptId());
@@ -70,7 +70,7 @@ class TaskResultCallbackCodecTest {
     @Test
     void decodeAcceptsCanonicalResultPayload() {
         String resultCorrelationRef = correlation("task-1", "msg-1", "attempt-1");
-        RoutingEnvelope envelope = envelope(
+        ResultIngressEntry entry = envelope(
                 """
                 {
                   "resultCorrelationRef": "%s",
@@ -82,7 +82,7 @@ class TaskResultCallbackCodecTest {
                 null
         );
 
-        TaskResultCallbackCommand decoded = codec.decode(envelope);
+        TaskResultCallbackCommand decoded = codec.decode(entry);
 
         assertEquals("task-1", decoded.taskId());
         assertEquals("msg-1", decoded.messageId());
@@ -92,13 +92,13 @@ class TaskResultCallbackCodecTest {
 
     @Test
     void decodeRejectsMissingRequiredPayloadIdentity() {
-        RoutingEnvelope envelope = envelope(
+        ResultIngressEntry entry = envelope(
                 "{\"taskId\":\"task-1\",\"success\":true}",
                 "msg-1",
                 null
         );
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> codec.decode(envelope));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> codec.decode(entry));
 
         assertEquals("result callback payload requires resultCorrelationRef", error.getMessage());
     }
@@ -106,7 +106,7 @@ class TaskResultCallbackCodecTest {
     @Test
     void decodeRejectsTargetPayloadCorrelationMismatch() {
         String resultCorrelationRef = correlation("task-1", "msg-1", "attempt-1");
-        RoutingEnvelope envelope = envelope(
+        ResultIngressEntry entry = envelope(
                 """
                 {
                   "resultCorrelationRef": "%s",
@@ -118,9 +118,37 @@ class TaskResultCallbackCodecTest {
                 null
         );
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> codec.decode(envelope));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> codec.decode(entry));
 
-        assertEquals("result envelope target ownerRef must match payload resultCorrelationRef", error.getMessage());
+        assertEquals("result ingress message correlation must match payload resultCorrelationRef", error.getMessage());
+    }
+
+    @Test
+    void decodeDoesNotUsePartitionKeyAsResultTruth() {
+        String resultCorrelationRef = correlation("task-1", "msg-1", "attempt-1");
+        ResultIngressEntry entry = new ResultIngressEntry(
+                "different-partition",
+                new ResultIngressMessage(
+                        UUID.randomUUID().toString(),
+                        resultCorrelationRef,
+                        """
+                        {
+                          "resultCorrelationRef": "%s",
+                          "success": true,
+                          "result": "done"
+                        }
+                        """.formatted(resultCorrelationRef),
+                        0L,
+                        System.currentTimeMillis()
+                ),
+                ResultIngressDiagnostics.empty()
+        );
+
+        TaskResultCallbackCommand decoded = codec.decode(entry);
+
+        assertEquals("task-1", decoded.taskId());
+        assertEquals("msg-1", decoded.messageId());
+        assertEquals("done", decoded.output().get("result"));
     }
 
     @Test
@@ -149,13 +177,17 @@ class TaskResultCallbackCodecTest {
         );
     }
 
-    private static RoutingEnvelope envelope(String payload, String resultCorrelationRef, Map<String, String> diagnostics) {
-        return new RoutingEnvelope(
-                UUID.randomUUID().toString(),
-                RoutingTarget.resultIngress(resultCorrelationRef),
-                payload,
-                diagnostics,
-                System.currentTimeMillis()
+    private static ResultIngressEntry envelope(String payload, String resultCorrelationRef, Map<String, String> diagnostics) {
+        return new ResultIngressEntry(
+                resultCorrelationRef,
+                new ResultIngressMessage(
+                        UUID.randomUUID().toString(),
+                        resultCorrelationRef,
+                        payload,
+                        0L,
+                        System.currentTimeMillis()
+                ),
+                new ResultIngressDiagnostics(diagnostics)
         );
     }
 }

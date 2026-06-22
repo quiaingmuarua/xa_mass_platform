@@ -2,7 +2,6 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.xa.mass.transport.routing.RoutingTarget;
 
 import java.util.List;
 import java.util.Objects;
@@ -19,52 +18,52 @@ final class TransportDispatchBatchCodec {
         this.gson = Objects.requireNonNull(gson, "gson");
     }
 
-    String encode(DispatchRoutingBatch batch) {
+    String encode(AdapterMailboxDispatchBatch batch) {
         Objects.requireNonNull(batch, "batch");
-        List<DispatchRoutingItemRecord> items = batch.items().stream()
-                .map(DispatchRoutingItemRecord::from)
+        List<DispatchMessageRecord> items = batch.items().stream()
+                .map(DispatchMessageRecord::from)
                 .toList();
-        return gson.toJson(new DispatchRoutingBatchRecord(
-                RoutingTargetRecord.from(batch.target()),
+        return gson.toJson(new AdapterMailboxDispatchBatchRecord(
+                batch.adapterMailboxKey(),
                 items
         ));
     }
 
-    String encodeItem(DispatchRoutingItem item) {
+    String encodeItem(DispatchMessage item) {
         Objects.requireNonNull(item, "item");
-        return gson.toJson(DispatchRoutingItemRecord.from(item));
+        return gson.toJson(DispatchMessageRecord.from(item));
     }
 
-    DispatchRoutingBatch decode(String json) {
+    AdapterMailboxDispatchBatch decode(String json) {
         if (json == null || json.isBlank()) {
             throw new IllegalArgumentException("json must not be blank");
         }
-        DecodedDispatchRoutingBatchRecord record = gson.fromJson(json, DecodedDispatchRoutingBatchRecord.class);
-        if (record == null || record.target == null || record.items == null || record.items.isEmpty()) {
-            throw new IllegalArgumentException("encoded dispatch routing batch is incomplete");
+        DecodedAdapterMailboxDispatchBatchRecord record = gson.fromJson(json, DecodedAdapterMailboxDispatchBatchRecord.class);
+        if (record == null || record.adapterMailboxKey == null || record.items == null || record.items.isEmpty()) {
+            throw new IllegalArgumentException("encoded dispatch batch is incomplete");
         }
-        List<DispatchRoutingItem> items = record.items.stream()
+        List<DispatchMessage> items = record.items.stream()
                 .map(TransportDispatchBatchCodec::fromItemRecord)
                 .toList();
-        return new DispatchRoutingBatch(
-                new RoutingTarget(record.target.ownerKind, record.target.ownerRef),
+        return new AdapterMailboxDispatchBatch(
+                record.adapterMailboxKey,
                 items
         );
     }
 
-    DispatchRoutingItem decodeItem(String json) {
+    DispatchMessage decodeItem(String json) {
         if (json == null || json.isBlank()) {
             throw new IllegalArgumentException("json must not be blank");
         }
-        DecodedDispatchRoutingItemRecord record = gson.fromJson(json, DecodedDispatchRoutingItemRecord.class);
+        DecodedDispatchMessageRecord record = gson.fromJson(json, DecodedDispatchMessageRecord.class);
         return fromItemRecord(record);
     }
 
-    private static DispatchRoutingItem fromItemRecord(DecodedDispatchRoutingItemRecord record) {
+    private static DispatchMessage fromItemRecord(DecodedDispatchMessageRecord record) {
         if (record == null || record.payload == null || record.correlationRef == null) {
-            throw new IllegalArgumentException("encoded dispatch routing item is incomplete");
+            throw new IllegalArgumentException("encoded dispatch message is incomplete");
         }
-        return new DispatchRoutingItem(
+        return new DispatchMessage(
                 record.deliveryId,
                 record.selectedWorkerId,
                 record.payload,
@@ -74,25 +73,18 @@ final class TransportDispatchBatchCodec {
         );
     }
 
-    private record DispatchRoutingBatchRecord(RoutingTargetRecord target,
-                                              List<DispatchRoutingItemRecord> items) {
+    private record AdapterMailboxDispatchBatchRecord(String adapterMailboxKey,
+                                                     List<DispatchMessageRecord> items) {
     }
 
-    private record RoutingTargetRecord(String ownerKind,
-                                       String ownerRef) {
-        private static RoutingTargetRecord from(RoutingTarget target) {
-            return new RoutingTargetRecord(target.ownerKind(), target.ownerRef());
-        }
-    }
-
-    private record DispatchRoutingItemRecord(String deliveryId,
+    private record DispatchMessageRecord(String deliveryId,
                                              String selectedWorkerId,
                                              String payload,
                                              String correlationRef,
                                              long deadlineEpochMillis,
                                              long createdAtEpochMillis) {
-        private static DispatchRoutingItemRecord from(DispatchRoutingItem item) {
-            return new DispatchRoutingItemRecord(
+        private static DispatchMessageRecord from(DispatchMessage item) {
+            return new DispatchMessageRecord(
                     item.deliveryId(),
                     item.selectedWorkerId(),
                     item.payload(),
@@ -103,17 +95,12 @@ final class TransportDispatchBatchCodec {
         }
     }
 
-    private static final class DecodedDispatchRoutingBatchRecord {
-        private DecodedRoutingTargetRecord target;
-        private List<DecodedDispatchRoutingItemRecord> items;
+    private static final class DecodedAdapterMailboxDispatchBatchRecord {
+        private String adapterMailboxKey;
+        private List<DecodedDispatchMessageRecord> items;
     }
 
-    private static final class DecodedRoutingTargetRecord {
-        private String ownerKind;
-        private String ownerRef;
-    }
-
-    private static final class DecodedDispatchRoutingItemRecord {
+    private static final class DecodedDispatchMessageRecord {
         private String deliveryId;
         private String selectedWorkerId;
         private String payload;

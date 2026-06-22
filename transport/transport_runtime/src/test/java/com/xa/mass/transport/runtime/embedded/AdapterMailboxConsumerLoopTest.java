@@ -8,7 +8,7 @@ import com.xa.mass.transport.runtime.MailboxConsumerAvailabilityPublisher;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerAvailability;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -27,7 +27,7 @@ class AdapterMailboxConsumerLoopTest {
 
     @Test
     void consumerLoopPollsDispatchesAndEmitsRetryableFailureEvidence() throws Exception {
-        DispatchRoutingItem item = item("msg-1", "worker-1");
+        DispatchMessage item = item("msg-1", "worker-1");
         RecordingMailboxClient mailboxClient = new RecordingMailboxClient(List.of(item));
         RecordingFailureSink failureSink = new RecordingFailureSink(1);
         RecordingExecutor executor = new RecordingExecutor(items -> List.of(
@@ -57,7 +57,7 @@ class AdapterMailboxConsumerLoopTest {
 
     @Test
     void finalHopExceptionIsConvertedToKnownFailureEvidence() throws Exception {
-        DispatchRoutingItem item = item("msg-1", "worker-1");
+        DispatchMessage item = item("msg-1", "worker-1");
         RecordingMailboxClient mailboxClient = new RecordingMailboxClient(List.of(item));
         RecordingFailureSink failureSink = new RecordingFailureSink(1);
         RecordingExecutor executor = new RecordingExecutor(ignored -> {
@@ -111,8 +111,8 @@ class AdapterMailboxConsumerLoopTest {
         assertEquals(List.of("claim:mailbox-a", "release:mailbox-a"), registry.events());
     }
 
-    private static DispatchRoutingItem item(String messageId, String selectedWorkerId) {
-        return new DispatchRoutingItem(
+    private static DispatchMessage item(String messageId, String selectedWorkerId) {
+        return new DispatchMessage(
                 "cmd-" + messageId,
                 selectedWorkerId,
                 "{\"messageId\":\"" + messageId + "\"}",
@@ -123,17 +123,17 @@ class AdapterMailboxConsumerLoopTest {
     }
 
     private static final class RecordingMailboxClient implements AdapterMailboxClient {
-        private final LinkedBlockingQueue<DispatchRoutingItem> ready = new LinkedBlockingQueue<>();
+        private final LinkedBlockingQueue<DispatchMessage> ready = new LinkedBlockingQueue<>();
         private final List<String> polledMailboxes = java.util.Collections.synchronizedList(new ArrayList<>());
 
-        private RecordingMailboxClient(List<DispatchRoutingItem> items) {
+        private RecordingMailboxClient(List<DispatchMessage> items) {
             ready.addAll(items);
         }
 
         @Override
-        public List<DispatchRoutingItem> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
+        public List<DispatchMessage> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
             polledMailboxes.add(adapterMailboxKey);
-            DispatchRoutingItem item = ready.poll();
+            DispatchMessage item = ready.poll();
             return item == null ? List.of() : List.of(item);
         }
 
@@ -175,8 +175,8 @@ class AdapterMailboxConsumerLoopTest {
         }
 
         @Override
-        public List<DispatchOutcome> dispatch(List<DispatchRoutingItem> items) {
-            dispatchedWorkerIds.addAll(items.stream().map(DispatchRoutingItem::selectedWorkerId).toList());
+        public List<DispatchOutcome> dispatch(List<DispatchMessage> items) {
+            dispatchedWorkerIds.addAll(items.stream().map(DispatchMessage::selectedWorkerId).toList());
             return delegate.dispatch(items);
         }
 

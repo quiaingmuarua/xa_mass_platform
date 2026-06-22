@@ -2,10 +2,11 @@ package com.xa.mass.transport.socket.server;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.transport.TransportServer;
+import com.xa.mass.transport.channel.ResultIngressDiagnostics;
+import com.xa.mass.transport.channel.ResultIngressEntry;
+import com.xa.mass.transport.channel.ResultIngressMessage;
 import com.xa.mass.transport.runtime.AdapterHostExecutor;
 import com.xa.mass.transport.runtime.AdapterResultIngressSink;
-import com.xa.mass.transport.routing.RoutingEnvelope;
-import com.xa.mass.transport.routing.RoutingTarget;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
 import org.slf4j.Logger;
@@ -192,12 +193,17 @@ public final class SocketTransportServer implements TransportServer {
                     String traceId = firstNonBlank(frameCodec.extractTraceId(frame),
                             frameCodec.extractResultCorrelationRef(frame));
                     String resultCorrelationRef = frameCodec.extractResultCorrelationRef(frame);
-                    boolean accepted = resultIngressSink.ingest(new RoutingEnvelope(
-                            UUID.randomUUID().toString(),
-                            RoutingTarget.resultIngress(resultCorrelationRef),
-                            payload,
-                            diagnostics(boundRouteKey, traceId),
-                            System.currentTimeMillis()
+                    long now = System.currentTimeMillis();
+                    boolean accepted = resultIngressSink.ingest(new ResultIngressEntry(
+                            resultCorrelationRef,
+                            new ResultIngressMessage(
+                                    UUID.randomUUID().toString(),
+                                    resultCorrelationRef,
+                                    payload,
+                                    0L,
+                                    now
+                            ),
+                            new ResultIngressDiagnostics(diagnostics(boundRouteKey, traceId))
                     ));
                     if (!accepted) {
                         throw new IllegalStateException("task result ingest channel rejected inbound socket task result");

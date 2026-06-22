@@ -3,7 +3,7 @@ package com.xa.mass.transport.polling.delivery;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -77,13 +77,13 @@ public final class InMemoryPollingPendingDeliveryBuffer implements PollingPendin
     }
 
     @Override
-    public List<DispatchOutcome> enqueue(String adapterMailboxKey, List<DispatchRoutingItem> items) {
+    public List<DispatchOutcome> enqueue(String adapterMailboxKey, List<DispatchMessage> items) {
         String normalizedMailboxKey = normalizeText(adapterMailboxKey);
         if (items == null || items.isEmpty()) {
             return List.of();
         }
         List<DispatchOutcome> outcomes = new ArrayList<>(items.size());
-        for (DispatchRoutingItem item : items) {
+        for (DispatchMessage item : items) {
             outcomes.add(enqueueOne(normalizedMailboxKey, item));
         }
         return Collections.unmodifiableList(outcomes);
@@ -103,7 +103,7 @@ public final class InMemoryPollingPendingDeliveryBuffer implements PollingPendin
             return PollingPendingDeliveryPollResult.shutdown();
         }
         if (timeoutMillis <= 0) {
-            List<DispatchRoutingItem> drained = drain(normalizedMailboxKey, normalizedWorkerId, maxItems);
+            List<DispatchMessage> drained = drain(normalizedMailboxKey, normalizedWorkerId, maxItems);
             return drained.isEmpty()
                     ? PollingPendingDeliveryPollResult.empty()
                     : PollingPendingDeliveryPollResult.deliveredView(drained);
@@ -125,7 +125,7 @@ public final class InMemoryPollingPendingDeliveryBuffer implements PollingPendin
                 if (!running.get()) {
                     return PollingPendingDeliveryPollResult.shutdown();
                 }
-                List<DispatchRoutingItem> drained = drainLocked(slot, maxItems);
+                List<DispatchMessage> drained = drainLocked(slot, maxItems);
                 if (drained.isEmpty()) {
                     return PollingPendingDeliveryPollResult.empty();
                 }
@@ -180,7 +180,7 @@ public final class InMemoryPollingPendingDeliveryBuffer implements PollingPendin
         invalidateSnapshot();
     }
 
-    private DispatchOutcome enqueueOne(String normalizedMailboxKey, DispatchRoutingItem item) {
+    private DispatchOutcome enqueueOne(String normalizedMailboxKey, DispatchMessage item) {
         String normalizedWorkerId = item == null ? null : normalizeText(item.selectedWorkerId());
         if (item == null || normalizedMailboxKey == null) {
             invalidItems.incrementAndGet();
@@ -202,7 +202,7 @@ public final class InMemoryPollingPendingDeliveryBuffer implements PollingPendin
                     "polling pending delivery buffer is stopped");
         }
 
-        DispatchRoutingItem normalizedItem = normalizeItem(item, normalizedWorkerId);
+        DispatchMessage normalizedItem = normalizeItem(item, normalizedWorkerId);
         WorkerSlot slot = workerSlot(normalizedMailboxKey, normalizedWorkerId);
         synchronized (slot) {
             if (!running.get()) {
@@ -242,7 +242,7 @@ public final class InMemoryPollingPendingDeliveryBuffer implements PollingPendin
         }
     }
 
-    private List<DispatchRoutingItem> drain(String normalizedMailboxKey, String normalizedWorkerId, int maxItems) {
+    private List<DispatchMessage> drain(String normalizedMailboxKey, String normalizedWorkerId, int maxItems) {
         if (!running.get()) {
             return List.of();
         }
@@ -255,7 +255,7 @@ public final class InMemoryPollingPendingDeliveryBuffer implements PollingPendin
             return List.of();
         }
         synchronized (slot) {
-            List<DispatchRoutingItem> drained = drainLocked(slot, maxItems);
+            List<DispatchMessage> drained = drainLocked(slot, maxItems);
             if (!drained.isEmpty()) {
                 releaseGlobalSlots(drained.size());
                 drainedItems.addAndGet(drained.size());
@@ -356,8 +356,8 @@ public final class InMemoryPollingPendingDeliveryBuffer implements PollingPendin
         invalidateSnapshot();
     }
 
-    private static List<DispatchRoutingItem> drainLocked(WorkerSlot slot, int maxItems) {
-        List<DispatchRoutingItem> drained = new ArrayList<>(Math.max(1, maxItems));
+    private static List<DispatchMessage> drainLocked(WorkerSlot slot, int maxItems) {
+        List<DispatchMessage> drained = new ArrayList<>(Math.max(1, maxItems));
         while (!slot.items.isEmpty() && drained.size() < maxItems) {
             drained.add(slot.items.removeFirst());
         }
@@ -366,7 +366,7 @@ public final class InMemoryPollingPendingDeliveryBuffer implements PollingPendin
 
     private static long oldestCreatedAt(WorkerSlot slot) {
         long oldest = Long.MAX_VALUE;
-        for (DispatchRoutingItem item : slot.items) {
+        for (DispatchMessage item : slot.items) {
             oldest = Math.min(oldest, item.createdAtEpochMillis());
         }
         return oldest == Long.MAX_VALUE ? 0L : oldest;
@@ -419,11 +419,11 @@ public final class InMemoryPollingPendingDeliveryBuffer implements PollingPendin
         );
     }
 
-    private static DispatchRoutingItem normalizeItem(DispatchRoutingItem item, String normalizedSelectedWorkerId) {
+    private static DispatchMessage normalizeItem(DispatchMessage item, String normalizedSelectedWorkerId) {
         if (Objects.equals(normalizedSelectedWorkerId, item.selectedWorkerId())) {
             return item;
         }
-        return new DispatchRoutingItem(
+        return new DispatchMessage(
                 item.deliveryId(),
                 normalizedSelectedWorkerId,
                 item.payload(),
@@ -442,7 +442,7 @@ public final class InMemoryPollingPendingDeliveryBuffer implements PollingPendin
     }
 
     private static final class WorkerSlot {
-        private final ArrayDeque<DispatchRoutingItem> items = new ArrayDeque<>();
+        private final ArrayDeque<DispatchMessage> items = new ArrayDeque<>();
         private int waiters;
     }
 }

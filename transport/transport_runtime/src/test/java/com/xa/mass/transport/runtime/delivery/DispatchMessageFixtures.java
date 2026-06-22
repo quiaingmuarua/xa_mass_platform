@@ -1,20 +1,18 @@
 package com.xa.mass.transport.runtime.delivery;
 
-import com.xa.mass.transport.routing.RoutingTarget;
-
 import java.util.List;
 
-final class DispatchRoutingFixtures {
+final class DispatchMessageFixtures {
 
-    private DispatchRoutingFixtures() {
+    private DispatchMessageFixtures() {
     }
 
-    static DispatchRoutingItem item(String messageId, String selectedWorkerId, String unusedConsumerKey) {
+    static DispatchMessage item(String messageId, String selectedWorkerId, String unusedConsumerKey) {
         return item(messageId, selectedWorkerId);
     }
 
-    static DispatchRoutingItem item(String messageId, String selectedWorkerId) {
-        return new DispatchRoutingItem(
+    static DispatchMessage item(String messageId, String selectedWorkerId) {
+        return new DispatchMessage(
                 "cmd-" + messageId,
                 selectedWorkerId,
                 payload(messageId),
@@ -24,21 +22,21 @@ final class DispatchRoutingFixtures {
         );
     }
 
-    static DispatchRoutingBatch batch(DispatchRoutingItem... items) {
-        return new DispatchRoutingBatch(RoutingTarget.adapterMailbox(mailboxKey()), List.of(items));
+    static AdapterMailboxDispatchBatch batch(DispatchMessage... items) {
+        return new AdapterMailboxDispatchBatch(mailboxKey(), List.of(items));
     }
 
     static String mailboxKey() {
         return "mailbox-1";
     }
 
-    static List<String> messages(DispatchRoutingBatch batch) {
+    static List<String> messages(AdapterMailboxDispatchBatch batch) {
         return batch.items().stream()
                 .map(item -> messageId(item.payload()))
                 .toList();
     }
 
-    static List<String> messages(List<DispatchRoutingItem> items) {
+    static List<String> messages(List<DispatchMessage> items) {
         return items.stream()
                 .map(item -> messageId(item.payload()))
                 .toList();
@@ -56,3 +54,4 @@ final class DispatchRoutingFixtures {
         return payload.replace("{\"messageId\":\"", "").replace("\"}", "");
     }
 }
+

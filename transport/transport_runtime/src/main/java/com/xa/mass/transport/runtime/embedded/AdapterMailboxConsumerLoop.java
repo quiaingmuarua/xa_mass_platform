@@ -4,7 +4,7 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.MailboxConsumerAvailabilityPublisher;
 import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -117,7 +117,7 @@ public final class AdapterMailboxConsumerLoop implements AdapterMailboxConsumer 
     private void drainLoop() {
         while (running.get()) {
             try {
-                List<DispatchRoutingItem> items = mailboxClient.poll(
+                List<DispatchMessage> items = mailboxClient.poll(
                         adapterMailboxKey,
                         maxItems,
                         pollTimeoutMillis
@@ -137,7 +137,7 @@ public final class AdapterMailboxConsumerLoop implements AdapterMailboxConsumer 
         }
     }
 
-    private List<DispatchOutcome> dispatch(List<DispatchRoutingItem> items) {
+    private List<DispatchOutcome> dispatch(List<DispatchMessage> items) {
         if (items == null || items.isEmpty()) {
             return List.of();
         }

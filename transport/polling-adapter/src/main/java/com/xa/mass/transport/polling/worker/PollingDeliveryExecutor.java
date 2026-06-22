@@ -2,7 +2,7 @@ package com.xa.mass.transport.polling.worker;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +27,7 @@ public final class PollingDeliveryExecutor implements AdapterCommandExecutor {
     }
 
     @Override
-    public List<DispatchOutcome> dispatch(List<DispatchRoutingItem> items) {
+    public List<DispatchOutcome> dispatch(List<DispatchMessage> items) {
         if (items == null || items.isEmpty()) {
             return List.of();
         }

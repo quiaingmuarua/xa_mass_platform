@@ -3,6 +3,7 @@ package com.xa.mass.sdk.worker;
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
+import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
@@ -11,8 +12,6 @@ import com.xa.mass.transport.polling.runtime.PollingSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
-import com.xa.mass.transport.routing.RoutingEnvelope;
-import com.xa.mass.transport.routing.RoutingOwnerKinds;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -65,7 +64,7 @@ class EmbeddedPullWorkerSessionTest {
     @Test
     void submitResultUsesOpaqueCorrelationWithoutTransportDiagnostics() {
         TransportResultIngressChannel resultIngestChannel = mock(TransportResultIngressChannel.class);
-        when(resultIngestChannel.ingest(any(RoutingEnvelope.class))).thenReturn(true);
+        when(resultIngestChannel.ingest(any(ResultIngressEntry.class))).thenReturn(true);
 
         EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
@@ -79,19 +78,19 @@ class EmbeddedPullWorkerSessionTest {
 
         session.submitResult(item, true, "ok");
 
-        var captured = org.mockito.ArgumentCaptor.forClass(RoutingEnvelope.class);
+        var captured = org.mockito.ArgumentCaptor.forClass(ResultIngressEntry.class);
         verify(resultIngestChannel).ingest(captured.capture());
         assertNull(captured.getValue().diagnostics().get("routeKey"));
         assertNull(captured.getValue().diagnostics().get("adapterId"));
-        assertEquals(RoutingOwnerKinds.RESULT_INGRESS, captured.getValue().target().ownerKind());
-        assertEquals(item.getResultCorrelationRef(), captured.getValue().target().ownerRef());
-        assertTrue(captured.getValue().payload().contains("\"resultCorrelationRef\":\"" + item.getResultCorrelationRef() + "\""));
+        assertEquals(item.getResultCorrelationRef(), captured.getValue().partitionKey());
+        assertEquals(item.getResultCorrelationRef(), captured.getValue().message().resultCorrelationRef());
+        assertTrue(captured.getValue().message().payload().contains("\"resultCorrelationRef\":\"" + item.getResultCorrelationRef() + "\""));
     }
 
     @Test
     void submitResultWithCorrelationRefDoesNotExposeTransportDiagnostics() {
         TransportResultIngressChannel resultIngestChannel = mock(TransportResultIngressChannel.class);
-        when(resultIngestChannel.ingest(any(RoutingEnvelope.class))).thenReturn(true);
+        when(resultIngestChannel.ingest(any(ResultIngressEntry.class))).thenReturn(true);
 
         EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
@@ -99,14 +98,14 @@ class EmbeddedPullWorkerSessionTest {
         String resultCorrelationRef = correlation("msg-1", "attempt-1");
         session.submitResult(resultCorrelationRef, true, null, "ok");
 
-        var captured = org.mockito.ArgumentCaptor.forClass(RoutingEnvelope.class);
+        var captured = org.mockito.ArgumentCaptor.forClass(ResultIngressEntry.class);
         verify(resultIngestChannel).ingest(captured.capture());
         assertNull(captured.getValue().diagnostics().get("routeKey"));
         assertNull(captured.getValue().diagnostics().get("adapterId"));
-        assertEquals(RoutingOwnerKinds.RESULT_INGRESS, captured.getValue().target().ownerKind());
-        assertEquals(resultCorrelationRef, captured.getValue().target().ownerRef());
-        assertTrue(captured.getValue().payload().contains("\"resultCorrelationRef\":\"" + resultCorrelationRef + "\""));
-        assertTrue(captured.getValue().payload().contains("\"result\":\"ok\""));
+        assertEquals(resultCorrelationRef, captured.getValue().partitionKey());
+        assertEquals(resultCorrelationRef, captured.getValue().message().resultCorrelationRef());
+        assertTrue(captured.getValue().message().payload().contains("\"resultCorrelationRef\":\"" + resultCorrelationRef + "\""));
+        assertTrue(captured.getValue().message().payload().contains("\"result\":\"ok\""));
     }
 
     @Test

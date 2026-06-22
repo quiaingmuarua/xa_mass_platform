@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.transport.routing.RoutingEnvelope;
+import com.xa.mass.transport.channel.ResultIngressEntry;
 
 /**
  * Narrow adapter-facing result ingress sink.
@@ -8,5 +8,5 @@ import com.xa.mass.transport.routing.RoutingEnvelope;
 @FunctionalInterface
 public interface AdapterResultIngressSink {
 
-    boolean ingest(RoutingEnvelope envelope);
+    boolean ingest(ResultIngressEntry entry);
 }

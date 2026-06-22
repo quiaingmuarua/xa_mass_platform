@@ -1,7 +1,8 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.transport.routing.RoutingEnvelope;
-import com.xa.mass.transport.routing.RoutingTarget;
+import com.xa.mass.transport.channel.ResultIngressDiagnostics;
+import com.xa.mass.transport.channel.ResultIngressEntry;
+import com.xa.mass.transport.channel.ResultIngressMessage;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import org.junit.jupiter.api.AfterEach;
@@ -59,16 +60,16 @@ class RedisTransportResultIngressChannelTest {
     }
 
     @Test
-    void resultEnvelopeRoundTripsAcrossInstancesAndCompletes() throws Exception {
-        RoutingEnvelope envelope = envelope("task-result-json", "corr-1");
+    void resultEntryRoundTripsAcrossInstancesAndCompletes() throws Exception {
+        ResultIngressEntry entry = entry("task-result-json", "corr-1");
 
-        assertTrue(writer.ingest(envelope));
+        assertTrue(writer.ingest(entry));
         ClaimedTransportResultIngress claimed = reader.poll(1000L);
 
         assertNotNull(claimed);
-        assertEquals("task-result-json", claimed.envelope().payload());
-        assertEquals("corr-1", claimed.envelope().target().ownerRef());
-        assertEquals("trace-1", claimed.envelope().diagnostics().get("traceId"));
+        assertEquals("task-result-json", claimed.entry().message().payload());
+        assertEquals("corr-1", claimed.entry().message().resultCorrelationRef());
+        assertEquals("trace-1", claimed.entry().diagnostics().get("traceId"));
 
         reader.complete(claimed);
         assertNull(reader.poll(100L));
@@ -76,18 +77,18 @@ class RedisTransportResultIngressChannelTest {
 
     @Test
     void fullInboxRejectsWithoutDroppingExistingResult() throws Exception {
-        assertTrue(writer.ingest(envelope("payload-1", "msg-1")));
-        assertFalse(writer.ingest(envelope("payload-2", "msg-2")));
+        assertTrue(writer.ingest(entry("payload-1", "msg-1")));
+        assertFalse(writer.ingest(entry("payload-2", "msg-2")));
 
         ClaimedTransportResultIngress claimed = reader.poll(1000L);
 
         assertNotNull(claimed);
-        assertEquals("msg-1", claimed.envelope().target().ownerRef());
+        assertEquals("msg-1", claimed.entry().message().resultCorrelationRef());
     }
 
     @Test
     void claimedItemReappearsAfterVisibilityTimeoutWithoutComplete() throws Exception {
-        assertTrue(writer.ingest(envelope("payload-1", "msg-1")));
+        assertTrue(writer.ingest(entry("payload-1", "msg-1")));
         ClaimedTransportResultIngress firstClaim = reader.poll(1000L);
         assertNotNull(firstClaim);
 
@@ -95,7 +96,7 @@ class RedisTransportResultIngressChannelTest {
         ClaimedTransportResultIngress secondClaim = reader.poll(1000L);
 
         assertNotNull(secondClaim);
-        assertEquals(firstClaim.envelope().payload(), secondClaim.envelope().payload());
+        assertEquals(firstClaim.entry().message().payload(), secondClaim.entry().message().payload());
         reader.complete(secondClaim);
     }
 
@@ -120,13 +121,17 @@ class RedisTransportResultIngressChannelTest {
         assertNull(reader.poll(100L));
     }
 
-    private static RoutingEnvelope envelope(String payload, String resultCorrelationRef) {
-        return new RoutingEnvelope(
-                UUID.randomUUID().toString(),
-                RoutingTarget.resultIngress(resultCorrelationRef),
-                payload,
-                Map.of("traceId", "trace-1"),
-                System.currentTimeMillis()
+    private static ResultIngressEntry entry(String payload, String resultCorrelationRef) {
+        return new ResultIngressEntry(
+                resultCorrelationRef,
+                new ResultIngressMessage(
+                        UUID.randomUUID().toString(),
+                        resultCorrelationRef,
+                        payload,
+                        0L,
+                        System.currentTimeMillis()
+                ),
+                new ResultIngressDiagnostics(Map.of("traceId", "trace-1"))
         );
     }
 }

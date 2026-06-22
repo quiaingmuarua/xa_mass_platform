@@ -113,7 +113,7 @@ entry for `transport/`.
   derived reachability and registry slot heartbeat freshness. Endpoint leases
   remain delivery feasibility evidence and must not become worker lifecycle
   truth, worker state-report truth, slot heartbeat truth, or capability truth.
-- `DispatchRoutingItem` is the assigned-item delivery carrier inside an
+- `DispatchMessage` is the assigned-item delivery carrier inside an
   adapter-mailbox dispatch batch. It carries only delivery id,
   `selectedWorkerId`, an opaque worker payload, opaque delivery correlation,
   and item timing/deadline facts. Task shell metadata such as `taskName`,
@@ -126,7 +126,7 @@ entry for `transport/`.
   be typed queue, evidence, outcome, or result-ingress data rather than Java
   object wiring.
 - Concrete embedded Java adapters expose assigned delivery through runtime
-  embedded-support `AdapterCommandExecutor.dispatch(List<DispatchRoutingItem>)`.
+  embedded-support `AdapterCommandExecutor.dispatch(List<DispatchMessage>)`.
   Adapter metadata, protocol resource start/stop, raw/manual channels,
   diagnostics, and
   pull channels are explicit binding/contribution facts, not executor facts.
@@ -163,15 +163,15 @@ entry for `transport/`.
   Socket uses the same adapter-local final-hop rule through its session manager;
   there is no generic selected-worker endpoint-registry wrapper on the assigned
   delivery path.
-- `DispatchRoutingBatch` is the producer/serialized dispatch carrier:
-  `RoutingTarget(adapter-mailbox, adapterMailboxKey)` plus flat
-  `DispatchRoutingItem` values. The handoff queue stores item values under one
-  adapter mailbox and exposes bounded destructive `poll(adapterMailboxKey,
+- `AdapterMailboxDispatchBatch` is the producer/serialized dispatch carrier:
+  direct `adapterMailboxKey` plus flat `DispatchMessage` values. The handoff
+  queue stores item values under one adapter mailbox and exposes bounded
+  destructive `poll(adapterMailboxKey,
   maxItems, timeout)` to adapter-owned consumers. These records do not carry
   bucket, lane, target node, adapter route, connection, or endpoint lease facts.
 - Embedded adapter support contributes explicit adapter-owned mailbox
   consumers. The consumer loop polls one mailbox, invokes the adapter final-hop
-  SPI with `DispatchRoutingItem`, and emits known retryable failure evidence.
+  SPI with `DispatchMessage`, and emits known retryable failure evidence.
   There is no production global dispatch pump/listener or central mailbox
   drain object; `MassApplication` only assembles and starts the contributed
   embedded host resources.
@@ -179,12 +179,12 @@ entry for `transport/`.
   shapes. They carry status plus opaque delivery messages only. Task-shaped
   worker invocation/poll result DTOs live at the SDK/server public worker
   boundary, where the SDK-owned payload and correlation codecs decode them.
-- Polling pull stores use `DispatchRoutingItem` as the adapter-local queued
+- Polling pull stores use `DispatchMessage` as the adapter-local queued
   value and project directly to `PulledDeliveryMessage` at the pull API
   boundary. Packet, route, endpoint, taskName/project/userId, and
   deliveryQueueKey are not serialized in the Redis queue value.
 - Queue mechanics may live under `platform_infra`; transport still owns
-  `DispatchRoutingBatch`, `DispatchRoutingItem`, `TransportDispatchHandoff`,
+  `AdapterMailboxDispatchBatch`, `DispatchMessage`, `TransportDispatchHandoff`,
   and `DispatchOutcome`. Polling pending pull buffers are polling-adapter
   internal storage, not transport-core handoff truth.
   `DispatchOutcome` is the single delivery-failure fact owner; failure inbox
@@ -263,7 +263,7 @@ Prefer these after transport changes:
 
 ```bash
 ./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDispatchHandoffTest,TransportDispatchBatchCodecTest,RedisTransportDispatchHandoffTest,RedisTransportDeliveryFailureChannelTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,RouteEndpointIndexTest,TransportConvergenceArchitectureGuardTest
-./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,RoutingEnvelopeTest,WebSocketInputProcessorTest,WebSocketFrameReadersTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,WebSocketSessionControllerTest
+./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,ResultIngressEntryTest,ResultIngressMessageTest,WebSocketInputProcessorTest,WebSocketFrameReadersTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,WebSocketSessionControllerTest,PollingDispatchMessageCodecTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest,EmbeddedPullWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 

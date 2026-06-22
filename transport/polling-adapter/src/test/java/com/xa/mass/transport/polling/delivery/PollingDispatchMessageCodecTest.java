@@ -1,15 +1,15 @@
 package com.xa.mass.transport.polling.delivery;
 
 import com.xa.mass.runtime.queue.KeyedQueueEntry;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
-class PollingDispatchRoutingItemCodecTest {
+class PollingDispatchMessageCodecTest {
 
-    private final PollingDispatchRoutingItemCodec codec = new PollingDispatchRoutingItemCodec();
+    private final PollingDispatchMessageCodec codec = new PollingDispatchMessageCodec();
 
     @Test
     void keyEncodingTreatsMailboxWorkerSlotAsOpaqueKey() {
@@ -23,8 +23,8 @@ class PollingDispatchRoutingItemCodecTest {
     }
 
     @Test
-    void valueEncodingRoundTripsDispatchRoutingItem() {
-        DispatchRoutingItem item = new DispatchRoutingItem(
+    void valueEncodingRoundTripsDispatchMessage() {
+        DispatchMessage item = new DispatchMessage(
                 "delivery-1",
                 "worker-1",
                 "{\"messageId\":\"msg-1\"}",
@@ -34,7 +34,7 @@ class PollingDispatchRoutingItemCodecTest {
         );
 
         String storedValue = codec.encodeStoredValue(new KeyedQueueEntry<>(item, item.createdAtEpochMillis()));
-        KeyedQueueEntry<DispatchRoutingItem> decoded = codec.decodeStoredValue(storedValue);
+        KeyedQueueEntry<DispatchMessage> decoded = codec.decodeStoredValue(storedValue);
 
         assertEquals(item.deliveryId(), decoded.value().deliveryId());
         assertEquals(item.selectedWorkerId(), decoded.value().selectedWorkerId());

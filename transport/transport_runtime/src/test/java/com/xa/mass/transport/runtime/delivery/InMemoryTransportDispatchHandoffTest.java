@@ -23,28 +23,28 @@ class InMemoryTransportDispatchHandoffTest {
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
-                handoff.offer(DispatchRoutingFixtures.batch(
-                        DispatchRoutingFixtures.item("msg-1", "worker-1")
+                handoff.offer(DispatchMessageFixtures.batch(
+                        DispatchMessageFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
 
-        List<DispatchRoutingItem> polled = handoff.poll(DispatchRoutingFixtures.mailboxKey(), 64, 100L);
+        List<DispatchMessage> polled = handoff.poll(DispatchMessageFixtures.mailboxKey(), 64, 100L);
         assertEquals("worker-1", polled.getFirst().selectedWorkerId());
-        assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(polled));
+        assertEquals(List.of("msg-1"), DispatchMessageFixtures.messages(polled));
     }
 
     @Test
     void fullQueueReturnsBackpressureWithoutBlockingProducer() {
         InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(1);
         claim(handoff, "consumer-1", 1L);
-        handoff.offer(DispatchRoutingFixtures.batch(
-                DispatchRoutingFixtures.item("msg-1", "worker-1")
+        handoff.offer(DispatchMessageFixtures.batch(
+                DispatchMessageFixtures.item("msg-1", "worker-1")
         ));
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.BACKPRESSURE),
-                handoff.offer(DispatchRoutingFixtures.batch(
-                        DispatchRoutingFixtures.item("msg-2", "worker-2")
+                handoff.offer(DispatchMessageFixtures.batch(
+                        DispatchMessageFixtures.item("msg-2", "worker-2")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
     }
@@ -57,16 +57,16 @@ class InMemoryTransportDispatchHandoffTest {
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
-                handoff.offer(new DispatchRoutingBatch(
-                        com.xa.mass.transport.routing.RoutingTarget.adapterMailbox("mailbox-1"),
-                        List.of(DispatchRoutingFixtures.item("msg-1", "worker-1"))
+                handoff.offer(new AdapterMailboxDispatchBatch(
+                        "mailbox-1",
+                        List.of(DispatchMessageFixtures.item("msg-1", "worker-1"))
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
-                handoff.offer(new DispatchRoutingBatch(
-                        com.xa.mass.transport.routing.RoutingTarget.adapterMailbox("mailbox-2"),
-                        List.of(DispatchRoutingFixtures.item("msg-2", "worker-2"))
+                handoff.offer(new AdapterMailboxDispatchBatch(
+                        "mailbox-2",
+                        List.of(DispatchMessageFixtures.item("msg-2", "worker-2"))
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
     }
@@ -75,14 +75,14 @@ class InMemoryTransportDispatchHandoffTest {
     void pollIsDestructiveAndDoesNotRequireAck() throws Exception {
         InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(2);
         claim(handoff, "consumer-1", 1L);
-        handoff.offer(DispatchRoutingFixtures.batch(
-                DispatchRoutingFixtures.item("msg-1", "worker-1")
+        handoff.offer(DispatchMessageFixtures.batch(
+                DispatchMessageFixtures.item("msg-1", "worker-1")
         ));
 
-        List<DispatchRoutingItem> batch = handoff.poll(DispatchRoutingFixtures.mailboxKey(), 64, 100L);
+        List<DispatchMessage> batch = handoff.poll(DispatchMessageFixtures.mailboxKey(), 64, 100L);
 
-        assertEquals(List.of("msg-1"), DispatchRoutingFixtures.messages(batch));
-        assertTrue(handoff.poll(DispatchRoutingFixtures.mailboxKey(), 64, 0L).isEmpty());
+        assertEquals(List.of("msg-1"), DispatchMessageFixtures.messages(batch));
+        assertTrue(handoff.poll(DispatchMessageFixtures.mailboxKey(), 64, 0L).isEmpty());
     }
 
     @Test
@@ -91,8 +91,8 @@ class InMemoryTransportDispatchHandoffTest {
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.UNAVAILABLE),
-                handoff.offer(DispatchRoutingFixtures.batch(
-                        DispatchRoutingFixtures.item("msg-1", "worker-1")
+                handoff.offer(DispatchMessageFixtures.batch(
+                        DispatchMessageFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
     }
@@ -104,7 +104,7 @@ class InMemoryTransportDispatchHandoffTest {
         claim(handoff, "consumer-new", 2L);
 
         handoff.removeMailboxConsumerAvailability(new AdapterMailboxConsumerAvailability(
-                DispatchRoutingFixtures.mailboxKey(),
+                DispatchMessageFixtures.mailboxKey(),
                 "consumer-old",
                 1L,
                 0L
@@ -112,8 +112,8 @@ class InMemoryTransportDispatchHandoffTest {
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
-                handoff.offer(DispatchRoutingFixtures.batch(
-                        DispatchRoutingFixtures.item("msg-1", "worker-1")
+                handoff.offer(DispatchMessageFixtures.batch(
+                        DispatchMessageFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
     }
@@ -121,7 +121,7 @@ class InMemoryTransportDispatchHandoffTest {
     private static void claim(InMemoryTransportDispatchHandoff handoff,
                               String consumerId,
                               long generation) {
-        claimMailbox(handoff, DispatchRoutingFixtures.mailboxKey(), consumerId, generation);
+        claimMailbox(handoff, DispatchMessageFixtures.mailboxKey(), consumerId, generation);
     }
 
     private static void claimMailbox(InMemoryTransportDispatchHandoff handoff,

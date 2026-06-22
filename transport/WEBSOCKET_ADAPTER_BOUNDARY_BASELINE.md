@@ -98,12 +98,12 @@ Hard rules:
 - keep `WebSocketSessionStore`, `WebSocketSessionEvidenceDriver`, and
   `WebSocketSessionRefreshLoop` as separate adapter-local roles
 - route inbound result shells into opaque
-  `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)`
+  `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)`
   values through `TransportResultIngressChannel`
 - bind WebSocket worker session identity only during handshake/session-open;
   normal text frames must read the channel-bound session identity and must not
   register or rebind sessions
-- write assigned delivery frames directly from `DeliveryCommand.payload`; do
+- write assigned delivery frames directly from `DispatchMessage.payload`; do
   not route assigned dispatch through a generic task-frame codec
 - raw/manual route sending and endpoint diagnostics are explicit side roles
   backed by session store snapshots; they are not assigned-delivery fallbacks

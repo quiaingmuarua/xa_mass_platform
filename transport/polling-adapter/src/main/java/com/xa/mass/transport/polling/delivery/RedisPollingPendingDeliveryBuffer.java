@@ -5,7 +5,7 @@ import com.xa.mass.runtime.redis.queue.RedisKeyedQueueNamespace;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TransportDeliveryAddressing;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -141,7 +141,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
     private final StatefulRedisConnection<String, String> connection;
     private final RedisCommands<String, String> commands;
     private final RedisKeyedQueueNamespace namespace;
-    private final PollingDispatchRoutingItemCodec codec = new PollingDispatchRoutingItemCodec();
+    private final PollingDispatchMessageCodec codec = new PollingDispatchMessageCodec();
     private final boolean ownsClient;
     private final int maxQueuedItems;
     private final int maxItemsPerWorker;
@@ -212,12 +212,12 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
     }
 
     @Override
-    public List<DispatchOutcome> enqueue(String adapterMailboxKey, List<DispatchRoutingItem> items) {
+    public List<DispatchOutcome> enqueue(String adapterMailboxKey, List<DispatchMessage> items) {
         if (items == null || items.isEmpty()) {
             return List.of();
         }
         List<DispatchOutcome> outcomes = new ArrayList<>(items.size());
-        for (DispatchRoutingItem item : items) {
+        for (DispatchMessage item : items) {
             outcomes.add(enqueueOne(adapterMailboxKey, item));
         }
         return List.copyOf(outcomes);
@@ -237,7 +237,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
             return PollingPendingDeliveryPollResult.shutdown();
         }
         if (timeoutMillis <= 0) {
-            List<DispatchRoutingItem> drained = drain(normalizedAdapterMailboxKey, normalizedWorkerId, maxItems);
+            List<DispatchMessage> drained = drain(normalizedAdapterMailboxKey, normalizedWorkerId, maxItems);
             if (!running.get()) {
                 return PollingPendingDeliveryPollResult.shutdown();
             }
@@ -248,7 +248,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
 
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         while (running.get()) {
-            List<DispatchRoutingItem> drained = drain(normalizedAdapterMailboxKey, normalizedWorkerId, maxItems);
+            List<DispatchMessage> drained = drain(normalizedAdapterMailboxKey, normalizedWorkerId, maxItems);
             if (!drained.isEmpty()) {
                 return PollingPendingDeliveryPollResult.deliveredView(drained);
             }
@@ -353,7 +353,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
         }
     }
 
-    private DispatchOutcome enqueueOne(String adapterMailboxKey, DispatchRoutingItem item) {
+    private DispatchOutcome enqueueOne(String adapterMailboxKey, DispatchMessage item) {
         String normalizedAdapterMailboxKey = normalizePollingPendingDeliveryQueueKey(adapterMailboxKey);
         String normalizedSelectedWorkerId = item == null
                 ? null
@@ -389,7 +389,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
             );
         }
 
-        DispatchRoutingItem normalizedItem = normalizeItem(item, normalizedSelectedWorkerId);
+        DispatchMessage normalizedItem = normalizeItem(item, normalizedSelectedWorkerId);
         String encodedKeyPart = codec.encodeKeyPart(new PollingPendingDeliveryQueueKey(
                 slotKey(normalizedAdapterMailboxKey, normalizedSelectedWorkerId)
         ));
@@ -424,7 +424,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
         }
     }
 
-    private List<DispatchRoutingItem> drain(String adapterMailboxKey, String selectedWorkerId, int maxItems) {
+    private List<DispatchMessage> drain(String adapterMailboxKey, String selectedWorkerId, int maxItems) {
         if (!running.get()) {
             return List.of();
         }
@@ -451,7 +451,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
         }
     }
 
-    private DispatchOutcome mapOfferResponse(Object rawResponse, DispatchRoutingItem item) {
+    private DispatchOutcome mapOfferResponse(Object rawResponse, DispatchMessage item) {
         if (!(rawResponse instanceof List<?> values) || values.isEmpty()) {
             return unavailable(item, "polling pending delivery buffer returned no response");
         }
@@ -477,7 +477,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
         };
     }
 
-    private List<DispatchRoutingItem> mapDrainResponse(Object rawResponse) {
+    private List<DispatchMessage> mapDrainResponse(Object rawResponse) {
         if (!(rawResponse instanceof List<?> values) || values.isEmpty()) {
             return List.of();
         }
@@ -485,7 +485,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
         if (!Objects.equals(code, "DRAINED") || values.size() <= 2) {
             return List.of();
         }
-        List<DispatchRoutingItem> drained = new ArrayList<>(values.size() - 2);
+        List<DispatchMessage> drained = new ArrayList<>(values.size() - 2);
         for (Object rawValue : values.subList(2, values.size())) {
             if (rawValue != null) {
                 drained.add(codec.decodeStoredValue(rawValue.toString()).value());
@@ -494,7 +494,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
         return List.copyOf(drained);
     }
 
-    private DispatchOutcome unavailable(DispatchRoutingItem item, String reason) {
+    private DispatchOutcome unavailable(DispatchMessage item, String reason) {
         localUnavailableItems.incrementAndGet();
         return new DispatchOutcome(
                 item.deliveryId(),
@@ -507,11 +507,11 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
         );
     }
 
-    private static DispatchRoutingItem normalizeItem(DispatchRoutingItem item, String normalizedSelectedWorkerId) {
+    private static DispatchMessage normalizeItem(DispatchMessage item, String normalizedSelectedWorkerId) {
         if (Objects.equals(normalizedSelectedWorkerId, item.selectedWorkerId())) {
             return item;
         }
-        return new DispatchRoutingItem(
+        return new DispatchMessage(
                 item.deliveryId(),
                 normalizedSelectedWorkerId,
                 item.payload(),

@@ -65,8 +65,8 @@ class TransportAssignedDeliverySubmitterTest {
                 DispatchOutcomeStatus.QUEUED
         ), statuses(outcomes));
         assertEquals(1, handoff.offered.size());
-        assertEquals(DispatchRoutingFixtures.mailboxKey(), handoff.offered.getFirst().adapterMailboxKey());
-        assertEquals(List.of("msg-1", "msg-2", "msg-3"), DispatchRoutingFixtures.messages(handoff.offered.getFirst()));
+        assertEquals(DispatchMessageFixtures.mailboxKey(), handoff.offered.getFirst().adapterMailboxKey());
+        assertEquals(List.of("msg-1", "msg-2", "msg-3"), DispatchMessageFixtures.messages(handoff.offered.getFirst()));
     }
 
     @Test
@@ -79,17 +79,17 @@ class TransportAssignedDeliverySubmitterTest {
 
         submitter.submit(List.of(batch(item("msg-1", "worker-selected"))));
 
-        DispatchRoutingItem offered = handoff.offered.getFirst().items().getFirst();
+        DispatchMessage offered = handoff.offered.getFirst().items().getFirst();
         assertEquals("worker-selected", offered.selectedWorkerId());
-        assertEquals(DispatchRoutingFixtures.mailboxKey(), handoff.offered.getFirst().adapterMailboxKey());
+        assertEquals(DispatchMessageFixtures.mailboxKey(), handoff.offered.getFirst().adapterMailboxKey());
     }
 
-    private static DispatchRoutingItem item(String messageId, String selectedWorkerId) {
-        return DispatchRoutingFixtures.item(messageId, selectedWorkerId);
+    private static DispatchMessage item(String messageId, String selectedWorkerId) {
+        return DispatchMessageFixtures.item(messageId, selectedWorkerId);
     }
 
-    private static DispatchRoutingBatch batch(DispatchRoutingItem... items) {
-        return DispatchRoutingFixtures.batch(items);
+    private static AdapterMailboxDispatchBatch batch(DispatchMessage... items) {
+        return DispatchMessageFixtures.batch(items);
     }
 
     private static List<DispatchOutcomeStatus> statuses(List<DispatchOutcome> outcomes) {
@@ -97,12 +97,12 @@ class TransportAssignedDeliverySubmitterTest {
     }
 
     private static final class FakeHandoff implements TransportDispatchHandoff {
-        private final List<DispatchRoutingBatch> offered = new ArrayList<>();
+        private final List<AdapterMailboxDispatchBatch> offered = new ArrayList<>();
         private boolean backpressure;
         private RuntimeException failure;
 
         @Override
-        public List<DispatchOutcome> offer(DispatchRoutingBatch batch) {
+        public List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch) {
             if (failure != null) {
                 throw failure;
             }
@@ -126,7 +126,7 @@ class TransportAssignedDeliverySubmitterTest {
         }
 
         @Override
-        public List<DispatchRoutingItem> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
+        public List<DispatchMessage> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
             return List.of();
         }
 

@@ -21,19 +21,20 @@ Historical bias:
 - queue/store replacement over protocol churn
 - logs, counters, and trace over scan-heavy introspection
 
-## Superseded Shape
+## Reference Shape
 
-The older shape below is no longer current runtime truth:
+The compact shape below mirrors the current carrier vocabulary, while detailed
+runtime truth remains in the boundary baseline:
 
 ```text
 engine assignment
-  -> DispatchRoutingBatch(target=adapter-mailbox:<key>)
+  -> AdapterMailboxDispatchBatch(adapterMailboxKey=<key>)
   -> adapter-owned mailbox consumer
   -> AdapterCommandExecutor
   -> adapter final-hop send
      or polling-adapter-owned pending pull buffer
   -> worker
-  -> RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)
+  -> ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)
   -> TransportResultIngressChannel / TransportResultIngressHandler
   -> engine lifecycle
 ```
@@ -41,10 +42,10 @@ engine assignment
 Current transport concepts are defined in the boundary baseline. In particular:
 
 - `TransportDispatchHandoff` owns engine-to-adapter-mailbox handoff.
-- `DispatchRoutingBatch` / `DispatchRoutingItem` are the dispatch carrier.
+- `AdapterMailboxDispatchBatch` / `DispatchMessage` are the dispatch carrier.
 - `DispatchOutcome` is delivery attempt evidence.
 - Polling pending pull storage is owned by `polling-adapter`.
-- `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)` is result
+- `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)` is result
   ingress carrier.
 
 ## Historical Constraints

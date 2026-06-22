@@ -1,6 +1,6 @@
 package com.xa.mass.transport.polling.delivery;
 
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 
 import java.util.List;
 import java.util.Objects;
@@ -8,14 +8,14 @@ import java.util.Objects;
 public final class PollingPendingDeliveryPollResult {
 
     private final PollingPendingDeliveryPollStatus status;
-    private final List<DispatchRoutingItem> items;
+    private final List<DispatchMessage> items;
 
-    private PollingPendingDeliveryPollResult(PollingPendingDeliveryPollStatus status, List<DispatchRoutingItem> items) {
+    private PollingPendingDeliveryPollResult(PollingPendingDeliveryPollStatus status, List<DispatchMessage> items) {
         this(status, items, false);
     }
 
     private PollingPendingDeliveryPollResult(PollingPendingDeliveryPollStatus status,
-                                        List<DispatchRoutingItem> items,
+                                        List<DispatchMessage> items,
                                         boolean trustedView) {
         this.status = Objects.requireNonNull(status, "status");
         if (items == null || items.isEmpty()) {
@@ -26,7 +26,7 @@ public final class PollingPendingDeliveryPollResult {
     }
 
     public static PollingPendingDeliveryPollResult of(PollingPendingDeliveryPollStatus status,
-                                                 List<DispatchRoutingItem> items) {
+                                                 List<DispatchMessage> items) {
         Objects.requireNonNull(status, "status");
         return switch (status) {
             case DELIVERED -> delivered(items);
@@ -37,14 +37,14 @@ public final class PollingPendingDeliveryPollResult {
         };
     }
 
-    public static PollingPendingDeliveryPollResult delivered(List<DispatchRoutingItem> items) {
+    public static PollingPendingDeliveryPollResult delivered(List<DispatchMessage> items) {
         if (items == null || items.isEmpty()) {
             throw new IllegalArgumentException("delivered poll result must include at least one item");
         }
         return new PollingPendingDeliveryPollResult(PollingPendingDeliveryPollStatus.DELIVERED, items);
     }
 
-    static PollingPendingDeliveryPollResult deliveredView(List<DispatchRoutingItem> items) {
+    static PollingPendingDeliveryPollResult deliveredView(List<DispatchMessage> items) {
         if (items == null || items.isEmpty()) {
             throw new IllegalArgumentException("delivered poll result must include at least one item");
         }
@@ -71,7 +71,7 @@ public final class PollingPendingDeliveryPollResult {
         return status;
     }
 
-    public List<DispatchRoutingItem> getItems() {
+    public List<DispatchMessage> getItems() {
         return items;
     }
 }

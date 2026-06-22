@@ -7,7 +7,7 @@ import com.xa.mass.transport.channel.PulledDeliveryMessage;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryPollResult;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryPollStatus;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 
 import java.util.List;
 import java.util.Objects;
@@ -66,7 +66,7 @@ public final class PollingDeliveryPullChannel implements DeliveryPullChannel {
         };
     }
 
-    private static List<PulledDeliveryMessage> toPulledItems(List<DispatchRoutingItem> items) {
+    private static List<PulledDeliveryMessage> toPulledItems(List<DispatchMessage> items) {
         if (items == null || items.isEmpty()) {
             return List.of();
         }

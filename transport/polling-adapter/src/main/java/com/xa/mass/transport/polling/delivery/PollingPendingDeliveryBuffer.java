@@ -1,7 +1,7 @@
 package com.xa.mass.transport.polling.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 
 import java.util.List;
 
@@ -17,7 +17,7 @@ import java.util.List;
  */
 public interface PollingPendingDeliveryBuffer {
 
-    List<DispatchOutcome> enqueue(String adapterMailboxKey, List<DispatchRoutingItem> items);
+    List<DispatchOutcome> enqueue(String adapterMailboxKey, List<DispatchMessage> items);
 
     PollingPendingDeliveryPollResult poll(String adapterMailboxKey,
                                            String authenticatedWorkerId,

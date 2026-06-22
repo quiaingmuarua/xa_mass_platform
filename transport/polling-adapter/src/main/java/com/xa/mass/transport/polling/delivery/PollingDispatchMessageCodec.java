@@ -3,13 +3,13 @@ package com.xa.mass.transport.polling.delivery;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.runtime.queue.KeyedQueueEntry;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Objects;
 
-final class PollingDispatchRoutingItemCodec {
+final class PollingDispatchMessageCodec {
 
     private static final Base64.Encoder KEY_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder KEY_DECODER = Base64.getUrlDecoder();
@@ -19,11 +19,11 @@ final class PollingDispatchRoutingItemCodec {
 
     private final Gson gson;
 
-    PollingDispatchRoutingItemCodec() {
+    PollingDispatchMessageCodec() {
         this(new GsonBuilder().create());
     }
 
-    PollingDispatchRoutingItemCodec(Gson gson) {
+    PollingDispatchMessageCodec(Gson gson) {
         this.gson = Objects.requireNonNull(gson, "gson");
     }
 
@@ -43,9 +43,9 @@ final class PollingDispatchRoutingItemCodec {
         return encodeKeyToken(selectedWorkerId);
     }
 
-    String encodeStoredValue(KeyedQueueEntry<DispatchRoutingItem> entry) {
+    String encodeStoredValue(KeyedQueueEntry<DispatchMessage> entry) {
         Objects.requireNonNull(entry, "entry");
-        DispatchRoutingItem item = Objects.requireNonNull(entry.value(), "entry.value");
+        DispatchMessage item = Objects.requireNonNull(entry.value(), "entry.value");
         String encodedValue = VALUE_ENCODER.encodeToString(encodeEntry(entry));
         return entry.createdAtEpochMillis()
                 + String.valueOf(STORED_VALUE_DELIMITER)
@@ -54,7 +54,7 @@ final class PollingDispatchRoutingItemCodec {
                 + encodedValue;
     }
 
-    KeyedQueueEntry<DispatchRoutingItem> decodeStoredValue(String storedValue) {
+    KeyedQueueEntry<DispatchMessage> decodeStoredValue(String storedValue) {
         if (storedValue == null || storedValue.isBlank()) {
             throw new IllegalArgumentException("stored queue value must not be blank");
         }
@@ -67,10 +67,10 @@ final class PollingDispatchRoutingItemCodec {
         return decodeEntry(VALUE_DECODER.decode(encodedValue));
     }
 
-    byte[] encodeEntry(KeyedQueueEntry<DispatchRoutingItem> entry) {
+    byte[] encodeEntry(KeyedQueueEntry<DispatchMessage> entry) {
         Objects.requireNonNull(entry, "entry");
-        DispatchRoutingItem item = Objects.requireNonNull(entry.value(), "entry.value");
-        RedisDispatchRoutingItemRecord record = new RedisDispatchRoutingItemRecord(
+        DispatchMessage item = Objects.requireNonNull(entry.value(), "entry.value");
+        RedisDispatchMessageRecord record = new RedisDispatchMessageRecord(
                 item.deliveryId(),
                 item.selectedWorkerId(),
                 item.payload(),
@@ -81,13 +81,13 @@ final class PollingDispatchRoutingItemCodec {
         return gson.toJson(record).getBytes(StandardCharsets.UTF_8);
     }
 
-    KeyedQueueEntry<DispatchRoutingItem> decodeEntry(byte[] bytes) {
+    KeyedQueueEntry<DispatchMessage> decodeEntry(byte[] bytes) {
         if (bytes == null || bytes.length == 0) {
             throw new IllegalArgumentException("bytes must not be empty");
         }
-        DecodedRedisDispatchRoutingItemRecord record = gson.fromJson(
+        DecodedRedisDispatchMessageRecord record = gson.fromJson(
                 new String(bytes, StandardCharsets.UTF_8),
-                DecodedRedisDispatchRoutingItemRecord.class
+                DecodedRedisDispatchMessageRecord.class
         );
         if (record == null
                 || record.deliveryId == null
@@ -96,7 +96,7 @@ final class PollingDispatchRoutingItemCodec {
                 || record.correlationRef == null) {
             throw new IllegalArgumentException("encoded queued dispatch record is incomplete");
         }
-        DispatchRoutingItem item = new DispatchRoutingItem(
+        DispatchMessage item = new DispatchMessage(
                 record.deliveryId,
                 record.selectedWorkerId,
                 record.payload,
@@ -121,7 +121,7 @@ final class PollingDispatchRoutingItemCodec {
         return new String(KEY_DECODER.decode(token), StandardCharsets.UTF_8);
     }
 
-    private record RedisDispatchRoutingItemRecord(String deliveryId,
+    private record RedisDispatchMessageRecord(String deliveryId,
                                                   String selectedWorkerId,
                                                   String payload,
                                                   String correlationRef,
@@ -129,7 +129,7 @@ final class PollingDispatchRoutingItemCodec {
                                                   long createdAtEpochMillis) {
     }
 
-    private static final class DecodedRedisDispatchRoutingItemRecord {
+    private static final class DecodedRedisDispatchMessageRecord {
         private String deliveryId;
         private String selectedWorkerId;
         private String payload;

@@ -2,8 +2,7 @@ package com.xa.mass.transport.websocket.frame;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.xa.mass.transport.routing.RoutingEnvelope;
-import com.xa.mass.transport.routing.RoutingOwnerKinds;
+import com.xa.mass.transport.channel.ResultIngressEntry;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -53,7 +52,7 @@ class WebSocketFrameReadersTest {
     }
 
     @Test
-    void resultReaderRecognizesOnlyResultFramesAndBuildsOpaqueEnvelope() {
+    void resultReaderRecognizesOnlyResultFramesAndBuildsExplicitEntry() {
         WebSocketResultIngressFrameReader reader = new WebSocketResultIngressFrameReader("websocket", parser);
         JsonObject unsupported = new JsonObject();
         unsupported.addProperty("resultCorrelationRef", "corr-1");
@@ -69,13 +68,13 @@ class WebSocketFrameReadersTest {
         frame.add("output", payload("status", "SUCCESS"));
 
         assertTrue(reader.isResultFrame(frame));
-        RoutingEnvelope envelope = reader.toEnvelope(frame);
+        ResultIngressEntry entry = reader.toEntry(frame);
 
-        assertEquals(RoutingOwnerKinds.RESULT_INGRESS, envelope.target().ownerKind());
-        assertEquals("corr-1", envelope.target().ownerRef());
-        assertEquals("websocket", envelope.diagnostics().get("adapterId"));
-        assertEquals("inline-route", envelope.diagnostics().get("routeKey"));
-        JsonObject payload = JsonParser.parseString(envelope.payload()).getAsJsonObject();
+        assertEquals("corr-1", entry.partitionKey());
+        assertEquals("corr-1", entry.message().resultCorrelationRef());
+        assertEquals("websocket", entry.diagnostics().get("adapterId"));
+        assertEquals("inline-route", entry.diagnostics().get("routeKey"));
+        JsonObject payload = JsonParser.parseString(entry.message().payload()).getAsJsonObject();
         assertEquals("corr-1", payload.get("resultCorrelationRef").getAsString());
         assertFalse(payload.has("taskId"));
         assertFalse(payload.has("messageId"));

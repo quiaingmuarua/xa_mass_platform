@@ -1,8 +1,9 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.TransportResultIngressOutcome;
-import com.xa.mass.transport.routing.RoutingEnvelope;
-import com.xa.mass.transport.routing.RoutingTarget;
+import com.xa.mass.transport.channel.ResultIngressDiagnostics;
+import com.xa.mass.transport.channel.ResultIngressEntry;
+import com.xa.mass.transport.channel.ResultIngressMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -21,18 +22,18 @@ class BufferedTransportResultIngressChannelTest {
     @Test
     void envelopeIsDeliveredAsynchronouslyToDelegate() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
-        List<RoutingEnvelope> received = new CopyOnWriteArrayList<>();
-        BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(envelope -> {
-            received.add(envelope);
+        List<ResultIngressEntry> received = new CopyOnWriteArrayList<>();
+        BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(entry -> {
+            received.add(entry);
             latch.countDown();
             return TransportResultIngressOutcome.ACKNOWLEDGED;
         });
 
-        boolean accepted = channel.ingest(envelope("payload-1", "message-1"));
+        boolean accepted = channel.ingest(entry("payload-1", "message-1"));
 
         assertTrue(accepted);
-        assertTrue(latch.await(2, TimeUnit.SECONDS), "delegate must receive the envelope within 2s");
-        assertEquals("payload-1", received.getFirst().payload());
+        assertTrue(latch.await(2, TimeUnit.SECONDS), "delegate must receive the entry within 2s");
+        assertEquals("payload-1", received.getFirst().message().payload());
 
         channel.shutdown();
     }
@@ -42,17 +43,17 @@ class BufferedTransportResultIngressChannelTest {
         int itemCount = 50;
         List<String> processed = new CopyOnWriteArrayList<>();
         CountDownLatch startLatch = new CountDownLatch(1);
-        BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(envelope -> {
+        BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(entry -> {
             try {
                 startLatch.await();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            processed.add(envelope.target().ownerRef());
+            processed.add(entry.message().resultCorrelationRef());
             return TransportResultIngressOutcome.ACKNOWLEDGED;
         }, 100);
         for (int i = 0; i < itemCount; i++) {
-            assertTrue(channel.ingest(envelope("payload", "msg-" + i)));
+            assertTrue(channel.ingest(entry("payload", "msg-" + i)));
         }
 
         startLatch.countDown();
@@ -67,9 +68,9 @@ class BufferedTransportResultIngressChannelTest {
         CountDownLatch firstDispatchStarted = new CountDownLatch(1);
         CountDownLatch synchronousFallback = new CountDownLatch(1);
         List<String> received = new CopyOnWriteArrayList<>();
-        BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(envelope -> {
-            received.add(envelope.target().ownerRef());
-            if ("msg-0".equals(envelope.target().ownerRef())) {
+        BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(entry -> {
+            received.add(entry.message().resultCorrelationRef());
+            if ("msg-0".equals(entry.message().resultCorrelationRef())) {
                 firstDispatchStarted.countDown();
                 try {
                     blocker.await();
@@ -77,16 +78,16 @@ class BufferedTransportResultIngressChannelTest {
                     Thread.currentThread().interrupt();
                 }
             }
-            if ("msg-overflow".equals(envelope.target().ownerRef())) {
+            if ("msg-overflow".equals(entry.message().resultCorrelationRef())) {
                 synchronousFallback.countDown();
             }
             return TransportResultIngressOutcome.ACKNOWLEDGED;
         }, 1);
 
-        assertTrue(channel.ingest(envelope("payload", "msg-0")));
+        assertTrue(channel.ingest(entry("payload", "msg-0")));
         assertTrue(firstDispatchStarted.await(1, TimeUnit.SECONDS), "drainer must start processing the first item");
-        assertTrue(channel.ingest(envelope("payload", "msg-1")));
-        assertTrue(channel.ingest(envelope("payload", "msg-overflow")));
+        assertTrue(channel.ingest(entry("payload", "msg-1")));
+        assertTrue(channel.ingest(entry("payload", "msg-overflow")));
 
         assertTrue(synchronousFallback.await(1, TimeUnit.SECONDS), "overflow item must be ingested synchronously");
 
@@ -99,7 +100,7 @@ class BufferedTransportResultIngressChannelTest {
     void retryableOutcomeRequeuesUntilAcked() throws InterruptedException {
         CountDownLatch secondAttempt = new CountDownLatch(1);
         AtomicInteger attempts = new AtomicInteger();
-        BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(envelope -> {
+        BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(entry -> {
             int attempt = attempts.incrementAndGet();
             if (attempt == 1) {
                 return TransportResultIngressOutcome.RETRYABLE_FAILURE;
@@ -108,7 +109,7 @@ class BufferedTransportResultIngressChannelTest {
             return TransportResultIngressOutcome.ACKNOWLEDGED;
         }, 2);
 
-        assertTrue(channel.ingest(envelope("payload", "msg-1")));
+        assertTrue(channel.ingest(entry("payload", "msg-1")));
 
         assertTrue(secondAttempt.await(2, TimeUnit.SECONDS), "retryable result must be retried by buffer");
         assertEquals(2, attempts.get());
@@ -119,7 +120,7 @@ class BufferedTransportResultIngressChannelTest {
     void nullEnvelopeReturnsFalseWithoutEnqueuing() {
         AtomicInteger delegateCalls = new AtomicInteger();
         BufferedTransportResultIngressChannel channel =
-                new BufferedTransportResultIngressChannel(envelope -> {
+                new BufferedTransportResultIngressChannel(entry -> {
                     delegateCalls.incrementAndGet();
                     return TransportResultIngressOutcome.ACKNOWLEDGED;
                 });
@@ -133,19 +134,23 @@ class BufferedTransportResultIngressChannelTest {
     @Test
     void ingestAfterShutdownReturnsFalse() {
         BufferedTransportResultIngressChannel channel =
-                new BufferedTransportResultIngressChannel(envelope -> TransportResultIngressOutcome.ACKNOWLEDGED);
+                new BufferedTransportResultIngressChannel(entry -> TransportResultIngressOutcome.ACKNOWLEDGED);
         channel.shutdown();
 
-        assertFalse(channel.ingest(envelope("payload", "msg-1")));
+        assertFalse(channel.ingest(entry("payload", "msg-1")));
     }
 
-    private static RoutingEnvelope envelope(String payload, String resultCorrelationRef) {
-        return new RoutingEnvelope(
-                java.util.UUID.randomUUID().toString(),
-                RoutingTarget.resultIngress(resultCorrelationRef),
-                payload,
-                Map.of("traceId", resultCorrelationRef + "-trace"),
-                System.currentTimeMillis()
+    private static ResultIngressEntry entry(String payload, String resultCorrelationRef) {
+        return new ResultIngressEntry(
+                resultCorrelationRef,
+                new ResultIngressMessage(
+                        java.util.UUID.randomUUID().toString(),
+                        resultCorrelationRef,
+                        payload,
+                        0L,
+                        System.currentTimeMillis()
+                ),
+                new ResultIngressDiagnostics(Map.of("traceId", resultCorrelationRef + "-trace"))
         );
     }
 }

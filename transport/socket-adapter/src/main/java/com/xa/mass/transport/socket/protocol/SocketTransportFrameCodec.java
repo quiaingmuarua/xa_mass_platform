@@ -6,7 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.xa.mass.transport.packet.TransportPacket;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,7 +85,7 @@ public final class SocketTransportFrameCodec {
                 && !isHeartbeatFrame(frame);
     }
 
-    public String encodeCanonicalTaskDispatch(DispatchRoutingItem item) {
+    public String encodeCanonicalTaskDispatch(DispatchMessage item) {
         if (item == null) {
             throw new IllegalArgumentException("item must not be null");
         }

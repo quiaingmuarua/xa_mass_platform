@@ -2,7 +2,7 @@ package com.xa.mass.transport.socket.dispatcher;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
@@ -70,8 +70,8 @@ class SocketTaskDispatchChannelTest {
         );
     }
 
-    private DispatchRoutingItem request(String correlationSuffix, String workerId) {
-        return new DispatchRoutingItem(
+    private DispatchMessage request(String correlationSuffix, String workerId) {
+        return new DispatchMessage(
                 "delivery-" + correlationSuffix,
                 workerId,
                 "{\"resultCorrelationRef\":\"corr-" + correlationSuffix + "\"}",

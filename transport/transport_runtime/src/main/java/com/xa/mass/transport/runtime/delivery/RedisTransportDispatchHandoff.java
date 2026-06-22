@@ -107,10 +107,10 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
     }
 
     @Override
-    public List<DispatchOutcome> offer(DispatchRoutingBatch batch) {
+    public List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch) {
         Objects.requireNonNull(batch, "batch");
         String adapterMailboxKey = normalizeRequired(batch.adapterMailboxKey(), "adapterMailboxKey");
-        List<DispatchRoutingItem> itemsToOffer = batch.items();
+        List<DispatchMessage> itemsToOffer = batch.items();
         if (!running.get()) {
             return itemsToOffer.stream()
                     .map(item -> DispatchOutcomeFactory.fromItem(
@@ -130,7 +130,7 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
                     .toList();
         }
         List<DispatchOutcome> outcomes = new ArrayList<>(itemsToOffer.size());
-        for (DispatchRoutingItem item : itemsToOffer) {
+        for (DispatchMessage item : itemsToOffer) {
             Object raw = commands.eval(
                     OFFER_DISPATCH_SCRIPT,
                     ScriptOutputType.MULTI,
@@ -156,7 +156,7 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
     }
 
     @Override
-    public List<DispatchRoutingItem> poll(String adapterMailboxKey,
+    public List<DispatchMessage> poll(String adapterMailboxKey,
                                           int maxItems,
                                           long timeoutMillis) throws InterruptedException {
         String mailboxKey = normalizeRequired(adapterMailboxKey, "adapterMailboxKey");
@@ -178,7 +178,7 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
             if (currentMailboxConsumerEvidence(mailboxKey, System.currentTimeMillis()) == null) {
                 return List.of();
             }
-            List<DispatchRoutingItem> items = pollReadyItems(mailboxKey, maxItems);
+            List<DispatchMessage> items = pollReadyItems(mailboxKey, maxItems);
             if (!items.isEmpty()) {
                 return items;
             }
@@ -194,8 +194,8 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
         return List.of();
     }
 
-    private List<DispatchRoutingItem> pollReadyItems(String adapterMailboxKey, int maxItems) {
-        List<DispatchRoutingItem> items = new ArrayList<>(maxItems);
+    private List<DispatchMessage> pollReadyItems(String adapterMailboxKey, int maxItems) {
+        List<DispatchMessage> items = new ArrayList<>(maxItems);
         String readyKey = readyDispatchKey(adapterMailboxKey);
         for (int i = 0; i < maxItems; i++) {
             String encoded = commands.lpop(readyKey);
@@ -263,7 +263,7 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
         return commands.llen(readyDispatchKey(adapterMailboxKey));
     }
 
-    void pushReadyItemForTest(String adapterMailboxKey, DispatchRoutingItem item) {
+    void pushReadyItemForTest(String adapterMailboxKey, DispatchMessage item) {
         commands.rpush(readyDispatchKey(adapterMailboxKey), codec.encodeItem(item));
     }
 

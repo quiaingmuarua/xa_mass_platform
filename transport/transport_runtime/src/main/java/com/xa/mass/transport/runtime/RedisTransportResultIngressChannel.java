@@ -1,7 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.routing.RoutingEnvelope;
+import com.xa.mass.transport.channel.ResultIngressEntry;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -89,7 +89,7 @@ public final class RedisTransportResultIngressChannel implements TransportResult
     private final long visibilityTimeoutMillis;
     private final boolean ownsClient;
     private final AtomicBoolean running = new AtomicBoolean(true);
-    private final RoutingEnvelopeCodec codec = new RoutingEnvelopeCodec();
+    private final ResultIngressEntryCodec codec = new ResultIngressEntryCodec();
 
     public RedisTransportResultIngressChannel(String redisUri) {
         this(redisUri, DEFAULT_NAMESPACE_PREFIX, DEFAULT_MAX_QUEUED_RESULTS);
@@ -149,18 +149,18 @@ public final class RedisTransportResultIngressChannel implements TransportResult
     }
 
     @Override
-    public boolean ingest(RoutingEnvelope envelope) {
-        if (envelope == null || !running.get()) {
+    public boolean ingest(ResultIngressEntry entry) {
+        if (entry == null || !running.get()) {
             return false;
         }
-        String ref = envelope.envelopeId() + ":" + UUID.randomUUID();
+        String ref = entry.message().resultMessageId() + ":" + UUID.randomUUID();
         Object raw = commands.eval(
                 OFFER_SCRIPT,
                 ScriptOutputType.MULTI,
                 new String[]{readyKey, inflightKey, payloadsKey},
                 Integer.toString(maxQueuedResults),
                 ref,
-                codec.encode(envelope)
+                codec.encode(entry)
         );
         return raw instanceof List<?> values
                 && !values.isEmpty()

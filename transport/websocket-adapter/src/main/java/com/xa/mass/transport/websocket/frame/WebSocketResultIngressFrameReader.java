@@ -1,8 +1,9 @@
 package com.xa.mass.transport.websocket.frame;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.transport.routing.RoutingEnvelope;
-import com.xa.mass.transport.routing.RoutingTarget;
+import com.xa.mass.transport.channel.ResultIngressDiagnostics;
+import com.xa.mass.transport.channel.ResultIngressEntry;
+import com.xa.mass.transport.channel.ResultIngressMessage;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
 
 import java.util.LinkedHashMap;
@@ -35,7 +36,7 @@ public final class WebSocketResultIngressFrameReader {
                 && !isControlFrame(frame);
     }
 
-    public RoutingEnvelope toEnvelope(JsonObject frame) {
+    public ResultIngressEntry toEntry(JsonObject frame) {
         String resultCorrelationRef = parser.readString(frame, RESULT_CORRELATION_REF_FIELD);
         if (resultCorrelationRef == null) {
             throw new IllegalArgumentException(RESULT_CORRELATION_REF_FIELD + " is required");
@@ -45,12 +46,17 @@ public final class WebSocketResultIngressFrameReader {
                 parser.readString(frame, TRACE_ID_FIELD),
                 resultCorrelationRef
         );
-        return new RoutingEnvelope(
-                UUID.randomUUID().toString(),
-                RoutingTarget.resultIngress(resultCorrelationRef),
-                parser.toJson(frame),
-                diagnostics(routeKey, traceId),
-                System.currentTimeMillis()
+        long now = System.currentTimeMillis();
+        return new ResultIngressEntry(
+                resultCorrelationRef,
+                new ResultIngressMessage(
+                        UUID.randomUUID().toString(),
+                        resultCorrelationRef,
+                        parser.toJson(frame),
+                        0L,
+                        now
+                ),
+                new ResultIngressDiagnostics(diagnostics(routeKey, traceId))
         );
     }
 

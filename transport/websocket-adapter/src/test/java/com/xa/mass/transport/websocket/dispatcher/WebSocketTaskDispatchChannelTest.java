@@ -2,7 +2,7 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
 import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
@@ -28,7 +28,7 @@ class WebSocketTaskDispatchChannelTest {
     @Test
     void publishesDispatchItemsDirectlyToSessionStoreEndpoint() {
         SessionFixture fixture = sessionWithWorker("worker-1");
-        DispatchRoutingItem item = request();
+        DispatchMessage item = request();
 
         WebSocketTaskDispatchChannel publisher =
                 new WebSocketTaskDispatchChannel(fixture.controller());
@@ -98,8 +98,8 @@ class WebSocketTaskDispatchChannelTest {
         return ch;
     }
 
-    private DispatchRoutingItem request() {
-        return new DispatchRoutingItem(
+    private DispatchMessage request() {
+        return new DispatchMessage(
                 "delivery-msg-1",
                 "worker-1",
                 """

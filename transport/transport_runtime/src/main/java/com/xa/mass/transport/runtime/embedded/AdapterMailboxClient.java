@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime.embedded;
 
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 
 import java.util.List;
 
@@ -10,7 +10,7 @@ import java.util.List;
 @FunctionalInterface
 public interface AdapterMailboxClient {
 
-    List<DispatchRoutingItem> poll(String adapterMailboxKey,
+    List<DispatchMessage> poll(String adapterMailboxKey,
                                    int maxItems,
                                    long timeoutMillis) throws InterruptedException;
 }

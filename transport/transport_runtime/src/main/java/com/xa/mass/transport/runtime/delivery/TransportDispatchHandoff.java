@@ -9,11 +9,11 @@ import java.util.List;
  */
 public interface TransportDispatchHandoff {
 
-    List<DispatchOutcome> offer(DispatchRoutingBatch batch);
+    List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch);
 
-    List<DispatchRoutingItem> poll(String adapterMailboxKey,
-                                   int maxItems,
-                                   long timeoutMillis) throws InterruptedException;
+    List<DispatchMessage> poll(String adapterMailboxKey,
+                               int maxItems,
+                               long timeoutMillis) throws InterruptedException;
 
     void shutdown();
 }

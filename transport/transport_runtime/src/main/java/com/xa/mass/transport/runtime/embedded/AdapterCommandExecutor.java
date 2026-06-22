@@ -1,7 +1,7 @@
 package com.xa.mass.transport.runtime.embedded;
 
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 
 import java.util.List;
 
@@ -15,5 +15,5 @@ import java.util.List;
 @FunctionalInterface
 public interface AdapterCommandExecutor {
 
-    List<DispatchOutcome> dispatch(List<DispatchRoutingItem> items);
+    List<DispatchOutcome> dispatch(List<DispatchMessage> items);
 }

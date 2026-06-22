@@ -18,12 +18,11 @@ import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerAvailability;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingBatch;
-import com.xa.mass.transport.runtime.delivery.DispatchRoutingItem;
+import com.xa.mass.transport.runtime.delivery.AdapterMailboxDispatchBatch;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
-import com.xa.mass.transport.routing.RoutingTarget;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
@@ -84,7 +83,7 @@ class MassApplicationDistributedTransportTest {
             ));
 
             assertEquals(1, handoff.submitted.size());
-            DispatchRoutingBatch firstBatch = handoff.submitted.get(0);
+            AdapterMailboxDispatchBatch firstBatch = handoff.submitted.get(0);
             assertEquals(adapterMailboxKey(), firstBatch.adapterMailboxKey());
             assertEquals(List.of("msg-1", "msg-2"), messages(firstBatch));
             assertEquals("worker-1", firstBatch.items().getFirst().selectedWorkerId());
@@ -281,19 +280,19 @@ class MassApplicationDistributedTransportTest {
         );
     }
 
-    private static DispatchRoutingBatch deliveryBatch(String messageId, String workerId) {
+    private static AdapterMailboxDispatchBatch deliveryBatch(String messageId, String workerId) {
         return deliveryBatch(messageId, workerId, adapterMailboxKey());
     }
 
-    private static DispatchRoutingBatch deliveryBatch(String messageId, String workerId, String adapterMailboxKey) {
-        DispatchRoutingItem item = dispatchItem(messageId, workerId);
-        return new DispatchRoutingBatch(RoutingTarget.adapterMailbox(adapterMailboxKey), List.of(item));
+    private static AdapterMailboxDispatchBatch deliveryBatch(String messageId, String workerId, String adapterMailboxKey) {
+        DispatchMessage item = dispatchItem(messageId, workerId);
+        return new AdapterMailboxDispatchBatch(adapterMailboxKey, List.of(item));
     }
 
-    private static DispatchRoutingItem dispatchItem(String messageId, String workerId) {
+    private static DispatchMessage dispatchItem(String messageId, String workerId) {
         TaskDispatchBinding binding = binding(messageId, workerId);
         String commandId = "cmd-" + messageId;
-        return new DispatchRoutingItem(
+        return new DispatchMessage(
                 commandId,
                 workerId,
                 new TaskDispatchPayloadEncoder().encode(context(), binding, workerId),
@@ -307,7 +306,7 @@ class MassApplicationDistributedTransportTest {
         return "websocket";
     }
 
-    private static List<String> messages(DispatchRoutingBatch batch) {
+    private static List<String> messages(AdapterMailboxDispatchBatch batch) {
         return batch == null
                 ? List.of()
                 : batch.items().stream()
@@ -316,7 +315,7 @@ class MassApplicationDistributedTransportTest {
                 .toList();
     }
 
-    private static List<String> messages(List<DispatchRoutingItem> items) {
+    private static List<String> messages(List<DispatchMessage> items) {
         return items == null
                 ? List.of()
                 : items.stream()
@@ -337,7 +336,7 @@ class MassApplicationDistributedTransportTest {
         return false;
     }
 
-    private static DispatchOutcome outcome(DispatchRoutingItem item,
+    private static DispatchOutcome outcome(DispatchMessage item,
                                            DispatchOutcomeStatus status,
                                            boolean retryable,
                                            String reason) {
@@ -375,10 +374,10 @@ class MassApplicationDistributedTransportTest {
     }
 
     private static final class CapturingDeliveryCommandHandoff implements TransportDispatchHandoff {
-        private final List<DispatchRoutingBatch> submitted = new ArrayList<>();
+        private final List<AdapterMailboxDispatchBatch> submitted = new ArrayList<>();
 
         @Override
-        public List<DispatchOutcome> offer(DispatchRoutingBatch batch) {
+        public List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch) {
             submitted.add(batch);
             return batch.items().stream()
                     .map(item -> outcome(item, DispatchOutcomeStatus.QUEUED, false, null))
@@ -386,7 +385,7 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public List<DispatchRoutingItem> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
+        public List<DispatchMessage> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
             return List.of();
         }
 
@@ -397,7 +396,7 @@ class MassApplicationDistributedTransportTest {
 
     private static final class LocalDeliveryCommandHandoff implements TransportDispatchHandoff,
             AdapterMailboxConsumerRegistry {
-        private final Queue<DispatchRoutingBatch> batches = new ConcurrentLinkedQueue<>();
+        private final Queue<AdapterMailboxDispatchBatch> batches = new ConcurrentLinkedQueue<>();
         private final List<AdapterMailboxConsumerAvailability> claimedConsumers =
                 Collections.synchronizedList(new ArrayList<>());
         private final List<AdapterMailboxConsumerAvailability> releasedConsumers =
@@ -407,12 +406,12 @@ class MassApplicationDistributedTransportTest {
         private LocalDeliveryCommandHandoff() {
         }
 
-        private void enqueue(DispatchRoutingBatch batch) {
+        private void enqueue(AdapterMailboxDispatchBatch batch) {
             batches.add(batch);
         }
 
         @Override
-        public List<DispatchOutcome> offer(DispatchRoutingBatch batch) {
+        public List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch) {
             if (!running) {
                 return batch.items().stream()
                         .map(item -> outcome(item, DispatchOutcomeStatus.SHUTDOWN, true, "handoff is stopped"))
@@ -425,10 +424,10 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public List<DispatchRoutingItem> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) throws InterruptedException {
+        public List<DispatchMessage> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) throws InterruptedException {
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
             do {
-                DispatchRoutingBatch local = pollForMailbox(adapterMailboxKey);
+                AdapterMailboxDispatchBatch local = pollForMailbox(adapterMailboxKey);
                 if (local != null) {
                     return local.items().stream().limit(maxItems).toList();
                 }
@@ -440,8 +439,8 @@ class MassApplicationDistributedTransportTest {
             return List.of();
         }
 
-        private DispatchRoutingBatch pollForMailbox(String adapterMailboxKey) {
-            for (DispatchRoutingBatch batch : List.copyOf(batches)) {
+        private AdapterMailboxDispatchBatch pollForMailbox(String adapterMailboxKey) {
+            for (AdapterMailboxDispatchBatch batch : List.copyOf(batches)) {
                 if (adapterMailboxKey.equals(batch.adapterMailboxKey())
                         && batches.remove(batch)) {
                     return batch;
@@ -572,9 +571,9 @@ class MassApplicationDistributedTransportTest {
         }
 
         @Override
-        public List<DispatchOutcome> dispatch(List<DispatchRoutingItem> items) {
+        public List<DispatchOutcome> dispatch(List<DispatchMessage> items) {
             List<DispatchOutcome> outcomes = new ArrayList<>();
-            for (DispatchRoutingItem item : items) {
+            for (DispatchMessage item : items) {
                 dispatchedMessageIds.add(new TaskDispatchDeliveryCorrelationCodec()
                         .decode(item.correlationRef())
                         .messageId());

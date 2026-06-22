@@ -230,7 +230,7 @@ roadmap should allow it.
 - Do not change worker selection or scheduling policy.
 - Do not add adapter process authentication, authorization, or mailbox
   ownership policy.
-- Do not implement `RoutingEnvelope` carrier convergence in this roadmap.
+- Do not implement transport carrier convergence in this roadmap.
 - Do not move result ingress or task-result decode ownership.
 - Do not introduce global worker statistics or operational dashboards.
 - Do not make transport validate worker group membership or worker capability.

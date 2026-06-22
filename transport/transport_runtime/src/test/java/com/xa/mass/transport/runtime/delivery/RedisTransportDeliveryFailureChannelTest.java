@@ -58,7 +58,7 @@ class RedisTransportDeliveryFailureChannelTest {
 
     @Test
     void failureEventRoundTripsAcrossInstances() throws Exception {
-        DispatchRoutingItem item = DispatchRoutingFixtures.item("msg-1", "worker-1");
+        DispatchMessage item = DispatchMessageFixtures.item("msg-1", "worker-1");
         TransportDeliveryFailureEvent failure = failureEvent(item, "adapter unavailable");
 
         assertTrue(writer.handle(failure));
@@ -74,8 +74,8 @@ class RedisTransportDeliveryFailureChannelTest {
 
     @Test
     void fullInboxRejectsWithoutDroppingExistingFailure() throws Exception {
-        DispatchRoutingItem first = DispatchRoutingFixtures.item("msg-1", "worker-1");
-        DispatchRoutingItem second = DispatchRoutingFixtures.item("msg-2", "worker-2");
+        DispatchMessage first = DispatchMessageFixtures.item("msg-1", "worker-1");
+        DispatchMessage second = DispatchMessageFixtures.item("msg-2", "worker-2");
 
         assertTrue(writer.handle(failureEvent(first, "first")));
         assertFalse(writer.handle(failureEvent(second, "second")));
@@ -89,7 +89,7 @@ class RedisTransportDeliveryFailureChannelTest {
 
     @Test
     void noOwnerFailureRoundTripsWithoutTargetTransportNode() throws Exception {
-        DispatchRoutingItem item = DispatchRoutingFixtures.item("msg-no-owner", "worker-1");
+        DispatchMessage item = DispatchMessageFixtures.item("msg-no-owner", "worker-1");
 
         assertTrue(writer.handle(failureEvent(
                 item,
@@ -104,7 +104,7 @@ class RedisTransportDeliveryFailureChannelTest {
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, event.outcome().getStatus());
     }
 
-    private static TransportDeliveryFailureEvent failureEvent(DispatchRoutingItem item,
+    private static TransportDeliveryFailureEvent failureEvent(DispatchMessage item,
                                                               String reason) {
         DispatchOutcome outcome = DispatchOutcomeFactory.fromItem(
                 item,
