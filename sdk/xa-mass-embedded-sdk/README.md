@@ -478,7 +478,9 @@ view and the Boot-shell `/api/v1/runtime/queues` response. That HTTP route is
 operator/console diagnostics, not an external public SDK contract. Default
 worker/session inspection and public worker APIs must not expose transport
 internal ids such as `adapterId`, `routeKey`, `connectionId`, endpoint lease
-ids, or `deliveryQueueKey` as delivery targets. If a future
+ids, or `deliveryQueueKey` as delivery targets. `runtimeDiagnostics()` does not
+provide session or endpoint get-all inventories; worker reachability and lock
+labels should come from worker/admission owners for the selected subjects. If a future
 operator-only detail endpoint needs raw transport ids, it must be a bounded
 diagnostic surface and explicitly documented as non-contractual. Delivery-store diagnostics also expose
 `app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is a legacy

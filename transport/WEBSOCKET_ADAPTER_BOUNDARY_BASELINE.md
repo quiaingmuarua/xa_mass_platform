@@ -1,6 +1,6 @@
 # WebSocket Adapter Boundary Baseline
 
-Last updated: 2026-06-18
+Last updated: 2026-06-23
 
 Status: current WebSocket adapter boundary baseline.
 
@@ -37,7 +37,6 @@ Current code centers on:
 - `WebSocketSessionEvidenceDriver`
 - `WebSocketSessionRefreshLoop`
 - `WebSocketRawWorkerRouteEndpointRegistry`
-- `WebSocketEndpointInspector`
 - `WebSocketJsonFrameParser`
 - `WebSocketSessionOpenFrameReader`
 - `WebSocketResultIngressFrameReader`
@@ -105,8 +104,9 @@ Hard rules:
   register or rebind sessions
 - write assigned delivery frames directly from `DispatchMessage.payload`; do
   not route assigned dispatch through a generic task-frame codec
-- raw/manual route sending and endpoint diagnostics are explicit side roles
-  backed by session store snapshots; they are not assigned-delivery fallbacks
+- raw/manual route sending is an explicit side role backed by adapter-local
+  session lookup; it is not an assigned-delivery fallback and must not publish
+  endpoint snapshot views
 - endpoint address and route-style fields are raw/manual or diagnostic
   metadata only; they are not the WebSocket assigned-delivery lookup key
 - keep bootstrap defaults inside adapter-owned support code

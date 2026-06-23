@@ -9,8 +9,6 @@ import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.socket.dispatcher.SocketTaskDispatchChannel;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.server.SocketTransportServer;
-import com.xa.mass.transport.socket.session.SocketEndpointInspector;
-import com.xa.mass.transport.socket.session.SocketRawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
 
 /**
@@ -36,8 +34,6 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
         String adapterMailboxKey = context.mailbox().assignedMailboxKey();
         SocketSessionManager sessionManager = resolveSessionManager(context, adapterMailboxKey);
-        SocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
-                new SocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionManager);
         SocketTransportFrameCodec frameCodec = new SocketTransportFrameCodec();
 
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
@@ -59,9 +55,8 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
             ));
             contribution.addRawWorkerMessageChannel(new SocketRawWorkerMessageChannel(
                     config.getAdapterId(),
-                    rawRouteEndpointRegistry
+                    sessionManager
             ));
-            contribution.addEndpointInspector(new SocketEndpointInspector(sessionManager));
         }
         if (config.isServerEnabled()) {
             contribution.addTransportServer(new SocketTransportServer(
@@ -90,11 +85,11 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
     private static final class SocketRawWorkerMessageChannel implements RawWorkerMessageChannel {
 
         private final String adapterId;
-        private final com.xa.mass.transport.RawWorkerRouteEndpointRegistry sessionManager;
+        private final SocketSessionManager sessionManager;
 
         private SocketRawWorkerMessageChannel(
                 String adapterId,
-                com.xa.mass.transport.RawWorkerRouteEndpointRegistry sessionManager) {
+                SocketSessionManager sessionManager) {
             this.adapterId = adapterId;
             this.sessionManager = sessionManager;
         }
@@ -105,8 +100,8 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         }
 
         @Override
-        public void sendToAdapterRoute(String routeKey, String rawJson, String traceId) {
-            sessionManager.sendToAdapterRoute(adapterId(), routeKey, rawJson);
+        public boolean sendToWorker(String workerId, String rawJson, String traceId) {
+            return sessionManager.sendToWorker(workerId, rawJson);
         }
     }
 }

@@ -1,6 +1,5 @@
 package com.xa.mass.transport.socket.session;
 
-import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.runtime.RouteEndpointIndex;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import org.slf4j.Logger;
@@ -9,7 +8,6 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -208,21 +206,6 @@ public final class SocketSessionManager {
         for (SocketWorkerEndpoint endpoint : endpoints) {
             closeQuietly(endpoint);
         }
-    }
-
-    public List<WorkerEndpointSnapshot> listEndpointSnapshots() {
-        List<WorkerEndpointSnapshot> snapshots = new ArrayList<>();
-        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entries()) {
-            SocketWorkerEndpoint endpoint = entry.endpoint();
-            snapshots.add(new WorkerEndpointSnapshot(
-                    entry.routeKey(),
-                    entry.workerId(),
-                    endpoint != null && endpoint.isActive(),
-                    endpoint != null ? endpoint.endpointId() : null,
-                    adapterId
-            ));
-        }
-        return List.copyOf(snapshots);
     }
 
     public String getAdapterId() {

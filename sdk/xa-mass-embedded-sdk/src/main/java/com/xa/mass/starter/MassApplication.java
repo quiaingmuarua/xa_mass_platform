@@ -22,7 +22,6 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
-import com.xa.mass.transport.runtime.CompositeWorkerEndpointInspector;
 import com.xa.mass.transport.runtime.EmbeddedAdapterHostSet;
 import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
@@ -44,8 +43,6 @@ import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureInboxPump;
-import com.xa.mass.transport.WorkerEndpointInspector;
-import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
@@ -58,11 +55,9 @@ import org.slf4j.MDC;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -85,7 +80,6 @@ public class MassApplication {
 
     private final MassEngine engine;
     private MessageTransporter<String, TransportOutboundMessage> messageTransporter;
-    private WorkerEndpointInspector endpointInspector;
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportEndpointLeaseStore endpointLeaseStore;
     private TransportDispatchHandoff transportDispatchHandoff;
@@ -224,9 +218,6 @@ public class MassApplication {
             rawWorkerMessageChannelsByAdapterId.clear();
             embeddedAdapterHostSet = EmbeddedAdapterHostSet.empty();
             startEventRuntimeTaskExecutor();
-            endpointInspector = new CompositeWorkerEndpointInspector();
-            logger.info("Worker endpoint inspector initialized");
-
             messageTransporter = transportRuntimeComposition.createMessageTransporterIfConfigured();
             if (messageTransporter != null) {
                 logger.info("Message transporter created");
@@ -597,22 +588,6 @@ public class MassApplication {
         }
     }
 
-    private void registerWorkerEndpointInspector(WorkerEndpointInspector inspector) {
-        if (inspector == null) {
-            return;
-        }
-        if (endpointInspector instanceof CompositeWorkerEndpointInspector composite) {
-            composite.register(inspector);
-            return;
-        }
-        CompositeWorkerEndpointInspector composite = new CompositeWorkerEndpointInspector();
-        if (endpointInspector != null) {
-            composite.register(endpointInspector);
-        }
-        composite.register(inspector);
-        endpointInspector = composite;
-    }
-
     private void registerTransportAdapterContribution(TransportAdapterContribution contribution,
                                                       List<TransportBinding> adapterBindings,
                                                       List<TransportAdapterContribution> adapterContributions) {
@@ -623,9 +598,6 @@ public class MassApplication {
         adapterBindings.addAll(next.getTransportBindings());
         for (RawWorkerMessageChannel rawWorkerMessageChannel : next.getRawWorkerMessageChannels()) {
             registerRawWorkerMessageChannel(rawWorkerMessageChannel);
-        }
-        for (WorkerEndpointInspector inspector : next.getEndpointInspectors()) {
-            registerWorkerEndpointInspector(inspector);
         }
     }
 
@@ -705,13 +677,11 @@ public class MassApplication {
         if (rawWorkerMessageChannel == null) {
             return false;
         }
-        String routeKey = resolveRawMessageRouteKey(normalizedWorkerId, workerAdapterId);
-        if (routeKey == null) {
-            logger.debug("Skip raw transport side-channel because no unique active route is available: workerId={}, adapterId={}",
+        if (!rawWorkerMessageChannel.sendToWorker(normalizedWorkerId, rawJson, traceId)) {
+            logger.debug("Skip raw transport side-channel because no active worker session is available: workerId={}, adapterId={}",
                     normalizedWorkerId, workerAdapterId);
             return false;
         }
-        rawWorkerMessageChannel.sendToAdapterRoute(routeKey, rawJson, traceId);
         return true;
     }
 
@@ -792,30 +762,6 @@ public class MassApplication {
         return TRANSPORT_JSON.toJson(frame);
     }
 
-    private String resolveRawMessageRouteKey(String workerId, String adapterId) {
-        WorkerEndpointInspector inspector = endpointInspector;
-        if (inspector == null || adapterId == null || adapterId.isBlank()) {
-            return null;
-        }
-        Set<String> routeKeys = new LinkedHashSet<>();
-        for (WorkerEndpointSnapshot snapshot : inspector.listWorkerEndpoints()) {
-            if (snapshot == null || !snapshot.isActive()) {
-                continue;
-            }
-            if (!workerId.equals(snapshot.getWorkerId())) {
-                continue;
-            }
-            if (!adapterId.equalsIgnoreCase(snapshot.getAdapterId())) {
-                continue;
-            }
-            String routeKey = snapshot.getRouteKey();
-            if (routeKey != null && !routeKey.isBlank()) {
-                routeKeys.add(routeKey.trim());
-            }
-        }
-        return routeKeys.size() == 1 ? routeKeys.iterator().next() : null;
-    }
-
     public Map<String, Object> getTransportQueueDetail() {
         int inputSize = safeInputQueueSize(messageTransporter);
         int outputSize = safeOutputQueueSize(messageTransporter);
@@ -826,10 +772,6 @@ public class MassApplication {
                 transportRuntimeTaskExecutor,
                 eventRuntimeTaskExecutor
         );
-    }
-
-    public WorkerEndpointInspector getEndpointInspector() {
-        return endpointInspector;
     }
 
     public TransportRuntimeRegistry getTransportRuntimeRegistry() {

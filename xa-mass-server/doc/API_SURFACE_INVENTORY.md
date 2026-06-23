@@ -6,7 +6,7 @@ The implementation roadmap has been archived. Use this inventory, current
 server code, and `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` as current API
 surface truth.
 
-Current code snapshot date: 2026-06-06.
+Current code snapshot date: 2026-06-23.
 
 This inventory is the route-category owner truth used by server route boundary
 guards. Keep route rows machine-readable: `Method` and `Route` must stay in the
@@ -19,12 +19,11 @@ The following decisions are required before API-1/API-2 execution:
 - `GET /api/v1/tasks` remains `public-sdk-read` for now because `TaskClient.list`
   and the frontend task table both call it. It is bounded by query filters and
   list limits, and API-5 owns any later narrowing.
-- Console diagnostics remain under `/api/v1/runtime/**` for now, but only as
-  `console-diagnostics` with operator permission. API-3 bounded response
-  payloads for session/worker/state/command list diagnostics. The current
-  embedded diagnostics/query interfaces still read live owner lists before the
-  server response window is applied; replacing those with paged owner reads is a
-  future diagnostics-interface hardening item, not public API truth.
+- Console diagnostics remain under `/api/v1/runtime/**` only when they are
+  targeted or aggregate. Generic session, endpoint, connection, and transport
+  inventory routes are not valid runtime diagnostics even when response-windowed.
+  Worker/state/command list endpoints are product/operator read models and must
+  use owner-scoped facts instead of hidden all-id diagnostics helpers.
 - Worker command list/get are current operator diagnostics and stay
   `console-diagnostics` until API-4 proves a durable command/history read model
   or removes them.
@@ -62,7 +61,7 @@ Deferred decisions:
 | GET | /api/v1/catalog/events | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded catalog read | frontend, SDK users | keep |
 | GET | /api/v1/catalog/events/{eventCode} | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded catalog read | frontend, SDK users | keep |
 | GET | /api/v1/catalog/event-capabilities | CatalogController | public-sdk-read | SDK credential bypass | control-plane catalog | keep; bounded capability read | frontend, SDK users | keep |
-| GET | /api/v1/catalog/worker-capabilities | CatalogController | console-diagnostics | SDK credential bypass | capability diagnostics | bound; joins worker declaration, WorkerGroup capability truth, runtime reachability, and lock snapshots with source-labeled fields; session diagnostics stay on explicit diagnostic routes | frontend | keep as diagnostics |
+| GET | /api/v1/catalog/worker-capabilities | CatalogController | console-diagnostics | SDK credential bypass | capability diagnostics | bounded product read model; joins worker declaration, WorkerGroup capability truth, and targeted worker runtime/admission facts with source-labeled fields; does not consume session diagnostics or hidden all-id runtime helpers | frontend | keep as diagnostics |
 | GET | /api/v1/catalog/worker-group-capabilities | CatalogController | public-sdk-read | SDK credential bypass | WorkerGroup capability owner | keep; bounded capability read | frontend, SDK users | keep |
 | GET | /api/v1/tasks | TaskApiController | public-sdk-read | SDK credential bypass or TASK_VIEW | task shell owner | bounded list window and filters | TaskClient, frontend | keep; future split needs caller decision |
 | POST | /api/v1/tasks | TaskApiController | public-sdk-ingress | SDK credential bypass or TASK_CREATE | task shell owner | keep; shell create intent | TaskClient, frontend | keep; response uses shell-only task object |
@@ -84,9 +83,7 @@ Deferred decisions:
 | GET | /api/v1/runtime/config/projects | GlobalConfigController | console-diagnostics | WORKER_VIEW | console config diagnostics | keep; bounded config list | frontend | keep console-only |
 | GET | /api/v1/runtime/queues | QueueController | console-diagnostics | WORKER_VIEW | transport diagnostics | aggregate/detail map; prefer `/metrics` for cheap polling | server docs/tests | keep diagnostics |
 | GET | /api/v1/runtime/queues/metrics | QueueController | console-diagnostics | WORKER_VIEW | transport diagnostics | keep; prefer aggregate metrics | server docs/tests | keep diagnostics |
-| GET | /api/v1/runtime/sessions | SessionController | console-diagnostics | WORKER_VIEW | transport diagnostics | response-bound by `limit` default 200 max 500; underlying live list still scans current sessions | server docs/tests | keep diagnostics |
-| GET | /api/v1/runtime/sessions:stats | SessionController | console-diagnostics | WORKER_VIEW | transport diagnostics | keep; aggregate stats | server docs/tests | keep diagnostics |
-| GET | /api/v1/runtime/workers | WorkerApiController | console-diagnostics | WORKER_VIEW | worker/resource diagnostics | response-bound by `limit` default 200 max 500; joins worker/runtime/transport state | frontend | keep diagnostics |
+| GET | /api/v1/runtime/workers | WorkerApiController | console-diagnostics | WORKER_VIEW | worker/resource diagnostics | response-bound by `limit` default 200 max 500; joins worker/resource state with targeted reachability and lock facts for the selected rows | frontend | keep diagnostics |
 | GET | /api/v1/runtime/workers/{workerId}/state | WorkerApiController | console-diagnostics | WORKER_VIEW | worker state diagnostics | keep; bounded read projection | tests, console candidate | keep diagnostics |
 | GET | /api/v1/runtime/workers/states | WorkerApiController | console-diagnostics | WORKER_VIEW | worker state diagnostics | response-bound by `limit` default 200 max 500 | server docs/tests | keep diagnostics |
 | POST | /api/v1/runtime/workers/{workerId}/commands | WorkerApiController | operator-command | WORKER_EDIT | worker command owner | keep if command intent is product-valued | server E2E | keep operator command |
@@ -148,7 +145,8 @@ Deferred decisions:
 | `POST /api/v1/runtime/workers/{workerId}/state-reports` | removed from `WorkerApiController` | duplicate worker self-report write | use `/worker-api/v1/workers/{workerId}:report-runtime-evidence` |
 | `POST /api/v1/runtime/workers/{workerId}/commands/{commandId}/ack` | removed from `WorkerApiController` | duplicate worker data-plane ack | use `/worker-api/v1/workers/{workerId}/commands/{commandId}:ack` |
 | `/internal/v1/debug/task-invocations:sync` SDK auth bypass | `ApiRouteAuthorizationCatalog` | fixed by operator-only route catalog and controller-side SDK credential rejection | keep guarded |
-| `/api/v1/runtime/**` list/detail snapshots | runtime diagnostics controllers | live runtime read cost risk | kept as operator/console diagnostics only; list responses are windowed, while owner SDK pagination remains deferred |
+| `GET /api/v1/runtime/sessions`, `GET /api/v1/runtime/sessions:stats` | removed `SessionController` routes | generic session get-all diagnostics | removed; future session or adapter inventory requires a separate owner-specific product decision |
+| `/api/v1/runtime/**` list/detail snapshots | runtime diagnostics controllers | live runtime read cost risk | allowed only for owner-targeted or aggregate read models; response windowing alone is not an acceptable diagnostic boundary |
 
 ## Model Shape Notes
 

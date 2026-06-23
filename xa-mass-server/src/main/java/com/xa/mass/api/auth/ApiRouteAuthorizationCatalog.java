@@ -219,9 +219,6 @@ public class ApiRouteAuthorizationCatalog {
         if (uri.startsWith("/api/v1/runtime/queues") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
-        if (uri.startsWith("/api/v1/runtime/sessions") && "GET".equals(method)) {
-            return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
-        }
         if (uri.equals("/api/v1/runtime/config/projects") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }

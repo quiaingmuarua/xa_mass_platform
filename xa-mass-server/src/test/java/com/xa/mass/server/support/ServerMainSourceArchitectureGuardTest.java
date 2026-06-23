@@ -988,6 +988,35 @@ class ServerMainSourceArchitectureGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void runtimeDiagnosticsDoNotExposeGlobalSessionOrWorkerIdInventories() throws IOException {
+        Path runtimeDiagnostics = REPO_ROOT.resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/RuntimeDiagnosticsOperations.java");
+        Path workerInspection = REPO_ROOT.resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/WorkerInspectionOperations.java");
+        Path routeCatalog = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/api/auth/ApiRouteAuthorizationCatalog.java");
+        String runtimeDiagnosticsSource = Files.readString(runtimeDiagnostics, StandardCharsets.UTF_8);
+        String workerInspectionSource = Files.readString(workerInspection, StandardCharsets.UTF_8);
+        String routeCatalogSource = Files.readString(routeCatalog, StandardCharsets.UTF_8);
+
+        assertTrue(!runtimeDiagnosticsSource.contains("listSessions(")
+                        && !runtimeDiagnosticsSource.contains("getSessionStats(")
+                        && !runtimeDiagnosticsSource.contains("listLockedWorkerIds("),
+                "RuntimeDiagnosticsOperations must not expose generic session or all-worker-id inventories");
+        assertTrue(!workerInspectionSource.contains("listReachableWorkerIds("),
+                "WorkerInspectionOperations must use targeted reachability, not a global reachable-worker-id inventory");
+        assertTrue(!Files.exists(SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/internal/SessionController.java")),
+                "generic runtime SessionController must not reappear");
+        assertTrue(!routeCatalogSource.contains("/api/v1/runtime/sessions"),
+                "route authorization must not preserve generic runtime session diagnostics");
+
+        Set<String> controllerRoutes = collectControllerApiRoutes();
+        assertTrue(!controllerRoutes.contains("GET /api/v1/runtime/sessions")
+                        && !controllerRoutes.contains("GET /api/v1/runtime/sessions:stats"),
+                "server controllers must not expose runtime session get-all diagnostics");
+    }
+
     private static void collectViolations(Path path, List<String> violations) {
         String source;
         try {

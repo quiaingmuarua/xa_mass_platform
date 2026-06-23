@@ -21,7 +21,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Comparator;
-import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -227,24 +226,13 @@ public class CatalogController {
         if (workerQueries == null || workers == null || workers.isEmpty()) {
             return Set.of();
         }
-        Set<String> visibleWorkerIds = workers.stream()
+        return workers.stream()
                 .filter(Objects::nonNull)
                 .map(WorkerSnapshot::getWorkerId)
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(workerId -> !workerId.isEmpty())
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        if (visibleWorkerIds.isEmpty()) {
-            return Set.of();
-        }
-        List<String> reachableWorkerIds = workerQueries.listReachableWorkerIds();
-        if (reachableWorkerIds == null || reachableWorkerIds.isEmpty()) {
-            return Set.of();
-        }
-        return reachableWorkerIds.stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(visibleWorkerIds::contains)
+                .filter(workerQueries::isWorkerReachable)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
@@ -382,14 +370,13 @@ public class CatalogController {
         if (runtimeDiagnostics == null || workers == null || workers.isEmpty()) {
             return Set.of();
         }
-        List<String> lockedWorkerIds = runtimeDiagnostics.listLockedWorkerIds();
-        if (lockedWorkerIds == null || lockedWorkerIds.isEmpty()) {
-            return Set.of();
-        }
-        return lockedWorkerIds.stream()
+        return workers.stream()
+                .filter(Objects::nonNull)
+                .map(WorkerSnapshot::getWorkerId)
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(workerId -> !workerId.isEmpty())
+                .filter(runtimeDiagnostics::isWorkerLocked)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 

@@ -86,14 +86,6 @@ class ApiAuthInterceptorTest {
     }
 
     @Test
-    void anonymousUserCannotReachSessionDiagnostics() throws Exception {
-        mockMvc.perform(get("/api/v1/runtime/sessions")
-                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(401));
-    }
-
-    @Test
     void authenticatedUserCanLoadMe() throws Exception {
         mockMvc.perform(get("/api/v1/auth/me"))
                 .andExpect(status().isOk())
@@ -515,12 +507,6 @@ class ApiAuthInterceptorTest {
         @GetMapping("/api/v1/runtime/queues")
         @ResponseBody
         public Map<String, Object> queueStatus() {
-            return Map.of("ok", true);
-        }
-
-        @GetMapping("/api/v1/runtime/sessions")
-        @ResponseBody
-        public Map<String, Object> sessionList() {
             return Map.of("ok", true);
         }
 

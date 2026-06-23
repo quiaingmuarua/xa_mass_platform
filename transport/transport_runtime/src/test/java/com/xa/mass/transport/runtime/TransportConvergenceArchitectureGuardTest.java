@@ -199,7 +199,10 @@ class TransportConvergenceArchitectureGuardTest {
     void pushAssignedDeliveryDoesNotExposeGenericWorkerEndpointRegistry() {
         assertPathsDoNotExist(
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointRegistry.java"),
-                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointRegistry.java")
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointInspector.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointSnapshot.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointRegistry.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointInspector.java")
         );
     }
 
@@ -816,6 +819,9 @@ class TransportConvergenceArchitectureGuardTest {
                 "WebSocket session store must keep direct worker/channel/endpoint indexes instead of a route-oriented wrapper");
         assertTrue(!sessionStoreSource.contains("ChannelHandlerContext"),
                 "WebSocket session store must not retain unused Netty handler context");
+        assertTrue(!sessionStoreSource.contains("WorkerEndpointSnapshot")
+                        && !sessionStoreSource.contains("endpointSnapshots("),
+                "WebSocket session store must not expose endpoint snapshot diagnostics views");
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionRecord.java"));
         assertPathsDoNotExist(repoRoot().resolve(
@@ -846,8 +852,8 @@ class TransportConvergenceArchitectureGuardTest {
         assertTrue(!socketDispatchSource.contains("sendToSelectedWorker(\n                            adapterId()")
                         && !socketDispatchSource.contains("sendToSelectedWorker(\r\n                            adapterId()"),
                 "Socket assigned delivery must not pass adapterId into selected-worker endpoint send");
-        Path endpointInspector = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketEndpointInspector.java");
-        assertTrue(Files.exists(endpointInspector), "WebSocket diagnostics must live in a dedicated inspector");
+        assertPathsDoNotExist(repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketEndpointInspector.java"));
         Path serverFactoryContext = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketServerFactoryContext.java");
         String serverFactoryContextSource = Files.readString(serverFactoryContext);
         assertTrue(!serverFactoryContextSource.contains("getEndpointRegistry("),
@@ -907,24 +913,31 @@ class TransportConvergenceArchitectureGuardTest {
                 "SocketSessionManager must not implement diagnostics inspector");
         assertTrue(!sessionManagerSource.contains("listWorkerEndpoints("),
                 "SocketSessionManager must not expose diagnostics inspector methods directly");
-        Path endpointInspector = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketEndpointInspector.java");
-        assertTrue(Files.exists(endpointInspector), "Socket diagnostics must live in a dedicated inspector");
+        assertTrue(!sessionManagerSource.contains("WorkerEndpointSnapshot")
+                        && !sessionManagerSource.contains("listEndpointSnapshots("),
+                "SocketSessionManager must not expose endpoint snapshot diagnostics views");
+        assertPathsDoNotExist(repoRoot().resolve(
+                "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketEndpointInspector.java"));
     }
 
     @Test
-    void endpointCompositeDoesNotOwnRawRouteOrDiagnosticsRoles() throws IOException {
-        Path endpointComposite = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointRegistry.java");
-        assertPathsDoNotExist(endpointComposite);
-
-        Path inspectorComposite = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointInspector.java");
-        String inspectorCompositeSource = Files.readString(inspectorComposite);
-        assertTrue(inspectorCompositeSource.contains("implements WorkerEndpointInspector"),
-                "Endpoint diagnostics must live in the dedicated inspector composite");
-
+    void endpointSnapshotViewDoesNotOwnRawRouteOrDiagnosticsRoles() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointRegistry.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointInspector.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointInspector.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointSnapshot.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketEndpointInspector.java"),
+                repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketEndpointInspector.java")
+        );
         Path massApplication = repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java");
         String massApplicationSource = Files.readString(massApplication);
         assertTrue(!massApplicationSource.contains("endpointRegistry instanceof WorkerEndpointInspector"),
                 "MassApplication must not discover endpoint diagnostics through endpoint registry side roles");
+        assertTrue(!massApplicationSource.contains("listWorkerEndpoints(")
+                        && !massApplicationSource.contains("resolveRawMessageRouteKey(")
+                        && !massApplicationSource.contains("getEndpointInspector("),
+                "MassApplication must not resolve raw routes through endpoint snapshot diagnostics");
     }
 
     @Test

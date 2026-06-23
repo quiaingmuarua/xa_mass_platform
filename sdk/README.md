@@ -41,6 +41,10 @@ Global boundary guard:
   seams such as local adapter bootstraps or runtime factories. Those are
   in-process JVM extension points only; they are not external worker APIs,
   server worker APIs, or future cross-language adapter contracts.
+- Embedded runtime diagnostics are not a session or endpoint inventory API.
+  Keep diagnostics aggregate, targeted, or owner-local debug; product worker
+  reads that need reachability or lock labels should use owner-scoped worker
+  facts for the selected subjects.
 - Public HTTP wire DTOs belong in `xa-mass-public-contract` only when the owning
   Controller method and route role are documented by
   `xa-mass-public-contract`.

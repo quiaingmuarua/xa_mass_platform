@@ -1,7 +1,6 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.TransportServer;
-import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.runtime.embedded.AdapterMailboxConsumer;
 
 import java.util.ArrayList;
@@ -13,8 +12,8 @@ import java.util.Objects;
  *
  * <p>Runtime inputs live in {@link TransportAdapterBootstrapContext}. This
  * contribution object owns adapter-produced runtime outputs so bootstrap
- * assembly cannot silently overwrite bindings, servers, raw side-channels, or
- * diagnostics in mutable context state.
+ * assembly cannot silently overwrite bindings, servers, or raw side-channels
+ * in mutable context state.
  */
 public final class TransportAdapterContribution {
 
@@ -25,7 +24,6 @@ public final class TransportAdapterContribution {
     private final List<ManagedTransportAdapter> managedTransportAdapters;
     private final List<TransportServer> transportServers;
     private final List<RawWorkerMessageChannel> rawWorkerMessageChannels;
-    private final List<WorkerEndpointInspector> endpointInspectors;
 
     private TransportAdapterContribution(Builder builder) {
         this.transportBindings = List.copyOf(builder.transportBindings);
@@ -33,7 +31,6 @@ public final class TransportAdapterContribution {
         this.managedTransportAdapters = List.copyOf(builder.managedTransportAdapters);
         this.transportServers = List.copyOf(builder.transportServers);
         this.rawWorkerMessageChannels = List.copyOf(builder.rawWorkerMessageChannels);
-        this.endpointInspectors = List.copyOf(builder.endpointInspectors);
     }
 
     public static TransportAdapterContribution empty() {
@@ -62,10 +59,6 @@ public final class TransportAdapterContribution {
 
     public List<RawWorkerMessageChannel> getRawWorkerMessageChannels() {
         return rawWorkerMessageChannels;
-    }
-
-    public List<WorkerEndpointInspector> getEndpointInspectors() {
-        return endpointInspectors;
     }
 
     public void validateAgainst(TransportAdapterDescriptor descriptor, String assignedMailboxKey) {
@@ -112,7 +105,6 @@ public final class TransportAdapterContribution {
         private final List<ManagedTransportAdapter> managedTransportAdapters = new ArrayList<>();
         private final List<TransportServer> transportServers = new ArrayList<>();
         private final List<RawWorkerMessageChannel> rawWorkerMessageChannels = new ArrayList<>();
-        private final List<WorkerEndpointInspector> endpointInspectors = new ArrayList<>();
 
         public Builder addTransportBinding(TransportBinding binding) {
             if (binding != null) {
@@ -145,13 +137,6 @@ public final class TransportAdapterContribution {
         public Builder addRawWorkerMessageChannel(RawWorkerMessageChannel channel) {
             if (channel != null) {
                 rawWorkerMessageChannels.add(channel);
-            }
-            return this;
-        }
-
-        public Builder addEndpointInspector(WorkerEndpointInspector inspector) {
-            if (inspector != null) {
-                endpointInspectors.add(inspector);
             }
             return this;
         }

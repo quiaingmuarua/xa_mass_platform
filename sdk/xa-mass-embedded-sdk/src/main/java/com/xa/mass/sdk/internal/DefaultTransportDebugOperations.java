@@ -30,7 +30,7 @@ public final class DefaultTransportDebugOperations extends DefaultRuntimeDiagnos
                 UUID.randomUUID().toString()
         );
         if (!accepted) {
-            return Map.of("success", false, "msg", "no transport side-channel accepted a unique active worker route");
+            return Map.of("success", false, "msg", "no transport side-channel accepted the worker message");
         }
         return Map.of("success", true, "msg", "message enqueued");
     }

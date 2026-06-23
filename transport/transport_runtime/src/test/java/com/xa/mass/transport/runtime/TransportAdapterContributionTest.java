@@ -1,7 +1,6 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.TransportServer;
-import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.runtime.embedded.AdapterMailboxConsumer;
 import org.junit.jupiter.api.Test;
@@ -22,7 +21,6 @@ class TransportAdapterContributionTest {
         TransportServer server = server();
         AdapterMailboxConsumer mailboxConsumer = mailboxConsumer("mailbox-a");
         RawWorkerMessageChannel rawChannel = rawChannel("ws-public");
-        WorkerEndpointInspector inspector = List::of;
 
         TransportAdapterContribution contribution = TransportAdapterContribution.builder()
                 .addTransportBinding(bindingOne)
@@ -31,7 +29,6 @@ class TransportAdapterContributionTest {
                 .addAdapterMailboxConsumer(mailboxConsumer)
                 .addTransportServer(server)
                 .addRawWorkerMessageChannel(rawChannel)
-                .addEndpointInspector(inspector)
                 .build();
 
         assertEquals(List.of(bindingOne, bindingTwo), contribution.getTransportBindings());
@@ -39,7 +36,6 @@ class TransportAdapterContributionTest {
         assertEquals(List.of(mailboxConsumer), contribution.getAdapterMailboxConsumers());
         assertEquals(List.of(server), contribution.getTransportServers());
         assertEquals(List.of(rawChannel), contribution.getRawWorkerMessageChannels());
-        assertEquals(List.of(inspector), contribution.getEndpointInspectors());
     }
 
     @Test
@@ -210,7 +206,8 @@ class TransportAdapterContributionTest {
             }
 
             @Override
-            public void sendToAdapterRoute(String routeKey, String rawJson, String traceId) {
+            public boolean sendToWorker(String workerId, String rawJson, String traceId) {
+                return true;
             }
         };
     }

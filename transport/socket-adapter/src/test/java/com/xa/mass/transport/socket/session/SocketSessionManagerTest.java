@@ -69,7 +69,6 @@ class SocketSessionManagerTest {
         assertTrue(manager.isAdapterRouteOnline("socket-edge", "route-1"));
         assertFalse(manager.isAdapterRouteOnline("socket", "route-1"));
         assertEquals("socket-edge", manager.getAdapterId());
-        assertEquals("socket-edge", new SocketEndpointInspector(manager).listWorkerEndpoints().get(0).getAdapterId());
     }
 
     @Test

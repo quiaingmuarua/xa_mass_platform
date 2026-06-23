@@ -30,6 +30,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
@@ -92,8 +93,8 @@ class WorkerApiControllerTest {
         );
 
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
-        when(workerQueries.listReachableWorkerIds()).thenReturn(List.of("worker-001"));
-        when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of("worker-001"));
+        when(workerQueries.isWorkerReachable("worker-001")).thenReturn(true);
+        when(runtimeDiagnostics.isWorkerLocked("worker-001")).thenReturn(true);
 
         mockMvc.perform(get("/api/v1/runtime/workers"))
                 .andExpect(status().isOk())
@@ -125,8 +126,7 @@ class WorkerApiControllerTest {
         WorkerSnapshot worker1 = workerSnapshot("worker-001");
         WorkerSnapshot worker2 = workerSnapshot("worker-002");
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker1, worker2));
-        when(workerQueries.listReachableWorkerIds()).thenReturn(List.of("worker-001", "worker-002"));
-        when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of());
+        when(workerQueries.isWorkerReachable("worker-001")).thenReturn(true);
 
         mockMvc.perform(get("/api/v1/runtime/workers").param("limit", "1"))
                 .andExpect(status().isOk())
@@ -134,20 +134,22 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.limit").value(1))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].workerId").value("worker-001"));
-        verify(workerQueries, times(1)).listReachableWorkerIds();
-        verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
+        verify(workerQueries, times(1)).isWorkerReachable("worker-001");
+        verify(runtimeDiagnostics, times(1)).isWorkerLocked("worker-001");
+        verify(workerQueries, times(0)).isWorkerReachable("worker-002");
+        verify(runtimeDiagnostics, times(0)).isWorkerLocked("worker-002");
     }
 
     @Test
     void listWorkersReadsRuntimeFactsFromBoundedSnapshotsWithLargeFixture() throws Exception {
         List<WorkerSnapshot> workers = largeWorkerFixture(120, 5);
+        List<String> reachableWorkerIds = reachableWorkerIds(workers, 2);
+        List<String> lockedWorkerIds = List.of("worker-0003", "worker-0042", "worker-0099");
         when(workerQueries.getAllWorkers()).thenReturn(workers);
-        when(workerQueries.listReachableWorkerIds()).thenReturn(reachableWorkerIds(workers, 2));
-        when(runtimeDiagnostics.listLockedWorkerIds()).thenReturn(List.of(
-                "worker-0003",
-                "worker-0042",
-                "worker-0099"
-        ));
+        when(workerQueries.isWorkerReachable(anyString()))
+                .thenAnswer(invocation -> reachableWorkerIds.contains(invocation.getArgument(0)));
+        when(runtimeDiagnostics.isWorkerLocked(anyString()))
+                .thenAnswer(invocation -> lockedWorkerIds.contains(invocation.getArgument(0)));
 
         mockMvc.perform(get("/api/v1/runtime/workers"))
                 .andExpect(status().isOk())
@@ -163,8 +165,8 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[19].connections").doesNotExist());
 
         verify(workerQueries, times(1)).getAllWorkers();
-        verify(workerQueries, times(1)).listReachableWorkerIds();
-        verify(runtimeDiagnostics, times(1)).listLockedWorkerIds();
+        verify(workerQueries, times(1)).isWorkerReachable("worker-0002");
+        verify(runtimeDiagnostics, times(1)).isWorkerLocked("worker-0003");
     }
 
     @Test

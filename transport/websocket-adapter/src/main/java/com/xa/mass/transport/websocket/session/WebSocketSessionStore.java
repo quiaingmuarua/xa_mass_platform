@@ -1,6 +1,5 @@
 package com.xa.mass.transport.websocket.session;
 
-import com.xa.mass.transport.WorkerEndpointSnapshot;
 import io.netty.channel.Channel;
 
 import java.util.ArrayList;
@@ -12,14 +11,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class WebSocketSessionStore {
 
-    private final String adapterId;
     private final Map<String, Entry> recordsByWorkerId = new LinkedHashMap<>();
     private final Map<Channel, Entry> recordsByChannel = new LinkedHashMap<>();
     private final Map<String, LinkedHashMap<String, Entry>> recordsByEndpointAddress = new LinkedHashMap<>();
     private final Set<Channel> retiredChannels = ConcurrentHashMap.newKeySet();
 
     public WebSocketSessionStore(String adapterId) {
-        this.adapterId = requireText(adapterId, "adapterId").toLowerCase(java.util.Locale.ROOT);
+        requireText(adapterId, "adapterId");
     }
 
     public synchronized BindResult bind(String deliveryBucketId,
@@ -148,20 +146,6 @@ public final class WebSocketSessionStore {
 
     public synchronized int routeCount() {
         return recordsByEndpointAddress.size();
-    }
-
-    public synchronized List<WorkerEndpointSnapshot> endpointSnapshots() {
-        List<WorkerEndpointSnapshot> snapshots = new ArrayList<>();
-        for (Entry record : recordsByChannel.values()) {
-            snapshots.add(new WorkerEndpointSnapshot(
-                    record.endpointAddress(),
-                    record.workerId(),
-                    record.isActive(),
-                    record.sessionHandle(),
-                    adapterId
-            ));
-        }
-        return List.copyOf(snapshots);
     }
 
     private List<SessionRef> activeSessionRefs() {

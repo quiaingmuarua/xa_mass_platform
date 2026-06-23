@@ -1,18 +1,15 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.starter.MassApplication;
-import com.xa.mass.transport.WorkerEndpointInspector;
-import com.xa.mass.transport.WorkerEndpointSnapshot;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 /**
  * Default SDK-owned runtime diagnostics backed by the embedded runtime.
+ *
+ * <p>Adapter endpoint snapshots are intentionally not exposed here. Reachability
+ * consumers should use worker runtime evidence, not session diagnostics rows.
  */
 public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOperations {
 
@@ -20,49 +17,6 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
 
     public DefaultRuntimeDiagnosticsOperations(MassApplication delegate) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
-    }
-
-    @Override
-    public List<Map<String, Object>> listSessions() {
-        List<Map<String, Object>> data = new ArrayList<>();
-        WorkerEndpointInspector endpointInspector = resolveEndpointInspector();
-        if (endpointInspector == null) {
-            return data;
-        }
-
-        Map<String, List<WorkerEndpointSnapshot>> grouped = new HashMap<>();
-        for (WorkerEndpointSnapshot snapshot : endpointInspector.listWorkerEndpoints()) {
-            grouped.computeIfAbsent(snapshot.getWorkerId(), ignored -> new ArrayList<>()).add(snapshot);
-        }
-        grouped.forEach((workerId, endpoints) -> {
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("workerId", workerId);
-            List<Map<String, Object>> connections = new ArrayList<>();
-            endpoints.forEach(snapshot -> {
-                Map<String, Object> connectionInfo = new LinkedHashMap<>();
-                connectionInfo.put("active", snapshot.isActive());
-                connectionInfo.put("endpointId", snapshot.getEndpointId());
-                connections.add(connectionInfo);
-            });
-            entry.put("connections", connections);
-            data.add(entry);
-        });
-        return data;
-    }
-
-    @Override
-    public Map<String, Object> getSessionStats() {
-        Map<String, Object> data = new LinkedHashMap<>();
-        WorkerEndpointInspector endpointInspector = resolveEndpointInspector();
-        if (endpointInspector == null) {
-            data.put("activeConnections", 0);
-            data.put("workerCount", 0L);
-            return data;
-        }
-        List<WorkerEndpointSnapshot> snapshots = endpointInspector.listWorkerEndpoints();
-        data.put("activeConnections", snapshots.stream().filter(WorkerEndpointSnapshot::isActive).count());
-        data.put("workerCount", snapshots.stream().map(WorkerEndpointSnapshot::getWorkerId).distinct().count());
-        return data;
     }
 
     @Override
@@ -87,12 +41,6 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
         return delegate.getEngine().getConfig().getWorkerAdmissionRuntime().hasWorkerExclusiveLease(workerId.trim());
     }
 
-    @Override
-    public List<String> listLockedWorkerIds() {
-        ensureEngineStarted();
-        return List.copyOf(delegate.getEngine().getConfig().getWorkerAdmissionRuntime().getExclusiveLeaseWorkerIds());
-    }
-
     private void ensureEngineStarted() {
         if (delegate.getEngine() == null || !delegate.getEngine().isRunning() || delegate.getEngine().getConfig() == null) {
             throw new IllegalStateException("MassEngine is not started");
@@ -103,7 +51,4 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
         return delegate;
     }
 
-    private WorkerEndpointInspector resolveEndpointInspector() {
-        return delegate.getEndpointInspector();
-    }
 }

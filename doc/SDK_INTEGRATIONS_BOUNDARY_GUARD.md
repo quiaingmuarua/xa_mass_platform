@@ -59,6 +59,12 @@ keys for SDK/worker-api calls.
 - Do not move control-plane internals, review materialization models,
   diagnostics, bootstrap fixtures, transport frames, embedded runtime assembly,
   or worker-pack capability models into `xa-mass-public-contract`.
+- Embedded SDK/server runtime diagnostics must stay aggregate, targeted, or
+  owner-local debug. Do not expose generic session, endpoint, connection, route,
+  worker-id, reachable-worker-id, or locked-worker-id inventories through SDK
+  diagnostics or server `/api/v1/runtime/**` routes. Product worker/catalog
+  rows that need reachability or lock labels must use owner-scoped facts for the
+  selected subjects, not hidden all-id diagnostics helpers.
 - Do not move worker capability code into SDK modules. Capability packs belong
   under `integrations/`.
 - Do not make `integrations/samples` the Java product entry or a parallel public

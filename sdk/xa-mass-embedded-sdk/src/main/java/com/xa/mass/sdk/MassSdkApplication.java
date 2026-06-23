@@ -637,19 +637,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<String> listReachableWorkerIds() {
-        return requireStartedWorkerResourceQueryRuntime().workers().stream()
-                .filter(Objects::nonNull)
-                .filter(this::isWorkerReachable)
-                .map(WorkerResourceRecord::workerId)
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(workerId -> !workerId.isEmpty())
-                .distinct()
-                .toList();
-    }
-
-    @Override
     public List<WorkerGroupSnapshot> listWorkerGroups() {
         requireStartedEngine();
         return delegate.getEngine().getConfig().getWorkerResourceQueryRuntime().workerGroups().stream()

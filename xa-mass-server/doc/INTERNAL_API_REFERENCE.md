@@ -725,35 +725,22 @@ Current behavior:
 - currently returns reserved metrics data rather than a stable throughput
   contract
 
-### 5.3 List Sessions
+### 5.3 Runtime Session Diagnostics
 
-- Method: `GET`
 - Path: `/api/v1/runtime/sessions`
-- Status: `Implemented`
-- Query:
-  - `limit` optional response window, default `200`, maximum `500`
-
-Current meaning:
-
-- returns transport endpoint snapshots, not a kernel worker truth source
-- session diagnostics are operator-only read surfaces
-- the response window bounds payload size; the current diagnostics owner still
-  reads the live session list before the server applies the window
-
-### 5.4 Session Stats
-
-- Method: `GET`
 - Path: `/api/v1/runtime/sessions:stats`
-- Status: `Implemented`
+- Status: `Removed`
 
 Current meaning:
 
-- `activeConnections` counts addressable transport endpoints
-- `workerCount` counts distinct workers represented in the endpoint snapshot set
-- adapter-level breakdown is intentionally omitted from the public runtime
-  stats shape; concrete adapter identity remains a transport diagnostic
+- runtime session get-all diagnostics are not a server/SDK API contract
+- worker reachability and scheduling evidence come from worker runtime owner
+  paths, not session or endpoint inventory
+- adapter sessions remain adapter-local delivery evidence unless a future
+  owner-specific product/debug API is approved with consumer, permission, cost,
+  and proof
 
-### 5.5 Global Project Config
+### 5.4 Global Project Config
 
 - Method: `GET`
 - Path: `/api/v1/runtime/config/projects`
@@ -764,7 +751,7 @@ Behavior:
 - returns configured project codes from `GlobalConfig`
 - intended for backend-served console/runtime configuration reads
 
-### 5.6 List Workers
+### 5.5 List Workers
 
 - Method: `GET`
 - Path: `/api/v1/runtime/workers`
@@ -777,17 +764,18 @@ Notes:
 - `runtimeStatus` is a display/runtime status label, not scheduling truth
 - `reachability` and `reachable` are worker-runtime reachability observations,
   not endpoint-lease transport proof and not reserve success
-- joins worker state with current bounded connection snapshots
+- joins worker/resource rows with targeted worker-runtime reachability and
+  admission lock facts for the selected response rows
 - `eventBindings` remains the richer capability read model
 - each row includes `fieldSources`, a field-to-owner label map. Expected
   owners include `declaration`, `runtimeStatusDisplay`,
-  `workerRuntimeReachability`, `transportSessionEvidence`,
-  `declarationOrTransport`, and review materialization evidence.
+  `workerRuntimeReachability`, `workerAdmission`, declaration-derived facts,
+  and review materialization evidence.
 - this is an operator/console diagnostic response, not public SDK worker
   browsing. The response window bounds payload size; deeper owner-side paging is
   still a diagnostics-interface concern.
 
-### 5.7 Worker Capability And State Reports
+### 5.6 Worker Capability And State Reports
 
 - Paths:
   - `POST /api/v1/runtime/workers/{workerId}/capability-reports`
@@ -803,7 +791,7 @@ Behavior:
 - runtime worker routes are diagnostics and operator command surfaces, not
   worker self-report ingress.
 
-### 5.8 Worker State Projection Reads
+### 5.7 Worker State Projection Reads
 
 - Methods:
   - `GET /api/v1/runtime/workers/{workerId}/state`
@@ -818,7 +806,7 @@ Behavior:
   maximum `500`
 - this is a read model and not scheduling truth
 
-### 5.9 Worker Command Control And Reads
+### 5.8 Worker Command Control And Reads
 
 - Methods:
   - `POST /api/v1/runtime/workers/{workerId}/commands`
@@ -841,7 +829,7 @@ Removed duplicate path:
 
 - `POST /api/v1/runtime/workers/{workerId}/commands/{commandId}/ack`
 
-### 5.10 Worker Context Runtime View
+### 5.9 Worker Context Runtime View
 
 - Path: `/api/v1/runtime/worker-contexts`
 - Status: `Removed`
@@ -849,18 +837,18 @@ Removed duplicate path:
 Notes:
 
 - `WorkerContext` is no longer a server/runtime CRUD or diagnostic resource
-- worker mainline visibility belongs to `/api/v1/runtime/workers` plus
-  transport/session diagnostics
+- worker mainline visibility belongs to `/api/v1/runtime/workers` and
+  worker-runtime evidence, not transport/session inventory diagnostics
 - scheduling proof should use worker attributes, event bindings, transport
   presence, runtime load/resource traces, and canonical assignment trace rows
 
-### 5.11 List Rules
+### 5.10 List Rules
 
 - Method: `GET`
 - Path: `/api/v1/admin/rules`
 - Status: `Implemented`
 
-### 5.12 Rule Catalog
+### 5.11 Rule Catalog
 
 - Method: `GET`
 - Path: `/api/v1/admin/rules/meta`

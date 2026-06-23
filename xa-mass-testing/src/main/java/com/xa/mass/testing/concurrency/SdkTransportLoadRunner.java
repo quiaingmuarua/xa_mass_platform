@@ -366,7 +366,7 @@ public final class SdkTransportLoadRunner {
             }
             long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             while (System.nanoTime() < deadlineNanos) {
-                if (activeSessionCount(app, config.transport().adapterId()) >= config.workerCount()) {
+                if (reachableWorkerCount(app, workers) >= config.workerCount()) {
                     return;
                 }
                 for (WorkerDriver worker : workers) {
@@ -374,29 +374,22 @@ public final class SdkTransportLoadRunner {
                 }
                 Thread.sleep(25L);
             }
-            require(activeSessionCount(app, config.transport().adapterId()) >= config.workerCount(),
+            require(reachableWorkerCount(app, workers) >= config.workerCount(),
                     "realtime workers did not become ready for adapter=" + config.transport().adapterId()
-                            + " sessions=" + runtimeDiagnostics(app).listSessions());
+                            + " unreachableWorkers=" + unreachableWorkers(app, workers));
         }
 
-        private int activeSessionCount(MassSdkApplication app, String adapterId) {
-            int active = 0;
-            for (Map<String, Object> session : runtimeDiagnostics(app).listSessions()) {
-                Object connections = session.get("connections");
-                if (!(connections instanceof List<?> list)) {
-                    continue;
-                }
-                for (Object connection : list) {
-                    if (!(connection instanceof Map<?, ?> connectionInfo)) {
-                        continue;
-                    }
-                    if (Boolean.TRUE.equals(connectionInfo.get("active"))
-                            && Objects.equals(adapterId, connectionInfo.get("adapterId"))) {
-                        active++;
-                    }
-                }
-            }
-            return active;
+        private long reachableWorkerCount(MassSdkApplication app, List<WorkerDriver> workers) {
+            return workers.stream()
+                    .filter(worker -> app.isWorkerReachable(worker.workerId()))
+                    .count();
+        }
+
+        private List<String> unreachableWorkers(MassSdkApplication app, List<WorkerDriver> workers) {
+            return workers.stream()
+                    .map(WorkerDriver::workerId)
+                    .filter(workerId -> !app.isWorkerReachable(workerId))
+                    .toList();
         }
 
         private TaskCreateSpec buildTaskRequest(int taskIndex) {
@@ -581,6 +574,8 @@ public final class SdkTransportLoadRunner {
     }
 
     private interface WorkerDriver extends AutoCloseable {
+        String workerId();
+
         void start() throws Exception;
 
         default void injectTransportChurn() throws Exception {
@@ -621,6 +616,11 @@ public final class SdkTransportLoadRunner {
             this.stopRequested = stopRequested;
             this.deliveryAttempts = deliveryAttempts;
             this.processingExecutor = newProcessingExecutor(workerId, config.workerProcessingThreads());
+        }
+
+        @Override
+        public String workerId() {
+            return workerId;
         }
 
         @Override
@@ -690,6 +690,11 @@ public final class SdkTransportLoadRunner {
             this.metrics = metrics;
             this.deliveryAttempts = deliveryAttempts;
             this.processingExecutor = newProcessingExecutor(workerId, config.workerProcessingThreads());
+        }
+
+        @Override
+        public String workerId() {
+            return workerId;
         }
 
         @Override
@@ -790,6 +795,11 @@ public final class SdkTransportLoadRunner {
             this.metrics = metrics;
             this.deliveryAttempts = deliveryAttempts;
             this.processingExecutor = newProcessingExecutor(workerId, config.workerProcessingThreads());
+        }
+
+        @Override
+        public String workerId() {
+            return workerId;
         }
 
         @Override

@@ -20,8 +20,6 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.TransportServer;
-import com.xa.mass.transport.WorkerEndpointInspector;
-import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
@@ -118,23 +116,19 @@ class MassApplicationStopOrderTest {
     }
 
     @Test
-    void rawTransportMessageUsesResolvedActiveRouteForWorker() throws Exception {
+    void rawTransportMessageUsesAdapterLocalWorkerSend() throws Exception {
         RawWorkerMessageChannel channel = mock(RawWorkerMessageChannel.class);
         TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
-        WorkerEndpointInspector inspector = mock(WorkerEndpointInspector.class);
         EngineConfig engineConfig = disabledEngineWithWorker("worker-1", "websocket", "realtime");
         when(registry.resolveBinding(isNull(), eq("realtime"))).thenReturn(transportBinding("websocket", "realtime"));
-        when(inspector.listWorkerEndpoints()).thenReturn(List.of(
-                new WorkerEndpointSnapshot("route-public", "worker-1", true, "endpoint-1", "websocket")
-        ));
         when(channel.adapterId()).thenReturn("websocket");
+        when(channel.sendToWorker("worker-1", "{\"hello\":1}", "trace-1")).thenReturn(true);
         MassApplication app = new MassApplication(null, enabledWebSocket(), engineConfig);
         inject(app, "rawWorkerMessageChannelsByAdapterId", rawChannels(channel));
         inject(app, "transportRuntimeRegistry", registry);
-        inject(app, "endpointInspector", inspector);
 
         assertTrue(app.sendRawTransportMessage("worker-1", "{\"hello\":1}", "trace-1"));
-        verify(channel).sendToAdapterRoute("route-public", "{\"hello\":1}", "trace-1");
+        verify(channel).sendToWorker("worker-1", "{\"hello\":1}", "trace-1");
     }
 
     @Test
@@ -142,75 +136,61 @@ class MassApplicationStopOrderTest {
         RawWorkerMessageChannel first = mock(RawWorkerMessageChannel.class);
         RawWorkerMessageChannel second = mock(RawWorkerMessageChannel.class);
         TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
-        WorkerEndpointInspector inspector = mock(WorkerEndpointInspector.class);
         EngineConfig engineConfig = disabledEngineWithWorker("worker-2", "websocket", "realtime");
         when(registry.resolveBinding(isNull(), eq("realtime"))).thenReturn(transportBinding("websocket", "realtime"));
-        when(inspector.listWorkerEndpoints()).thenReturn(List.of(
-                new WorkerEndpointSnapshot("route-private", "worker-2", true, "endpoint-2", "websocket")
-        ));
         when(first.adapterId()).thenReturn("socket");
         when(second.adapterId()).thenReturn("websocket");
+        when(second.sendToWorker("worker-2", "{\"hello\":2}", "trace-2")).thenReturn(true);
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), engineConfig);
         inject(app, "rawWorkerMessageChannelsByAdapterId", rawChannels(first, second));
         inject(app, "transportRuntimeRegistry", registry);
-        inject(app, "endpointInspector", inspector);
 
         assertTrue(app.sendRawTransportMessage("worker-2", "{\"hello\":2}", "trace-2"));
-        verify(first, never()).sendToAdapterRoute(anyString(), anyString(), anyString());
-        verify(second).sendToAdapterRoute("route-private", "{\"hello\":2}", "trace-2");
+        verify(first, never()).sendToWorker(anyString(), anyString(), anyString());
+        verify(second).sendToWorker("worker-2", "{\"hello\":2}", "trace-2");
     }
 
     @Test
-    void rawTransportMessageReturnsFalseWhenNoUniqueActiveRouteExists() throws Exception {
+    void rawTransportMessageReturnsFalseWhenAdapterLocalWorkerSendFails() throws Exception {
         RawWorkerMessageChannel first = mock(RawWorkerMessageChannel.class);
         RawWorkerMessageChannel second = mock(RawWorkerMessageChannel.class);
         TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
-        WorkerEndpointInspector inspector = mock(WorkerEndpointInspector.class);
         EngineConfig engineConfig = disabledEngineWithWorker("worker-3", "websocket", "realtime");
         when(registry.resolveBinding(isNull(), eq("realtime"))).thenReturn(transportBinding("websocket", "realtime"));
-        when(inspector.listWorkerEndpoints()).thenReturn(List.of(
-                new WorkerEndpointSnapshot("route-a", "worker-3", true, "endpoint-a", "websocket"),
-                new WorkerEndpointSnapshot("route-b", "worker-3", true, "endpoint-b", "websocket")
-        ));
         when(first.adapterId()).thenReturn("websocket");
         when(second.adapterId()).thenReturn("socket");
+        when(first.sendToWorker("worker-3", "{\"hello\":3}", "trace-3")).thenReturn(false);
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), engineConfig);
         inject(app, "rawWorkerMessageChannelsByAdapterId", rawChannels(first, second));
         inject(app, "transportRuntimeRegistry", registry);
-        inject(app, "endpointInspector", inspector);
 
         assertFalse(app.sendRawTransportMessage("worker-3", "{\"hello\":3}", "trace-3"));
-        verify(first, never()).sendToAdapterRoute(anyString(), anyString(), anyString());
-        verify(second, never()).sendToAdapterRoute(anyString(), anyString(), anyString());
+        verify(first).sendToWorker("worker-3", "{\"hello\":3}", "trace-3");
+        verify(second, never()).sendToWorker(anyString(), anyString(), anyString());
     }
 
     @Test
-    void realtimeWorkerCommandDeliveryUsesResolvedRawRouteAndCommandFrame() throws Exception {
+    void realtimeWorkerCommandDeliveryUsesResolvedRawChannelAndCommandFrame() throws Exception {
         AtomicReference<String> sentJson = new AtomicReference<>();
         RawWorkerMessageChannel channel = mock(RawWorkerMessageChannel.class);
         TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
-        WorkerEndpointInspector inspector = mock(WorkerEndpointInspector.class);
         EngineConfig engineConfig = disabledEngineWithWorker("worker-command-1", "websocket", "realtime");
         when(registry.resolveBinding(isNull(), eq("realtime"))).thenReturn(transportBinding("websocket", "realtime"));
-        when(inspector.listWorkerEndpoints()).thenReturn(List.of(
-                new WorkerEndpointSnapshot("route-command", "worker-command-1", true, "endpoint-1", "websocket")
-        ));
         when(channel.adapterId()).thenReturn("websocket");
         doAnswer(inv -> {
             sentJson.set(inv.getArgument(1, String.class));
-            return null;
-        }).when(channel).sendToAdapterRoute(eq("route-command"), anyString(), anyString());
+            return true;
+        }).when(channel).sendToWorker(eq("worker-command-1"), anyString(), anyString());
         MassApplication app = new MassApplication(null, enabledWebSocket(), engineConfig);
         inject(app, "rawWorkerMessageChannelsByAdapterId", rawChannels(channel));
         inject(app, "transportRuntimeRegistry", registry);
-        inject(app, "endpointInspector", inspector);
 
         WorkerCommandDeliveryResult result = invokeRealtimeCommandDelivery(app, command("cmd-realtime", "worker-command-1"));
 
         assertEquals(WorkerCommandDeliveryStatus.ACCEPTED, result.status());
-        verify(channel).sendToAdapterRoute(eq("route-command"), anyString(), eq("worker-command-cmd-realtime"));
+        verify(channel).sendToWorker(eq("worker-command-1"), anyString(), eq("worker-command-cmd-realtime"));
         assertTrue(sentJson.get().contains("\"type\":\"worker.command\""));
         assertTrue(sentJson.get().contains("\"commandId\":\"cmd-realtime\""));
         assertTrue(sentJson.get().contains("\"commandType\":\"PING\""));

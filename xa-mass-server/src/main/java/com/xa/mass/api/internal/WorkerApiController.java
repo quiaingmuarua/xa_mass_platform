@@ -81,7 +81,7 @@ public class WorkerApiController {
                 .limit(resolvedLimit)
                 .toList();
         Set<String> reachableWorkerIds = resolveReachableWorkerIds(visibleWorkers);
-        Set<String> lockedWorkerIds = resolveLockedWorkerIds();
+        Set<String> lockedWorkerIds = resolveLockedWorkerIds(visibleWorkers);
         List<Map<String, Object>> items = visibleWorkers.stream()
                 .map(worker -> {
                     boolean reachable = reachableWorkerIds.contains(worker.getWorkerId());
@@ -189,39 +189,30 @@ public class WorkerApiController {
         if (workers == null || workers.isEmpty()) {
             return Set.of();
         }
-        Set<String> visibleWorkerIds = workers.stream()
+        return workers.stream()
                 .filter(Objects::nonNull)
                 .map(WorkerSnapshot::getWorkerId)
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(workerId -> !workerId.isEmpty())
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        if (visibleWorkerIds.isEmpty()) {
-            return Set.of();
-        }
-        List<String> reachableWorkerIds = workerQueries.listReachableWorkerIds();
-        if (reachableWorkerIds == null || reachableWorkerIds.isEmpty()) {
-            return Set.of();
-        }
-        return reachableWorkerIds.stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(visibleWorkerIds::contains)
+                .filter(workerQueries::isWorkerReachable)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
-    private Set<String> resolveLockedWorkerIds() {
+    private Set<String> resolveLockedWorkerIds(List<WorkerSnapshot> workers) {
         if (runtimeDiagnostics == null) {
             return Set.of();
         }
-        List<String> lockedWorkerIds = runtimeDiagnostics.listLockedWorkerIds();
-        if (lockedWorkerIds == null || lockedWorkerIds.isEmpty()) {
+        if (workers == null || workers.isEmpty()) {
             return Set.of();
         }
-        return lockedWorkerIds.stream()
+        return workers.stream()
+                .filter(Objects::nonNull)
+                .map(WorkerSnapshot::getWorkerId)
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(workerId -> !workerId.isEmpty())
+                .filter(runtimeDiagnostics::isWorkerLocked)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 

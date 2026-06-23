@@ -62,14 +62,14 @@ class WebSocketSessionControllerTest {
     }
 
     @Test
-    void adapterScopedLookupsUseConfiguredAdapterId() {
+    void routeLookupsUseEndpointAddressWithoutEndpointSnapshotView() {
         manager = newController("ws-public");
         Channel channel = mockActiveChannel("worker-1");
 
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
 
         assertTrue(sessionStore.hasActiveEndpointAddress("route-1"));
-        assertEquals("ws-public", new WebSocketEndpointInspector(sessionStore).listWorkerEndpoints().get(0).getAdapterId());
+        assertEquals("worker-1", manager.currentWorkerId(channel));
     }
 
     @Test

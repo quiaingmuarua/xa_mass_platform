@@ -362,6 +362,7 @@ class MassSdkTest {
 
     @Test
     void sdkBundledSocketServerRegistersHelloSession() throws Exception {
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
@@ -373,6 +374,7 @@ class MassSdkTest {
                                 .serverEnabled(true))
                         .inputQueue(new InMemoryMessageQueue<>("socket-hello-input", String.class))
                         .outputQueue(new InMemoryMessageQueue<>("socket-hello-output", TransportOutboundMessage.class))
+                        .endpointLeaseStoreFactory(() -> endpointLeaseStore)
                         .queueMode())
                 .engine(engine -> engine.enabled(true))
                 .build();
@@ -392,8 +394,12 @@ class MassSdkTest {
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> runtimeDiagnostics(app).listSessions().stream().anyMatch(MassSdkTest::hasActiveSocketConnection),
-                        "sdk socket hello should register an active socket session");
+                waitUntil(() -> endpointLeaseStore.currentEndpointLease("sdk-socket-workers", "sdk-socket-worker")
+                                .isPresent(),
+                        "sdk socket hello should publish an endpoint lease");
+                assertEquals(routeKey, endpointLeaseStore.currentEndpointLease("sdk-socket-workers", "sdk-socket-worker")
+                        .orElseThrow()
+                        .endpointAddress());
             }
         } finally {
             app.stop();
@@ -963,7 +969,6 @@ class MassSdkTest {
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         Map<String, Object> queueDetail = runtimeDiagnostics(app).getQueueDetail();
-        Map<String, Object> sessionStats = runtimeDiagnostics(app).getSessionStats();
         Map<String, Object> enqueueResult = rawTransportDebug(app).enqueueRawMessage(
                 Map.of("workerId", "worker-debug-1", "rawJson", "{\"eventCode\":\"platform.test\"}")
         );
@@ -976,9 +981,6 @@ class MassSdkTest {
                 .get("queueByAdapter")).get("polling")).get("queuedItems"));
         assertEquals(true, ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("runtimeExecutors")).get("transport"))
                 .get("available"));
-        assertEquals(0, sessionStats.get("activeConnections"));
-        assertEquals(0L, sessionStats.get("workerCount"));
-        assertFalse(sessionStats.containsKey("activeConnectionsByAdapter"));
         assertEquals(true, enqueueResult.get("success"));
         verify(delegate).getTransportQueueDetail();
         verify(delegate).sendRawTransportMessage(eq("worker-debug-1"), eq("{\"eventCode\":\"platform.test\"}"), anyString());
@@ -1023,46 +1025,6 @@ class MassSdkTest {
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         assertFalse(app.isWorkerReachable("worker-stale"));
-    }
-
-    @Test
-    void sessionDiagnosticsHideTransportInternalIds() {
-        MassApplication delegate = mock(MassApplication.class);
-        com.xa.mass.transport.WorkerEndpointInspector inspector = mock(com.xa.mass.transport.WorkerEndpointInspector.class);
-
-        when(delegate.getEndpointInspector()).thenReturn(inspector);
-        when(inspector.listWorkerEndpoints()).thenReturn(List.of(
-                new com.xa.mass.transport.WorkerEndpointSnapshot(
-                        "route-public",
-                        "worker-1",
-                        true,
-                        "endpoint-1",
-                        "ws-public"
-                ),
-                new com.xa.mass.transport.WorkerEndpointSnapshot(
-                        "route-internal",
-                        "worker-1",
-                        true,
-                        "endpoint-2",
-                        "ws-internal"
-                )
-        ));
-
-        MassSdkApplication app = new MassSdkApplication(delegate);
-
-        List<Map<String, Object>> sessions = runtimeDiagnostics(app).listSessions();
-        Map<String, Object> sessionStats = runtimeDiagnostics(app).getSessionStats();
-
-        assertEquals(1, sessions.size());
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> connections = (List<Map<String, Object>>) sessions.get(0).get("connections");
-        assertEquals(true, connections.get(0).get("active"));
-        assertEquals("endpoint-1", connections.get(0).get("endpointId"));
-        assertFalse(connections.get(0).containsKey("routeKey"));
-        assertFalse(connections.get(0).containsKey("adapterId"));
-        assertEquals(2L, sessionStats.get("activeConnections"));
-        assertEquals(1L, sessionStats.get("workerCount"));
-        assertFalse(sessionStats.containsKey("activeConnectionsByAdapter"));
     }
 
     @Test
@@ -3028,6 +2990,10 @@ class MassSdkTest {
         assertMissingMethod(MassSdkApplication.class, "enqueueRawMessage", Map.class);
         assertMissingMethod(MassSdkApplication.class, "getQueueDetail");
         assertMissingMethod(MassSdkApplication.class, "getQueueMetrics");
+        assertMissingMethod(RuntimeDiagnosticsOperations.class, "listSessions");
+        assertMissingMethod(RuntimeDiagnosticsOperations.class, "getSessionStats");
+        assertMissingMethod(RuntimeDiagnosticsOperations.class, "listLockedWorkerIds");
+        assertMissingMethod(WorkerInspectionOperations.class, "listReachableWorkerIds");
         assertMissingMethod(MassSdk.Builder.class, "unwrap");
         assertMissingMethod(MassSdk.TransportOptions.class, "unwrap");
         assertMissingMethod(MassSdk.EngineOptions.class, "unwrap");
@@ -3156,7 +3122,6 @@ class MassSdkTest {
                 () -> app.getWorker("worker-1"),
                 app::getAllWorkers,
                 () -> runtimeDiagnostics(app).isWorkerLocked("worker-1"),
-                () -> runtimeDiagnostics(app).listLockedWorkerIds(),
                 () -> app.isWorkerReachable("worker-1"),
                 () -> app.declareWorkerGroup(WorkerGroupDeclaration.builder().groupId("group-1").build()),
                 () -> app.registerWorker(WorkerRegistration.builder().workerId("worker-1").build()),
@@ -3553,21 +3518,6 @@ class MassSdkTest {
             Thread.sleep(25L);
         }
         assertTrue(condition.getAsBoolean(), failureMessage);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static boolean hasActiveSocketConnection(Map<String, Object> session) {
-        Object connections = session.get("connections");
-        if (!(connections instanceof List<?> list)) {
-            return false;
-        }
-        return list.stream().anyMatch(connection -> {
-            if (!(connection instanceof Map<?, ?> connectionInfo)) {
-                return false;
-            }
-            return Boolean.TRUE.equals(connectionInfo.get("active"))
-                    && connectionInfo.get("endpointId") != null;
-        });
     }
 
     private static final class DescriptorOnlyBootstrap

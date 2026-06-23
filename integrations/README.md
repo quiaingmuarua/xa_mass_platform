@@ -56,6 +56,9 @@ Global boundary guard:
 - Scenario launcher and worker-pack should treat SDK task read models as
   source-labeled composites when `fieldSources` is present; integrations must
   not turn those labels into new kernel truth or frontend-only models.
+- Integrations must not depend on embedded runtime diagnostics for session,
+  endpoint, reachable-worker-id, or locked-worker-id inventories. Use public SDK
+  worker/task paths and owner-specific worker read models instead.
 - Worker-pack owns reusable capabilities plus separated dev/E2E harness code.
 - Samples remain protocol/dev fixtures and should not grow into a second SDK
   product surface.

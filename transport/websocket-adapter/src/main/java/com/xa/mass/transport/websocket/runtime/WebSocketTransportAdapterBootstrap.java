@@ -14,7 +14,6 @@ import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
-import com.xa.mass.transport.websocket.session.WebSocketEndpointInspector;
 import com.xa.mass.transport.websocket.session.WebSocketRawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
@@ -86,9 +85,8 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             ));
             contribution.addRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(
                     config.getAdapterId(),
-                    rawRouteEndpointRegistry
+                    sessionController
             ));
-            contribution.addEndpointInspector(new WebSocketEndpointInspector(sessionStore));
         }
 
         TransportServer transportServer = createTransportServer(
@@ -133,13 +131,13 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             implements com.xa.mass.transport.runtime.RawWorkerMessageChannel {
 
         private final String adapterId;
-        private final com.xa.mass.transport.RawWorkerRouteEndpointRegistry endpointRegistry;
+        private final WebSocketSessionController sessionController;
 
         private WebSocketRawWorkerMessageChannel(
                 String adapterId,
-                com.xa.mass.transport.RawWorkerRouteEndpointRegistry endpointRegistry) {
+                WebSocketSessionController sessionController) {
             this.adapterId = adapterId;
-            this.endpointRegistry = endpointRegistry;
+            this.sessionController = sessionController;
         }
 
         @Override
@@ -148,8 +146,8 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         }
 
         @Override
-        public void sendToAdapterRoute(String routeKey, String rawJson, String traceId) {
-            endpointRegistry.sendToAdapterRoute(adapterId(), routeKey, rawJson);
+        public boolean sendToWorker(String workerId, String rawJson, String traceId) {
+            return sessionController.sendTextToWorker(workerId, rawJson);
         }
     }
 }
