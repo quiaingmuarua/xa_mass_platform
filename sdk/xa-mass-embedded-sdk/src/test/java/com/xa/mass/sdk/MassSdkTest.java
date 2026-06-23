@@ -127,7 +127,7 @@ import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerAction;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import org.junit.jupiter.api.Assertions;
@@ -2933,19 +2933,19 @@ class MassSdkTest {
 
             assertTrue(app.approveTask(task.getTaskId()));
 
-            WorkerInvocation dispatchItem = waitFor(
+            WorkerAction dispatchItem = waitFor(
                     Duration.ofSeconds(10),
                     () -> {
-                        List<WorkerInvocation> polled = session.poll(1, 250L);
+                        List<WorkerAction> polled = session.poll(1, 250L);
                         return polled.isEmpty() ? null : polled.get(0);
                     }
             );
             assertNotNull(dispatchItem);
-            Assertions.assertNotNull(dispatchItem.getResultCorrelationRef());
-            Assertions.assertEquals("https://example.test/page-1", dispatchItem.getInput().get("url"));
+            Assertions.assertNotNull(dispatchItem.getReplyRef());
+            Assertions.assertTrue(dispatchItem.getBody().contains("https://example.test/page-1"));
             Assertions.assertEquals("pull", dispatchItem.getSharedConfig().get("mode"));
 
-            assertTrue(session.submitResult(
+            assertTrue(session.submitActionReply(
                     dispatchItem,
                     true,
                     null,

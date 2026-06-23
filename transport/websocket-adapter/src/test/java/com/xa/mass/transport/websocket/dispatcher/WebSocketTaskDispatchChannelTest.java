@@ -1,5 +1,7 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
@@ -8,6 +10,7 @@ import com.xa.mass.transport.websocket.session.WebSocketSessionController;
 import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
 import com.xa.mass.transport.websocket.session.WebSocketSessionRefreshLoop;
 import com.xa.mass.transport.websocket.session.WebSocketSessionStore;
+import com.xa.mass.transport.websocket.frame.WebSocketWorkerChannelFrameCodec;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelId;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -41,7 +44,9 @@ class WebSocketTaskDispatchChannelTest {
         ArgumentCaptor<TextWebSocketFrame> captor = ArgumentCaptor.forClass(TextWebSocketFrame.class);
         verify(fixture.channel()).writeAndFlush(captor.capture());
 
-        assertEquals(item.payload(), captor.getValue().text());
+        JsonObject frame = JsonParser.parseString(captor.getValue().text()).getAsJsonObject();
+        assertEquals(WebSocketWorkerChannelFrameCodec.ACTION, frame.get("kind").getAsString());
+        assertEquals(item.payload(), frame.get("body").getAsString());
         fixture.controller().shutdown();
     }
 

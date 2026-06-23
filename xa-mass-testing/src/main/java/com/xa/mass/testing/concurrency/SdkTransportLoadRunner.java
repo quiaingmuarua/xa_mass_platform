@@ -31,7 +31,7 @@ import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerAction;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
@@ -634,7 +634,7 @@ public final class SdkTransportLoadRunner {
         private void runLoop() {
             try {
                 while (running.get()) {
-                    List<WorkerInvocation> items = session.poll(config.pollBatchSize());
+                    List<WorkerAction> items = session.poll(config.pollBatchSize());
                     metrics.recordReceiveBatch(items == null ? 0 : items.size());
                     if (items == null || items.isEmpty()) {
                         if (stopRequested.get()) {
@@ -643,7 +643,7 @@ public final class SdkTransportLoadRunner {
                         Thread.sleep(20L);
                         continue;
                     }
-                    for (WorkerInvocation item : items) {
+                    for (WorkerAction item : items) {
                         processingExecutor.submit(() -> processTaskDispatch(item, workerId, config, metrics, deliveryAttempts,
                                 (success, detail, output) -> submitPollingResult(session, item, success, detail, output)));
                     }
@@ -872,13 +872,13 @@ public final class SdkTransportLoadRunner {
     }
 
     private static boolean submitPollingResult(EmbeddedPullWorkerSession session,
-                                               WorkerInvocation item,
+                                               WorkerAction item,
                                                boolean success,
                                                String detail,
                                                Map<String, Object> output) {
         String resultCode = success ? null : normalizeResultCode(detail);
         String result = FRAME_GSON.toJson(output != null ? output : Map.of());
-        return session.submitResult(item, success, resultCode, result);
+        return session.submitActionReply(item, success, resultCode, result);
     }
 
     private static String normalizeResultCode(String detail) {
@@ -888,7 +888,7 @@ public final class SdkTransportLoadRunner {
         return detail.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_");
     }
 
-    private static void processTaskDispatch(WorkerInvocation item,
+    private static void processTaskDispatch(WorkerAction item,
                                             String workerId,
                                             LoadConfig config,
                                             RuntimeMetrics metrics,
@@ -897,11 +897,11 @@ public final class SdkTransportLoadRunner {
         int concurrent = metrics.onProcessingStart();
         try {
             maybeSleep(config.processingDelayMillis());
-            String resultCorrelationRef = item.getResultCorrelationRef();
+            String resultCorrelationRef = item.getReplyRef();
             int attemptNo = deliveryAttempts
                     .computeIfAbsent(resultCorrelationRef, ignored -> new AtomicInteger())
                     .incrementAndGet();
-            int seq = readSeq(item.getInput());
+            int seq = readSeq(actionBody(item));
             boolean syntheticRetry = shouldInjectRetry(config, seq, attemptNo);
             if (syntheticRetry) {
                 metrics.syntheticRetryFailures.increment();
@@ -956,6 +956,19 @@ public final class SdkTransportLoadRunner {
         } finally {
             metrics.onProcessingFinish();
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> actionBody(WorkerAction item) {
+        String body = item.getBody();
+        if (body == null || body.isBlank()) {
+            return Map.of();
+        }
+        Object decoded = FRAME_GSON.fromJson(body, Object.class);
+        if (decoded instanceof Map<?, ?> values) {
+            return (Map<String, Object>) values;
+        }
+        return Map.of("rawBody", body);
     }
 
     private static boolean shouldInjectRetry(LoadConfig config, int seq, int attemptNo) {

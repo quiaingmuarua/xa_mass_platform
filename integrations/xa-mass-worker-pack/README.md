@@ -88,7 +88,7 @@ identity, online state, polling runtime, and result reporting through
 - `probe.csv.validate` on WorkerGroup `data-quality-probe`
 - `probe.json.schema` on WorkerGroup `data-quality-probe`
 
-The handler is a Java SDK `WorkerEventHandler`, so business event handling is
+The handler is a Java SDK `WorkerActionHandler`, so business event handling is
 independent of the polling transport. The phone-device Stage-2 proof uses
 `ProbeWorkerPack.phoneDevicePolling(...)` to run real external polling workers
 through the Java SDK and proves WorkerGroup/worker-attribute selection without

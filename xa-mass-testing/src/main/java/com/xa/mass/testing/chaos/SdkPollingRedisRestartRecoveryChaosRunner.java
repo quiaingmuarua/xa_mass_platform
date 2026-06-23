@@ -12,7 +12,7 @@ import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
-import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerAction;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 
@@ -245,7 +245,7 @@ public final class SdkPollingRedisRestartRecoveryChaosRunner {
         private final AtomicInteger receivedDispatches = new AtomicInteger();
         private final AtomicInteger stalledDispatches = new AtomicInteger();
         private final AtomicInteger successfulResults = new AtomicInteger();
-        private final AtomicReference<WorkerInvocation> stalledDispatch = new AtomicReference<>();
+        private final AtomicReference<WorkerAction> stalledDispatch = new AtomicReference<>();
         private final CountDownLatch stopped = new CountDownLatch(1);
         private Thread pollThread;
 
@@ -284,8 +284,8 @@ public final class SdkPollingRedisRestartRecoveryChaosRunner {
         }
 
         private String stalledCorrelationRef() {
-            WorkerInvocation item = stalledDispatch.get();
-            return item != null ? item.getResultCorrelationRef() : null;
+            WorkerAction item = stalledDispatch.get();
+            return item != null ? item.getReplyRef() : null;
         }
 
         private WorkerRuntimeSnapshot snapshot() {
@@ -304,14 +304,14 @@ public final class SdkPollingRedisRestartRecoveryChaosRunner {
         private void runLoop() {
             try {
                 while (running.get()) {
-                    List<WorkerInvocation> items = session.poll(1, 0L);
+                    List<WorkerAction> items = session.poll(1, 0L);
                     pollCycles.incrementAndGet();
                     if (items == null || items.isEmpty()) {
                         emptyPollCycles.incrementAndGet();
                         Thread.sleep(20L);
                         continue;
                     }
-                    for (WorkerInvocation item : items) {
+                    for (WorkerAction item : items) {
                         receivedDispatches.incrementAndGet();
                         if (mode == WorkerMode.STALL_WITHOUT_RESULT && stallBudgetConsumed.compareAndSet(false, true)) {
                             stalledDispatch.set(item);
@@ -329,9 +329,9 @@ public final class SdkPollingRedisRestartRecoveryChaosRunner {
             }
         }
 
-        private void processNormally(WorkerInvocation item) {
+        private void processNormally(WorkerAction item) {
             ChaosSupport.maybeSleep(config.processingDelayMillis());
-            boolean accepted = session.submitResult(
+            boolean accepted = session.submitActionReply(
                     item,
                     true,
                     null,

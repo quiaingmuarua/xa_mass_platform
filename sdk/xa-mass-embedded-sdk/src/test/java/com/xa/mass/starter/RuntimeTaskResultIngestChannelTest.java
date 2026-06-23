@@ -2,7 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
-import com.xa.mass.sdk.worker.WorkerResultSubmission;
+import com.xa.mass.sdk.worker.WorkerActionReply;
 import com.xa.mass.transport.channel.ResultIngressDiagnostics;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.ResultIngressMessage;
@@ -236,19 +236,19 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals(TransportResultIngressOutcome.ACKNOWLEDGED, handled.toTransportOutcome());
     }
 
-    private static ResultIngressEntry envelope(WorkerResultSubmission request) {
+    private static ResultIngressEntry envelope(WorkerActionReply request) {
         return CODEC.toEntry(request, Map.of("adapterId", "polling"));
     }
 
-    private static WorkerResultSubmission request(String taskId,
-                                                  String messageId,
-                                                  boolean success,
-                                                  String result,
-                                                  String resultCode,
-                                                  String attemptId,
-                                                  String leaseToken,
-                                                  String traceId) {
-        return new WorkerResultSubmission(
+    private static WorkerActionReply request(String taskId,
+                                             String messageId,
+                                             boolean success,
+                                             String result,
+                                             String resultCode,
+                                             String attemptId,
+                                             String leaseToken,
+                                             String traceId) {
+        return new WorkerActionReply(
                 new TaskDispatchDeliveryCorrelationCodec().encode(
                         new TaskDispatchDeliveryCorrelation(taskId, messageId, attemptId, 0)
                 ),

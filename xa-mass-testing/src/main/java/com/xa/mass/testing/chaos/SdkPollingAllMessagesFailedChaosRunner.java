@@ -13,7 +13,7 @@ import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.sink.ExecutionEventType;
-import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerAction;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -255,17 +255,17 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
         private void runLoop() {
             try {
                 while (running.get()) {
-                    List<WorkerInvocation> items = session.poll(1, 0L);
+                    List<WorkerAction> items = session.poll(1, 0L);
                     pollCycles.incrementAndGet();
                     if (items == null || items.isEmpty()) {
                         emptyPollCycles.incrementAndGet();
                         Thread.sleep(20L);
                         continue;
                     }
-                    for (WorkerInvocation item : items) {
+                    for (WorkerAction item : items) {
                         receivedDispatches.incrementAndGet();
                         ChaosSupport.maybeSleep(config.processingDelayMillis());
-                        boolean accepted = session.submitResult(
+                        boolean accepted = session.submitActionReply(
                                 item,
                                 false,
                                 "CHAOS_ALWAYS_FAIL",

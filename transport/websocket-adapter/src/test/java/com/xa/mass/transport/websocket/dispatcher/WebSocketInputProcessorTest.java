@@ -7,6 +7,7 @@ import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.runtime.AdapterResultIngressSink;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
+import com.xa.mass.transport.websocket.frame.WebSocketWorkerChannelFrameCodec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -22,6 +23,7 @@ import static org.mockito.Mockito.mock;
 class WebSocketInputProcessorTest {
 
     private WebSocketJsonFrameParser frameParser;
+    private WebSocketWorkerChannelFrameCodec channelFrameCodec;
     private WebSocketResultIngressFrameReader resultFrameReader;
     private WebSocketDispatcherContext context;
     private RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry;
@@ -31,6 +33,7 @@ class WebSocketInputProcessorTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         frameParser = new WebSocketJsonFrameParser();
+        channelFrameCodec = new WebSocketWorkerChannelFrameCodec();
         resultFrameReader = new WebSocketResultIngressFrameReader("websocket", frameParser);
         rawRouteEndpointRegistry = mock(RawWorkerRouteEndpointRegistry.class);
         context = createContext(null);
@@ -85,10 +88,7 @@ class WebSocketInputProcessorTest {
         });
         inputProcessor = new WebSocketInputProcessor(context);
 
-        JsonObject frame = new JsonObject();
-        frame.addProperty("resultCorrelationRef", "corr-1");
-        frame.addProperty("success", true);
-        frame.addProperty("detail", "ok");
+        JsonObject frame = canonicalTaskResultFrameObject("corr-1", true, "ok", null);
 
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 frameParser.toJson(frame),
@@ -112,11 +112,7 @@ class WebSocketInputProcessorTest {
         });
         inputProcessor = new WebSocketInputProcessor(context);
 
-        JsonObject frame = new JsonObject();
-        frame.addProperty("resultCorrelationRef", "corr-1");
-        frame.addProperty("success", true);
-        frame.addProperty("detail", "ok");
-        frame.add("output", payload("status", "SUCCESS"));
+        JsonObject frame = canonicalTaskResultFrameObject("corr-1", true, "ok", null);
 
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 "not-json-but-already-parsed",
@@ -141,11 +137,7 @@ class WebSocketInputProcessorTest {
         });
         inputProcessor = new WebSocketInputProcessor(context);
 
-        JsonObject frame = new JsonObject();
-        frame.addProperty("resultCorrelationRef", "corr-1");
-        frame.addProperty("success", true);
-        frame.addProperty("routeKey", "inline-route");
-        frame.addProperty("detail", "ok");
+        JsonObject frame = canonicalTaskResultFrameObject("corr-1", true, "ok", "inline-route");
 
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 frameParser.toJson(frame),
@@ -177,9 +169,41 @@ class WebSocketInputProcessorTest {
         });
         inputProcessor = new WebSocketInputProcessor(context);
 
-        JsonObject frame = new JsonObject();
-        frame.addProperty("success", true);
-        frame.addProperty("detail", "ok");
+        JsonObject reply = new JsonObject();
+        reply.addProperty("success", true);
+        reply.addProperty("body", "ok");
+        JsonObject frame = frameParser.parseObject(channelFrameCodec.frame(
+                WebSocketWorkerChannelFrameCodec.ACTION_REPLY,
+                frameParser.toJson(reply)
+        ));
+
+        boolean result = inputProcessor.process(WebSocketInboundMessage.of(
+                frameParser.toJson(frame),
+                "worker-1",
+                "endpoint-1"
+        ));
+
+        assertTrue(result);
+        assertNull(capturedEntry.get());
+    }
+
+    @Test
+    void canonicalTaskResultWithLegacyCorrelationAliasIsRejectedWithoutIngest() {
+        AtomicReference<ResultIngressEntry> capturedEntry = new AtomicReference<>();
+        context = createContext(entry -> {
+            capturedEntry.set(entry);
+            return true;
+        });
+        inputProcessor = new WebSocketInputProcessor(context);
+
+        JsonObject reply = new JsonObject();
+        reply.addProperty("resultCorrelationRef", "corr-legacy");
+        reply.addProperty("success", true);
+        reply.addProperty("body", "ok");
+        JsonObject frame = frameParser.parseObject(channelFrameCodec.frame(
+                WebSocketWorkerChannelFrameCodec.ACTION_REPLY,
+                frameParser.toJson(reply)
+        ));
 
         boolean result = inputProcessor.process(WebSocketInboundMessage.of(
                 frameParser.toJson(frame),
@@ -206,22 +230,33 @@ class WebSocketInputProcessorTest {
                                boolean success,
                                String detail) {
         JsonObject payload = JsonParser.parseString(entry.message().payload()).getAsJsonObject();
-        assertEquals(resultCorrelationRef, payload.get("resultCorrelationRef").getAsString());
+        assertEquals(resultCorrelationRef, payload.get("replyRef").getAsString());
         assertFalse(payload.has("taskId"));
         assertFalse(payload.has("messageId"));
         assertEquals(success, payload.get("success").getAsBoolean());
-        assertEquals(detail, payload.get("detail").getAsString());
+        assertEquals(detail, payload.get("body").getAsString());
     }
 
     private String canonicalTaskResultFrame(String resultCorrelationRef, boolean success, String detail) {
+        return frameParser.toJson(canonicalTaskResultFrameObject(resultCorrelationRef, success, detail, "route-1"));
+    }
+
+    private JsonObject canonicalTaskResultFrameObject(String resultCorrelationRef,
+                                                      boolean success,
+                                                      String detail,
+                                                      String routeKey) {
+        JsonObject reply = new JsonObject();
+        reply.addProperty("replyRef", resultCorrelationRef);
+        reply.addProperty("success", success);
+        reply.addProperty("body", detail);
         JsonObject frame = new JsonObject();
-        frame.addProperty("resultCorrelationRef", resultCorrelationRef);
-        frame.addProperty("routeKey", "route-1");
-        frame.addProperty("success", success);
-        frame.addProperty("detail", detail);
-        frame.add("output",
-                payload("status", success ? "SUCCESS" : "FAILED", "mockData", detail));
-        return frameParser.toJson(frame);
+        frame.addProperty("frameId", "frame-" + resultCorrelationRef);
+        frame.addProperty("kind", WebSocketWorkerChannelFrameCodec.ACTION_REPLY);
+        frame.addProperty("body", frameParser.toJson(reply));
+        if (routeKey != null) {
+            frame.addProperty("routeKey", routeKey);
+        }
+        return frame;
     }
 
     private JsonObject payload(Object... keyValues) {

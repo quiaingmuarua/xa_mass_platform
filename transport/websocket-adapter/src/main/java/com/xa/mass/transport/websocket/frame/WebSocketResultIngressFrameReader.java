@@ -15,7 +15,7 @@ import java.util.UUID;
  */
 public final class WebSocketResultIngressFrameReader {
 
-    private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
+    private static final String REPLY_REF_FIELD = "replyRef";
     private static final String EVENT_CODE_FIELD = "eventCode";
     private static final String TYPE_FIELD = "type";
     private static final String ROUTE_KEY_FIELD = "routeKey";
@@ -23,36 +23,49 @@ public final class WebSocketResultIngressFrameReader {
 
     private final String adapterId;
     private final WebSocketJsonFrameParser parser;
+    private final WebSocketWorkerChannelFrameCodec channelFrameCodec;
 
     public WebSocketResultIngressFrameReader(String adapterId, WebSocketJsonFrameParser parser) {
+        this(adapterId, parser, new WebSocketWorkerChannelFrameCodec());
+    }
+
+    WebSocketResultIngressFrameReader(String adapterId,
+                                      WebSocketJsonFrameParser parser,
+                                      WebSocketWorkerChannelFrameCodec channelFrameCodec) {
         this.adapterId = requireText(adapterId, "adapterId");
         this.parser = parser;
+        this.channelFrameCodec = channelFrameCodec;
     }
 
     public boolean isResultFrame(JsonObject frame) {
         return frame != null
-                && parser.readString(frame, EVENT_CODE_FIELD) == null
-                && parser.readString(frame, RESULT_CORRELATION_REF_FIELD) != null
+                && channelFrameCodec.isKind(frame, WebSocketWorkerChannelFrameCodec.ACTION_REPLY)
                 && !isControlFrame(frame);
     }
 
     public ResultIngressEntry toEntry(JsonObject frame) {
-        String resultCorrelationRef = parser.readString(frame, RESULT_CORRELATION_REF_FIELD);
-        if (resultCorrelationRef == null) {
-            throw new IllegalArgumentException(RESULT_CORRELATION_REF_FIELD + " is required");
+        String payload = channelFrameCodec.body(frame);
+        JsonObject reply = parser.parseObject(payload);
+        if (reply == null) {
+            throw new IllegalArgumentException("ACTION_REPLY body must be a JSON object");
+        }
+        String replyRef = WebSocketStringValues.firstNonBlank(parser.readString(reply, REPLY_REF_FIELD));
+        if (replyRef == null) {
+            throw new IllegalArgumentException(REPLY_REF_FIELD + " is required");
         }
         String routeKey = WebSocketStringValues.firstNonBlank(parser.readString(frame, ROUTE_KEY_FIELD));
         String traceId = WebSocketStringValues.firstNonBlank(
                 parser.readString(frame, TRACE_ID_FIELD),
-                resultCorrelationRef
+                channelFrameCodec.frameId(frame),
+                replyRef
         );
         long now = System.currentTimeMillis();
         return new ResultIngressEntry(
-                resultCorrelationRef,
+                replyRef,
                 new ResultIngressMessage(
                         UUID.randomUUID().toString(),
-                        resultCorrelationRef,
-                        parser.toJson(frame),
+                        replyRef,
+                        payload,
                         0L,
                         now
                 ),
@@ -60,8 +73,10 @@ public final class WebSocketResultIngressFrameReader {
         );
     }
 
-    public String resultCorrelationRef(JsonObject frame) {
-        return parser.readString(frame, RESULT_CORRELATION_REF_FIELD);
+    public String replyRef(JsonObject frame) {
+        String payload = channelFrameCodec.body(frame);
+        JsonObject reply = parser.parseObject(payload);
+        return reply == null ? null : WebSocketStringValues.firstNonBlank(parser.readString(reply, REPLY_REF_FIELD));
     }
 
     public String traceId(JsonObject frame) {

@@ -34,23 +34,27 @@ function buildTaskResult(taskFrame, result) {
       respondedAt: new Date().toISOString(),
     },
     eventCode: taskFrame?.eventCode ?? null,
-    ...(result?.result ?? {}),
+    ...(result?.body ?? {}),
   });
 
   return JSON.stringify({
-    resultCorrelationRef: taskFrame?.resultCorrelationRef,
-    success: Boolean(result?.success),
-    resultCode: result?.resultCode ?? null,
-    result: JSON.stringify(resultBody),
+    frameId: `reply-${taskFrame?.replyRef ?? Date.now()}`,
+    kind: "ACTION_REPLY",
+    body: JSON.stringify({
+      replyRef: taskFrame?.replyRef,
+      success: Boolean(result?.success),
+      code: result?.code ?? null,
+      body: JSON.stringify(resultBody),
+    }),
   });
 }
 
 async function handleDemoDispatch(frame) {
   return {
     success: true,
-    result: {
+    body: {
       detail: "completed by external node worker",
-      taskInput: frame?.input ?? {},
+      taskInput: actionBody(frame),
     },
   };
 }
@@ -58,16 +62,16 @@ async function handleDemoDispatch(frame) {
 async function handleCrawlerFetchPage(frame) {
   return {
     success: true,
-    result: {
+    body: {
       detail: "crawler fetch simulated by external node websocket worker",
-      url: frame?.input?.url ?? frame?.sharedConfig?.url ?? null,
+      url: actionBody(frame)?.url ?? frame?.sharedConfig?.url ?? null,
       fetchedAt: new Date().toISOString(),
     },
   };
 }
 
 async function handleStockQuoteFetch(frame) {
-  const input = frame?.input ?? {};
+  const input = actionBody(frame);
   const requestId = stringValue(input.requestId);
   const symbol = stringValue(input.symbol)?.toUpperCase();
   const market = stringValue(input.market) ?? "UNKNOWN";
@@ -76,9 +80,9 @@ async function handleStockQuoteFetch(frame) {
   if (!requestId || !symbol) {
     return {
       success: false,
-      resultCode: "INVALID_INPUT",
-      result: {
-        detail: "requestId and symbol are required in WorkerInvocation.input",
+      code: "INVALID_INPUT",
+      body: {
+        detail: "requestId and symbol are required in WorkerAction.body",
         requestId: requestId ?? null,
         symbol: symbol ?? null,
         market,
@@ -96,8 +100,8 @@ async function handleStockQuoteFetch(frame) {
     const quote = extractQuote(parsed, symbol, market, sourceUrl);
     return {
       success: response.ok,
-      resultCode: response.ok ? null : `HTTP_${response.status}`,
-      result: {
+      code: response.ok ? null : `HTTP_${response.status}`,
+      body: {
         detail: response.ok ? "stock-quote-success" : `stock-quote-http-${response.status}`,
         requestId,
         symbol,
@@ -113,8 +117,8 @@ async function handleStockQuoteFetch(frame) {
   } catch (error) {
     return {
       success: false,
-      resultCode: "QUOTE_FETCH_ERROR",
-      result: {
+      code: "QUOTE_FETCH_ERROR",
+      body: {
         detail: error instanceof Error ? error.message : String(error),
         requestId,
         symbol,
@@ -133,44 +137,32 @@ const taskHandlers = new Map([
   ["stock.quote.fetch", handleStockQuoteFetch],
 ]);
 
-function isControlCompatibilityFrame(frame) {
-  return Boolean(frame?.eventCode) && !frame?.resultCorrelationRef;
-}
-
-function isCanonicalTaskDispatch(frame) {
-  return Boolean(frame?.resultCorrelationRef) && Boolean(frame?.eventCode) && frame?.success === undefined;
-}
-
 async function handleFrame(rawFrame) {
   const frame = JSON.parse(rawFrame);
 
-  if (isControlCompatibilityFrame(frame)) {
-    log(`ignoring control compatibility frame eventCode=${frame.eventCode}`);
-    return;
-  }
-
-  if (!isCanonicalTaskDispatch(frame)) {
+  if (frame?.kind !== "ACTION") {
     log("ignoring unsupported frame");
     return;
   }
 
-  const eventCode = frame?.eventCode;
+  const action = parseJson(frame.body);
+  const eventCode = action?.eventCode;
   const handler = eventCode ? taskHandlers.get(eventCode) : null;
-  log(`received task frame resultCorrelationRef=${frame.resultCorrelationRef} eventCode=${eventCode ?? "<none>"}`);
+  log(`received action frame replyRef=${action?.replyRef ?? "<none>"} eventCode=${eventCode ?? "<none>"}`);
 
   if (!handler) {
-    socket.send(buildTaskResult(frame, {
+    socket.send(buildTaskResult(action, {
       success: false,
-      resultCode: "UNSUPPORTED_EVENT_CODE",
-      result: {
+      code: "UNSUPPORTED_EVENT_CODE",
+      body: {
         detail: `Unsupported eventCode: ${eventCode ?? "<missing>"}`,
       },
     }));
     return;
   }
 
-  const result = await handler(frame);
-  socket.send(buildTaskResult(frame, result));
+  const result = await handler(action);
+  socket.send(buildTaskResult(action, result));
 }
 
 function shutdown(exitCode) {
@@ -184,8 +176,9 @@ function shutdown(exitCode) {
 }
 
 function resolveStockSourceUrl(frame, symbol) {
-  const configured = stringValue(frame?.input?.sourceUrl)
-    ?? stringValue(frame?.input?.quoteUrl)
+  const input = actionBody(frame);
+  const configured = stringValue(input?.sourceUrl)
+    ?? stringValue(input?.quoteUrl)
     ?? stringValue(frame?.sharedConfig?.sourceUrl)
     ?? stringValue(frame?.sharedConfig?.quoteUrl);
   if (configured) {
@@ -229,6 +222,10 @@ function parseJson(body) {
   } catch {
     return {};
   }
+}
+
+function actionBody(action) {
+  return parseJson(action?.body);
 }
 
 function stringValue(value) {

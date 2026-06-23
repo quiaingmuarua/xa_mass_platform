@@ -43,7 +43,7 @@ public final class WorkerClient {
                 resolved, WorkerPollResult.class);
     }
 
-    public boolean submitResult(String workerId, WorkerResultSubmission request) {
+    public boolean submitActionReply(String workerId, WorkerActionReply request) {
         Map<?, ?> response = httpClient.post(
                 "/worker-api/v1/workers/" + WorkerRequestSupport.encode(workerId) + ":submit-result",
                 Objects.requireNonNull(request, "request is required"),

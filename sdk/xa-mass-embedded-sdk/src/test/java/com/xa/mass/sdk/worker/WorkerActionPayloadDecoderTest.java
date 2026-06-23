@@ -5,20 +5,21 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class WorkerInvocationPayloadDecoderTest {
+class WorkerActionPayloadDecoderTest {
 
-    private final WorkerInvocationPayloadDecoder decoder = new WorkerInvocationPayloadDecoder();
+    private final WorkerActionPayloadDecoder decoder = new WorkerActionPayloadDecoder();
 
     @Test
     void decodesOpaquePulledDeliveryMessageIntoSdkTaskDispatch() {
-        WorkerInvocation decoded = decoder.decode(new PulledDeliveryMessage(
+        WorkerAction decoded = decoder.decode(new PulledDeliveryMessage(
                 "delivery-1",
                 "worker-1",
                 """
                 {
-                  "resultCorrelationRef": "corr-1",
+                  "actionId": "action-1",
+                  "replyRef": "corr-1",
                   "eventCode": "crawler.fetch-page",
-                  "input": {"target": "target-1"},
+                  "body": "{\\"target\\":\\"target-1\\"}",
                   "sharedConfig": {"mode": "fast"}
                 }
                 """,
@@ -26,9 +27,10 @@ class WorkerInvocationPayloadDecoderTest {
                 10L
         ));
 
-        assertEquals("corr-1", decoded.getResultCorrelationRef());
+        assertEquals("action-1", decoded.getActionId());
+        assertEquals("corr-1", decoded.getReplyRef());
         assertEquals("crawler.fetch-page", decoded.getEventCode());
-        assertEquals("target-1", decoded.getInput().get("target"));
+        assertEquals("{\"target\":\"target-1\"}", decoded.getBody());
         assertEquals("fast", decoded.getSharedConfig().get("mode"));
     }
 }

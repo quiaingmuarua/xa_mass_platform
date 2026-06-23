@@ -8,6 +8,8 @@ import java.util.Map;
 public final class WsFrameTestSupport {
 
     private static final Gson GSON = new Gson();
+    private static final String ACTION = "ACTION";
+    private static final String ACTION_REPLY = "ACTION_REPLY";
 
     private WsFrameTestSupport() {
     }
@@ -16,24 +18,25 @@ public final class WsFrameTestSupport {
         return GSON.fromJson(rawJson, JsonObject.class);
     }
 
-    public static String buildTaskDispatch(String resultCorrelationRef, JsonObject input) {
-        return buildTaskDispatch(resultCorrelationRef, "mock.task.dispatch", input);
+    public static String buildTaskDispatch(String replyRef, JsonObject input) {
+        return buildTaskDispatch(replyRef, "mock.task.dispatch", input);
     }
 
-    public static String buildTaskDispatch(String resultCorrelationRef, String eventCode, JsonObject input) {
-        JsonObject frame = new JsonObject();
-        frame.addProperty("resultCorrelationRef", resultCorrelationRef);
-        frame.addProperty("eventCode", eventCode);
-        frame.add("input", input != null ? input : new JsonObject());
-        frame.add("sharedConfig", new JsonObject());
-        return GSON.toJson(frame);
+    public static String buildTaskDispatch(String replyRef, String eventCode, JsonObject input) {
+        JsonObject action = new JsonObject();
+        action.addProperty("actionId", "action-" + replyRef);
+        action.addProperty("replyRef", replyRef);
+        action.addProperty("eventCode", eventCode);
+        action.addProperty("body", GSON.toJson(input != null ? input : new JsonObject()));
+        action.add("sharedConfig", new JsonObject());
+        return channelFrame(ACTION, action);
     }
 
-    public static String buildTaskResult(String resultCorrelationRef, String status, String detail) {
-        return buildTaskResult(resultCorrelationRef, status, detail, null);
+    public static String buildTaskResult(String replyRef, String status, String detail) {
+        return buildTaskResult(replyRef, status, detail, null);
     }
 
-    public static String buildTaskResult(String resultCorrelationRef,
+    public static String buildTaskResult(String replyRef,
                                          String status,
                                          String detail,
                                          String errorCode) {
@@ -43,22 +46,22 @@ public final class WsFrameTestSupport {
         if (errorCode != null) {
             output.addProperty("errorCode", errorCode);
         }
-        JsonObject frame = new JsonObject();
-        frame.addProperty("resultCorrelationRef", resultCorrelationRef);
-        frame.addProperty("success", "SUCCESS".equalsIgnoreCase(status));
+        JsonObject reply = new JsonObject();
+        reply.addProperty("replyRef", replyRef);
+        reply.addProperty("success", "SUCCESS".equalsIgnoreCase(status));
         output.addProperty("detail", detail);
         if (errorCode != null) {
-            frame.addProperty("resultCode", errorCode);
+            reply.addProperty("code", errorCode);
         }
-        frame.addProperty("result", GSON.toJson(output));
-        return GSON.toJson(frame);
+        reply.addProperty("body", GSON.toJson(output));
+        return channelFrame(ACTION_REPLY, reply);
     }
 
     public static boolean isTask(JsonObject frame) {
-        return frame != null
-                && readString(frame, "resultCorrelationRef") != null
-                && !isResponse(frame)
-                && !hasBoolean(frame, "success");
+        JsonObject action = bodyObject(frame);
+        return ACTION.equals(readString(frame, "kind"))
+                && readString(action, "replyRef") != null
+                && readString(action, "eventCode") != null;
     }
 
     public static boolean isResponse(JsonObject frame) {
@@ -68,8 +71,8 @@ public final class WsFrameTestSupport {
                 && frame.get("response").getAsBoolean();
     }
 
-    public static String resultCorrelationRef(JsonObject frame) {
-        return readString(frame, "resultCorrelationRef");
+    public static String replyRef(JsonObject frame) {
+        return readString(bodyObject(frame), "replyRef");
     }
 
     public static String project(JsonObject frame) {
@@ -77,15 +80,10 @@ public final class WsFrameTestSupport {
     }
 
     public static JsonObject payload(JsonObject frame) {
-        if (frame != null && frame.has("input") && frame.get("input").isJsonObject()) {
-            return frame.getAsJsonObject("input");
-        }
-        if (frame != null && frame.has("output") && frame.get("output").isJsonObject()) {
-            return frame.getAsJsonObject("output");
-        }
-        if (frame != null && frame.has("result") && !frame.get("result").isJsonNull()) {
+        JsonObject message = bodyObject(frame);
+        if (message.has("body") && !message.get("body").isJsonNull()) {
             try {
-                return GSON.fromJson(frame.get("result").getAsString(), JsonObject.class);
+                return GSON.fromJson(message.get("body").getAsString(), JsonObject.class);
             } catch (Exception ignored) {
                 return new JsonObject();
             }
@@ -95,6 +93,10 @@ public final class WsFrameTestSupport {
 
     public static String workerId(JsonObject frame) {
         return readString(frame, "workerId");
+    }
+
+    public static JsonObject message(JsonObject frame) {
+        return bodyObject(frame);
     }
 
     public static JsonObject payloadFromMap(Map<String, ?> map) {
@@ -109,6 +111,26 @@ public final class WsFrameTestSupport {
             return object.get(field).getAsString();
         } catch (Exception ignored) {
             return null;
+        }
+    }
+
+    private static String channelFrame(String kind, JsonObject body) {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("frameId", "frame-" + readString(body, "replyRef"));
+        frame.addProperty("kind", kind);
+        frame.addProperty("body", GSON.toJson(body));
+        return GSON.toJson(frame);
+    }
+
+    private static JsonObject bodyObject(JsonObject frame) {
+        if (frame == null || !frame.has("body") || frame.get("body").isJsonNull()) {
+            return new JsonObject();
+        }
+        try {
+            JsonObject body = GSON.fromJson(frame.get("body").getAsString(), JsonObject.class);
+            return body == null ? new JsonObject() : body;
+        } catch (Exception ignored) {
+            return new JsonObject();
         }
     }
 

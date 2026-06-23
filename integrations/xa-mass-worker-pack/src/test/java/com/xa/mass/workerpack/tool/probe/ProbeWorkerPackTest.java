@@ -3,11 +3,11 @@ package com.xa.mass.workerpack.tool.probe;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.client.payload.MassPayload;
+import com.xa.mass.client.worker.WorkerAction;
 import com.xa.mass.client.worker.WorkerEventBindingSpec;
 import com.xa.mass.client.worker.WorkerGroupSpec;
-import com.xa.mass.client.worker.WorkerInvocation;
-import com.xa.mass.client.worker.handler.WorkerEventHandler;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionHandler;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,7 +22,7 @@ class ProbeWorkerPackTest {
 
     @Test
     void phoneMetadataHandlerReturnsDeterministicMetadata() throws Exception {
-        WorkerResult result = handle(ProbeWorkerPack.phoneMetadataHandler(), ProbeWorkerPack.PHONE_METADATA_EVENT,
+        WorkerActionResult result = handle(ProbeWorkerPack.phoneMetadataHandler(), ProbeWorkerPack.PHONE_METADATA_EVENT,
                 Map.of(
                         "phoneNumber", "+6591234567",
                         "defaultRegion", "SG",
@@ -39,27 +39,27 @@ class ProbeWorkerPackTest {
 
     @Test
     void phoneMetadataHandlerReturnsStructuredBusinessFailure() throws Exception {
-        WorkerResult result = handle(ProbeWorkerPack.phoneMetadataHandler(), ProbeWorkerPack.PHONE_METADATA_EVENT,
+        WorkerActionResult result = handle(ProbeWorkerPack.phoneMetadataHandler(), ProbeWorkerPack.PHONE_METADATA_EVENT,
                 Map.of("phoneNumber", "123"));
 
         assertFalse(result.success());
-        assertEquals("PHONE_METADATA_INVALID", result.resultCode());
+        assertEquals("PHONE_METADATA_INVALID", result.code());
         assertEquals(false, resultBody(result).get("valid").getAsBoolean());
     }
 
     @Test
     void urlDnsHandlerClassifiesReservedInvalidHostWithoutNetwork() throws Exception {
-        WorkerResult result = handle(ProbeWorkerPack.urlDnsHandler(), ProbeWorkerPack.URL_DNS_EVENT,
+        WorkerActionResult result = handle(ProbeWorkerPack.urlDnsHandler(), ProbeWorkerPack.URL_DNS_EVENT,
                 Map.of("url", "https://does-not-exist.public-probe.invalid/", "expectedOutcome", "DNS_NXDOMAIN"));
 
         assertFalse(result.success());
-        assertEquals("DNS_NXDOMAIN", result.resultCode());
+        assertEquals("DNS_NXDOMAIN", result.code());
         assertEquals("does-not-exist.public-probe.invalid", resultBody(result).get("host").getAsString());
     }
 
     @Test
     void csvValidatorReportsColumnAndRowCounts() throws Exception {
-        WorkerResult result = handle(ProbeWorkerPack.csvValidateHandler(), ProbeWorkerPack.CSV_VALIDATE_EVENT,
+        WorkerActionResult result = handle(ProbeWorkerPack.csvValidateHandler(), ProbeWorkerPack.CSV_VALIDATE_EVENT,
                 Map.of("csv", "id,name\n1,Ada\n2,Lin", "requiredColumns", List.of("id", "name")));
 
         assertTrue(result.success());
@@ -71,11 +71,11 @@ class ProbeWorkerPackTest {
 
     @Test
     void jsonSchemaValidatorReportsMissingRequiredFields() throws Exception {
-        WorkerResult result = handle(ProbeWorkerPack.jsonSchemaHandler(), ProbeWorkerPack.JSON_SCHEMA_EVENT,
+        WorkerActionResult result = handle(ProbeWorkerPack.jsonSchemaHandler(), ProbeWorkerPack.JSON_SCHEMA_EVENT,
                 Map.of("payload", Map.of("id", "1"), "requiredFields", List.of("id", "status")));
 
         assertFalse(result.success());
-        assertEquals("SCHEMA_INVALID", result.resultCode());
+        assertEquals("SCHEMA_INVALID", result.code());
         assertEquals("status", resultBody(result).getAsJsonArray("missingFields").get(0).getAsString());
     }
 
@@ -91,17 +91,18 @@ class ProbeWorkerPackTest {
         assertBinding(dataQuality, ProbeWorkerPack.JSON_SCHEMA_EVENT, List.of("dataQualityProbe"));
     }
 
-    private static WorkerResult handle(WorkerEventHandler handler, String eventCode, Map<String, Object> input)
+    private static WorkerActionResult handle(WorkerActionHandler handler, String eventCode, Map<String, Object> input)
             throws Exception {
-        return handler.handle(WorkerInvocation.of(
-                "corr-" + eventCode,
+        return handler.handle(WorkerAction.of(
+                "action-" + eventCode,
+                "reply-" + eventCode,
                 eventCode,
-                MassPayload.of(input),
+                GSON.toJson(input == null ? Map.of() : input),
                 MassPayload.of(Map.of())));
     }
 
-    private static JsonObject resultBody(WorkerResult result) {
-        return GSON.fromJson(result.result(), JsonObject.class);
+    private static JsonObject resultBody(WorkerActionResult result) {
+        return GSON.fromJson(result.body(), JsonObject.class);
     }
 
     private static void assertBinding(WorkerGroupSpec spec, String eventCode, List<String> projectCodes) {

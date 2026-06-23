@@ -158,7 +158,7 @@ Transport should stay centered on these concepts only:
   is no production global dispatch pump/listener or central mailbox mount.
 - `DeliveryPullResult`: explicit transport pull-path status plus delivered
   `PulledDeliveryMessage` items. SDK/server worker polling projects those
-  messages into `WorkerInvocation` and `WorkerPollResult`; task-shaped pull DTOs
+  messages into `WorkerAction` and `WorkerPollResult`; task-shaped pull DTOs
   must not live in transport core. Empty queue, invalid request, temporary
   unavailability, and shutdown must not be flattened into one fake "no work"
   result on the transport mainline.
@@ -561,8 +561,8 @@ values inside an adapter-mailbox `AdapterMailboxDispatchBatch`.
 Transport runtime consumes dispatch batches and flat items only.
 
 `PulledDeliveryMessage` is the transport-core pull value. SDK/server worker
-polling projects it into `WorkerInvocation`, not into a task-shaped transport
-DTO. `WorkerInvocation` is not the internal dispatch handoff payload
+polling projects it into `WorkerAction`, not into a task-shaped transport
+DTO. `WorkerAction` is not the internal dispatch handoff payload
 and not a transport metadata carrier. Worker identity comes from the poll
 session/path, and route/session/endpoint facts stay inside transport delivery.
 WebSocket/socket worker frames are final-hop wire projections from the opaque
@@ -608,7 +608,7 @@ result correctness. Starter-owned `TaskResultCallbackCodec` decodes the opaque
 payload, validates that `message.resultCorrelationRef` matches the payload
 `resultCorrelationRef`, and creates a `TaskResultCallbackCommand`; engine-owned
 result ingress then validates attempt or lease identity before mutating runtime
-truth. SDK/server worker submit paths use `WorkerResultSubmission`, not
+truth. SDK/server worker submit paths use `WorkerActionReply`, not
 transport-owned result DTOs.
 
 When envelope identity validation rejects stale attempt or lease evidence,

@@ -1,6 +1,6 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.sdk.worker.WorkerResultSubmission;
+import com.xa.mass.sdk.worker.WorkerActionReply;
 import com.xa.mass.transport.channel.ResultIngressDiagnostics;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.ResultIngressMessage;
@@ -20,7 +20,7 @@ class TaskResultCallbackCodecTest {
 
     @Test
     void workerResultRequestRoundTripsThroughOpaqueTransportEnvelope() {
-        WorkerResultSubmission request = new WorkerResultSubmission(
+        WorkerActionReply request = new WorkerActionReply(
                 correlation("task-1", "msg-1", "attempt-1"),
                 true,
                 null,
@@ -30,8 +30,8 @@ class TaskResultCallbackCodecTest {
         ResultIngressEntry entry = codec.toEntry(request, Map.of("adapterId", "polling"));
         TaskResultCallbackCommand decoded = codec.decode(entry);
 
-        assertEquals(request.resultCorrelationRef(), entry.partitionKey());
-        assertEquals(request.resultCorrelationRef(), entry.message().resultCorrelationRef());
+        assertEquals(request.replyRef(), entry.partitionKey());
+        assertEquals(request.replyRef(), entry.message().resultCorrelationRef());
         assertEquals("polling", entry.diagnostics().get("adapterId"));
         assertFalse(entry.message().payload().contains("adapterId"));
         assertFalse(entry.message().payload().contains("taskId"));
@@ -50,9 +50,9 @@ class TaskResultCallbackCodecTest {
         ResultIngressEntry entry = envelope(
                 """
                 {
-                  "resultCorrelationRef": "%s",
+                  "replyRef": "%s",
                   "success": false,
-                  "message": "failed"
+                  "body": "failed"
                 }
                 """.formatted(resultCorrelationRef),
                 resultCorrelationRef,
@@ -73,9 +73,9 @@ class TaskResultCallbackCodecTest {
         ResultIngressEntry entry = envelope(
                 """
                 {
-                  "resultCorrelationRef": "%s",
+                  "replyRef": "%s",
                   "success": true,
-                  "result": "done"
+                  "body": "done"
                 }
                 """.formatted(resultCorrelationRef),
                 resultCorrelationRef,
@@ -100,7 +100,7 @@ class TaskResultCallbackCodecTest {
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> codec.decode(entry));
 
-        assertEquals("result callback payload requires resultCorrelationRef", error.getMessage());
+        assertEquals("result callback payload requires replyRef", error.getMessage());
     }
 
     @Test
@@ -109,9 +109,9 @@ class TaskResultCallbackCodecTest {
         ResultIngressEntry entry = envelope(
                 """
                 {
-                  "resultCorrelationRef": "%s",
+                  "replyRef": "%s",
                   "success": true,
-                  "result": "done"
+                  "body": "done"
                 }
                 """.formatted(resultCorrelationRef),
                 "different-correlation",
@@ -120,7 +120,7 @@ class TaskResultCallbackCodecTest {
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> codec.decode(entry));
 
-        assertEquals("result ingress message correlation must match payload resultCorrelationRef", error.getMessage());
+        assertEquals("result ingress message correlation must match payload replyRef", error.getMessage());
     }
 
     @Test
@@ -133,9 +133,9 @@ class TaskResultCallbackCodecTest {
                         resultCorrelationRef,
                         """
                         {
-                          "resultCorrelationRef": "%s",
+                          "replyRef": "%s",
                           "success": true,
-                          "result": "done"
+                          "body": "done"
                         }
                         """.formatted(resultCorrelationRef),
                         0L,

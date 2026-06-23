@@ -145,9 +145,10 @@ delivery target evidence as opaque adapter mailbox keys. Transport-owned
 delivery submitters offer the already assigned item to the adapter-mailbox
 delivery queue; command-level `selectedWorkerId` prevents wrong-worker delivery
 at drain/final-hop time.
-Polling worker responses expose `WorkerInvocation`
+Polling worker responses expose `WorkerAction`
 without worker or route metadata because worker identity comes from the
-session/path context. Worker runtime capacity, lifecycle, and multi-binding
+session/path context. Worker replies use `WorkerActionReply.replyRef`; task
+result callback correlation remains a starter-owned bridge detail. Worker runtime capacity, lifecycle, and multi-binding
 behavior remain owned by worker-runtime scheduling/admission, not by transport
 endpoint leasing.
 
@@ -324,7 +325,7 @@ The returned `MassSdkApplication` exposes:
 - operator/runtime read diagnostics require the explicit `app.runtimeDiagnostics()` surface; they are not part of the task/worker mainline
 - raw transport side-channel access remains internal/operator-only below the stable SDK surface; product or server code should not depend on `sdk.internal`
 - worker mainline after `start()`: `registerWorker(...)`, `getWorker(...)`, `getAllWorkers()`, `isWorkerReachable(...)`
-- worker client/mainline after `start()`: `pullWorker(...)`, `workerOnline(...)`, `workerHeartbeat(...)`, `workerOffline(...)`, `pollTasks(...)`, `submitResult(...)`
+- worker client/mainline after `start()`: `pullWorker(...)`, `workerOnline(...)`, `workerHeartbeat(...)`, `workerOffline(...)`, `pollActions(...)`, `submitActionReply(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerCredentialPrincipal(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listCredentialPrincipals()`, `getCredentialPrincipal(...)`, `authenticateCredential(...)`, `hasProject(...)`, `hasEvent(...)`, `hasCredentialPrincipal(...)`, `projectSupportsEvent(...)`; credential principal list/get return `CredentialPrincipalProfile` without raw credentials
 - stable runtime bootstrap surface after `start()`: open mainline registration/mutation methods such as `registerWorker(...)`, `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`, `replaceDefaultRules(...)`; WorkerContext registration is no longer an SDK surface
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`

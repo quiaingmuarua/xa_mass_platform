@@ -147,7 +147,7 @@ class JavaExternalSdkArchitectureGuardTest {
                 .collect(Collectors.toSet());
 
         assertEquals(Set.of("onFailure", "onConnectionRecovered"), methodNames);
-        assertEquals(Set.of("workerId", "kind", "reason", "resultCorrelationRef",
+        assertEquals(Set.of("workerId", "kind", "reason", "replyRef",
                         "consecutiveFailures", "errorType", "errorMessage", "context"),
                 Arrays.stream(WorkerRuntimeFailureEvent.class.getRecordComponents())
                         .map(component -> component.getName())
@@ -224,7 +224,7 @@ class JavaExternalSdkArchitectureGuardTest {
                         Path.of("src/main/java/com/xa/mass/client/worker/runtime/WebSocketWorkerProtocolDriver.java")
                 ),
                 "WorkerRuntimeDefinition",
-                "WorkerEventHandler",
+                "WorkerActionHandler",
                 "eventHandlers",
                 "attributes",
                 "registerWorker(",
@@ -271,14 +271,14 @@ class JavaExternalSdkArchitectureGuardTest {
                         "src/main/java/com/xa/mass/client/worker/handler/DispatchContext.java")),
                 "DispatchContext must not remain as a compatibility alias");
         assertFalse(Files.exists(Path.of(
-                        "src/main/java/com/xa/mass/client/worker/WorkerResultSubmitRequest.java")),
-                "WorkerResultSubmitRequest must not remain as a compatibility alias");
+                        "src/main/java/com/xa/mass/client/worker/WorkerActionResultSubmitRequest.java")),
+                "WorkerActionResultSubmitRequest must not remain as a compatibility alias");
         assertFalse(Files.exists(Path.of(
-                        "src/main/java/com/xa/mass/client/worker/WorkerResultSubmitOutcome.java")),
-                "WorkerResultSubmitOutcome must not remain as a compatibility alias");
+                        "src/main/java/com/xa/mass/client/worker/WorkerActionResultSubmitOutcome.java")),
+                "WorkerActionResultSubmitOutcome must not remain as a compatibility alias");
         assertFalse(Files.exists(Path.of(
                         "src/main/java/com/xa/mass/client/worker/WorkerDispatchItem.java")),
-                "WorkerDispatchItem must converge into WorkerInvocation instead of remaining as a second public dispatch DTO");
+                "WorkerDispatchItem must converge into WorkerAction instead of remaining as a second public dispatch DTO");
         assertFalse(Files.exists(Path.of(
                         "src/main/java/com/xa/mass/client/worker/ResultCorrelationRef.java")),
                 "ResultCorrelationRef must not remain as a one-field wrapper around the public submit token");
@@ -286,14 +286,14 @@ class JavaExternalSdkArchitectureGuardTest {
                         "src/main/java/com/xa/mass/client/worker/session/WorkerDispatchHandler.java")),
                 "WorkerDispatchHandler must not remain as a second public handler callback");
         assertFalse(Files.exists(Path.of(
-                        "src/main/java/com/xa/mass/client/worker/handler/WorkerEventHandlers.java")),
-                "WorkerEventHandlers must not remain as a public Map wrapper");
+                        "src/main/java/com/xa/mass/client/worker/handler/WorkerActionHandlers.java")),
+                "WorkerActionHandlers must not remain as a public Map wrapper");
         assertFalse(Files.exists(Path.of(
                         "src/main/java/com/xa/mass/client/worker/handler/WorkerEventInvocation.java")),
                 "WorkerEventInvocation must not expose handler runtime outcome as a public model");
         assertFalse(Files.exists(Path.of(
-                        "src/main/java/com/xa/mass/client/worker/handler/WorkerResultSink.java")),
-                "WorkerResultSink must not expose a second public result-submit hook");
+                        "src/main/java/com/xa/mass/client/worker/handler/WorkerActionResultSink.java")),
+                "WorkerActionResultSink must not expose a second public result-submit hook");
 
         assertNoProductionSourceContains(
                 List.of(WORKER_HANDLER_SOURCE),
@@ -309,7 +309,7 @@ class JavaExternalSdkArchitectureGuardTest {
                 "rawItem",
                 "DeliveryCommand",
                 "WorkerDispatchItem",
-                "WorkerResultSink",
+                "WorkerActionResultSink",
                 "endpoint",
                 "connectionId",
                 "sessionHandle"
@@ -317,8 +317,8 @@ class JavaExternalSdkArchitectureGuardTest {
 
         assertNoProductionSourceContains(
                 List.of(
-                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerInvocation.java"),
-                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerResultSubmission.java")
+                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerAction.java"),
+                        Path.of("src/main/java/com/xa/mass/client/worker/WorkerActionReply.java")
                 ),
                 "taskId",
                 "messageId",
@@ -337,7 +337,7 @@ class JavaExternalSdkArchitectureGuardTest {
                 List.of(Path.of("src/main/java/com/xa/mass/client/worker/runtime")),
                 "DispatchContext",
                 "WorkerDispatchHandler",
-                "WorkerResultSink",
+                "WorkerActionResultSink",
                 ".taskId(",
                 ".messageId(",
                 ".attemptId(",

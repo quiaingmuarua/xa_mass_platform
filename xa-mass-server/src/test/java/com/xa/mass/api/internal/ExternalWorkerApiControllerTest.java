@@ -20,7 +20,7 @@ import com.xa.mass.sdk.model.WorkerStateProjectionSnapshot;
 import com.xa.mass.sdk.model.WorkerStateReportRequest;
 import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerAction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -470,11 +470,12 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void pollTasksReturnsTransportNeutralItems() throws Exception {
-        when(workerClient.pollTasks("node-worker-1", 2, 250L)).thenReturn(List.of(
-                new WorkerInvocation(
+        when(workerClient.pollActions("node-worker-1", 2, 250L)).thenReturn(List.of(
+                new WorkerAction(
+                        "action-1",
                         "corr-1",
                         "crawler.fetch-page",
-                        Map.of("url", "https://example.test"),
+                        "{\"url\":\"https://example.test\"}",
                         Map.of("timeoutMs", 1000)
                 )
         ));
@@ -491,9 +492,10 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.total").value(1))
-                .andExpect(jsonPath("$.data.items[0].resultCorrelationRef").value("corr-1"))
+                .andExpect(jsonPath("$.data.items[0].actionId").value("action-1"))
+                .andExpect(jsonPath("$.data.items[0].replyRef").value("corr-1"))
                 .andExpect(jsonPath("$.data.items[0].eventCode").value("crawler.fetch-page"))
-                .andExpect(jsonPath("$.data.items[0].input.url").value("https://example.test"));
+                .andExpect(jsonPath("$.data.items[0].body").value("{\"url\":\"https://example.test\"}"));
     }
 
     @Test
@@ -582,11 +584,11 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void submitResultMapsRequestToTransportReport() throws Exception {
-        when(workerClient.submitResult(eq("node-worker-1"), argThat(report ->
-                "corr-1".equals(report.resultCorrelationRef())
+        when(workerClient.submitActionReply(eq("node-worker-1"), argThat(report ->
+                "corr-1".equals(report.replyRef())
                         && report.success()
-                        && report.resultCode() == null
-                        && "{\"title\":\"Example\"}".equals(report.result())
+                        && report.code() == null
+                        && "{\"title\":\"Example\"}".equals(report.body())
         ))).thenReturn(true);
 
         mockMvc.perform(post("/worker-api/v1/workers/{workerId}:submit-result", "node-worker-1")
@@ -594,9 +596,9 @@ class ExternalWorkerApiControllerTest {
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
                                 {
-                                  "resultCorrelationRef": "corr-1",
+                                  "replyRef": "corr-1",
                                   "success": true,
-                                  "result": "{\\"title\\":\\"Example\\"}"
+                                  "body": "{\\"title\\":\\"Example\\"}"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -604,11 +606,11 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.workerId").value("node-worker-1"))
                 .andExpect(jsonPath("$.data.submitted").value(true));
 
-        verify(workerClient).submitResult(eq("node-worker-1"), argThat(report ->
-                "corr-1".equals(report.resultCorrelationRef())
+        verify(workerClient).submitActionReply(eq("node-worker-1"), argThat(report ->
+                "corr-1".equals(report.replyRef())
                         && report.success()
-                        && report.resultCode() == null
-                        && "{\"title\":\"Example\"}".equals(report.result())
+                        && report.code() == null
+                        && "{\"title\":\"Example\"}".equals(report.body())
         ));
     }
 

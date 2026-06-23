@@ -969,10 +969,11 @@ Request body:
 
 Response notes:
 
-- returns worker invocation items in `data.items`
-- `resultCorrelationRef` is the opaque handle to echo when submitting the result
+- returns worker action items in `data.items`
+- `actionId` is the worker action identity
+- `replyRef` is the opaque handle to echo when submitting the action reply
 - `eventCode` is the worker handler identity
-- `input` is the per-item logical payload
+- `body` is the opaque per-item logical payload string
 - `sharedConfig` is the task-level shared payload
 
 ### 6.8 Submit Task Result
@@ -983,11 +984,11 @@ Response notes:
 
 Request notes:
 
-- request maps onto SDK-owned `WorkerResultSubmission`
-- `resultCorrelationRef` is required and opaque to external workers
+- request maps onto SDK-owned `WorkerActionReply`
+- `replyRef` is required and opaque to external workers
 - `success` is required
-- `resultCode` is an optional short failure or business-result code
-- `result` is an opaque string body; for JSON output, encode the JSON object as
+- `code` is an optional short failure or business-result code
+- `body` is an opaque string body; for JSON output, encode the JSON object as
   this string instead of sending an `output` object
 
 ### 6.9 Report Worker Handler Evidence

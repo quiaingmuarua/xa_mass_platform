@@ -2,12 +2,13 @@ package com.xa.mass.workerpack.tool.probe;
 
 import com.google.gson.Gson;
 import com.xa.mass.client.MassPlatform;
+import com.xa.mass.client.payload.MassPayload;
 import com.xa.mass.client.worker.WorkerGroupSpec;
-import com.xa.mass.client.worker.WorkerInvocation;
+import com.xa.mass.client.worker.WorkerAction;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
 import com.xa.mass.client.worker.WorkerSpec;
-import com.xa.mass.client.worker.handler.WorkerEventHandler;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionHandler;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
 
 import java.net.URI;
@@ -60,7 +61,7 @@ public final class ProbeWorkerPack {
                 .build();
     }
 
-    public static WorkerEventHandler phoneMetadataHandler() {
+    public static WorkerActionHandler phoneMetadataHandler() {
         return dispatch -> {
             ProbeEnvelope envelope = ProbeEnvelope.from(dispatch);
             String phoneNumber = firstText(dispatch, "phoneNumber", "phone");
@@ -91,7 +92,7 @@ public final class ProbeWorkerPack {
         };
     }
 
-    public static WorkerEventHandler urlDnsHandler() {
+    public static WorkerActionHandler urlDnsHandler() {
         return dispatch -> {
             ProbeEnvelope envelope = ProbeEnvelope.from(dispatch);
             String rawUrl = firstText(dispatch, "url", "targetUrl");
@@ -124,7 +125,7 @@ public final class ProbeWorkerPack {
         };
     }
 
-    public static WorkerEventHandler csvValidateHandler() {
+    public static WorkerActionHandler csvValidateHandler() {
         return dispatch -> {
             ProbeEnvelope envelope = ProbeEnvelope.from(dispatch);
             String csv = firstText(dispatch, "csv", "content");
@@ -156,10 +157,10 @@ public final class ProbeWorkerPack {
         };
     }
 
-    public static WorkerEventHandler jsonSchemaHandler() {
+    public static WorkerActionHandler jsonSchemaHandler() {
         return dispatch -> {
             ProbeEnvelope envelope = ProbeEnvelope.from(dispatch);
-            Object payload = dispatch.input().get("payload").orElse(null);
+            Object payload = bodyPayload(dispatch).get("payload").orElse(null);
             if (!(payload instanceof Map<?, ?> payloadMap)) {
                 return businessFailure("JSON_PAYLOAD_REQUIRED", "payload object is required", envelope, Map.of());
             }
@@ -191,17 +192,17 @@ public final class ProbeWorkerPack {
                 .defaultMaxConcurrentWork(4);
     }
 
-    private static WorkerResult businessFailure(String errorCode, String detail, ProbeEnvelope envelope,
+    private static WorkerActionResult businessFailure(String errorCode, String detail, ProbeEnvelope envelope,
                                                 Map<String, Object> output) {
         Map<String, Object> values = envelope.output();
         values.put("classification", errorCode);
         values.putAll(output);
         values.putIfAbsent("provider", PROVIDER);
-        return WorkerResult.failure(errorCode, resultBody(detail, values));
+        return WorkerActionResult.failure(errorCode, resultBody(detail, values));
     }
 
-    private static WorkerResult success(String detail, Map<String, Object> output) {
-        return WorkerResult.success(resultBody(detail, output));
+    private static WorkerActionResult success(String detail, Map<String, Object> output) {
+        return WorkerActionResult.success(resultBody(detail, output));
     }
 
     private static String resultBody(String detail, Map<String, Object> output) {
@@ -212,9 +213,10 @@ public final class ProbeWorkerPack {
         return RESULT_GSON.toJson(values);
     }
 
-    private static String firstText(WorkerInvocation dispatch, String... keys) {
+    private static String firstText(WorkerAction dispatch, String... keys) {
+        MassPayload body = bodyPayload(dispatch);
         for (String key : keys) {
-            String value = dispatch.input().getString(key).map(String::trim).orElse("");
+            String value = body.getString(key).map(String::trim).orElse("");
             if (!value.isBlank()) {
                 return value;
             }
@@ -222,14 +224,15 @@ public final class ProbeWorkerPack {
         return "";
     }
 
-    private static void copyIfPresent(Map<String, Object> output, WorkerInvocation dispatch, String... keys) {
+    private static void copyIfPresent(Map<String, Object> output, WorkerAction dispatch, String... keys) {
+        MassPayload body = bodyPayload(dispatch);
         for (String key : keys) {
-            dispatch.input().get(key).ifPresent(value -> output.put(key, value));
+            body.get(key).ifPresent(value -> output.put(key, value));
         }
     }
 
-    private static List<String> stringList(WorkerInvocation dispatch, String key) {
-        Object raw = dispatch.input().get(key).orElse(List.of());
+    private static List<String> stringList(WorkerAction dispatch, String key) {
+        Object raw = bodyPayload(dispatch).get(key).orElse(List.of());
         if (raw instanceof List<?> values) {
             return values.stream()
                     .map(String::valueOf)
@@ -282,10 +285,11 @@ public final class ProbeWorkerPack {
     }
 
     private record ProbeEnvelope(String expectedOutcome, String traceLabel, long timeoutMs, long sleepMs) {
-        static ProbeEnvelope from(WorkerInvocation dispatch) {
+        static ProbeEnvelope from(WorkerAction dispatch) {
+            MassPayload body = bodyPayload(dispatch);
             return new ProbeEnvelope(
-                    dispatch.input().getString("expectedOutcome").orElse("SUCCESS"),
-                    dispatch.input().getString("traceLabel").orElse(""),
+                    body.getString("expectedOutcome").orElse("SUCCESS"),
+                    body.getString("traceLabel").orElse(""),
                     longValue(dispatch, "timeoutMs", 0L),
                     longValue(dispatch, "sleepMs", 0L)
             );
@@ -306,8 +310,8 @@ public final class ProbeWorkerPack {
             return output;
         }
 
-        private static long longValue(WorkerInvocation dispatch, String key, long fallback) {
-            return dispatch.input().get(key)
+        private static long longValue(WorkerAction dispatch, String key, long fallback) {
+            return bodyPayload(dispatch).get(key)
                     .map(value -> {
                         if (value instanceof Number number) {
                             return number.longValue();
@@ -320,6 +324,19 @@ public final class ProbeWorkerPack {
                     })
                     .orElse(fallback);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static MassPayload bodyPayload(WorkerAction dispatch) {
+        String body = dispatch.body();
+        if (body == null || body.isBlank()) {
+            return MassPayload.of(Map.of());
+        }
+        Object decoded = RESULT_GSON.fromJson(body, Object.class);
+        if (decoded instanceof Map<?, ?> values) {
+            return MassPayload.of((Map<String, Object>) values);
+        }
+        return MassPayload.of(Map.of("rawBody", body));
     }
 
     public static final class PhoneDevicePollingBuilder {

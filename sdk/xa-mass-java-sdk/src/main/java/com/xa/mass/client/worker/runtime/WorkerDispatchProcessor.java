@@ -1,8 +1,8 @@
 package com.xa.mass.client.worker.runtime;
 
-import com.xa.mass.client.worker.WorkerInvocation;
-import com.xa.mass.client.worker.handler.WorkerEventHandler;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.WorkerAction;
+import com.xa.mass.client.worker.handler.WorkerActionHandler;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -11,46 +11,46 @@ import java.util.Objects;
 
 final class WorkerDispatchProcessor {
     private final String workerId;
-    private final Map<String, WorkerEventHandler> handlers;
+    private final Map<String, WorkerActionHandler> handlers;
     private final WorkerRuntimeListener listener;
 
-    WorkerDispatchProcessor(String workerId, Map<String, WorkerEventHandler> handlers, WorkerRuntimeListener listener) {
+    WorkerDispatchProcessor(String workerId, Map<String, WorkerActionHandler> handlers, WorkerRuntimeListener listener) {
         this.workerId = requireText(workerId, "workerId");
         this.handlers = Collections.unmodifiableMap(new LinkedHashMap<>(
                 Objects.requireNonNullElse(handlers, Map.of())));
         this.listener = Objects.requireNonNull(listener, "listener is required");
     }
 
-    ProcessedDispatch process(WorkerInvocation workerInvocation) {
-        Objects.requireNonNull(workerInvocation, "workerInvocation is required");
-        String resultCorrelationRef = workerInvocation.resultCorrelationRef();
-        WorkerResult result;
+    ProcessedDispatch process(WorkerAction action) {
+        Objects.requireNonNull(action, "action is required");
+        String replyRef = action.replyRef();
+        WorkerActionResult result;
         try {
-            WorkerEventHandler handler = handlers.get(workerInvocation.eventCode());
+            WorkerActionHandler handler = handlers.get(action.eventCode());
             if (handler == null) {
-                result = WorkerResult.failure("NO_HANDLER",
-                        "No handler registered for eventCode " + workerInvocation.eventCode());
+                result = WorkerActionResult.failure("NO_HANDLER",
+                        "No handler registered for eventCode " + action.eventCode());
             } else {
-                result = handler.handle(workerInvocation);
+                result = handler.handle(action);
                 if (result == null) {
-                    result = WorkerResult.failure("HANDLER_NULL_RESULT", "Handler returned null result");
+                    result = WorkerActionResult.failure("HANDLER_NULL_RESULT", "Handler returned null result");
                 }
             }
         } catch (Throwable failure) {
-            result = WorkerResult.failure("HANDLER_ERROR",
+            result = WorkerActionResult.failure("HANDLER_ERROR",
                     failure.getClass().getName() + ": " + failure.getMessage());
             listener.onFailure(WorkerRuntimeFailureEvent.handler(
                     workerId,
-                    resultCorrelationRef,
-                    workerInvocation,
+                    replyRef,
+                    action,
                     failure));
         }
-        return new ProcessedDispatch(resultCorrelationRef, workerInvocation, result);
+        return new ProcessedDispatch(replyRef, action, result);
     }
 
-    record ProcessedDispatch(String resultCorrelationRef,
-                             WorkerInvocation invocation,
-                             WorkerResult result) {
+    record ProcessedDispatch(String replyRef,
+                             WorkerAction action,
+                             WorkerActionResult result) {
     }
 
     private static String requireText(String value, String fieldName) {

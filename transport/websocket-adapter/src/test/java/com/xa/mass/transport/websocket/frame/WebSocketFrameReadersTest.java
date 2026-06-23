@@ -9,11 +9,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebSocketFrameReadersTest {
 
     private final WebSocketJsonFrameParser parser = new WebSocketJsonFrameParser();
+    private final WebSocketWorkerChannelFrameCodec channelFrameCodec = new WebSocketWorkerChannelFrameCodec();
 
     @Test
     void jsonParserParsesObjectsAndRejectsMalformedFrames() {
@@ -54,18 +56,14 @@ class WebSocketFrameReadersTest {
     @Test
     void resultReaderRecognizesOnlyResultFramesAndBuildsExplicitEntry() {
         WebSocketResultIngressFrameReader reader = new WebSocketResultIngressFrameReader("websocket", parser);
-        JsonObject unsupported = new JsonObject();
-        unsupported.addProperty("resultCorrelationRef", "corr-1");
-        unsupported.addProperty("eventCode", "mock.state.get");
-        unsupported.addProperty("success", true);
+        JsonObject unsupported = parser.parseObject(channelFrameCodec.frame(
+                WebSocketWorkerChannelFrameCodec.ACTION,
+                "{}"
+        ));
         assertFalse(reader.isResultFrame(unsupported));
 
-        JsonObject frame = new JsonObject();
-        frame.addProperty("resultCorrelationRef", "corr-1");
+        JsonObject frame = replyFrame("corr-1", true, "ok");
         frame.addProperty("routeKey", "inline-route");
-        frame.addProperty("success", true);
-        frame.addProperty("detail", "ok");
-        frame.add("output", payload("status", "SUCCESS"));
 
         assertTrue(reader.isResultFrame(frame));
         ResultIngressEntry entry = reader.toEntry(frame);
@@ -75,14 +73,41 @@ class WebSocketFrameReadersTest {
         assertEquals("websocket", entry.diagnostics().get("adapterId"));
         assertEquals("inline-route", entry.diagnostics().get("routeKey"));
         JsonObject payload = JsonParser.parseString(entry.message().payload()).getAsJsonObject();
-        assertEquals("corr-1", payload.get("resultCorrelationRef").getAsString());
+        assertEquals("corr-1", payload.get("replyRef").getAsString());
         assertFalse(payload.has("taskId"));
         assertFalse(payload.has("messageId"));
         assertTrue(payload.get("success").getAsBoolean());
 
-        JsonObject resultShellWithoutSuccess = new JsonObject();
-        resultShellWithoutSuccess.addProperty("resultCorrelationRef", "corr-2");
+        JsonObject resultShellWithoutSuccess = replyFrame("corr-2", false, "failed");
         assertTrue(reader.isResultFrame(resultShellWithoutSuccess));
+    }
+
+    @Test
+    void resultReaderRejectsLegacyResultCorrelationRefAlias() {
+        WebSocketResultIngressFrameReader reader = new WebSocketResultIngressFrameReader("websocket", parser);
+        JsonObject reply = new JsonObject();
+        reply.addProperty("resultCorrelationRef", "corr-legacy");
+        reply.addProperty("success", true);
+        reply.addProperty("body", "ok");
+        JsonObject frame = parser.parseObject(channelFrameCodec.frame(
+                WebSocketWorkerChannelFrameCodec.ACTION_REPLY,
+                parser.toJson(reply)
+        ));
+
+        assertTrue(reader.isResultFrame(frame));
+        assertNull(reader.replyRef(frame));
+        assertThrows(IllegalArgumentException.class, () -> reader.toEntry(frame));
+    }
+
+    private JsonObject replyFrame(String replyRef, boolean success, String body) {
+        JsonObject reply = new JsonObject();
+        reply.addProperty("replyRef", replyRef);
+        reply.addProperty("success", success);
+        reply.addProperty("body", body);
+        return parser.parseObject(channelFrameCodec.frame(
+                WebSocketWorkerChannelFrameCodec.ACTION_REPLY,
+                parser.toJson(reply)
+        ));
     }
 
     private JsonObject payload(Object... keyValues) {

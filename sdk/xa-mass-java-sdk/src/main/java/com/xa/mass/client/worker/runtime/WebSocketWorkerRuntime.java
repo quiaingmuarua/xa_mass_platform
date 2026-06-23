@@ -2,9 +2,9 @@ package com.xa.mass.client.worker.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.worker.WorkerClient;
-import com.xa.mass.client.worker.WorkerInvocation;
+import com.xa.mass.client.worker.WorkerAction;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -238,7 +238,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
                 if (outbound != null) {
                     listener.onFailure(WorkerRuntimeFailureEvent.submit(
                             workerId,
-                            outbound.resultCorrelationRef(),
+                            outbound.replyRef(),
                             null,
                             cause));
                     requeueOrAbandon(outbound, cause);
@@ -257,7 +257,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
     }
 
     private void handleFrame(String frame) {
-        WorkerInvocation item;
+        WorkerAction item;
         try {
             item = protocolDriver.decodeDispatchFrame(frame);
         } catch (Throwable failure) {
@@ -268,25 +268,25 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
             return;
         }
         WorkerDispatchProcessor.ProcessedDispatch processed = dispatchProcessor.process(item);
-        enqueueResult(processed.resultCorrelationRef(), processed.invocation(), processed.result());
+        enqueueResult(processed.replyRef(), processed.action(), processed.result());
     }
 
-    private void enqueueResult(String resultCorrelationRef,
-                               WorkerInvocation invocation,
-        WorkerResult result) {
+    private void enqueueResult(String replyRef,
+                               WorkerAction action,
+                               WorkerActionResult result) {
         try {
-            String frame = protocolDriver.encodeResultFrame(resultCorrelationRef, result);
-            if (!outboundResults.offer(new QueuedWebSocketResultFrame(resultCorrelationRef, frame))) {
+            String frame = protocolDriver.encodeResultFrame(replyRef, result);
+            if (!outboundResults.offer(new QueuedWebSocketResultFrame(replyRef, frame))) {
                 IllegalStateException failure = new IllegalStateException("websocket result queue is full");
                 listener.onFailure(WorkerRuntimeFailureEvent.queuedResultDropped(
                         workerId,
-                        resultCorrelationRef,
+                        replyRef,
                         "QUEUE_FULL",
                         failure));
                 throw failure;
             }
         } catch (Throwable failure) {
-            listener.onFailure(WorkerRuntimeFailureEvent.submit(workerId, resultCorrelationRef, invocation, failure));
+            listener.onFailure(WorkerRuntimeFailureEvent.submit(workerId, replyRef, action, failure));
         }
     }
 
@@ -349,7 +349,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
     private void abandonResult(QueuedWebSocketResultFrame outbound, String reason, Throwable cause) {
         listener.onFailure(WorkerRuntimeFailureEvent.queuedResultAbandoned(
                 workerId,
-                outbound.resultCorrelationRef(),
+                outbound.replyRef(),
                 reason,
                 cause));
     }
@@ -526,7 +526,7 @@ public final class WebSocketWorkerRuntime implements WorkerRuntime {
         }
     }
 
-    private record QueuedWebSocketResultFrame(String resultCorrelationRef, String resultFrame) {
+    private record QueuedWebSocketResultFrame(String replyRef, String resultFrame) {
     }
 
     private record QueuedResultTermination(String reason, Throwable cause) {

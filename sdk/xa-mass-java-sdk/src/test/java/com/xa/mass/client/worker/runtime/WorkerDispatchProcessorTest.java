@@ -1,7 +1,7 @@
 package com.xa.mass.client.worker.runtime;
 
-import com.xa.mass.client.worker.WorkerInvocation;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.WorkerAction;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -16,15 +16,15 @@ class WorkerDispatchProcessorTest {
     void invokesHandlerAndReturnsProcessedDispatch() {
         WorkerDispatchProcessor processor = new WorkerDispatchProcessor(
                 "worker-1",
-                Map.of("probe.phone.metadata", dispatch -> WorkerResult.success(dispatch.eventCode())),
+                Map.of("probe.phone.metadata", dispatch -> WorkerActionResult.success(dispatch.eventCode())),
                 WorkerRuntimeListener.NOOP);
 
         WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
 
-        assertEquals("corr-1", processed.resultCorrelationRef());
-        assertEquals("probe.phone.metadata", processed.invocation().eventCode());
+        assertEquals("corr-1", processed.replyRef());
+        assertEquals("probe.phone.metadata", processed.action().eventCode());
         assertTrue(processed.result().success());
-        assertEquals("probe.phone.metadata", processed.result().result());
+        assertEquals("probe.phone.metadata", processed.result().body());
     }
 
     @Test
@@ -48,10 +48,10 @@ class WorkerDispatchProcessorTest {
         assertNotNull(observed.get());
         assertEquals(WorkerRuntimeFailureEvent.Kind.HANDLER, observed.get().kind());
         assertEquals("HANDLER_ERROR", observed.get().reason());
-        assertEquals("corr-1", observed.get().resultCorrelationRef());
+        assertEquals("corr-1", observed.get().replyRef());
         assertEquals(IllegalStateException.class.getName(), observed.get().errorType());
         assertEquals("handler failed", observed.get().errorMessage());
-        assertEquals("HANDLER_ERROR", processed.result().resultCode());
+        assertEquals("HANDLER_ERROR", processed.result().code());
     }
 
     @Test
@@ -69,7 +69,7 @@ class WorkerDispatchProcessorTest {
 
         WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
 
-        assertEquals("NO_HANDLER", processed.result().resultCode());
+        assertEquals("NO_HANDLER", processed.result().code());
         assertEquals(null, observed.get());
     }
 
@@ -82,14 +82,15 @@ class WorkerDispatchProcessorTest {
 
         WorkerDispatchProcessor.ProcessedDispatch processed = processor.process(dispatch());
 
-        assertEquals("HANDLER_NULL_RESULT", processed.result().resultCode());
+        assertEquals("HANDLER_NULL_RESULT", processed.result().code());
     }
 
-    private static WorkerInvocation dispatch() {
-        return new WorkerInvocation(
+    private static WorkerAction dispatch() {
+        return new WorkerAction(
+                "action-1",
                 "corr-1",
                 "probe.phone.metadata",
-                Map.of(),
+                "{}",
                 Map.of());
     }
 }

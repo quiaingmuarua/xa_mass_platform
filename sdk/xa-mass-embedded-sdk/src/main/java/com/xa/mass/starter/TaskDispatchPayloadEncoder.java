@@ -12,9 +12,10 @@ import java.util.Objects;
 
 final class TaskDispatchPayloadEncoder {
 
-    private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
+    private static final String ACTION_ID_FIELD = "actionId";
+    private static final String REPLY_REF_FIELD = "replyRef";
     private static final String EVENT_CODE_FIELD = "eventCode";
-    private static final String INPUT_FIELD = "input";
+    private static final String BODY_FIELD = "body";
     private static final String SHARED_CONFIG_FIELD = "sharedConfig";
 
     private final Gson gson;
@@ -27,16 +28,17 @@ final class TaskDispatchPayloadEncoder {
         this.gson = Objects.requireNonNull(gson, "gson");
     }
 
-    String encode(TaskDispatchContext task, TaskDispatchBinding binding, String resultCorrelationRef) {
+    String encode(TaskDispatchContext task, TaskDispatchBinding binding, String actionId, String replyRef) {
         Objects.requireNonNull(task, "task");
         Objects.requireNonNull(binding, "binding");
         JsonObject frame = new JsonObject();
-        frame.addProperty(RESULT_CORRELATION_REF_FIELD, requireText(resultCorrelationRef, RESULT_CORRELATION_REF_FIELD));
+        frame.addProperty(ACTION_ID_FIELD, requireText(actionId, ACTION_ID_FIELD));
+        frame.addProperty(REPLY_REF_FIELD, requireText(replyRef, REPLY_REF_FIELD));
         String eventCode = firstNonBlank(binding.eventCode(), task.eventCode());
         if (eventCode != null) {
             frame.addProperty(EVENT_CODE_FIELD, eventCode);
         }
-        frame.add(INPUT_FIELD, gson.toJsonTree(normalizeInput(binding.payload())));
+        frame.addProperty(BODY_FIELD, gson.toJson(normalizeInput(binding.payload())));
         frame.add(SHARED_CONFIG_FIELD, gson.toJsonTree(
                 TransportJsonValueNormalizer.normalizeObject(task.sharedConfig(), SHARED_CONFIG_FIELD)
         ));
@@ -49,12 +51,12 @@ final class TaskDispatchPayloadEncoder {
             return Map.of();
         }
         if (isWrappedJsonPayload(rawInput)) {
-            return TransportJsonValueNormalizer.normalizeObject((Map<String, Object>) rawInput.get("data"), INPUT_FIELD);
+            return TransportJsonValueNormalizer.normalizeObject((Map<String, Object>) rawInput.get("data"), BODY_FIELD);
         }
         if (isWrappedTextPayload(rawInput)) {
             return Map.of("text", rawInput.get("text"));
         }
-        return TransportJsonValueNormalizer.normalizeObject(rawInput, INPUT_FIELD);
+        return TransportJsonValueNormalizer.normalizeObject(rawInput, BODY_FIELD);
     }
 
     private boolean isWrappedJsonPayload(Map<String, Object> rawInput) {

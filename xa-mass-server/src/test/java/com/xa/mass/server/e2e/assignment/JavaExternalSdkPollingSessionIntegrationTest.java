@@ -11,7 +11,7 @@ import com.xa.mass.client.worker.WorkerGroupSpec;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
 import com.xa.mass.client.worker.WorkerSpec;
 import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -84,8 +84,11 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
                 .attribute("routingTags", "sg")
                 .attribute("fingerprint", "fp-android-13-sg")
                 .event("crawler.fetch-page", dispatch -> {
-                    URI phoneUri = dispatch.input().requiredUri("url");
-                    return WorkerResult.success("{\"url\":\"" + phoneUri + "\",\"mcc\":\"525\",\"mnc\":\"01\",\"workerId\":\""
+                    URI phoneUri = URI.create(new com.fasterxml.jackson.databind.ObjectMapper()
+                            .readTree(dispatch.body())
+                            .get("url")
+                            .asText());
+                    return WorkerActionResult.success("{\"url\":\"" + phoneUri + "\",\"mcc\":\"525\",\"mnc\":\"01\",\"workerId\":\""
                             + workerId + "\"}");
                 })
                 .build();

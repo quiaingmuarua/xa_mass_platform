@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.http.MassHttpClient;
 import com.xa.mass.client.worker.WorkerClient;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -71,7 +71,7 @@ class WorkerRuntimeContractTest {
         return WorkerRuntimeDefinition.builder()
                 .workerId(workerId)
                 .workerGroupId("probe-workers")
-                .event("probe.phone.metadata", dispatch -> WorkerResult.success("{}"))
+                .event("probe.phone.metadata", dispatch -> WorkerActionResult.success("{}"))
                 .build();
     }
 

@@ -3,10 +3,10 @@ package com.xa.mass.workerpack.tool.geo;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.client.payload.MassPayload;
+import com.xa.mass.client.worker.WorkerAction;
 import com.xa.mass.client.worker.WorkerEventBindingSpec;
 import com.xa.mass.client.worker.WorkerGroupSpec;
-import com.xa.mass.client.worker.WorkerInvocation;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -43,11 +43,12 @@ class GeoLookupToolTest {
     }
 
     @Test
-    void handlerConvertsDispatchPayloadIntoWorkerResult() throws Exception {
-        WorkerResult result = GeoLookupWorkerPack.handler().handle(WorkerInvocation.of(
+    void handlerConvertsDispatchPayloadIntoWorkerActionResult() throws Exception {
+        WorkerActionResult result = GeoLookupWorkerPack.handler().handle(WorkerAction.of(
+                "action-geo-1",
                 "corr-geo-1",
                 GeoLookupTool.EVENT_CODE,
-                MassPayload.of(Map.of("query", "Singapore")),
+                GSON.toJson(Map.of("query", "Singapore")),
                 MassPayload.of(Map.of())));
 
         assertTrue(result.success());
@@ -58,14 +59,15 @@ class GeoLookupToolTest {
 
     @Test
     void handlerReturnsStructuredFailureForMissingQuery() throws Exception {
-        WorkerResult result = GeoLookupWorkerPack.handler().handle(WorkerInvocation.of(
+        WorkerActionResult result = GeoLookupWorkerPack.handler().handle(WorkerAction.of(
+                "action-geo-2",
                 "corr-geo-2",
                 GeoLookupTool.EVENT_CODE,
-                MassPayload.of(Map.of()),
+                GSON.toJson(Map.of()),
                 MassPayload.of(Map.of())));
 
         assertFalse(result.success());
-        assertEquals("INVALID_GEO_QUERY", result.resultCode());
+        assertEquals("INVALID_GEO_QUERY", result.code());
     }
 
     @Test
@@ -82,20 +84,21 @@ class GeoLookupToolTest {
             }
         };
 
-        WorkerResult result = GeoLookupWorkerPack.handler(provider).handle(WorkerInvocation.of(
+        WorkerActionResult result = GeoLookupWorkerPack.handler(provider).handle(WorkerAction.of(
+                "action-geo-3",
                 "corr-geo-3",
                 GeoLookupTool.EVENT_CODE,
-                MassPayload.of(Map.of("query", "Singapore")),
+                GSON.toJson(Map.of("query", "Singapore")),
                 MassPayload.of(Map.of())));
 
         assertFalse(result.success());
-        assertEquals("GEO_PROVIDER_TIMEOUT", result.resultCode());
+        assertEquals("GEO_PROVIDER_TIMEOUT", result.code());
         JsonObject body = resultBody(result);
         assertEquals("Singapore", body.get("query").getAsString());
         assertEquals("geo-provider-test", body.get("provider").getAsString());
     }
 
-    private static JsonObject resultBody(WorkerResult result) {
-        return GSON.fromJson(result.result(), JsonObject.class);
+    private static JsonObject resultBody(WorkerActionResult result) {
+        return GSON.fromJson(result.body(), JsonObject.class);
     }
 }

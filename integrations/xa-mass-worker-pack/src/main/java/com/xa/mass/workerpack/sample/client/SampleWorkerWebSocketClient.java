@@ -90,7 +90,7 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
             }
             if (taskFrameHandler.isTaskResultFrame(frame)) {
                 logger.debug("[{}] Ignoring inbound canonical task result frame {}",
-                        workerId, readString(frame, "resultCorrelationRef"));
+                        workerId, readString(frame, "replyRef"));
                 return;
             }
             if (commandFrameHandler.isWorkerCommandFrame(frame)) {
@@ -116,7 +116,7 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
         }
         sendTaskResponse(
                 plan.responseJson(),
-                plan.resultCorrelationRef(),
+                plan.replyRef(),
                 plan.delayMillis(),
                 plan.disconnectWorkerId(),
                 plan.duplicateCount(),
@@ -202,7 +202,7 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
     }
 
     private void sendTaskResponse(String responseJson,
-                                  String resultCorrelationRef,
+                                  String replyRef,
                                   long delayMillis,
                                   String disconnectWorkerId,
                                   int duplicateCount,
@@ -210,39 +210,39 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
                                   SampleWorkerFaultProfile.DisconnectPhase disconnectPhase) {
         if (delayMillis <= 0L) {
             if (disconnectBeforeResult(disconnectPhase)) {
-                disconnectForFaultPhase(disconnectPhase, resultCorrelationRef);
+                disconnectForFaultPhase(disconnectPhase, replyRef);
                 return;
             }
             send(responseJson);
-            logger.debug("[{}] Sent sample task response for resultCorrelationRef: {}", workerId, resultCorrelationRef);
-            sendDuplicateTaskResponses(responseJson, resultCorrelationRef, duplicateCount, duplicateGapMillis);
-            disconnectAfterResultForFaultPhase(disconnectPhase, resultCorrelationRef);
+            logger.debug("[{}] Sent sample task response for replyRef: {}", workerId, replyRef);
+            sendDuplicateTaskResponses(responseJson, replyRef, duplicateCount, duplicateGapMillis);
+            disconnectAfterResultForFaultPhase(disconnectPhase, replyRef);
             disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             return;
         }
 
-        logger.info("[{}] Scheduling sample task response for resultCorrelationRef={} after {} ms",
-                workerId, resultCorrelationRef, delayMillis);
+        logger.info("[{}] Scheduling sample task response for replyRef={} after {} ms",
+                workerId, replyRef, delayMillis);
         taskResponseScheduler.schedule(() -> {
             if (!isOpen()) {
-                logger.warn("[{}] Skip delayed task response because client is disconnected. resultCorrelationRef={}",
-                        workerId, resultCorrelationRef);
+                logger.warn("[{}] Skip delayed task response because client is disconnected. replyRef={}",
+                        workerId, replyRef);
                 return;
             }
             try {
                 if (disconnectBeforeResult(disconnectPhase)) {
-                    disconnectForFaultPhase(disconnectPhase, resultCorrelationRef);
+                    disconnectForFaultPhase(disconnectPhase, replyRef);
                     return;
                 }
                 send(responseJson);
-                logger.debug("[{}] Sent delayed sample task response for resultCorrelationRef: {}",
-                        workerId, resultCorrelationRef);
-                sendDuplicateTaskResponses(responseJson, resultCorrelationRef, duplicateCount, duplicateGapMillis);
-                disconnectAfterResultForFaultPhase(disconnectPhase, resultCorrelationRef);
+                logger.debug("[{}] Sent delayed sample task response for replyRef: {}",
+                        workerId, replyRef);
+                sendDuplicateTaskResponses(responseJson, replyRef, duplicateCount, duplicateGapMillis);
+                disconnectAfterResultForFaultPhase(disconnectPhase, replyRef);
                 disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             } catch (Exception e) {
-                logger.warn("[{}] Failed to send delayed sample task response for resultCorrelationRef={}: {}",
-                        workerId, resultCorrelationRef, e.getMessage());
+                logger.warn("[{}] Failed to send delayed sample task response for replyRef={}: {}",
+                        workerId, replyRef, e.getMessage());
             }
         }, delayMillis, TimeUnit.MILLISECONDS);
     }
@@ -254,23 +254,23 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
     }
 
     private void disconnectAfterResultForFaultPhase(SampleWorkerFaultProfile.DisconnectPhase phase,
-                                                    String resultCorrelationRef) {
+                                                    String replyRef) {
         if (phase == SampleWorkerFaultProfile.DisconnectPhase.AFTER_RESULT) {
-            disconnectForFaultPhase(phase, resultCorrelationRef);
+            disconnectForFaultPhase(phase, replyRef);
         }
     }
 
-    private void disconnectForFaultPhase(SampleWorkerFaultProfile.DisconnectPhase phase, String resultCorrelationRef) {
+    private void disconnectForFaultPhase(SampleWorkerFaultProfile.DisconnectPhase phase, String replyRef) {
         if (phase == null || phase == SampleWorkerFaultProfile.DisconnectPhase.NONE) {
             return;
         }
-        logger.info("[{}] Closing worker connection for fault transport phase {} resultCorrelationRef={}",
-                workerId, phase, resultCorrelationRef);
+        logger.info("[{}] Closing worker connection for fault transport phase {} replyRef={}",
+                workerId, phase, replyRef);
         closeConnection();
     }
 
     private void sendDuplicateTaskResponses(String responseJson,
-                                            String resultCorrelationRef,
+                                            String replyRef,
                                             int duplicateCount,
                                             long duplicateGapMillis) {
         int boundedDuplicateCount = Math.max(0, duplicateCount);
@@ -278,17 +278,17 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
             long delay = Math.max(0L, duplicateGapMillis) * duplicateIndex;
             taskResponseScheduler.schedule(() -> {
                 if (!isOpen()) {
-                    logger.warn("[{}] Skip duplicate task response because client is disconnected. resultCorrelationRef={}",
-                            workerId, resultCorrelationRef);
+                    logger.warn("[{}] Skip duplicate task response because client is disconnected. replyRef={}",
+                            workerId, replyRef);
                     return;
                 }
                 try {
                     send(responseJson);
-                    logger.debug("[{}] Sent duplicate sample task response for resultCorrelationRef: {}",
-                            workerId, resultCorrelationRef);
+                    logger.debug("[{}] Sent duplicate sample task response for replyRef: {}",
+                            workerId, replyRef);
                 } catch (Exception e) {
-                    logger.warn("[{}] Failed to send duplicate sample task response for resultCorrelationRef={}: {}",
-                            workerId, resultCorrelationRef, e.getMessage());
+                    logger.warn("[{}] Failed to send duplicate sample task response for replyRef={}: {}",
+                            workerId, replyRef, e.getMessage());
                 }
             }, delay, TimeUnit.MILLISECONDS);
         }

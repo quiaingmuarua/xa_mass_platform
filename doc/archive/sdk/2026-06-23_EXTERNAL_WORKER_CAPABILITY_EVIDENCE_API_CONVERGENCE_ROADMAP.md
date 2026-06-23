@@ -1,11 +1,12 @@
 # External Worker Capability Evidence API Convergence Roadmap
 
-Status: superseded. Do not execute this roadmap as an active implementation
-plan. Current Java SDK code has already moved from `:report-capability` /
+Status: archived superseded record. Do not execute this roadmap as an active
+implementation plan. Current Java SDK code has already moved from
+`:report-capability` /
 `WorkerCapabilityReport` wording to `reportHandlerEvidence(...)` and
-`reportRuntimeEvidence(...)`. Remaining worker event/evidence reporter
-decisions are owned by
-`JAVA_SDK_WORKER_RUNTIME_CAPABILITY_MODEL_CONVERGENCE_ROADMAP.md` JWR-6.
+`reportRuntimeEvidence(...)`. Future worker event/evidence reporter decisions
+should be captured in a fresh roadmap if the current Java SDK README, boundary
+guard, and code are insufficient.
 
 ## Summary
 

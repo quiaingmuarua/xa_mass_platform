@@ -4,8 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.xa.mass.client.worker.WorkerInvocation;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.WorkerAction;
+import com.xa.mass.client.worker.WorkerActionReply;
+import com.xa.mass.client.worker.WorkerChannelFrame;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -13,9 +15,9 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -68,29 +70,33 @@ final class WebSocketWorkerProtocolDriver {
                 .get(connectTimeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
-    WorkerInvocation decodeDispatchFrame(String frame) throws JsonProcessingException {
-        JsonNode root = objectMapper.readTree(frame);
-        String resultCorrelationRef = text(root, "resultCorrelationRef");
-        if (resultCorrelationRef == null) {
+    WorkerAction decodeDispatchFrame(String frame) throws JsonProcessingException {
+        WorkerChannelFrame channelFrame = objectMapper.readValue(frame, WorkerChannelFrame.class);
+        if (!WorkerChannelFrame.ACTION.equals(channelFrame.kind())) {
             return null;
         }
-        if (root.has("success")) {
-            return null;
-        }
-        return new WorkerInvocation(
-                resultCorrelationRef,
+        JsonNode root = objectMapper.readTree(channelFrame.body());
+        return new WorkerAction(
+                text(root, "actionId"),
+                text(root, "replyRef"),
                 text(root, "eventCode"),
-                objectMap(root.get("input")),
+                body(root.get("body")),
                 objectMap(root.get("sharedConfig"))
         );
     }
 
-    String encodeResultFrame(String resultCorrelationRef, WorkerResult result) throws JsonProcessingException {
-        Map<String, Object> frame = new LinkedHashMap<>();
-        frame.put("resultCorrelationRef", resultCorrelationRef);
-        frame.put("success", result.success());
-        frame.put("resultCode", result.resultCode());
-        frame.put("result", result.result());
+    String encodeResultFrame(String replyRef, WorkerActionResult result) throws JsonProcessingException {
+        WorkerActionReply reply = new WorkerActionReply(
+                replyRef,
+                result.success(),
+                result.code(),
+                result.body()
+        );
+        WorkerChannelFrame frame = new WorkerChannelFrame(
+                UUID.randomUUID().toString(),
+                WorkerChannelFrame.ACTION_REPLY,
+                objectMapper.writeValueAsString(reply)
+        );
         return objectMapper.writeValueAsString(frame);
     }
 
@@ -108,6 +114,13 @@ final class WebSocketWorkerProtocolDriver {
             return Map.of();
         }
         return objectMapper.convertValue(node, MAP_TYPE);
+    }
+
+    private String body(JsonNode node) throws JsonProcessingException {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return node.isTextual() ? node.asText() : objectMapper.writeValueAsString(node);
     }
 
     private static String text(JsonNode node, String fieldName) {

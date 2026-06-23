@@ -43,7 +43,7 @@ class EmbeddedPullWorkerSessionTest {
         assertEquals(WorkerPollStatus.DELIVERED, result.getStatus());
         assertEquals("group-1", session.workerGroupId());
         assertEquals(List.of(correlation("msg-1", "attempt-msg-1")),
-                result.getItems().stream().map(WorkerInvocation::getResultCorrelationRef).toList());
+                result.getItems().stream().map(WorkerAction::getReplyRef).toList());
     }
 
     @Test
@@ -55,10 +55,10 @@ class EmbeddedPullWorkerSessionTest {
         EmbeddedPullWorkerSession session = session(deliveryPullChannel, mock(TransportResultIngressChannel.class),
                 new InMemoryTransportEndpointLeaseStore());
 
-        List<WorkerInvocation> items = session.poll(3, 100L);
+        List<WorkerAction> items = session.poll(3, 100L);
 
         assertEquals(List.of(correlation("msg-1", "attempt-msg-1"), correlation("msg-2", "attempt-msg-2")),
-                items.stream().map(WorkerInvocation::getResultCorrelationRef).toList());
+                items.stream().map(WorkerAction::getReplyRef).toList());
     }
 
     @Test
@@ -69,22 +69,23 @@ class EmbeddedPullWorkerSessionTest {
         EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
 
-        WorkerInvocation item = new WorkerInvocation(
+        WorkerAction item = new WorkerAction(
+                "action-1",
                 correlation("msg-1", "attempt-1"),
                 "crawler.fetch-page",
-                Map.of("target", "target-1"),
+                "{\"target\":\"target-1\"}",
                 Map.of()
         );
 
-        session.submitResult(item, true, "ok");
+        session.submitActionReply(item, true, "ok");
 
         var captured = org.mockito.ArgumentCaptor.forClass(ResultIngressEntry.class);
         verify(resultIngestChannel).ingest(captured.capture());
         assertNull(captured.getValue().diagnostics().get("routeKey"));
         assertNull(captured.getValue().diagnostics().get("adapterId"));
-        assertEquals(item.getResultCorrelationRef(), captured.getValue().partitionKey());
-        assertEquals(item.getResultCorrelationRef(), captured.getValue().message().resultCorrelationRef());
-        assertTrue(captured.getValue().message().payload().contains("\"resultCorrelationRef\":\"" + item.getResultCorrelationRef() + "\""));
+        assertEquals(item.getReplyRef(), captured.getValue().partitionKey());
+        assertEquals(item.getReplyRef(), captured.getValue().message().resultCorrelationRef());
+        assertTrue(captured.getValue().message().payload().contains("\"replyRef\":\"" + item.getReplyRef() + "\""));
     }
 
     @Test
@@ -95,17 +96,17 @@ class EmbeddedPullWorkerSessionTest {
         EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), resultIngestChannel,
                 new InMemoryTransportEndpointLeaseStore());
 
-        String resultCorrelationRef = correlation("msg-1", "attempt-1");
-        session.submitResult(resultCorrelationRef, true, null, "ok");
+        String replyRef = correlation("msg-1", "attempt-1");
+        session.submitActionReply(replyRef, true, null, "ok");
 
         var captured = org.mockito.ArgumentCaptor.forClass(ResultIngressEntry.class);
         verify(resultIngestChannel).ingest(captured.capture());
         assertNull(captured.getValue().diagnostics().get("routeKey"));
         assertNull(captured.getValue().diagnostics().get("adapterId"));
-        assertEquals(resultCorrelationRef, captured.getValue().partitionKey());
-        assertEquals(resultCorrelationRef, captured.getValue().message().resultCorrelationRef());
-        assertTrue(captured.getValue().message().payload().contains("\"resultCorrelationRef\":\"" + resultCorrelationRef + "\""));
-        assertTrue(captured.getValue().message().payload().contains("\"result\":\"ok\""));
+        assertEquals(replyRef, captured.getValue().partitionKey());
+        assertEquals(replyRef, captured.getValue().message().resultCorrelationRef());
+        assertTrue(captured.getValue().message().payload().contains("\"replyRef\":\"" + replyRef + "\""));
+        assertTrue(captured.getValue().message().payload().contains("\"body\":\"ok\""));
     }
 
     @Test
@@ -227,11 +228,12 @@ class EmbeddedPullWorkerSessionTest {
         return CanonicalWorkerGroupRouteKeyCodec.encode("group-1");
     }
 
-    private static WorkerInvocation item(String messageId) {
-        return new WorkerInvocation(
+    private static WorkerAction item(String messageId) {
+        return new WorkerAction(
+                "action-" + messageId,
                 correlation(messageId, "attempt-" + messageId),
                 "crawler.fetch-page",
-                Map.of("target", "target-1"),
+                "{\"target\":\"target-1\"}",
                 Map.of()
         );
     }
@@ -242,12 +244,13 @@ class EmbeddedPullWorkerSessionTest {
                 "worker-1",
                 """
                 {
-                  "resultCorrelationRef": "%s",
+                  "actionId": "action-%s",
+                  "replyRef": "%s",
                   "eventCode": "crawler.fetch-page",
-                  "input": {"target": "target-1"},
+                  "body": "{\\"target\\":\\"target-1\\"}",
                   "sharedConfig": {}
                 }
-                """.formatted(correlation(messageId, "attempt-" + messageId)),
+                """.formatted(messageId, correlation(messageId, "attempt-" + messageId)),
                 correlation(messageId, "attempt-" + messageId),
                 1L
         );

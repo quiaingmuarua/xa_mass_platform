@@ -2,7 +2,7 @@ package com.xa.mass.client.worker.runtime;
 
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -51,15 +51,16 @@ class WorkerRuntimeContextTest {
         WorkerRuntimeContext context = newContext(definitionBuilder().build(), null);
 
         WorkerDispatchProcessor.ProcessedDispatch processed = context.dispatchProcessor().process(
-                new com.xa.mass.client.worker.WorkerInvocation(
+                new com.xa.mass.client.worker.WorkerAction(
+                        "action-1",
                         "corr-1",
                         "probe.phone.metadata",
-                        Map.of(),
+                        "{}",
                         Map.of()));
 
-        assertEquals("corr-1", processed.resultCorrelationRef());
+        assertEquals("corr-1", processed.replyRef());
         assertTrue(processed.result().success());
-        assertEquals("ok", processed.result().result());
+        assertEquals("ok", processed.result().body());
         assertEquals("worker-1", context.reporter().workerId());
     }
 
@@ -110,7 +111,7 @@ class WorkerRuntimeContextTest {
         return WorkerRuntimeDefinition.builder()
                 .workerId("worker-1")
                 .workerGroupId("group-1")
-                .event("probe.phone.metadata", invocation -> WorkerResult.success("ok"));
+                .event("probe.phone.metadata", invocation -> WorkerActionResult.success("ok"));
     }
 
 }

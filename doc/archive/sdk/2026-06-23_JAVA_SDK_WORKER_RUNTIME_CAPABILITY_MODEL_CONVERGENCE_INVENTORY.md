@@ -1,7 +1,12 @@
 # Java SDK Worker Runtime Capability Model Inventory
 
-Status: current inventory for
+Status: archived inventory for
 `JAVA_SDK_WORKER_RUNTIME_CAPABILITY_MODEL_CONVERGENCE_ROADMAP.md`.
+
+Note: worker action/reply naming is current as of
+`JAVA_SDK_WORKER_ACTION_CHANNEL_MODEL_CONVERGENCE_ROADMAP.md`. Older
+`WorkerInvocation` / `WorkerResultSubmission` references in historical
+roadmap sections are pre-action-channel context, not current model truth.
 
 ## Current Public Worker Model
 
@@ -26,15 +31,14 @@ Status: current inventory for
   listener and executor. It does not contain polling interval, endpoint,
   reconnect, queue, or other protocol-specific settings.
 - `PollingWorkerProtocolDriver` owns polling worker-api exchange:
-  `online`, `heartbeat`, `poll`, `submitResult`, and `offline`.
+  `online`, `heartbeat`, `poll`, `submitActionReply`, and `offline`.
 - `WebSocketWorkerProtocolDriver` owns WebSocket connect URI construction,
-  connector selection, and dispatch/result frame codec.
+  connector selection, and action/action-reply channel frame codec.
 - `WorkerSessionSpec` has been removed and is not a compatibility alias.
-- Handler-facing invocation is `WorkerInvocation(resultCorrelationRef,
-  eventCode, input, sharedConfig)`.
-- Handler output is `WorkerResult(success, resultCode, result)`.
-- Result publication is `WorkerResultSubmission(resultCorrelationRef, success,
-  resultCode, result)`.
+- Handler-facing action is `WorkerAction(actionId, replyRef, eventCode, body,
+  sharedConfig)`.
+- Handler output is `WorkerActionResult(success, code, body)`.
+- Result publication is `WorkerActionReply(replyRef, success, code, body)`.
 
 ## Current Runtime Behavior
 

@@ -86,16 +86,17 @@ keys for SDK/worker-api calls.
   layers; see [`INFRA_TRUTH_LAYERS.md`](./INFRA_TRUTH_LAYERS.md).
 - Transport-specific frame shapes must not redefine event-handler,
   WorkerGroup, AdapterNode, task, result, or scheduling semantics.
-- Worker-facing invocation and result APIs must not expose task lifecycle
-  authority as worker semantics. Java SDK handlers receive worker execution
+- Worker-facing action and reply APIs must not expose task lifecycle authority
+  as worker semantics. Java SDK handlers receive `WorkerAction` execution
   input, not task lifecycle identity: `messageId`, `taskId`, attempt ids, lease
   tokens, transport commands, endpoint ids, and raw wire DTOs may only appear
   inside named server/embedded correlation bridges or engine/result convergence
-  internals. `WorkerInvocation` and result submission may carry an opaque
-  `resultCorrelationRef` token so the worker can round-trip the dispatch result
-  without owning task/message/attempt facts; that token must not become
-  business input, scheduling input, trace/read API, retry authority, or
-  lifecycle authority.
+  internals. `WorkerAction.replyRef` and `WorkerActionReply.replyRef` are opaque
+  round-trip tokens; they must not become business input, scheduling input,
+  trace/read API, retry authority, or lifecycle authority. Historical
+  `resultCorrelationRef` vocabulary is allowed only inside the starter-owned
+  task-result callback bridge and transport result-ingress carrier, not in
+  public worker handler/action models.
 - API-key raw secrets may appear only as seed/import material or one-time
   create responses. Durable API-key truth is hash, prefix, scopes,
   permissions, owner, status, expiry, and metadata.

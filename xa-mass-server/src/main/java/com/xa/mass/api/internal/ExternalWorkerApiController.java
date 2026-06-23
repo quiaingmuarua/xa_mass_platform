@@ -23,8 +23,8 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.model.WorkerStateReportRequest;
 import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.sdk.worker.WorkerInvocation;
-import com.xa.mass.sdk.worker.WorkerResultSubmission;
+import com.xa.mass.sdk.worker.WorkerAction;
+import com.xa.mass.sdk.worker.WorkerActionReply;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -315,7 +315,7 @@ public class ExternalWorkerApiController {
         requirePollingWorker(boundWorkerId, "poll");
         int maxMessages = requestBody == null || requestBody.getMaxMessages() == null ? 1 : requestBody.getMaxMessages();
         long timeoutMs = requestBody == null || requestBody.getTimeoutMs() == null ? 0L : requestBody.getTimeoutMs();
-        List<WorkerInvocation> items = workerClient.pollTasks(boundWorkerId, maxMessages, timeoutMs);
+        List<WorkerAction> items = workerClient.pollActions(boundWorkerId, maxMessages, timeoutMs);
         return ApiResponse.success(Map.of(
                 "workerId", boundWorkerId,
                 "items", items,
@@ -328,21 +328,21 @@ public class ExternalWorkerApiController {
     public ApiResponse<Map<String, Object>> submitResult(@RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                          @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                          @PathVariable String workerId,
-                                                         @RequestBody WorkerResultSubmissionRequest requestBody) {
+                                                         @RequestBody WorkerActionReplyRequest requestBody) {
         validateResultRequest(requestBody);
         PrincipalContext workerPrincipal = requireAuthorizedWorkerCredential(
                 apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_SUBMIT_RESULT, workerId, null, null);
         String boundWorkerId = requireBoundWorkerId(workerPrincipal, workerId);
         requirePollingWorker(boundWorkerId, "submitResult");
-        boolean submitted = workerClient.submitResult(boundWorkerId, new WorkerResultSubmission(
-                requireNonBlank(requestBody.getResultCorrelationRef(), "resultCorrelationRef"),
+        boolean submitted = workerClient.submitActionReply(boundWorkerId, new WorkerActionReply(
+                requireNonBlank(requestBody.getReplyRef(), "replyRef"),
                 requestBody.isSuccess(),
-                blankToNull(requestBody.getResultCode()),
-                blankToNull(requestBody.getResult())
+                blankToNull(requestBody.getCode()),
+                blankToNull(requestBody.getBody())
         ));
         return ApiResponse.success(Map.of(
                 "workerId", boundWorkerId,
-                "resultCorrelationRef", requestBody.getResultCorrelationRef().trim(),
+                "replyRef", requestBody.getReplyRef().trim(),
                 "submitted", submitted
             ));
     }
@@ -539,12 +539,12 @@ public class ExternalWorkerApiController {
         }
     }
 
-    private void validateResultRequest(WorkerResultSubmissionRequest requestBody) {
+    private void validateResultRequest(WorkerActionReplyRequest requestBody) {
         if (requestBody == null) {
-            throw new IllegalArgumentException("worker result request body is required");
+            throw new IllegalArgumentException("worker action reply request body is required");
         }
         if (requestBody.hasUnknownFields()) {
-            throw new IllegalArgumentException("Unsupported worker result fields: "
+            throw new IllegalArgumentException("Unsupported worker action reply fields: "
                     + String.join(", ", requestBody.getUnknownFieldNames()));
         }
     }

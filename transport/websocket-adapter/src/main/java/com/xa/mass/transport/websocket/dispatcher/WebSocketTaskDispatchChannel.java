@@ -4,6 +4,7 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
+import com.xa.mass.transport.websocket.frame.WebSocketWorkerChannelFrameCodec;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,9 +22,16 @@ public final class WebSocketTaskDispatchChannel implements AdapterCommandExecuto
     private static final Logger logger = LoggerFactory.getLogger(WebSocketTaskDispatchChannel.class);
 
     private final WebSocketSessionController sessionController;
+    private final WebSocketWorkerChannelFrameCodec frameCodec;
 
     public WebSocketTaskDispatchChannel(WebSocketSessionController sessionController) {
+        this(sessionController, new WebSocketWorkerChannelFrameCodec());
+    }
+
+    WebSocketTaskDispatchChannel(WebSocketSessionController sessionController,
+                                 WebSocketWorkerChannelFrameCodec frameCodec) {
         this.sessionController = Objects.requireNonNull(sessionController, "sessionController");
+        this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
     }
 
     @Override
@@ -43,7 +51,9 @@ public final class WebSocketTaskDispatchChannel implements AdapterCommandExecuto
             return DispatchOutcome.invalid(null, null, null, "request must not be null");
         }
         try {
-            boolean sent = sessionController.sendTextToWorker(item.selectedWorkerId(), item.payload());
+            boolean sent = sessionController.sendTextToWorker(
+                    item.selectedWorkerId(),
+                    frameCodec.actionFrame(item.payload()));
             if (sent) {
                 return DispatchOutcomeFactory.delivered(item);
             }

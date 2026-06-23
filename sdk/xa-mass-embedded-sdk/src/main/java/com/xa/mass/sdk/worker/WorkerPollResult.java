@@ -6,14 +6,14 @@ import java.util.Objects;
 public final class WorkerPollResult {
 
     private final WorkerPollStatus status;
-    private final List<WorkerInvocation> items;
+    private final List<WorkerAction> items;
 
-    private WorkerPollResult(WorkerPollStatus status, List<WorkerInvocation> items) {
+    private WorkerPollResult(WorkerPollStatus status, List<WorkerAction> items) {
         this.status = Objects.requireNonNull(status, "status");
         this.items = items == null || items.isEmpty() ? List.of() : List.copyOf(items);
     }
 
-    public static WorkerPollResult of(WorkerPollStatus status, List<WorkerInvocation> items) {
+    public static WorkerPollResult of(WorkerPollStatus status, List<WorkerAction> items) {
         Objects.requireNonNull(status, "status");
         return switch (status) {
             case DELIVERED -> delivered(items);
@@ -24,7 +24,7 @@ public final class WorkerPollResult {
         };
     }
 
-    public static WorkerPollResult delivered(List<WorkerInvocation> items) {
+    public static WorkerPollResult delivered(List<WorkerAction> items) {
         if (items == null || items.isEmpty()) {
             throw new IllegalArgumentException("delivered poll result must include at least one item");
         }
@@ -51,7 +51,7 @@ public final class WorkerPollResult {
         return status;
     }
 
-    public List<WorkerInvocation> getItems() {
+    public List<WorkerAction> getItems() {
         return items;
     }
 }

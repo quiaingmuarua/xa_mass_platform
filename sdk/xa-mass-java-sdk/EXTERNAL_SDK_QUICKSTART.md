@@ -131,9 +131,9 @@ The stable third-party worker protocol today is the polling surface:
 - `POST /worker-api/v1/workers/{workerId}/commands/{commandId}:ack`
 - `POST /worker-api/v1/workers/{workerId}:offline`
 
-Polling workers receive worker invocation items, execute by `eventCode`, and
-submit `WorkerResultSubmission` with the opaque `resultCorrelationRef` from
-that item. The pulled item does not carry worker identity, task lifecycle
+Polling workers receive `WorkerAction` items, execute by `eventCode`, and
+submit `WorkerActionReply` with the opaque `replyRef` from
+that item. The pulled action does not carry worker identity, task lifecycle
 identity, or route metadata; those come from the worker runtime/path context
 or stay inside runtime correlation. Workers may also report current
 worker-local handler availability/scheduling attributes
@@ -152,11 +152,10 @@ Example dispatch payload:
 
 ```json
 {
-  "resultCorrelationRef": "...",
+  "actionId": "...",
+  "replyRef": "...",
   "eventCode": "crawler.fetch-page",
-  "input": {
-    "url": "https://example.com"
-  },
+  "body": "{\"url\":\"https://example.com\"}",
   "sharedConfig": {
     "routingCode": "us",
     "routeAttributes": {
@@ -170,10 +169,10 @@ Example result submission:
 
 ```json
 {
-  "resultCorrelationRef": "...",
+  "replyRef": "...",
   "success": true,
-  "resultCode": null,
-  "result": "{\"status\":\"SUCCESS\",\"title\":\"Example\"}"
+  "code": null,
+  "body": "{\"status\":\"SUCCESS\",\"title\":\"Example\"}"
 }
 ```
 
@@ -214,7 +213,7 @@ For realtime paths:
   event context, not the complete raw frame; previews can still contain payload
   fragments
 - event context is diagnostic-only; worker code should use event `kind`,
-  `reason`, `resultCorrelationRef`, `consecutiveFailures`, `errorType`, and
+  `reason`, `replyRef`, `consecutiveFailures`, `errorType`, and
   `errorMessage` as stable data
 - WebSocket result idempotency under reconnect, malformed frame flood ceilings,
   socket session ownership, and Android host support remain open hardening

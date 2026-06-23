@@ -1156,22 +1156,25 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void workerInvocationSurfacesExposeOnlyOpaqueResultCorrelation() throws IOException {
+    void workerActionSurfacesExposeOnlyOpaqueReplyCorrelation() throws IOException {
         assertPathsDoNotExist(
                 repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/DispatchContext.java"),
                 repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerDispatchItem.java"),
                 repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerInvocation.java"),
+                repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerInvocation.java"),
+                repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerResultSubmission.java"),
                 repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/session/WorkerDispatchHandler.java"),
                 repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerResultSink.java")
         );
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerInvocation.java"),
-                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerResultSubmitRequest.java"),
-                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerResultSink.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerAction.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerActionReply.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerActionResult.java"),
                         repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/PulledTaskDispatch.java"),
-                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/WorkerResultSubmitRequest.java"),
-                        repoRoot().resolve("xa-mass-server/src/main/java/com/xa/mass/api/model/worker/ExternalWorkerResultSubmitApiRequest.java")
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/WorkerAction.java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/WorkerActionReply.java"),
+                        repoRoot().resolve("xa-mass-server/src/main/java/com/xa/mass/api/model/worker/WorkerActionReplyRequest.java")
                 ),
                 "taskId",
                 "messageId",
@@ -1187,8 +1190,8 @@ class TransportConvergenceArchitectureGuardTest {
         );
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerInvocation.java"),
-                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerResultSink.java")
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerAction.java"),
+                        repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/handler/WorkerActionHandler.java")
                 ),
                 "WorkerDispatchItem"
         );
@@ -1208,8 +1211,10 @@ class TransportConvergenceArchitectureGuardTest {
                 "readString(payload, \"messageId\")"
         );
         String source = Files.readString(codec);
-        assertTrue(source.contains("result callback payload requires resultCorrelationRef"),
-                "Worker result ingress payload must require opaque resultCorrelationRef");
+        assertTrue(source.contains("result callback payload requires replyRef"),
+                "Worker result ingress payload must require opaque replyRef");
+        assertTrue(source.contains("result ingress message correlation must match payload replyRef"),
+                "Starter result bridge must validate message correlation against worker replyRef");
     }
 
     @Test

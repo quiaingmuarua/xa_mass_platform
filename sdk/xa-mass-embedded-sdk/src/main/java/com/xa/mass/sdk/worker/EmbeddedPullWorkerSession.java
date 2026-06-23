@@ -26,7 +26,7 @@ public final class EmbeddedPullWorkerSession {
     private final String endpointAddress;
     private final String sessionToken;
     private final DeliveryPullChannel deliveryPullChannel;
-    private final WorkerInvocationPayloadDecoder payloadDecoder;
+    private final WorkerActionPayloadDecoder payloadDecoder;
     private final TransportResultIngressChannel resultIngressChannel;
     private final TaskResultCallbackCodec resultCallbackCodec;
     private final PullSessionEvidenceDriver evidenceDriver;
@@ -47,7 +47,7 @@ public final class EmbeddedPullWorkerSession {
         this.endpointAddress = CanonicalWorkerGroupRouteKeyCodec.encode(this.workerGroupId);
         this.sessionToken = requireText(sessionToken, "sessionToken");
         this.deliveryPullChannel = Objects.requireNonNull(deliveryPullChannel, "deliveryPullChannel");
-        this.payloadDecoder = new WorkerInvocationPayloadDecoder();
+        this.payloadDecoder = new WorkerActionPayloadDecoder();
         this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
         this.resultCallbackCodec = new TaskResultCallbackCodec();
         this.evidenceDriver = Objects.requireNonNull(evidenceDriver, "evidenceDriver");
@@ -120,11 +120,11 @@ public final class EmbeddedPullWorkerSession {
         );
     }
 
-    public List<WorkerInvocation> poll(int maxMessages) {
+    public List<WorkerAction> poll(int maxMessages) {
         return poll(maxMessages, 0L);
     }
 
-    public List<WorkerInvocation> poll(int maxMessages, long timeoutMillis) {
+    public List<WorkerAction> poll(int maxMessages, long timeoutMillis) {
         return pollResult(maxMessages, timeoutMillis).getItems();
     }
 
@@ -144,26 +144,26 @@ public final class EmbeddedPullWorkerSession {
                 .toList());
     }
 
-    public boolean submitResult(WorkerInvocation item, boolean success, String result) {
-        Objects.requireNonNull(item, "item");
-        return submitResult(item, success, null, result);
+    public boolean submitActionReply(WorkerAction action, boolean success, String body) {
+        Objects.requireNonNull(action, "action");
+        return submitActionReply(action, success, null, body);
     }
 
-    public boolean submitResult(WorkerInvocation item,
-                                boolean success,
-                                String resultCode,
-                                String result) {
-        Objects.requireNonNull(item, "item");
-        WorkerResultSubmission request = new WorkerResultSubmission(
-                item.getResultCorrelationRef(),
+    public boolean submitActionReply(WorkerAction action,
+                                     boolean success,
+                                     String code,
+                                     String body) {
+        Objects.requireNonNull(action, "action");
+        WorkerActionReply request = new WorkerActionReply(
+                action.getReplyRef(),
                 success,
-                resultCode,
-                result
+                code,
+                body
         );
-        return submitResult(request);
+        return submitActionReply(request);
     }
 
-    public boolean submitResult(WorkerResultSubmission request) {
+    public boolean submitActionReply(WorkerActionReply request) {
         Objects.requireNonNull(request, "request");
         return resultIngressChannel.ingest(resultCallbackCodec.toEntry(
                 request,
@@ -171,15 +171,15 @@ public final class EmbeddedPullWorkerSession {
         ));
     }
 
-    public boolean submitResult(String resultCorrelationRef,
-                                boolean success,
-                                String resultCode,
-                                String result) {
-        return submitResult(WorkerResultSubmission.of(
-                resultCorrelationRef,
+    public boolean submitActionReply(String replyRef,
+                                     boolean success,
+                                     String code,
+                                     String body) {
+        return submitActionReply(WorkerActionReply.of(
+                replyRef,
                 success,
-                resultCode,
-                result
+                code,
+                body
         ));
     }
 

@@ -147,8 +147,8 @@ async function pollOnce() {
 }
 
 async function handleDispatch(item) {
-  const { resultCorrelationRef, eventCode: dispatchEventCode } = item;
-  console.log(`[worker] received resultCorrelationRef=${resultCorrelationRef} eventCode=${dispatchEventCode}`);
+  const { replyRef, eventCode: dispatchEventCode } = item;
+  console.log(`[worker] received replyRef=${replyRef} eventCode=${dispatchEventCode}`);
 
   let result;
   try {
@@ -156,8 +156,8 @@ async function handleDispatch(item) {
   } catch (error) {
     result = {
       success: false,
-      resultCode: "WORKER_HANDLER_ERROR",
-      result: {
+      code: "WORKER_HANDLER_ERROR",
+      body: {
         detail: error instanceof Error ? error.message : String(error),
         workerId,
         eventCode: dispatchEventCode,
@@ -166,10 +166,10 @@ async function handleDispatch(item) {
   }
 
   const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:submit-result`, {
-    resultCorrelationRef,
+    replyRef,
     success: result.success,
-    resultCode: result.resultCode ?? null,
-    result: JSON.stringify(result.result ?? {}),
+    code: result.code ?? null,
+    body: JSON.stringify(result.body ?? {}),
   });
   console.log("[worker] submitted result:", response.data);
 }
@@ -184,13 +184,14 @@ async function dispatchByEventCode(item) {
 }
 
 async function handleCrawlerFetchPage(item) {
-  const url = item?.input?.url ?? item?.sharedConfig?.url;
+  const body = parseJson(item?.body);
+  const url = body?.url ?? item?.sharedConfig?.url;
   if (!url || typeof url !== "string") {
     return {
       success: false,
-      resultCode: "INVALID_INPUT",
-      result: {
-        detail: "url is required in WorkerInvocation.input.url",
+      code: "INVALID_INPUT",
+      body: {
+        detail: "url is required in WorkerAction.body.url",
         workerId,
         eventCode: item.eventCode,
       },
@@ -212,8 +213,8 @@ async function handleCrawlerFetchPage(item) {
     };
     return {
       success: response.ok,
-      resultCode: response.ok ? null : `HTTP_${response.status}`,
-      result: {
+      code: response.ok ? null : `HTTP_${response.status}`,
+      body: {
         detail: response.ok ? "crawler-success" : `crawler-http-${response.status}`,
         ...resultBody,
       },
@@ -221,8 +222,8 @@ async function handleCrawlerFetchPage(item) {
   } catch (error) {
     return {
       success: false,
-      resultCode: "FETCH_ERROR",
-      result: {
+      code: "FETCH_ERROR",
+      body: {
         detail: error instanceof Error ? error.message : String(error),
         workerId,
         eventCode: item.eventCode,
@@ -231,6 +232,17 @@ async function handleCrawlerFetchPage(item) {
         elapsedMs: Date.now() - startedAt,
       },
     };
+  }
+}
+
+function parseJson(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return {};
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
   }
 }
 

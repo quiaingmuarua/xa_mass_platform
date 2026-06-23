@@ -12,18 +12,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class WorkerInvocationTest {
+class WorkerActionTest {
 
     @Test
     void exposesOnlySdkWorkerPullFields() {
-        Set<String> fields = Arrays.stream(WorkerInvocation.class.getDeclaredFields())
+        Set<String> fields = Arrays.stream(WorkerAction.class.getDeclaredFields())
                 .map(Field::getName)
                 .collect(Collectors.toSet());
 
         assertEquals(Set.of(
-                "resultCorrelationRef",
+                "actionId",
+                "replyRef",
                 "eventCode",
-                "input",
+                "body",
                 "sharedConfig"
         ), fields);
         assertFalse(fields.contains("routeKey"));
@@ -34,25 +35,28 @@ class WorkerInvocationTest {
 
     @Test
     void normalizesMapsAndCounters() {
-        WorkerInvocation item = new WorkerInvocation(
+        WorkerAction item = new WorkerAction(
+                " action-1 ",
                 " corr-1 ",
                 " event-1 ",
-                Map.of("target", "a"),
+                " {\"target\":\"a\"} ",
                 null
         );
 
-        assertEquals("corr-1", item.getResultCorrelationRef());
+        assertEquals("action-1", item.getActionId());
+        assertEquals("corr-1", item.getReplyRef());
         assertEquals("event-1", item.getEventCode());
-        assertEquals(Map.of("target", "a"), item.getInput());
+        assertEquals(" {\"target\":\"a\"} ", item.getBody());
         assertEquals(Map.of(), item.getSharedConfig());
     }
 
     @Test
-    void requiresResultCorrelationRef() {
-        assertThrows(IllegalArgumentException.class, () -> new WorkerInvocation(
+    void requiresReplyRef() {
+        assertThrows(IllegalArgumentException.class, () -> new WorkerAction(
+                "action-1",
                 " ",
-                null,
-                Map.of(),
+                "event-1",
+                "{}",
                 Map.of()
         ));
     }

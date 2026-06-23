@@ -93,10 +93,11 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
                                        TaskDispatchBinding binding,
                                        String selectedWorkerId) {
         String correlationRef = correlationCodec.encode(task, binding);
+        String deliveryId = UUID.randomUUID().toString();
         return new DispatchMessage(
-                UUID.randomUUID().toString(),
+                deliveryId,
                 selectedWorkerId,
-                payloadEncoder.encode(task, binding, correlationRef),
+                payloadEncoder.encode(task, binding, deliveryId, correlationRef),
                 correlationRef,
                 0L,
                 System.currentTimeMillis()

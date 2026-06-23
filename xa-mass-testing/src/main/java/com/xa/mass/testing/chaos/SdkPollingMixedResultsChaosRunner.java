@@ -1,5 +1,6 @@
 package com.xa.mass.testing.chaos;
 
+import com.google.gson.Gson;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.testing.chaos.support.ChaosTraceArtifacts;
@@ -13,7 +14,7 @@ import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.sink.ExecutionEventType;
-import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerAction;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -53,6 +54,7 @@ public final class SdkPollingMixedResultsChaosRunner {
     private static final String PROJECT_CODE = "demoApp";
     private static final String ROUTING_CODE = "us";
     private static final String WORKER_ID = "sdk-mixed-results-chaos-worker-0";
+    private static final Gson ACTION_BODY_GSON = new Gson();
     private static final int SUCCESS_COUNT = 2;
     private static final int FAIL_COUNT = 2;
     private static final int MESSAGE_COUNT = SUCCESS_COUNT + FAIL_COUNT;
@@ -293,30 +295,30 @@ public final class SdkPollingMixedResultsChaosRunner {
         private void runLoop() {
             try {
                 while (running.get()) {
-                    List<WorkerInvocation> items = session.poll(1, 0L);
+                    List<WorkerAction> items = session.poll(1, 0L);
                     pollCycles.incrementAndGet();
                     if (items == null || items.isEmpty()) {
                         emptyPollCycles.incrementAndGet();
                         Thread.sleep(20L);
                         continue;
                     }
-                    for (WorkerInvocation item : items) {
+                    for (WorkerAction item : items) {
                         receivedDispatches.incrementAndGet();
                         ChaosSupport.maybeSleep(config.processingDelayMillis());
 
                         boolean shouldFail = isShouldFail(item);
-                        boolean accepted = session.submitResult(
+                        boolean accepted = session.submitActionReply(
                                 item,
                                 !shouldFail,
                                 shouldFail ? "CHAOS_MIXED_FAIL" : null,
                                 Map.of(
                                         "workerId", workerId,
                                         "shouldFail", shouldFail,
-                                        "resultCorrelationRef", item.getResultCorrelationRef()
+                                        "resultCorrelationRef", item.getReplyRef()
                                 ).toString()
                         );
                         ChaosSupport.require(accepted,
-                                "result submission should be accepted for " + item.getResultCorrelationRef());
+                                "result submission should be accepted for " + item.getReplyRef());
                         if (shouldFail) {
                             failedResults.incrementAndGet();
                         } else {
@@ -331,8 +333,8 @@ public final class SdkPollingMixedResultsChaosRunner {
             }
         }
 
-        private static boolean isShouldFail(WorkerInvocation item) {
-            Map<String, Object> input = item.getInput();
+        private static boolean isShouldFail(WorkerAction item) {
+            Map<String, Object> input = actionBody(item);
             if (input == null) {
                 return false;
             }
@@ -359,6 +361,19 @@ public final class SdkPollingMixedResultsChaosRunner {
                 }
             }
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> actionBody(WorkerAction item) {
+        String body = item.getBody();
+        if (body == null || body.isBlank()) {
+            return Map.of();
+        }
+        Object decoded = ACTION_BODY_GSON.fromJson(body, Object.class);
+        if (decoded instanceof Map<?, ?> values) {
+            return (Map<String, Object>) values;
+        }
+        return Map.of("rawBody", body);
     }
 
     private record WorkerRuntimeSnapshot(String workerId,

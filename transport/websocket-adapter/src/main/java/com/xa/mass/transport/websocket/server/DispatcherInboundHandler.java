@@ -61,10 +61,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             if (eventCode != null) {
                 org.slf4j.MDC.put("eventCode", eventCode);
             }
-            String traceId = WebSocketStringValues.firstNonBlank(
-                    frameParser.readString(frame, "traceId"),
-                    frameParser.readString(frame, "resultCorrelationRef")
-            );
+            String traceId = WebSocketStringValues.firstNonBlank(frameParser.readString(frame, "traceId"));
             if (traceId != null) {
                 org.slf4j.MDC.put("traceId", traceId);
             }

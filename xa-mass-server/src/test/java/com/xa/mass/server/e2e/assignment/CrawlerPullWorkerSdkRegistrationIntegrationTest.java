@@ -17,7 +17,7 @@ import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerAction;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -121,7 +121,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
 
             assertTrue(app.approveTask(task.getTaskId()));
 
-            List<WorkerInvocation> items = List.of();
+            List<WorkerAction> items = List.of();
             for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
                 items = session.poll(10);
                 if (items.isEmpty()) {
@@ -130,11 +130,11 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
             }
             assertFalse(items.isEmpty(), "Expected crawler task dispatch via polling");
 
-            WorkerInvocation item = items.get(0);
-            assertFalse(item.getResultCorrelationRef().isBlank());
-            assertEquals("https://example.test/page-1", item.getInput().get("url"));
+            WorkerAction item = items.get(0);
+            assertFalse(item.getReplyRef().isBlank());
+            assertTrue(item.getBody().contains("https://example.test/page-1"));
 
-            assertTrue(session.submitResult(
+            assertTrue(session.submitActionReply(
                     item,
                     true,
                     null,

@@ -7,9 +7,9 @@ import com.sun.net.httpserver.HttpServer;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
 import com.xa.mass.client.worker.WorkerSpec;
-import com.xa.mass.client.worker.handler.WorkerEventHandler;
+import com.xa.mass.client.worker.handler.WorkerActionHandler;
 import com.xa.mass.client.payload.MassPayloadException;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -85,7 +85,7 @@ class PollingWorkerRuntimeTest {
             if ("/worker-api/v1/workers/phone-worker-sg-001:poll".equals(path)) {
                 if (firstPoll.getAndSet(false)) {
                     respond(exchange, 200, """
-                            {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","total":1,"items":[{"resultCorrelationRef":"corr-1","eventCode":"probe.phone.metadata","input":{"phone":"+14155550100"},"sharedConfig":{"routingCode":"sg"}}]}}
+                            {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","total":1,"items":[{"actionId":"action-1","replyRef":"corr-1","eventCode":"probe.phone.metadata","body":"{\\"phone\\":\\"+14155550100\\"}","sharedConfig":{"routingCode":"sg"}}]}}
                             """);
                 } else {
                     respond(exchange, 200, """
@@ -96,15 +96,15 @@ class PollingWorkerRuntimeTest {
             }
             if ("/worker-api/v1/workers/phone-worker-sg-001:submit-result".equals(path)) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("corr-1", request.get("resultCorrelationRef").asText());
+                assertEquals("corr-1", request.get("replyRef").asText());
                 assertTrue(request.get("success").asBoolean());
-                JsonNode result = OBJECT_MAPPER.readTree(request.get("result").asText());
+                JsonNode result = OBJECT_MAPPER.readTree(request.get("body").asText());
                 assertEquals("+14155550100", result.get("phone").asText());
                 assertEquals("525", result.get("mcc").asText());
-                assertFalse(request.hasNonNull("resultCode"));
+                assertFalse(request.hasNonNull("code"));
                 resultSubmitted.countDown();
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","resultCorrelationRef":"corr-1","submitted":true}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","replyRef":"corr-1","submitted":true}}
                         """);
                 return;
             }
@@ -120,8 +120,8 @@ class PollingWorkerRuntimeTest {
 
         MassPlatform mass = platform();
         WorkerRuntimeDefinition definition = workerDefinition("phone-worker-sg-001", "phone-device-probe", dispatch -> {
-                    String phone = dispatch.input().requiredString("phone");
-                    return WorkerResult.success("""
+                    String phone = OBJECT_MAPPER.readTree(dispatch.body()).get("phone").asText();
+                    return WorkerActionResult.success("""
                             {"phone":"%s","mcc":"525","mnc":"01"}
                             """.formatted(phone).trim());
                 })
@@ -271,7 +271,7 @@ class PollingWorkerRuntimeTest {
             if (path.endsWith(":poll")) {
                 if (firstPoll.getAndSet(false)) {
                     respond(exchange, 200, """
-                            {"code":0,"msg":"ok","data":{"workerId":"worker-1","total":1,"items":[{"resultCorrelationRef":"corr-1","eventCode":"probe.phone.metadata","input":{},"sharedConfig":{}}]}}
+                            {"code":0,"msg":"ok","data":{"workerId":"worker-1","total":1,"items":[{"actionId":"action-1","replyRef":"corr-1","eventCode":"probe.phone.metadata","body":"{}","sharedConfig":{}}]}}
                             """);
                 } else {
                     respond(exchange, 200, """
@@ -282,13 +282,13 @@ class PollingWorkerRuntimeTest {
             }
             if (path.endsWith(":submit-result")) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("corr-1", request.get("resultCorrelationRef").asText());
+                assertEquals("corr-1", request.get("replyRef").asText());
                 assertFalse(request.get("success").asBoolean());
-                assertEquals("HANDLER_ERROR", request.get("resultCode").asText());
-                assertTrue(request.get("result").asText().contains(MassPayloadException.class.getName()));
+                assertEquals("HANDLER_ERROR", request.get("code").asText());
+                assertTrue(request.get("body").asText().contains(MassPayloadException.class.getName()));
                 failedResultSubmitted.countDown();
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","resultCorrelationRef":"corr-1","submitted":true}}
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","replyRef":"corr-1","submitted":true}}
                         """);
                 return;
             }
@@ -312,8 +312,7 @@ class PollingWorkerRuntimeTest {
 
         try (PollingWorkerRuntime ignored = platform().workerRuntimes().polling(workerDefinition("worker-1", "group-1",
                 dispatch -> {
-                    dispatch.input().requiredUri("url");
-                    return WorkerResult.success("{}");
+                    throw new MassPayloadException("url is required");
                 }).build())
                 .pollInterval(Duration.ofMillis(20))
                 .heartbeatInterval(Duration.ofMillis(50))
@@ -327,10 +326,10 @@ class PollingWorkerRuntimeTest {
 
     @Test
     void workerResultKeepsOpaqueResultBody() {
-        WorkerResult result = WorkerResult.success("{\"title\":null,\"statusCode\":204}");
+        WorkerActionResult result = WorkerActionResult.success("{\"title\":null,\"statusCode\":204}");
 
         assertTrue(result.success());
-        assertEquals("{\"title\":null,\"statusCode\":204}", result.result());
+        assertEquals("{\"title\":null,\"statusCode\":204}", result.body());
     }
 
     private MassPlatform platform() {
@@ -341,12 +340,12 @@ class PollingWorkerRuntimeTest {
     }
 
     private static WorkerRuntimeDefinition workerDefinition(String workerId, String workerGroupId) {
-        return workerDefinition(workerId, workerGroupId, dispatch -> WorkerResult.success("{}")).build();
+        return workerDefinition(workerId, workerGroupId, dispatch -> WorkerActionResult.success("{}")).build();
     }
 
     private static WorkerRuntimeDefinition.Builder workerDefinition(String workerId,
                                                                     String workerGroupId,
-                                                                    WorkerEventHandler handler) {
+                                                                    WorkerActionHandler handler) {
         return WorkerRuntimeDefinition.builder()
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)

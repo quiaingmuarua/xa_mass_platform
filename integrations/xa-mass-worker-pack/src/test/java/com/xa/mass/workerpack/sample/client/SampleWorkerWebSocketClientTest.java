@@ -56,9 +56,10 @@ class SampleWorkerWebSocketClientTest {
         assertTrue(client.awaitSentCount(1, 1000L));
         assertEquals(1, client.sentMessages.size());
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(response));
+        JsonObject reply = WsFrameTestSupport.message(response);
+        assertEquals("corr-1", WsFrameTestSupport.replyRef(response));
         assertNull(WsFrameTestSupport.workerId(response));
-        assertTrue(response.get("success").getAsBoolean());
+        assertTrue(reply.get("success").getAsBoolean());
         JsonObject payload = WsFrameTestSupport.payload(response);
         assertEquals("Executed by sample client worker-test", payload.get("detail").getAsString());
         assertEquals("SUCCESS", payload.get("status").getAsString());
@@ -68,7 +69,7 @@ class SampleWorkerWebSocketClientTest {
         JsonObject execution = payload.getAsJsonObject("execution");
         assertFalse(execution.has("adapterId"));
         assertEquals("realtime", execution.get("transportHint").getAsString());
-        assertEquals("corr-1", execution.get("resultCorrelationRef").getAsString());
+        assertEquals("corr-1", execution.get("replyRef").getAsString());
         assertEquals(1, execution.get("stepCount").getAsInt());
         long startedAt = execution.get("startedAtEpochMs").getAsLong();
         long finishedAt = execution.get("finishedAtEpochMs").getAsLong();
@@ -104,8 +105,9 @@ class SampleWorkerWebSocketClientTest {
         assertTrue(client.awaitSentCount(1, 1000L));
         assertEquals(1, client.sentMessages.size());
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertFalse(response.get("success").getAsBoolean());
-        assertEquals("MOCK_TASK_FAILED", response.get("resultCode").getAsString());
+        JsonObject reply = WsFrameTestSupport.message(response);
+        assertFalse(reply.get("success").getAsBoolean());
+        assertEquals("MOCK_TASK_FAILED", reply.get("code").getAsString());
         assertEquals("FAILED", WsFrameTestSupport.payload(response).get("status").getAsString());
     }
 
@@ -208,9 +210,9 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(3, 1000L));
         assertEquals(3, client.sentMessages.size());
-        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(WsFrameTestSupport.parse(client.sentMessages.get(0))));
-        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(WsFrameTestSupport.parse(client.sentMessages.get(1))));
-        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(WsFrameTestSupport.parse(client.sentMessages.get(2))));
+        assertEquals("corr-1", WsFrameTestSupport.replyRef(WsFrameTestSupport.parse(client.sentMessages.get(0))));
+        assertEquals("corr-1", WsFrameTestSupport.replyRef(WsFrameTestSupport.parse(client.sentMessages.get(1))));
+        assertEquals("corr-1", WsFrameTestSupport.replyRef(WsFrameTestSupport.parse(client.sentMessages.get(2))));
     }
 
     @Test
@@ -229,7 +231,7 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(response));
+        assertEquals("corr-1", WsFrameTestSupport.replyRef(response));
         assertTrue(WsFrameTestSupport.payload(response).getAsJsonObject("execution")
                 .get("durationMs").getAsLong() >= 120L);
     }
@@ -247,7 +249,7 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertNull(WsFrameTestSupport.resultCorrelationRef(response));
+        assertNull(WsFrameTestSupport.replyRef(response));
     }
 
     @Test
@@ -263,7 +265,7 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertTrue(response.get("success").isJsonObject());
+        assertTrue(WsFrameTestSupport.message(response).get("success").isJsonObject());
     }
 
     @Test
@@ -279,7 +281,7 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertEquals("wrong-corr-1", WsFrameTestSupport.resultCorrelationRef(response));
+        assertEquals("wrong-corr-1", WsFrameTestSupport.replyRef(response));
     }
 
     @Test
@@ -310,7 +312,7 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         assertTrue(client.awaitClosed(1000L));
-        assertEquals("corr-1", WsFrameTestSupport.resultCorrelationRef(WsFrameTestSupport.parse(client.sentMessages.get(0))));
+        assertEquals("corr-1", WsFrameTestSupport.replyRef(WsFrameTestSupport.parse(client.sentMessages.get(0))));
     }
 
     @Test
@@ -379,7 +381,7 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertTrue(response.get("success").getAsBoolean());
+        assertTrue(WsFrameTestSupport.message(response).get("success").getAsBoolean());
         JsonObject output = WsFrameTestSupport.payload(response);
         assertEquals("mock.state.get", output.get("eventCode").getAsString());
         assertEquals("state", output.get("action").getAsString());
@@ -538,7 +540,7 @@ class SampleWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertTrue(response.get("success").getAsBoolean());
+        assertTrue(WsFrameTestSupport.message(response).get("success").getAsBoolean());
         JsonObject output = WsFrameTestSupport.payload(response);
         assertEquals("mock.disconnect", output.get("eventCode").getAsString());
         assertTrue(output.get("disconnectAfterAck").getAsBoolean());

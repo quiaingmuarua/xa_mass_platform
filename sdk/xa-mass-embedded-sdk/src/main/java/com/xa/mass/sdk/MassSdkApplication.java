@@ -56,9 +56,9 @@ import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerAction;
+import com.xa.mass.sdk.worker.WorkerActionReply;
 import com.xa.mass.sdk.worker.WorkerPollResult;
-import com.xa.mass.sdk.worker.WorkerResultSubmission;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -704,12 +704,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<WorkerInvocation> pollTasks(String workerId, int maxMessages) {
-        return pollTasks(workerId, maxMessages, 0L);
+    public List<WorkerAction> pollActions(String workerId, int maxMessages) {
+        return pollActions(workerId, maxMessages, 0L);
     }
 
     @Override
-    public WorkerPollResult pollTasksResult(String workerId, int maxMessages, long timeoutMillis) {
+    public WorkerPollResult pollActionsResult(String workerId, int maxMessages, long timeoutMillis) {
         if (maxMessages <= 0) {
             throw new IllegalArgumentException("maxMessages must be greater than 0");
         }
@@ -717,14 +717,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<WorkerInvocation> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
-        return pollTasksResult(workerId, maxMessages, timeoutMillis).getItems();
+    public List<WorkerAction> pollActions(String workerId, int maxMessages, long timeoutMillis) {
+        return pollActionsResult(workerId, maxMessages, timeoutMillis).getItems();
     }
 
     @Override
-    public boolean submitResult(String workerId, WorkerResultSubmission request) {
+    public boolean submitActionReply(String workerId, WorkerActionReply request) {
         Objects.requireNonNull(request, "request");
-        return embeddedPullWorkerSession(workerId).submitResult(
+        return embeddedPullWorkerSession(workerId).submitActionReply(
                 request
         );
     }

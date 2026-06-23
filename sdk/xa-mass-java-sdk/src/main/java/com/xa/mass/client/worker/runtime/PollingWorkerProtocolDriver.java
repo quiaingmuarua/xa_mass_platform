@@ -1,11 +1,11 @@
 package com.xa.mass.client.worker.runtime;
 
 import com.xa.mass.client.worker.WorkerClient;
-import com.xa.mass.client.worker.WorkerInvocation;
+import com.xa.mass.client.worker.WorkerAction;
+import com.xa.mass.client.worker.WorkerActionReply;
 import com.xa.mass.client.worker.WorkerPollRequest;
 import com.xa.mass.client.worker.WorkerPollResult;
-import com.xa.mass.client.worker.WorkerResultSubmission;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 
 import java.util.List;
 import java.util.Objects;
@@ -41,7 +41,7 @@ final class PollingWorkerProtocolDriver {
         workerClient.heartbeat(workerId, sessionToken, "polling-session-heartbeat");
     }
 
-    List<WorkerInvocation> poll() {
+    List<WorkerAction> poll() {
         WorkerPollResult result = workerClient.poll(workerId, WorkerPollRequest.builder()
                 .maxMessages(maxMessages)
                 .timeoutMs(pollTimeoutMs)
@@ -49,12 +49,12 @@ final class PollingWorkerProtocolDriver {
         return result.items() == null ? List.of() : result.items();
     }
 
-    void submitResult(String resultCorrelationRef, WorkerResult result) {
-        workerClient.submitResult(workerId, new WorkerResultSubmission(
-                resultCorrelationRef,
+    void submitActionReply(String replyRef, WorkerActionResult result) {
+        workerClient.submitActionReply(workerId, new WorkerActionReply(
+                replyRef,
                 result.success(),
-                result.resultCode(),
-                result.result()
+                result.code(),
+                result.body()
         ));
     }
 

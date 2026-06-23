@@ -1,6 +1,6 @@
 package com.xa.mass.client.worker.runtime;
 
-import com.xa.mass.client.worker.WorkerInvocation;
+import com.xa.mass.client.worker.WorkerAction;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -10,7 +10,7 @@ public record WorkerRuntimeFailureEvent(
         String workerId,
         Kind kind,
         String reason,
-        String resultCorrelationRef,
+        String replyRef,
         Integer consecutiveFailures,
         String errorType,
         String errorMessage,
@@ -41,47 +41,47 @@ public record WorkerRuntimeFailureEvent(
     }
 
     static WorkerRuntimeFailureEvent handler(String workerId,
-                                             String resultCorrelationRef,
-                                             WorkerInvocation invocation,
+                                             String replyRef,
+                                             WorkerAction action,
                                              Throwable cause) {
         return new WorkerRuntimeFailureEvent(
                 workerId,
                 Kind.HANDLER,
                 "HANDLER_ERROR",
-                resultCorrelationRef,
+                replyRef,
                 null,
                 errorType(cause),
                 errorMessage(cause),
-                context("eventCode", invocation == null ? null : invocation.eventCode()));
+                context("eventCode", action == null ? null : action.eventCode()));
     }
 
     static WorkerRuntimeFailureEvent submit(String workerId,
-                                            String resultCorrelationRef,
-                                            WorkerInvocation invocation,
+                                            String replyRef,
+                                            WorkerAction action,
                                             Throwable cause) {
         return new WorkerRuntimeFailureEvent(
                 workerId,
                 Kind.SUBMIT,
                 "SUBMIT_FAILED",
-                resultCorrelationRef,
+                replyRef,
                 null,
                 errorType(cause),
                 errorMessage(cause),
-                context("eventCode", invocation == null ? null : invocation.eventCode()));
+                context("eventCode", action == null ? null : action.eventCode()));
     }
 
     static WorkerRuntimeFailureEvent queuedResultDropped(String workerId,
-                                                         String resultCorrelationRef,
+                                                         String replyRef,
                                                          String reason,
                                                          Throwable cause) {
-        return queuedResult(workerId, Kind.QUEUED_RESULT_DROPPED, resultCorrelationRef, reason, cause);
+        return queuedResult(workerId, Kind.QUEUED_RESULT_DROPPED, replyRef, reason, cause);
     }
 
     static WorkerRuntimeFailureEvent queuedResultAbandoned(String workerId,
-                                                           String resultCorrelationRef,
+                                                           String replyRef,
                                                            String reason,
                                                            Throwable cause) {
-        return queuedResult(workerId, Kind.QUEUED_RESULT_ABANDONED, resultCorrelationRef, reason, cause);
+        return queuedResult(workerId, Kind.QUEUED_RESULT_ABANDONED, replyRef, reason, cause);
     }
 
     static WorkerRuntimeFailureEvent poll(String workerId, int consecutiveFailures, Throwable cause) {
@@ -136,13 +136,13 @@ public record WorkerRuntimeFailureEvent(
         SHUTDOWN
     }
 
-    private static WorkerRuntimeFailureEvent queuedResult(String workerId, Kind kind, String resultCorrelationRef,
+    private static WorkerRuntimeFailureEvent queuedResult(String workerId, Kind kind, String replyRef,
                                                           String reason, Throwable cause) {
         return new WorkerRuntimeFailureEvent(
                 workerId,
                 kind,
                 requireText(reason, "reason"),
-                resultCorrelationRef,
+                replyRef,
                 null,
                 errorType(cause),
                 errorMessage(cause),

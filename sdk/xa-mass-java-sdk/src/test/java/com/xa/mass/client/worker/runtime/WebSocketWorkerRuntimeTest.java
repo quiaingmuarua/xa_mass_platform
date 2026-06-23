@@ -2,13 +2,14 @@ package com.xa.mass.client.worker.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
 import com.xa.mass.client.worker.WorkerSpec;
-import com.xa.mass.client.worker.handler.WorkerEventHandler;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionHandler;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -75,9 +76,9 @@ class WebSocketWorkerRuntimeTest {
         });
 
         MassPlatform mass = platform();
-        WorkerRuntimeDefinition definition = realtimeDefinition(dispatch -> WorkerResult.success("""
+        WorkerRuntimeDefinition definition = realtimeDefinition(dispatch -> WorkerActionResult.success("""
                         {"eventCode":"%s","title":"%s","integrationProbe":"java-sdk-websocket-session"}
-                        """.formatted(dispatch.eventCode(), dispatch.input().requiredString("title")).trim()))
+                        """.formatted(dispatch.eventCode(), OBJECT_MAPPER.readTree(dispatch.body()).get("title").asText()).trim()))
                 .attribute("region", "sg")
                 .build();
         mass.workers().registerWorker(WorkerSpec.realtime(definition));
@@ -95,15 +96,14 @@ class WebSocketWorkerRuntimeTest {
             assertTrue(session.isRunning());
             assertEquals("workerId=ws-worker-001&workerGroupId=realtime-probe", connectedUri.get().getRawQuery());
 
-            listenerRef.get().onText(webSocket, """
-                    {"resultCorrelationRef":"corr-1","eventCode":"probe.realtime.metadata","input":{"title":"hello"},"sharedConfig":{"routingCode":"sg"}}
-                    """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+            listenerRef.get().onText(webSocket, actionFrame("corr-1", "probe.realtime.metadata",
+                    "{\"title\":\"hello\"}"), true).toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertTrue(resultSent.await(2, TimeUnit.SECONDS), "result frame should be sent");
-            JsonNode result = OBJECT_MAPPER.readTree(webSocket.sentTexts().get(0));
-            assertEquals("corr-1", result.get("resultCorrelationRef").asText());
+            JsonNode result = sentReply(webSocket.sentTexts().get(0));
+            assertEquals("corr-1", result.get("replyRef").asText());
             assertTrue(result.get("success").asBoolean());
-            JsonNode resultBody = OBJECT_MAPPER.readTree(result.get("result").asText());
+            JsonNode resultBody = OBJECT_MAPPER.readTree(result.get("body").asText());
             assertEquals("hello", resultBody.get("title").asText());
             assertEquals("java-sdk-websocket-session", resultBody.get("integrationProbe").asText());
             assertEquals(0, session.pendingResults());
@@ -196,9 +196,8 @@ class WebSocketWorkerRuntimeTest {
                     return CompletableFuture.completedFuture(webSocket);
                 })
                 .start()) {
-            listenerRef.get().onText(webSocket, """
-                    {"eventCode":"__control.close","reason":"compatibility-control-frame"}
-                    """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+            listenerRef.get().onText(webSocket, channelFrame("HEARTBEAT", "{}"), true)
+                    .toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertFalse(resultSent.await(150, TimeUnit.MILLISECONDS), "control frame should not emit a result");
             assertTrue(webSocket.sentTexts().isEmpty());
@@ -303,14 +302,13 @@ class WebSocketWorkerRuntimeTest {
                     return CompletableFuture.completedFuture(webSocket);
                 })
                 .start()) {
-            listenerRef.get().onText(webSocket, """
-                    {"resultCorrelationRef":"corr-2","eventCode":"probe.unknown","input":{},"sharedConfig":{}}
-                    """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+            listenerRef.get().onText(webSocket, actionFrame("corr-2", "probe.unknown", "{}"), true)
+                    .toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertTrue(resultSent.await(2, TimeUnit.SECONDS), "failure result frame should be sent");
-            JsonNode result = OBJECT_MAPPER.readTree(webSocket.sentTexts().get(0));
+            JsonNode result = sentReply(webSocket.sentTexts().get(0));
             assertFalse(result.get("success").asBoolean());
-            assertEquals("NO_HANDLER", result.get("resultCode").asText());
+            assertEquals("NO_HANDLER", result.get("code").asText());
         }
     }
 
@@ -343,15 +341,14 @@ class WebSocketWorkerRuntimeTest {
         try {
             listenerRef.get().onClose(webSocket, 1006, "test-disconnect").toCompletableFuture()
                     .get(1, TimeUnit.SECONDS);
-            listenerRef.get().onText(webSocket, """
-                    {"resultCorrelationRef":"corr-close","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
-                    """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+            listenerRef.get().onText(webSocket, actionFrame("corr-close", "probe.realtime.metadata", "{}"), true)
+                    .toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             session.close();
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "close should abandon queued result");
             assertEquals("SESSION_CLOSED", failureRef.get().reason());
-            assertEquals("corr-close", failureRef.get().resultCorrelationRef());
+            assertEquals("corr-close", failureRef.get().replyRef());
         } finally {
             session.close();
         }
@@ -385,9 +382,9 @@ class WebSocketWorkerRuntimeTest {
                 })
                 .start()) {
             for (int i = 1; i <= 3; i++) {
-                listenerRef.get().onText(webSocket, """
-                        {"resultCorrelationRef":"corr-%d","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
-                        """.formatted(i), true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+                listenerRef.get().onText(webSocket,
+                        actionFrame("corr-" + i, "probe.realtime.metadata", "{}"),
+                        true).toCompletableFuture().get(1, TimeUnit.SECONDS);
             }
 
             assertTrue(dropped.await(2, TimeUnit.SECONDS), "full queue should drop a result");
@@ -424,21 +421,19 @@ class WebSocketWorkerRuntimeTest {
                     return CompletableFuture.completedFuture(webSocket);
                 })
                 .start()) {
-            listenerRef.get().onText(webSocket, """
-                    {"resultCorrelationRef":"corr-requeue-1","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
-                    """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+            listenerRef.get().onText(webSocket, actionFrame("corr-requeue-1", "probe.realtime.metadata", "{}"), true)
+                    .toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertTrue(sendStarted.await(2, TimeUnit.SECONDS), "first send should be in progress");
 
-            listenerRef.get().onText(webSocket, """
-                    {"resultCorrelationRef":"corr-requeue-2","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
-                    """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+            listenerRef.get().onText(webSocket, actionFrame("corr-requeue-2", "probe.realtime.metadata", "{}"), true)
+                    .toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             allowFailure.countDown();
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "failed requeue should abandon the original result");
             assertEquals("REQUEUE_FAILED", failureRef.get().reason());
-            assertEquals("corr-requeue-1", failureRef.get().resultCorrelationRef());
+            assertEquals("corr-requeue-1", failureRef.get().replyRef());
             assertNotNull(failureRef.get().errorType());
         }
     }
@@ -478,13 +473,12 @@ class WebSocketWorkerRuntimeTest {
         try {
             listenerRef.get().onClose(webSocket, 1006, "test-disconnect").toCompletableFuture()
                     .get(1, TimeUnit.SECONDS);
-            listenerRef.get().onText(webSocket, """
-                    {"resultCorrelationRef":"corr-reconnect","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
-                    """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+            listenerRef.get().onText(webSocket, actionFrame("corr-reconnect", "probe.realtime.metadata", "{}"), true)
+                    .toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertTrue(abandoned.await(2, TimeUnit.SECONDS), "reconnect exhaustion should abandon queued result");
             assertEquals("RECONNECT_EXHAUSTED", failureRef.get().reason());
-            assertEquals("corr-reconnect", failureRef.get().resultCorrelationRef());
+            assertEquals("corr-reconnect", failureRef.get().replyRef());
             assertFalse(session.isRunning());
         } finally {
             session.close();
@@ -509,9 +503,9 @@ class WebSocketWorkerRuntimeTest {
                     @Override
                     public void onConnectionRecovered(String workerId) {
                         if ("ws-worker-001".equals(workerId)) {
-                            listenerRef.get().onText(secondSocket, """
-                                    {"resultCorrelationRef":"corr-recovered","eventCode":"probe.realtime.metadata","input":{},"sharedConfig":{}}
-                                    """, true);
+                            listenerRef.get().onText(secondSocket,
+                                    actionFrame("corr-recovered", "probe.realtime.metadata", "{}"),
+                                    true);
                             recovered.countDown();
                         }
                     }
@@ -534,8 +528,8 @@ class WebSocketWorkerRuntimeTest {
             assertTrue(recovered.await(2, TimeUnit.SECONDS), "successful reconnect should report recovery");
             assertTrue(recoveryResultSent.await(2, TimeUnit.SECONDS),
                     "recovery callback should see the live replacement socket");
-            JsonNode result = OBJECT_MAPPER.readTree(secondSocket.sentTexts().get(0));
-            assertEquals("corr-recovered", result.get("resultCorrelationRef").asText());
+            JsonNode result = sentReply(secondSocket.sentTexts().get(0));
+            assertEquals("corr-recovered", result.get("replyRef").asText());
             assertEquals(2, connectAttempts.get());
             assertTrue(session.isRunning());
         } finally {
@@ -550,6 +544,38 @@ class WebSocketWorkerRuntimeTest {
                 .build();
     }
 
+    private static String actionFrame(String replyRef, String eventCode, String body) {
+        ObjectNode action = OBJECT_MAPPER.createObjectNode();
+        action.put("actionId", "action-" + replyRef);
+        action.put("replyRef", replyRef);
+        action.put("eventCode", eventCode);
+        action.put("body", body);
+        action.set("sharedConfig", OBJECT_MAPPER.createObjectNode());
+        return channelFrame("ACTION", writeJson(action));
+    }
+
+    private static String channelFrame(String kind, String body) {
+        ObjectNode frame = OBJECT_MAPPER.createObjectNode();
+        frame.put("frameId", "frame-" + kind.toLowerCase());
+        frame.put("kind", kind);
+        frame.put("body", body);
+        return writeJson(frame);
+    }
+
+    private static JsonNode sentReply(String frame) throws IOException {
+        JsonNode channelFrame = OBJECT_MAPPER.readTree(frame);
+        assertEquals("ACTION_REPLY", channelFrame.get("kind").asText());
+        return OBJECT_MAPPER.readTree(channelFrame.get("body").asText());
+    }
+
+    private static String writeJson(JsonNode node) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(node);
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
     private static com.xa.mass.client.worker.WorkerClient dummyWorkerClient() {
         return MassPlatform.builder()
                 .baseUrl("http://localhost:8088")
@@ -558,10 +584,10 @@ class WebSocketWorkerRuntimeTest {
     }
 
     private static WorkerRuntimeDefinition realtimeDefinition() {
-        return realtimeDefinition(dispatch -> WorkerResult.success("{}")).build();
+        return realtimeDefinition(dispatch -> WorkerActionResult.success("{}")).build();
     }
 
-    private static WorkerRuntimeDefinition.Builder realtimeDefinition(WorkerEventHandler handler) {
+    private static WorkerRuntimeDefinition.Builder realtimeDefinition(WorkerActionHandler handler) {
         return WorkerRuntimeDefinition.builder()
                 .workerId("ws-worker-001")
                 .workerGroupId("realtime-probe")

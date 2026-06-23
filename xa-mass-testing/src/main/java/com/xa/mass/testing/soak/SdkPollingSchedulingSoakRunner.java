@@ -1,5 +1,6 @@
 package com.xa.mass.testing.soak;
 
+import com.google.gson.Gson;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -34,7 +35,7 @@ import com.xa.mass.trace.operator.TraceValidateResponse;
 import com.xa.mass.trace.operator.TraceOperatorService;
 import com.xa.mass.trace.sink.JsonlExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerAction;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -73,6 +74,7 @@ public final class SdkPollingSchedulingSoakRunner {
     private static final String PROJECT_CODE = "soakProject";
     private static final String USER_ID = "sdk-polling-soak";
     private static final String ADAPTER_ID = "polling";
+    private static final Gson ACTION_BODY_GSON = new Gson();
     private static final DateTimeFormatter RUN_ID_TS =
             DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
 
@@ -752,7 +754,7 @@ public final class SdkPollingSchedulingSoakRunner {
         private void runLoop() {
             while (running.get()) {
                 try {
-                    List<WorkerInvocation> items = session.poll(config.pollBatchSize());
+                    List<WorkerAction> items = session.poll(config.pollBatchSize());
                     metrics.recordPoll(workerId, items == null ? 0 : items.size());
                     if (items == null || items.isEmpty()) {
                         if (stopRequested.get()) {
@@ -763,8 +765,8 @@ public final class SdkPollingSchedulingSoakRunner {
                         }
                         continue;
                     }
-                    for (WorkerInvocation item : items) {
-                        metrics.recordReceivedItem(workerId, taskIdFor(item), item.getResultCorrelationRef());
+                    for (WorkerAction item : items) {
+                        metrics.recordReceivedItem(workerId, taskIdFor(item), item.getReplyRef());
                         processingExecutor.submit(() -> process(item));
                     }
                 } catch (InterruptedException e) {
@@ -776,7 +778,7 @@ public final class SdkPollingSchedulingSoakRunner {
             }
         }
 
-        private void process(WorkerInvocation item) {
+        private void process(WorkerAction item) {
             long started = System.nanoTime();
             metrics.beginProcessing();
             try {
@@ -791,10 +793,10 @@ public final class SdkPollingSchedulingSoakRunner {
                 boolean success = isExpectedSuccess(globalSeq, config.failureEveryNth());
                 Map<String, Object> output = new LinkedHashMap<>();
                 output.put("workerId", workerId);
-                output.put("resultCorrelationRef", item.getResultCorrelationRef());
+                output.put("resultCorrelationRef", item.getReplyRef());
                 output.put("globalSeq", globalSeq);
                 output.put("success", success);
-                boolean accepted = session.submitResult(
+                boolean accepted = session.submitActionReply(
                         item,
                         success,
                         success ? null : "SOAK_SYNTHETIC_FAILURE",
@@ -802,36 +804,36 @@ public final class SdkPollingSchedulingSoakRunner {
                 );
                 if (!accepted) {
                     failures.add("result rejected worker=" + workerId
-                            + " resultCorrelationRef=" + item.getResultCorrelationRef());
+                            + " resultCorrelationRef=" + item.getReplyRef());
                 }
                 metrics.recordResult(workerId, success, System.nanoTime() - started);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (RuntimeException e) {
                 failures.add("worker " + workerId + " process failed resultCorrelationRef="
-                        + item.getResultCorrelationRef() + ": " + e.getMessage());
+                        + item.getReplyRef() + ": " + e.getMessage());
             } finally {
                 metrics.endProcessing();
             }
         }
 
-        private long globalSeq(WorkerInvocation item) {
-            Object value = item.getInput().get("globalSeq");
+        private long globalSeq(WorkerAction item) {
+            Object value = actionBody(item).get("globalSeq");
             if (value instanceof Number number) {
                 return number.longValue();
             }
-            return Math.abs((long) item.getResultCorrelationRef().hashCode());
+            return Math.abs((long) item.getReplyRef().hashCode());
         }
 
-        private String taskIdFor(WorkerInvocation item) {
-            Object value = item.getInput().get("taskIndex");
+        private String taskIdFor(WorkerAction item) {
+            Object value = actionBody(item).get("taskIndex");
             if (value instanceof Number number) {
                 return taskIdByIndex.get(number.intValue());
             }
             return null;
         }
 
-        private int deterministicJitterMillis(WorkerInvocation item) {
+        private int deterministicJitterMillis(WorkerAction item) {
             int jitterBound = config.processingJitterMillis();
             if (jitterBound <= 0) {
                 return 0;
@@ -839,7 +841,7 @@ public final class SdkPollingSchedulingSoakRunner {
             int hash = Objects.hash(
                     config.processingJitterSeed(),
                     workerId,
-                    item.getResultCorrelationRef()
+                    item.getReplyRef()
             );
             return Math.floorMod(hash, jitterBound + 1);
         }
@@ -891,6 +893,19 @@ public final class SdkPollingSchedulingSoakRunner {
 
     private static double nanosToMillis(long nanos) {
         return nanos / 1_000_000.0d;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> actionBody(WorkerAction item) {
+        String body = item.getBody();
+        if (body == null || body.isBlank()) {
+            return Map.of();
+        }
+        Object decoded = ACTION_BODY_GSON.fromJson(body, Object.class);
+        if (decoded instanceof Map<?, ?> values) {
+            return (Map<String, Object>) values;
+        }
+        return Map.of("rawBody", body);
     }
 
     private static void require(boolean condition, String message) {

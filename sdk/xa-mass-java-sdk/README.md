@@ -78,12 +78,12 @@ Current implemented surface:
 - transport-neutral worker handler runtime:
   event handler registry, handler invocation, deterministic handler failure
   conversion, and runtime-owned result sink hooks
-- worker handler invocation is payload-first:
-  handlers receive `WorkerInvocation` with opaque `resultCorrelationRef`,
-  `eventCode`, `input`, and `sharedConfig`. Result association is a submit
-  token that must only be round-tripped; worker handlers and public worker
-  result requests must not depend on task ids, message ids, attempt ids,
-  transport commands, or raw wire DTOs.
+- worker handler invocation is action-first:
+  handlers receive `WorkerAction` with `actionId`, opaque `replyRef`,
+  `eventCode`, opaque string `body`, and JSON-safe `sharedConfig`. Reply
+  association is a submit token that must only be round-tripped; worker
+  handlers and public worker reply requests must not depend on task ids,
+  message ids, attempt ids, transport commands, or raw wire DTOs.
 - common worker-runtime definition model:
   `WorkerRuntimeDefinition` owns `workerId`, `workerGroupId`, attributes, and
   event handlers once. Polling and WebSocket runtimes are protocol runtimes over
@@ -265,10 +265,7 @@ WorkerRuntimeDefinition worker = WorkerRuntimeDefinition.builder()
         .attribute("fingerprint", "fp-android-13-sg")
         .attribute("region", "sg")
         .event("probe.phone.metadata", dispatch -> {
-            String phone = dispatch.input().requiredString("phone");
-            return WorkerResult.success("""
-                    {"phone":"%s","mcc":"525","mnc":"01"}
-                    """.formatted(phone).trim());
+            return WorkerActionResult.success(dispatch.body());
         })
         .build();
 
@@ -320,8 +317,8 @@ Frame/protocol failures expose bounded `framePreview` and `frameLength` in the
 event context rather than the complete raw frame. The preview can still contain
 payload fragments, so do not log it blindly in production.
 `WorkerRuntimeFailureEvent.context()` is diagnostic-only; use `kind`, `reason`,
-`resultCorrelationRef`, `consecutiveFailures`, `errorType`, and `errorMessage`
-as the stable event data.
+`replyRef`, `consecutiveFailures`, `errorType`, and `errorMessage` as the stable
+event data.
 
 Managed WebSocket worker runtime:
 
@@ -338,9 +335,7 @@ WebSocket uses the same worker definition shape:
 WorkerRuntimeDefinition worker = WorkerRuntimeDefinition.builder()
         .workerId("crawler-ws-001")
         .workerGroupId("realtime-crawler")
-        .event("crawler.fetch-page", dispatch -> WorkerResult.success("""
-                {"url":"%s"}
-                """.formatted(dispatch.input().requiredString("url")).trim()))
+        .event("crawler.fetch-page", dispatch -> WorkerActionResult.success(dispatch.body()))
         .build();
 
 mass.workers().registerWorker(WorkerSpec.realtime(worker));
@@ -363,7 +358,7 @@ Lifecycle callbacks:
 WorkerRuntimeDefinition worker = WorkerRuntimeDefinition.builder()
         .workerId("phone-worker-sg-001")
         .workerGroupId("phone-device-probe")
-        .event("probe.phone.metadata", dispatch -> WorkerResult.success("{}"))
+        .event("probe.phone.metadata", dispatch -> WorkerActionResult.success("{}"))
         .build();
 
 mass.workers().registerWorker(WorkerSpec.polling(worker));

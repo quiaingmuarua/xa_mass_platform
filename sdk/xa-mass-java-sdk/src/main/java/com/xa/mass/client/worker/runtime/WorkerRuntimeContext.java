@@ -2,7 +2,7 @@ package com.xa.mass.client.worker.runtime;
 
 import com.xa.mass.client.worker.WorkerClient;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
-import com.xa.mass.client.worker.handler.WorkerEventHandler;
+import com.xa.mass.client.worker.handler.WorkerActionHandler;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -20,7 +20,7 @@ final class WorkerRuntimeContext {
     private final String workerId;
     private final String workerGroupId;
     private final Map<String, String> attributes;
-    private final Map<String, WorkerEventHandler> eventHandlers;
+    private final Map<String, WorkerActionHandler> eventHandlers;
     private final WorkerRuntimeListener listener;
     private final ScheduledExecutorService executor;
     private final WorkerDispatchProcessor dispatchProcessor;
@@ -65,7 +65,7 @@ final class WorkerRuntimeContext {
         return attributes;
     }
 
-    Map<String, WorkerEventHandler> eventHandlers() {
+    Map<String, WorkerActionHandler> eventHandlers() {
         return eventHandlers;
     }
 

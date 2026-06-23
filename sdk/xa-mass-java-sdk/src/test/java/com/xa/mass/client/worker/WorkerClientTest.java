@@ -122,18 +122,18 @@ class WorkerClientTest {
                 assertEquals(10, request.get("maxMessages").asInt());
                 assertEquals(500, request.get("timeoutMs").asLong());
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","total":1,"items":[{"resultCorrelationRef":"corr-1","eventCode":"probe.phone.metadata","input":{"phone":"+14155550100"},"sharedConfig":{"routingCode":"sg"}}]}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","total":1,"items":[{"actionId":"action-1","replyRef":"corr-1","eventCode":"probe.phone.metadata","body":"{\\"phone\\":\\"+14155550100\\"}","sharedConfig":{"routingCode":"sg"}}]}}
                         """);
                 return;
             }
             if ("POST".equals(method) && "/worker-api/v1/workers/phone-worker-sg-001:submit-result".equals(path)) {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
-                assertEquals("corr-1", request.get("resultCorrelationRef").asText());
+                assertEquals("corr-1", request.get("replyRef").asText());
                 assertTrue(request.get("success").asBoolean());
-                assertEquals("{\"mcc\":\"525\",\"mnc\":\"01\"}", request.get("result").asText());
-                assertFalse(request.hasNonNull("resultCode"));
+                assertEquals("{\"mcc\":\"525\",\"mnc\":\"01\"}", request.get("body").asText());
+                assertFalse(request.hasNonNull("code"));
                 respond(exchange, 200, """
-                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","resultCorrelationRef":"corr-1","submitted":true}}
+                        {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","replyRef":"corr-1","submitted":true}}
                         """);
                 return;
             }
@@ -157,12 +157,12 @@ class WorkerClientTest {
                 .maxMessages(10)
                 .timeoutMs(500L)
                 .build());
-        WorkerInvocation item = poll.items().getFirst();
+        WorkerAction item = poll.items().getFirst();
         assertEquals("probe.phone.metadata", item.eventCode());
-        assertEquals("+14155550100", item.input().getString("phone").orElseThrow());
+        assertEquals("+14155550100", OBJECT_MAPPER.readTree(item.body()).get("phone").asText());
 
-        boolean submitted = workers.submitResult("phone-worker-sg-001",
-                WorkerResultSubmission.success(item.resultCorrelationRef(), "{\"mcc\":\"525\",\"mnc\":\"01\"}"));
+        boolean submitted = workers.submitActionReply("phone-worker-sg-001",
+                WorkerActionReply.success(item.replyRef(), "{\"mcc\":\"525\",\"mnc\":\"01\"}"));
         assertTrue(submitted);
 
         assertEquals("offline", workers.offline("phone-worker-sg-001", sessionToken, "shutdown").action());

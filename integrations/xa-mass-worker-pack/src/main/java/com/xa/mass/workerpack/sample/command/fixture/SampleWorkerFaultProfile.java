@@ -220,7 +220,7 @@ public final class SampleWorkerFaultProfile {
         return disconnectPhase;
     }
 
-    public long resolveDelayMillis(String workerId, String resultCorrelationRef, int attempt) {
+    public long resolveDelayMillis(String workerId, String replyRef, int attempt) {
         if (!enabled || delayDistribution == DelayDistribution.NONE || maxDelayMillis <= 0L) {
             return 0L;
         }
@@ -228,17 +228,17 @@ public final class SampleWorkerFaultProfile {
             return minDelayMillis;
         }
         long range = maxDelayMillis - minDelayMillis + 1L;
-        return minDelayMillis + stablePositiveHash(workerId, resultCorrelationRef, attempt, "delay") % range;
+        return minDelayMillis + stablePositiveHash(workerId, replyRef, attempt, "delay") % range;
     }
 
-    public boolean shouldDropResult(String workerId, String resultCorrelationRef, int attempt) {
+    public boolean shouldDropResult(String workerId, String replyRef, int attempt) {
         if (!enabled) {
             return false;
         }
         return switch (resultDropMode) {
             case OFF -> false;
             case ONCE, ALWAYS -> true;
-            case PERCENT -> stablePositiveHash(workerId, resultCorrelationRef, attempt, "drop") % 100 < resultDropPercent;
+            case PERCENT -> stablePositiveHash(workerId, replyRef, attempt, "drop") % 100 < resultDropPercent;
         };
     }
 
@@ -274,8 +274,8 @@ public final class SampleWorkerFaultProfile {
         return map;
     }
 
-    private long stablePositiveHash(String workerId, String resultCorrelationRef, int attempt, String salt) {
-        return Integer.toUnsignedLong(Objects.hash(seed, workerId, resultCorrelationRef, attempt, salt));
+    private long stablePositiveHash(String workerId, String replyRef, int attempt, String salt) {
+        return Integer.toUnsignedLong(Objects.hash(seed, workerId, replyRef, attempt, salt));
     }
 
     public static final class Builder {

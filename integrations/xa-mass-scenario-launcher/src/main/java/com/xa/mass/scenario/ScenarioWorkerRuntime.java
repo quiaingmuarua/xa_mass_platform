@@ -1,13 +1,14 @@
 package com.xa.mass.scenario;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.WorkerEventBindingSpec;
-import com.xa.mass.client.worker.WorkerInvocation;
+import com.xa.mass.client.worker.WorkerAction;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
 import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import com.xa.mass.client.worker.runtime.WebSocketWorkerRuntime;
 import com.xa.mass.client.worker.runtime.WorkerRuntime;
 import com.xa.mass.client.worker.runtime.WorkerRuntimeFailureEvent;
@@ -25,6 +26,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 final class ScenarioWorkerRuntime implements AutoCloseable {
     private static final ObjectMapper RESULT_MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final TypeReference<Map<String, Object>> BODY_MAP_TYPE = new TypeReference<>() {
+    };
     private static final Duration POLL_INTERVAL = Duration.ofMillis(250L);
     private static final Duration POLL_TIMEOUT = Duration.ofMillis(500L);
     private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(10L);
@@ -145,7 +148,7 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
         return builder.build();
     }
 
-    private WorkerResult handleDispatch(WorkerScenarioSpec spec, WorkerInvocation dispatch) {
+    private WorkerActionResult handleDispatch(WorkerScenarioSpec spec, WorkerAction dispatch) {
         idleTracker.markActivity();
         Map<String, Object> output = new LinkedHashMap<>();
         output.put("workerId", spec.workerId());
@@ -159,10 +162,22 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
                 "workerId", spec.workerId(),
                 "workerGroupId", spec.workerGroupId()
         ));
-        output.put("input", dispatch.input().asMap());
+        output.put("body", actionBody(dispatch));
         output.put("sharedConfig", dispatch.sharedConfig().asMap());
         output.put("detail", "java-scenario-launcher-success");
-        return WorkerResult.success(resultBody(output));
+        return WorkerActionResult.success(resultBody(output));
+    }
+
+    private static Map<String, Object> actionBody(WorkerAction action) {
+        String body = action.body();
+        if (body == null || body.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return RESULT_MAPPER.readValue(body, BODY_MAP_TYPE);
+        } catch (JsonProcessingException e) {
+            return Map.of("rawBody", body);
+        }
     }
 
     private static String resultBody(Map<String, Object> output) {
@@ -210,12 +225,12 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
     private static final class LoggingWorkerRuntimeListener implements WorkerRuntimeListener {
         @Override
         public void onFailure(WorkerRuntimeFailureEvent failure) {
-            System.err.printf("[java-scenario-launcher] worker runtime failure workerId=%s kind=%s reason=%s consecutiveFailures=%s resultCorrelationRef=%s error=%s%n",
+            System.err.printf("[java-scenario-launcher] worker runtime failure workerId=%s kind=%s reason=%s consecutiveFailures=%s replyRef=%s error=%s%n",
                     failure.workerId(),
                     failure.kind(),
                     failure.reason(),
                     failure.consecutiveFailures(),
-                    failure.resultCorrelationRef(),
+                    failure.replyRef(),
                     failure.errorMessage());
         }
     }

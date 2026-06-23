@@ -1,9 +1,13 @@
 # Java SDK Worker Public Model Convergence Roadmap
 
-Status: superseded historical record. Mainline Java SDK public worker model
-cleanup has landed; current worker runtime naming, reporter, protocol-driver,
-and command-ability follow-up are owned by
-`JAVA_SDK_WORKER_RUNTIME_CAPABILITY_MODEL_CONVERGENCE_ROADMAP.md`.
+Status: archived superseded historical record. Mainline Java SDK public worker
+model cleanup has landed; current worker runtime naming, reporter, protocol
+driver, and action/reply shape are documented in the Java SDK README, boundary
+guards, and current code. The final worker execution/action model decision was
+superseded by `JAVA_SDK_WORKER_ACTION_CHANNEL_MODEL_CONVERGENCE_ROADMAP.md`,
+whose implemented shape is `WorkerAction` / `WorkerActionHandler` /
+`WorkerActionResult` / `WorkerActionReply` plus `WorkerChannelFrame` for
+multiplexed protocols.
 
 Do not execute this roadmap's old verification commands without refreshing
 test names against current code.

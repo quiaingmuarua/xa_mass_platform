@@ -1,6 +1,6 @@
 package com.xa.mass.client.worker;
 
-import com.xa.mass.client.worker.handler.WorkerEventHandler;
+import com.xa.mass.client.worker.handler.WorkerActionHandler;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -15,7 +15,7 @@ public final class WorkerRuntimeDefinition {
     private final String workerId;
     private final String workerGroupId;
     private final Map<String, String> attributes;
-    private final Map<String, WorkerEventHandler> eventHandlers;
+    private final Map<String, WorkerActionHandler> eventHandlers;
 
     private WorkerRuntimeDefinition(Builder builder) {
         this.workerId = requireText(builder.workerId, "workerId");
@@ -40,7 +40,7 @@ public final class WorkerRuntimeDefinition {
         return attributes;
     }
 
-    public Map<String, WorkerEventHandler> eventHandlers() {
+    public Map<String, WorkerActionHandler> eventHandlers() {
         return eventHandlers;
     }
 
@@ -59,7 +59,7 @@ public final class WorkerRuntimeDefinition {
         private String workerId;
         private String workerGroupId;
         private Map<String, String> attributes = new LinkedHashMap<>();
-        private Map<String, WorkerEventHandler> eventHandlers = new LinkedHashMap<>();
+        private Map<String, WorkerActionHandler> eventHandlers = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -84,17 +84,17 @@ public final class WorkerRuntimeDefinition {
             return this;
         }
 
-        public Builder event(String eventCode, WorkerEventHandler handler) {
+        public Builder event(String eventCode, WorkerActionHandler handler) {
             return eventHandler(eventCode, handler);
         }
 
-        public Builder eventHandler(String eventCode, WorkerEventHandler handler) {
+        public Builder eventHandler(String eventCode, WorkerActionHandler handler) {
             this.eventHandlers.put(requireText(eventCode, "eventCode"),
                     Objects.requireNonNull(handler, "handler is required"));
             return this;
         }
 
-        public Builder eventHandlers(Map<String, WorkerEventHandler> eventHandlers) {
+        public Builder eventHandlers(Map<String, WorkerActionHandler> eventHandlers) {
             if (eventHandlers != null) {
                 eventHandlers.forEach(this::eventHandler);
             }

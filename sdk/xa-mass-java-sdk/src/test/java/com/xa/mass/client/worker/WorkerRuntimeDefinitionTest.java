@@ -2,7 +2,7 @@ package com.xa.mass.client.worker;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.http.MassHttpClient;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
 import com.xa.mass.client.worker.runtime.WebSocketWorkerRuntime;
 import com.xa.mass.client.worker.runtime.WorkerRuntimes;
@@ -37,7 +37,7 @@ class WorkerRuntimeDefinitionTest {
                 .workerId("worker-1")
                 .workerGroupId("group-1")
                 .attribute("region", "sg")
-                .event("probe.phone.metadata", dispatch -> WorkerResult.success("{\"ok\":true}"))
+                .event("probe.phone.metadata", dispatch -> WorkerActionResult.success("{\"ok\":true}"))
                 .build();
 
         assertEquals("worker-1", definition.workerId());
@@ -54,7 +54,7 @@ class WorkerRuntimeDefinitionTest {
                 .workerId("worker-1")
                 .workerGroupId("group-1")
                 .attribute("region", "sg")
-                .event("probe.phone.metadata", dispatch -> WorkerResult.success("{\"ok\":true}"))
+                .event("probe.phone.metadata", dispatch -> WorkerActionResult.success("{\"ok\":true}"))
                 .build();
         WorkerRuntimes runtimes = new WorkerRuntimes(workerClient());
 
@@ -77,7 +77,7 @@ class WorkerRuntimeDefinitionTest {
                 .workerId("worker-1")
                 .workerGroupId("group-1")
                 .attribute("region", "sg")
-                .event("probe.phone.metadata", dispatch -> WorkerResult.success("{\"ok\":true}"))
+                .event("probe.phone.metadata", dispatch -> WorkerActionResult.success("{\"ok\":true}"))
                 .build();
 
         WorkerSpec polling = WorkerSpec.polling(definition);

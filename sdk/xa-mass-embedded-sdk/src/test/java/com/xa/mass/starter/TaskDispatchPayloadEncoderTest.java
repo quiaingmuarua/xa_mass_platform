@@ -20,13 +20,16 @@ class TaskDispatchPayloadEncoderTest {
     void encodesWorkerFramePayloadOutsideTransportCore() {
         TaskDispatchBinding binding = binding();
         String correlationRef = correlationCodec.encode(context(), binding);
+        String actionId = "delivery-1";
 
-        String payload = payloadEncoder.encode(context(), binding, correlationRef);
+        String payload = payloadEncoder.encode(context(), binding, actionId, correlationRef);
         JsonObject frame = new Gson().fromJson(payload, JsonObject.class);
 
-        assertEquals(correlationRef, frame.get("resultCorrelationRef").getAsString());
+        assertEquals(actionId, frame.get("actionId").getAsString());
+        assertEquals(correlationRef, frame.get("replyRef").getAsString());
         assertEquals("crawler.fetch-page", frame.get("eventCode").getAsString());
-        assertEquals("target-1", frame.getAsJsonObject("input").get("target").getAsString());
+        JsonObject body = new Gson().fromJson(frame.get("body").getAsString(), JsonObject.class);
+        assertEquals("target-1", body.get("target").getAsString());
         assertEquals("fast", frame.getAsJsonObject("sharedConfig").get("mode").getAsString());
         assertFalse(frame.has("taskId"));
         assertFalse(frame.has("messageId"));

@@ -2,11 +2,12 @@ package com.xa.mass.workerpack.tool.geo;
 
 import com.google.gson.Gson;
 import com.xa.mass.client.MassPlatform;
+import com.xa.mass.client.payload.MassPayload;
 import com.xa.mass.client.worker.WorkerGroupSpec;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
 import com.xa.mass.client.worker.WorkerSpec;
-import com.xa.mass.client.worker.handler.WorkerEventHandler;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionHandler;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import com.xa.mass.client.worker.runtime.PollingWorkerRuntime;
 
 import java.time.Duration;
@@ -42,23 +43,24 @@ public final class GeoLookupWorkerPack {
                 .build();
     }
 
-    public static WorkerEventHandler handler() {
+    public static WorkerActionHandler handler() {
         return handler(GeoLookupTool.defaultProvider());
     }
 
-    public static WorkerEventHandler handler(GeoLookupProvider provider) {
+    public static WorkerActionHandler handler(GeoLookupProvider provider) {
         GeoLookupProvider resolvedProvider = Objects.requireNonNull(provider, "provider is required");
         return dispatch -> {
-            String query = dispatch.input().getString("query")
-                    .or(() -> dispatch.input().getString("city"))
+            MassPayload body = bodyPayload(dispatch);
+            String query = body.getString("query")
+                    .or(() -> body.getString("city"))
                     .orElse("");
             try {
-                return WorkerResult.success(resultBody("geo lookup resolved",
+                return WorkerActionResult.success(resultBody("geo lookup resolved",
                         GeoLookupTool.lookup(query, resolvedProvider)));
             } catch (IllegalArgumentException e) {
-                return WorkerResult.failure("INVALID_GEO_QUERY", e.getMessage());
+                return WorkerActionResult.failure("INVALID_GEO_QUERY", e.getMessage());
             } catch (GeoLookupProviderException e) {
-                return WorkerResult.failure(e.errorCode(), resultBody(e.getMessage(), Map.of(
+                return WorkerActionResult.failure(e.errorCode(), resultBody(e.getMessage(), Map.of(
                         "query", query,
                         "provider", resolvedProvider.providerId()
                 )));
@@ -72,6 +74,19 @@ public final class GeoLookupWorkerPack {
             values.put("detail", detail);
         }
         return RESULT_GSON.toJson(values);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static MassPayload bodyPayload(com.xa.mass.client.worker.WorkerAction action) {
+        String body = action.body();
+        if (body == null || body.isBlank()) {
+            return MassPayload.of(Map.of());
+        }
+        Object decoded = RESULT_GSON.fromJson(body, Object.class);
+        if (decoded instanceof Map<?, ?> values) {
+            return MassPayload.of((Map<String, Object>) values);
+        }
+        return MassPayload.of(Map.of("rawBody", body));
     }
 
     public static final class Builder {

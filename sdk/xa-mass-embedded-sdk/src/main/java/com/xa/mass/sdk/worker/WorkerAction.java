@@ -6,35 +6,42 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * SDK/server public worker invocation DTO.
+ * SDK/server public worker action DTO.
  */
-public final class WorkerInvocation {
+public final class WorkerAction {
 
-    private final String resultCorrelationRef;
+    private final String actionId;
+    private final String replyRef;
     private final String eventCode;
-    private final Map<String, Object> input;
+    private final String body;
     private final Map<String, Object> sharedConfig;
 
-    public WorkerInvocation(String resultCorrelationRef,
-                            String eventCode,
-                            Map<String, Object> input,
-                            Map<String, Object> sharedConfig) {
-        this.resultCorrelationRef = requireText(resultCorrelationRef, "resultCorrelationRef");
-        this.eventCode = optionalText(eventCode);
-        this.input = TransportJsonValueNormalizer.normalizeObject(input, "input");
+    public WorkerAction(String actionId,
+                        String replyRef,
+                        String eventCode,
+                        String body,
+                        Map<String, Object> sharedConfig) {
+        this.actionId = requireText(actionId, "actionId");
+        this.replyRef = requireText(replyRef, "replyRef");
+        this.eventCode = requireText(eventCode, "eventCode");
+        this.body = requireBody(body);
         this.sharedConfig = TransportJsonValueNormalizer.normalizeObject(sharedConfig, "sharedConfig");
     }
 
-    public String getResultCorrelationRef() {
-        return resultCorrelationRef;
+    public String getActionId() {
+        return actionId;
+    }
+
+    public String getReplyRef() {
+        return replyRef;
     }
 
     public String getEventCode() {
         return eventCode;
     }
 
-    public Map<String, Object> getInput() {
-        return input;
+    public String getBody() {
+        return body;
     }
 
     public Map<String, Object> getSharedConfig() {
@@ -56,29 +63,38 @@ public final class WorkerInvocation {
         return value.trim();
     }
 
+    private static String requireBody(String value) {
+        if (value == null) {
+            throw new IllegalArgumentException("body must not be null");
+        }
+        return value;
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) {
             return true;
         }
-        if (!(other instanceof WorkerInvocation that)) {
+        if (!(other instanceof WorkerAction that)) {
             return false;
         }
-        return Objects.equals(resultCorrelationRef, that.resultCorrelationRef)
+        return Objects.equals(actionId, that.actionId)
+                && Objects.equals(replyRef, that.replyRef)
                 && Objects.equals(eventCode, that.eventCode)
-                && Objects.equals(input, that.input)
+                && Objects.equals(body, that.body)
                 && Objects.equals(sharedConfig, that.sharedConfig);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(resultCorrelationRef, eventCode, input, sharedConfig);
+        return Objects.hash(actionId, replyRef, eventCode, body, sharedConfig);
     }
 
     @Override
     public String toString() {
-        return "WorkerInvocation{"
-                + "resultCorrelationRef='" + resultCorrelationRef + '\''
+        return "WorkerAction{"
+                + "actionId='" + actionId + '\''
+                + ", replyRef='" + replyRef + '\''
                 + ", eventCode='" + eventCode + '\''
                 + '}';
     }

@@ -1,9 +1,9 @@
 package com.xa.mass.client.worker.runtime;
 
 import com.xa.mass.client.worker.WorkerClient;
-import com.xa.mass.client.worker.WorkerInvocation;
+import com.xa.mass.client.worker.WorkerAction;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 
 import java.time.Duration;
 import java.util.Objects;
@@ -157,7 +157,7 @@ public final class PollingWorkerRuntime implements WorkerRuntime {
         while (running.get()) {
             try {
                 consecutiveFailures = 0;
-                for (WorkerInvocation item : protocolDriver.poll()) {
+                for (WorkerAction item : protocolDriver.poll()) {
                     handleItem(item);
                 }
                 sleep(pollInterval);
@@ -169,21 +169,21 @@ public final class PollingWorkerRuntime implements WorkerRuntime {
         }
     }
 
-    private void handleItem(WorkerInvocation item) {
+    private void handleItem(WorkerAction item) {
         WorkerDispatchProcessor.ProcessedDispatch processed = dispatchProcessor.process(item);
-        submitResult(processed.resultCorrelationRef(), processed.invocation(), processed.result());
+        submitActionReply(processed.replyRef(), processed.action(), processed.result());
     }
 
-    private void submitResult(String resultCorrelationRef, WorkerInvocation invocation, WorkerResult result) {
+    private void submitActionReply(String replyRef, WorkerAction action, WorkerActionResult result) {
         try {
-            submitResultToWorkerApi(resultCorrelationRef, result);
+            submitReplyToWorkerApi(replyRef, result);
         } catch (Throwable failure) {
-            listener.onFailure(WorkerRuntimeFailureEvent.submit(workerId, resultCorrelationRef, invocation, failure));
+            listener.onFailure(WorkerRuntimeFailureEvent.submit(workerId, replyRef, action, failure));
         }
     }
 
-    private void submitResultToWorkerApi(String resultCorrelationRef, WorkerResult result) {
-        protocolDriver.submitResult(resultCorrelationRef, result);
+    private void submitReplyToWorkerApi(String replyRef, WorkerActionResult result) {
+        protocolDriver.submitActionReply(replyRef, result);
     }
 
     private Duration backoff(int consecutiveFailures) {

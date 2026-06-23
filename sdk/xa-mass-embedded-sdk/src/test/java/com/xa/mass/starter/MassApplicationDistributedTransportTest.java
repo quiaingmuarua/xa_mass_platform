@@ -295,7 +295,11 @@ class MassApplicationDistributedTransportTest {
         return new DispatchMessage(
                 commandId,
                 workerId,
-                new TaskDispatchPayloadEncoder().encode(context(), binding, workerId),
+                new TaskDispatchPayloadEncoder().encode(
+                        context(),
+                        binding,
+                        commandId,
+                        new TaskDispatchDeliveryCorrelationCodec().encode(context(), binding)),
                 new TaskDispatchDeliveryCorrelationCodec().encode(context(), binding),
                 0L,
                 System.currentTimeMillis()

@@ -11,41 +11,57 @@ import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.Objects;
 
-final class WorkerInvocationPayloadDecoder {
+final class WorkerActionPayloadDecoder {
 
-    private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
+    private static final String ACTION_ID_FIELD = "actionId";
+    private static final String REPLY_REF_FIELD = "replyRef";
     private static final String EVENT_CODE_FIELD = "eventCode";
-    private static final String INPUT_FIELD = "input";
+    private static final String BODY_FIELD = "body";
     private static final String SHARED_CONFIG_FIELD = "sharedConfig";
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
     }.getType();
 
     private final Gson gson;
 
-    WorkerInvocationPayloadDecoder() {
+    WorkerActionPayloadDecoder() {
         this(new GsonBuilder().create());
     }
 
-    WorkerInvocationPayloadDecoder(Gson gson) {
+    WorkerActionPayloadDecoder(Gson gson) {
         this.gson = Objects.requireNonNull(gson, "gson");
     }
 
-    WorkerInvocation decode(PulledDeliveryMessage message) {
+    WorkerAction decode(PulledDeliveryMessage message) {
         Objects.requireNonNull(message, "message");
-        return decode(message.getPayload(), message.getCorrelationRef());
+        return decode(message.getPayload(), message.getDeliveryId(), message.getCorrelationRef());
     }
 
-    WorkerInvocation decode(String payload, String correlationRef) {
+    WorkerAction decode(String payload, String actionId, String replyRef) {
         JsonObject frame = gson.fromJson(requireText(payload, "payload"), JsonObject.class);
         if (frame == null) {
             throw new IllegalArgumentException("payload must be a JSON object");
         }
-        return new WorkerInvocation(
-                firstNonBlank(readString(frame, RESULT_CORRELATION_REF_FIELD), correlationRef),
+        return new WorkerAction(
+                firstNonBlank(readString(frame, ACTION_ID_FIELD), actionId),
+                firstNonBlank(readString(frame, REPLY_REF_FIELD), replyRef),
                 readString(frame, EVENT_CODE_FIELD),
-                readMap(frame, INPUT_FIELD),
+                readBody(frame),
                 readMap(frame, SHARED_CONFIG_FIELD)
         );
+    }
+
+    private String readBody(JsonObject frame) {
+        if (frame == null || !frame.has(BODY_FIELD) || frame.get(BODY_FIELD).isJsonNull()) {
+            return "{}";
+        }
+        try {
+            if (frame.get(BODY_FIELD).isJsonPrimitive()) {
+                return frame.get(BODY_FIELD).getAsString();
+            }
+            return gson.toJson(frame.get(BODY_FIELD));
+        } catch (Exception ignored) {
+            return "{}";
+        }
     }
 
     private Map<String, Object> readMap(JsonObject frame, String field) {

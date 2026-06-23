@@ -4,7 +4,7 @@ import java.util.List;
 
 public record WorkerPollResult(
         String workerId,
-        List<WorkerInvocation> items,
+        List<WorkerAction> items,
         int total
 ) {
 }

@@ -1,17 +1,20 @@
 # Java SDK Worker Runtime Capability Model Convergence Roadmap
 
-Status: mainline complete; worker command ability remains an explicitly
-deferred decision. Archive after a final portfolio-level roadmap residue pass.
+Status: archived after mainline completion. Worker command ability remains an
+explicitly deferred worker-control decision. Worker action/reply naming was
+superseded and landed by
+`JAVA_SDK_WORKER_ACTION_CHANNEL_MODEL_CONVERGENCE_ROADMAP.md`; historical
+sections below may mention the previous `WorkerInvocation` /
+`WorkerResultSubmission` vocabulary only as pre-action-channel context.
 
 ## Summary
 
 The Java external SDK now has a much cleaner worker public model:
 
-- `WorkerInvocation(resultCorrelationRef, eventCode, input, sharedConfig)` is
-  the single worker invocation item.
-- `WorkerResult(success, resultCode, result)` is the handler output.
-- `WorkerResultSubmission(resultCorrelationRef, success, resultCode, result)`
-  is the result-submit fact.
+- `WorkerAction(actionId, replyRef, eventCode, body, sharedConfig)` is the
+  single worker action item.
+- `WorkerActionResult(success, code, body)` is the handler output.
+- `WorkerActionReply(replyRef, success, code, body)` is the result-submit fact.
 - old Java SDK worker topology DTOs, command poll/ack DTOs,
   `WorkerDispatchItem`, `ResultCorrelationRef`, `WorkerEventHandlers`,
   `WorkerEventHandlerRuntime`, and handler-package `WorkerInvocation` have been

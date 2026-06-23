@@ -7,7 +7,7 @@ import com.sun.net.httpserver.HttpServer;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.WorkerRuntimeDefinition;
 import com.xa.mass.client.worker.WorkerRuntimeEvidence;
-import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerActionResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -92,7 +92,7 @@ class WorkerRuntimeReporterTest {
                 .workerId("worker-1")
                 .workerGroupId("group-1")
                 .attribute("region", "sg")
-                .event("probe.phone.metadata", dispatch -> WorkerResult.success("{}"))
+                .event("probe.phone.metadata", dispatch -> WorkerActionResult.success("{}"))
                 .build();
     }
 

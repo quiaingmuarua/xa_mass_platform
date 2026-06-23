@@ -1,9 +1,9 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
-import com.xa.mass.sdk.worker.WorkerInvocation;
+import com.xa.mass.sdk.worker.WorkerAction;
+import com.xa.mass.sdk.worker.WorkerActionReply;
 import com.xa.mass.sdk.worker.WorkerPollResult;
-import com.xa.mass.sdk.worker.WorkerResultSubmission;
 
 import java.util.List;
 
@@ -22,19 +22,19 @@ public interface WorkerClientOperations {
 
     void workerOffline(String workerId, String sessionToken, String reason);
 
-    default WorkerPollResult pollTasksResult(String workerId, int maxMessages) {
-        return pollTasksResult(workerId, maxMessages, 0L);
+    default WorkerPollResult pollActionsResult(String workerId, int maxMessages) {
+        return pollActionsResult(workerId, maxMessages, 0L);
     }
 
-    WorkerPollResult pollTasksResult(String workerId, int maxMessages, long timeoutMillis);
+    WorkerPollResult pollActionsResult(String workerId, int maxMessages, long timeoutMillis);
 
-    default List<WorkerInvocation> pollTasks(String workerId, int maxMessages) {
-        return pollTasks(workerId, maxMessages, 0L);
+    default List<WorkerAction> pollActions(String workerId, int maxMessages) {
+        return pollActions(workerId, maxMessages, 0L);
     }
 
-    default List<WorkerInvocation> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
-        return pollTasksResult(workerId, maxMessages, timeoutMillis).getItems();
+    default List<WorkerAction> pollActions(String workerId, int maxMessages, long timeoutMillis) {
+        return pollActionsResult(workerId, maxMessages, timeoutMillis).getItems();
     }
 
-    boolean submitResult(String workerId, WorkerResultSubmission request);
+    boolean submitActionReply(String workerId, WorkerActionReply request);
 }

@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Adapter-local helper that turns inbound WebSocket task frames into sample
@@ -23,6 +24,8 @@ final class SampleWorkerTaskFrameHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(SampleWorkerTaskFrameHandler.class);
     private static final Gson GSON = new Gson();
+    private static final String ACTION = "ACTION";
+    private static final String ACTION_REPLY = "ACTION_REPLY";
     private static final long DEFAULT_TASK_RESPONSE_BASE_DELAY_MS = 15L;
     private static final long DEFAULT_TASK_RESPONSE_JITTER_MS = 35L;
 
@@ -40,24 +43,25 @@ final class SampleWorkerTaskFrameHandler {
         this.runtimeName = runtimeName == null || runtimeName.isBlank() ? "sample-worker-client" : runtimeName;
     }
 
-    TaskResponsePlan prepareResponse(JsonObject taskMessage,
+    TaskResponsePlan prepareResponse(JsonObject frame,
                                      String workerId,
                                      String taskResultStatus,
                                      SampleClientState state) {
-        if (taskMessage == null) {
+        if (frame == null) {
             return null;
         }
-        if (isTaskResultFrame(taskMessage)) {
-            logger.debug("[{}] Ignoring canonical task result frame for resultCorrelationRef: {}",
-                    workerId, resultCorrelationRef(taskMessage));
+        if (isTaskResultFrame(frame)) {
+            logger.debug("[{}] Ignoring canonical task result frame for replyRef: {}",
+                    workerId, replyRef(replyMessage(frame)));
             return null;
         }
-        if (!isTaskDispatchFrame(taskMessage)) {
+        if (!isTaskDispatchFrame(frame)) {
             return null;
         }
-        String resultCorrelationRef = resultCorrelationRef(taskMessage);
-        if (resultCorrelationRef == null || resultCorrelationRef.isBlank()) {
-            logger.info("[{}] Received task dispatch without resultCorrelationRef, skipping task-result callback",
+        JsonObject taskMessage = actionMessage(frame);
+        String replyRef = replyRef(taskMessage);
+        if (replyRef == null || replyRef.isBlank()) {
+            logger.info("[{}] Received task dispatch without replyRef, skipping task-result callback",
                     workerId);
             return null;
         }
@@ -73,10 +77,10 @@ final class SampleWorkerTaskFrameHandler {
         long finishedAtEpochMillis = startedAtEpochMillis + delayMillis;
 
         JsonObject response = new JsonObject();
-        response.addProperty("resultCorrelationRef", resultCorrelationRef);
+        response.addProperty("replyRef", replyRef);
         response.addProperty("success", "SUCCESS".equals(resolvedStatus));
         if ("FAILED".equals(resolvedStatus)) {
-            response.addProperty("resultCode", "MOCK_TASK_FAILED");
+            response.addProperty("code", "MOCK_TASK_FAILED");
         }
 
         Map<String, Object> outputMap = new LinkedHashMap<>();
@@ -93,25 +97,25 @@ final class SampleWorkerTaskFrameHandler {
                 resolvedStatus
         ));
         outputMap.put("workerProfile", buildWorkerProfile(workerId));
-        response.addProperty("result", GSON.toJson(outputMap));
+        response.addProperty("body", GSON.toJson(outputMap));
 
         if (state != null && state.shouldDropTaskResponse()) {
-            logger.info("[{}] Dropped sample task response for resultCorrelationRef={} due to sample state {}",
-                    workerId, resultCorrelationRef, state.snapshot());
+            logger.info("[{}] Dropped sample task response for replyRef={} due to sample state {}",
+                    workerId, replyRef, state.snapshot());
             return null;
         }
         if (state != null && state.getFaultProfile().shouldStallWithoutResult()) {
-            logger.info("[{}] Stalled sample task response for resultCorrelationRef={} due to fault profile {}",
-                    workerId, resultCorrelationRef, state.getFaultProfile().toMap());
+            logger.info("[{}] Stalled sample task response for replyRef={} due to fault profile {}",
+                    workerId, replyRef, state.getFaultProfile().toMap());
             return null;
         }
         if (state != null && state.shouldDropFaultProfileResult(
                 workerId,
-                resultCorrelationRef,
+                replyRef,
                 0
         )) {
-            logger.info("[{}] Dropped sample task response for resultCorrelationRef={} due to fault profile {}",
-                    workerId, resultCorrelationRef, state.getFaultProfile().toMap());
+            logger.info("[{}] Dropped sample task response for replyRef={} due to fault profile {}",
+                    workerId, replyRef, state.getFaultProfile().toMap());
             return null;
         }
         int duplicateCount = state == null ? 0 : state.getFaultProfile().duplicateResultCount();
@@ -121,8 +125,8 @@ final class SampleWorkerTaskFrameHandler {
             applyMalformedFault(response, state.getFaultProfile().malformedResultKind());
         }
         return new TaskResponsePlan(
-                GSON.toJson(response),
-                resultCorrelationRef,
+                channelFrame(ACTION_REPLY, response),
+                replyRef,
                 delayMillis,
                 null,
                 duplicateCount,
@@ -143,10 +147,10 @@ final class SampleWorkerTaskFrameHandler {
         long finishedAtEpochMillis = startedAtEpochMillis + delayMillis;
 
         JsonObject response = new JsonObject();
-        response.addProperty("resultCorrelationRef", resultCorrelationRef(taskMessage));
+        response.addProperty("replyRef", replyRef(taskMessage));
         response.addProperty("success", success);
         if (!success) {
-            response.addProperty("resultCode", resolveCommandTaskErrorCode(commandResult));
+            response.addProperty("code", resolveCommandTaskErrorCode(commandResult));
         }
 
         Map<String, Object> outputMap = new LinkedHashMap<>();
@@ -168,11 +172,11 @@ final class SampleWorkerTaskFrameHandler {
                 success ? "SUCCESS" : "FAILED"
         ));
         outputMap.put("workerProfile", buildWorkerProfile(workerId));
-        response.addProperty("result", GSON.toJson(outputMap));
+        response.addProperty("body", GSON.toJson(outputMap));
 
         return new TaskResponsePlan(
-                GSON.toJson(response),
-                resultCorrelationRef(taskMessage),
+                channelFrame(ACTION_REPLY, response),
+                replyRef(taskMessage),
                 delayMillis,
                 resolveDisconnectWorkerId(commandResult),
                 0,
@@ -210,7 +214,7 @@ final class SampleWorkerTaskFrameHandler {
         commandRequest.addProperty("event", eventCode);
         commandRequest.addProperty("eventCode", eventCode);
         commandRequest.addProperty("workerId", workerId);
-        commandRequest.addProperty("resultCorrelationRef", resultCorrelationRef(taskMessage));
+        commandRequest.addProperty("replyRef", replyRef(taskMessage));
         JsonObject input = extractCommandPayload(taskMessage);
         for (Map.Entry<String, JsonElement> entry : input.entrySet()) {
             commandRequest.add(entry.getKey(), entry.getValue().deepCopy());
@@ -219,7 +223,7 @@ final class SampleWorkerTaskFrameHandler {
     }
 
     private JsonObject extractCommandPayload(JsonObject taskMessage) {
-        JsonObject input = readJsonObject(taskMessage, "input");
+        JsonObject input = readJsonStringObject(taskMessage, "body");
         String inputType = readString(input, "type");
         if ("json".equalsIgnoreCase(inputType)) {
             JsonObject data = readJsonObject(input, "data");
@@ -231,7 +235,7 @@ final class SampleWorkerTaskFrameHandler {
     }
 
     private long resolveCommandTaskResponseDelayMillis(JsonObject taskMessage, String workerId) {
-        int stableHash = Objects.hash(workerId, resultCorrelationRef(taskMessage), "sample-command");
+        int stableHash = Objects.hash(workerId, replyRef(taskMessage), "sample-command");
         long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
         return DEFAULT_TASK_RESPONSE_BASE_DELAY_MS + jitter;
     }
@@ -297,7 +301,7 @@ final class SampleWorkerTaskFrameHandler {
         if (state != null && state.getTaskResponseDelayMillis() > 0L) {
             return state.getTaskResponseDelayMillis();
         }
-        int stableHash = Objects.hash(workerId, resultCorrelationRef(taskMessage), stepCount);
+        int stableHash = Objects.hash(workerId, replyRef(taskMessage), stepCount);
         long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
         long failurePenalty = "FAILED".equals(taskStatus) ? 10L : 0L;
         long baseDelay = DEFAULT_TASK_RESPONSE_BASE_DELAY_MS
@@ -309,7 +313,7 @@ final class SampleWorkerTaskFrameHandler {
         }
         long faultDelay = state.getFaultProfile().resolveDelayMillis(
                 workerId,
-                resultCorrelationRef(taskMessage),
+                replyRef(taskMessage),
                 0
         );
         return baseDelay
@@ -319,20 +323,21 @@ final class SampleWorkerTaskFrameHandler {
     }
 
     boolean isTaskDispatchFrame(JsonObject taskMessage) {
-        return taskMessage != null
-                && !isTaskResultFrame(taskMessage)
-                && readString(taskMessage, "eventCode") != null
-                && resultCorrelationRef(taskMessage) != null;
+        JsonObject action = actionMessage(taskMessage);
+        return action != null
+                && readString(action, "eventCode") != null
+                && replyRef(action) != null;
     }
 
     boolean isTaskResultFrame(JsonObject taskMessage) {
-        return taskMessage != null
-                && resultCorrelationRef(taskMessage) != null
-                && readBoolean(taskMessage, "success");
+        JsonObject reply = replyMessage(taskMessage);
+        return reply != null
+                && replyRef(reply) != null
+                && readBoolean(reply, "success");
     }
 
     private String resolveStepId(JsonObject taskMessage) {
-        return firstNonBlank(resultCorrelationRef(taskMessage), "step-0-default");
+        return firstNonBlank(replyRef(taskMessage), "step-0-default");
     }
 
     private Map<String, Object> buildExecutionSnapshot(JsonObject taskMessage,
@@ -351,7 +356,7 @@ final class SampleWorkerTaskFrameHandler {
         execution.put("stepCount", stepCount);
         execution.put("taskStatus", taskStatus);
         execution.put("eventCode", readString(taskMessage, "eventCode"));
-        execution.put("resultCorrelationRef", resultCorrelationRef(taskMessage));
+        execution.put("replyRef", replyRef(taskMessage));
         return execution;
     }
 
@@ -392,8 +397,30 @@ final class SampleWorkerTaskFrameHandler {
         }
     }
 
-    private String resultCorrelationRef(JsonObject object) {
-        return readString(object, "resultCorrelationRef");
+    private String replyRef(JsonObject object) {
+        return readString(object, "replyRef");
+    }
+
+    private JsonObject actionMessage(JsonObject frame) {
+        if (!ACTION.equals(readString(frame, "kind"))) {
+            return null;
+        }
+        return readJsonStringObject(frame, "body");
+    }
+
+    private JsonObject replyMessage(JsonObject frame) {
+        if (!ACTION_REPLY.equals(readString(frame, "kind"))) {
+            return null;
+        }
+        return readJsonStringObject(frame, "body");
+    }
+
+    private String channelFrame(String kind, JsonObject body) {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("frameId", UUID.randomUUID().toString());
+        frame.addProperty("kind", kind);
+        frame.addProperty("body", GSON.toJson(body == null ? new JsonObject() : body));
+        return GSON.toJson(frame);
     }
 
     private JsonObject readJsonObject(JsonObject object, String field) {
@@ -402,6 +429,19 @@ final class SampleWorkerTaskFrameHandler {
         }
         JsonElement element = object.get(field);
         return element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
+    }
+
+    private JsonObject readJsonStringObject(JsonObject object, String field) {
+        String rawJson = readString(object, field);
+        if (rawJson == null) {
+            return new JsonObject();
+        }
+        try {
+            JsonElement element = GSON.fromJson(rawJson, JsonElement.class);
+            return element != null && element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
+        } catch (Exception ignored) {
+            return new JsonObject();
+        }
     }
 
     private String firstNonBlank(String... values) {
@@ -429,9 +469,9 @@ final class SampleWorkerTaskFrameHandler {
             return;
         }
         switch (malformedKind) {
-            case MISSING_CORRELATION_REF -> response.remove("resultCorrelationRef");
+            case MISSING_CORRELATION_REF -> response.remove("replyRef");
             case INVALID_STATUS -> response.add("success", new JsonObject());
-            case INVALID_PAYLOAD -> response.addProperty("output", "not-an-object");
+            case INVALID_PAYLOAD -> response.addProperty("body", "not-an-object");
             case NONE -> {
             }
         }
@@ -442,8 +482,8 @@ final class SampleWorkerTaskFrameHandler {
             return;
         }
         switch (identityKind) {
-            case WRONG_CORRELATION -> response.addProperty("resultCorrelationRef",
-                    "wrong-" + readString(response, "resultCorrelationRef"));
+            case WRONG_CORRELATION -> response.addProperty("replyRef",
+                    "wrong-" + readString(response, "replyRef"));
             case WRONG_WORKER -> response.addProperty("workerId", "wrong-" + readString(response, "workerId"));
             case WRONG_LEASE -> response.addProperty("leaseId", "wrong-lease");
             case NONE -> {
@@ -452,7 +492,7 @@ final class SampleWorkerTaskFrameHandler {
     }
 
     record TaskResponsePlan(String responseJson,
-                            String resultCorrelationRef,
+                            String replyRef,
                             long delayMillis,
                             String disconnectWorkerId,
                             int duplicateCount,

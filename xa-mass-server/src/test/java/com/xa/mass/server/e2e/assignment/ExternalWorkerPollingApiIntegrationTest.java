@@ -162,13 +162,13 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertFalse(items.isEmpty(), "expected task dispatch through external polling worker API");
 
         Map<String, Object> item = items.get(0);
-        assertPollItemHasWorkerInvocationShape(item);
+        assertPollItemHasWorkerActionShape(item);
         assertEquals("crawler.fetch-page", item.get("eventCode"));
 
         Map<String, Object> resultResponse = exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
-                "resultCorrelationRef", item.get("resultCorrelationRef"),
+                "replyRef", item.get("replyRef"),
                 "success", true,
-                "result", """
+                "body", """
                         {"detail":"crawler-success","url":"https://example.test/page-1","statusCode":200,"title":"Example Page"}
                         """.trim()
         ), workerHeaders);
@@ -294,8 +294,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> item = selectedItems.getFirst();
         assertEquals(selectedWorkerId, responseData(selectedPollResponse).get("workerId"));
-        assertPollItemHasWorkerInvocationShape(item);
-        submitSuccessfulWorkerResult(selectedWorkerId, selectedWorkerHeaders, item, "shared-route-selected-worker-success");
+        assertPollItemHasWorkerActionShape(item);
+        submitSuccessfulWorkerActionReply(selectedWorkerId, selectedWorkerHeaders, item, "shared-route-selected-worker-success");
 
         RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
         assertEquals("TERMINAL", terminal.task().get("status"));
@@ -525,12 +525,12 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         }
         assertFalse(resumedItems.isEmpty(), "worker should receive new work after reporting AVAILABLE");
         Map<String, Object> item = resumedItems.getFirst();
-        assertPollItemHasWorkerInvocationShape(item);
+        assertPollItemHasWorkerActionShape(item);
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
-                "resultCorrelationRef", item.get("resultCorrelationRef"),
+                "replyRef", item.get("replyRef"),
                 "success", true,
-                "result", "{\"detail\":\"draining-resumed-success\",\"workerId\":\"" + workerId + "\"}"
+                "body", "{\"detail\":\"draining-resumed-success\",\"workerId\":\"" + workerId + "\"}"
         ), workerHeaders));
 
         RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
@@ -617,27 +617,28 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         return taskId;
     }
 
-    private void submitSuccessfulWorkerResult(String workerId,
-                                              HttpHeaders workerHeaders,
-                                              Map<String, Object> item,
-                                              String detail) {
+    private void submitSuccessfulWorkerActionReply(String workerId,
+                                                   HttpHeaders workerHeaders,
+                                                   Map<String, Object> item,
+                                                   String detail) {
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
-                "resultCorrelationRef", item.get("resultCorrelationRef"),
+                "replyRef", item.get("replyRef"),
                 "success", true,
-                "result", "{\"detail\":\"" + detail + "\",\"workerId\":\"" + workerId + "\"}"
+                "body", "{\"detail\":\"" + detail + "\",\"workerId\":\"" + workerId + "\"}"
         ), workerHeaders));
     }
 
-    private static void assertPollItemHasWorkerInvocationShape(Map<String, Object> item) {
+    private static void assertPollItemHasWorkerActionShape(Map<String, Object> item) {
         assertFalse(item.containsKey("workerId"), "poll item must not carry worker identity; worker is bound by poll path");
         assertFalse(item.containsKey("taskId"));
         assertFalse(item.containsKey("messageId"));
         assertFalse(item.containsKey("attemptId"));
         assertFalse(item.containsKey("attemptNo"));
         assertFalse(item.containsKey("batchId"));
-        assertNotNull(item.get("resultCorrelationRef"));
+        assertNotNull(item.get("actionId"));
+        assertNotNull(item.get("replyRef"));
         assertNotNull(item.get("eventCode"));
-        assertTrue(item.get("input") instanceof Map<?, ?>);
+        assertTrue(item.get("body") instanceof String);
         assertTrue(item.get("sharedConfig") instanceof Map<?, ?>);
     }
 
