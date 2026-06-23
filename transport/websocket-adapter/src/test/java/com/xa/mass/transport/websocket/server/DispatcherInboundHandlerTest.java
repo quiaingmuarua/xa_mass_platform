@@ -6,8 +6,7 @@ import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
-import com.xa.mass.transport.websocket.session.WebSocketSessionController;
-import com.xa.mass.transport.websocket.session.WebSocketSessionStore;
+import com.xa.mass.transport.websocket.session.WebSocketSessionRegistry;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
@@ -44,8 +43,7 @@ class DispatcherInboundHandlerTest {
     private AtomicReference<String> sentFrame;
     private WebSocketInboundMessageSink inboundMessageSink;
     private AtomicReference<WebSocketInboundMessage> acceptedInboundMessage;
-    private WebSocketSessionController sessionController;
-    private WebSocketSessionStore sessionStore;
+    private WebSocketSessionRegistry sessionRegistry;
     private WebSocketJsonFrameParser frameParser;
     private WebSocketSessionOpenFrameReader sessionOpenFrameReader;
 
@@ -72,10 +70,10 @@ class DispatcherInboundHandlerTest {
 
         acceptedInboundMessage = new AtomicReference<>();
         inboundMessageSink = acceptedInboundMessage::set;
-        sessionController = newSessionController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
+        sessionRegistry = newSessionRegistry(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
         frameParser = new WebSocketJsonFrameParser();
         sessionOpenFrameReader = new WebSocketSessionOpenFrameReader(frameParser);
-        handler = new DispatcherInboundHandler(frameParser, sessionOpenFrameReader, inboundMessageSink, sessionController);
+        handler = new DispatcherInboundHandler(frameParser, sessionOpenFrameReader, inboundMessageSink, sessionRegistry);
     }
 
     @Test
@@ -101,33 +99,32 @@ class DispatcherInboundHandlerTest {
         String sent = sentFrame.get();
         assertNotNull(sent);
         assertTrue(sent.contains("SESSION_NOT_BOUND"));
-        assertEquals(0, sessionStore.activeConnectionCount());
+        assertEquals(0, sessionRegistry.activeConnectionCount());
         assertNull(acceptedInboundMessage.get());
     }
 
     @Test
-    void handshakeWithWorkerIdAndRouteKeyRegistersSessionBeforeTextFramesArrive() throws Exception {
+    void handshakeWithWorkerIdAndRouteKeyRegistersWorkerSessionBeforeTextFramesArrive() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
                 "/ws?workerId=worker-1&workerGroupId=bucket-1&routeKey=ws-route-1",
                 new DefaultHttpHeaders(),
                 null
         ));
 
-        assertEquals(1, sessionStore.activeConnectionCount());
-        assertEquals("worker-1", sessionController.currentWorkerId(channel));
+        assertEquals(1, sessionRegistry.activeConnectionCount());
+        assertEquals("worker-1", sessionRegistry.currentWorkerId(channel));
     }
 
     @Test
-    void handshakeWithoutRouteKeyUsesInternalEndpointAddress() throws Exception {
+    void handshakeWithoutRouteKeyRegistersWorkerSession() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
                 "/ws?workerId=worker-1&workerGroupId=bucket-1",
                 new DefaultHttpHeaders(),
                 null
         ));
 
-        assertEquals(1, sessionStore.activeConnectionCount());
-        assertEquals("worker-1", sessionController.currentWorkerId(channel));
-        assertNotNull(sessionStore.activeChannelForEndpointAddress("bucket:bucket-1"));
+        assertEquals(1, sessionRegistry.activeConnectionCount());
+        assertEquals("worker-1", sessionRegistry.currentWorkerId(channel));
     }
 
     @Test
@@ -156,12 +153,11 @@ class DispatcherInboundHandlerTest {
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
         assertEquals("test-ch", acceptedInboundMessage.get().getEndpointId());
         assertNotNull(acceptedInboundMessage.get().getParsedFrame());
-        assertEquals(1, sessionStore.activeConnectionCount());
-        assertNotNull(sessionStore.activeChannelForEndpointAddress("ws-route-1"));
+        assertEquals(1, sessionRegistry.activeConnectionCount());
     }
 
     @Test
-    void messageWithoutInlineRouteKeyUsesHandshakeRegisteredRouteKey() throws Exception {
+    void messageWithoutInlineRouteKeyStillUsesBoundWorkerId() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
                 "/ws?workerId=worker-1&workerGroupId=bucket-1&routeKey=ws-route-11",
                 new DefaultHttpHeaders(),
@@ -183,22 +179,19 @@ class DispatcherInboundHandlerTest {
 
         assertNull(sentFrame.get());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
-        assertNotNull(sessionStore.activeChannelForEndpointAddress("ws-route-11"));
-        assertNull(sessionStore.activeChannelForEndpointAddress("worker-1"));
+        assertEquals("worker-1", sessionRegistry.currentWorkerId(channel));
     }
 
     @Test
-    void handshakeRouteKeyOverridesWorkerIdAsSessionAddress() throws Exception {
+    void handshakeRouteKeyDoesNotOverrideWorkerSessionLookup() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
                 "/ws?workerId=worker-1&workerGroupId=bucket-1&routeKey=ws-route-9",
                 new DefaultHttpHeaders(),
                 null
         ));
 
-        assertEquals(1, sessionStore.activeConnectionCount());
-        assertEquals("worker-1", sessionController.currentWorkerId(channel));
-        assertNotNull(sessionStore.activeChannelForEndpointAddress("ws-route-9"));
-        assertNull(sessionStore.activeChannelForEndpointAddress("worker-1"));
+        assertEquals(1, sessionRegistry.activeConnectionCount());
+        assertEquals("worker-1", sessionRegistry.currentWorkerId(channel));
     }
 
     @Test
@@ -227,7 +220,7 @@ class DispatcherInboundHandlerTest {
         assertNotNull(accepted);
         assertTrue(accepted.contains("\"eventCode\": \"mock.state.get\"")
                 || accepted.contains("\"eventCode\":\"mock.state.get\""));
-        assertNotNull(sessionStore.activeChannelForEndpointAddress("ws-route-1"));
+        assertEquals("worker-1", sessionRegistry.currentWorkerId(channel));
     }
 
     @Test
@@ -280,21 +273,20 @@ class DispatcherInboundHandlerTest {
         return new TextWebSocketFrame(text);
     }
 
-    private WebSocketSessionController newSessionController(String adapterId) {
-        sessionStore = new WebSocketSessionStore(adapterId);
+    private WebSocketSessionRegistry newSessionRegistry(String adapterId) {
         AdapterSessionEvidencePublisher sessionEvidencePublisher =
                 AdapterSessionEvidencePublisher.noop(adapterId, adapterId);
-        return new WebSocketSessionController(sessionStore, sessionEvidencePublisher);
+        return new WebSocketSessionRegistry(sessionEvidencePublisher);
     }
 }
 
 class WebSocketServerImplDisconnectTest {
 
-    private WebSocketSessionStore sessionStore;
+    private WebSocketSessionRegistry sessionRegistry;
 
     @Test
     void channelInactiveRemovesDisconnectedSessionFromSessionManager() throws Exception {
-        WebSocketSessionController sessionController = newSessionController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
+        WebSocketSessionRegistry sessionRegistry = newSessionRegistry(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
         WebSocketServerImpl server = new WebSocketServerImpl(
                 18088,
                 10,
@@ -302,7 +294,7 @@ class WebSocketServerImplDisconnectTest {
                 new WebSocketJsonFrameParser(),
                 new WebSocketSessionOpenFrameReader(new WebSocketJsonFrameParser()),
                 raw -> { },
-                sessionController
+                sessionRegistry
         );
 
         Channel channel = mock(Channel.class);
@@ -318,19 +310,18 @@ class WebSocketServerImplDisconnectTest {
         when(ctx.fireChannelActive()).thenReturn(ctx);
         when(ctx.fireChannelInactive()).thenReturn(ctx);
 
-        sessionController.addSession("bucket-1", "worker-1", "worker-1", channel);
+        sessionRegistry.addSession("bucket-1", "worker-1", channel);
 
         ChannelInboundHandlerAdapter handler = newConnectionStatsHandler(server);
         handler.channelActive(ctx);
         assertEquals(1L, server.getActiveConnectionCount());
-        assertEquals(1, sessionStore.activeConnectionCount());
+        assertEquals(1, sessionRegistry.activeConnectionCount());
 
         handler.channelInactive(ctx);
 
         assertEquals(0L, server.getActiveConnectionCount());
-        assertEquals(0, sessionStore.activeConnectionCount());
-        assertNull(sessionStore.activeChannelForEndpointAddress("worker-1"));
-        assertNull(sessionController.currentWorkerId(channel));
+        assertEquals(0, sessionRegistry.activeConnectionCount());
+        assertNull(sessionRegistry.currentWorkerId(channel));
     }
 
     @Test
@@ -344,7 +335,7 @@ class WebSocketServerImplDisconnectTest {
 
     @Test
     void channelActiveRejectsConnectionsBeyondConfiguredMax() throws Exception {
-        WebSocketSessionController sessionController = newSessionController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
+        WebSocketSessionRegistry sessionRegistry = newSessionRegistry(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
         WebSocketServerImpl server = new WebSocketServerImpl(
                 18088,
                 1,
@@ -352,7 +343,7 @@ class WebSocketServerImplDisconnectTest {
                 new WebSocketJsonFrameParser(),
                 new WebSocketSessionOpenFrameReader(new WebSocketJsonFrameParser()),
                 raw -> { },
-                sessionController
+                sessionRegistry
         );
 
         Channel countedChannel = mock(Channel.class);
@@ -382,14 +373,14 @@ class WebSocketServerImplDisconnectTest {
 
         assertEquals(1L, server.getActiveConnectionCount());
         verify(rejectedCtx).close();
-        assertEquals(0, sessionStore.activeConnectionCount());
+        assertEquals(0, sessionRegistry.activeConnectionCount());
     }
 
-    private WebSocketSessionController newSessionController(String adapterId) {
-        sessionStore = new WebSocketSessionStore(adapterId);
+    private WebSocketSessionRegistry newSessionRegistry(String adapterId) {
         AdapterSessionEvidencePublisher sessionEvidencePublisher =
                 AdapterSessionEvidencePublisher.noop(adapterId, adapterId);
-        return new WebSocketSessionController(sessionStore, sessionEvidencePublisher);
+        this.sessionRegistry = new WebSocketSessionRegistry(sessionEvidencePublisher);
+        return this.sessionRegistry;
     }
 
     private ChannelInboundHandlerAdapter newConnectionStatsHandler(WebSocketServerImpl server) throws Exception {

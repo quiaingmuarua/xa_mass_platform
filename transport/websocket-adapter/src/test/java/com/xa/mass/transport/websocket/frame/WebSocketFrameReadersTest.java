@@ -28,7 +28,7 @@ class WebSocketFrameReadersTest {
     }
 
     @Test
-    void sessionReaderUsesExplicitRouteAddressWhenPresent() {
+    void sessionReaderIgnoresRouteAddressWhenPresent() {
         WebSocketSessionOpenFrameReader reader = new WebSocketSessionOpenFrameReader(parser);
 
         WebSocketSessionIdentity identity = reader.readHandshake(
@@ -38,11 +38,10 @@ class WebSocketFrameReadersTest {
         assertTrue(identity.complete());
         assertEquals("bucket-1", identity.workerGroupId());
         assertEquals("worker-1", identity.workerId());
-        assertEquals("ws-route-1", identity.endpointAddress());
     }
 
     @Test
-    void sessionReaderGeneratesInternalEndpointAddressWhenRouteAddressIsOmitted() {
+    void sessionReaderRequiresOnlyWorkerGroupAndWorkerId() {
         WebSocketSessionOpenFrameReader reader = new WebSocketSessionOpenFrameReader(parser);
 
         WebSocketSessionIdentity identity = reader.readHandshake(
@@ -50,7 +49,8 @@ class WebSocketFrameReadersTest {
         );
 
         assertTrue(identity.complete());
-        assertEquals("bucket:bucket-1", identity.endpointAddress());
+        assertEquals("bucket-1", identity.workerGroupId());
+        assertEquals("worker-1", identity.workerId());
     }
 
     @Test

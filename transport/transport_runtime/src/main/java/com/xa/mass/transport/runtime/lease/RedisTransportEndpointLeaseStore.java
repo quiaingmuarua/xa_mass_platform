@@ -272,8 +272,7 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
                 claim.workerId(),
                 claim.endpointDriverId(),
                 claim.sessionHandle(),
-                claim.endpointLeaseId(),
-                claim.endpointAddress()
+                claim.endpointLeaseId()
         );
     }
 
@@ -301,7 +300,6 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
         return heartbeat.workerId().equals(metadata.workerId())
                 && heartbeat.deliveryBucketId().equals(metadata.deliveryBucketId())
                 && heartbeat.endpointDriverId().equals(metadata.endpointDriverId())
-                && heartbeat.endpointAddress().equals(metadata.endpointAddress())
                 && heartbeat.sessionHandle().equals(metadata.sessionHandle())
                 && heartbeat.endpointLeaseId().equals(metadata.endpointLeaseId());
     }
@@ -311,7 +309,6 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
         return release.workerId().equals(metadata.workerId())
                 && release.deliveryBucketId().equals(metadata.deliveryBucketId())
                 && release.endpointDriverId().equals(metadata.endpointDriverId())
-                && release.endpointAddress().equals(metadata.endpointAddress())
                 && release.sessionHandle().equals(metadata.sessionHandle())
                 && release.endpointLeaseId().equals(metadata.endpointLeaseId());
     }
@@ -323,8 +320,7 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
                 encodeToken(metadata.workerId()),
                 encodeToken(metadata.endpointDriverId()),
                 encodeToken(metadata.sessionHandle()),
-                encodeToken(metadata.endpointLeaseId()),
-                encodeToken(metadata.endpointAddress())
+                encodeToken(metadata.endpointLeaseId())
         );
     }
 
@@ -333,7 +329,7 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
             return null;
         }
         String[] parts = encoded.split("\\|", -1);
-        if (parts.length != 7 || !VERSION.equals(parts[0])) {
+        if (parts.length != 6 || !VERSION.equals(parts[0])) {
             return null;
         }
         return new TransportEndpointLeaseMetadata(
@@ -341,8 +337,7 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
                 decodeToken(parts[2], "workerId"),
                 decodeToken(parts[3], "endpointDriverId"),
                 decodeToken(parts[4], "sessionHandle"),
-                decodeToken(parts[5], "endpointLeaseId"),
-                decodeToken(parts[6], "endpointAddress")
+                decodeToken(parts[5], "endpointLeaseId")
         );
     }
 

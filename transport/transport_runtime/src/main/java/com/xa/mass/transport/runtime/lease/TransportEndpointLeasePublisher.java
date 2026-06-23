@@ -32,14 +32,12 @@ public final class TransportEndpointLeasePublisher {
 
     public void claim(String workerId,
                       String deliveryBucketId,
-                      String endpointAddress,
                       String endpointLeaseId,
                       String reason) {
         TransportEndpointLeaseClaim claim = new TransportEndpointLeaseClaim(
                 workerId,
                 requireText(deliveryBucketId, "deliveryBucketId"),
                 endpointDriverId,
-                endpointAddress,
                 endpointLeaseId,
                 reason
         );
@@ -48,14 +46,12 @@ public final class TransportEndpointLeasePublisher {
 
     public boolean refresh(String workerId,
                            String deliveryBucketId,
-                           String endpointAddress,
                            String endpointLeaseId,
                            String reason) {
         TransportEndpointLeaseHeartbeat heartbeat = new TransportEndpointLeaseHeartbeat(
                 workerId,
                 requireText(deliveryBucketId, "deliveryBucketId"),
                 endpointDriverId,
-                endpointAddress,
                 endpointLeaseId,
                 reason
         );
@@ -64,14 +60,12 @@ public final class TransportEndpointLeasePublisher {
 
     public boolean release(String workerId,
                            String deliveryBucketId,
-                           String endpointAddress,
                            String endpointLeaseId,
                            String reason) {
         TransportEndpointLeaseRelease release = new TransportEndpointLeaseRelease(
                 workerId,
                 requireText(deliveryBucketId, "deliveryBucketId"),
                 endpointDriverId,
-                endpointAddress,
                 endpointLeaseId,
                 reason
         );

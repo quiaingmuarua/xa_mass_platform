@@ -1,6 +1,5 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
-import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.runtime.AdapterResultIngressSink;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
@@ -12,18 +11,15 @@ import java.util.Objects;
  */
 public final class WebSocketDispatcherContext {
     private final String adapterId;
-    private final RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry;
     private final WebSocketJsonFrameParser frameParser;
     private final WebSocketResultIngressFrameReader resultFrameReader;
     private final AdapterResultIngressSink resultIngressSink;
 
     public WebSocketDispatcherContext(String adapterId,
-                                       RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry,
                                        WebSocketJsonFrameParser frameParser,
                                        WebSocketResultIngressFrameReader resultFrameReader,
                                        AdapterResultIngressSink resultIngressSink) {
         this.adapterId = requireAdapterId(adapterId);
-        this.rawRouteEndpointRegistry = rawRouteEndpointRegistry;
         this.frameParser = Objects.requireNonNull(frameParser, "frameParser");
         this.resultFrameReader = Objects.requireNonNull(resultFrameReader, "resultFrameReader");
         this.resultIngressSink = resultIngressSink;
@@ -31,10 +27,6 @@ public final class WebSocketDispatcherContext {
 
     public String getAdapterId() {
         return adapterId;
-    }
-
-    public RawWorkerRouteEndpointRegistry getRawRouteEndpointRegistry() {
-        return rawRouteEndpointRegistry;
     }
 
     public WebSocketJsonFrameParser getFrameParser() {

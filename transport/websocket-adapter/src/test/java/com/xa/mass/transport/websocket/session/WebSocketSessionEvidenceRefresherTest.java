@@ -26,11 +26,11 @@ class WebSocketSessionEvidenceRefresherTest {
 
     @Test
     void startWithNoSessionsIsNoopAndCanStop() {
-        WebSocketSessionStore store = new WebSocketSessionStore(ADAPTER_ID);
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
+        WebSocketSessionRegistry registry = new WebSocketSessionRegistry(publisher(presenceIngress));
         WebSocketSessionEvidenceRefresher refresher = new WebSocketSessionEvidenceRefresher(
                 ADAPTER_ID,
-                store,
+                registry,
                 publisher(presenceIngress)
         );
 
@@ -46,7 +46,6 @@ class WebSocketSessionEvidenceRefresherTest {
 
     @Test
     void activeSessionRefreshesEndpointLeaseEvidence() {
-        WebSocketSessionStore store = new WebSocketSessionStore(ADAPTER_ID);
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore(1_200L);
         AdapterSessionEvidencePublisher publisher = new AdapterSessionEvidencePublisher(
@@ -55,11 +54,11 @@ class WebSocketSessionEvidenceRefresherTest {
                 endpointLeaseStore,
                 presenceIngress
         );
-        WebSocketSessionController controller = new WebSocketSessionController(store, publisher);
+        WebSocketSessionRegistry registry = new WebSocketSessionRegistry(publisher);
         WebSocketSessionEvidenceRefresher refresher =
-                new WebSocketSessionEvidenceRefresher(ADAPTER_ID, store, publisher);
+                new WebSocketSessionEvidenceRefresher(ADAPTER_ID, registry, publisher);
 
-        controller.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", mockActiveChannel("worker-1"));
+        registry.addSession(DELIVERY_BUCKET_ID, "worker-1", mockActiveChannel("worker-1"));
         presenceIngress.events.clear();
 
         refresher.start();
@@ -72,19 +71,18 @@ class WebSocketSessionEvidenceRefresherTest {
         assertTrue(endpointLeaseStore.currentEndpointLease(DELIVERY_BUCKET_ID, "worker-1").isPresent());
 
         refresher.stop();
-        controller.shutdown();
+        registry.shutdown();
     }
 
     @Test
     void stopPreventsFurtherRefreshAndCanRestart() {
-        WebSocketSessionStore store = new WebSocketSessionStore(ADAPTER_ID);
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
         AdapterSessionEvidencePublisher publisher = publisher(presenceIngress);
-        WebSocketSessionController controller = new WebSocketSessionController(store, publisher);
+        WebSocketSessionRegistry registry = new WebSocketSessionRegistry(publisher);
         WebSocketSessionEvidenceRefresher refresher =
-                new WebSocketSessionEvidenceRefresher(ADAPTER_ID, store, publisher);
+                new WebSocketSessionEvidenceRefresher(ADAPTER_ID, registry, publisher);
 
-        controller.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", mockActiveChannel("worker-1"));
+        registry.addSession(DELIVERY_BUCKET_ID, "worker-1", mockActiveChannel("worker-1"));
         presenceIngress.events.clear();
 
         refresher.start();
@@ -101,7 +99,7 @@ class WebSocketSessionEvidenceRefresherTest {
         awaitHeartbeatCount(presenceIngress, countAfterStop + 1);
 
         refresher.stop();
-        controller.shutdown();
+        registry.shutdown();
     }
 
     private static AdapterSessionEvidencePublisher publisher(WorkerPresenceIngress presenceIngress) {

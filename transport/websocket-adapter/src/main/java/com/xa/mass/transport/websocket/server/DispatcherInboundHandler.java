@@ -120,13 +120,11 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
 
     private void registerSession(WebSocketSessionIdentity identity, ChannelHandlerContext ctx) {
         String workerGroupId = identity.workerGroupId();
-        String routeKey = identity.endpointAddress();
         String workerId = identity.workerId();
         if (workerGroupId == null || workerGroupId.isBlank()
-                || routeKey == null || routeKey.isBlank()
                 || workerId == null || workerId.isBlank()) {
             return;
         }
-        sessionHandle.addSession(workerGroupId, routeKey, workerId, ctx.channel());
+        sessionHandle.addSession(workerGroupId, workerId, ctx.channel());
     }
 }

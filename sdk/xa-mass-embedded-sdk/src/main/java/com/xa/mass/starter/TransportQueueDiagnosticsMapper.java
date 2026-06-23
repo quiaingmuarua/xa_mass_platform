@@ -19,29 +19,17 @@ final class TransportQueueDiagnosticsMapper {
     private TransportQueueDiagnosticsMapper() {
     }
 
-    static Map<String, Object> toQueueDetail(int inputSize,
-                                             int outputSize,
-                                             boolean transporterAvailable,
-                                             RuntimeTaskExecutor transportExecutor,
+    static Map<String, Object> toQueueDetail(RuntimeTaskExecutor transportExecutor,
                                              RuntimeTaskExecutor eventExecutor) {
         return toQueueDetailView(
-                inputSize,
-                outputSize,
-                transporterAvailable,
                 transportExecutor,
                 eventExecutor
         ).toMap();
     }
 
-    static TransportQueueDetailView toQueueDetailView(int inputSize,
-                                                      int outputSize,
-                                                      boolean transporterAvailable,
-                                                      RuntimeTaskExecutor transportExecutor,
+    static TransportQueueDetailView toQueueDetailView(RuntimeTaskExecutor transportExecutor,
                                                       RuntimeTaskExecutor eventExecutor) {
         return new TransportQueueDetailView(
-                inputSize,
-                outputSize,
-                transporterAvailable,
                 deliveryQueueDetailView(),
                 runtimeExecutorDetailView(transportExecutor, eventExecutor)
         );

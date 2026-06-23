@@ -1,8 +1,5 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,9 +28,7 @@ public class MassApplicationExample {
                         .webSocketAdapter(webSocket -> webSocket
                                 .server(8080)
                                 .enabled(true)
-                                .maxConnections(1000))
-                        .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", TransportOutboundMessage.class)))
+                                .maxConnections(1000)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(8))
@@ -63,9 +58,7 @@ public class MassApplicationExample {
                                 .server(8082)
                                 .enabled(true)
                                 .serverEnabled(true)
-                                .maxConnections(1000))
-                        .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", TransportOutboundMessage.class)))
+                                .maxConnections(1000)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(12))
@@ -77,18 +70,12 @@ public class MassApplicationExample {
 
     private static void exampleQueueBackedTransport() {
         logger.info("Example 3: queue-backed transport");
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("WsInputRawJson", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", TransportOutboundMessage.class);
-
         MassApplication app = MassApplicationBuilder.create()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
                                 .server(9090, "/custom-ws")
                                 .enabled(true)
-                                .maxConnections(2000))
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
-                        .queueMode())
+                                .maxConnections(2000)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(12))
@@ -100,18 +87,13 @@ public class MassApplicationExample {
 
     private static void exampleSingleRealtimeAdapter() {
         logger.info("Example 4: single realtime adapter");
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("WsInputRawJson", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", TransportOutboundMessage.class);
-
         MassApplication app = MassApplicationBuilder.create()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
                                 .adapterId("ws-default")
                                 .server(8080)
                                 .enabled(true)
-                                .maxConnections(100))
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue))
+                                .maxConnections(100)))
                 .engine(engine -> engine.enabled(false))
                 .build();
 

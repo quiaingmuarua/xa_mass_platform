@@ -8,9 +8,9 @@ package com.xa.mass.transport.runtime.embedded;
  */
 public interface PullSessionEvidenceDriver {
 
-    boolean connect(String workerId, String deliveryBucketId, String endpointAddress, String sessionToken, String reason);
+    boolean connect(String workerId, String deliveryBucketId, String sessionToken, String reason);
 
-    boolean heartbeat(String workerId, String deliveryBucketId, String endpointAddress, String sessionToken, String reason);
+    boolean heartbeat(String workerId, String deliveryBucketId, String sessionToken, String reason);
 
-    boolean disconnect(String workerId, String deliveryBucketId, String endpointAddress, String sessionToken, String reason);
+    boolean disconnect(String workerId, String deliveryBucketId, String sessionToken, String reason);
 }

@@ -7,8 +7,7 @@ public record TransportEndpointLeaseMetadata(String deliveryBucketId,
                                              String workerId,
                                              String endpointDriverId,
                                              String sessionHandle,
-                                             String endpointLeaseId,
-                                             String endpointAddress) {
+                                             String endpointLeaseId) {
 
     public TransportEndpointLeaseMetadata {
         deliveryBucketId = TransportEndpointLeaseClaim.requireText(deliveryBucketId, "deliveryBucketId");
@@ -16,6 +15,5 @@ public record TransportEndpointLeaseMetadata(String deliveryBucketId,
         endpointDriverId = TransportEndpointLeaseClaim.requireText(endpointDriverId, "endpointDriverId");
         sessionHandle = TransportEndpointLeaseClaim.requireText(sessionHandle, "sessionHandle");
         endpointLeaseId = TransportEndpointLeaseClaim.requireText(endpointLeaseId, "endpointLeaseId");
-        endpointAddress = TransportEndpointLeaseClaim.requireText(endpointAddress, "endpointAddress");
     }
 }

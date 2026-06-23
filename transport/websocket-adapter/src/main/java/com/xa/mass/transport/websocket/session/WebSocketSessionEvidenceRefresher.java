@@ -17,17 +17,17 @@ public final class WebSocketSessionEvidenceRefresher implements ManagedTransport
     private static final Logger logger = LoggerFactory.getLogger(WebSocketSessionEvidenceRefresher.class);
 
     private final String adapterId;
-    private final WebSocketSessionStore store;
+    private final WebSocketSessionRegistry registry;
     private final AdapterSessionEvidencePublisher sessionEvidencePublisher;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile ScheduledExecutorService executor;
     private volatile ScheduledFuture<?> refreshFuture;
 
     public WebSocketSessionEvidenceRefresher(String adapterId,
-                                             WebSocketSessionStore store,
+                                             WebSocketSessionRegistry registry,
                                              AdapterSessionEvidencePublisher sessionEvidencePublisher) {
         this.adapterId = requireText(adapterId, "adapterId");
-        this.store = Objects.requireNonNull(store, "store");
+        this.registry = Objects.requireNonNull(registry, "registry");
         this.sessionEvidencePublisher = Objects.requireNonNull(sessionEvidencePublisher, "sessionEvidencePublisher");
     }
 
@@ -81,11 +81,10 @@ public final class WebSocketSessionEvidenceRefresher implements ManagedTransport
 
     private void refreshActiveSessions() {
         try {
-            for (WebSocketSessionStore.SessionSnapshot session : store.activeSessionSnapshots()) {
+            for (WebSocketSessionRegistry.SessionSnapshot session : registry.activeSessionSnapshots()) {
                 sessionEvidencePublisher.heartbeat(
                         session.workerId(),
-                        session.deliveryBucketId(),
-                        session.endpointAddress(),
+                        session.workerGroupId(),
                         session.sessionHandle(),
                         "websocket session keepalive",
                         session.sessionHandle()

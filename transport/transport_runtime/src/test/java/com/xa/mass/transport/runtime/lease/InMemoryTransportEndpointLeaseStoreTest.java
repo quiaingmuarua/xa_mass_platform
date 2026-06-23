@@ -20,7 +20,7 @@ class InMemoryTransportEndpointLeaseStoreTest {
     void claimStoresBucketWorkerEndpointLeaseWithoutRouteOwnerLookup() {
         InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L);
 
-        var evidence = store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
+        var evidence = store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-1"));
 
         assertEquals("bucket-a", evidence.deliveryBucketId());
         assertEquals("worker-1", evidence.workerId());
@@ -29,7 +29,6 @@ class InMemoryTransportEndpointLeaseStoreTest {
         assertTrue(evidence.leaseExpireAtEpochMillis() > System.currentTimeMillis());
 
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-        assertEquals("route-1", view.endpointAddress());
         assertEquals("conn-1", view.sessionHandle());
         assertEquals("conn-1", view.endpointLeaseId());
     }
@@ -38,15 +37,15 @@ class InMemoryTransportEndpointLeaseStoreTest {
     void reconnectStaleHeartbeatAndReleaseCannotMoveCurrentLeaseBack() {
         InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L);
 
-        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-old", "conn-old"));
-        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-new", "conn-new"));
+        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-old"));
+        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-new"));
 
-        assertTrue(store.refreshEndpointLease(heartbeat("worker-1", "bucket-a", "websocket", "route-old", "conn-old"))
+        assertTrue(store.refreshEndpointLease(heartbeat("worker-1", "bucket-a", "websocket", "conn-old"))
                 .isEmpty());
-        assertFalse(store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "route-old", "conn-old")));
+        assertFalse(store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "conn-old")));
 
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-        assertEquals("route-new", view.endpointAddress());
+        assertEquals("conn-new", view.sessionHandle());
         assertEquals("conn-new", view.endpointLeaseId());
     }
 
@@ -54,9 +53,9 @@ class InMemoryTransportEndpointLeaseStoreTest {
     void matchingHeartbeatRefreshesConsumerEvidence() throws Exception {
         InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(250L);
 
-        var first = store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
+        var first = store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-1"));
         Thread.sleep(20L);
-        var refreshed = store.refreshEndpointLease(heartbeat("worker-1", "bucket-a", "websocket", "route-1", "conn-1"))
+        var refreshed = store.refreshEndpointLease(heartbeat("worker-1", "bucket-a", "websocket", "conn-1"))
                 .orElseThrow();
 
         assertEquals(first.endpointLeaseId(), refreshed.endpointLeaseId());
@@ -67,8 +66,8 @@ class InMemoryTransportEndpointLeaseStoreTest {
     void expiredLeaseIsRemovedByBucketScopedPrune() throws Exception {
         InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(25L);
 
-        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
-        store.claimEndpointLease(claim("worker-2", "bucket-b", "websocket", "route-2", "conn-2"));
+        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-1"));
+        store.claimEndpointLease(claim("worker-2", "bucket-b", "websocket", "conn-2"));
         Thread.sleep(40L);
 
         assertTrue(store.currentEndpointLease("bucket-a", "worker-1").isEmpty());
@@ -80,16 +79,16 @@ class InMemoryTransportEndpointLeaseStoreTest {
     void releaseRequiresMatchingLeaseEvidence() {
         InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L);
 
-        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
+        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-1"));
 
-        assertFalse(store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "route-1", "conn-stale")));
+        assertFalse(store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "conn-stale")));
         assertTrue(store.currentEndpointLease("bucket-a", "worker-1").isPresent());
-        assertTrue(store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "route-1", "conn-1")));
+        assertTrue(store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "conn-1")));
         assertTrue(store.currentEndpointLease("bucket-a", "worker-1").isEmpty());
     }
 
     @Test
-    void viewRecordDoesNotExposeLeaseTimestamps() {
+    void viewRecordDoesNotExposeLeaseTimestampsOrEndpointAddress() {
         Set<String> components = Arrays.stream(com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord.class
                         .getRecordComponents())
                 .map(RecordComponent::getName)
@@ -99,6 +98,7 @@ class InMemoryTransportEndpointLeaseStoreTest {
         assertFalse(components.contains("lastHeartbeatEpochMillis"));
         assertFalse(components.contains("updatedAtEpochMillis"));
         assertFalse(components.contains("runtimeNodeId"));
+        assertFalse(components.contains("endpointAddress"));
     }
 
     @Test
@@ -106,19 +106,17 @@ class InMemoryTransportEndpointLeaseStoreTest {
         InMemoryTransportEndpointLeaseStore store = new InMemoryTransportEndpointLeaseStore(30_000L);
 
         assertThrows(IllegalArgumentException.class, () ->
-                store.claimEndpointLease(claim("worker-1", " ", "websocket", "route-1", "conn-1")));
+                store.claimEndpointLease(claim("worker-1", " ", "websocket", "conn-1")));
     }
 
     private static TransportEndpointLeaseClaim claim(String workerId,
                                                      String deliveryBucketId,
                                                      String endpointDriverId,
-                                                     String endpointAddress,
                                                      String sessionHandle) {
         return new TransportEndpointLeaseClaim(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                endpointAddress,
                 sessionHandle,
                 "test"
         );
@@ -127,13 +125,11 @@ class InMemoryTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseHeartbeat heartbeat(String workerId,
                                                             String deliveryBucketId,
                                                             String endpointDriverId,
-                                                            String endpointAddress,
                                                             String sessionHandle) {
         return new TransportEndpointLeaseHeartbeat(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                endpointAddress,
                 sessionHandle,
                 "test"
         );
@@ -142,13 +138,11 @@ class InMemoryTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseRelease release(String workerId,
                                                         String deliveryBucketId,
                                                         String endpointDriverId,
-                                                        String endpointAddress,
                                                         String sessionHandle) {
         return new TransportEndpointLeaseRelease(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                endpointAddress,
                 sessionHandle,
                 "test"
         );

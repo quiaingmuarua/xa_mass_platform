@@ -37,25 +37,25 @@ class SocketSessionManagerTest {
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-1",
                 activeSocket(), mock(BufferedWriter.class));
 
-        assertEquals("route-1", endpoint(endpointLeaseStore, "worker-1").endpointAddress());
-        assertEquals(List.of("connected:worker-1:socket:route-1:endpoint-1:socket connected:endpoint-1"),
+        assertEquals("endpoint-1", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
+        assertEquals(List.of("connected:worker-1:socket:null:endpoint-1:socket connected:endpoint-1"),
                 presenceIngress.events);
 
         manager.recordHeartbeat("route-1", "worker-1", "endpoint-1", "socket heartbeat", "trace-1");
 
         assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
         assertEquals(List.of(
-                "connected:worker-1:socket:route-1:endpoint-1:socket connected:endpoint-1",
-                "heartbeat:worker-1:socket:route-1:endpoint-1:socket heartbeat:trace-1"
+                "connected:worker-1:socket:null:endpoint-1:socket connected:endpoint-1",
+                "heartbeat:worker-1:socket:null:endpoint-1:socket heartbeat:trace-1"
         ), presenceIngress.events);
 
         manager.removeSession("endpoint-1");
 
         assertFalse(hasEndpoint(endpointLeaseStore, "worker-1"));
         assertEquals(List.of(
-                "connected:worker-1:socket:route-1:endpoint-1:socket connected:endpoint-1",
-                "heartbeat:worker-1:socket:route-1:endpoint-1:socket heartbeat:trace-1",
-                "disconnected:worker-1:socket:route-1:endpoint-1:socket disconnected:endpoint-1"
+                "connected:worker-1:socket:null:endpoint-1:socket connected:endpoint-1",
+                "heartbeat:worker-1:socket:null:endpoint-1:socket heartbeat:trace-1",
+                "disconnected:worker-1:socket:null:endpoint-1:socket disconnected:endpoint-1"
         ), presenceIngress.events);
     }
 
@@ -97,9 +97,9 @@ class SocketSessionManagerTest {
         manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", "endpoint-new",
                 activeSocket(), mock(BufferedWriter.class));
         assertEquals(List.of(
-                "connected:worker-1:socket:route-1:endpoint-old:socket connected:endpoint-old",
-                "connected:worker-1:socket:route-1:endpoint-new:socket connected:endpoint-new",
-                "disconnected:worker-1:socket:route-1:endpoint-old:socket session replaced:endpoint-old"
+                "connected:worker-1:socket:null:endpoint-old:socket connected:endpoint-old",
+                "connected:worker-1:socket:null:endpoint-new:socket connected:endpoint-new",
+                "disconnected:worker-1:socket:null:endpoint-old:socket session replaced:endpoint-old"
         ), presenceIngress.events);
 
         manager.recordHeartbeat("route-1", "worker-1", "endpoint-old", "stale-heartbeat", "trace-old");
@@ -111,19 +111,19 @@ class SocketSessionManagerTest {
 
         assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
         assertEquals(List.of(
-                "connected:worker-1:socket:route-1:endpoint-old:socket connected:endpoint-old",
-                "connected:worker-1:socket:route-1:endpoint-new:socket connected:endpoint-new",
-                "disconnected:worker-1:socket:route-1:endpoint-old:socket session replaced:endpoint-old"
+                "connected:worker-1:socket:null:endpoint-old:socket connected:endpoint-old",
+                "connected:worker-1:socket:null:endpoint-new:socket connected:endpoint-new",
+                "disconnected:worker-1:socket:null:endpoint-old:socket session replaced:endpoint-old"
         ), presenceIngress.events);
 
         manager.removeSession("endpoint-new");
 
         assertFalse(hasEndpoint(endpointLeaseStore, "worker-1"));
         assertEquals(List.of(
-                "connected:worker-1:socket:route-1:endpoint-old:socket connected:endpoint-old",
-                "connected:worker-1:socket:route-1:endpoint-new:socket connected:endpoint-new",
-                "disconnected:worker-1:socket:route-1:endpoint-old:socket session replaced:endpoint-old",
-                "disconnected:worker-1:socket:route-1:endpoint-new:socket disconnected:endpoint-new"
+                "connected:worker-1:socket:null:endpoint-old:socket connected:endpoint-old",
+                "connected:worker-1:socket:null:endpoint-new:socket connected:endpoint-new",
+                "disconnected:worker-1:socket:null:endpoint-old:socket session replaced:endpoint-old",
+                "disconnected:worker-1:socket:null:endpoint-new:socket disconnected:endpoint-new"
         ), presenceIngress.events);
     }
 
@@ -153,7 +153,7 @@ class SocketSessionManagerTest {
         manager.addSession(DELIVERY_BUCKET_ID, "route-new", "worker-1", "endpoint-new", newSocket, newWriter);
 
         assertEquals(1, manager.getActiveConnectionCount());
-        assertEquals("route-new", endpoint(endpointLeaseStore, "worker-1").endpointAddress());
+        assertEquals("endpoint-new", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
         verify(oldSocket).close();
 
         assertTrue(manager.sendToWorker("worker-1", "{\"messageId\":\"msg-new\"}"));

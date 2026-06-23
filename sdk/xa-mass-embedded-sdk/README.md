@@ -430,10 +430,10 @@ Current embedded-runtime mainline snapshots `TransportConfig` into an internal
 runtime-composition object during `MassApplication` construction. Runtime
 assembly then manages only assembled transport components rather than holding a
 live transport config object as the primary composition backbone. That
-composition now consumes one or more adapter bootstrap contributions and uses
-the transport-neutral `TransportOutboundMessage` outbound carrier keyed by route
-rather than a
-WebSocket-only delivery DTO.
+composition now consumes one or more adapter bootstrap contributions. Assigned
+dispatch enters transport through adapter-mailbox handoff and reaches concrete
+adapters as `DispatchMessage` final-hop attempts; route-key outbound queues are
+not part of the current embedded runtime surface.
 
 Within that lower-level surface, embedded-runtime mainline snapshots
 `TransportConfig` into `TransportRuntimeComposition`, then uses adapter-owned

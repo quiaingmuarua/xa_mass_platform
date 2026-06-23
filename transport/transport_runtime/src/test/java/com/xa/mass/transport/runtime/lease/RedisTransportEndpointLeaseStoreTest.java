@@ -73,67 +73,63 @@ class RedisTransportEndpointLeaseStoreTest {
 
     @Test
     void heartbeatRoundTripUsesBucketWorkersAndDeadlinesOnly() {
-        store.claimEndpointLease(claim(" worker-1 ", " bucket-a ", " websocket ", " route-1 ", " conn-1 "));
+        store.claimEndpointLease(claim(" worker-1 ", " bucket-a ", " websocket ", " conn-1 "));
 
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
         assertEquals("websocket", view.endpointDriverId());
-        assertEquals("route-1", view.endpointAddress());
+        assertEquals("conn-1", view.sessionHandle());
         assertEquals("conn-1", view.endpointLeaseId());
         assertNotNull(observerCommands.hget(bucketWorkersKey("bucket-a"), "worker-1"));
         assertTrue(observerCommands.zscore(deadlineKey("bucket-a"), "worker-1") > 0D);
         assertNull(observerCommands.get(oldBucketWorkerPointerKey("bucket-a", "worker-1")));
-        assertFalse(observerCommands.exists(routeConsumersKey("route-1")) > 0L);
 
-        store.refreshEndpointLease(heartbeat("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
+        store.refreshEndpointLease(heartbeat("worker-1", "bucket-a", "websocket", "conn-1"));
         assertTrue(store.currentEndpointLease("bucket-a", "worker-1").isPresent());
 
-        store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
+        store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "conn-1"));
 
         assertTrue(store.currentEndpointLease("bucket-a", "worker-1").isEmpty());
         assertNull(observerCommands.hget(bucketWorkersKey("bucket-a"), "worker-1"));
         assertNull(observerCommands.get(oldBucketWorkerPointerKey("bucket-a", "worker-1")));
-        assertFalse(observerCommands.exists(routeConsumersKey("route-1")) > 0L);
     }
 
     @Test
     void reconnectStaleHeartbeatAndReleaseDoNotRemoveCurrentLease() {
-        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-old", "conn-old"));
-        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-new", "conn-new"));
+        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-old"));
+        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-new"));
 
-        assertTrue(store.refreshEndpointLease(heartbeat("worker-1", "bucket-a", "websocket", "route-old", "conn-old"))
+        assertTrue(store.refreshEndpointLease(heartbeat("worker-1", "bucket-a", "websocket", "conn-old"))
                 .isEmpty());
-        assertFalse(store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "route-old", "conn-old")));
+        assertFalse(store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "conn-old")));
 
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-        assertEquals("route-new", view.endpointAddress());
+        assertEquals("conn-new", view.sessionHandle());
         assertEquals("conn-new", view.endpointLeaseId());
     }
 
     @Test
     void staleCasReleaseCannotDeleteReplacementLeaseAfterInterleaving() throws Exception {
-        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-old", "conn-old"));
-        TransportEndpointLeaseMetadata stale = metadata("worker-1", "bucket-a", "websocket", "route-old", "conn-old");
-        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-new", "conn-new"));
+        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-old"));
+        TransportEndpointLeaseMetadata stale = metadata("worker-1", "bucket-a", "websocket", "conn-old");
+        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-new"));
 
         assertFalse(invokeRemoveIfCurrent(stale));
 
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-        assertEquals("route-new", view.endpointAddress());
         assertEquals("conn-new", view.endpointLeaseId());
     }
 
     @Test
     void staleCasRefreshCannotExtendReplacementLeaseAfterInterleaving() throws Exception {
-        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-old", "conn-old"));
-        TransportEndpointLeaseMetadata stale = metadata("worker-1", "bucket-a", "websocket", "route-old", "conn-old");
-        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-new", "conn-new"));
+        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-old"));
+        TransportEndpointLeaseMetadata stale = metadata("worker-1", "bucket-a", "websocket", "conn-old");
+        store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-new"));
         Double replacementDeadline = observerCommands.zscore(deadlineKey("bucket-a"), "worker-1");
 
         assertFalse(invokeRefreshIfCurrent(stale, System.currentTimeMillis() + 60_000L));
 
         assertEquals(replacementDeadline, observerCommands.zscore(deadlineKey("bucket-a"), "worker-1"));
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-        assertEquals("route-new", view.endpointAddress());
         assertEquals("conn-new", view.endpointLeaseId());
     }
 
@@ -141,15 +137,14 @@ class RedisTransportEndpointLeaseStoreTest {
     void staleDeadlineCleanupCannotDeleteReplacementLeaseAfterDueListRace() throws Exception {
         try (RedisTransportEndpointLeaseStore shortLeaseStore =
                      new RedisTransportEndpointLeaseStore(redisClient, namespacePrefix, 500L, false)) {
-            shortLeaseStore.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-old", "conn-old"));
+            shortLeaseStore.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-old"));
             Thread.sleep(550L);
             long staleCleanupClock = System.currentTimeMillis();
-            shortLeaseStore.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-new", "conn-new"));
+            shortLeaseStore.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-new"));
 
             assertFalse(invokeRemoveIfDeadlineDue(shortLeaseStore, "bucket-a", "worker-1", staleCleanupClock));
 
             var view = shortLeaseStore.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-            assertEquals("route-new", view.endpointAddress());
             assertEquals("conn-new", view.endpointLeaseId());
         }
     }
@@ -158,8 +153,8 @@ class RedisTransportEndpointLeaseStoreTest {
     void expiredLeasePrunesWithinOneBucketOnly() throws Exception {
         try (RedisTransportEndpointLeaseStore shortLeaseStore =
                      new RedisTransportEndpointLeaseStore(redisClient, namespacePrefix, 250L, false)) {
-            shortLeaseStore.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "route-1", "conn-1"));
-            shortLeaseStore.claimEndpointLease(claim("worker-2", "bucket-b", "websocket", "route-2", "conn-2"));
+            shortLeaseStore.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-1"));
+            shortLeaseStore.claimEndpointLease(claim("worker-2", "bucket-b", "websocket", "conn-2"));
 
             Thread.sleep(300L);
 
@@ -175,12 +170,13 @@ class RedisTransportEndpointLeaseStoreTest {
         try (StatefulRedisConnection<String, String> secondaryConnection = redisClient.connect();
              RedisTransportEndpointLeaseStore secondary =
                      new RedisTransportEndpointLeaseStore(secondaryConnection, namespacePrefix, 1_000L)) {
-            store.claimEndpointLease(claim("worker-4", "bucket-a", "websocket", "route-4", "conn-4"));
+            store.claimEndpointLease(claim("worker-4", "bucket-a", "websocket", "conn-4"));
 
             var mirrored = secondary.currentEndpointLease("bucket-a", "worker-4").orElseThrow();
-            assertEquals("route-4", mirrored.endpointAddress());
+            assertEquals("conn-4", mirrored.sessionHandle());
+            assertEquals("conn-4", mirrored.endpointLeaseId());
 
-            secondary.releaseEndpointLease(release("worker-4", "bucket-a", "websocket", "route-4", "conn-4"));
+            secondary.releaseEndpointLease(release("worker-4", "bucket-a", "websocket", "conn-4"));
 
             assertTrue(store.currentEndpointLease("bucket-a", "worker-4").isEmpty());
         }
@@ -189,13 +185,11 @@ class RedisTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseClaim claim(String workerId,
                                                      String deliveryBucketId,
                                                      String endpointDriverId,
-                                                     String endpointAddress,
                                                      String sessionHandle) {
         return new TransportEndpointLeaseClaim(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                endpointAddress,
                 sessionHandle,
                 "test"
         );
@@ -204,13 +198,11 @@ class RedisTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseHeartbeat heartbeat(String workerId,
                                                             String deliveryBucketId,
                                                             String endpointDriverId,
-                                                            String endpointAddress,
                                                             String sessionHandle) {
         return new TransportEndpointLeaseHeartbeat(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                endpointAddress,
                 sessionHandle,
                 "test"
         );
@@ -219,13 +211,11 @@ class RedisTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseRelease release(String workerId,
                                                          String deliveryBucketId,
                                                          String endpointDriverId,
-                                                        String endpointAddress,
-                                                        String sessionHandle) {
+                                                         String sessionHandle) {
         return new TransportEndpointLeaseRelease(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                endpointAddress,
                 sessionHandle,
                 "test"
         );
@@ -234,15 +224,13 @@ class RedisTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseMetadata metadata(String workerId,
                                                            String deliveryBucketId,
                                                            String endpointDriverId,
-                                                           String endpointAddress,
                                                            String sessionHandle) {
         return new TransportEndpointLeaseMetadata(
                 deliveryBucketId,
                 workerId,
                 endpointDriverId,
                 sessionHandle,
-                sessionHandle,
-                endpointAddress
+                sessionHandle
         );
     }
 
@@ -276,10 +264,6 @@ class RedisTransportEndpointLeaseStoreTest {
 
     private String deadlineKey(String deliveryBucketId) {
         return namespacePrefix + ":bucket:" + encode(deliveryBucketId) + ":deadlines";
-    }
-
-    private String routeConsumersKey(String routeKey) {
-        return namespacePrefix + ":route:" + encode(routeKey) + ":consumers";
     }
 
     private String oldBucketWorkerPointerKey(String deliveryBucketId, String workerId) {

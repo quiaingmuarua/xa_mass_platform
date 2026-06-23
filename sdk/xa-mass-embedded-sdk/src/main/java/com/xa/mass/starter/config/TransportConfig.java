@@ -1,7 +1,5 @@
 package com.xa.mass.starter.config;
 
-import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
@@ -9,7 +7,6 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
@@ -26,11 +23,6 @@ public class TransportConfig {
     public static final int DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS = 100_000;
     public static final int DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS_PER_WORKER = 10_000;
     public static final int DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS = 10_000;
-
-    private MessageTransporterFactory.TransporterType transporterType =
-            MessageTransporterFactory.TransporterType.QUEUE_BASED;
-    private MessageQueue<String> inputQueue;
-    private MessageQueue<TransportOutboundMessage> outputQueue;
 
     private String inputApiUrl;
     private String outputApiUrl;
@@ -62,9 +54,6 @@ public class TransportConfig {
     }
 
     public TransportConfig(TransportConfig source) {
-        this.transporterType = source.transporterType;
-        this.inputQueue = source.inputQueue;
-        this.outputQueue = source.outputQueue;
         this.inputApiUrl = source.inputApiUrl;
         this.outputApiUrl = source.outputApiUrl;
         this.apiKey = source.apiKey;
@@ -104,30 +93,6 @@ public class TransportConfig {
                 || hasAnyEnabledAdapterConfig(supplementalSocketAdapterConfigs)
                 || primaryTransportAdapterBootstrap != null
                 || !supplementalTransportAdapterBootstraps.isEmpty();
-    }
-
-    public MessageTransporterFactory.TransporterType getTransporterType() {
-        return transporterType;
-    }
-
-    public void setTransporterType(MessageTransporterFactory.TransporterType transporterType) {
-        this.transporterType = transporterType;
-    }
-
-    public MessageQueue<String> getInputQueue() {
-        return inputQueue;
-    }
-
-    public void setInputQueue(MessageQueue<String> inputQueue) {
-        this.inputQueue = inputQueue;
-    }
-
-    public MessageQueue<TransportOutboundMessage> getOutputQueue() {
-        return outputQueue;
-    }
-
-    public void setOutputQueue(MessageQueue<TransportOutboundMessage> outputQueue) {
-        this.outputQueue = outputQueue;
     }
 
     public String getInputApiUrl() {

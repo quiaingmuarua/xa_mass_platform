@@ -532,7 +532,6 @@ class MassApplicationDistributedTransportTest {
             context.sessionEvidence().publisher().claimEndpoint(
                     "worker-1",
                     "demo-workers",
-                    "route-worker-1",
                     "session-worker-1",
                     "test"
             );

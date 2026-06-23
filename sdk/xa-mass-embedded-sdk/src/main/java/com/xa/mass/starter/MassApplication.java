@@ -1,7 +1,6 @@
 package com.xa.mass.starter;
 
 import com.google.gson.Gson;
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchDeliveryFailure;
@@ -14,7 +13,6 @@ import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryResult;
 import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSessions;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
@@ -79,7 +77,6 @@ public class MassApplication {
     private final Map<String, RawWorkerMessageChannel> rawWorkerMessageChannelsByAdapterId = new LinkedHashMap<>();
 
     private final MassEngine engine;
-    private MessageTransporter<String, TransportOutboundMessage> messageTransporter;
     private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportEndpointLeaseStore endpointLeaseStore;
     private TransportDispatchHandoff transportDispatchHandoff;
@@ -218,13 +215,6 @@ public class MassApplication {
             rawWorkerMessageChannelsByAdapterId.clear();
             embeddedAdapterHostSet = EmbeddedAdapterHostSet.empty();
             startEventRuntimeTaskExecutor();
-            messageTransporter = transportRuntimeComposition.createMessageTransporterIfConfigured();
-            if (messageTransporter != null) {
-                logger.info("Message transporter created");
-            } else {
-                logger.info("No shared message transporter configured; continuing with adapter-native transport runtime");
-            }
-
             WorkerPresenceIngress presenceIngress = resolveWorkerPresenceIngress();
             workerPresenceIngress = presenceIngress;
             endpointLeaseStore = transportRuntimeComposition.resolveTransportEndpointLeaseStore();
@@ -763,12 +753,7 @@ public class MassApplication {
     }
 
     public Map<String, Object> getTransportQueueDetail() {
-        int inputSize = safeInputQueueSize(messageTransporter);
-        int outputSize = safeOutputQueueSize(messageTransporter);
         return TransportQueueDiagnosticsMapper.toQueueDetail(
-                inputSize,
-                outputSize,
-                messageTransporter != null,
                 transportRuntimeTaskExecutor,
                 eventRuntimeTaskExecutor
         );
@@ -796,22 +781,6 @@ public class MassApplication {
 
     public MassEventRuntime getEventRuntime() {
         return eventRuntime;
-    }
-
-    private int safeInputQueueSize(MessageTransporter<?, ?> transporter) {
-        try {
-            return transporter != null ? transporter.inputQueueSize() : -1;
-        } catch (Exception ignored) {
-            return -1;
-        }
-    }
-
-    private int safeOutputQueueSize(MessageTransporter<?, ?> transporter) {
-        try {
-            return transporter != null ? transporter.outputQueueSize() : -1;
-        } catch (Exception ignored) {
-            return -1;
-        }
     }
 
     private MassEngine requireConfiguredEngine() {

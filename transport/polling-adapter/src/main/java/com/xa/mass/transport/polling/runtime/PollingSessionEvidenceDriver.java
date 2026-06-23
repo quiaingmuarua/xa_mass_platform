@@ -22,17 +22,14 @@ public final class PollingSessionEvidenceDriver implements PullSessionEvidenceDr
     @Override
     public boolean connect(String workerId,
                            String deliveryBucketId,
-                           String endpointAddress,
                            String sessionToken,
                            String reason) {
-        String normalizedEndpointAddress = requireText(endpointAddress, "endpointAddress");
         String normalizedWorkerId = requireText(workerId, "workerId");
         String normalizedSessionToken = requireText(sessionToken, "sessionToken");
         String normalizedReason = requireText(reason, "reason");
         sessionEvidencePublisher.connected(
                 normalizedWorkerId,
                 deliveryBucketId,
-                normalizedEndpointAddress,
                 normalizedSessionToken,
                 normalizedReason,
                 normalizedSessionToken
@@ -43,17 +40,14 @@ public final class PollingSessionEvidenceDriver implements PullSessionEvidenceDr
     @Override
     public boolean heartbeat(String workerId,
                              String deliveryBucketId,
-                             String endpointAddress,
                              String sessionToken,
                              String reason) {
-        String normalizedEndpointAddress = requireText(endpointAddress, "endpointAddress");
         String normalizedWorkerId = requireText(workerId, "workerId");
         String normalizedSessionToken = requireText(sessionToken, "sessionToken");
         String normalizedReason = requireText(reason, "reason");
         return sessionEvidencePublisher.heartbeat(
                 normalizedWorkerId,
                 deliveryBucketId,
-                normalizedEndpointAddress,
                 normalizedSessionToken,
                 normalizedReason,
                 normalizedSessionToken
@@ -63,17 +57,14 @@ public final class PollingSessionEvidenceDriver implements PullSessionEvidenceDr
     @Override
     public boolean disconnect(String workerId,
                               String deliveryBucketId,
-                              String endpointAddress,
                               String sessionToken,
                               String reason) {
-        String normalizedEndpointAddress = requireText(endpointAddress, "endpointAddress");
         String normalizedWorkerId = requireText(workerId, "workerId");
         String normalizedSessionToken = requireText(sessionToken, "sessionToken");
         String normalizedReason = requireText(reason, "reason");
         return sessionEvidencePublisher.disconnected(
                 normalizedWorkerId,
                 deliveryBucketId,
-                normalizedEndpointAddress,
                 normalizedSessionToken,
                 normalizedReason,
                 normalizedSessionToken

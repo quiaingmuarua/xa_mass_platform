@@ -1,13 +1,11 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
 import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryResult;
 import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryStatus;
 import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
 import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.transport.model.DispatchOutcome;
@@ -281,8 +279,6 @@ class MassApplicationStopOrderTest {
         TransportConfig c = new TransportConfig();
         c.getBundledWebSocketAdapterConfig().setEnabled(false);
         c.getBundledWebSocketAdapterConfig().setServerEnabled(false);
-        c.setInputQueue(new InMemoryMessageQueue<>("transport-input", String.class));
-        c.setOutputQueue(new InMemoryMessageQueue<>("transport-output", TransportOutboundMessage.class));
         return c;
     }
 

@@ -26,10 +26,7 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
 
     @Override
     public Map<String, Object> getQueueMetrics() {
-        return Map.of(
-                "inputQueueRate", 0,
-                "outputQueueRate", 0
-        );
+        return Map.of();
     }
 
     @Override

@@ -1,9 +1,5 @@
 package com.xa.mass.starter.config;
 
-import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.runtime.DefaultWorkerTransportRuntimeFactory;
@@ -18,7 +14,6 @@ import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChann
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
@@ -39,14 +34,6 @@ import java.util.function.Supplier;
  */
 public class TransportRuntimeComposition {
 
-    private static final String API_MODE_UNSUPPORTED_MESSAGE =
-            "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
-    private static final String DEFAULT_INPUT_QUEUE_NAME = "transport-input";
-    private static final String DEFAULT_OUTPUT_QUEUE_NAME = "transport-output";
-
-    private final MessageTransporterFactory.TransporterType transporterType;
-    private final MessageQueue<String> inputQueue;
-    private final MessageQueue<TransportOutboundMessage> outputQueue;
     private final WorkerPresenceIngress customWorkerPresenceIngress;
     private final Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory;
     private final WebSocketAdapterConfig bundledWebSocketAdapterConfig;
@@ -73,9 +60,6 @@ public class TransportRuntimeComposition {
     private transient TransportEndpointLeaseStore runtimeOwnedEndpointLeaseStore;
 
     public TransportRuntimeComposition(TransportConfig source) {
-        this.transporterType = source.getTransporterType();
-        this.inputQueue = source.getInputQueue();
-        this.outputQueue = source.getOutputQueue();
         this.customWorkerPresenceIngress = source.getCustomWorkerPresenceIngress();
         this.endpointLeaseStoreFactory = source.endpointLeaseStoreFactory();
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getBundledWebSocketAdapterConfig());
@@ -112,27 +96,6 @@ public class TransportRuntimeComposition {
                 || hasAnyEnabledSocketConfig(supplementalSocketAdapterConfigs)
                 || primaryTransportAdapterBootstrap != null
                 || !supplementalTransportAdapterBootstraps.isEmpty();
-    }
-
-    public MessageTransporter<String, TransportOutboundMessage> createMessageTransporter() {
-        return switch (transporterType) {
-            case QUEUE_BASED -> MessageTransporterFactory.createQueueBased(
-                    resolveInputQueue(),
-                    resolveOutputQueue()
-            );
-            case MULTI_LEVEL -> MessageTransporterFactory.createMultiLevel();
-            case API_BASED -> throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
-        };
-    }
-
-    public MessageTransporter<String, TransportOutboundMessage> createMessageTransporterIfConfigured() {
-        return switch (transporterType) {
-            case QUEUE_BASED -> (inputQueue != null || outputQueue != null || isEnabled())
-                    ? MessageTransporterFactory.createQueueBased(resolveInputQueue(), resolveOutputQueue())
-                    : null;
-            case MULTI_LEVEL -> MessageTransporterFactory.createMultiLevel();
-            case API_BASED -> null;
-        };
     }
 
     public WebSocketAdapterConfig getBundledWebSocketAdapterConfig() {
@@ -372,18 +335,6 @@ public class TransportRuntimeComposition {
 
     private static boolean hasAnyEnabledSocketConfig(List<SocketAdapterConfig> configs) {
         return configs.stream().anyMatch(config -> config.isEnabled() || config.isServerEnabled());
-    }
-
-    private MessageQueue<String> resolveInputQueue() {
-        return inputQueue != null
-                ? inputQueue
-                : new InMemoryMessageQueue<>(DEFAULT_INPUT_QUEUE_NAME, String.class);
-    }
-
-    private MessageQueue<TransportOutboundMessage> resolveOutputQueue() {
-        return outputQueue != null
-                ? outputQueue
-                : new InMemoryMessageQueue<>(DEFAULT_OUTPUT_QUEUE_NAME, TransportOutboundMessage.class);
     }
 
     private static void validateUniqueAdapterIds(List<TransportAdapterBootstrap> bootstraps) {

@@ -15,11 +15,9 @@ import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
-import com.xa.mass.transport.websocket.session.WebSocketRawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
-import com.xa.mass.transport.websocket.session.WebSocketSessionController;
 import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceRefresher;
-import com.xa.mass.transport.websocket.session.WebSocketSessionStore;
+import com.xa.mass.transport.websocket.session.WebSocketSessionRegistry;
 
 /**
  * Adapter-owned bootstrap for embedded WebSocket runtime contribution.
@@ -43,16 +41,10 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     @Override
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
         String adapterMailboxKey = context.mailbox().assignedMailboxKey();
-        WebSocketSessionStore sessionStore = new WebSocketSessionStore(config.getAdapterId());
         AdapterSessionEvidencePublisher sessionEvidencePublisher = context.sessionEvidence().publisher();
-        WebSocketSessionController sessionController = new WebSocketSessionController(
-                sessionStore,
-                sessionEvidencePublisher
-        );
+        WebSocketSessionRegistry sessionRegistry = new WebSocketSessionRegistry(sessionEvidencePublisher);
         WebSocketSessionEvidenceRefresher sessionEvidenceRefresher =
-                new WebSocketSessionEvidenceRefresher(config.getAdapterId(), sessionStore, sessionEvidencePublisher);
-        WebSocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
-                new WebSocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionController);
+                new WebSocketSessionEvidenceRefresher(config.getAdapterId(), sessionRegistry, sessionEvidencePublisher);
         WebSocketJsonFrameParser frameParser = new WebSocketJsonFrameParser();
         WebSocketResultIngressFrameReader resultFrameReader =
                 new WebSocketResultIngressFrameReader(config.getAdapterId(), frameParser);
@@ -60,7 +52,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 new WebSocketSessionOpenFrameReader(frameParser);
         WebSocketDispatcherContext dispatcherContext = new WebSocketDispatcherContext(
                 config.getAdapterId(),
-                rawRouteEndpointRegistry,
                 frameParser,
                 resultFrameReader,
                 context.ingress().resultIngress()
@@ -69,7 +60,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
             WebSocketTaskDispatchChannel commandExecutor =
-                    new WebSocketTaskDispatchChannel(sessionController);
+                    new WebSocketTaskDispatchChannel(sessionRegistry);
             contribution.addTransportBinding(TransportBinding.builder(
                             config.getAdapterId(),
                             com.xa.mass.transport.WorkerTransportHints.REALTIME
@@ -83,14 +74,14 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             ));
             contribution.addRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(
                     config.getAdapterId(),
-                    sessionController
+                    sessionRegistry
             ));
         }
 
         TransportServer transportServer = createTransportServer(
                 dispatcherContext,
                 sessionOpenFrameReader,
-                sessionController
+                sessionRegistry
         );
         if (transportServer != null) {
             contribution.addManagedTransportAdapter(sessionEvidenceRefresher);
@@ -130,13 +121,13 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             implements com.xa.mass.transport.runtime.RawWorkerMessageChannel {
 
         private final String adapterId;
-        private final WebSocketSessionController sessionController;
+        private final WebSocketSessionRegistry sessionRegistry;
 
         private WebSocketRawWorkerMessageChannel(
                 String adapterId,
-                WebSocketSessionController sessionController) {
+                WebSocketSessionRegistry sessionRegistry) {
             this.adapterId = adapterId;
-            this.sessionController = sessionController;
+            this.sessionRegistry = sessionRegistry;
         }
 
         @Override
@@ -146,7 +137,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
         @Override
         public boolean sendToWorker(String workerId, String rawJson, String traceId) {
-            return sessionController.sendTextToWorker(workerId, rawJson);
+            return sessionRegistry.sendTextToWorker(workerId, rawJson);
         }
     }
 }

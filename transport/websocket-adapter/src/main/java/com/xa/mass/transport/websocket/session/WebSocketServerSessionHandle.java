@@ -4,10 +4,7 @@ import io.netty.channel.Channel;
 
 public interface WebSocketServerSessionHandle {
 
-    void addSession(String deliveryBucketId,
-                    String endpointAddress,
-                    String workerId,
-                    Channel channel);
+    void addSession(String workerGroupId, String workerId, Channel channel);
 
     void removeSession(Channel channel);
 

@@ -16,16 +16,9 @@ class TransportQueueDiagnosticsMapperTest {
     @Test
     void mapsQueueDiagnosticsIntoStableControlPlaneShape() {
         Map<String, Object> detail = TransportQueueDiagnosticsMapper.toQueueDetail(
-                -1,
-                -1,
-                false,
                 new FixedStatsExecutor(new RuntimeTaskExecutorStatistics(8L, 7L, 1L, 1, 1, 10_000)),
                 null
         );
-
-        assertEquals(-1, detail.get("inputQueueSize"));
-        assertEquals(-1, detail.get("outputQueueSize"));
-        assertEquals(false, detail.get("transporterAvailable"));
 
         Map<?, ?> deliveryDiagnostics = (Map<?, ?>) detail.get("deliveryDiagnostics");
         assertEquals(false, deliveryDiagnostics.get("available"));

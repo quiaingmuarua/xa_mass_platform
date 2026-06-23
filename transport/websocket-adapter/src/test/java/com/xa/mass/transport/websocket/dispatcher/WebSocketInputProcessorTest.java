@@ -2,7 +2,6 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.xa.mass.transport.RawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.runtime.AdapterResultIngressSink;
 import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
@@ -18,7 +17,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
 
 class WebSocketInputProcessorTest {
 
@@ -26,7 +24,6 @@ class WebSocketInputProcessorTest {
     private WebSocketWorkerChannelFrameCodec channelFrameCodec;
     private WebSocketResultIngressFrameReader resultFrameReader;
     private WebSocketDispatcherContext context;
-    private RawWorkerRouteEndpointRegistry rawRouteEndpointRegistry;
     private WebSocketInputProcessor inputProcessor;
 
     @BeforeEach
@@ -35,7 +32,6 @@ class WebSocketInputProcessorTest {
         frameParser = new WebSocketJsonFrameParser();
         channelFrameCodec = new WebSocketWorkerChannelFrameCodec();
         resultFrameReader = new WebSocketResultIngressFrameReader("websocket", frameParser);
-        rawRouteEndpointRegistry = mock(RawWorkerRouteEndpointRegistry.class);
         context = createContext(null);
         inputProcessor = new WebSocketInputProcessor(context);
     }
@@ -218,7 +214,6 @@ class WebSocketInputProcessorTest {
     private WebSocketDispatcherContext createContext(AdapterResultIngressSink taskResultIngestChannel) {
         return new WebSocketDispatcherContext(
                 "websocket",
-                rawRouteEndpointRegistry,
                 frameParser,
                 resultFrameReader,
                 taskResultIngestChannel

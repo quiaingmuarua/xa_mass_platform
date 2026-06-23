@@ -32,24 +32,19 @@ class QueueControllerTest {
     @Test
     void queueStatusUsesSdkTransportFacade() throws Exception {
         when(runtimeDiagnostics.getQueueDetail()).thenReturn(Map.of(
-                "inputQueueSize", 3,
-                "outputQueueSize", 7,
-                "transporterAvailable", true
+                "deliveryDiagnostics", Map.of("available", false),
+                "runtimeExecutors", Map.of()
         ));
 
         mockMvc.perform(get("/api/v1/runtime/queues"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.inputQueueSize").value(3))
-                .andExpect(jsonPath("$.data.outputQueueSize").value(7));
+                .andExpect(jsonPath("$.data.deliveryDiagnostics.available").value(false));
     }
 
     @Test
     void queueDetailIncludesRuntimeDeliveryStats() throws Exception {
         when(runtimeDiagnostics.getQueueDetail()).thenReturn(Map.of(
-                "inputQueueSize", -1,
-                "outputQueueSize", -1,
-                "transporterAvailable", false,
                 "deliveryDiagnostics", Map.of(
                         "available", true,
                         "queuedItems", 4,
@@ -91,8 +86,6 @@ class QueueControllerTest {
         mockMvc.perform(get("/api/v1/runtime/queues"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.inputQueueSize").value(-1))
-                .andExpect(jsonPath("$.data.outputQueueSize").value(-1))
                 .andExpect(jsonPath("$.data.deliveryDiagnostics.available").value(true))
                 .andExpect(jsonPath("$.data.deliveryDiagnostics.queuedItems").value(4))
                 .andExpect(jsonPath("$.data.deliveryDiagnostics.queueCount").value(2))

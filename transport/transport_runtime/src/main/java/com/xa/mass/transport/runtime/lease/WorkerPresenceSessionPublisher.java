@@ -28,7 +28,6 @@ public final class WorkerPresenceSessionPublisher {
     }
 
     public void sessionConnected(String workerId,
-                                 String endpointAddress,
                                  String sessionToken,
                                  String reason,
                                  String traceId) {
@@ -36,7 +35,7 @@ public final class WorkerPresenceSessionPublisher {
                 workerId,
                 adapterId,
                 adapterMailboxKey,
-                endpointAddress,
+                null,
                 sessionToken,
                 reason,
                 traceId
@@ -44,7 +43,6 @@ public final class WorkerPresenceSessionPublisher {
     }
 
     public void sessionHeartbeat(String workerId,
-                                 String endpointAddress,
                                  String sessionToken,
                                  String reason,
                                  String traceId) {
@@ -52,7 +50,7 @@ public final class WorkerPresenceSessionPublisher {
                 workerId,
                 adapterId,
                 adapterMailboxKey,
-                endpointAddress,
+                null,
                 sessionToken,
                 reason,
                 traceId
@@ -60,7 +58,6 @@ public final class WorkerPresenceSessionPublisher {
     }
 
     public void sessionDisconnected(String workerId,
-                                    String endpointAddress,
                                     String sessionToken,
                                     String reason,
                                     String traceId) {
@@ -68,7 +65,7 @@ public final class WorkerPresenceSessionPublisher {
                 workerId,
                 adapterId,
                 adapterMailboxKey,
-                endpointAddress,
+                null,
                 sessionToken,
                 reason,
                 traceId

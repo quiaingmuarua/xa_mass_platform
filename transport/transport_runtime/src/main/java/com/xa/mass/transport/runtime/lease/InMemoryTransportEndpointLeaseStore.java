@@ -126,8 +126,7 @@ public final class InMemoryTransportEndpointLeaseStore implements TransportEndpo
                 claim.workerId(),
                 claim.endpointDriverId(),
                 claim.sessionHandle(),
-                claim.endpointLeaseId(),
-                claim.endpointAddress()
+                claim.endpointLeaseId()
         );
     }
 
@@ -147,7 +146,6 @@ public final class InMemoryTransportEndpointLeaseStore implements TransportEndpo
         return heartbeat.workerId().equals(metadata.workerId())
                 && heartbeat.deliveryBucketId().equals(metadata.deliveryBucketId())
                 && heartbeat.endpointDriverId().equals(metadata.endpointDriverId())
-                && heartbeat.endpointAddress().equals(metadata.endpointAddress())
                 && heartbeat.sessionHandle().equals(metadata.sessionHandle())
                 && heartbeat.endpointLeaseId().equals(metadata.endpointLeaseId());
     }
@@ -157,7 +155,6 @@ public final class InMemoryTransportEndpointLeaseStore implements TransportEndpo
         return release.workerId().equals(metadata.workerId())
                 && release.deliveryBucketId().equals(metadata.deliveryBucketId())
                 && release.endpointDriverId().equals(metadata.endpointDriverId())
-                && release.endpointAddress().equals(metadata.endpointAddress())
                 && release.sessionHandle().equals(metadata.sessionHandle())
                 && release.endpointLeaseId().equals(metadata.endpointLeaseId());
     }

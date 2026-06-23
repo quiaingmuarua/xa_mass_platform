@@ -369,8 +369,7 @@ public class XaMassServerApplication {
                                 .maxConnections(maxConnections))
                         .transportRuntimeMaxPendingTasks(transportRuntimeMaxPendingTasks)
                                 .eventRuntimeMaxPendingTasks(eventRuntimeMaxPendingTasks)
-                                .eventHandlerTimeoutMillis(eventHandlerTimeoutMillis)
-                                .queueMode();
+                                .eventHandlerTimeoutMillis(eventHandlerTimeoutMillis);
                     if (pollingPendingDeliveryBufferFactory != null) {
                         transport.pollingPendingDeliveryBufferFactory(pollingPendingDeliveryBufferFactory);
                     }

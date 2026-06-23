@@ -68,7 +68,6 @@ public final class SocketSessionManager {
             sessionEvidencePublisher.connected(
                     workerId,
                     normalizedDeliveryBucketId,
-                    routeKey,
                     endpointId,
                     reason,
                     endpointId
@@ -103,7 +102,6 @@ public final class SocketSessionManager {
                 sessionEvidencePublisher.disconnected(
                         binding.workerId(),
                         deliveryBucketId,
-                        binding.routeKey(),
                         endpointId,
                         reason,
                         endpointId
@@ -194,7 +192,6 @@ public final class SocketSessionManager {
                 sessionEvidencePublisher.disconnected(
                         entry.workerId(),
                         deliveryBucketByEndpoint.get(entry.handle()),
-                        entry.routeKey(),
                         entry.handle(),
                         reason,
                         entry.handle()
@@ -240,7 +237,6 @@ public final class SocketSessionManager {
         sessionEvidencePublisher.heartbeat(
                 current.workerId(),
                 deliveryBucketByEndpoint.get(endpointId),
-                current.routeKey(),
                 endpointId,
                 reason,
                 traceId

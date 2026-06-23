@@ -31,16 +31,13 @@ Current code centers on:
 
 - `WebSocketServerImpl`
 - `DispatcherInboundHandler`
-- `WebSocketSessionStore`
-- `WebSocketSessionController`
+- `WebSocketSessionRegistry`
 - `WebSocketServerSessionHandle`
 - `WebSocketSessionEvidenceRefresher`
-- `WebSocketRawWorkerRouteEndpointRegistry`
 - `WebSocketJsonFrameParser`
 - `WebSocketSessionOpenFrameReader`
 - `WebSocketResultIngressFrameReader`
 - `WebSocketInputProcessor`
-- `WebSocketOutputProcessor`
 - `WebSocketEmbeddedRuntimeSupport`
 
 ## Adapter Does Not Own
@@ -64,7 +61,9 @@ Hard rules:
 
 ## Boundary Rules
 
-- do not push WebSocket/Netty/frame/session types into `transport_api`
+- do not push WebSocket/Netty/session types into `transport_api`; shared
+  worker-channel carriers may live in `transport_api` only when they are not
+  WebSocket-specific
 - do not promote adapter-only frame fields into kernel or runtime truth
 - do not add a second routing model keyed by frame subtype or protocol labels
 - runtime routing must resolve from canonical worker transport identity, not
@@ -74,30 +73,29 @@ Hard rules:
 
 ## Wiring Rules
 
-- construct codec, command executor, session store/controller, and processors
+- construct codec, command executor, session registry, refresher, and processors
   before start
-- `WebSocketSessionStore` owns low-level session indexes and private session
-  entries only. It must not expose a public session record that carries Netty
-  send behavior.
+- `WebSocketSessionRegistry` owns the adapter-local session indexes and final
+  channel write. Its only durable indexes are `workerId -> channel/session` and
+  `channel -> workerId + workerGroupId`; `workerGroupId` is evidence context,
+  not a lookup dimension. It must not expose public session records that carry
+  Netty send behavior.
 - WebSocket assigned-delivery local lookup is worker-id-only:
-  `DeliveryCommand.selectedWorkerId` -> `WebSocketSessionController`
-  `sendTextToWorker(...)` -> store channel lookup -> Netty frame write.
-  `deliveryBucketId` is upstream scheduling/index and endpoint-evidence
-  context, not a WebSocket session lookup dimension.
+  `DispatchMessage.selectedWorkerId` -> `WebSocketTaskDispatchChannel` ->
+  `WebSocketSessionRegistry.sendTextToWorker(...)` -> Netty frame write.
+  `deliveryBucketId`, routeKey, endpoint address, and adapter mailbox key are
+  not WebSocket session lookup dimensions.
 - `WebSocketTaskDispatchChannel` owns assigned-delivery command execution and
-  `DispatchOutcome` production. It must not import Netty, session store, or
+  `DispatchOutcome` production. It must not import Netty, session records, or
   session record types.
-- `WebSocketSessionController` is the adapter-local session mutation and send
-  coordinator. It may own selected-worker text send, but must not implement
-  `WorkerEndpointRegistry` or expose broad session records.
 - pass `WebSocketServerSessionHandle` to server/inbound wiring, not the broader
   runtime registry surface; do not add assigned-delivery lookup methods to that
   handle
-- keep `WebSocketSessionStore` and `WebSocketSessionEvidenceRefresher` as
-  separate adapter-local roles; the controller publishes connect/disconnect
-  evidence directly and the refresher publishes heartbeat/keepalive through
-  the host-provided `AdapterSessionEvidencePublisher` capability instead of a
-  WebSocket-only driver wrapper
+- `WebSocketSessionRegistry` publishes connect/disconnect evidence for local
+  session mutations; `WebSocketSessionEvidenceRefresher` is a managed adapter
+  resource that periodically refreshes active local session evidence through
+  the host-provided `AdapterSessionEvidencePublisher` capability. It is evidence
+  hygiene, not adapter health, reconnect, failover, or scheduling ownership.
 - route inbound result shells into opaque
   `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)`
   values through `TransportResultIngressChannel`
@@ -106,11 +104,11 @@ Hard rules:
   register or rebind sessions
 - write assigned delivery frames directly from `DispatchMessage.payload`; do
   not route assigned dispatch through a generic task-frame codec
-- raw/manual route sending is an explicit side role backed by adapter-local
-  session lookup; it is not an assigned-delivery fallback and must not publish
-  endpoint snapshot views
-- endpoint address and route-style fields are raw/manual or diagnostic
-  metadata only; they are not the WebSocket assigned-delivery lookup key
+- worker-id raw sending may remain through `RawWorkerMessageChannel`; routeKey
+  raw/manual output queues and route-only WebSocket registries are not current
+  WebSocket owner surfaces and must not be assigned-delivery fallbacks
+- endpoint address and route-style fields are not WebSocket session identity,
+  assigned-delivery lookup keys, or endpoint lease truth
 - keep bootstrap defaults inside adapter-owned support code
 - do not add mutable late-binding seams like `setHandler(...)` or `registerRoute(...)`
 

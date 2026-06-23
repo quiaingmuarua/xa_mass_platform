@@ -5,7 +5,7 @@ import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import com.xa.mass.transport.websocket.frame.WebSocketWorkerChannelFrameCodec;
-import com.xa.mass.transport.websocket.session.WebSocketSessionController;
+import com.xa.mass.transport.websocket.session.WebSocketSessionRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,16 +21,16 @@ public final class WebSocketTaskDispatchChannel implements AdapterCommandExecuto
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketTaskDispatchChannel.class);
 
-    private final WebSocketSessionController sessionController;
+    private final WebSocketSessionRegistry sessionRegistry;
     private final WebSocketWorkerChannelFrameCodec frameCodec;
 
-    public WebSocketTaskDispatchChannel(WebSocketSessionController sessionController) {
-        this(sessionController, new WebSocketWorkerChannelFrameCodec());
+    public WebSocketTaskDispatchChannel(WebSocketSessionRegistry sessionRegistry) {
+        this(sessionRegistry, new WebSocketWorkerChannelFrameCodec());
     }
 
-    WebSocketTaskDispatchChannel(WebSocketSessionController sessionController,
+    WebSocketTaskDispatchChannel(WebSocketSessionRegistry sessionRegistry,
                                  WebSocketWorkerChannelFrameCodec frameCodec) {
-        this.sessionController = Objects.requireNonNull(sessionController, "sessionController");
+        this.sessionRegistry = Objects.requireNonNull(sessionRegistry, "sessionRegistry");
         this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
     }
 
@@ -51,7 +51,7 @@ public final class WebSocketTaskDispatchChannel implements AdapterCommandExecuto
             return DispatchOutcome.invalid(null, null, null, "request must not be null");
         }
         try {
-            boolean sent = sessionController.sendTextToWorker(
+            boolean sent = sessionRegistry.sendTextToWorker(
                     item.selectedWorkerId(),
                     frameCodec.actionFrame(item.payload()));
             if (sent) {

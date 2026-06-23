@@ -47,40 +47,36 @@ public final class AdapterSessionEvidencePublisher {
 
     public void connected(String workerId,
                           String deliveryBucketId,
-                          String endpointAddress,
                           String sessionToken,
                           String reason,
                           String traceId) {
-        workerPresencePublisher.sessionConnected(workerId, endpointAddress, sessionToken, reason, traceId);
-        endpointLeasePublisher.claim(workerId, deliveryBucketId, endpointAddress, sessionToken, reason);
+        workerPresencePublisher.sessionConnected(workerId, sessionToken, reason, traceId);
+        endpointLeasePublisher.claim(workerId, deliveryBucketId, sessionToken, reason);
     }
 
     public boolean heartbeat(String workerId,
                              String deliveryBucketId,
-                             String endpointAddress,
                              String sessionToken,
                              String reason,
                              String traceId) {
-        workerPresencePublisher.sessionHeartbeat(workerId, endpointAddress, sessionToken, reason, traceId);
-        return endpointLeasePublisher.refresh(workerId, deliveryBucketId, endpointAddress, sessionToken, reason);
+        workerPresencePublisher.sessionHeartbeat(workerId, sessionToken, reason, traceId);
+        return endpointLeasePublisher.refresh(workerId, deliveryBucketId, sessionToken, reason);
     }
 
     public boolean disconnected(String workerId,
                                 String deliveryBucketId,
-                                String endpointAddress,
                                 String sessionToken,
                                 String reason,
                                 String traceId) {
-        workerPresencePublisher.sessionDisconnected(workerId, endpointAddress, sessionToken, reason, traceId);
-        return endpointLeasePublisher.release(workerId, deliveryBucketId, endpointAddress, sessionToken, reason);
+        workerPresencePublisher.sessionDisconnected(workerId, sessionToken, reason, traceId);
+        return endpointLeasePublisher.release(workerId, deliveryBucketId, sessionToken, reason);
     }
 
     public void claimEndpoint(String workerId,
                               String deliveryBucketId,
-                              String endpointAddress,
                               String sessionToken,
                               String reason) {
-        endpointLeasePublisher.claim(workerId, deliveryBucketId, endpointAddress, sessionToken, reason);
+        endpointLeasePublisher.claim(workerId, deliveryBucketId, sessionToken, reason);
     }
 
     private static String requireText(String value, String fieldName) {

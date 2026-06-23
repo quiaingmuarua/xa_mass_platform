@@ -472,8 +472,7 @@ Worker runtime state is not a queue. Transport endpoint lease state contains
 current endpoint metadata for a concrete delivery bucket and worker:
 
 ```text
-deliveryBucketId, workerId, endpointDriverId, endpointAddress,
-sessionHandle, endpointLeaseId
+deliveryBucketId, workerId, endpointDriverId, sessionHandle, endpointLeaseId
 ```
 
 Engine matching still selects a worker from control-plane registration,
@@ -688,9 +687,9 @@ Current runtime rules:
   transport binding and adapter runtime code must not hide `workerId ->
   routeKey` policy behind builder defaults or shared fallback helpers
 - adapter ingress may receive an explicit routeKey from adapter-local or legacy
-  protocols, but public managed SDK sessions must not expose routeKey. When a
-  managed session omits it, the adapter/server side mints an internal opaque
-  endpoint address from stable bucket/session context such as worker group.
+  protocols, but public managed SDK sessions must not expose routeKey and
+  adapters must not mint routeKey-derived endpoint addresses for endpoint lease
+  truth.
 - push adapter command executors must perform selected-worker final-hop sends
   inside the concrete adapter, with no adapter, route, connection, or
   endpoint-owner id in the dispatch input and with no fallback that drops the
@@ -705,13 +704,15 @@ Current runtime rules:
   diagnostics after a selected worker and endpoint evidence already exist.
 - There is no transport-neutral selected-worker endpoint registry for assigned
   push delivery. Concrete push adapter command executors perform worker-id-only
-  session lookup and final-hop writes inside the adapter. Route-only raw/manual
-  sends remain separated behind `RawWorkerRouteEndpointRegistry` or
-  `RawWorkerMessageChannel` and are not assigned-task delivery fallbacks.
-- blank `routeKey` is invalid for endpoint lease evidence when an adapter
-  protocol uses routeKey as the endpoint address. Push assigned delivery must
-  not require routeKey when selected-worker session addressing is available.
-  Queued polling delivery must not rely on routeKey as the only isolation key.
+  session lookup and final-hop writes inside the adapter. Worker-id raw sends
+  may remain behind `RawWorkerMessageChannel`, but routeKey-only WebSocket
+  output queues and raw route registries are not assigned-task delivery
+  fallbacks.
+- endpoint lease evidence must not require routeKey or route-derived endpoint
+  address fields.
+  Push assigned delivery must not require routeKey when selected-worker session
+  addressing is available. Queued polling delivery must not rely on routeKey as
+  the only isolation key.
 - assigned dispatch handoff queues are addressed by `adapterMailboxKey`.
   Each queued item carries `selectedWorkerId`; the adapter dispatcher demuxes
   by that field and uses adapter-local session state before final-hop delivery.

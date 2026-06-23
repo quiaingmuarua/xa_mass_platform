@@ -552,7 +552,7 @@ class TransportConvergenceArchitectureGuardTest {
                         repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingDeliveryExecutor.java"),
                         repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingDeliveryPullChannel.java"),
                         repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingSessionEvidenceDriver.java"),
-                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionController.java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionRegistry.java"),
                         repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceRefresher.java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java")
                 ),
@@ -742,8 +742,8 @@ class TransportConvergenceArchitectureGuardTest {
     void websocketAssignedDeliveryOwnsFinalHopWithoutEndpointRegistryWrapper() throws IOException {
         Path taskDispatchChannel = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketTaskDispatchChannel.java");
         String taskDispatchSource = Files.readString(taskDispatchChannel);
-        assertTrue(taskDispatchSource.contains("WebSocketSessionController"),
-                "WebSocket assigned delivery executor must call the adapter-local session controller");
+        assertTrue(taskDispatchSource.contains("WebSocketSessionRegistry"),
+                "WebSocket assigned delivery executor must call the adapter-local session registry");
         assertTrue(taskDispatchSource.contains("sendTextToWorker("),
                 "WebSocket assigned delivery executor must dispatch by selected worker only");
         assertTrue(!taskDispatchSource.contains("WebSocketSessionStore")
@@ -781,23 +781,37 @@ class TransportConvergenceArchitectureGuardTest {
                 "WebSocket raw/result dispatcher context must not own assigned-delivery selected endpoint registry");
 
         assertPathsDoNotExist(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/ServerSessionManager.java"));
-        Path sessionController = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionController.java");
-        String sessionControllerSource = Files.readString(sessionController);
-        assertTrue(!sessionControllerSource.contains("implements WorkerEndpointRegistry"),
-                "WebSocket session controller must not be the assigned-delivery endpoint registry");
-        assertTrue(!sessionControllerSource.contains("RawWorkerRouteEndpointRegistry"),
-                "WebSocket session controller must not implement the raw route side-channel");
-        assertTrue(!sessionControllerSource.contains("WorkerEndpointInspector"),
-                "WebSocket session controller must not implement diagnostics inspector");
-        assertTrue(!sessionControllerSource.contains("listWorkerEndpoints("),
-                "WebSocket session controller must not expose diagnostics inspector methods directly");
-        assertTrue(!sessionControllerSource.contains("setEndpointLeaseStore(")
-                        && !sessionControllerSource.contains("setDeliveryCommandConsumerRegistry(")
-                        && !sessionControllerSource.contains("setWorkerPresenceIngress("),
-                "WebSocket session controller must not own endpoint lease or presence wiring setters");
-        assertTrue(sessionControllerSource.contains("sendTextToWorker(")
-                        && sessionControllerSource.contains("TextWebSocketFrame"),
-                "WebSocket session controller owns the adapter-local selected-worker final-hop send");
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionController.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionStore.java"));
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketRawWorkerRouteEndpointRegistry.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketOutputProcessor.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/RawWorkerRouteEndpointRegistry.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TransportOutboundMessage.java"));
+        Path sessionRegistry = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionRegistry.java");
+        String sessionRegistrySource = Files.readString(sessionRegistry);
+        assertTrue(!sessionRegistrySource.contains("implements WorkerEndpointRegistry"),
+                "WebSocket session registry must not be the assigned-delivery endpoint registry");
+        assertTrue(!sessionRegistrySource.contains("RawWorkerRouteEndpointRegistry"),
+                "WebSocket session registry must not implement the raw route side-channel");
+        assertTrue(!sessionRegistrySource.contains("WorkerEndpointInspector"),
+                "WebSocket session registry must not implement diagnostics inspector");
+        assertTrue(!sessionRegistrySource.contains("listWorkerEndpoints("),
+                "WebSocket session registry must not expose diagnostics inspector methods directly");
+        assertTrue(!sessionRegistrySource.contains("setEndpointLeaseStore(")
+                        && !sessionRegistrySource.contains("setDeliveryCommandConsumerRegistry(")
+                        && !sessionRegistrySource.contains("setWorkerPresenceIngress("),
+                "WebSocket session registry must not own endpoint lease or presence wiring setters");
+        assertTrue(sessionRegistrySource.contains("sessionsByWorkerId")
+                        && sessionRegistrySource.contains("sessionsByChannel")
+                        && !sessionRegistrySource.contains("endpointAddress")
+                        && !sessionRegistrySource.contains("sessionsByWorkerGroup")
+                        && !sessionRegistrySource.contains("sessionsByRoute"),
+                "WebSocket session registry must keep only worker and channel indexes");
+        assertTrue(sessionRegistrySource.contains("sendTextToWorker(")
+                        && sessionRegistrySource.contains("TextWebSocketFrame"),
+                "WebSocket session registry owns the adapter-local selected-worker final-hop send");
         String serverSessionHandleSource = Files.readString(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketServerSessionHandle.java"));
         assertTrue(serverSessionHandleSource.contains("String currentWorkerId(Channel channel)"),
@@ -810,25 +824,12 @@ class TransportConvergenceArchitectureGuardTest {
                 "WebSocket server session handle must not expose route/bucket/channel-context index getters");
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketServerSession.java"));
-        String sessionStoreSource = Files.readString(repoRoot().resolve(
-                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionStore.java"));
-        assertTrue(!sessionStoreSource.contains("sendToSelectedWorker(")
-                        && !sessionStoreSource.contains("TextWebSocketFrame")
-                        && !sessionStoreSource.contains("writeAndFlush("),
-                "WebSocket session store must remain an index/state owner, not a send behavior owner");
-        assertTrue(!sessionStoreSource.contains("RouteEndpointIndex"),
-                "WebSocket session store must keep direct worker/channel/endpoint indexes instead of a route-oriented wrapper");
-        assertTrue(!sessionStoreSource.contains("ChannelHandlerContext"),
-                "WebSocket session store must not retain unused Netty handler context");
-        assertTrue(!sessionStoreSource.contains("WorkerEndpointSnapshot")
-                        && !sessionStoreSource.contains("endpointSnapshots("),
-                "WebSocket session store must not expose endpoint snapshot diagnostics views");
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionRecord.java"));
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidence.java"));
-        assertTrue(sessionStoreSource.contains("record SessionSnapshot(")
-                        && !sessionStoreSource.contains("WebSocketSessionEvidence"),
+        assertTrue(sessionRegistrySource.contains("record SessionSnapshot(")
+                        && !sessionRegistrySource.contains("WebSocketSessionEvidence"),
                 "WebSocket session evidence should stay a store-internal snapshot, not a top-level adapter model");
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceDriver.java"));
@@ -942,7 +943,7 @@ class TransportConvergenceArchitectureGuardTest {
     void concreteAdaptersDoNotOwnEndpointLeaseOrPresenceProjectionInternals() throws IOException {
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionController.java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionRegistry.java"),
                         repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceRefresher.java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java")
                 ),

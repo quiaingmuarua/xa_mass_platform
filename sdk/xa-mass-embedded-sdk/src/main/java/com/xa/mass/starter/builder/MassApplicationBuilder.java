@@ -1,12 +1,9 @@
 package com.xa.mass.starter.builder;
 
-import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.engine.PollingIdleBackoffPolicy;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskShellStore;
@@ -364,16 +361,6 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder inputQueue(MessageQueue<String> inputQueue) {
-            config.setInputQueue(inputQueue);
-            return this;
-        }
-
-        public TransportBuilder outputQueue(MessageQueue<TransportOutboundMessage> outputQueue) {
-            config.setOutputQueue(outputQueue);
-            return this;
-        }
-
         /**
          * Advanced embedded Java assembly seam for adding a local adapter
          * bootstrap contribution.
@@ -385,11 +372,6 @@ public class MassApplicationBuilder {
         public TransportBuilder addSupplementalTransportAdapterBootstrap(
                 TransportAdapterBootstrap transportAdapterBootstrap) {
             config.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);
-            return this;
-        }
-
-        public TransportBuilder queueMode() {
-            config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
             return this;
         }
 

@@ -1,7 +1,6 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.worker.WorkerStatus;
@@ -51,7 +50,6 @@ import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
@@ -222,8 +220,6 @@ class MassSdkTest {
         AtomicReference<WebSocketServerFactoryContext> capturedContext = new AtomicReference<>();
         AtomicBoolean started = new AtomicBoolean(false);
         AtomicBoolean stopped = new AtomicBoolean(false);
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("transport-input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("transport-output", TransportOutboundMessage.class);
 
         TransportServerFactory<WebSocketServerFactoryContext> factory = context -> {
             capturedContext.set(context);
@@ -251,9 +247,7 @@ class MassSdkTest {
                                 .server(19092, "/custom-transport")
                                 .enabled(false)
                                 .serverEnabled(true)
-                                .transportServerFactory(factory))
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue))
+                                .transportServerFactory(factory)))
                 .engine(engine -> engine.enabled(false))
                 .build();
 
@@ -276,8 +270,6 @@ class MassSdkTest {
     void additionalAdapterBootstrapCanStartServerOnDedicatedPort() {
         AtomicInteger startedPort = new AtomicInteger(-1);
         AtomicBoolean stopped = new AtomicBoolean(false);
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("transport-input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("transport-output", TransportOutboundMessage.class);
 
         TransportServer dedicatedServer = new TransportServer() {
             private boolean running;
@@ -306,8 +298,6 @@ class MassSdkTest {
                                 .server(19092, "/default-transport")
                                 .enabled(false)
                                 .serverEnabled(false))
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
                         .addSupplementalTransportAdapterBootstrap(new StaticDedicatedServerBootstrap(dedicatedServer)))
                 .engine(engine -> engine.enabled(false))
                 .build();
@@ -372,10 +362,7 @@ class MassSdkTest {
                                 .server(0)
                                 .enabled(true)
                                 .serverEnabled(true))
-                        .inputQueue(new InMemoryMessageQueue<>("socket-hello-input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("socket-hello-output", TransportOutboundMessage.class))
-                        .endpointLeaseStoreFactory(() -> endpointLeaseStore)
-                        .queueMode())
+                        .endpointLeaseStoreFactory(() -> endpointLeaseStore))
                 .engine(engine -> engine.enabled(true))
                 .build();
 
@@ -397,9 +384,11 @@ class MassSdkTest {
                 waitUntil(() -> endpointLeaseStore.currentEndpointLease("sdk-socket-workers", "sdk-socket-worker")
                                 .isPresent(),
                         "sdk socket hello should publish an endpoint lease");
-                assertEquals(routeKey, endpointLeaseStore.currentEndpointLease("sdk-socket-workers", "sdk-socket-worker")
-                        .orElseThrow()
-                        .endpointAddress());
+                var endpoint = endpointLeaseStore.currentEndpointLease("sdk-socket-workers", "sdk-socket-worker")
+                        .orElseThrow();
+                assertEquals("socket", endpoint.endpointDriverId());
+                assertNotNull(endpoint.sessionHandle());
+                assertNotNull(endpoint.endpointLeaseId());
             }
         } finally {
             app.stop();
@@ -465,11 +454,10 @@ class MassSdkTest {
             app.workerHeartbeat("worker-1", "session-1", "heartbeat");
             app.workerOffline("worker-1", "session-1", "offline");
 
-            String routeKey = CanonicalWorkerGroupRouteKeyCodec.encode("polling-workers");
             assertEquals(List.of(
-                            "CONNECTED:worker-1:polling-default:" + routeKey + ":session-1:online:session-1",
-                            "HEARTBEAT:worker-1:polling-default:" + routeKey + ":session-1:heartbeat:session-1",
-                            "DISCONNECTED:worker-1:polling-default:" + routeKey + ":session-1:offline:session-1"
+                            "CONNECTED:worker-1:polling-default:null:session-1:online:session-1",
+                            "HEARTBEAT:worker-1:polling-default:null:session-1:heartbeat:session-1",
+                            "DISCONNECTED:worker-1:polling-default:null:session-1:offline:session-1"
                     ),
                     presenceIngress.events);
         } finally {
@@ -591,7 +579,7 @@ class MassSdkTest {
     }
 
     @Test
-    void runtimeCompositionWebSocketBootstrapNoLongerContributesManagedAdapter() {
+    void runtimeCompositionWebSocketBootstrapContributesEvidenceRefresherResource() {
         TransportConfig config = new TransportConfig();
         config.getBundledWebSocketAdapterConfig().setEnabled(true);
         config.getBundledWebSocketAdapterConfig().setServerEnabled(true);
@@ -608,7 +596,7 @@ class MassSdkTest {
         }
 
         assertEquals(1, contribution.getTransportBindings().size());
-        assertEquals(0, contribution.getManagedTransportAdapters().size());
+        assertEquals(1, contribution.getManagedTransportAdapters().size());
         assertEquals(1, contribution.getTransportServers().size());
         assertEquals(1, contribution.getRawWorkerMessageChannels().size());
     }
@@ -939,9 +927,6 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
 
         when(delegate.getTransportQueueDetail()).thenReturn(Map.of(
-                "inputQueueSize", 2,
-                "outputQueueSize", 5,
-                "transporterAvailable", true,
                 "deliveryDiagnostics", Map.of(
                         "available", true,
                         "queuedItems", 1,
@@ -973,9 +958,6 @@ class MassSdkTest {
                 Map.of("workerId", "worker-debug-1", "rawJson", "{\"eventCode\":\"platform.test\"}")
         );
 
-        assertEquals(2, queueDetail.get("inputQueueSize"));
-        assertEquals(5, queueDetail.get("outputQueueSize"));
-        assertEquals(true, queueDetail.get("transporterAvailable"));
         assertEquals(1, ((Map<?, ?>) queueDetail.get("deliveryDiagnostics")).get("queuedItems"));
         assertEquals(1, ((Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("deliveryDiagnostics"))
                 .get("queueByAdapter")).get("polling")).get("queuedItems"));
@@ -1044,7 +1026,7 @@ class MassSdkTest {
     }
 
     @Test
-    void transportCanStartWithoutQueuesBecauseTransporterIsCompatibilityOnly() {
+    void transportCanStartWithoutRouteKeyOutputQueues() {
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket.enabled(true).serverEnabled(false))
@@ -1057,9 +1039,6 @@ class MassSdkTest {
 
             assertTrue(app.isRunning());
             Map<String, Object> queueDetail = runtimeDiagnostics(app).getQueueDetail();
-            assertEquals(true, queueDetail.get("transporterAvailable"));
-            assertEquals(0, queueDetail.get("inputQueueSize"));
-            assertEquals(0, queueDetail.get("outputQueueSize"));
             Map<?, ?> deliveryDiagnostics = (Map<?, ?>) queueDetail.get("deliveryDiagnostics");
             assertEquals(false, deliveryDiagnostics.get("available"));
             assertEquals(0, deliveryDiagnostics.get("queuedItems"));
@@ -2056,12 +2035,8 @@ class MassSdkTest {
 
     @Test
     void dispatchEventRejectsTaskBackedCatalogTaskEntry() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue))
+                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport"))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2142,12 +2117,8 @@ class MassSdkTest {
 
     @Test
     void registerProjectMakesCustomProjectExecutableForEngineTaskCreation() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue))
+                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport"))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2187,12 +2158,8 @@ class MassSdkTest {
 
     @Test
     void createTaskShellSupportsCustomRegisteredProjectAndEventCatalog() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue))
+                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport"))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2496,12 +2463,8 @@ class MassSdkTest {
 
     @Test
     void pullWorkerRejectsMissingWorker() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue))
+                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport"))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2519,8 +2482,6 @@ class MassSdkTest {
 
     @Test
     void registerWorkerStoresRealtimeTransportHintWithoutAdapterIdentity() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2531,8 +2492,6 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
                         .workerTransportRuntimeFactory(transportFactory))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
@@ -2556,8 +2515,6 @@ class MassSdkTest {
 
     @Test
     void registerWorkerKeepsRealtimeTransportHintWhenMultipleRealtimeAdaptersAreConfigured() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2571,8 +2528,6 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
                         .workerTransportRuntimeFactory(transportFactory))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
@@ -2596,8 +2551,6 @@ class MassSdkTest {
 
     @Test
     void registerWorkerDoesNotPersistRealtimeAdapterIdentity() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2611,8 +2564,6 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
                         .workerTransportRuntimeFactory(transportFactory))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
@@ -2633,8 +2584,6 @@ class MassSdkTest {
 
     @Test
     void registerWorkerIgnoresAdapterNodeTopologyForWorkerDeclaration() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2648,8 +2597,6 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
                         .workerTransportRuntimeFactory(transportFactory))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
@@ -2689,12 +2636,8 @@ class MassSdkTest {
 
     @Test
     void pullWorkerRejectsWorkerWithoutTransportIdentity() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue))
+                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport"))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2721,8 +2664,6 @@ class MassSdkTest {
 
     @Test
     void pullWorkerRejectsPushOnlyWorkerWhenTransportIsNotPullCapable() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2733,8 +2674,6 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
                         .workerTransportRuntimeFactory(transportFactory))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
@@ -2760,8 +2699,6 @@ class MassSdkTest {
 
     @Test
     void pullWorkerRejectsUnsupportedTransportEvenWhenAnotherPullCapableBindingExists() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
@@ -2774,8 +2711,6 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
                         .workerTransportRuntimeFactory(transportFactory))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
@@ -2800,8 +2735,6 @@ class MassSdkTest {
 
     @Test
     void pullWorkerResolvesByCanonicalTransportHintInsteadOfAdapterProtocolLabel() {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         StubPullCapableAdapter pollingAdapter = new StubPullCapableAdapter(
                 "polling-http-v2",
                 WorkerTransportHints.POLLING
@@ -2816,8 +2749,6 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
                         .workerTransportRuntimeFactory(transportFactory))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
@@ -2848,12 +2779,8 @@ class MassSdkTest {
 
     @Test
     void pullWorkerSessionCompletesTaskWithoutWebsocketPush() throws Exception {
-        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
-        MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue))
+                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport"))
                 .engine(engine -> engine.enabled(true).workerThreads(2))
                 .build();
 
@@ -3177,9 +3104,7 @@ class MassSdkTest {
                         .webSocketAdapter(webSocket -> webSocket
                                 .server(port)
                                 .enabled(true)
-                                .maxConnections(maxConnections))
-                        .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", TransportOutboundMessage.class)))
+                                .maxConnections(maxConnections)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(workerThreads))
@@ -3287,7 +3212,6 @@ class MassSdkTest {
             @Override
             public boolean connect(String workerId,
                                    String deliveryBucketId,
-                                   String endpointAddress,
                                    String sessionToken,
                                    String reason) {
                 return true;
@@ -3296,7 +3220,6 @@ class MassSdkTest {
             @Override
             public boolean heartbeat(String workerId,
                                      String deliveryBucketId,
-                                     String endpointAddress,
                                      String sessionToken,
                                      String reason) {
                 return true;
@@ -3305,7 +3228,6 @@ class MassSdkTest {
             @Override
             public boolean disconnect(String workerId,
                                       String deliveryBucketId,
-                                      String endpointAddress,
                                       String sessionToken,
                                       String reason) {
                 return true;

@@ -4,7 +4,6 @@ import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.starter.TaskResultCallbackCodec;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 
@@ -23,7 +22,6 @@ public final class EmbeddedPullWorkerSession {
 
     private final String workerId;
     private final String workerGroupId;
-    private final String endpointAddress;
     private final String sessionToken;
     private final DeliveryPullChannel deliveryPullChannel;
     private final WorkerActionPayloadDecoder payloadDecoder;
@@ -44,7 +42,6 @@ public final class EmbeddedPullWorkerSession {
         }
         this.workerId = workerId.trim();
         this.workerGroupId = requireText(workerGroupId, "workerGroupId");
-        this.endpointAddress = CanonicalWorkerGroupRouteKeyCodec.encode(this.workerGroupId);
         this.sessionToken = requireText(sessionToken, "sessionToken");
         this.deliveryPullChannel = Objects.requireNonNull(deliveryPullChannel, "deliveryPullChannel");
         this.payloadDecoder = new WorkerActionPayloadDecoder();
@@ -78,7 +75,6 @@ public final class EmbeddedPullWorkerSession {
         return evidenceDriver.connect(
                 workerId,
                 workerGroupId,
-                endpointAddress,
                 sessionToken,
                 normalizeReason(reason, "pull-session-connect")
         );
@@ -96,7 +92,6 @@ public final class EmbeddedPullWorkerSession {
         return evidenceDriver.disconnect(
                 workerId,
                 workerGroupId,
-                endpointAddress,
                 sessionToken,
                 normalizeReason(reason, "pull-session-disconnect")
         );
@@ -114,7 +109,6 @@ public final class EmbeddedPullWorkerSession {
         return evidenceDriver.heartbeat(
                 workerId,
                 workerGroupId,
-                endpointAddress,
                 sessionToken,
                 normalizeReason(reason, "pull-session-heartbeat")
         );

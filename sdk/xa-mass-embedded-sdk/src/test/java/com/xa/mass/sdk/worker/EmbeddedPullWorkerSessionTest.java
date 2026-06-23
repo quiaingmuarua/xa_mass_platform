@@ -7,7 +7,6 @@ import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
-import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.polling.runtime.PollingSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
@@ -110,7 +109,7 @@ class EmbeddedPullWorkerSessionTest {
     }
 
     @Test
-    void connectHeartbeatDisconnectWritePresenceWithCanonicalRouteAndSessionToken() {
+    void connectHeartbeatDisconnectWritePresenceWithoutRouteKeyAndWithSessionToken() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
         EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), mock(TransportResultIngressChannel.class),
@@ -121,7 +120,7 @@ class EmbeddedPullWorkerSessionTest {
         assertEquals("conn-1", endpointLeaseStore.currentEndpointLease("group-1", "worker-1")
                 .orElseThrow()
                 .endpointLeaseId());
-        assertEquals(List.of("CONNECTED:worker-1:polling:" + routeKey() + ":conn-1:connected:conn-1"),
+        assertEquals(List.of("CONNECTED:worker-1:polling:null:conn-1:connected:conn-1"),
                 presenceIngress.events);
 
         assertFalse(staleSession("stale-conn", endpointLeaseStore, new RecordingWorkerPresenceIngress())
@@ -133,17 +132,17 @@ class EmbeddedPullWorkerSessionTest {
         assertTrue(session.refreshHeartbeatIfCurrent("heartbeat"));
         assertTrue(endpointLeaseStore.currentEndpointLease("group-1", "worker-1").isPresent());
         assertEquals(List.of(
-                        "CONNECTED:worker-1:polling:" + routeKey() + ":conn-1:connected:conn-1",
-                        "HEARTBEAT:worker-1:polling:" + routeKey() + ":conn-1:heartbeat:conn-1"
+                        "CONNECTED:worker-1:polling:null:conn-1:connected:conn-1",
+                        "HEARTBEAT:worker-1:polling:null:conn-1:heartbeat:conn-1"
                 ),
                 presenceIngress.events);
 
         assertTrue(session.disconnectIfCurrent("disconnect"));
         assertTrue(endpointLeaseStore.currentEndpointLease("group-1", "worker-1").isEmpty());
         assertEquals(List.of(
-                        "CONNECTED:worker-1:polling:" + routeKey() + ":conn-1:connected:conn-1",
-                        "HEARTBEAT:worker-1:polling:" + routeKey() + ":conn-1:heartbeat:conn-1",
-                        "DISCONNECTED:worker-1:polling:" + routeKey() + ":conn-1:disconnect:conn-1"
+                        "CONNECTED:worker-1:polling:null:conn-1:connected:conn-1",
+                        "HEARTBEAT:worker-1:polling:null:conn-1:heartbeat:conn-1",
+                        "DISCONNECTED:worker-1:polling:null:conn-1:disconnect:conn-1"
                 ),
                 presenceIngress.events);
     }
@@ -222,10 +221,6 @@ class EmbeddedPullWorkerSessionTest {
                     + event.reason() + ":"
                     + event.traceId();
         }
-    }
-
-    private static String routeKey() {
-        return CanonicalWorkerGroupRouteKeyCodec.encode("group-1");
     }
 
     private static WorkerAction item(String messageId) {

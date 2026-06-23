@@ -101,9 +101,9 @@ entry for `transport/`.
   push adapters dispatch by concrete adapter command executors using a
   worker-id-only local session lookup rather than a route-only fallback.
 - `WorkerEndpointRegistry` has been removed. Do not reintroduce a generic
-  assigned-delivery endpoint interface; raw/manual route delivery uses
-  `RawWorkerRouteEndpointRegistry` or `RawWorkerMessageChannel`, not the
-  assigned-task command path.
+  assigned-delivery endpoint interface. Worker-id raw sends may use
+  `RawWorkerMessageChannel`; routeKey-only WebSocket output queues and route
+  registries are not current assigned-task delivery surfaces.
 - raw/debug worker side-channels are also adapter-scoped. They may resolve one
   concrete active route for a worker, but once resolved they must dispatch via
   the serving adapter identity instead of reviving route-only shared semantics.
@@ -278,7 +278,7 @@ Prefer these after transport changes:
 
 ```bash
 ./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDispatchHandoffTest,TransportDispatchBatchCodecTest,RedisTransportDispatchHandoffTest,RedisTransportDeliveryFailureChannelTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,RouteEndpointIndexTest,TransportConvergenceArchitectureGuardTest
-./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,ResultIngressEntryTest,ResultIngressMessageTest,WebSocketInputProcessorTest,WebSocketFrameReadersTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,WebSocketSessionControllerTest,PollingDispatchMessageCodecTest
+./mvnw -q -pl transport/transport_api,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,ResultIngressEntryTest,ResultIngressMessageTest,WebSocketInputProcessorTest,WebSocketFrameReadersTest,DispatcherInboundHandlerTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,SocketSessionManagerTest,WebSocketSessionRegistryTest,PollingDispatchMessageCodecTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest,EmbeddedPullWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 

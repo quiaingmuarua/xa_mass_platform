@@ -6,9 +6,8 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
-import com.xa.mass.transport.websocket.session.WebSocketSessionController;
-import com.xa.mass.transport.websocket.session.WebSocketSessionStore;
 import com.xa.mass.transport.websocket.frame.WebSocketWorkerChannelFrameCodec;
+import com.xa.mass.transport.websocket.session.WebSocketSessionRegistry;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelId;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -27,12 +26,12 @@ import static org.mockito.Mockito.when;
 class WebSocketTaskDispatchChannelTest {
 
     @Test
-    void publishesDispatchItemsDirectlyToSessionStoreEndpoint() {
+    void publishesDispatchItemsDirectlyToSelectedWorkerSession() {
         SessionFixture fixture = sessionWithWorker("worker-1");
         DispatchMessage item = request();
 
         WebSocketTaskDispatchChannel publisher =
-                new WebSocketTaskDispatchChannel(fixture.controller());
+                new WebSocketTaskDispatchChannel(fixture.registry());
 
         List<DispatchOutcome> outcomes = publisher.dispatch(List.of(item));
 
@@ -45,27 +44,23 @@ class WebSocketTaskDispatchChannelTest {
         JsonObject frame = JsonParser.parseString(captor.getValue().text()).getAsJsonObject();
         assertEquals(WebSocketWorkerChannelFrameCodec.ACTION, frame.get("kind").getAsString());
         assertEquals(item.payload(), frame.get("body").getAsString());
-        fixture.controller().shutdown();
+        fixture.registry().shutdown();
     }
 
     @Test
-    void returnsEndpointOfflineWhenSessionStoreHasNoWorker() {
-        WebSocketSessionStore sessionStore = new WebSocketSessionStore("websocket");
+    void returnsEndpointOfflineWhenRegistryHasNoWorker() {
         AdapterSessionEvidencePublisher sessionEvidencePublisher =
                 AdapterSessionEvidencePublisher.noop("websocket", "websocket");
-        WebSocketSessionController controller = new WebSocketSessionController(
-                sessionStore,
-                sessionEvidencePublisher
-        );
+        WebSocketSessionRegistry registry = new WebSocketSessionRegistry(sessionEvidencePublisher);
         WebSocketTaskDispatchChannel publisher =
-                new WebSocketTaskDispatchChannel(controller);
+                new WebSocketTaskDispatchChannel(registry);
 
         List<DispatchOutcome> outcomes = publisher.dispatch(List.of(request()));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcomes.get(0).getStatus());
         assertTrue(outcomes.get(0).isRetryable());
-        controller.shutdown();
+        registry.shutdown();
     }
 
     @Test
@@ -75,19 +70,15 @@ class WebSocketTaskDispatchChannelTest {
     }
 
     private SessionFixture sessionWithWorker(String workerId) {
-        WebSocketSessionStore sessionStore = new WebSocketSessionStore("websocket");
         AdapterSessionEvidencePublisher sessionEvidencePublisher =
                 AdapterSessionEvidencePublisher.noop("websocket", "websocket");
-        WebSocketSessionController controller = new WebSocketSessionController(
-                sessionStore,
-                sessionEvidencePublisher
-        );
+        WebSocketSessionRegistry registry = new WebSocketSessionRegistry(sessionEvidencePublisher);
         Channel channel = mockActiveChannel(workerId);
-        controller.addSession("bucket-1", "route-1", workerId, channel);
-        return new SessionFixture(controller, channel);
+        registry.addSession("bucket-1", workerId, channel);
+        return new SessionFixture(registry, channel);
     }
 
-    private record SessionFixture(WebSocketSessionController controller, Channel channel) {
+    private record SessionFixture(WebSocketSessionRegistry registry, Channel channel) {
     }
 
     private Channel mockActiveChannel(String idText) {
