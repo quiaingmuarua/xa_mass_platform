@@ -16,21 +16,37 @@ over richer but expensive observability state.
 
 ## Scope
 
-Transport owns delivery mechanics for workers:
+Transport owns two runtime lanes for worker connectivity and dispatch:
+
+1. Network/session evidence production.
+2. Best-effort assigned-delivery execution.
+
+These lanes share adapter observations, endpoint/session evidence, and mailbox
+facts, but they must not collapse into one lifecycle owner. The evidence lane
+produces reachability inputs; the assigned-delivery lane is the pure delivery
+executor.
+
+Transport owns network/session evidence mechanics:
 
 - worker endpoint connectivity and endpoint metadata
 - worker endpoint lease evidence keyed by `deliveryBucketId + workerId`.
   Endpoint leases contain adapter/runtime/session facts for current delivery
   feasibility, while timestamps stay in store deadline indexes or
   policy-specific consumer evidence instead of the general view record.
-- local adapter binding registration and final-hop adapter resolution by
-  transport-owned adapter identity
-- task dispatch delivery, queueing, draining, and dispatch outcomes
-- task result ingress queuing and relay through opaque routing envelopes
 - session-presence ingress for adapter connect/disconnect/heartbeat
   observations; worker-runtime owns derived reachability and registry slot
   heartbeat freshness, while endpoint lease refresh does not decide worker
   lifecycle, state-report, capability, or slot heartbeat truth
+
+Transport owns assigned-delivery mechanics:
+
+- local adapter binding registration and final-hop adapter resolution by
+  transport-owned adapter identity
+- task dispatch delivery, queueing, draining, and dispatch outcomes
+
+Transport owns result-ingress carrier mechanics:
+
+- task result ingress queuing and relay through opaque routing envelopes
 
 Engine remains the owner of task lifecycle:
 
@@ -40,16 +56,16 @@ Engine remains the owner of task lifecycle:
 - lifecycle security decisions that mutate task state
 
 Transport core and concrete adapters are separate layers. Transport core owns
-the assigned-delivery executor contract, delivery queue/store mechanics,
-endpoint lease plane, result ingress inboxes, and delivery outcomes. Concrete
-adapters own protocol I/O, local session indexes, protocol frame parsing and
-writing, session evidence observation, and final-hop send attempts for already
-selected workers. Current embedded Java adapters are one deployment shape, not
-the transport contract. Facts that a future remote adapter process cannot
-provide through typed delivery commands, endpoint lease evidence, result
+the endpoint/session evidence lane, assigned-delivery executor contract,
+delivery queue/store mechanics, result ingress inboxes, and delivery outcomes.
+Concrete adapters own protocol I/O, local session indexes, protocol frame
+parsing and writing, session evidence observation, and final-hop send attempts
+for already selected workers. Current embedded Java adapters are one deployment
+shape, not the transport contract. Facts that a future remote adapter process
+cannot provide through typed delivery commands, endpoint lease evidence, result
 ingress envelopes, delivery outcomes, diagnostics, or session/availability
-observations
-must stay in embedded adapter support rather than transport-neutral APIs.
+observations must stay in embedded adapter support rather than
+transport-neutral APIs.
 
 ## Stable Concepts
 
@@ -202,6 +218,15 @@ The completed worker-control owner-baseline roadmap is archived at
 owner truth is in `../xa-mass-engine/doc/baseline/EVENT_OWNER_BOUNDARY.md`.
 Transport may carry command delivery later, but it must not own command
 lifecycle state.
+
+The assigned-delivery executor depends on worker-runtime delivery target
+evidence, but it does not produce that projection while dispatching. The
+evidence lane may publish adapter session observations and endpoint/session
+evidence that worker-runtime projects into reachability and
+`selectedWorkerId -> adapterMailboxKey`; the delivery lane consumes the already
+resolved `selectedWorkerId + adapterMailboxKey + payload` command. This keeps
+transport from becoming either a worker scheduler or a post-assignment routing
+engine.
 
 ## Lifecycle Discipline
 

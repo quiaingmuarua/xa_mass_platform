@@ -55,6 +55,9 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
   verified from `doc/TASK_LIFECYCLE_BASELINE.md` plus current engine/runtime
   code rather than inferred from historical `TaskWorkRuntime` wording alone
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
+  Its runtime responsibilities split into network/session evidence production
+  and best-effort assigned-delivery execution; only the assigned-delivery lane
+  is the pure delivery executor.
 - Runtime entry is SDK-first; server HTTP/UI surfaces provide the backend
   product/API host, control-console support, and validation surface without
   redefining kernel ownership.
@@ -85,12 +88,12 @@ Task item dispatch boundary:
   session handles are not assigned-dispatch routing contracts. If they remain
   inside adapter/session diagnostics, they must not drive worker correctness or
   producer-side queue choice.
-- transport is a best-effort delivery executor, not the message reliability
-  owner. Known offer rejection, unavailable mailbox, missing endpoint, corrupt
-  dispatch input, or adapter final-hop failure must become a `DispatchOutcome`
-  or retryable failure evidence; accepted work with no later worker consumption
-  or result falls back to engine-owned task attempt timeout, retry, reassign,
-  and compensation.
+- the assigned-delivery lane is a best-effort delivery executor, not the message
+  reliability owner. Known offer rejection, unavailable mailbox, missing
+  endpoint, corrupt dispatch input, or adapter final-hop failure must become a
+  `DispatchOutcome` or retryable failure evidence; accepted work with no later
+  worker consumption or result falls back to engine-owned task attempt timeout,
+  retry, reassign, and compensation.
 - engine must not select workers by transport implementation identifiers such
   as `adapterId`, `adapterMailboxKey`, `routeKey`, `connectionId`, endpoint
   lease ids, or session handles. If delivery reachability is needed for
