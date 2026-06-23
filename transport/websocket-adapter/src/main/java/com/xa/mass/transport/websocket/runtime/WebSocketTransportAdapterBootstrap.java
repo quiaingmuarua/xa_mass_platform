@@ -7,13 +7,13 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.embedded.AdapterInboundResultProcessor;
+import com.xa.mass.transport.runtime.embedded.JsonAdapterResultDiagnosticsProvider;
 import com.xa.mass.transport.runtime.embedded.WorkerChannelActionReplyResultFrameReader;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
-import com.xa.mass.transport.websocket.frame.WebSocketResultDiagnosticsProvider;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
@@ -59,7 +59,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         AdapterInboundResultProcessor<JsonObject> resultProcessor = AdapterInboundResultProcessor.with(
                 resultFrameReader,
                 context.ingress().resultIngress(),
-                new WebSocketResultDiagnosticsProvider(config.getAdapterId(), frameParser)::diagnostics
+                new JsonAdapterResultDiagnosticsProvider(config.getAdapterId(), frameParser)::diagnostics
         );
         WebSocketSessionOpenFrameReader sessionOpenFrameReader = new WebSocketSessionOpenFrameReader();
         Consumer<JsonObject> inboundFrameSink =

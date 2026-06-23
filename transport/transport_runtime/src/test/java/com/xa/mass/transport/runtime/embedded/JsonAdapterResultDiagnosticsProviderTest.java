@@ -1,7 +1,6 @@
-package com.xa.mass.transport.websocket.frame;
+package com.xa.mass.transport.runtime.embedded;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.transport.runtime.embedded.AdapterResultFrame;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import org.junit.jupiter.api.Test;
 
@@ -10,13 +9,14 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-class WebSocketResultDiagnosticsProviderTest {
+class JsonAdapterResultDiagnosticsProviderTest {
 
     private final TransportJsonFrameParser parser = new TransportJsonFrameParser();
 
     @Test
     void includesAdapterRouteAndExplicitTrace() {
-        WebSocketResultDiagnosticsProvider provider = new WebSocketResultDiagnosticsProvider("websocket", parser);
+        JsonAdapterResultDiagnosticsProvider provider =
+                new JsonAdapterResultDiagnosticsProvider("websocket", parser);
         JsonObject frame = new JsonObject();
         frame.addProperty("routeKey", "route-1");
         frame.addProperty("traceId", "trace-explicit");
@@ -33,7 +33,8 @@ class WebSocketResultDiagnosticsProviderTest {
 
     @Test
     void fallsBackToFrameTraceFactsWithoutRoute() {
-        WebSocketResultDiagnosticsProvider provider = new WebSocketResultDiagnosticsProvider("websocket", parser);
+        JsonAdapterResultDiagnosticsProvider provider =
+                new JsonAdapterResultDiagnosticsProvider("websocket", parser);
 
         Map<String, String> diagnostics = provider.diagnostics(
                 new JsonObject(),
@@ -43,5 +44,21 @@ class WebSocketResultDiagnosticsProviderTest {
         assertEquals("websocket", diagnostics.get("adapterId"));
         assertEquals("frame-1", diagnostics.get("traceId"));
         assertFalse(diagnostics.containsKey("routeKey"));
+    }
+
+    @Test
+    void routeKeyHintSupportsAdapterSessionRouteEvidence() {
+        JsonAdapterResultDiagnosticsProvider provider =
+                new JsonAdapterResultDiagnosticsProvider("socket", parser);
+
+        Map<String, String> diagnostics = provider.diagnostics(
+                new JsonObject(),
+                new AdapterResultFrame("corr-1", "payload", null, null),
+                "socket-route-9"
+        );
+
+        assertEquals("socket", diagnostics.get("adapterId"));
+        assertEquals("socket-route-9", diagnostics.get("routeKey"));
+        assertEquals("corr-1", diagnostics.get("traceId"));
     }
 }

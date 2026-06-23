@@ -5,6 +5,9 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.runtime.AdapterHostExecutor;
 import com.xa.mass.transport.runtime.AdapterResultIngressEntries;
 import com.xa.mass.transport.runtime.AdapterResultIngressSink;
+import com.xa.mass.transport.runtime.embedded.AdapterResultFrame;
+import com.xa.mass.transport.runtime.embedded.JsonAdapterResultDiagnosticsProvider;
+import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
 import org.slf4j.Logger;
@@ -20,7 +23,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,6 +47,7 @@ public final class SocketTransportServer implements TransportServer {
     private final SocketTransportFrameCodec frameCodec;
     private final AdapterResultIngressSink resultIngressSink;
     private final AdapterHostExecutor hostExecutor;
+    private final JsonAdapterResultDiagnosticsProvider resultDiagnosticsProvider;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Set<Future<?>> clientTasks = ConcurrentHashMap.newKeySet();
 
@@ -67,6 +70,10 @@ public final class SocketTransportServer implements TransportServer {
         this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
         this.resultIngressSink = resultIngressSink;
         this.hostExecutor = Objects.requireNonNull(hostExecutor, "hostExecutor");
+        this.resultDiagnosticsProvider = new JsonAdapterResultDiagnosticsProvider(
+                this.adapterId,
+                new TransportJsonFrameParser()
+        );
     }
 
     @Override
@@ -187,14 +194,18 @@ public final class SocketTransportServer implements TransportServer {
                         logger.warn("Canonical socket task result ignored because ingest channel is unavailable");
                         continue;
                     }
-                    String payload = frameCodec.encodeCanonicalTaskResultPayload(frame);
-                    String traceId = firstNonBlank(frameCodec.extractTraceId(frame),
-                            frameCodec.extractResultCorrelationRef(frame));
                     String resultCorrelationRef = frameCodec.extractResultCorrelationRef(frame);
-                    boolean accepted = resultIngressSink.ingest(AdapterResultIngressEntries.from(
+                    String payload = frameCodec.encodeCanonicalTaskResultPayload(frame);
+                    AdapterResultFrame result = new AdapterResultFrame(
                             resultCorrelationRef,
                             payload,
-                            diagnostics(boundRouteKey, traceId)
+                            frameCodec.extractTraceId(frame),
+                            null
+                    );
+                    boolean accepted = resultIngressSink.ingest(AdapterResultIngressEntries.from(
+                            result.correlationRef(),
+                            result.payload(),
+                            resultDiagnosticsProvider.diagnostics(frame, result, boundRouteKey)
                     ));
                     if (!accepted) {
                         throw new IllegalStateException("task result ingest channel rejected inbound socket task result");
@@ -213,18 +224,6 @@ public final class SocketTransportServer implements TransportServer {
             sessionManager.removeSession(endpointId);
             clientTasks.removeIf(Future::isDone);
         }
-    }
-
-    private Map<String, String> diagnostics(String routeKey, String traceId) {
-        java.util.LinkedHashMap<String, String> values = new java.util.LinkedHashMap<>();
-        values.put("adapterId", adapterId);
-        if (routeKey != null && !routeKey.isBlank()) {
-            values.put("routeKey", routeKey);
-        }
-        if (traceId != null && !traceId.isBlank()) {
-            values.put("traceId", traceId);
-        }
-        return Map.copyOf(values);
     }
 
     private void waitForClientTasksToFinish() throws InterruptedException {
