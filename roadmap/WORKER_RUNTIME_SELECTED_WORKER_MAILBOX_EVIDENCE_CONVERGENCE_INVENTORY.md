@@ -34,7 +34,7 @@ inspection to the delivery target mainline.
 | --- | --- | --- | --- |
 | `WorkerPresenceSessionPublisher` | normalizes adapter session observations into `WorkerSessionPresenceEvent` | transport-to-worker-runtime ingress helper | Keep as ingress; it does not own delivery target truth. |
 | `PollingSessionEvidenceDriver` | publishes polling worker session presence with adapter mailbox metadata | adapter session evidence writer | Keep writer; no producer-side lookup. |
-| `WebSocketSessionEvidenceDriver` | publishes WebSocket session presence with adapter mailbox metadata | adapter session evidence writer | Keep writer; no producer-side lookup. |
+| `WebSocketSessionController` / `WebSocketSessionEvidenceRefresher` via `AdapterSessionEvidencePublisher` | publishes WebSocket session presence with adapter mailbox metadata | adapter session evidence writer | Keep direct publisher capability; controller owns connect/disconnect, refresher owns heartbeat/keepalive, and no WebSocket-only driver wrapper or producer-side lookup is allowed. |
 | `SocketSessionManager` | publishes socket session presence with adapter mailbox metadata | adapter session evidence writer | Keep writer; no producer-side lookup. |
 | `WorkerRuntimePresenceIngress` | forwards `adapterMailboxKey` into `WorkerPresenceRuntime` | worker-runtime ingress bridge | Focused proof covers `adapterId != adapterMailboxKey`. |
 | Direct test calls to `sessionConnected(...)` | seed in-memory runtime in unit/integration tests | test fixture | Keep test-only; do not cite as split distributed proof. |

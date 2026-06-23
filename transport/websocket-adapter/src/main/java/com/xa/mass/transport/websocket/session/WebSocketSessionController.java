@@ -1,26 +1,25 @@
 package com.xa.mass.transport.websocket.session;
 
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import io.netty.channel.Channel;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Objects;
 
 public final class WebSocketSessionController implements WebSocketServerSessionHandle {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketSessionController.class);
 
     private final WebSocketSessionStore store;
-    private final WebSocketSessionEvidenceDriver evidenceDriver;
-    private final WebSocketSessionRefreshLoop refreshLoop;
+    private final AdapterSessionEvidencePublisher sessionEvidencePublisher;
 
     public WebSocketSessionController(WebSocketSessionStore store,
-                                      WebSocketSessionEvidenceDriver evidenceDriver,
-                                      WebSocketSessionRefreshLoop refreshLoop) {
-        this.store = store;
-        this.evidenceDriver = evidenceDriver;
-        this.refreshLoop = refreshLoop;
+                                      AdapterSessionEvidencePublisher sessionEvidencePublisher) {
+        this.store = Objects.requireNonNull(store, "store");
+        this.sessionEvidencePublisher = Objects.requireNonNull(sessionEvidencePublisher, "sessionEvidencePublisher");
     }
 
     @Override
@@ -44,16 +43,15 @@ public final class WebSocketSessionController implements WebSocketServerSessionH
         logger.info("Connected: endpointAddress={} workerId={} channelId={} totalRoutes={}",
                 current.endpointAddress(), current.workerId(), current.sessionHandle(), store.activeConnectionCount());
         if (store.hasActiveEndpointAddress(current.endpointAddress())) {
-            evidenceDriver.connected(current, "websocket connected");
+            publishConnected(current, "websocket connected");
         }
         WebSocketSessionStore.SessionSnapshot replaced = result.replacedSnapshot();
         if (replaced != null) {
             logger.warn("Existing channel for endpointAddress={} workerId={} found. Replacing session.",
                     replaced.endpointAddress(), replaced.workerId());
-            evidenceDriver.disconnected(replaced, "websocket session replaced");
+            publishDisconnected(replaced, "websocket session replaced");
             closeIfActive(result.replacedChannel());
         }
-        refreshLoop.ensureRunning();
     }
 
     @Override
@@ -71,22 +69,17 @@ public final class WebSocketSessionController implements WebSocketServerSessionH
         logger.info("Disconnected: endpointAddress={} workerId={} channelId={}",
                 removed.endpointAddress(), removed.workerId(), removed.sessionHandle());
         if (result.removedCurrent()) {
-            evidenceDriver.disconnected(removed, "websocket disconnected");
-        }
-        if (store.activeConnectionCount() == 0) {
-            refreshLoop.cancel();
+            publishDisconnected(removed, "websocket disconnected");
         }
     }
 
     public synchronized void shutdown() {
         logger.info("Shutting down websocket session controller, closing {} endpoint connections...", store.routeCount());
-        refreshLoop.cancel();
         List<WebSocketSessionStore.SessionRef> records = store.clear();
         for (WebSocketSessionStore.SessionRef record : records) {
-            evidenceDriver.disconnected(record.snapshot(), "websocket adapter shutdown");
+            publishDisconnected(record.snapshot(), "websocket adapter shutdown");
             closeIfActive(record.channel());
         }
-        refreshLoop.shutdown();
         logger.info("WebSocket session controller shutdown complete.");
     }
 
@@ -120,6 +113,28 @@ public final class WebSocketSessionController implements WebSocketServerSessionH
         if (channel != null && channel.isActive()) {
             channel.close();
         }
+    }
+
+    private void publishConnected(WebSocketSessionStore.SessionSnapshot session, String reason) {
+        sessionEvidencePublisher.connected(
+                session.workerId(),
+                session.deliveryBucketId(),
+                session.endpointAddress(),
+                session.sessionHandle(),
+                reason,
+                session.sessionHandle()
+        );
+    }
+
+    private void publishDisconnected(WebSocketSessionStore.SessionSnapshot session, String reason) {
+        sessionEvidencePublisher.disconnected(
+                session.workerId(),
+                session.deliveryBucketId(),
+                session.endpointAddress(),
+                session.sessionHandle(),
+                reason,
+                session.sessionHandle()
+        );
     }
 
 }

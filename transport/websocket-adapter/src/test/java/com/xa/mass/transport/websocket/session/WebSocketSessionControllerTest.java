@@ -12,7 +12,6 @@ import io.netty.channel.ChannelId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
@@ -29,7 +27,6 @@ class WebSocketSessionControllerTest {
     private static final String DELIVERY_BUCKET_ID = "bucket-1";
 
     private WebSocketSessionStore sessionStore;
-    private WebSocketSessionEvidenceDriver evidenceDriver;
     private WebSocketSessionController manager;
 
     @BeforeEach
@@ -263,21 +260,6 @@ class WebSocketSessionControllerTest {
     }
 
     @Test
-    void activeWebSocketSessionRefreshesEndpointLease() {
-        InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore(1_200L);
-        manager = newController(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore,
-                NoopWorkerPresenceIngress.INSTANCE);
-        Channel channel = mockActiveChannel("worker-1");
-
-        manager.addSession(DELIVERY_BUCKET_ID, "route-1", "worker-1", channel);
-
-        assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
-            Thread.sleep(2_200L);
-            assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
-        });
-    }
-
-    @Test
     private static TransportEndpointLeaseViewRecord endpoint(InMemoryTransportEndpointLeaseStore store, String workerId) {
         return store.currentEndpointLease(DELIVERY_BUCKET_ID, workerId).orElseThrow();
     }
@@ -304,15 +286,13 @@ class WebSocketSessionControllerTest {
                                                      InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                                      WorkerPresenceIngress presenceIngress) {
         sessionStore = new WebSocketSessionStore(adapterId);
-        evidenceDriver = new WebSocketSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
+        AdapterSessionEvidencePublisher sessionEvidencePublisher = new AdapterSessionEvidencePublisher(
                 adapterId,
                 adapterId,
                 endpointLeaseStore,
                 presenceIngress
-        ));
-        WebSocketSessionRefreshLoop refreshLoop =
-                new WebSocketSessionRefreshLoop(adapterId, sessionStore, evidenceDriver);
-        return new WebSocketSessionController(sessionStore, evidenceDriver, refreshLoop);
+        );
+        return new WebSocketSessionController(sessionStore, sessionEvidencePublisher);
     }
 
     private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {

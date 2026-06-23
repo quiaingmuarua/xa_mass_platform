@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-06-22
+Last updated: 2026-06-23
 
 Status: current transport boundary baseline.
 
@@ -37,6 +37,13 @@ Transport owns network/session evidence mechanics:
   observations; worker-runtime owns derived reachability and registry slot
   heartbeat freshness, while endpoint lease refresh does not decide worker
   lifecycle, state-report, capability, or slot heartbeat truth
+
+Network/session evidence is system hygiene state, not message delivery. It
+must remain bounded and self-cleaning through finite lease deadlines, explicit
+release, or local active-session refresh. A refresher is valid only when its
+owner is narrow, its source is bounded local state, and its sink is typed
+evidence; it must not grow into worker lifecycle, adapter health, reconnect,
+failover, scheduling, retry, or operator diagnostics truth.
 
 Transport owns assigned-delivery mechanics:
 
@@ -334,6 +341,11 @@ must preserve the same endpoint lease semantics as the in-memory default. Only
 one current endpoint lease may own a given `(deliveryBucketId, workerId)` pair;
 dispatch handoff consumer availability decides which local consumer may
 drain one adapter mailbox.
+Active protocol sessions may refresh endpoint leases through adapter-owned
+evidence refreshers such as `WebSocketSessionEvidenceRefresher`; those
+refreshers are bounded hygiene for currently indexed local sessions, not worker
+online/offline truth, scheduling strategy, adapter health, reconnect/failover,
+or message reliability.
 SDK/operator worker inspection must not read endpoint lease projections;
 it reads worker runtime lifecycle state. Engine and SDK inspection must not
 write presence, read adapter sessions, or treat presence as a schedule owner.

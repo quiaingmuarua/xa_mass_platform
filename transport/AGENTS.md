@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-06-22
+Last updated: 2026-06-23
 
 Status: current transport owner handoff.
 
@@ -36,6 +36,14 @@ entry for `transport/`.
   timeout/retry, not by transport retry, reassign, compensation, worker
   lifecycle, worker scheduling, adapter health lifecycle,
   restart/failover/migration, or task payload schema.
+- Best-effort message delivery does not mean best-effort system evidence.
+  Endpoint/session evidence and mailbox availability are system hygiene state:
+  they must be bounded, current for active local observations, and
+  self-cleaning through finite leases or explicit release. Evidence refreshers
+  may exist when they have a narrow local source and sink, such as active
+  WebSocket sessions -> endpoint lease heartbeat. They must not become worker
+  online/offline truth, adapter health supervision, reconnect/failover,
+  scheduling, or retry owners.
 - Transport/adapter lifecycle control must stay minimal. Local resource
   start/stop and mailbox availability proof are allowed; watchdogs, monitor
   loops, reconciliation, takeover, migration, and restart policy require a

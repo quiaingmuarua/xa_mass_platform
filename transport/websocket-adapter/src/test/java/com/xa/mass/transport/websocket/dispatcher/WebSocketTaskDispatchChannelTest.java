@@ -7,8 +7,6 @@ import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
-import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
-import com.xa.mass.transport.websocket.session.WebSocketSessionRefreshLoop;
 import com.xa.mass.transport.websocket.session.WebSocketSessionStore;
 import com.xa.mass.transport.websocket.frame.WebSocketWorkerChannelFrameCodec;
 import io.netty.channel.Channel;
@@ -53,12 +51,11 @@ class WebSocketTaskDispatchChannelTest {
     @Test
     void returnsEndpointOfflineWhenSessionStoreHasNoWorker() {
         WebSocketSessionStore sessionStore = new WebSocketSessionStore("websocket");
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
-                AdapterSessionEvidencePublisher.noop("websocket", "websocket"));
+        AdapterSessionEvidencePublisher sessionEvidencePublisher =
+                AdapterSessionEvidencePublisher.noop("websocket", "websocket");
         WebSocketSessionController controller = new WebSocketSessionController(
                 sessionStore,
-                evidenceDriver,
-                new WebSocketSessionRefreshLoop("websocket", sessionStore, evidenceDriver)
+                sessionEvidencePublisher
         );
         WebSocketTaskDispatchChannel publisher =
                 new WebSocketTaskDispatchChannel(controller);
@@ -79,12 +76,11 @@ class WebSocketTaskDispatchChannelTest {
 
     private SessionFixture sessionWithWorker(String workerId) {
         WebSocketSessionStore sessionStore = new WebSocketSessionStore("websocket");
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
-                AdapterSessionEvidencePublisher.noop("websocket", "websocket"));
+        AdapterSessionEvidencePublisher sessionEvidencePublisher =
+                AdapterSessionEvidencePublisher.noop("websocket", "websocket");
         WebSocketSessionController controller = new WebSocketSessionController(
                 sessionStore,
-                evidenceDriver,
-                new WebSocketSessionRefreshLoop("websocket", sessionStore, evidenceDriver)
+                sessionEvidencePublisher
         );
         Channel channel = mockActiveChannel(workerId);
         controller.addSession("bucket-1", "route-1", workerId, channel);

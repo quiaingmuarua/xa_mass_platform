@@ -5,6 +5,7 @@ import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
@@ -17,8 +18,7 @@ import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
 import com.xa.mass.transport.websocket.session.WebSocketRawWorkerRouteEndpointRegistry;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
-import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
-import com.xa.mass.transport.websocket.session.WebSocketSessionRefreshLoop;
+import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceRefresher;
 import com.xa.mass.transport.websocket.session.WebSocketSessionStore;
 
 /**
@@ -44,15 +44,13 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
         String adapterMailboxKey = context.mailbox().assignedMailboxKey();
         WebSocketSessionStore sessionStore = new WebSocketSessionStore(config.getAdapterId());
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
-                context.sessionEvidence().publisher());
-        WebSocketSessionRefreshLoop refreshLoop =
-                new WebSocketSessionRefreshLoop(config.getAdapterId(), sessionStore, evidenceDriver);
+        AdapterSessionEvidencePublisher sessionEvidencePublisher = context.sessionEvidence().publisher();
         WebSocketSessionController sessionController = new WebSocketSessionController(
                 sessionStore,
-                evidenceDriver,
-                refreshLoop
+                sessionEvidencePublisher
         );
+        WebSocketSessionEvidenceRefresher sessionEvidenceRefresher =
+                new WebSocketSessionEvidenceRefresher(config.getAdapterId(), sessionStore, sessionEvidencePublisher);
         WebSocketRawWorkerRouteEndpointRegistry rawRouteEndpointRegistry =
                 new WebSocketRawWorkerRouteEndpointRegistry(config.getAdapterId(), sessionController);
         WebSocketJsonFrameParser frameParser = new WebSocketJsonFrameParser();
@@ -95,6 +93,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 sessionController
         );
         if (transportServer != null) {
+            contribution.addManagedTransportAdapter(sessionEvidenceRefresher);
             contribution.addTransportServer(transportServer);
         }
         return contribution.build();

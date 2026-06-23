@@ -34,8 +34,7 @@ Current code centers on:
 - `WebSocketSessionStore`
 - `WebSocketSessionController`
 - `WebSocketServerSessionHandle`
-- `WebSocketSessionEvidenceDriver`
-- `WebSocketSessionRefreshLoop`
+- `WebSocketSessionEvidenceRefresher`
 - `WebSocketRawWorkerRouteEndpointRegistry`
 - `WebSocketJsonFrameParser`
 - `WebSocketSessionOpenFrameReader`
@@ -94,8 +93,11 @@ Hard rules:
 - pass `WebSocketServerSessionHandle` to server/inbound wiring, not the broader
   runtime registry surface; do not add assigned-delivery lookup methods to that
   handle
-- keep `WebSocketSessionStore`, `WebSocketSessionEvidenceDriver`, and
-  `WebSocketSessionRefreshLoop` as separate adapter-local roles
+- keep `WebSocketSessionStore` and `WebSocketSessionEvidenceRefresher` as
+  separate adapter-local roles; the controller publishes connect/disconnect
+  evidence directly and the refresher publishes heartbeat/keepalive through
+  the host-provided `AdapterSessionEvidencePublisher` capability instead of a
+  WebSocket-only driver wrapper
 - route inbound result shells into opaque
   `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)`
   values through `TransportResultIngressChannel`

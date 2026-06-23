@@ -552,7 +552,8 @@ class TransportConvergenceArchitectureGuardTest {
                         repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingDeliveryExecutor.java"),
                         repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingDeliveryPullChannel.java"),
                         repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingSessionEvidenceDriver.java"),
-                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceDriver.java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionController.java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceRefresher.java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java")
                 ),
                 "TransportEndpointLeaseStore",
@@ -829,11 +830,8 @@ class TransportConvergenceArchitectureGuardTest {
         assertTrue(sessionStoreSource.contains("record SessionSnapshot(")
                         && !sessionStoreSource.contains("WebSocketSessionEvidence"),
                 "WebSocket session evidence should stay a store-internal snapshot, not a top-level adapter model");
-        String sessionEvidenceDriverSource = Files.readString(repoRoot().resolve(
+        assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceDriver.java"));
-        assertTrue(!sessionEvidenceDriverSource.contains("Channel")
-                        && !sessionEvidenceDriverSource.contains("TextWebSocketFrame"),
-                "WebSocket session evidence driver must consume narrow evidence, not Netty channel/session rows");
         String inboundMessageSource = Files.readString(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketInboundMessage.java"));
         assertTrue(!inboundMessageSource.contains("routeKey")
@@ -945,7 +943,7 @@ class TransportConvergenceArchitectureGuardTest {
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionController.java"),
-                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceDriver.java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceRefresher.java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java")
                 ),
                 "TransportEndpointLeaseClaim",

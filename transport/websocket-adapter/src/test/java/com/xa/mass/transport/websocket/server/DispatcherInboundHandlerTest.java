@@ -7,8 +7,6 @@ import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.session.WebSocketSessionController;
-import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceDriver;
-import com.xa.mass.transport.websocket.session.WebSocketSessionRefreshLoop;
 import com.xa.mass.transport.websocket.session.WebSocketSessionStore;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -284,11 +282,9 @@ class DispatcherInboundHandlerTest {
 
     private WebSocketSessionController newSessionController(String adapterId) {
         sessionStore = new WebSocketSessionStore(adapterId);
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
-                AdapterSessionEvidencePublisher.noop(adapterId, adapterId));
-        WebSocketSessionRefreshLoop refreshLoop =
-                new WebSocketSessionRefreshLoop(adapterId, sessionStore, evidenceDriver);
-        return new WebSocketSessionController(sessionStore, evidenceDriver, refreshLoop);
+        AdapterSessionEvidencePublisher sessionEvidencePublisher =
+                AdapterSessionEvidencePublisher.noop(adapterId, adapterId);
+        return new WebSocketSessionController(sessionStore, sessionEvidencePublisher);
     }
 }
 
@@ -391,11 +387,9 @@ class WebSocketServerImplDisconnectTest {
 
     private WebSocketSessionController newSessionController(String adapterId) {
         sessionStore = new WebSocketSessionStore(adapterId);
-        WebSocketSessionEvidenceDriver evidenceDriver = new WebSocketSessionEvidenceDriver(
-                AdapterSessionEvidencePublisher.noop(adapterId, adapterId));
-        WebSocketSessionRefreshLoop refreshLoop =
-                new WebSocketSessionRefreshLoop(adapterId, sessionStore, evidenceDriver);
-        return new WebSocketSessionController(sessionStore, evidenceDriver, refreshLoop);
+        AdapterSessionEvidencePublisher sessionEvidencePublisher =
+                AdapterSessionEvidencePublisher.noop(adapterId, adapterId);
+        return new WebSocketSessionController(sessionStore, sessionEvidencePublisher);
     }
 
     private ChannelInboundHandlerAdapter newConnectionStatsHandler(WebSocketServerImpl server) throws Exception {
