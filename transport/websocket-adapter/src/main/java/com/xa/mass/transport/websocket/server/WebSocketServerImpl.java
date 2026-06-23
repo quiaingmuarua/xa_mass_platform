@@ -1,8 +1,8 @@
 package com.xa.mass.transport.websocket.server;
 
 import com.xa.mass.transport.TransportServer;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
-import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
+import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundFrameSink;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import io.netty.bootstrap.ServerBootstrap;
@@ -45,9 +45,9 @@ public class WebSocketServerImpl implements TransportServer {
     private final int maxConnections;
     private final String websocketPath;
     private final WebSocketServerSessionHandle sessionHandle;
-    private final WebSocketJsonFrameParser frameParser;
+    private final TransportJsonFrameParser frameParser;
     private final WebSocketSessionOpenFrameReader sessionOpenFrameReader;
-    private final WebSocketInboundMessageSink inboundMessageSink;
+    private final WebSocketInboundFrameSink inboundFrameSink;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private volatile boolean running = false;
@@ -55,16 +55,16 @@ public class WebSocketServerImpl implements TransportServer {
     public WebSocketServerImpl(int port,
                                int maxConnections,
                                String websocketPath,
-                               WebSocketJsonFrameParser frameParser,
+                               TransportJsonFrameParser frameParser,
                                WebSocketSessionOpenFrameReader sessionOpenFrameReader,
-                               WebSocketInboundMessageSink inboundMessageSink,
+                               WebSocketInboundFrameSink inboundFrameSink,
                                WebSocketServerSessionHandle sessionHandle) {
         this.port = port;
         this.maxConnections = maxConnections;
         this.websocketPath = websocketPath;
         this.frameParser = frameParser;
         this.sessionOpenFrameReader = sessionOpenFrameReader;
-        this.inboundMessageSink = inboundMessageSink;
+        this.inboundFrameSink = inboundFrameSink;
         this.sessionHandle = sessionHandle;
     }
 
@@ -117,7 +117,7 @@ public class WebSocketServerImpl implements TransportServer {
                     pipeline.addLast(new DispatcherInboundHandler(
                             frameParser,
                             sessionOpenFrameReader,
-                            inboundMessageSink,
+                            inboundFrameSink,
                             sessionHandle
                     ));
                 }
@@ -178,7 +178,7 @@ public class WebSocketServerImpl implements TransportServer {
         }
         Objects.requireNonNull(frameParser, "WebSocket server requires frameParser");
         Objects.requireNonNull(sessionOpenFrameReader, "WebSocket server requires sessionOpenFrameReader");
-        Objects.requireNonNull(inboundMessageSink, "WebSocket server requires inboundMessageSink");
+        Objects.requireNonNull(inboundFrameSink, "WebSocket server requires inboundFrameSink");
         Objects.requireNonNull(sessionHandle, "WebSocket server requires sessionHandle");
     }
 

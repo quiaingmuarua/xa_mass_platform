@@ -2,20 +2,16 @@ package com.xa.mass.transport.socket.protocol;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonSyntaxException;
+import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Adapter-local line-delimited JSON codec for the socket adapter.
  */
 public final class SocketTransportFrameCodec {
 
-    private static final Logger logger = LoggerFactory.getLogger(SocketTransportFrameCodec.class);
     private static final String TYPE_FIELD = "type";
     private static final String WORKER_GROUP_ID_FIELD = "workerGroupId";
     private static final String ROUTE_KEY_FIELD = "routeKey";
@@ -23,24 +19,18 @@ public final class SocketTransportFrameCodec {
     private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
     private static final String EVENT_CODE_FIELD = "eventCode";
 
-    private final Gson gson;
+    private final TransportJsonFrameParser jsonFrameParser;
 
     public SocketTransportFrameCodec() {
         this(new GsonBuilder().create());
     }
 
     public SocketTransportFrameCodec(Gson gson) {
-        this.gson = gson;
+        this.jsonFrameParser = new TransportJsonFrameParser(gson);
     }
 
     public JsonObject parseObject(String json) {
-        try {
-            JsonElement element = gson.fromJson(json, JsonElement.class);
-            return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
-        } catch (JsonSyntaxException ex) {
-            logger.warn("Failed to parse socket JSON frame", ex);
-            return null;
-        }
+        return jsonFrameParser.parseObject(json);
     }
 
     public boolean isHelloFrame(JsonObject frame) {
@@ -97,19 +87,11 @@ public final class SocketTransportFrameCodec {
         if (resultCorrelationRef == null) {
             throw new IllegalArgumentException(RESULT_CORRELATION_REF_FIELD + " is required");
         }
-        return gson.toJson(frame);
+        return jsonFrameParser.toJson(frame);
     }
 
     private String readString(JsonObject object, String field) {
-        if (object == null || !object.has(field) || object.get(field).isJsonNull()) {
-            return null;
-        }
-        try {
-            String value = object.get(field).getAsString();
-            return value == null || value.isBlank() ? null : value.trim();
-        } catch (Exception ignored) {
-            return null;
-        }
+        return jsonFrameParser.readString(object, field);
     }
 
 }

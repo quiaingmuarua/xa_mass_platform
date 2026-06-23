@@ -1,6 +1,7 @@
 package com.xa.mass.transport.websocket.frame;
 
 import com.google.gson.JsonObject;
+import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import io.netty.handler.codec.http.QueryStringDecoder;
 
 /**
@@ -11,9 +12,9 @@ public final class WebSocketSessionOpenFrameReader {
     private static final String WORKER_ID_FIELD = "workerId";
     private static final String WORKER_GROUP_ID_FIELD = "workerGroupId";
 
-    private final WebSocketJsonFrameParser parser;
+    private final TransportJsonFrameParser parser;
 
-    public WebSocketSessionOpenFrameReader(WebSocketJsonFrameParser parser) {
+    public WebSocketSessionOpenFrameReader(TransportJsonFrameParser parser) {
         this.parser = parser;
     }
 

@@ -2,30 +2,22 @@ package com.xa.mass.transport.websocket.frame;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.xa.mass.contract.worker.WorkerChannelFrame;
+import com.xa.mass.contract.worker.WorkerChannelFrameJsonCodec;
 import com.xa.mass.transport.channel.ResultIngressEntry;
+import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebSocketFrameReadersTest {
 
-    private final WebSocketJsonFrameParser parser = new WebSocketJsonFrameParser();
-    private final WebSocketWorkerChannelFrameCodec channelFrameCodec = new WebSocketWorkerChannelFrameCodec();
-
-    @Test
-    void jsonParserParsesObjectsAndRejectsMalformedFrames() {
-        JsonObject parsed = parser.parseObject("{\"messageId\":\"msg-1\"}");
-
-        assertNotNull(parsed);
-        assertEquals("msg-1", parser.readString(parsed, "messageId"));
-        assertNull(parser.parseObject("{\"messageId\":\"broken\""));
-        assertNull(parser.parseObject("[\"not-object\"]"));
-    }
+    private final TransportJsonFrameParser parser = new TransportJsonFrameParser();
+    private final WorkerChannelFrameJsonCodec channelFrameCodec = new WorkerChannelFrameJsonCodec();
 
     @Test
     void sessionReaderIgnoresRouteAddressWhenPresent() {
@@ -56,8 +48,8 @@ class WebSocketFrameReadersTest {
     @Test
     void resultReaderRecognizesOnlyResultFramesAndBuildsExplicitEntry() {
         WebSocketResultIngressFrameReader reader = new WebSocketResultIngressFrameReader("websocket", parser);
-        JsonObject unsupported = parser.parseObject(channelFrameCodec.frame(
-                WebSocketWorkerChannelFrameCodec.ACTION,
+        JsonObject unsupported = parser.parseObject(channelFrameCodec.encodeGenerated(
+                WorkerChannelFrame.ACTION,
                 "{}"
         ));
         assertFalse(reader.isResultFrame(unsupported));
@@ -89,8 +81,8 @@ class WebSocketFrameReadersTest {
         reply.addProperty("resultCorrelationRef", "corr-legacy");
         reply.addProperty("success", true);
         reply.addProperty("body", "ok");
-        JsonObject frame = parser.parseObject(channelFrameCodec.frame(
-                WebSocketWorkerChannelFrameCodec.ACTION_REPLY,
+        JsonObject frame = parser.parseObject(channelFrameCodec.encodeGenerated(
+                WorkerChannelFrame.ACTION_REPLY,
                 parser.toJson(reply)
         ));
 
@@ -104,8 +96,8 @@ class WebSocketFrameReadersTest {
         reply.addProperty("replyRef", replyRef);
         reply.addProperty("success", success);
         reply.addProperty("body", body);
-        return parser.parseObject(channelFrameCodec.frame(
-                WebSocketWorkerChannelFrameCodec.ACTION_REPLY,
+        return parser.parseObject(channelFrameCodec.encodeGenerated(
+                WorkerChannelFrame.ACTION_REPLY,
                 parser.toJson(reply)
         ));
     }

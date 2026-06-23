@@ -1,9 +1,9 @@
 package com.xa.mass.transport.websocket.server;
 
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessage;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
+import com.google.gson.JsonObject;
+import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundFrameSink;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
-import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.session.WebSocketSessionRegistry;
@@ -41,10 +41,10 @@ class DispatcherInboundHandlerTest {
     private ChannelHandlerContext ctx;
     private Channel channel;
     private AtomicReference<String> sentFrame;
-    private WebSocketInboundMessageSink inboundMessageSink;
-    private AtomicReference<WebSocketInboundMessage> acceptedInboundMessage;
+    private WebSocketInboundFrameSink inboundFrameSink;
+    private AtomicReference<JsonObject> acceptedFrame;
     private WebSocketSessionRegistry sessionRegistry;
-    private WebSocketJsonFrameParser frameParser;
+    private TransportJsonFrameParser frameParser;
     private WebSocketSessionOpenFrameReader sessionOpenFrameReader;
 
     @SuppressWarnings("unchecked")
@@ -68,12 +68,12 @@ class DispatcherInboundHandlerTest {
             return null;
         }).when(ctx).writeAndFlush(any());
 
-        acceptedInboundMessage = new AtomicReference<>();
-        inboundMessageSink = acceptedInboundMessage::set;
+        acceptedFrame = new AtomicReference<>();
+        inboundFrameSink = acceptedFrame::set;
         sessionRegistry = newSessionRegistry(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
-        frameParser = new WebSocketJsonFrameParser();
+        frameParser = new TransportJsonFrameParser();
         sessionOpenFrameReader = new WebSocketSessionOpenFrameReader(frameParser);
-        handler = new DispatcherInboundHandler(frameParser, sessionOpenFrameReader, inboundMessageSink, sessionRegistry);
+        handler = new DispatcherInboundHandler(frameParser, sessionOpenFrameReader, inboundFrameSink, sessionRegistry);
     }
 
     @Test
@@ -100,7 +100,7 @@ class DispatcherInboundHandlerTest {
         assertNotNull(sent);
         assertTrue(sent.contains("SESSION_NOT_BOUND"));
         assertEquals(0, sessionRegistry.activeConnectionCount());
-        assertNull(acceptedInboundMessage.get());
+        assertNull(acceptedFrame.get());
     }
 
     @Test
@@ -149,10 +149,8 @@ class DispatcherInboundHandlerTest {
         handler.channelRead0(ctx, frame(controlJson));
 
         assertNull(sentFrame.get());
-        assertEquals(controlJson, acceptedInboundMessage.get().getRawJson());
-        assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
-        assertEquals("test-ch", acceptedInboundMessage.get().getEndpointId());
-        assertNotNull(acceptedInboundMessage.get().getParsedFrame());
+        assertNotNull(acceptedFrame.get());
+        assertEquals("mock.state.get", frameParser.readString(acceptedFrame.get(), "eventCode"));
         assertEquals(1, sessionRegistry.activeConnectionCount());
     }
 
@@ -178,7 +176,7 @@ class DispatcherInboundHandlerTest {
         handler.channelRead0(ctx, frame(controlJson));
 
         assertNull(sentFrame.get());
-        assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
+        assertNotNull(acceptedFrame.get());
         assertEquals("worker-1", sessionRegistry.currentWorkerId(channel));
     }
 
@@ -195,7 +193,7 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
-    void eventFirstControlFrameWithoutMsgTypeStillEnqueuesRawJson() throws Exception {
+    void eventFirstControlFrameWithoutMsgTypeStillPassesParsedFrame() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
                 "/ws?workerId=worker-1&workerGroupId=bucket-1&routeKey=ws-route-1",
                 new DefaultHttpHeaders(),
@@ -216,10 +214,9 @@ class DispatcherInboundHandlerTest {
 
         handler.channelRead0(ctx, frame(controlJson));
 
-        String accepted = acceptedInboundMessage.get().getRawJson();
+        JsonObject accepted = acceptedFrame.get();
         assertNotNull(accepted);
-        assertTrue(accepted.contains("\"eventCode\": \"mock.state.get\"")
-                || accepted.contains("\"eventCode\":\"mock.state.get\""));
+        assertEquals("mock.state.get", frameParser.readString(accepted, "eventCode"));
         assertEquals("worker-1", sessionRegistry.currentWorkerId(channel));
     }
 
@@ -233,7 +230,7 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
-    void controlFrameWithoutMessageIdStillEnqueuesRawJson() throws Exception {
+    void controlFrameWithoutMessageIdStillPassesParsedFrame() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
                 "/ws?workerId=worker-1&workerGroupId=bucket-1&routeKey=ws-route-1",
                 new DefaultHttpHeaders(),
@@ -248,8 +245,8 @@ class DispatcherInboundHandlerTest {
         handler.channelRead0(ctx, frame(controlJson));
 
         assertNull(sentFrame.get());
-        assertNotNull(acceptedInboundMessage.get());
-        assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
+        assertNotNull(acceptedFrame.get());
+        assertEquals("mock.state.get", frameParser.readString(acceptedFrame.get(), "eventCode"));
     }
 
     @Test
@@ -291,8 +288,8 @@ class WebSocketServerImplDisconnectTest {
                 18088,
                 10,
                 "/ws",
-                new WebSocketJsonFrameParser(),
-                new WebSocketSessionOpenFrameReader(new WebSocketJsonFrameParser()),
+                new TransportJsonFrameParser(),
+                new WebSocketSessionOpenFrameReader(new TransportJsonFrameParser()),
                 raw -> { },
                 sessionRegistry
         );
@@ -340,8 +337,8 @@ class WebSocketServerImplDisconnectTest {
                 18088,
                 1,
                 "/ws",
-                new WebSocketJsonFrameParser(),
-                new WebSocketSessionOpenFrameReader(new WebSocketJsonFrameParser()),
+                new TransportJsonFrameParser(),
+                new WebSocketSessionOpenFrameReader(new TransportJsonFrameParser()),
                 raw -> { },
                 sessionRegistry
         );

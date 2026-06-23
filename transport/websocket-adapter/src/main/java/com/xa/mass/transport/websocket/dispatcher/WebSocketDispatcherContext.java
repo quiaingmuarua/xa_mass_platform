@@ -1,7 +1,7 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.transport.runtime.AdapterResultIngressSink;
-import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
+import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
 
 import java.util.Objects;
@@ -11,12 +11,12 @@ import java.util.Objects;
  */
 public final class WebSocketDispatcherContext {
     private final String adapterId;
-    private final WebSocketJsonFrameParser frameParser;
+    private final TransportJsonFrameParser frameParser;
     private final WebSocketResultIngressFrameReader resultFrameReader;
     private final AdapterResultIngressSink resultIngressSink;
 
     public WebSocketDispatcherContext(String adapterId,
-                                       WebSocketJsonFrameParser frameParser,
+                                       TransportJsonFrameParser frameParser,
                                        WebSocketResultIngressFrameReader resultFrameReader,
                                        AdapterResultIngressSink resultIngressSink) {
         this.adapterId = requireAdapterId(adapterId);
@@ -29,7 +29,7 @@ public final class WebSocketDispatcherContext {
         return adapterId;
     }
 
-    public WebSocketJsonFrameParser getFrameParser() {
+    public TransportJsonFrameParser getFrameParser() {
         return frameParser;
     }
 

@@ -2,11 +2,12 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.xa.mass.contract.worker.WorkerChannelFrame;
+import com.xa.mass.contract.worker.WorkerChannelFrameJsonCodec;
 import com.xa.mass.transport.channel.ResultIngressEntry;
+import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.runtime.AdapterResultIngressSink;
-import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
-import com.xa.mass.transport.websocket.frame.WebSocketWorkerChannelFrameCodec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -20,8 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebSocketInputProcessorTest {
 
-    private WebSocketJsonFrameParser frameParser;
-    private WebSocketWorkerChannelFrameCodec channelFrameCodec;
+    private TransportJsonFrameParser frameParser;
+    private WorkerChannelFrameJsonCodec channelFrameCodec;
     private WebSocketResultIngressFrameReader resultFrameReader;
     private WebSocketDispatcherContext context;
     private WebSocketInputProcessor inputProcessor;
@@ -29,8 +30,8 @@ class WebSocketInputProcessorTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        frameParser = new WebSocketJsonFrameParser();
-        channelFrameCodec = new WebSocketWorkerChannelFrameCodec();
+        frameParser = new TransportJsonFrameParser();
+        channelFrameCodec = new WorkerChannelFrameJsonCodec();
         resultFrameReader = new WebSocketResultIngressFrameReader("websocket", frameParser);
         context = createContext(null);
         inputProcessor = new WebSocketInputProcessor(context);
@@ -86,11 +87,7 @@ class WebSocketInputProcessorTest {
 
         JsonObject frame = canonicalTaskResultFrameObject("corr-1", true, "ok", null);
 
-        boolean result = inputProcessor.process(WebSocketInboundMessage.of(
-                frameParser.toJson(frame),
-                "worker-from-handshake",
-                "endpoint-1"
-        ));
+        boolean result = inputProcessor.process(frame);
 
         assertTrue(result);
         assertNotNull(capturedEntry.get());
@@ -110,12 +107,7 @@ class WebSocketInputProcessorTest {
 
         JsonObject frame = canonicalTaskResultFrameObject("corr-1", true, "ok", null);
 
-        boolean result = inputProcessor.process(WebSocketInboundMessage.of(
-                "not-json-but-already-parsed",
-                "worker-from-session",
-                "endpoint-1",
-                frame
-        ));
+        boolean result = inputProcessor.process(frame);
 
         assertTrue(result);
         assertNotNull(capturedEntry.get());
@@ -135,11 +127,7 @@ class WebSocketInputProcessorTest {
 
         JsonObject frame = canonicalTaskResultFrameObject("corr-1", true, "ok", "inline-route");
 
-        boolean result = inputProcessor.process(WebSocketInboundMessage.of(
-                frameParser.toJson(frame),
-                "worker-from-session",
-                "endpoint-1"
-        ));
+        boolean result = inputProcessor.process(frame);
 
         assertTrue(result);
         assertNotNull(capturedEntry.get());
@@ -168,16 +156,12 @@ class WebSocketInputProcessorTest {
         JsonObject reply = new JsonObject();
         reply.addProperty("success", true);
         reply.addProperty("body", "ok");
-        JsonObject frame = frameParser.parseObject(channelFrameCodec.frame(
-                WebSocketWorkerChannelFrameCodec.ACTION_REPLY,
+        JsonObject frame = frameParser.parseObject(channelFrameCodec.encodeGenerated(
+                WorkerChannelFrame.ACTION_REPLY,
                 frameParser.toJson(reply)
         ));
 
-        boolean result = inputProcessor.process(WebSocketInboundMessage.of(
-                frameParser.toJson(frame),
-                "worker-1",
-                "endpoint-1"
-        ));
+        boolean result = inputProcessor.process(frame);
 
         assertTrue(result);
         assertNull(capturedEntry.get());
@@ -196,16 +180,12 @@ class WebSocketInputProcessorTest {
         reply.addProperty("resultCorrelationRef", "corr-legacy");
         reply.addProperty("success", true);
         reply.addProperty("body", "ok");
-        JsonObject frame = frameParser.parseObject(channelFrameCodec.frame(
-                WebSocketWorkerChannelFrameCodec.ACTION_REPLY,
+        JsonObject frame = frameParser.parseObject(channelFrameCodec.encodeGenerated(
+                WorkerChannelFrame.ACTION_REPLY,
                 frameParser.toJson(reply)
         ));
 
-        boolean result = inputProcessor.process(WebSocketInboundMessage.of(
-                frameParser.toJson(frame),
-                "worker-1",
-                "endpoint-1"
-        ));
+        boolean result = inputProcessor.process(frame);
 
         assertTrue(result);
         assertNull(capturedEntry.get());
@@ -246,7 +226,7 @@ class WebSocketInputProcessorTest {
         reply.addProperty("body", detail);
         JsonObject frame = new JsonObject();
         frame.addProperty("frameId", "frame-" + resultCorrelationRef);
-        frame.addProperty("kind", WebSocketWorkerChannelFrameCodec.ACTION_REPLY);
+        frame.addProperty("kind", WorkerChannelFrame.ACTION_REPLY);
         frame.addProperty("body", frameParser.toJson(reply));
         if (routeKey != null) {
             frame.addProperty("routeKey", routeKey);

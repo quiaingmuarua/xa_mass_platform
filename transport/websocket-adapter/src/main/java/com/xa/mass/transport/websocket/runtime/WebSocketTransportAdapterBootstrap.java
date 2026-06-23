@@ -11,7 +11,7 @@ import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
-import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
+import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
@@ -45,7 +45,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         WebSocketSessionRegistry sessionRegistry = new WebSocketSessionRegistry(sessionEvidencePublisher);
         WebSocketSessionEvidenceRefresher sessionEvidenceRefresher =
                 new WebSocketSessionEvidenceRefresher(config.getAdapterId(), sessionRegistry, sessionEvidencePublisher);
-        WebSocketJsonFrameParser frameParser = new WebSocketJsonFrameParser();
+        TransportJsonFrameParser frameParser = new TransportJsonFrameParser();
         WebSocketResultIngressFrameReader resultFrameReader =
                 new WebSocketResultIngressFrameReader(config.getAdapterId(), frameParser);
         WebSocketSessionOpenFrameReader sessionOpenFrameReader =

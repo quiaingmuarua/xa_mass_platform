@@ -86,6 +86,11 @@ Transport should stay centered on these concepts only:
   side-channels are binding or contribution metadata, not executor facts. This
   SPI is not the remote-adapter contract; transport core must not require executor-local
   connection/session classes or adapter-owned registries.
+- `AdapterCommandExecutors.perMessage(...)`: runtime embedded-support template
+  for push adapters whose final hop is one selected-worker send attempt per
+  `DispatchMessage`. It owns only reusable batch/null-item/send-true/send-false/
+  exception to `DispatchOutcome` normalization. Concrete push adapters still
+  own protocol frame encoding and selected-worker session send.
 - `TransportBinding`: explicit runtime binding for adapter id, adapter mailbox
   key, transport hint, protocol label, optional pull channel, and pull-session
   evidence driver. A pull-capable binding must provide both the pull channel
@@ -162,6 +167,11 @@ Transport should stay centered on these concepts only:
 - `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)`: opaque
   result ingress carrier. Transport may buffer, enqueue, and diagnose it, but
   task-shaped payload parsing and result correctness belong above transport.
+- `AdapterResultIngressEntries`: runtime helper for result-ingress carrier
+  construction after a concrete adapter has parsed protocol-local frames into
+  result correlation, opaque payload, and diagnostics. It owns generated result
+  message id, default deadline/timestamp, diagnostics copying, and required
+  correlation/payload validation; it does not parse result payloads.
 - `TransportResultIngressChannel` / `TransportResultIngressHandler` /
   `TransportResultIngressOutcome`: result ingress producer/consumer seams and
   ackability outcome used by local buffers and Redis inbox pumps.
@@ -313,6 +323,10 @@ Concrete adapters own protocol I/O only:
 
 - protocol connection/session open/close resources for their protocol
 - frame or request/response codec
+- public worker-channel wire DTO/JSON codec consumption when the adapter uses a
+  multiplexed worker protocol. `WorkerChannelFrame` field/kind vocabulary and
+  string JSON codec live in `sdk/xa-mass-public-contract`; WebSocket owns only
+  WebSocket/JsonObject glue around that contract.
 - endpoint connect/disconnect/heartbeat lease refresh into
   transport-owned endpoint lease evidence through adapter-session evidence
   publisher capabilities
@@ -321,6 +335,11 @@ Concrete adapters own protocol I/O only:
   adapters consume host-assigned mailbox keys and do not mint mailbox keys from
   adapter id or protocol values themselves
 - accept/read/write loops submitted through the runtime executor context when they block
+- concrete adapter dependencies must match adapter ownership. A concrete adapter
+  may depend on transport contracts/support, public worker-channel DTOs/codecs,
+  and actually used protocol libraries. It must not reverse-depend on embedded
+  SDK API, Java SDK runtime, base domain exception/model taxonomy, Redis
+  clients, or stale protocol implementation libraries.
 
 Adapter process identity is intentionally narrow. `adapterId` identifies a
 concrete transport binding for final-hop executor/channel resolution after

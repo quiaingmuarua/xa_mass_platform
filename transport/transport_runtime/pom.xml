@@ -30,6 +30,11 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-public-contract</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
             <artifactId>mass-trace-sink</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -42,6 +47,10 @@
             <groupId>com.xa.mass</groupId>
             <artifactId>mass-runtime-redis</artifactId>
             <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>

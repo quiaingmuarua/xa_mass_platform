@@ -1,9 +1,8 @@
 package com.xa.mass.transport.websocket.server;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessage;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
-import com.xa.mass.transport.websocket.frame.WebSocketJsonFrameParser;
+import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundFrameSink;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionIdentity;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
@@ -22,18 +21,18 @@ import java.util.Objects;
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
     private final WebSocketServerSessionHandle sessionHandle;
-    private final WebSocketJsonFrameParser frameParser;
+    private final TransportJsonFrameParser frameParser;
     private final WebSocketSessionOpenFrameReader sessionOpenFrameReader;
-    private final WebSocketInboundMessageSink inboundMessageSink;
+    private final WebSocketInboundFrameSink inboundFrameSink;
 
-    public DispatcherInboundHandler(WebSocketJsonFrameParser frameParser,
+    public DispatcherInboundHandler(TransportJsonFrameParser frameParser,
                                     WebSocketSessionOpenFrameReader sessionOpenFrameReader,
-                                    WebSocketInboundMessageSink inboundMessageSink,
+                                    WebSocketInboundFrameSink inboundFrameSink,
                                     WebSocketServerSessionHandle sessionHandle) {
         this.sessionHandle = Objects.requireNonNull(sessionHandle, "sessionHandle");
         this.frameParser = Objects.requireNonNull(frameParser, "frameParser");
         this.sessionOpenFrameReader = Objects.requireNonNull(sessionOpenFrameReader, "sessionOpenFrameReader");
-        this.inboundMessageSink = Objects.requireNonNull(inboundMessageSink, "inboundMessageSink");
+        this.inboundFrameSink = Objects.requireNonNull(inboundFrameSink, "inboundFrameSink");
     }
 
     @Override
@@ -74,12 +73,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             } finally {
                 org.slf4j.MDC.clear();
             }
-            inboundMessageSink.accept(WebSocketInboundMessage.of(
-                    raw,
-                    workerId,
-                    ctx.channel().id().asShortText(),
-                    frame
-            ));
+            inboundFrameSink.accept(frame);
         } catch (Exception e) {
             logger.error("Unexpected error in channelRead0", e);
             sendError(ctx, "INTERNAL_ERROR", "Internal server error");

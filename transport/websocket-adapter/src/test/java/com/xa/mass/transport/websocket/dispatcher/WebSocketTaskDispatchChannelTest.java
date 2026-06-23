@@ -2,11 +2,11 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.xa.mass.contract.worker.WorkerChannelFrame;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
-import com.xa.mass.transport.websocket.frame.WebSocketWorkerChannelFrameCodec;
 import com.xa.mass.transport.websocket.session.WebSocketSessionRegistry;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelId;
@@ -42,7 +42,7 @@ class WebSocketTaskDispatchChannelTest {
         verify(fixture.channel()).writeAndFlush(captor.capture());
 
         JsonObject frame = JsonParser.parseString(captor.getValue().text()).getAsJsonObject();
-        assertEquals(WebSocketWorkerChannelFrameCodec.ACTION, frame.get("kind").getAsString());
+        assertEquals(WorkerChannelFrame.ACTION, frame.get("kind").getAsString());
         assertEquals(item.payload(), frame.get("body").getAsString());
         fixture.registry().shutdown();
     }

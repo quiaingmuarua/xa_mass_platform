@@ -3,8 +3,8 @@ package com.xa.mass.client.worker.runtime;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.worker.WorkerAction;
-import com.xa.mass.client.worker.WorkerChannelFrame;
 import com.xa.mass.client.worker.handler.WorkerActionResult;
+import com.xa.mass.contract.worker.WorkerChannelFrame;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;

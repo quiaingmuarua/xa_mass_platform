@@ -1,82 +1,71 @@
 package com.xa.mass.transport.websocket.frame;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.transport.channel.ResultIngressDiagnostics;
 import com.xa.mass.transport.channel.ResultIngressEntry;
-import com.xa.mass.transport.channel.ResultIngressMessage;
+import com.xa.mass.transport.runtime.AdapterResultIngressEntries;
+import com.xa.mass.transport.runtime.embedded.WorkerChannelActionReplyFrame;
+import com.xa.mass.transport.runtime.embedded.WorkerChannelActionReplyReader;
+import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Builds opaque result ingress envelopes from WebSocket worker result frames.
  */
 public final class WebSocketResultIngressFrameReader {
 
-    private static final String REPLY_REF_FIELD = "replyRef";
     private static final String EVENT_CODE_FIELD = "eventCode";
     private static final String TYPE_FIELD = "type";
     private static final String ROUTE_KEY_FIELD = "routeKey";
     private static final String TRACE_ID_FIELD = "traceId";
 
     private final String adapterId;
-    private final WebSocketJsonFrameParser parser;
-    private final WebSocketWorkerChannelFrameCodec channelFrameCodec;
+    private final TransportJsonFrameParser parser;
+    private final WorkerChannelActionReplyReader actionReplyReader;
 
-    public WebSocketResultIngressFrameReader(String adapterId, WebSocketJsonFrameParser parser) {
-        this(adapterId, parser, new WebSocketWorkerChannelFrameCodec());
+    public WebSocketResultIngressFrameReader(String adapterId, TransportJsonFrameParser parser) {
+        this(adapterId, parser, new WorkerChannelActionReplyReader());
     }
 
     WebSocketResultIngressFrameReader(String adapterId,
-                                      WebSocketJsonFrameParser parser,
-                                      WebSocketWorkerChannelFrameCodec channelFrameCodec) {
+                                      TransportJsonFrameParser parser,
+                                      WorkerChannelActionReplyReader actionReplyReader) {
         this.adapterId = requireText(adapterId, "adapterId");
         this.parser = parser;
-        this.channelFrameCodec = channelFrameCodec;
+        this.actionReplyReader = actionReplyReader;
     }
 
     public boolean isResultFrame(JsonObject frame) {
         return frame != null
-                && channelFrameCodec.isKind(frame, WebSocketWorkerChannelFrameCodec.ACTION_REPLY)
+                && actionReplyReader.isActionReplyFrame(parser.toJson(frame))
                 && !isControlFrame(frame);
     }
 
     public ResultIngressEntry toEntry(JsonObject frame) {
-        String payload = channelFrameCodec.body(frame);
-        JsonObject reply = parser.parseObject(payload);
-        if (reply == null) {
-            throw new IllegalArgumentException("ACTION_REPLY body must be a JSON object");
-        }
-        String replyRef = WebSocketStringValues.firstNonBlank(parser.readString(reply, REPLY_REF_FIELD));
-        if (replyRef == null) {
-            throw new IllegalArgumentException(REPLY_REF_FIELD + " is required");
-        }
+        WorkerChannelActionReplyFrame actionReply = actionReplyReader.read(parser.toJson(frame));
+        String payload = actionReply.body();
+        String replyRef = actionReply.replyRef();
         String routeKey = WebSocketStringValues.firstNonBlank(parser.readString(frame, ROUTE_KEY_FIELD));
         String traceId = WebSocketStringValues.firstNonBlank(
                 parser.readString(frame, TRACE_ID_FIELD),
-                channelFrameCodec.frameId(frame),
+                actionReply.frameId(),
                 replyRef
         );
-        long now = System.currentTimeMillis();
-        return new ResultIngressEntry(
+        return AdapterResultIngressEntries.from(
                 replyRef,
-                new ResultIngressMessage(
-                        UUID.randomUUID().toString(),
-                        replyRef,
-                        payload,
-                        0L,
-                        now
-                ),
-                new ResultIngressDiagnostics(diagnostics(routeKey, traceId))
+                payload,
+                diagnostics(routeKey, traceId)
         );
     }
 
     public String replyRef(JsonObject frame) {
-        String payload = channelFrameCodec.body(frame);
-        JsonObject reply = parser.parseObject(payload);
-        return reply == null ? null : WebSocketStringValues.firstNonBlank(parser.readString(reply, REPLY_REF_FIELD));
+        try {
+            return actionReplyReader.replyRef(parser.toJson(frame));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     public String traceId(JsonObject frame) {

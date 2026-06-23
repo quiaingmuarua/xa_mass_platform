@@ -12,16 +12,16 @@ import java.util.function.Consumer;
 public final class WebSocketServerFactoryContext {
 
     private final WebSocketServerSessionHandle sessionHandle;
-    private final Consumer<String> inboundMessageSink;
+    private final Consumer<String> inboundRawFrameSink;
     private final int port;
     private final String endpointPath;
 
     public WebSocketServerFactoryContext(WebSocketServerSessionHandle sessionHandle,
-                                         Consumer<String> inboundMessageSink,
+                                         Consumer<String> inboundRawFrameSink,
                                          int port,
                                          String endpointPath) {
         this.sessionHandle = Objects.requireNonNull(sessionHandle, "sessionHandle");
-        this.inboundMessageSink = Objects.requireNonNull(inboundMessageSink, "inboundMessageSink");
+        this.inboundRawFrameSink = Objects.requireNonNull(inboundRawFrameSink, "inboundRawFrameSink");
         this.port = port;
         this.endpointPath = Objects.requireNonNull(endpointPath, "endpointPath");
     }
@@ -38,7 +38,7 @@ public final class WebSocketServerFactoryContext {
         return endpointPath;
     }
 
-    public void acceptInboundRawMessage(String rawJson) {
-        inboundMessageSink.accept(rawJson);
+    public void acceptInboundRawFrame(String rawJson) {
+        inboundRawFrameSink.accept(rawJson);
     }
 }

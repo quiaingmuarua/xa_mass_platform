@@ -1,8 +1,5 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
-import com.xa.mass.base.exception.CommandException;
-import com.xa.mass.base.exception.ErrorCode;
-import com.xa.mass.base.exception.ValidationException;
 import com.google.gson.JsonObject;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import org.slf4j.Logger;
@@ -23,23 +20,16 @@ public final class WebSocketInputProcessor {
     }
 
     public boolean process(String rawJson) {
-        return process(WebSocketInboundMessage.raw(rawJson));
+        return process(context.getFrameParser().parseObject(rawJson));
     }
 
-    public boolean process(WebSocketInboundMessage inboundMessage) {
+    public boolean process(JsonObject frame) {
         try {
-            if (inboundMessage == null) {
-                return true;
-            }
-            JsonObject frame = inboundMessage.getParsedFrame();
-            if (frame == null) {
-                frame = context.getFrameParser().parseObject(inboundMessage.getRawJson());
-            }
             if (frame == null) {
                 return true;
             }
             if (context.getResultFrameReader().isResultFrame(frame)) {
-                return processCanonicalTaskResult(frame, inboundMessage);
+                return processCanonicalTaskResult(frame);
             }
             return processUnknownFrame();
         } catch (Exception ex) {
@@ -48,7 +38,7 @@ public final class WebSocketInputProcessor {
         }
     }
 
-    private boolean processCanonicalTaskResult(JsonObject frame, WebSocketInboundMessage inboundMessage) {
+    private boolean processCanonicalTaskResult(JsonObject frame) {
         if (context.getResultIngressSink() == null) {
             logger.warn("Canonical task result ignored because task result ingest channel is unavailable");
             return true;
@@ -71,15 +61,8 @@ public final class WebSocketInputProcessor {
     }
 
     private void logProcessingException(Exception ex) {
-        if (ex instanceof ValidationException) {
-            logger.warn("WebSocket input validation failed: {}", ex.getMessage());
-            return;
-        }
-        if (ex instanceof CommandException commandException) {
-            ErrorCode code = commandException.getErrorCode();
-            logger.warn("WebSocket input command failed: code={}, message={}",
-                    code != null ? code.code : "UNKNOWN",
-                    commandException.getMessage());
+        if (ex instanceof IllegalArgumentException) {
+            logger.warn("WebSocket input frame rejected: {}", ex.getMessage());
             return;
         }
         logger.error("WebSocket input processing failed", ex);

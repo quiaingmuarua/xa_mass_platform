@@ -145,6 +145,10 @@ entry for `transport/`.
   Adapter metadata, protocol resource start/stop, raw/manual channels,
   diagnostics, and
   pull channels are explicit binding/contribution facts, not executor facts.
+- Push adapters use runtime embedded-support outcome normalization for
+  per-message final-hop attempts. WebSocket and Socket own only protocol frame
+  construction plus selected-worker session send; they must not duplicate the
+  batch/outcome loop.
 - `AdapterCommandExecutor` is the embedded Java final-hop SPI, not the
   transport-neutral remote adapter contract. Do not make transport core depend
   on executor-local connection/session classes, late-bound handler setters, or
@@ -172,9 +176,10 @@ entry for `transport/`.
   and worker session-presence observations are projected by
   `WorkerPresenceSessionPublisher`.
   WebSocket now splits this into explicit session store, server handle, command
-  executor, evidence driver, and refresh-loop roles. Assigned delivery lookup
-  inside the adapter is worker-id-only; `deliveryBucketId` remains upstream
-  scheduling/index context.
+  executor, public worker-channel frame codec consumption, and evidence
+  refresher roles.
+  Assigned delivery lookup inside the adapter is worker-id-only;
+  `deliveryBucketId` remains upstream scheduling/index context.
   Socket uses the same adapter-local final-hop rule through its session manager;
   there is no generic selected-worker endpoint-registry wrapper on the assigned
   delivery path.
@@ -208,6 +213,10 @@ entry for `transport/`.
   correlation, status, retryability, reason, and time. It must not expose
   adapter, lane, route, node, connection, endpoint evidence, or task-shaped
   message/attempt fields.
+- WebSocket adapter may depend on `sdk/xa-mass-public-contract` for
+  `WorkerChannelFrame` wire DTOs. It must not depend on embedded SDK API,
+  Java SDK runtime, `xa-mass-base` exception/model taxonomy, Redis clients, or
+  stale Java-WebSocket libraries.
 - Embedded runtime composition currently defaults to an in-memory polling
   pending pull buffer for the bundled polling adapter, but SDK/starter wiring
   may swap in a Redis-backed polling buffer without changing transport dispatch

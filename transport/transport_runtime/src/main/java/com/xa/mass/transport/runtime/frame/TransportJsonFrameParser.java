@@ -1,4 +1,4 @@
-package com.xa.mass.transport.websocket.frame;
+package com.xa.mass.transport.runtime.frame;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
@@ -10,19 +10,19 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 /**
- * Adapter-local JSON frame parser/writer.
+ * Transport embedded-adapter JSON text-frame helper.
  */
-public final class WebSocketJsonFrameParser {
+public final class TransportJsonFrameParser {
 
-    private static final Logger logger = LoggerFactory.getLogger(WebSocketJsonFrameParser.class);
+    private static final Logger logger = LoggerFactory.getLogger(TransportJsonFrameParser.class);
 
     private final Gson gson;
 
-    public WebSocketJsonFrameParser() {
+    public TransportJsonFrameParser() {
         this(new Gson());
     }
 
-    public WebSocketJsonFrameParser(Gson gson) {
+    public TransportJsonFrameParser(Gson gson) {
         this.gson = gson;
     }
 
@@ -31,8 +31,8 @@ public final class WebSocketJsonFrameParser {
             JsonElement element = gson.fromJson(json, JsonElement.class);
             return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
         } catch (JsonSyntaxException ex) {
-            logger.warn("Failed to parse WebSocket JSON frame: {}", ex.getMessage());
-            logger.debug("Malformed WebSocket JSON frame", ex);
+            logger.warn("Failed to parse transport JSON frame: {}", ex.getMessage());
+            logger.debug("Malformed transport JSON frame", ex);
             return null;
         }
     }

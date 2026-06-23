@@ -1,8 +1,13 @@
-package com.xa.mass.client.worker;
+package com.xa.mass.contract.worker;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+/**
+ * Public worker-channel wire frame for multiplexed worker protocols.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record WorkerChannelFrame(
         String frameId,
         String kind,

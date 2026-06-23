@@ -188,6 +188,80 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
+    void websocketAdapterDependencySurfaceDoesNotReverseDependOnSdkBaseOrStaleClients() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java")),
+                "com.xa.mass.sdk",
+                "com.xa.mass.base"
+        );
+        assertNoTextFilesContain(
+                List.of(repoRoot().resolve("transport/websocket-adapter/pom.xml")),
+                "xa-mass-embedded-sdk-api",
+                "xa-mass-base",
+                "Java-WebSocket",
+                "lettuce-core"
+        );
+    }
+
+    @Test
+    void pushAdaptersUseRuntimeJsonFrameParser() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/frame/TransportJsonFrameParser.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketJsonFrameParser.java")
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java")),
+                "WebSocketJsonFrameParser"
+        );
+    }
+
+    @Test
+    void workerChannelFrameHasSinglePublicContractOwner() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client/worker/WorkerChannelFrame.java"),
+                repoRoot().resolve("sdk/xa-mass-public-contract/src/main/java/com/xa/mass/contract/worker/WorkerChannelActionReplyFrame.java"),
+                repoRoot().resolve("sdk/xa-mass-public-contract/src/main/java/com/xa/mass/contract/worker/WorkerChannelActionReplyReader.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketWorkerChannelFrameCodec.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketWorkerChannelFrameJsonCodec.java")
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java")),
+                "public static final String ACTION",
+                "public static final String ACTION_REPLY",
+                "public static final String EVIDENCE_REPORT",
+                "public static final String HEARTBEAT"
+        );
+    }
+
+    @Test
+    void pushAdaptersUseSharedFinalHopAndResultIngressCarrierHelpers() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketTaskDispatchChannel.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java")
+                ),
+                "DispatchOutcomeFactory",
+                "DispatchOutcome.delivered(",
+                "DispatchOutcome.noEndpoint(",
+                "DispatchOutcome.failed("
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketResultIngressFrameReader.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/server/SocketTransportServer.java")
+                ),
+                "new ResultIngressEntry",
+                "new ResultIngressMessage",
+                "new ResultIngressDiagnostics"
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketResultIngressFrameReader.java")),
+                "WorkerChannelFrameJsonCodec",
+                "WorkerChannelFrame.ACTION_REPLY"
+        );
+    }
+
+    @Test
     void engineCoreDoesNotImportTransportContracts() throws IOException {
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("xa-mass-engine/src/main/java")),
@@ -833,12 +907,10 @@ class TransportConvergenceArchitectureGuardTest {
                 "WebSocket session evidence should stay a store-internal snapshot, not a top-level adapter model");
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceDriver.java"));
-        String inboundMessageSource = Files.readString(repoRoot().resolve(
+        assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketInboundMessage.java"));
-        assertTrue(!inboundMessageSource.contains("routeKey")
-                        && !inboundMessageSource.contains("endpointAddress")
-                        && !inboundMessageSource.contains("deliveryBucketId"),
-                "WebSocket inbound message must not inherit endpoint address, route, or delivery bucket metadata from the session");
+        assertNoProductionSourceContains(List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java")),
+                "WebSocketInboundMessage");
         assertPathsDoNotExist(
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointRegistry.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointRegistry.java")
