@@ -2,7 +2,6 @@ package com.xa.mass.transport.websocket.server;
 
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundFrameSink;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import io.netty.bootstrap.ServerBootstrap;
@@ -25,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -47,7 +47,7 @@ public class WebSocketServerImpl implements TransportServer {
     private final WebSocketServerSessionHandle sessionHandle;
     private final TransportJsonFrameParser frameParser;
     private final WebSocketSessionOpenFrameReader sessionOpenFrameReader;
-    private final WebSocketInboundFrameSink inboundFrameSink;
+    private final Consumer<com.google.gson.JsonObject> inboundFrameSink;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private volatile boolean running = false;
@@ -57,7 +57,7 @@ public class WebSocketServerImpl implements TransportServer {
                                String websocketPath,
                                TransportJsonFrameParser frameParser,
                                WebSocketSessionOpenFrameReader sessionOpenFrameReader,
-                               WebSocketInboundFrameSink inboundFrameSink,
+                               Consumer<com.google.gson.JsonObject> inboundFrameSink,
                                WebSocketServerSessionHandle sessionHandle) {
         this.port = port;
         this.maxConnections = maxConnections;

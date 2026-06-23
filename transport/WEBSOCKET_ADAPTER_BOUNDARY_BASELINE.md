@@ -36,9 +36,9 @@ Current code centers on:
 - `WebSocketSessionEvidenceRefresher`
 - runtime-support `TransportJsonFrameParser`
 - `WebSocketSessionOpenFrameReader`
-- `WebSocketResultIngressFrameReader`
-- `WebSocketInputProcessor`
-- `WebSocketEmbeddedRuntimeSupport`
+- runtime embedded-support `WorkerChannelActionReplyResultFrameReader`
+- runtime embedded-support `AdapterInboundResultProcessor`
+- `WebSocketResultDiagnosticsProvider`
 
 ## Adapter Does Not Own
 
@@ -99,7 +99,7 @@ Hard rules:
   handle
 - default Netty inbound handling parses a `TextWebSocketFrame` into a
   `JsonObject` and passes only that parsed frame through
-  `WebSocketInboundFrameSink`; do not recreate a `WebSocketInboundMessage`
+  `Consumer<JsonObject>`; do not recreate a `WebSocketInboundMessage`
   carrier that mixes frame payload with worker/session/endpoint metadata
 - `WebSocketSessionRegistry` publishes connect/disconnect evidence for local
   session mutations; `WebSocketSessionEvidenceRefresher` is a managed adapter
@@ -109,13 +109,18 @@ Hard rules:
 - route inbound result shells into opaque
   `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)`
   values through the adapter-facing result ingress sink; result entry
-  construction after protocol extraction is shared transport runtime helper
-  logic
+  construction after protocol extraction is shared transport runtime embedded
+  support logic
 - `WorkerChannelFrame(ACTION_REPLY)` carrier decoding uses the public frame
   codec, but `replyRef` extraction belongs to transport runtime embedded
-  support; `WebSocketResultIngressFrameReader` owns only WebSocket frame
-  filtering and diagnostics such as route/trace fallback before calling shared
-  result-entry construction
+  support; `WorkerChannelActionReplyResultFrameReader` owns the shared
+  worker-channel result facts, `WebSocketResultDiagnosticsProvider` owns only
+  WebSocket-local diagnostics such as route/trace fallback, and
+  `AdapterInboundResultProcessor` owns result-entry construction plus sink
+  ingestion behavior
+- classify WebSocket protocol control frames locally before invoking shared
+  worker-channel result support; shared embedded readers must not become the
+  owner of WebSocket `type=hello/handshake/heartbeat` rules
 - bind WebSocket worker session identity only during handshake/session-open;
   normal text frames must read the channel-bound session identity and must not
   register or rebind sessions

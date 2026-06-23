@@ -1,7 +1,5 @@
 package com.xa.mass.transport.websocket.frame;
 
-import com.google.gson.JsonObject;
-import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import io.netty.handler.codec.http.QueryStringDecoder;
 
 /**
@@ -12,10 +10,7 @@ public final class WebSocketSessionOpenFrameReader {
     private static final String WORKER_ID_FIELD = "workerId";
     private static final String WORKER_GROUP_ID_FIELD = "workerGroupId";
 
-    private final TransportJsonFrameParser parser;
-
-    public WebSocketSessionOpenFrameReader(TransportJsonFrameParser parser) {
-        this.parser = parser;
+    public WebSocketSessionOpenFrameReader() {
     }
 
     public WebSocketSessionIdentity readHandshake(String requestUri) {
@@ -25,15 +20,6 @@ public final class WebSocketSessionOpenFrameReader {
         QueryStringDecoder decoder = new QueryStringDecoder(requestUri);
         String workerId = firstQueryValue(decoder, WORKER_ID_FIELD);
         String workerGroupId = firstQueryValue(decoder, WORKER_GROUP_ID_FIELD);
-        return new WebSocketSessionIdentity(workerGroupId, workerId);
-    }
-
-    public WebSocketSessionIdentity readFrame(JsonObject frame) {
-        if (frame == null) {
-            return new WebSocketSessionIdentity(null, null);
-        }
-        String workerId = parser.readString(frame, WORKER_ID_FIELD);
-        String workerGroupId = parser.readString(frame, WORKER_GROUP_ID_FIELD);
         return new WebSocketSessionIdentity(workerGroupId, workerId);
     }
 

@@ -2,7 +2,6 @@ package com.xa.mass.transport.websocket.server;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundFrameSink;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionIdentity;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
@@ -17,17 +16,18 @@ import org.slf4j.LoggerFactory;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
     private final WebSocketServerSessionHandle sessionHandle;
     private final TransportJsonFrameParser frameParser;
     private final WebSocketSessionOpenFrameReader sessionOpenFrameReader;
-    private final WebSocketInboundFrameSink inboundFrameSink;
+    private final Consumer<JsonObject> inboundFrameSink;
 
     public DispatcherInboundHandler(TransportJsonFrameParser frameParser,
                                     WebSocketSessionOpenFrameReader sessionOpenFrameReader,
-                                    WebSocketInboundFrameSink inboundFrameSink,
+                                    Consumer<JsonObject> inboundFrameSink,
                                     WebSocketServerSessionHandle sessionHandle) {
         this.sessionHandle = Objects.requireNonNull(sessionHandle, "sessionHandle");
         this.frameParser = Objects.requireNonNull(frameParser, "frameParser");

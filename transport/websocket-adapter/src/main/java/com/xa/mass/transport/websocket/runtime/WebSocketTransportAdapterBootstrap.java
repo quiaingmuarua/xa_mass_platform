@@ -1,28 +1,36 @@
 package com.xa.mass.transport.websocket.runtime;
 
+import com.google.gson.JsonObject;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.embedded.AdapterInboundResultProcessor;
+import com.xa.mass.transport.runtime.embedded.WorkerChannelActionReplyResultFrameReader;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
-import com.xa.mass.transport.websocket.frame.WebSocketResultIngressFrameReader;
+import com.xa.mass.transport.websocket.frame.WebSocketResultDiagnosticsProvider;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceRefresher;
 import com.xa.mass.transport.websocket.session.WebSocketSessionRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.function.Consumer;
 
 /**
  * Adapter-owned bootstrap for embedded WebSocket runtime contribution.
  */
 public final class WebSocketTransportAdapterBootstrap implements TransportAdapterBootstrap {
+
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketTransportAdapterBootstrap.class);
+    private static final String TYPE_FIELD = "type";
 
     private final WebSocketAdapterConfig config;
 
@@ -46,16 +54,16 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         WebSocketSessionEvidenceRefresher sessionEvidenceRefresher =
                 new WebSocketSessionEvidenceRefresher(config.getAdapterId(), sessionRegistry, sessionEvidencePublisher);
         TransportJsonFrameParser frameParser = new TransportJsonFrameParser();
-        WebSocketResultIngressFrameReader resultFrameReader =
-                new WebSocketResultIngressFrameReader(config.getAdapterId(), frameParser);
-        WebSocketSessionOpenFrameReader sessionOpenFrameReader =
-                new WebSocketSessionOpenFrameReader(frameParser);
-        WebSocketDispatcherContext dispatcherContext = new WebSocketDispatcherContext(
-                config.getAdapterId(),
-                frameParser,
+        WorkerChannelActionReplyResultFrameReader resultFrameReader =
+                new WorkerChannelActionReplyResultFrameReader(frameParser);
+        AdapterInboundResultProcessor<JsonObject> resultProcessor = AdapterInboundResultProcessor.with(
                 resultFrameReader,
-                context.ingress().resultIngress()
+                context.ingress().resultIngress(),
+                new WebSocketResultDiagnosticsProvider(config.getAdapterId(), frameParser)::diagnostics
         );
+        WebSocketSessionOpenFrameReader sessionOpenFrameReader = new WebSocketSessionOpenFrameReader();
+        Consumer<JsonObject> inboundFrameSink =
+                frame -> processInboundFrame(frameParser, resultFrameReader, resultProcessor, frame);
 
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
@@ -79,7 +87,8 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         }
 
         TransportServer transportServer = createTransportServer(
-                dispatcherContext,
+                frameParser,
+                inboundFrameSink,
                 sessionOpenFrameReader,
                 sessionRegistry
         );
@@ -90,7 +99,8 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         return contribution.build();
     }
 
-    private TransportServer createTransportServer(WebSocketDispatcherContext dispatcherContext,
+    private TransportServer createTransportServer(TransportJsonFrameParser frameParser,
+                                                  Consumer<JsonObject> inboundFrameSink,
                                                   WebSocketSessionOpenFrameReader sessionOpenFrameReader,
                                                   WebSocketServerSessionHandle sessionHandle) {
         if (!config.isServerEnabled()) {
@@ -101,7 +111,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         if (transportServerFactory != null) {
             return transportServerFactory.create(new WebSocketServerFactoryContext(
                     sessionHandle,
-                    new WebSocketInputProcessor(dispatcherContext)::process,
+                    rawJson -> processInboundRawFrame(frameParser, inboundFrameSink, rawJson),
                     config.getServerPort(),
                     config.getEndpointPath()
             ));
@@ -110,11 +120,49 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 config.getServerPort(),
                 config.getMaxConnections(),
                 config.getEndpointPath(),
-                dispatcherContext.getFrameParser(),
+                frameParser,
                 sessionOpenFrameReader,
-                new WebSocketInputProcessor(dispatcherContext)::process,
+                inboundFrameSink,
                 sessionHandle
         );
+    }
+
+    private static void processInboundRawFrame(TransportJsonFrameParser frameParser,
+                                               Consumer<JsonObject> inboundFrameSink,
+                                               String rawJson) {
+        JsonObject frame = frameParser.parseObject(rawJson);
+        if (frame != null) {
+            inboundFrameSink.accept(frame);
+        }
+    }
+
+    private static void processInboundFrame(TransportJsonFrameParser frameParser,
+                                            WorkerChannelActionReplyResultFrameReader resultFrameReader,
+                                            AdapterInboundResultProcessor<JsonObject> resultProcessor,
+                                            JsonObject frame) {
+        if (frame == null) {
+            return;
+        }
+        if (isControlFrame(frameParser, frame)) {
+            logger.debug("Ignoring WebSocket adapter control frame");
+            return;
+        }
+        if (resultFrameReader.isResultFrame(frame)) {
+            resultProcessor.processResult(frame);
+            return;
+        }
+        logger.warn("No canonical task-result handler found for inbound adapter frame");
+    }
+
+    private static boolean isControlFrame(TransportJsonFrameParser frameParser, JsonObject frame) {
+        String type = frameParser.readString(frame, TYPE_FIELD);
+        if (type == null) {
+            return false;
+        }
+        return switch (type.toLowerCase(java.util.Locale.ROOT)) {
+            case "hello", "handshake", "heartbeat" -> true;
+            default -> false;
+        };
     }
 
     private static final class WebSocketRawWorkerMessageChannel

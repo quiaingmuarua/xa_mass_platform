@@ -2,7 +2,6 @@ package com.xa.mass.transport.websocket.server;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundFrameSink;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
@@ -21,6 +20,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.lang.reflect.Constructor;
 import java.util.Arrays;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,7 +41,7 @@ class DispatcherInboundHandlerTest {
     private ChannelHandlerContext ctx;
     private Channel channel;
     private AtomicReference<String> sentFrame;
-    private WebSocketInboundFrameSink inboundFrameSink;
+    private Consumer<JsonObject> inboundFrameSink;
     private AtomicReference<JsonObject> acceptedFrame;
     private WebSocketSessionRegistry sessionRegistry;
     private TransportJsonFrameParser frameParser;
@@ -72,7 +72,7 @@ class DispatcherInboundHandlerTest {
         inboundFrameSink = acceptedFrame::set;
         sessionRegistry = newSessionRegistry(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
         frameParser = new TransportJsonFrameParser();
-        sessionOpenFrameReader = new WebSocketSessionOpenFrameReader(frameParser);
+        sessionOpenFrameReader = new WebSocketSessionOpenFrameReader();
         handler = new DispatcherInboundHandler(frameParser, sessionOpenFrameReader, inboundFrameSink, sessionRegistry);
     }
 
@@ -289,7 +289,7 @@ class WebSocketServerImplDisconnectTest {
                 10,
                 "/ws",
                 new TransportJsonFrameParser(),
-                new WebSocketSessionOpenFrameReader(new TransportJsonFrameParser()),
+                new WebSocketSessionOpenFrameReader(),
                 raw -> { },
                 sessionRegistry
         );
@@ -338,7 +338,7 @@ class WebSocketServerImplDisconnectTest {
                 1,
                 "/ws",
                 new TransportJsonFrameParser(),
-                new WebSocketSessionOpenFrameReader(new TransportJsonFrameParser()),
+                new WebSocketSessionOpenFrameReader(),
                 raw -> { },
                 sessionRegistry
         );

@@ -235,6 +235,12 @@ class TransportConvergenceArchitectureGuardTest {
 
     @Test
     void pushAdaptersUseSharedFinalHopAndResultIngressCarrierHelpers() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketResultIngressFrameReader.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketInputProcessor.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketDispatcherContext.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketInboundFrameSink.java")
+        );
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketTaskDispatchChannel.java"),
@@ -247,7 +253,6 @@ class TransportConvergenceArchitectureGuardTest {
         );
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketResultIngressFrameReader.java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/server/SocketTransportServer.java")
                 ),
                 "new ResultIngressEntry",
@@ -255,9 +260,20 @@ class TransportConvergenceArchitectureGuardTest {
                 "new ResultIngressDiagnostics"
         );
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketResultIngressFrameReader.java")),
-                "WorkerChannelFrameJsonCodec",
+                List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java")),
+                "new ResultIngressEntry",
+                "new ResultIngressMessage",
+                "new ResultIngressDiagnostics",
+                "AdapterResultIngressEntries.from("
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java")),
                 "WorkerChannelFrame.ACTION_REPLY"
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/embedded")),
+                "com.xa.mass.transport.websocket",
+                "io.netty"
         );
     }
 
@@ -837,9 +853,14 @@ class TransportConvergenceArchitectureGuardTest {
         assertTrue(!taskDispatchSource.contains("adapterId"),
                 "WebSocket assigned delivery executor must not own adapter id metadata");
 
-        assertPathsDoNotExist(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketCommandDispatchContext.java"));
-        assertPathsDoNotExist(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSelectedWorkerSender.java"));
-        assertPathsDoNotExist(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSelectedWorkerRegistry.java"));
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketCommandDispatchContext.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketDispatcherContext.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketInputProcessor.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketInboundFrameSink.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketResultIngressFrameReader.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSelectedWorkerSender.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSelectedWorkerRegistry.java"));
 
         String bootstrapSource = Files.readString(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java"));
@@ -848,11 +869,6 @@ class TransportConvergenceArchitectureGuardTest {
                         && !bootstrapSource.contains("getEndpointRegistry()")
                         && !bootstrapSource.contains("WebSocketSelectedWorker"),
                 "WebSocket bootstrap must not register a selected-worker endpoint-registry wrapper");
-
-        Path dispatcherContext = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketDispatcherContext.java");
-        String dispatcherContextSource = Files.readString(dispatcherContext);
-        assertTrue(!dispatcherContextSource.contains("WorkerEndpointRegistry"),
-                "WebSocket raw/result dispatcher context must not own assigned-delivery selected endpoint registry");
 
         assertPathsDoNotExist(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/ServerSessionManager.java"));
         assertPathsDoNotExist(
@@ -1425,7 +1441,7 @@ class TransportConvergenceArchitectureGuardTest {
         );
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketResultIngressFrameReader.java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/protocol/SocketTransportFrameCodec.java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/server/SocketTransportServer.java")
                 ),
