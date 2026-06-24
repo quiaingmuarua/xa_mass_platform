@@ -79,6 +79,15 @@ Hard rules:
   JSON codec rather than WebSocket-owned JSON/frame codecs. Public contract owns
   the frame carrier/codec only; adapter/runtime support owns any ACTION_REPLY
   body interpretation such as `replyRef`.
+- `WebSocketAdapterConfig` owns only concrete adapter properties such as
+  adapter id, enabled flags, port, max connections, and endpoint path. Embedded
+  custom server factory hooks are SDK/starter assembly concerns carried by
+  `TransportConfig`/`TransportRuntimeComposition` into the WebSocket bootstrap
+  constructor; they must not be stored inside the copyable adapter config.
+- `WebSocketTransportAdapterBootstrap` snapshots concrete adapter properties at
+  construction time and must not retain a mutable `WebSocketAdapterConfig`
+  reference. The runtime-created `WebSocketServerFactoryContext` belongs to
+  server contribution only, not adapter property configuration.
 - `WebSocketSessionRegistry` owns the adapter-local session indexes and final
   channel write. Its only durable indexes are `workerId -> channel/session` and
   `channel -> workerId + workerGroupId`; `workerGroupId` is evidence context,

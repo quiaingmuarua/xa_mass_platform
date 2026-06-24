@@ -245,7 +245,7 @@ class MassSdkTest {
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
                                 .server(19092, "/custom-transport")
-                                .enabled(false)
+                                .enabled(true)
                                 .serverEnabled(true)
                                 .transportServerFactory(factory)))
                 .engine(engine -> engine.enabled(false))

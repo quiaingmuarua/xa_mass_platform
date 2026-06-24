@@ -34,67 +34,116 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     private static final Logger logger = LoggerFactory.getLogger(WebSocketTransportAdapterBootstrap.class);
     private static final String TYPE_FIELD = "type";
 
-    private final WebSocketAdapterConfig config;
+    private final String adapterId;
+    private final boolean enabled;
+    private final boolean serverEnabled;
+    private final int serverPort;
+    private final int maxConnections;
+    private final String endpointPath;
+    private final TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory;
 
     public WebSocketTransportAdapterBootstrap(WebSocketAdapterConfig config) {
-        this.config = new WebSocketAdapterConfig(config);
+        this(config, null);
+    }
+
+    public WebSocketTransportAdapterBootstrap(
+            WebSocketAdapterConfig config,
+            TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory) {
+        WebSocketAdapterConfig snapshot = new WebSocketAdapterConfig(Objects.requireNonNull(config, "config"));
+        this.adapterId = snapshot.getAdapterId();
+        this.enabled = snapshot.isEnabled();
+        this.serverEnabled = snapshot.isServerEnabled();
+        this.serverPort = snapshot.getServerPort();
+        this.maxConnections = snapshot.getMaxConnections();
+        this.endpointPath = snapshot.getEndpointPath();
+        this.transportServerFactory = transportServerFactory;
     }
 
     @Override
     public TransportAdapterDescriptor descriptor() {
         return new TransportAdapterDescriptor(
-                config.getAdapterId(),
+                adapterId,
                 com.xa.mass.transport.WorkerTransportHints.REALTIME
         );
     }
 
     @Override
     public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
+        Objects.requireNonNull(context, "context");
+        if (!enabled) {
+            return TransportAdapterContribution.empty();
+        }
+
+        WebSocketRuntimeParts parts = createRuntimeParts(context);
+        TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
+
+        contributeAssignedDelivery(contribution, context, parts);
+        contributeRawWorkerChannel(contribution, parts);
+        contributeServer(contribution, parts);
+        return contribution.build();
+    }
+
+    private WebSocketRuntimeParts createRuntimeParts(TransportAdapterBootstrapContext context) {
         String adapterMailboxKey = context.mailbox().assignedMailboxKey();
         AdapterSessionEvidencePublisher sessionEvidencePublisher = context.sessionEvidence().publisher();
         WebSocketSessionRegistry sessionRegistry = new WebSocketSessionRegistry(sessionEvidencePublisher);
         WebSocketSessionEvidenceRefresher sessionEvidenceRefresher =
-                new WebSocketSessionEvidenceRefresher(config.getAdapterId(), sessionRegistry, sessionEvidencePublisher);
+                new WebSocketSessionEvidenceRefresher(adapterId, sessionRegistry, sessionEvidencePublisher);
         TransportJsonFrameParser frameParser = new TransportJsonFrameParser();
         WorkerChannelActionReplyResultFrameReader resultFrameReader =
                 new WorkerChannelActionReplyResultFrameReader(frameParser);
         AdapterInboundResultProcessor<JsonObject> resultProcessor = AdapterInboundResultProcessor.with(
                 resultFrameReader,
                 context.ingress().resultIngress(),
-                new JsonAdapterResultDiagnosticsProvider(config.getAdapterId(), frameParser)::diagnostics
+                new JsonAdapterResultDiagnosticsProvider(adapterId, frameParser)::diagnostics
         );
         Consumer<JsonObject> inboundFrameSink =
                 frame -> processInboundFrame(frameParser, resultFrameReader, resultProcessor, frame);
 
-        TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
-        if (config.isEnabled()) {
-            contribution.addTransportBinding(TransportBinding.builder(
-                            config.getAdapterId(),
-                            com.xa.mass.transport.WorkerTransportHints.REALTIME
-                    )
-                    .adapterMailboxKey(adapterMailboxKey)
-                    .protocol(WebSocketAdapterConfig.PROTOCOL)
-                    .build());
-            contribution.addAdapterMailboxConsumer(context.mailbox().consumer(
-                    config.getAdapterId(),
-                    webSocketCommandExecutor(sessionRegistry, new WorkerChannelFrameJsonCodec())
-            ));
-            contribution.addRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(
-                    config.getAdapterId(),
-                    sessionRegistry
-            ));
-        }
-
-        TransportServer transportServer = createTransportServer(
+        return new WebSocketRuntimeParts(
+                adapterMailboxKey,
+                sessionRegistry,
+                sessionEvidenceRefresher,
                 frameParser,
-                inboundFrameSink,
-                sessionRegistry
+                inboundFrameSink
+        );
+    }
+
+    private void contributeAssignedDelivery(TransportAdapterContribution.Builder contribution,
+                                            TransportAdapterBootstrapContext context,
+                                            WebSocketRuntimeParts parts) {
+        contribution.addTransportBinding(TransportBinding.builder(
+                        adapterId,
+                        com.xa.mass.transport.WorkerTransportHints.REALTIME
+                )
+                .adapterMailboxKey(parts.adapterMailboxKey())
+                .protocol(WebSocketAdapterConfig.PROTOCOL)
+                .build());
+        contribution.addAdapterMailboxConsumer(context.mailbox().consumer(
+                adapterId,
+                webSocketCommandExecutor(parts.sessionRegistry(), new WorkerChannelFrameJsonCodec())
+        ));
+    }
+
+    private void contributeRawWorkerChannel(TransportAdapterContribution.Builder contribution,
+                                            WebSocketRuntimeParts parts) {
+        contribution.addRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(
+                adapterId,
+                parts.sessionRegistry()
+        ));
+    }
+
+    private void contributeServer(TransportAdapterContribution.Builder contribution,
+                                  WebSocketRuntimeParts parts) {
+        TransportServer transportServer = createTransportServer(
+                parts.frameParser(),
+                parts.inboundFrameSink(),
+                parts.sessionRegistry()
         );
         if (transportServer != null) {
-            contribution.addManagedTransportAdapter(sessionEvidenceRefresher);
+            contribution.addManagedTransportAdapter(parts.sessionEvidenceRefresher());
             contribution.addTransportServer(transportServer);
         }
-        return contribution.build();
     }
 
     static AdapterCommandExecutor webSocketCommandExecutor(WebSocketSessionRegistry sessionRegistry,
@@ -109,23 +158,21 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
     private TransportServer createTransportServer(TransportJsonFrameParser frameParser,
                                                   Consumer<JsonObject> inboundFrameSink,
                                                   WebSocketServerSessionHandle sessionHandle) {
-        if (!config.isServerEnabled()) {
+        if (!serverEnabled) {
             return null;
         }
-        TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory =
-                config.getTransportServerFactory();
         if (transportServerFactory != null) {
             return transportServerFactory.create(new WebSocketServerFactoryContext(
                     sessionHandle,
                     rawJson -> processInboundRawFrame(frameParser, inboundFrameSink, rawJson),
-                    config.getServerPort(),
-                    config.getEndpointPath()
+                    serverPort,
+                    endpointPath
             ));
         }
         return new WebSocketServerImpl(
-                config.getServerPort(),
-                config.getMaxConnections(),
-                config.getEndpointPath(),
+                serverPort,
+                maxConnections,
+                endpointPath,
                 frameParser,
                 inboundFrameSink,
                 sessionHandle
@@ -168,6 +215,14 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             case "hello", "handshake", "heartbeat" -> true;
             default -> false;
         };
+    }
+
+    private record WebSocketRuntimeParts(
+            String adapterMailboxKey,
+            WebSocketSessionRegistry sessionRegistry,
+            WebSocketSessionEvidenceRefresher sessionEvidenceRefresher,
+            TransportJsonFrameParser frameParser,
+            Consumer<JsonObject> inboundFrameSink) {
     }
 
     private static final class WebSocketRawWorkerMessageChannel

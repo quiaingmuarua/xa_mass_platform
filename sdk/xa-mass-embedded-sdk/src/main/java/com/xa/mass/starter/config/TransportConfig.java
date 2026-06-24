@@ -1,6 +1,7 @@
 package com.xa.mass.starter.config;
 
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
@@ -10,9 +11,11 @@ import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
+import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -31,8 +34,9 @@ public class TransportConfig {
     private WorkerPresenceIngress customWorkerPresenceIngress;
     private Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory;
     private WebSocketAdapterConfig bundledWebSocketAdapterConfig = new WebSocketAdapterConfig();
+    private TransportServerFactory<WebSocketServerFactoryContext> bundledWebSocketTransportServerFactory;
     private SocketAdapterConfig bundledSocketAdapterConfig = new SocketAdapterConfig();
-    private List<WebSocketAdapterConfig> supplementalWebSocketAdapterConfigs = List.of();
+    private List<WebSocketAdapterAssembly> supplementalWebSocketAdapterAssemblies = List.of();
     private List<SocketAdapterConfig> supplementalSocketAdapterConfigs = List.of();
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
@@ -60,9 +64,13 @@ public class TransportConfig {
         this.customWorkerPresenceIngress = source.customWorkerPresenceIngress;
         this.endpointLeaseStoreFactory = source.endpointLeaseStoreFactory;
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.bundledWebSocketAdapterConfig);
+        this.bundledWebSocketTransportServerFactory = source.bundledWebSocketTransportServerFactory;
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.bundledSocketAdapterConfig);
-        this.supplementalWebSocketAdapterConfigs = source.supplementalWebSocketAdapterConfigs.stream()
-                .map(WebSocketAdapterConfig::new)
+        this.supplementalWebSocketAdapterAssemblies = source.supplementalWebSocketAdapterAssemblies.stream()
+                .map(assembly -> new WebSocketAdapterAssembly(
+                        assembly.config(),
+                        assembly.transportServerFactory()
+                ))
                 .toList();
         this.supplementalSocketAdapterConfigs = source.supplementalSocketAdapterConfigs.stream()
                 .map(SocketAdapterConfig::new)
@@ -86,11 +94,10 @@ public class TransportConfig {
 
     public boolean isEnabled() {
         return bundledWebSocketAdapterConfig.isEnabled()
-                || bundledWebSocketAdapterConfig.isServerEnabled()
                 || bundledSocketAdapterConfig.isEnabled()
                 || bundledSocketAdapterConfig.isServerEnabled()
-                || hasAnyEnabledAdapterConfig(supplementalWebSocketAdapterConfigs)
-                || hasAnyEnabledAdapterConfig(supplementalSocketAdapterConfigs)
+                || hasAnyEnabledWebSocketAssembly(supplementalWebSocketAdapterAssemblies)
+                || hasAnyEnabledSocketConfig(supplementalSocketAdapterConfigs)
                 || primaryTransportAdapterBootstrap != null
                 || !supplementalTransportAdapterBootstraps.isEmpty();
     }
@@ -133,8 +140,17 @@ public class TransportConfig {
 
     public void setBundledWebSocketAdapterConfig(WebSocketAdapterConfig bundledWebSocketAdapterConfig) {
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(
-                java.util.Objects.requireNonNull(bundledWebSocketAdapterConfig, "bundledWebSocketAdapterConfig")
+                Objects.requireNonNull(bundledWebSocketAdapterConfig, "bundledWebSocketAdapterConfig")
         );
+    }
+
+    TransportServerFactory<WebSocketServerFactoryContext> getBundledWebSocketTransportServerFactory() {
+        return bundledWebSocketTransportServerFactory;
+    }
+
+    public void setBundledWebSocketTransportServerFactory(
+            TransportServerFactory<WebSocketServerFactoryContext> bundledWebSocketTransportServerFactory) {
+        this.bundledWebSocketTransportServerFactory = bundledWebSocketTransportServerFactory;
     }
 
     public SocketAdapterConfig getBundledSocketAdapterConfig() {
@@ -143,23 +159,38 @@ public class TransportConfig {
 
     public void setBundledSocketAdapterConfig(SocketAdapterConfig bundledSocketAdapterConfig) {
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(
-                java.util.Objects.requireNonNull(bundledSocketAdapterConfig, "bundledSocketAdapterConfig")
+                Objects.requireNonNull(bundledSocketAdapterConfig, "bundledSocketAdapterConfig")
         );
     }
 
     public List<WebSocketAdapterConfig> getSupplementalWebSocketAdapterConfigs() {
-        return supplementalWebSocketAdapterConfigs.stream()
-                .map(WebSocketAdapterConfig::new)
+        return supplementalWebSocketAdapterAssemblies.stream()
+                .map(WebSocketAdapterAssembly::config)
+                .toList();
+    }
+
+    List<WebSocketAdapterAssembly> getSupplementalWebSocketAdapterAssemblies() {
+        return supplementalWebSocketAdapterAssemblies.stream()
+                .map(assembly -> new WebSocketAdapterAssembly(
+                        assembly.config(),
+                        assembly.transportServerFactory()
+                ))
                 .toList();
     }
 
     public void addSupplementalWebSocketAdapterConfig(WebSocketAdapterConfig config) {
+        addSupplementalWebSocketAdapterConfig(config, null);
+    }
+
+    public void addSupplementalWebSocketAdapterConfig(
+            WebSocketAdapterConfig config,
+            TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory) {
         if (config == null) {
             return;
         }
-        List<WebSocketAdapterConfig> updated = new ArrayList<>(supplementalWebSocketAdapterConfigs);
-        updated.add(new WebSocketAdapterConfig(config));
-        supplementalWebSocketAdapterConfigs = List.copyOf(updated);
+        List<WebSocketAdapterAssembly> updated = new ArrayList<>(supplementalWebSocketAdapterAssemblies);
+        updated.add(new WebSocketAdapterAssembly(config, transportServerFactory));
+        supplementalWebSocketAdapterAssemblies = List.copyOf(updated);
     }
 
     public List<SocketAdapterConfig> getSupplementalSocketAdapterConfigs() {
@@ -362,17 +393,31 @@ public class TransportConfig {
         return new TransportRuntimeComposition(this);
     }
 
-    private static boolean hasAnyEnabledAdapterConfig(List<?> configs) {
-        for (Object config : configs) {
-            if (config instanceof WebSocketAdapterConfig webSocket
-                    && (webSocket.isEnabled() || webSocket.isServerEnabled())) {
-                return true;
-            }
-            if (config instanceof SocketAdapterConfig socket
-                    && (socket.isEnabled() || socket.isServerEnabled())) {
-                return true;
-            }
+    private static boolean hasAnyEnabledSocketConfig(List<SocketAdapterConfig> configs) {
+        return configs.stream().anyMatch(config -> config.isEnabled() || config.isServerEnabled());
+    }
+
+    private static boolean hasAnyEnabledWebSocketAssembly(List<WebSocketAdapterAssembly> assemblies) {
+        return assemblies.stream().anyMatch(assembly -> assembly.config().isEnabled());
+    }
+
+    static final class WebSocketAdapterAssembly {
+        private final WebSocketAdapterConfig adapterConfig;
+        private final TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory;
+
+        WebSocketAdapterAssembly(
+                WebSocketAdapterConfig config,
+                TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory) {
+            this.adapterConfig = new WebSocketAdapterConfig(Objects.requireNonNull(config, "config"));
+            this.transportServerFactory = transportServerFactory;
         }
-        return false;
+
+        WebSocketAdapterConfig config() {
+            return new WebSocketAdapterConfig(adapterConfig);
+        }
+
+        TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory() {
+            return transportServerFactory;
+        }
     }
 }

@@ -19,6 +19,7 @@ import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.socket.runtime.SocketTransportAdapterBootstrap;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
+import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
 import com.xa.mass.transport.websocket.runtime.WebSocketTransportAdapterBootstrap;
 
 import java.util.ArrayList;
@@ -37,8 +38,9 @@ public class TransportRuntimeComposition {
     private final WorkerPresenceIngress customWorkerPresenceIngress;
     private final Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory;
     private final WebSocketAdapterConfig bundledWebSocketAdapterConfig;
+    private final TransportServerFactory<WebSocketServerFactoryContext> bundledWebSocketTransportServerFactory;
     private final SocketAdapterConfig bundledSocketAdapterConfig;
-    private final List<WebSocketAdapterConfig> supplementalWebSocketAdapterConfigs;
+    private final List<TransportConfig.WebSocketAdapterAssembly> supplementalWebSocketAdapterAssemblies;
     private final List<SocketAdapterConfig> supplementalSocketAdapterConfigs;
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private final Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
@@ -63,9 +65,13 @@ public class TransportRuntimeComposition {
         this.customWorkerPresenceIngress = source.getCustomWorkerPresenceIngress();
         this.endpointLeaseStoreFactory = source.endpointLeaseStoreFactory();
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getBundledWebSocketAdapterConfig());
+        this.bundledWebSocketTransportServerFactory = source.getBundledWebSocketTransportServerFactory();
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.getBundledSocketAdapterConfig());
-        this.supplementalWebSocketAdapterConfigs = source.getSupplementalWebSocketAdapterConfigs().stream()
-                .map(WebSocketAdapterConfig::new)
+        this.supplementalWebSocketAdapterAssemblies = source.getSupplementalWebSocketAdapterAssemblies().stream()
+                .map(assembly -> new TransportConfig.WebSocketAdapterAssembly(
+                        assembly.config(),
+                        assembly.transportServerFactory()
+                ))
                 .toList();
         this.supplementalSocketAdapterConfigs = source.getSupplementalSocketAdapterConfigs().stream()
                 .map(SocketAdapterConfig::new)
@@ -89,10 +95,9 @@ public class TransportRuntimeComposition {
 
     public boolean isEnabled() {
         return bundledWebSocketAdapterConfig.isEnabled()
-                || bundledWebSocketAdapterConfig.isServerEnabled()
                 || bundledSocketAdapterConfig.isEnabled()
                 || bundledSocketAdapterConfig.isServerEnabled()
-                || hasAnyEnabledWebSocketConfig(supplementalWebSocketAdapterConfigs)
+                || hasAnyEnabledWebSocketAssembly(supplementalWebSocketAdapterAssemblies)
                 || hasAnyEnabledSocketConfig(supplementalSocketAdapterConfigs)
                 || primaryTransportAdapterBootstrap != null
                 || !supplementalTransportAdapterBootstraps.isEmpty();
@@ -107,8 +112,8 @@ public class TransportRuntimeComposition {
     }
 
     public List<WebSocketAdapterConfig> getSupplementalWebSocketAdapterConfigs() {
-        return supplementalWebSocketAdapterConfigs.stream()
-                .map(WebSocketAdapterConfig::new)
+        return supplementalWebSocketAdapterAssemblies.stream()
+                .map(TransportConfig.WebSocketAdapterAssembly::config)
                 .toList();
     }
 
@@ -230,7 +235,10 @@ public class TransportRuntimeComposition {
     TransportAdapterBootstrap resolvePrimaryTransportAdapterBootstrap() {
         return primaryTransportAdapterBootstrap != null
                 ? primaryTransportAdapterBootstrap
-                : new WebSocketTransportAdapterBootstrap(bundledWebSocketAdapterConfig);
+                : new WebSocketTransportAdapterBootstrap(
+                        bundledWebSocketAdapterConfig,
+                        bundledWebSocketTransportServerFactory
+                );
     }
 
     TransportAdapterBootstrap resolveBundledSocketTransportAdapterBootstrap() {
@@ -238,8 +246,11 @@ public class TransportRuntimeComposition {
     }
 
     List<TransportAdapterBootstrap> resolveSupplementalBundledWebSocketTransportAdapterBootstraps() {
-        return supplementalWebSocketAdapterConfigs.stream()
-                .map(WebSocketTransportAdapterBootstrap::new)
+        return supplementalWebSocketAdapterAssemblies.stream()
+                .map(assembly -> new WebSocketTransportAdapterBootstrap(
+                        assembly.config(),
+                        assembly.transportServerFactory()
+                ))
                 .map(bootstrap -> (TransportAdapterBootstrap) bootstrap)
                 .toList();
     }
@@ -299,9 +310,7 @@ public class TransportRuntimeComposition {
         }
         candidates.add(new BootstrapCandidate(
                 resolvePrimaryTransportAdapterBootstrap(),
-                primaryTransportAdapterBootstrap != null
-                        || bundledWebSocketAdapterConfig.isEnabled()
-                        || bundledWebSocketAdapterConfig.isServerEnabled(),
+                primaryTransportAdapterBootstrap != null || bundledWebSocketAdapterConfig.isEnabled(),
                 primaryTransportAdapterBootstrap != null || bundledWebSocketAdapterConfig.isEnabled()
         ));
         candidates.add(new BootstrapCandidate(
@@ -309,10 +318,11 @@ public class TransportRuntimeComposition {
                 bundledSocketAdapterConfig.isEnabled() || bundledSocketAdapterConfig.isServerEnabled(),
                 bundledSocketAdapterConfig.isEnabled()
         ));
-        for (WebSocketAdapterConfig config : supplementalWebSocketAdapterConfigs) {
+        for (TransportConfig.WebSocketAdapterAssembly assembly : supplementalWebSocketAdapterAssemblies) {
+            WebSocketAdapterConfig config = assembly.config();
             candidates.add(new BootstrapCandidate(
-                    new WebSocketTransportAdapterBootstrap(config),
-                    config.isEnabled() || config.isServerEnabled(),
+                    new WebSocketTransportAdapterBootstrap(config, assembly.transportServerFactory()),
+                    config.isEnabled(),
                     config.isEnabled()
             ));
         }
@@ -329,8 +339,8 @@ public class TransportRuntimeComposition {
         return List.copyOf(candidates);
     }
 
-    private static boolean hasAnyEnabledWebSocketConfig(List<WebSocketAdapterConfig> configs) {
-        return configs.stream().anyMatch(config -> config.isEnabled() || config.isServerEnabled());
+    private static boolean hasAnyEnabledWebSocketAssembly(List<TransportConfig.WebSocketAdapterAssembly> assemblies) {
+        return assemblies.stream().anyMatch(assembly -> assembly.config().isEnabled());
     }
 
     private static boolean hasAnyEnabledSocketConfig(List<SocketAdapterConfig> configs) {

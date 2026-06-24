@@ -5,13 +5,17 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.contract.worker.WorkerChannelFrame;
 import com.xa.mass.contract.worker.WorkerChannelFrameJsonCodec;
 import com.xa.mass.transport.TransportServer;
+import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
+import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterMailboxClient;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
@@ -37,6 +41,52 @@ class WebSocketTransportAdapterBootstrapTest {
 
     private final WorkerChannelFrameJsonCodec frameCodec = new WorkerChannelFrameJsonCodec();
     private final TransportJsonFrameParser frameParser = new TransportJsonFrameParser();
+
+    @Test
+    void enabledAdapterContributesBindingConsumerRawChannelServerAndRefresher() {
+        AtomicReference<ResultIngressEntry> captured = new AtomicReference<>();
+        AtomicReference<WebSocketServerFactoryContext> serverContext = new AtomicReference<>();
+        WebSocketTransportAdapterBootstrap bootstrap = bootstrapCapturing(serverContext);
+
+        TransportAdapterContribution contribution = bootstrap.contribute(context(captured, emptyMailboxClient()));
+
+        assertEquals(1, contribution.getTransportBindings().size());
+        TransportBinding binding = contribution.getTransportBindings().get(0);
+        assertEquals(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, binding.getAdapterId());
+        assertEquals("websocket-mailbox", binding.getAdapterMailboxKey());
+        assertEquals(WebSocketAdapterConfig.PROTOCOL, binding.getProtocol());
+        assertEquals(1, contribution.getAdapterMailboxConsumers().size());
+        assertEquals("websocket-mailbox", contribution.getAdapterMailboxConsumers().get(0).adapterMailboxKey());
+        assertEquals(1, contribution.getRawWorkerMessageChannels().size());
+        assertEquals(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID,
+                contribution.getRawWorkerMessageChannels().get(0).adapterId());
+        assertEquals(1, contribution.getManagedTransportAdapters().size());
+        assertEquals(1, contribution.getTransportServers().size());
+        assertNotNull(serverContext.get());
+    }
+
+    @Test
+    void disabledAdapterContributesNothingEvenWhenServerIsEnabled() {
+        AtomicReference<ResultIngressEntry> captured = new AtomicReference<>();
+        AtomicReference<WebSocketServerFactoryContext> serverContext = new AtomicReference<>();
+        WebSocketAdapterConfig config = new WebSocketAdapterConfig();
+        config.setEnabled(false);
+        config.setServerEnabled(true);
+        TransportServerFactory<WebSocketServerFactoryContext> factory = context -> {
+            serverContext.set(context);
+            return noopServer();
+        };
+        WebSocketTransportAdapterBootstrap bootstrap = new WebSocketTransportAdapterBootstrap(config, factory);
+
+        TransportAdapterContribution contribution = bootstrap.contribute(context(captured, emptyMailboxClient()));
+
+        assertTrue(contribution.getTransportBindings().isEmpty());
+        assertTrue(contribution.getAdapterMailboxConsumers().isEmpty());
+        assertTrue(contribution.getRawWorkerMessageChannels().isEmpty());
+        assertTrue(contribution.getManagedTransportAdapters().isEmpty());
+        assertTrue(contribution.getTransportServers().isEmpty());
+        assertNull(serverContext.get());
+    }
 
     @Test
     void actionReplyFrameReachesResultIngressThroughBootstrapSink() {
@@ -103,13 +153,13 @@ class WebSocketTransportAdapterBootstrapTest {
     }
 
     private WebSocketTransportAdapterBootstrap bootstrapCapturing(
-            AtomicReference<WebSocketServerFactoryContext> serverContext) {
+        AtomicReference<WebSocketServerFactoryContext> serverContext) {
         WebSocketAdapterConfig config = new WebSocketAdapterConfig();
-        config.setTransportServerFactory(context -> {
+        TransportServerFactory<WebSocketServerFactoryContext> factory = context -> {
             serverContext.set(context);
             return noopServer();
-        });
-        return new WebSocketTransportAdapterBootstrap(config);
+        };
+        return new WebSocketTransportAdapterBootstrap(config, factory);
     }
 
     private SessionFixture sessionWithWorker(String workerId) {
@@ -134,6 +184,11 @@ class WebSocketTransportAdapterBootstrapTest {
     }
 
     private TransportAdapterBootstrapContext context(AtomicReference<ResultIngressEntry> captured) {
+        return context(captured, null);
+    }
+
+    private TransportAdapterBootstrapContext context(AtomicReference<ResultIngressEntry> captured,
+                                                     AdapterMailboxClient adapterMailboxClient) {
         WorkerPresenceIngress presenceIngress = new WorkerPresenceIngress() {
             @Override
             public void sessionConnected(com.xa.mass.transport.channel.WorkerSessionPresenceEvent event) {
@@ -157,11 +212,15 @@ class WebSocketTransportAdapterBootstrapTest {
                 presenceIngress,
                 new InMemoryTransportEndpointLeaseStore(),
                 mock(RuntimeTaskExecutor.class),
-                null,
+                adapterMailboxClient,
                 null,
                 null,
                 1_000L
         );
+    }
+
+    private AdapterMailboxClient emptyMailboxClient() {
+        return (adapterMailboxKey, maxItems, timeoutMillis) -> List.of();
     }
 
     private String actionReplyFrame(String frameId, String replyRef) {

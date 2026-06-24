@@ -36,6 +36,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -160,16 +161,21 @@ public class MassApplicationBuilder {
         }
 
         public TransportBuilder webSocketAdapter(Consumer<WebSocketAdapterBuilder> webSocketAdapterConfigurator) {
-            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(config.getBundledWebSocketAdapterConfig());
+            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(
+                    config.getBundledWebSocketAdapterConfig(),
+                    config::setBundledWebSocketTransportServerFactory
+            );
             webSocketAdapterConfigurator.accept(builder);
             return this;
         }
 
         public TransportBuilder addWebSocketAdapter(Consumer<WebSocketAdapterBuilder> webSocketAdapterConfigurator) {
             WebSocketAdapterConfig extra = new WebSocketAdapterConfig();
-            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(extra);
+            AtomicReference<TransportServerFactory<WebSocketServerFactoryContext>> transportServerFactory =
+                    new AtomicReference<>();
+            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(extra, transportServerFactory::set);
             webSocketAdapterConfigurator.accept(builder);
-            config.addSupplementalWebSocketAdapterConfig(extra);
+            config.addSupplementalWebSocketAdapterConfig(extra, transportServerFactory.get());
             return this;
         }
 
@@ -402,24 +408,31 @@ public class MassApplicationBuilder {
     }
 
     public static class WebSocketAdapterBuilder {
-        private final WebSocketAdapterConfig config;
+        private final WebSocketAdapterConfig adapterConfig;
+        private final Consumer<TransportServerFactory<WebSocketServerFactoryContext>> transportServerFactoryConsumer;
 
-        public WebSocketAdapterBuilder(WebSocketAdapterConfig config) {
-            this.config = config;
+        public WebSocketAdapterBuilder(
+                WebSocketAdapterConfig config,
+                Consumer<TransportServerFactory<WebSocketServerFactoryContext>> transportServerFactoryConsumer) {
+            this.adapterConfig = Objects.requireNonNull(config, "config");
+            this.transportServerFactoryConsumer = Objects.requireNonNull(
+                    transportServerFactoryConsumer,
+                    "transportServerFactoryConsumer"
+            );
         }
 
         public WebSocketAdapterBuilder enabled(boolean enabled) {
-            config.setEnabled(enabled);
+            adapterConfig.setEnabled(enabled);
             return this;
         }
 
         public WebSocketAdapterBuilder adapterId(String adapterId) {
-            config.setAdapterId(adapterId);
+            adapterConfig.setAdapterId(adapterId);
             return this;
         }
 
         public WebSocketAdapterBuilder serverEnabled(boolean enabled) {
-            config.setServerEnabled(enabled);
+            adapterConfig.setServerEnabled(enabled);
             return this;
         }
 
@@ -428,24 +441,24 @@ public class MassApplicationBuilder {
         }
 
         public WebSocketAdapterBuilder server(int port, String endpointPath) {
-            config.setServerPort(port);
-            config.setEndpointPath(endpointPath);
+            adapterConfig.setServerPort(port);
+            adapterConfig.setEndpointPath(endpointPath);
             return this;
         }
 
         public WebSocketAdapterBuilder endpointPath(String endpointPath) {
-            config.setEndpointPath(endpointPath);
+            adapterConfig.setEndpointPath(endpointPath);
             return this;
         }
 
         public WebSocketAdapterBuilder maxConnections(int maxConnections) {
-            config.setMaxConnections(maxConnections);
+            adapterConfig.setMaxConnections(maxConnections);
             return this;
         }
 
         public WebSocketAdapterBuilder transportServerFactory(
                 TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory) {
-            config.setTransportServerFactory(transportServerFactory);
+            transportServerFactoryConsumer.accept(transportServerFactory);
             return this;
         }
     }

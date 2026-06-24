@@ -978,6 +978,16 @@ class TransportConvergenceArchitectureGuardTest {
         String serverFactoryContextSource = Files.readString(serverFactoryContext);
         assertTrue(!serverFactoryContextSource.contains("getEndpointRegistry("),
                 "WebSocket custom server factory context must not expose assigned-delivery endpoint registry");
+        Path webSocketAdapterConfig = repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketAdapterConfig.java");
+        String webSocketAdapterConfigSource = Files.readString(webSocketAdapterConfig);
+        assertTrue(!webSocketAdapterConfigSource.contains("TransportServerFactory")
+                        && !webSocketAdapterConfigSource.contains("WebSocketServerFactoryContext"),
+                "WebSocketAdapterConfig must remain pure adapter property config; custom server factory hooks belong to SDK assembly");
+        assertTrue(!webSocketBootstrapSource.contains("private final WebSocketAdapterConfig config")
+                        && !webSocketBootstrapSource.contains("config.get")
+                        && !webSocketBootstrapSource.contains("config.is"),
+                "WebSocket bootstrap must snapshot concrete adapter properties instead of retaining live config access");
     }
 
     @Test
