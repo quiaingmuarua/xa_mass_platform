@@ -23,12 +23,14 @@ three independent dimensions:
 - dispatch-in-principle readiness,
 - capacity/occupancy/admission.
 
-If these are collapsed into one `available` flag, unrelated owners overwrite
-each other:
+If these are collapsed into one `available`, `online`, or `offline` flag,
+unrelated owners overwrite each other:
 
 - worker state `AVAILABLE` could accidentally clear command drain,
 - node/group drain clear could reopen a worker still draining,
 - transport reconnect could be mistaken for business readiness,
+- worker draining could be mistaken for network loss,
+- transport disconnect could be mistaken for an intentional worker shutdown,
 - capacity changes could churn candidate-set membership on every reserve/final.
 
 The target direction is independent state dimensions plus explicit projection
@@ -40,11 +42,34 @@ Current conceptual dimensions:
 
 | Dimension | Examples | Primary owner | Scheduling role |
 | --- | --- | --- | --- |
-| reachability | `ONLINE`, `STALE`, `OFFLINE`, `UNKNOWN` | worker runtime from transport / heartbeat observation | candidate lifecycle and source guard |
+| reachability | `REACHABLE`, `UNREACHABLE`, `LOST` | worker runtime from transport / heartbeat observation | candidate lifecycle and source guard |
 | readiness | `READY`, `DRAINING`, `MAINTENANCE` | worker runtime dispatch gate policy | candidate lifecycle and source guard |
 | occupancy | `FREE`, `RESERVED`, `OCCUPIED`, `CAPACITY_FULL` | worker registry admission counters | final reserve/admission |
 
 These dimensions are related but not interchangeable.
+
+`DRAINING` means the worker is intentionally not accepting new work. It is a
+readiness / dispatch-gate state, not a network state. Existing in-flight work
+may continue and results may still be accepted.
+
+`REACHABLE` means worker-runtime has fresh enough session or heartbeat evidence
+to use the worker as a scheduling reachability input.
+
+`UNREACHABLE` means worker-runtime currently lacks fresh evidence. This may be
+a transient observation gap, heartbeat delay, or reconnect window. It should
+prevent new assignment, but it should not directly fail in-flight work or clean
+up resources.
+
+`LOST` means the observation gap exceeded the worker-runtime lost threshold.
+Resource cleanup, slot lifecycle cleanup, and candidate-index cleanup may begin.
+
+No-evidence and stale-evidence cases should be expressed as diagnostic reasons
+or missing read-model records, not as extra primary states such as `UNKNOWN` or
+`STALE`.
+
+The words `online` and `offline` are intentionally avoided as conceptual owner
+states in this note. They may remain as legacy API action names or UI wording,
+but they are ambiguous unless mapped to either readiness or reachability.
 
 `OCCUPIED` is not automatically unschedulable. A worker with capacity greater
 than one may have active work and still accept more work. `CAPACITY_FULL` or an
@@ -86,7 +111,8 @@ task runtime / result runtime
 
 This prevents two common mistakes:
 
-- transport observed `connected` does not mean transport owns worker `ONLINE`;
+- transport observed `connected` does not mean transport owns worker
+  `REACHABLE`;
 - engine triggered release/final does not mean engine owns worker load truth.
 
 ## Transport Versus Worker Runtime
@@ -103,7 +129,7 @@ Worker runtime owns scheduling reachability evidence:
 
 - last worker presence observation consumed by worker runtime,
 - worker heartbeat deadline,
-- reachability state,
+- reachability state such as `REACHABLE`, `UNREACHABLE`, and `LOST`,
 - dispatch gate sources,
 - slot lifecycle validation,
 - reserve/capacity counters.
@@ -113,6 +139,11 @@ observations affect scheduling reachability. Transport lease expiry does not
 directly mean worker scheduling finality, and worker runtime heartbeat expiry
 does not authorize transport to pick another worker for an already bound
 dispatch.
+
+Transport session disconnect should normally become reachability evidence such
+as `UNREACHABLE` after worker-runtime debouncing, not a direct business
+`offline` decision. Worker intent to stop accepting new work should enter
+through readiness gates such as `DRAINING` or `MAINTENANCE`.
 
 ## Candidate Set Synchronization
 
@@ -208,6 +239,10 @@ Clearing one source must not clear another source. For example:
 This is why a single `dispatchEnabled` boolean is insufficient as owner truth.
 It may be a derived read value, not the write model.
 
+Readiness naming should avoid `offline` for the "do not assign new work"
+intent. Prefer `DRAINING`, `MAINTENANCE`, or a source-scoped dispatch-disable
+reason. This keeps worker intent separate from transport reachability.
+
 ## Transport Consumer Lease Fields
 
 Transport-side consumer lease records should prefer stable identity fields in
@@ -271,6 +306,11 @@ normal path for keeping scheduling correct.
 ## Guardrails
 
 - Do not collapse reachability, readiness, and occupancy into one owner flag.
+- Do not use `online` / `offline` as the conceptual worker state model; map
+  legacy wording to either reachability or readiness before making scheduling
+  decisions.
+- Do not model worker draining as transport offline, and do not model transport
+  disconnect as worker draining.
 - Do not let transport session/lease records become worker runtime truth.
 - Do not put capacity or active lease state into candidate bucket membership.
 - Do not let worker reports directly mutate scheduling buckets without worker
