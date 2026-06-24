@@ -23,7 +23,10 @@ Use this guide when you want to answer practical questions:
      a worker
 2. [Mental Model](./mental-model.md)
    - human-level architecture map and owner boundaries
-3. [Add Worker And Event](./add-worker-and-event.md)
+3. [Score-Band Resource Slot Scheduling Blueprint](./score-band-resource-slot-scheduling-blueprint.md)
+   - target scheduling mechanism blueprint for supply-side resource-slot
+     leasing; not current implementation truth
+4. [Add Worker And Event](./add-worker-and-event.md)
    - register an event, bind it to a project, register a worker, and process
      items by `eventCode`
 
@@ -74,6 +77,10 @@ scheduling evidence, rule-backed eligibility, ranking, and runtime admission.
 Future worker-selection work can add worker metrics, task-type affinity,
 historical performance, or domain-specific scoring without changing the
 task/worker/runtime ownership model.
+
+The target scheduling mechanism is described in
+[Score-Band Resource Slot Scheduling Blueprint](./score-band-resource-slot-scheduling-blueprint.md).
+That document is a mechanism blueprint, not current implementation truth.
 
 Scheduling policy boundary:
 

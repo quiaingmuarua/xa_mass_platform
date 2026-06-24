@@ -1,0 +1,1200 @@
+# Score-Band Resource Slot Scheduling Blueprint
+
+Status: architecture blueprint. This document describes the target scheduling
+mechanism and owner boundaries. It is not current implementation truth, not an
+implementation roadmap, and not proof that the code already behaves this way.
+
+## Purpose
+
+This blueprint explains the intended long-term scheduling mechanism for XA Mass
+Platform:
+
+```text
+Score-Band Resource Slot Scheduling
+```
+
+The goal is to move the scheduling center of gravity away from task-side worker
+enumeration and toward supply-side resource-slot leasing.
+
+Current implementation still largely follows:
+
+```text
+task demand
+  -> worker group selector
+  -> candidate bucket / worker candidate acquisition
+  -> worker filters
+  -> reserve worker
+  -> claim task work
+  -> dispatch
+```
+
+That line was useful for convergence, but it should not remain the long-term
+hot path. It keeps pushing task-side scheduling toward more worker indexes:
+group indexes, attribute indexes, reachability indexes, occupancy indexes,
+warm pools, route buckets, and recovery projections. As worker/resource count
+and state-change frequency grow, those indexes become the source of owner
+conflicts.
+
+The target model reverses the lookup:
+
+```text
+task = demand
+resource slot = supply
+
+engine exposes task demand lanes and attempt lifecycle needs
+worker-runtime/resource-runtime maintains schedulable resource slots
+matcher leases eligible slots from supply and binds them to demand
+```
+
+This is not "just use Redis zset." It is an ownership correction: availability
+is maintained by resource owners, while engine owns demand and task lifecycle.
+
+## Core Mechanism
+
+The core primitive is a resource slot with a score. The score places the slot
+in one of four bands:
+
+```text
+PARKED_BAND       intentionally out of active scheduling and recheck
+LOW_RECHECK_BAND  blocked / offline / recoverable failure that deserves bounded recheck
+ELIGIBLE_BAND     currently schedulable window
+FUTURE_BAND       preallocated / occupied / held / cooldown / attempt lease
+```
+
+The important asymmetry:
+
+```text
+FUTURE_BAND is time-releasable.
+LOW_RECHECK_BAND is bounded-recheck releasable only by resource owner.
+PARKED_BAND is not automatically rechecked or time-releasable.
+```
+
+Non-negative holds must have a time lease. Negative state must be explicitly
+reopened by the owning runtime after validation or policy promotion.
+
+## Why This Direction
+
+The current task-side worker lookup model fails under production pressure
+because:
+
+- task count is usually smaller than worker/resource count;
+- worker/resource state changes frequently: connection, block, occupancy,
+  drain, lease, heartbeat, cooldown, and external resource health;
+- task-side worker lookup forces the scheduling kernel to understand too many
+  worker-state combinations;
+- every new filter tends to create another index and another synchronization
+  problem;
+- state-machine cleanup depends too much on reliable release events.
+
+The score-band model makes resource availability supply-owned. The hot path
+does not ask "which workers match this task by scanning a worker universe?" It
+asks "which eligible resource slots can be leased for this demand lane?"
+
+## Resource Slot
+
+A resource slot is the smallest schedulable unit for one resource kind.
+
+First implementation waves should prove the model on worker execution slots:
+
+```text
+workerSlot = one schedulable worker execution permit
+```
+
+For multi-capacity workers, prefer multiple execution slots where feasible:
+
+```text
+worker-a#0
+worker-a#1
+worker-a#2
+```
+
+This avoids hiding old occupancy semantics inside a single mutable worker row.
+If a hybrid slot plus permit count is used first, it should be treated as a
+migration compromise, not the conceptual target.
+
+Later resource kinds can include:
+
+```text
+physicalDeviceSlot
+accountSlot
+proxySlot
+simSlot
+browserSlot
+```
+
+Do not start with a generic universal resource envelope. Prove the model on
+worker execution slots first.
+
+## Score Bands
+
+### PARKED_BAND
+
+`PARKED_BAND` means the slot is intentionally outside active scheduling and
+outside periodic recovery scanning.
+
+Rules:
+
+- score is a negative fixed band code, not a timestamp and not a retry count;
+- normal acquire never scans it;
+- scheduled recheck should not scan it;
+- it does not recover by time;
+- it is used when the system deliberately does not want to spend periodic
+  recovery budget on the slot;
+- only the resource owner or an explicit policy promotion can move it out.
+
+Typical reasons:
+
+```text
+operator disabled
+drain requested
+group disabled
+intentionally idle
+cold / retired / cleanup threshold reached
+maintenance parked
+manual quarantine
+```
+
+`PARKED_BAND` is not always "bad." It is also the correct place for resources
+that are valid but should not burn recheck budget until demand or an explicit
+operator/worker event promotes them.
+
+### LOW_RECHECK_BAND
+
+`LOW_RECHECK_BAND` means the slot is not schedulable now, but worker-runtime /
+resource-runtime believes bounded recovery attempts are still useful.
+
+Rules:
+
+- it is retry-count semantics, not timestamp semantics;
+- normal acquire never scans it;
+- it does not recover by time;
+- entering low-recheck starts at score `0`;
+- each owner maintenance recheck that still finds the slot unavailable
+  increments the score;
+- when the score reaches the configured threshold, resource-runtime may remove
+  the slot or move it to `PARKED_BAND`;
+- only the resource owner can move it back after positive recovery validation.
+
+Typical reasons:
+
+```text
+confirmed current-session disconnect
+worker/device temporarily disconnected
+delivery no endpoint, if explicitly allowlisted for worker block
+recheck required after stale eligibility evidence
+temporary resource health failure
+```
+
+### ELIGIBLE_BAND
+
+`ELIGIBLE_BAND` means the slot is currently schedulable.
+
+Conceptual window:
+
+```text
+max(TIME_SCORE_FLOOR, now - freshnessWindow) <= score <= now
+```
+
+Matcher can acquire only from this window. Final acquire still performs owner
+validation because score is an index, not the full truth.
+
+### FUTURE_BAND
+
+`FUTURE_BAND` means the slot is temporarily unavailable until a timestamp.
+
+Typical reasons:
+
+```text
+preallocated
+occupied
+attempt lease
+cooldown
+bounded hold
+```
+
+Rules:
+
+- it is timestamp semantics;
+- when time reaches the score, the slot naturally becomes eligible again;
+- if real work is still executing, the legal owner must renew the lease;
+- if renew stops because of crash or lost release, time naturally frees the
+  non-negative hold.
+
+## Score Setting Rules
+
+Score must have one consistent write model. Otherwise score-band scheduling
+becomes another unclear state machine.
+
+Recommended first encoding:
+
+```text
+PARKED_BAND score
+  negative fixed code range
+  example: score < 0
+  score identifies broad parked class only
+  reason, actor, observedAt, source, generation, and reopen policy live in
+  metadata / transition log
+
+LOW_RECHECK_BAND score
+  reserved non-time retry-count range
+  example: 0 <= score < TIME_SCORE_FLOOR
+  score = number of failed owner rechecks while in LOW_RECHECK_BAND
+  reason, actor, observedAt, source, nextRecheckAt, and generation live in
+  metadata / transition log
+
+TIME_BAND score
+  example: score >= TIME_SCORE_FLOOR
+  epochMillis
+  score <= now may be eligible after validation
+  score > now is future lease / cooldown / hold
+```
+
+The exact numeric constants can be implementation-specific, but the semantics
+must stay fixed:
+
+- parked score is not a timestamp;
+- parked score is not a retry counter;
+- parked score does not by itself explain full reason or reopen policy;
+- low-recheck score is not a timestamp;
+- low-recheck score is not a boolean block bit;
+- low-recheck score starts at `0` when a slot first enters low-recheck band;
+- low-recheck score increments only when resource-runtime rechecks and the slot is
+  still not recoverable;
+- low-recheck cleanup or parking is threshold/policy based, not automatic time
+  recovery;
+- eligible/future score is time;
+- reason is not inferred from score alone;
+- score writes are owned by worker-runtime/resource-runtime;
+- every score write emits transition evidence.
+
+Because `PARKED_BAND` and `LOW_RECHECK_BAND` use non-time scores,
+eligible-time acquisition must use an explicit time-band lower bound and must
+not accidentally include parked codes or low-recheck counts. Tests that use
+fake clocks should set `now` above the configured time-score floor or use
+explicit band predicates.
+
+Recommended constant shape:
+
+```text
+PARKED_BAND:
+  score < 0
+
+LOW_RECHECK_BAND:
+  0 <= score < TIME_SCORE_FLOOR
+
+ELIGIBLE_BAND:
+  TIME_SCORE_FLOOR <= score <= now
+
+FUTURE_BAND:
+  score > now
+```
+
+`TIME_SCORE_FLOOR` should be explicit and high enough that retry counts can
+never overlap time scores, for example a fixed epoch-millis lower bound. Do not
+infer this boundary from the current clock.
+
+Redis ZSET query shape:
+
+```text
+eligible acquire:
+  ZRANGE key max(TIME_SCORE_FLOOR, now - freshnessWindow) now BYSCORE LIMIT 0 N
+
+future due / no freshness-window acquire:
+  ZRANGE key TIME_SCORE_FLOOR now BYSCORE LIMIT 0 N
+
+low-recheck inventory:
+  ZRANGE key 0 lowRecheckThreshold BYSCORE LIMIT 0 N
+
+parked inventory:
+  ZRANGE key -inf -1 BYSCORE LIMIT 0 N
+```
+
+Hot-path acquire should use bounded `LIMIT`. Parked and low-recheck scans are
+maintenance paths, not task hot paths.
+
+### Score Write Table
+
+| Trigger | Owner | New score | Band | Notes |
+| --- | --- | --- | --- | --- |
+| Slot declared and owner validates schedulable | worker-runtime/resource-runtime | `now` | `ELIGIBLE_BAND` | Initial open is owner validation, not transport connect. |
+| Slot declared but intentionally idle or disabled | worker-runtime/resource-runtime | parked code, for example `PARKED_IDLE` or `PARKED_OPERATOR_DISABLED` | `PARKED_BAND` | No periodic recheck budget should be spent until explicit promotion or demand policy. |
+| Slot declared but requires bounded readiness recheck | worker-runtime/resource-runtime | `0` | `LOW_RECHECK_BAND` | Reason can be `INIT_REQUIRED` or `RECHECK_REQUIRED`. |
+| Explicit worker `AVAILABLE` / `READY` report validated | worker-runtime | `now` | `ELIGIBLE_BAND` | Positive report requests verified reopen; it does not write score directly. |
+| Explicit worker `OFFLINE` / unavailable report | worker-runtime | `0` | `LOW_RECHECK_BAND` | Negative business-state report closes eligibility and may be recoverable. |
+| Explicit worker `DRAINING` report | worker-runtime | parked code, for example `PARKED_DRAIN` | `PARKED_BAND` | Drain should not burn periodic recheck budget. |
+| Operator disable / drain | worker-runtime/resource-runtime | parked code, for example `PARKED_OPERATOR_DISABLED` | `PARKED_BAND` | Operator policy is not time-releasable. |
+| Confirmed current-session disconnect | worker-runtime via allowlisted transport evidence | `0` | `LOW_RECHECK_BAND` | Transport proves hard dispatch blocker; worker-runtime owns the transition. |
+| Maintenance recheck still unavailable | worker-runtime/resource-runtime | previous low-recheck score + 1 | `LOW_RECHECK_BAND` | Count is failed recheck count, not elapsed time. |
+| Low-recheck count reaches threshold | worker-runtime/resource-runtime | parked code or remove/cold transition | `PARKED_BAND` or outside normal acquire | Cleanup/parking/removal is policy-owned and must emit transition evidence. |
+| `WORKER_HEARTBEAT` / `TRANSPORT_REFRESH` / `SESSION_KEEPALIVE` / `CONNECTED` | transport | no score write | unchanged | Freshness evidence stays transport-local unless point-read during an allowed owner recheck. |
+| Preallocation acquire | matcher through resource-runtime | `now + preallocLeaseMillis` | `FUTURE_BAND` | Lease owner is demand lane / matcher. |
+| Dispatch / attempt starts | engine through resource-runtime | `attemptLeaseUntilMillis` | `FUTURE_BAND` | Converts or extends preallocation into attempt lease. |
+| Attempt lease renew | engine through resource-runtime | new `attemptLeaseUntilMillis` | `FUTURE_BAND` | Only valid for same active lease generation and non-blocked slot. |
+| Cooldown | resource-runtime policy | `now + cooldownMillis` | `FUTURE_BAND` | Time-releasable policy hold. |
+| Early release / final / cancel / pause | engine through resource-runtime | `now` or `now + cooldownMillis` | `ELIGIBLE_BAND` or `FUTURE_BAND` | Only if no parked/low-recheck block remains and owner validation passes. |
+| Future lease expires | no writer required | existing timestamp is now due | `ELIGIBLE_BAND` candidate | Acquire still validates current slot metadata before binding. |
+
+### Eligible Score Freshness
+
+The value in `ELIGIBLE_BAND` is not "heartbeat time." It is the last time the
+resource owner verified that this slot may compete, or the timestamp of an
+expired non-negative lease.
+
+If an implementation uses a sliding freshness window:
+
+```text
+max(TIME_SCORE_FLOOR, now - freshnessWindow) <= score <= now
+```
+
+then an old eligible score eventually ages out of acquisition and needs
+resource-runtime maintenance or an allowed recovery check to be refreshed.
+Transport heartbeat still must not refresh that score directly.
+
+If a resource type does not require a sliding freshness window, the owner may
+use a wider eligible lower bound. That is a resource-runtime policy decision,
+not a transport decision.
+
+### Parked Band Codes
+
+Use parked codes as broad index classes only. They should not encode the full
+state machine.
+
+Example:
+
+```text
+PARKED_IDLE = -1
+PARKED_DRAIN = -2
+PARKED_OPERATOR_DISABLED = -3
+PARKED_GROUP_DISABLED = -4
+PARKED_COLD = -5
+PARKED_MANUAL_QUARANTINE = -6
+```
+
+The exact codes are implementation-owned, but the rule is fixed:
+
+```text
+score < 0
+  -> not acquired
+  -> not periodically rechecked
+  -> reopened only by explicit owner event or explicit policy promotion
+```
+
+### Low-Recheck Count
+
+The value in `LOW_RECHECK_BAND` is not an age and not a next-recheck
+timestamp. It is the number of failed owner rechecks since the slot entered
+low-recheck band.
+
+Example:
+
+```text
+worker-a#0 initially eligible
+  score = now
+
+transport current-session disconnect accepted
+  score = 0
+  band = LOW_RECHECK_BAND
+  reason = TRANSPORT_DISCONNECTED
+
+first maintenance recheck still unavailable
+  score = 1
+  band = LOW_RECHECK_BAND
+
+second maintenance recheck still unavailable
+  score = 2
+  band = LOW_RECHECK_BAND
+
+score reaches cleanup threshold
+  worker-runtime/resource-runtime removes the slot or moves it to PARKED_COLD
+```
+
+Recheck cadence should be stored separately, for example in block metadata,
+`nextRecheckAt`, a bounded maintenance index, or a runtime-local scanner. Do
+not overload the low-recheck score with both retry count and due time.
+
+If recovery succeeds at any recheck:
+
+```text
+score = now
+band = ELIGIBLE_BAND
+```
+
+Only worker-runtime/resource-runtime may perform that transition.
+
+### Atomicity Rule
+
+Changing score and changing lease/block metadata are one resource-runtime
+transition from the caller's perspective.
+
+For Redis this usually means a small Lua script or equivalent atomic primitive
+for:
+
+```text
+validate current slot generation / lease owner / band
+write score
+write lease or block metadata
+append transition evidence
+```
+
+Do not put ranking, lane policy, or task scheduling strategy into that atomic
+primitive. Lua or CAS protects the resource transition invariant; it does not
+own scheduling policy.
+
+## Score Transition Log
+
+Score is a hot-path index, not the full explanation. Every meaningful score
+change should emit transition evidence.
+
+Suggested fields:
+
+```text
+resourceSlotId
+resourceKind
+oldScore
+oldBand
+newScore
+newBand
+reasonCode
+triggerType
+actor
+leaseId
+attemptId
+correlationRef
+observedAt
+```
+
+Example transitions:
+
+```text
+worker-a#0
+  ELIGIBLE_BAND -> FUTURE_BAND
+  reason = PREALLOCATED
+  actor = matcher
+  leaseId = prealloc-xxx
+
+worker-a#0
+  FUTURE_BAND -> LOW_RECHECK_BAND
+  reason = TRANSPORT_DISCONNECTED
+  actor = transport-negative-signal
+
+worker-a#0
+  ELIGIBLE_BAND -> PARKED_BAND
+  reason = OPERATOR_DRAIN
+  actor = operator
+
+device-001
+  ELIGIBLE_BAND -> FUTURE_BAND
+  reason = EXCLUSIVE_DEVICE_ATTEMPT_LEASE
+  actor = engine
+  attemptId = attempt-xxx
+```
+
+The transition log explains slot movement. It is not scheduling truth and must
+not become a second state machine.
+
+## Demand Lane
+
+A demand lane is the task-side scheduling input consumed by matcher. It is not
+a worker index.
+
+It may include:
+
+```text
+laneId
+project/workload
+workerGroup scope
+resource requirements
+priority / weight
+desiredWarmSlots
+maxWarmSlots
+task intake and ready counts
+```
+
+WorkerGroup may remain part of lane scope, but it should not be the primary
+hot-path worker enumeration model.
+
+## Lease Model
+
+All non-negative resource holds are leases:
+
+```text
+preallocation lease
+attempt lease
+cooldown lease
+hold lease
+```
+
+Release events are useful but not required for correctness:
+
+```text
+release event arrives
+  -> slot can move earlier
+
+release event is lost
+  -> FUTURE_BAND score expires
+  -> slot naturally becomes eligible, unless it entered PARKED_BAND or
+     LOW_RECHECK_BAND
+```
+
+Preallocation should prefer lane binding before task binding:
+
+```text
+preallocation:
+  lane -> resourceSlot
+
+dispatch:
+  task + resourceSlot -> attempt lease
+```
+
+This avoids complicated rollback when a task is canceled, reprioritized, or no
+longer ready after a resource was warmed.
+
+## Owner Boundaries
+
+### Engine
+
+Engine owns demand and task lifecycle.
+
+Engine owns:
+
+- task shell and intake;
+- task-ready lane exposure;
+- task priority / weight / desired warm-slot demand;
+- assignment and attempt lifecycle;
+- attempt timeout, retry, reassignment, pause, cancel, terminal convergence;
+- result convergence;
+- attempt lease renewal while work is executing.
+
+Engine must not own:
+
+- worker/resource eligibility;
+- resource slot score truth;
+- worker candidate indexes;
+- resource reopen after positive evidence;
+- transport connection/session truth.
+
+### Worker-Runtime / Resource-Runtime
+
+Worker-runtime and future resource-runtime own supply.
+
+They own:
+
+- resource slot declaration and lifecycle;
+- score-band index maintenance;
+- negative fast-close into `LOW_RECHECK_BAND` or `PARKED_BAND`;
+- positive verified-open from `LOW_RECHECK_BAND` or `PARKED_BAND`;
+- lease metadata and resource claims;
+- score transition logging;
+- final slot validation before acquire/lease;
+- resource-specific recovery policy.
+
+They must not own:
+
+- task terminal policy;
+- task result finality;
+- engine attempt retry policy;
+- transport session mechanics.
+
+### Matcher
+
+Matcher binds demand to supply.
+
+It owns:
+
+- choosing demand lanes by engine-provided policy input;
+- acquiring eligible slots from score-band supply;
+- creating preallocation or attempt leases;
+- all-or-nothing multi-resource claim in later waves;
+- returning selected resource handles to engine.
+
+Matcher must not own:
+
+- raw transport session state;
+- task result convergence;
+- worker capability truth mutation;
+- long-term resource lifecycle cleanup outside resource-runtime.
+
+### Transport
+
+Transport remains a final-hop delivery and network-evidence subsystem.
+
+Transport owns:
+
+```text
+delivery queues
+endpoint/session/freshness evidence
+mailbox and endpoint feasibility
+dispatch outcome carrier facts
+```
+
+Transport must not:
+
+- reopen resource slots;
+- choose replacement workers;
+- decide resource lifecycle;
+- own score bands;
+- turn heartbeat/connected into schedulable truth.
+
+Transport is often the carrier for worker-originated reports, but carrier does
+not mean owner. If a worker explicitly reports business availability,
+unavailability, drain, or offline through a transport protocol, transport
+normalizes/carries that report to the worker-runtime report/control owner. That
+report is not a transport freshness event.
+
+## Cross-Module Interaction Blueprint
+
+Score-band scheduling should be read as three cooperating lanes, not one
+monolithic scheduler.
+
+```text
+worker eligibility event lane
+  explicit worker report / operator command / allowlisted negative session loss
+  -> worker-runtime/resource-runtime
+  -> score-band transition or verified recovery request
+
+transport-local freshness lane
+  WORKER_HEARTBEAT / TRANSPORT_REFRESH / SESSION_KEEPALIVE / CONNECTED
+  -> transport endpoint/session/freshness evidence
+  -> optional worker-runtime point-read during an already allowed recheck
+
+demand and lease lane
+  engine task demand lanes
+  -> matcher
+  -> resource-runtime eligible slot acquire
+  -> preallocation lease or attempt lease
+  -> engine attempt lifecycle
+
+delivery and result lane
+  engine selected execution identity
+  -> transport selected-worker delivery
+  -> worker executes
+  -> result ingest
+  -> engine result convergence
+```
+
+These lanes are allowed to exchange narrow evidence. They must not collapse
+into one owner.
+
+### Eligibility Event Routing Rule
+
+An event crosses into the worker-runtime eligibility lane only when it directly
+changes scheduling eligibility intent or proves a hard dispatch blocker.
+
+Send to worker-runtime/resource-runtime when the event says:
+
+```text
+this worker/resource should now be schedulable after owner validation
+this worker/resource should now be blocked or drained
+this already-selected worker cannot currently receive dispatch because the
+current session is gone
+this task/attempt lifecycle changed resource lease ownership
+```
+
+Keep in the owning evidence store when the event only says:
+
+```text
+network path exists
+transport/session heartbeat refreshed
+mailbox may be reachable
+transport lease refreshed
+diagnostic freshness changed
+```
+
+Examples:
+
+```text
+CONNECTED
+  means network path exists
+  does not mean business-ready, not drained, capacity-free, or policy-eligible
+  stays transport-local
+
+worker explicit AVAILABLE / READY report
+  means the worker is asserting scheduling readiness
+  enters worker-runtime report/control owner
+  may request verified reopen
+
+current-session disconnect
+  proves the selected worker's current transport path is gone
+  enters worker-runtime as allowlisted negative evidence
+  may move slot to LOW_RECHECK_BAND
+
+item final / assignment release
+  means engine-owned attempt/resource lease changed
+  enters resource-runtime lease owner
+  may release FUTURE_BAND lease or request capacity recheck
+```
+
+### Transport To Worker-Runtime
+
+Transport is not a generic positive/neutral/negative evidence owner. Its
+cross-boundary behavior depends on whether the event directly affects worker
+scheduling eligibility intent or proves a hard dispatch blocker.
+
+Transport-local freshness events stay local:
+
+```text
+WORKER_HEARTBEAT
+TRANSPORT_REFRESH
+SESSION_KEEPALIVE
+CONNECTED
+```
+
+In this blueprint, `WORKER_HEARTBEAT` is treated as transport/session
+freshness. It is not business availability and must not be used as a worker
+readiness report. If the platform needs a worker to assert business-level
+scheduling readiness, use an explicit worker-runtime report/control event such
+as:
+
+```text
+WorkerStateReport(AVAILABLE)
+WorkerAvailabilityReport
+WorkerReadinessReport
+```
+
+These update transport endpoint/session/freshness evidence. They should not be
+published as worker-runtime events, should not request worker-runtime recheck,
+and should not move a resource slot to `ELIGIBLE_BAND`, because they only prove
+network or session freshness, not scheduling eligibility.
+
+Explicit worker reports are different:
+
+```text
+worker reports AVAILABLE / READY / business-available
+  -> transport carries the report
+  -> worker-runtime report/control owner validates it
+  -> worker-runtime may request verified reopen
+  -> slot may move to ELIGIBLE_BAND only after owner validation
+
+worker reports OFFLINE / DRAINING / unavailable
+  -> transport carries the report
+  -> worker-runtime report/control owner validates it
+  -> slot may move to LOW_RECHECK_BAND or PARKED_BAND, depending on reason
+```
+
+Confirmed current session loss is an allowlisted transport negative signal:
+
+```text
+adapter observes current session disconnect
+  -> transport validates current session identity
+  -> starter / assembly bridge emits negative evidence
+  -> worker-runtime maps evidence to resource slot
+  -> slot score moves to LOW_RECHECK_BAND
+  -> score transition log records reason = TRANSPORT_DISCONNECTED
+```
+
+Mailbox availability, endpoint feasibility, and dispatch outcomes are delivery
+facts. They primarily feed transport delivery or engine delivery-failure
+handling. They become worker-runtime negative eligibility input only when a
+separate owner decision explicitly allowlists that failure class.
+
+Do not generalize delivery failure into worker blocking. `NO_ENDPOINT`, mailbox
+unavailable, backpressure, invalid dispatch input, shutdown, and generic
+delivery failure are different failure classes. Each one needs an explicit
+owner decision before it may move a resource slot to `LOW_RECHECK_BAND` or
+`PARKED_BAND`.
+
+Transport must not do this:
+
+```text
+WORKER_HEARTBEAT / TRANSPORT_REFRESH / SESSION_KEEPALIVE / CONNECTED
+  -> mark worker schedulable
+  -> move slot to ELIGIBLE_BAND
+```
+
+Transport freshness may be point-read by worker-runtime during an already
+allowed recovery check. It is not itself an eligibility event and is not a
+recheck trigger.
+
+### Worker Report / Command To Worker-Runtime
+
+Worker business-state reports and operator commands directly express scheduling
+eligibility intent and therefore belong to worker-runtime.
+
+Examples:
+
+```text
+worker explicit AVAILABLE / READY report
+operator enable
+worker explicit OFFLINE / DRAINING / unavailable report
+operator disable / drain command
+```
+
+These belong to the worker-runtime report/control owner. Positive reports may
+request verified recovery. Negative reports may close eligibility. Transport
+may carry these reports, but does not interpret them as transport freshness.
+
+### Engine To Worker-Runtime
+
+Task item and attempt lifecycle evidence is produced by engine, not transport.
+
+Examples:
+
+```text
+item claimed
+item final
+assignment released
+task paused
+task canceled
+attempt timeout
+```
+
+These may release or stop renewing `FUTURE_BAND` attempt leases, or request
+resource-runtime recheck when capacity changed. They must not clear parked or
+low-recheck blocks directly.
+
+### Worker-Runtime To Matcher
+
+Worker-runtime exposes supply, not task-specific worker search.
+
+Target flow:
+
+```text
+worker/resource owner maintains score-band slots
+  -> matcher requests eligible slots for a demand lane
+  -> runtime acquire reads ELIGIBLE_BAND only
+  -> runtime validates slot declaration, block sources, lease state, and scope
+  -> runtime creates preallocation or attempt lease
+  -> matcher receives selected resource handle
+```
+
+The matcher should not receive raw reachability/readiness/occupancy state and
+rebuild eligibility itself. It should acquire a bounded set of already eligible
+slots and rely on runtime validation at lease time.
+
+### Engine To Matcher
+
+Engine supplies demand and lifecycle constraints.
+
+Target flow:
+
+```text
+task runtime has ready demand
+  -> engine exposes lane, priority, required resource scope, and desired count
+  -> matcher leases eligible slots
+  -> engine binds task work to selected resource handle
+  -> engine owns attempt timeout, retry, pause, cancel, final convergence
+```
+
+Engine may create or renew attempt leases because engine owns attempt
+lifecycle. It must not reopen `LOW_RECHECK_BAND` / `PARKED_BAND` slots or
+decide resource eligibility.
+
+### Matcher To Engine
+
+Matcher returns selected resource handles, not worker lists.
+
+Target shape:
+
+```text
+SelectedResourceHandle
+  resourceSlotId
+  resourceKind
+  workerId or execution identity when resourceKind = worker
+  leaseId
+  leaseUntil
+  demandLaneId
+  scoreTransitionRef
+  dispatch evidence needed by engine
+```
+
+Early implementation may keep the current `SelectedWorkerHandle` external seam,
+but internally it should represent a leased resource slot, not a candidate row
+that survived task-side filtering.
+
+### Engine To Transport
+
+Engine dispatches only after a concrete execution identity is selected.
+
+Target flow:
+
+```text
+engine binds task work to selected resource handle
+  -> selected worker identity is already decided
+  -> transport receives opaque payload + selectedWorkerId + correlation
+  -> transport resolves final-hop mailbox/session through delivery evidence
+  -> adapter sends to that selected worker
+```
+
+Transport does not choose a replacement worker when delivery is infeasible.
+Delivery failure becomes delivery outcome or negative evidence, and engine
+attempt timeout/retry/reassignment remains engine-owned.
+
+### Result And Lease Closure
+
+Result convergence and resource lease closure are separate but related.
+
+Target flow:
+
+```text
+worker result arrives
+  -> transport carries result ingress
+  -> engine applies stable-final result convergence
+  -> engine stops renewing attempt lease or asks resource-runtime to release early
+  -> resource-runtime moves slot from FUTURE_BAND to eligible when valid
+```
+
+If result, release, or process shutdown evidence is lost, the slot is not stuck
+forever because non-negative holds are time-bounded in `FUTURE_BAND`.
+
+### Interaction Matrix
+
+| Producer | Signal / call | Consumer | Allowed effect | Forbidden effect |
+| --- | --- | --- | --- | --- |
+| Transport | current-session disconnect | Worker-runtime | move slot to `LOW_RECHECK_BAND` after validation | reopen eligibility |
+| Transport | `WORKER_HEARTBEAT` / `TRANSPORT_REFRESH` / `SESSION_KEEPALIVE` / `CONNECTED` | Transport evidence store | update endpoint/session/freshness evidence only | publish worker-runtime event, request recheck, or imply business availability |
+| Worker via transport | explicit AVAILABLE / READY / business-available report | Worker-runtime report/control owner | request verified reopen | transport directly moves slot to `ELIGIBLE_BAND` |
+| Worker via transport | explicit OFFLINE / unavailable report | Worker-runtime report/control owner | move slot to `LOW_RECHECK_BAND` after validation | transport owns block policy |
+| Worker via transport / operator | explicit DRAINING / disable / intentional idle | Worker-runtime report/control owner | move slot to `PARKED_BAND` after validation | transport owns parked policy |
+| Transport | mailbox / endpoint feasibility | Transport evidence store, delivery handoff, optional point-read view | prove final-hop feasibility or delivery failure | choose replacement worker, reopen slot, or block worker without allowlist |
+| Transport | dispatch outcome | Engine / evidence sink / future allowlisted negative bridge | delivery failure evidence; maybe fast-close only if separately allowlisted by failure class | mutate task result, resource lease, or all worker failures directly |
+| Worker report / command | state or command evidence | Worker-runtime eligibility owner | block or request verified reopen | bypass resource owner |
+| Engine | task-ready lane demand | Matcher | ask for leased slots | enumerate workers |
+| Matcher | slot lease request | Resource-runtime | move eligible slot to `FUTURE_BAND` lease | mutate task result |
+| Engine | attempt active / renew | Resource-runtime | extend attempt lease | clear parked or low-recheck block |
+| Engine | item final / assignment release / cancel / pause / timeout | Resource-runtime | early release, stop renewal, or request capacity recheck | decide positive recovery from negative band |
+
+## Relationship To Existing Concepts
+
+### Negative Signal Dispatch Eligibility
+
+The negative-signal eligibility direction does not conflict with score-band
+scheduling.
+
+It defines the semantic invariant:
+
+```text
+negative evidence may fast-close eligibility
+positive evidence may only request owner recheck
+only the owner may reopen eligibility
+```
+
+Score-band lease is the lower-level mechanism:
+
+```text
+recoverable negative evidence -> move slot to LOW_RECHECK_BAND
+intentional stop / disable / idle -> move slot to PARKED_BAND
+positive evidence -> owner recheck -> maybe move slot to ELIGIBLE_BAND
+non-negative hold -> FUTURE_BAND lease
+```
+
+### WorkerGroup
+
+WorkerGroup does not need to be removed in early waves.
+
+It can remain:
+
+- capability namespace;
+- policy scope;
+- tenant/isolation boundary;
+- management view;
+- migration bridge;
+- slot namespace or lane scope.
+
+The target is not "delete WorkerGroup." The target is "do not use
+WorkerGroup-first worker enumeration as the hot-path scheduling model."
+
+### Current WorkerRegistry
+
+The current `WorkerRegistry` owns important facts: worker metadata, dispatch
+disable sources, reservation, active work, exclusive lease, and candidate
+bucket acquisition.
+
+Under score-band direction, it should converge toward a resource-slot registry.
+Current candidate APIs are migration surfaces, not the final shape.
+
+### Current WorkerSelectionRuntime
+
+`WorkerSelectionRuntime` remains a useful engine-facing seam.
+
+Early migration should preserve the external seam where possible while changing
+its internals:
+
+```text
+old internals:
+  candidate batch -> filter -> rank -> reserve
+
+target internals:
+  demand lane -> acquire eligible slots -> lease -> selected handle
+```
+
+## Program Map
+
+This blueprint should produce multiple executable roadmaps. It should not be
+implemented as one giant roadmap.
+
+### Program 1: Worker Runtime Score-Band Slot Registry
+
+Goal:
+
+Introduce worker execution slot score-band registry inside worker-runtime /
+runtime-api, with memory and Redis implementations sharing contract tests.
+
+First scope:
+
+- model `workerExecutionSlot`;
+- map recoverable negative block to `LOW_RECHECK_BAND`;
+- map intentional idle/disable/drain/cold lifecycle to `PARKED_BAND`;
+- map preallocation/reserve/active attempt/cooldown to `FUTURE_BAND`;
+- allow time expiry from `FUTURE_BAND` to eligible;
+- require owner validation before reopening from `LOW_RECHECK_BAND` or
+  `PARKED_BAND`;
+- emit score transition evidence.
+
+Do not change engine assignment semantics in the first slice.
+
+Proof:
+
+- memory and Redis contract tests;
+- recoverable negative signal moves to low-recheck band and cannot
+  time-recover;
+- parked slot is not acquired and is not periodically rechecked;
+- future lease naturally becomes eligible after expiry;
+- stale release does not corrupt score;
+- positive connected/heartbeat cannot reopen low-recheck or parked slot;
+- transition log records reason and actor.
+
+### Program 2: Matcher Slot Acquire
+
+Goal:
+
+Move worker selection internals from candidate/filter/reserve to eligible slot
+acquire/lease.
+
+First scope:
+
+- keep `WorkerSelectionRuntime` as the engine-facing seam;
+- add a demand-lane request shape behind or beside current
+  `WorkerSelectionRequest`;
+- acquire bounded eligible slots from score-band;
+- perform owner revalidation at lease time;
+- produce selected handles compatible with current dispatch binding.
+
+Retire:
+
+- `WorkerCandidateIndex` as hot-path candidate owner;
+- group-first candidate enumeration as the primary source;
+- warm pool as a task-specific pseudo-candidate truth unless redefined as
+  demand-lane preallocation evidence.
+
+Proof:
+
+- no full worker group scan on hot path;
+- no task-side worker enumeration;
+- bounded slot acquire;
+- selected handle still binds one execution identity;
+- existing task dispatch correctness remains unchanged externally.
+
+### Program 3: Engine Attempt Lease Integration
+
+Goal:
+
+Make engine assignment and attempt lifecycle extend resource leases explicitly.
+
+First scope:
+
+- preallocation lease may exist before concrete task binding;
+- dispatch converts preallocation to attempt lease;
+- engine renews attempt lease while work is active;
+- pause/cancel/final may release early;
+- crash or lost release falls back to lease expiry.
+
+Proof:
+
+- task pause/cancel/final releases or stops renewal;
+- engine crash does not orphan a resource indefinitely;
+- attempt timeout/retry remains engine-owned;
+- expired attempt lease makes slot eligible only when no negative block exists.
+
+### Program 4: Multi-Resource Slot Claims
+
+Goal:
+
+Extend from worker execution slot to all-or-nothing multi-resource claims.
+
+Later resource kinds:
+
+```text
+device
+account
+proxy
+sim
+browser
+```
+
+First scope:
+
+- define resource requirement expression;
+- acquire worker slot plus one additional exclusive resource slot;
+- all-or-nothing lease;
+- failure releases all partial claims;
+- transition logs show each resource claim.
+
+Proof:
+
+- worker + device atomic lease;
+- device conflict blocks competing task even if worker is eligible;
+- partial failure leaves no leaked future-band slots;
+- lease expiry recovers all non-negative holds.
+
+## Required Invariants
+
+- Score is the hot-path eligibility index, not the full truth.
+- `PARKED_BAND` never recovers by time and is not periodically rechecked.
+- `LOW_RECHECK_BAND` never recovers by time; it recovers only through owner
+  recheck or explicit owner event.
+- `FUTURE_BAND` always recovers by time unless renewed or moved to parked /
+  low-recheck band.
+- Negative evidence may fast-close eligibility.
+- Positive evidence may only request owner recheck.
+- Only resource owner may reopen eligibility.
+- Every non-negative hold is time-bounded.
+- Preallocation is a lease, not durable assignment.
+- Actual dispatch extends or converts a lease into an attempt lease.
+- Multi-resource claims are all-or-nothing.
+- Engine does not enumerate workers for a task.
+- WorkerGroup may scope lanes or slots, but must not be the primary hot-path
+  worker enumeration model.
+
+## Do Not Start With
+
+- A generic resource abstraction that tries to model every future resource kind.
+- A large rewrite of engine assignment and worker-runtime in one phase.
+- A Redis-only zset implementation without memory contract parity.
+- New task-side worker indexes.
+- Rebranding current candidate buckets as score-band without changing lease
+  semantics.
+- Making heartbeat or connected events reopen slots.
+- Treating transition log as scheduling truth.
+- Removing WorkerGroup before the slot model is proven.
+
+## First Useful Slice
+
+The first useful implementation slice should be small and owner-bounded:
+
+```text
+worker execution slot score-band registry
+  memory + Redis contract
+  PARKED_BAND / LOW_RECHECK_BAND / ELIGIBLE_BAND / FUTURE_BAND semantics
+  recoverable negative block -> LOW_RECHECK_BAND
+  intentional idle/disable/drain/cold -> PARKED_BAND
+  future lease -> time release
+  positive evidence cannot directly reopen
+```
+
+The existing engine-facing `WorkerSelectionRuntime` can stay unchanged for this
+slice. The goal is to prove the slot lifecycle model before replacing matcher
+internals.
+
+## Open Decisions
+
+- Exact `TIME_SCORE_FLOOR`, parked score constants, eligible time window, and
+  future lease timestamps.
+- Whether multi-capacity worker first slice uses one slot per permit or a
+  hybrid slot plus permit count.
+- Whether preallocation binds lane only or can bind task in special cases.
+- How to represent demand lane identity and priority without turning it into a
+  task-side worker index.
+- Whether score transition log is trace-only first or also a runtime repair
+  input.
+- How to archive or supersede existing worker-candidate roadmaps once the first
+  score-band roadmap is accepted.
