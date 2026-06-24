@@ -1,13 +1,13 @@
 package com.xa.mass.transport.websocket.server;
 
 import com.google.gson.JsonObject;
+import com.xa.mass.transport.runtime.embedded.AdapterSessionIdentity;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
-import com.xa.mass.transport.websocket.frame.WebSocketSessionIdentity;
-import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
@@ -16,22 +16,20 @@ import org.slf4j.LoggerFactory;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
     private final WebSocketServerSessionHandle sessionHandle;
     private final TransportJsonFrameParser frameParser;
-    private final WebSocketSessionOpenFrameReader sessionOpenFrameReader;
     private final Consumer<JsonObject> inboundFrameSink;
 
     public DispatcherInboundHandler(TransportJsonFrameParser frameParser,
-                                    WebSocketSessionOpenFrameReader sessionOpenFrameReader,
                                     Consumer<JsonObject> inboundFrameSink,
                                     WebSocketServerSessionHandle sessionHandle) {
         this.sessionHandle = Objects.requireNonNull(sessionHandle, "sessionHandle");
         this.frameParser = Objects.requireNonNull(frameParser, "frameParser");
-        this.sessionOpenFrameReader = Objects.requireNonNull(sessionOpenFrameReader, "sessionOpenFrameReader");
         this.inboundFrameSink = Objects.requireNonNull(inboundFrameSink, "inboundFrameSink");
     }
 
@@ -83,11 +81,11 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
     @Override
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
         if (evt instanceof WebSocketServerProtocolHandler.HandshakeComplete handshakeComplete) {
-            WebSocketSessionIdentity identity = sessionOpenFrameReader.readHandshake(handshakeComplete.requestUri());
-            if (!identity.complete()) {
+            Optional<AdapterSessionIdentity> identity = readHandshakeIdentity(handshakeComplete.requestUri());
+            if (identity.isEmpty()) {
                 logger.warn("WebSocket handshake completed without workerId/workerGroupId query parameter");
             } else {
-                registerSession(identity, ctx);
+                registerSession(identity.get(), ctx);
             }
         }
         super.userEventTriggered(ctx, evt);
@@ -112,13 +110,31 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         }
     }
 
-    private void registerSession(WebSocketSessionIdentity identity, ChannelHandlerContext ctx) {
-        String workerGroupId = identity.workerGroupId();
-        String workerId = identity.workerId();
-        if (workerGroupId == null || workerGroupId.isBlank()
-                || workerId == null || workerId.isBlank()) {
-            return;
+    private Optional<AdapterSessionIdentity> readHandshakeIdentity(String requestUri) {
+        if (requestUri == null || requestUri.isBlank()) {
+            return Optional.empty();
         }
-        sessionHandle.addSession(workerGroupId, workerId, ctx.channel());
+        QueryStringDecoder decoder = new QueryStringDecoder(requestUri);
+        String deliveryBucketId = firstQueryValue(decoder, "workerGroupId");
+        String workerId = firstQueryValue(decoder, "workerId");
+        if (deliveryBucketId == null || workerId == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new AdapterSessionIdentity(deliveryBucketId, workerId));
+    }
+
+    private String firstQueryValue(QueryStringDecoder decoder, String key) {
+        if (decoder == null || key == null) {
+            return null;
+        }
+        var values = decoder.parameters().get(key);
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        return WebSocketStringValues.firstNonBlank(values.get(0));
+    }
+
+    private void registerSession(AdapterSessionIdentity identity, ChannelHandlerContext ctx) {
+        sessionHandle.addSession(identity.deliveryBucketId(), identity.workerId(), ctx.channel());
     }
 }

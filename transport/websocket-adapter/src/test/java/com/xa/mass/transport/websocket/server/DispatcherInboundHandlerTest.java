@@ -3,7 +3,6 @@ package com.xa.mass.transport.websocket.server;
 import com.google.gson.JsonObject;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
-import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.session.WebSocketSessionRegistry;
 import io.netty.channel.Channel;
@@ -45,7 +44,6 @@ class DispatcherInboundHandlerTest {
     private AtomicReference<JsonObject> acceptedFrame;
     private WebSocketSessionRegistry sessionRegistry;
     private TransportJsonFrameParser frameParser;
-    private WebSocketSessionOpenFrameReader sessionOpenFrameReader;
 
     @SuppressWarnings("unchecked")
     @BeforeEach
@@ -72,8 +70,7 @@ class DispatcherInboundHandlerTest {
         inboundFrameSink = acceptedFrame::set;
         sessionRegistry = newSessionRegistry(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID);
         frameParser = new TransportJsonFrameParser();
-        sessionOpenFrameReader = new WebSocketSessionOpenFrameReader();
-        handler = new DispatcherInboundHandler(frameParser, sessionOpenFrameReader, inboundFrameSink, sessionRegistry);
+        handler = new DispatcherInboundHandler(frameParser, inboundFrameSink, sessionRegistry);
     }
 
     @Test
@@ -125,6 +122,7 @@ class DispatcherInboundHandlerTest {
 
         assertEquals(1, sessionRegistry.activeConnectionCount());
         assertEquals("worker-1", sessionRegistry.currentWorkerId(channel));
+        assertEquals("bucket-1", sessionRegistry.activeSessionSnapshots().get(0).workerGroupId());
     }
 
     @Test
@@ -190,6 +188,18 @@ class DispatcherInboundHandlerTest {
 
         assertEquals(1, sessionRegistry.activeConnectionCount());
         assertEquals("worker-1", sessionRegistry.currentWorkerId(channel));
+    }
+
+    @Test
+    void handshakeMissingWorkerGroupDoesNotRegisterWorkerSession() throws Exception {
+        handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
+                "/ws?workerId=worker-1&routeKey=ws-route-9",
+                new DefaultHttpHeaders(),
+                null
+        ));
+
+        assertEquals(0, sessionRegistry.activeConnectionCount());
+        assertNull(sessionRegistry.currentWorkerId(channel));
     }
 
     @Test
@@ -289,7 +299,6 @@ class WebSocketServerImplDisconnectTest {
                 10,
                 "/ws",
                 new TransportJsonFrameParser(),
-                new WebSocketSessionOpenFrameReader(),
                 raw -> { },
                 sessionRegistry
         );
@@ -323,7 +332,7 @@ class WebSocketServerImplDisconnectTest {
 
     @Test
     void startFailsFastWhenRequiredWiringIsMissing() {
-        WebSocketServerImpl server = new WebSocketServerImpl(-1, 0, null, null, null, null, null);
+        WebSocketServerImpl server = new WebSocketServerImpl(-1, 0, null, null, null, null);
 
         IllegalStateException error = assertThrows(IllegalStateException.class, server::start);
 
@@ -338,7 +347,6 @@ class WebSocketServerImplDisconnectTest {
                 1,
                 "/ws",
                 new TransportJsonFrameParser(),
-                new WebSocketSessionOpenFrameReader(),
                 raw -> { },
                 sessionRegistry
         );

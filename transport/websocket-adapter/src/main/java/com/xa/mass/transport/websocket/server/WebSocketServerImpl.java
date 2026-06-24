@@ -2,7 +2,6 @@ package com.xa.mass.transport.websocket.server;
 
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
-import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -46,7 +45,6 @@ public class WebSocketServerImpl implements TransportServer {
     private final String websocketPath;
     private final WebSocketServerSessionHandle sessionHandle;
     private final TransportJsonFrameParser frameParser;
-    private final WebSocketSessionOpenFrameReader sessionOpenFrameReader;
     private final Consumer<com.google.gson.JsonObject> inboundFrameSink;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -56,14 +54,12 @@ public class WebSocketServerImpl implements TransportServer {
                                int maxConnections,
                                String websocketPath,
                                TransportJsonFrameParser frameParser,
-                               WebSocketSessionOpenFrameReader sessionOpenFrameReader,
                                Consumer<com.google.gson.JsonObject> inboundFrameSink,
                                WebSocketServerSessionHandle sessionHandle) {
         this.port = port;
         this.maxConnections = maxConnections;
         this.websocketPath = websocketPath;
         this.frameParser = frameParser;
-        this.sessionOpenFrameReader = sessionOpenFrameReader;
         this.inboundFrameSink = inboundFrameSink;
         this.sessionHandle = sessionHandle;
     }
@@ -116,7 +112,6 @@ public class WebSocketServerImpl implements TransportServer {
                     pipeline.addLast(new ConnectionStatsHandler());
                     pipeline.addLast(new DispatcherInboundHandler(
                             frameParser,
-                            sessionOpenFrameReader,
                             inboundFrameSink,
                             sessionHandle
                     ));
@@ -177,7 +172,6 @@ public class WebSocketServerImpl implements TransportServer {
             throw new IllegalStateException("WebSocket server requires a non-blank websocketPath");
         }
         Objects.requireNonNull(frameParser, "WebSocket server requires frameParser");
-        Objects.requireNonNull(sessionOpenFrameReader, "WebSocket server requires sessionOpenFrameReader");
         Objects.requireNonNull(inboundFrameSink, "WebSocket server requires inboundFrameSink");
         Objects.requireNonNull(sessionHandle, "WebSocket server requires sessionHandle");
     }

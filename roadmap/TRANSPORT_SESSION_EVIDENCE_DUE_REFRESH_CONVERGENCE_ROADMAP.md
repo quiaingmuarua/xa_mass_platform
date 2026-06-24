@@ -76,8 +76,7 @@ Transport lease due contract:
 
 ```java
 public record TransportEndpointLeaseDueHint(
-        String deliveryBucketId,
-        String workerId,
+        AdapterSessionIdentity identity,
         long leaseExpireAtEpochMillis
 ) {}
 
@@ -93,15 +92,13 @@ Adapter-local current evidence contract:
 
 ```java
 public record AdapterSessionEvidenceSnapshot(
-        String deliveryBucketId,
-        String workerId,
+        AdapterSessionIdentity identity,
         String sessionHandle
 ) {}
 
 public interface AdapterSessionEvidenceSource {
-    Optional<AdapterSessionEvidenceSnapshot> currentEvidenceForWorker(
-            String deliveryBucketId,
-            String workerId);
+    Optional<AdapterSessionEvidenceSnapshot> currentEvidence(
+            AdapterSessionIdentity identity);
 }
 ```
 
@@ -118,9 +115,9 @@ AdapterSessionEvidenceDueRefresher
     dueBefore = now + refreshWindow
     dueEndpointLeases(bucket, dueBefore, maxItems)
     for each due hint:
-      currentEvidenceForWorker(hint.deliveryBucketId, hint.workerId)
+      currentEvidence(hint.identity)
       if present:
-        heartbeat(current workerId, current deliveryBucketId, current sessionHandle)
+        heartbeat(current identity.workerId, current identity.deliveryBucketId, current sessionHandle)
       else:
         no-op; existing expiry/prune/release handles stale evidence
 ```
@@ -136,8 +133,8 @@ adapter registry, heartbeat through existing publisher.
 Refresh is worker-id and delivery-bucket scoped:
 
 ```text
-due hint(workerId, deliveryBucketId)
-  + current active adapter session for same workerId and deliveryBucketId
+due hint(AdapterSessionIdentity(deliveryBucketId, workerId))
+  + current active adapter session for same identity
   -> heartbeat current session
 ```
 
@@ -215,7 +212,7 @@ Acceptance:
 Scope:
 
 - add a transport endpoint lease due read contract that returns
-  `deliveryBucketId + workerId + leaseExpireAtEpochMillis`
+  `AdapterSessionIdentity + leaseExpireAtEpochMillis`
 - implement it for Redis using the existing deadline sorted set with bounded
   range reads
 - implement it for in-memory without exposing session scans as a production
@@ -237,7 +234,7 @@ Acceptance:
 Scope:
 
 - introduce adapter-local current evidence source:
-  `currentEvidenceForWorker(deliveryBucketId, workerId)`
+  `currentEvidence(AdapterSessionIdentity identity)`
 - change WebSocket registry to expose current evidence lookup instead of
   list-all active session snapshots
 - replace `WebSocketSessionEvidenceRefresher` with a due-hint-driven refresher
@@ -313,10 +310,9 @@ tests exist and execute, not only a reactor run with
 - WebSocket evidence refresh is due-hint driven and does not full-scan active
   sessions
 - adapter registry only exposes current evidence lookup for a specific
-  `deliveryBucketId + workerId`
+  `AdapterSessionIdentity(deliveryBucketId, workerId)`
 - refresh may use current session facts, but disconnect/release remains
   session-scoped
 - current owner docs and proof registry match the implemented behavior
 - architecture guard prevents list-all refresh and session-handle due hints
 - residue scan finds no production use of `activeSessionSnapshots()`
-

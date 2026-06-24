@@ -923,6 +923,36 @@ class TransportConvergenceArchitectureGuardTest {
                 "WebSocket session evidence should stay a store-internal snapshot, not a top-level adapter model");
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSessionEvidenceDriver.java"));
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketSessionOpenFrameReader.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/frame/WebSocketSessionIdentity.java")
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java")),
+                "WebSocketSessionOpenFrameReader",
+                "WebSocketSessionIdentity"
+        );
+        Path adapterSessionIdentity = repoRoot().resolve(
+                "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/embedded/AdapterSessionIdentity.java");
+        String adapterSessionIdentitySource = Files.readString(adapterSessionIdentity);
+        assertTrue(adapterSessionIdentitySource.contains("String deliveryBucketId")
+                        && adapterSessionIdentitySource.contains("String workerId"),
+                "Adapter session identity must carry only delivery bucket and worker identity");
+        assertTrue(!adapterSessionIdentitySource.contains("routeKey")
+                        && !adapterSessionIdentitySource.contains("adapterId")
+                        && !adapterSessionIdentitySource.contains("sessionHandle")
+                        && !adapterSessionIdentitySource.contains("endpointLeaseId")
+                        && !adapterSessionIdentitySource.contains("connectionId")
+                        && !adapterSessionIdentitySource.contains("transportHint"),
+                "Adapter session identity must not become a fat endpoint/session model");
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher")
+                ),
+                "AdapterSessionIdentity"
+        );
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketInboundMessage.java"));
         assertNoProductionSourceContains(List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java")),
@@ -1339,10 +1369,15 @@ class TransportConvergenceArchitectureGuardTest {
                         repoRoot().resolve("integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/client/SampleWorkerWebSocketClient.java"),
                         repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/queue/WebSocketTransportFrameCodec.java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/protocol/SocketTransportFrameCodec.java"),
-                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/server/DispatcherInboundHandler.java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/server/SocketTransportServer.java")
                 ),
                 "deliveryBucketId",
+                "DELIVERY_BUCKET_ID_FIELD",
+                "workerId/deliveryBucketId"
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/server/DispatcherInboundHandler.java")),
+                "\"deliveryBucketId\"",
                 "DELIVERY_BUCKET_ID_FIELD",
                 "workerId/deliveryBucketId"
         );

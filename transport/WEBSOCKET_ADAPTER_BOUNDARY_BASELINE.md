@@ -35,7 +35,7 @@ Current code centers on:
 - `WebSocketServerSessionHandle`
 - `WebSocketSessionEvidenceRefresher`
 - runtime-support `TransportJsonFrameParser`
-- `WebSocketSessionOpenFrameReader`
+- runtime embedded-support `AdapterSessionIdentity`
 - runtime embedded-support `WorkerChannelActionReplyResultFrameReader`
 - runtime embedded-support `AdapterInboundResultProcessor`
 - `WebSocketResultDiagnosticsProvider`
@@ -97,6 +97,11 @@ Hard rules:
 - pass `WebSocketServerSessionHandle` to server/inbound wiring, not the broader
   runtime registry surface; do not add assigned-delivery lookup methods to that
   handle
+- WebSocket handshake parsing constructs
+  `AdapterSessionIdentity(deliveryBucketId=<workerGroupId query>, workerId)` at
+  the protocol edge and unwraps it into the existing
+  `WebSocketServerSessionHandle.addSession(...)` boundary. Do not reintroduce a
+  WebSocket-local session identity DTO or a standalone session-open reader.
 - default Netty inbound handling parses a `TextWebSocketFrame` into a
   `JsonObject` and passes only that parsed frame through
   `Consumer<JsonObject>`; do not recreate a `WebSocketInboundMessage`

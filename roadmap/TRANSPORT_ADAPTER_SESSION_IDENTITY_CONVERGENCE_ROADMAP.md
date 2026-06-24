@@ -1,12 +1,12 @@
 # Transport Adapter Session Identity Convergence Roadmap
 
-Status: proposed direction document.
+Status: active; session-identity mainline landed, residual ASI-2 cleanup remains.
 
 ## Summary
 
-Current WebSocket session binding still passes `workerGroupId + workerId` as
-loose arguments across adapter-local interfaces. That shape is fragile now that
-transport has converged on:
+WebSocket session binding now normalizes protocol handshake fields into a
+transport-runtime embedded-support identity before unwrapping that value into
+the existing adapter-local registry/server-handle APIs:
 
 ```text
 deliveryBucketId = upstream scheduling/index context for endpoint evidence
@@ -15,33 +15,30 @@ sessionHandle    = adapter-local connection/lease token
 routeKey         = optional connection/correlation metadata
 ```
 
-This roadmap introduces a small transport-runtime adapter session identity
-value object at the protocol/evidence boundary. The first slice does not
-rewrite the stable `WebSocketSessionRegistry` or
-`WebSocketServerSessionHandle` mutation API; the inbound handler may unwrap
-identity into the existing registry methods while due-refresh learns the typed
+This roadmap introduced a small transport-runtime adapter session identity
+value object at the protocol/evidence boundary. The first slice intentionally
+did not rewrite the stable `WebSocketSessionRegistry` or
+`WebSocketServerSessionHandle` mutation API; the inbound handler unwraps
+identity into the existing registry methods while due-refresh consumes the typed
 identity shape.
 
-ASI-1 plus ASI-3 are the precondition for the due-refresh roadmap. ASI-2 is an
-adjacent inbound-frame cleanup that may land with this roadmap, but it must not
-block the due-refresh dependency handoff once typed session identity is in
-place. This roadmap does not implement endpoint lease due hints, bucket-scope
-refresh, route-key removal, or assigned-delivery final-hop executor extraction.
+ASI-1 plus ASI-3 are complete and unblock the due-refresh roadmap. ASI-2 is an
+adjacent inbound-frame cleanup recorded here because it touches the same
+WebSocket inbound handler, but it is residual cleanup rather than a prerequisite
+for due-refresh or session-identity mainline completion. This roadmap does not
+implement endpoint lease due hints, bucket-scope refresh, route-key removal, or
+assigned-delivery final-hop executor extraction.
 
-## Current Code Observations
+## Current Mainline Facts
 
-- `WebSocketSessionIdentity` is WebSocket-local and still names the bucket as
-  `workerGroupId`:
-  `transport/websocket-adapter/.../frame/WebSocketSessionIdentity.java`.
-- `WebSocketSessionOpenFrameReader.readHandshake(...)` only decodes handshake
-  query fields and instantiates `WebSocketSessionIdentity`. It does not own a
-  distinct protocol, lifecycle, or evidence boundary.
-- `WebSocketFrameReadersTest` still proves handshake query compatibility
-  through `WebSocketSessionOpenFrameReader` and `WebSocketSessionIdentity`.
-  Those assertions must move to `DispatcherInboundHandlerTest` or a focused
-  WebSocket protocol-edge test when the standalone reader is removed.
-- `DispatcherInboundHandler.registerSession(...)` unwraps the identity and
-  calls `WebSocketServerSessionHandle.addSession(workerGroupId, workerId,
+- `AdapterSessionIdentity(deliveryBucketId, workerId)` exists in
+  transport-runtime embedded adapter support and is the WebSocket
+  protocol/evidence-facing identity vocabulary.
+- `WebSocketSessionIdentity`, `WebSocketSessionOpenFrameReader`, and the old
+  `WebSocketFrameReadersTest` fixture have been removed.
+- `DispatcherInboundHandler` parses WebSocket handshake query fields at the
+  protocol edge, constructs `AdapterSessionIdentity`, and unwraps it into
+  `WebSocketServerSessionHandle.addSession(deliveryBucketId, workerId,
   channel)`.
 - `WebSocketServerSessionHandle` exposes loose string arguments:
   `addSession(String workerGroupId, String workerId, Channel)`.
@@ -70,9 +67,9 @@ refresh, route-key removal, or assigned-delivery final-hop executor extraction.
   custom-server-factory breaking surface, not a private WebSocket-only change.
 - `AdapterSessionEvidencePublisher.connected/heartbeat/disconnected(...)`
   still receives loose `workerId, deliveryBucketId, sessionHandle` arguments.
-  This roadmap may unwrap `AdapterSessionIdentity` at that publisher boundary,
-  but changing the publisher API itself is deferred because polling/socket also
-  consume it.
+  WebSocket callers may unwrap `AdapterSessionIdentity` at that publisher
+  boundary, but changing the publisher API itself is deferred because
+  polling/socket also consume it.
 - Socket has a related but wider identity shape
   `deliveryBucketId + routeKey + workerId + endpointId`; socket catch-up is a
   later phase and must not force routeKey into the common identity.
@@ -212,9 +209,11 @@ registry method names may stay loose until the deferred registry API slice.
 DispatcherInboundHandler.channelRead0
   -> raw text from TextWebSocketFrame
   -> currentWorkerId(channel) for the current first slice
-  -> JsonAdapterInboundFrameProcessor.process(raw, sessionBound=true/false)
-  -> if rejected: WebSocket error frame
+  -> TransportJsonFrameParser parses JSON and DispatcherInboundHandler maps
+     invalid/session-unbound frames to WebSocket error frames
   -> if accepted: inboundFrameSink.accept(frame)
+  -> WebSocketTransportAdapterBootstrap result path uses
+     AdapterInboundResultProcessor
 ```
 
 Future due-refresh work should use the same identity shape:
@@ -248,7 +247,7 @@ Concrete adapters still own protocol carriers. WebSocket still owns
 ```text
 WebSocket TextWebSocketFrame
   -> DispatcherInboundHandler extracts raw text and current session identity
-  -> JsonAdapterInboundFrameProcessor validates, parses, and checks binding
+  -> DispatcherInboundHandler validates, parses, and checks binding
   -> DispatcherInboundHandler maps rejection to WebSocket error frame
   -> accepted JsonObject goes to adapter inbound frame sink
 ```
@@ -317,7 +316,11 @@ lifecycle.
   `WebSocketTaskDispatchChannel` and `SocketTaskDispatchChannel` may still have
   common frame/outcome mechanics worth extracting, but that work belongs to an
   assigned-delivery executor roadmap because it changes push dispatch proof,
-  owner docs, and selected-worker final-hop tests.
+  owner docs, and selected-worker final-hop tests. That follow-up should not
+  introduce another adapter-owned executor class per protocol. It should make
+  `AdapterCommandExecutor` a runtime-created batch/outcome wrapper around an
+  adapter-supplied `send(DispatchMessage)` function, so WebSocket/Socket only
+  own final-hop frame construction and local session send.
 - `AdapterSessionEvidencePublisher` identity overload/signature convergence:
   the publisher still receives loose `workerId, deliveryBucketId,
   sessionHandle` parameters. Replacing that API should cover WebSocket, socket,
@@ -410,7 +413,12 @@ Acceptance:
   deferred residue rather than described as already converted
 - existing stale replacement/disconnect semantics still pass
 
-## ASI-2 - Extract Common JSON Inbound Frame Processor
+## ASI-2 - Residual: Extract Common JSON Inbound Frame Processor
+
+This is residual cleanup, not part of the due-refresh prerequisite or
+session-identity mainline completion. It may land with ASI-1 if implementation
+touches the same handler anyway, but it must not delay ASI-1/ASI-3 or force a
+generic WebSocket/Netty handler abstraction.
 
 Scope:
 
@@ -533,17 +541,30 @@ Acceptance:
 
 Correct test names after ASI-0 inventory if they drift.
 
+Session-identity mainline proof:
+
 ```powershell
-.\mvnw.cmd -q -pl transport/transport_runtime -am -Dtest=JsonAdapterInboundFrameProcessorTest test "-DtrimStackTrace=true"
 .\mvnw.cmd -q -pl transport/websocket-adapter -am test "-Dtest=DispatcherInboundHandlerTest,WebSocketSessionRegistryTest,WebSocketSessionEvidenceRefresherTest,WebSocketTransportAdapterBootstrapTest" "-DtrimStackTrace=true"
 .\mvnw.cmd -q -pl transport/transport_runtime -am -Dtest=TransportConvergenceArchitectureGuardTest test "-DtrimStackTrace=true"
 .\mvnw.cmd -q -pl transport/transport_api,transport/transport_runtime,transport/websocket-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests compile
+rg -n "WebSocketSessionOpenFrameReader|WebSocketSessionIdentity" transport/websocket-adapter/src/main/java transport/websocket-adapter/src/test/java
 ```
 
-Strict proof should include target-module Surefire reports for the new or
-retargeted WebSocket session identity tests and the common inbound frame
-processor test. Do not use `-Dsurefire.failIfNoSpecifiedTests=false` for the
-strict runtime processor proof.
+The final `rg` command should return no production or test hits after ASI-1.
+Strict proof should include target-module Surefire reports for the retargeted
+WebSocket session identity tests. Do not rely on a deleted
+`WebSocketFrameReadersTest` fixture to prove handshake query compatibility; the
+proof must live in `DispatcherInboundHandlerTest` or a successor protocol-edge
+test that still exists.
+
+Residual ASI-2 processor proof:
+
+```powershell
+.\mvnw.cmd -q -pl transport/transport_runtime -am -Dtest=JsonAdapterInboundFrameProcessorTest test "-DtrimStackTrace=true"
+```
+
+Do not use `-Dsurefire.failIfNoSpecifiedTests=false` for the strict runtime
+processor proof.
 
 ## Due-Refresh Unblock Criteria
 
@@ -561,7 +582,7 @@ The due-refresh roadmap is unblocked when ASI-1 and ASI-3 are complete:
 ASI-2 common inbound JSON processing may land before or after the due-refresh
 roadmap starts. It is not a due-refresh prerequisite.
 
-## Roadmap Completion Criteria
+## Session-Identity Mainline Completion Criteria
 
 - `AdapterSessionIdentity(deliveryBucketId, workerId)` is the WebSocket
   protocol/evidence-facing identity vocabulary
@@ -571,9 +592,6 @@ roadmap starts. It is not a due-refresh prerequisite.
 - ASI-1 keeps `WebSocketSessionRegistry` and `WebSocketServerSessionHandle`
   mutation APIs stable; any future typed registry API is a separate breaking
   change with its own SDK custom-factory proof
-- carrier-independent inbound JSON validation, parse failure classification,
-  and session-bound rejection live in transport runtime embedded adapter
-  support; WebSocket owns only carrier extraction and WebSocket error writing
 - WebSocket assigned delivery remains on the current
   `WebSocketTaskDispatchChannel` path unless a separate assigned-delivery
   executor roadmap changes it
@@ -586,3 +604,15 @@ roadmap starts. It is not a due-refresh prerequisite.
   lookup
 - owner docs and proof registry match implemented behavior
 - architecture guard prevents identity widening and dispatch-path leakage
+
+When this section is satisfied, the due-refresh roadmap is unblocked even if
+ASI-2 has not landed.
+
+## Residual ASI-2 Cleanup Criteria
+
+- carrier-independent inbound JSON validation, parse failure classification,
+  and session-bound rejection live in transport runtime embedded adapter
+  support
+- WebSocket owns only carrier extraction and WebSocket error writing
+- residual proof runs `JsonAdapterInboundFrameProcessorTest` without
+  `-Dsurefire.failIfNoSpecifiedTests=false`

@@ -14,7 +14,6 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
-import com.xa.mass.transport.websocket.frame.WebSocketSessionOpenFrameReader;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
 import com.xa.mass.transport.websocket.session.WebSocketSessionEvidenceRefresher;
@@ -61,7 +60,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 context.ingress().resultIngress(),
                 new JsonAdapterResultDiagnosticsProvider(config.getAdapterId(), frameParser)::diagnostics
         );
-        WebSocketSessionOpenFrameReader sessionOpenFrameReader = new WebSocketSessionOpenFrameReader();
         Consumer<JsonObject> inboundFrameSink =
                 frame -> processInboundFrame(frameParser, resultFrameReader, resultProcessor, frame);
 
@@ -89,7 +87,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         TransportServer transportServer = createTransportServer(
                 frameParser,
                 inboundFrameSink,
-                sessionOpenFrameReader,
                 sessionRegistry
         );
         if (transportServer != null) {
@@ -101,7 +98,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
     private TransportServer createTransportServer(TransportJsonFrameParser frameParser,
                                                   Consumer<JsonObject> inboundFrameSink,
-                                                  WebSocketSessionOpenFrameReader sessionOpenFrameReader,
                                                   WebSocketServerSessionHandle sessionHandle) {
         if (!config.isServerEnabled()) {
             return null;
@@ -121,7 +117,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                 config.getMaxConnections(),
                 config.getEndpointPath(),
                 frameParser,
-                sessionOpenFrameReader,
                 inboundFrameSink,
                 sessionHandle
         );
