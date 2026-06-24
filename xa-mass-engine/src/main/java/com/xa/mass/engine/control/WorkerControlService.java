@@ -13,7 +13,7 @@ import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
-import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
+import com.xa.mass.worker.runtime.control.WorkerDispatchEligibilityRuntime;
 import com.xa.mass.worker.runtime.report.WorkerReportRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.worker.runtime.report.WorkerStateProjection;
@@ -43,10 +43,9 @@ public final class WorkerControlService implements WorkerControlRuntime {
 
     private final WorkerReportRuntime workerReportRuntime;
     private final WorkerResourceQueryRuntime workerResourceRuntime;
-    private final WorkerDispatchGateRuntime dispatchGateRuntime;
+    private final WorkerDispatchEligibilityRuntime dispatchEligibilityRuntime;
     private final WorkerCommandLifecycleOwner commandLifecycleOwner;
     private final WorkerStateProjectionRuntime stateProjectionRuntime;
-    private final WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy;
     private final TraceEventLogger traceEventLogger;
     private volatile Runnable dispatchWakeupCallback = () -> {
     };
@@ -55,35 +54,16 @@ public final class WorkerControlService implements WorkerControlRuntime {
 
     public WorkerControlService(WorkerReportRuntime workerReportRuntime,
                                 WorkerResourceQueryRuntime workerResourceRuntime,
-                                WorkerDispatchGateRuntime dispatchGateRuntime,
+                                WorkerDispatchEligibilityRuntime dispatchEligibilityRuntime,
                                 WorkerCommandLifecycleOwner commandLifecycleOwner,
                                 WorkerStateProjectionRuntime stateProjectionRuntime,
-                                WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy,
                                 TraceEventLogger traceEventLogger) {
         this.workerReportRuntime = Objects.requireNonNull(workerReportRuntime, "workerReportRuntime");
         this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
-        this.dispatchGateRuntime = Objects.requireNonNull(dispatchGateRuntime, "dispatchGateRuntime");
+        this.dispatchEligibilityRuntime = Objects.requireNonNull(dispatchEligibilityRuntime, "dispatchEligibilityRuntime");
         this.commandLifecycleOwner = Objects.requireNonNull(commandLifecycleOwner, "commandLifecycleOwner");
         this.stateProjectionRuntime = Objects.requireNonNull(stateProjectionRuntime, "stateProjectionRuntime");
-        this.dispatchAvailabilityPolicy = dispatchAvailabilityPolicy != null
-                ? dispatchAvailabilityPolicy
-                : new DefaultWorkerDispatchAvailabilityPolicy();
         this.traceEventLogger = traceEventLogger != null ? traceEventLogger : TraceEventLogger.noop();
-    }
-
-    public WorkerControlService(WorkerReportRuntime workerReportRuntime,
-                                WorkerResourceQueryRuntime workerResourceRuntime,
-                                WorkerDispatchGateRuntime dispatchGateRuntime,
-                                WorkerCommandLifecycleOwner commandLifecycleOwner,
-                                WorkerStateProjectionRuntime stateProjectionRuntime,
-                                TraceEventLogger traceEventLogger) {
-        this(workerReportRuntime,
-                workerResourceRuntime,
-                dispatchGateRuntime,
-                commandLifecycleOwner,
-                stateProjectionRuntime,
-                new DefaultWorkerDispatchAvailabilityPolicy(),
-                traceEventLogger);
     }
 
     @Override
@@ -100,10 +80,10 @@ public final class WorkerControlService implements WorkerControlRuntime {
     public WorkerStateProjectionResult applyWorkerStateReport(WorkerStateReport report) {
         WorkerStateProjectionResult result = stateProjectionRuntime.applyReport(report);
         if (result.success()) {
-            dispatchAvailabilityPolicy.applyWorkerStateProjection(result.projection(), dispatchGateRuntime);
+            dispatchEligibilityRuntime.applyWorkerStateProjection(result.projection());
             if (isAvailableState(result.projection())
                     && workerResourceRuntime.worker(result.workerId()).isPresent()
-                    && dispatchGateRuntime.isWorkerDispatchEnabled(result.workerId())) {
+                    && dispatchEligibilityRuntime.isWorkerDispatchEnabled(result.workerId())) {
                 notifyDispatchWakeup();
             }
         }
@@ -125,7 +105,7 @@ public final class WorkerControlService implements WorkerControlRuntime {
     public WorkerCommandLifecycleResult applyWorkerCommandAcknowledgement(WorkerCommandAcknowledgement acknowledgement) {
         WorkerCommandLifecycleResult result = commandLifecycleOwner.applyAcknowledgement(acknowledgement);
         if (result.success()) {
-            dispatchAvailabilityPolicy.applyWorkerCommandLifecycleResult(result, dispatchGateRuntime);
+            dispatchEligibilityRuntime.applyWorkerCommandLifecycleResult(result);
         }
         traceEventLogger.workerCommandStatusTransition(result);
         return result;
@@ -273,7 +253,7 @@ public final class WorkerControlService implements WorkerControlRuntime {
             return;
         }
         if (result.success()) {
-            dispatchAvailabilityPolicy.applyWorkerCommandLifecycleResult(result, dispatchGateRuntime);
+            dispatchEligibilityRuntime.applyWorkerCommandLifecycleResult(result);
         }
         if (trace) {
             traceEventLogger.workerCommandStatusTransition(result);

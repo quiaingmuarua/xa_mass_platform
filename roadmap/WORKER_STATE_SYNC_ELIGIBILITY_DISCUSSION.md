@@ -1,11 +1,15 @@
 # Worker State Sync And Eligibility Discussion Note
 
-Status: discussion note, not an implementation roadmap.
+Status: superseded discussion note, not an implementation roadmap.
 
-This note records the current owner discussion for worker state dimensions,
+This note records an older owner discussion for worker state dimensions,
 transport presence, candidate-set synchronization, and scheduling eligibility.
-It is direction-setting only. Do not cite it as proof of current implementation
-behavior.
+It has been superseded by
+`WORKER_RUNTIME_NEGATIVE_SIGNAL_DISPATCH_ELIGIBILITY_CONVERGENCE_ROADMAP.md`.
+Do not cite it as proof of current implementation behavior or target direction.
+Current target: worker-runtime owns one dispatch eligibility decision;
+reachability, readiness, and occupancy are evidence or diagnostic vocabulary
+inside that owner path, not three parallel scheduling truth owners.
 
 Related:
 
@@ -16,8 +20,8 @@ Related:
 
 ## Problem
 
-Worker status is not one boolean. The platform needs to reason about at least
-three independent dimensions:
+Worker status is not one boolean. This older discussion argued for three
+separate conceptual dimensions:
 
 - transport/network observation,
 - dispatch-in-principle readiness,
@@ -33,8 +37,9 @@ unrelated owners overwrite each other:
 - transport disconnect could be mistaken for an intentional worker shutdown,
 - capacity changes could churn candidate-set membership on every reserve/final.
 
-The target direction is independent state dimensions plus explicit projection
-into bounded candidate acquisition and final reserve.
+The current target direction has since narrowed: keep those concepts as
+evidence/diagnostics, but converge schedulability into worker-runtime dispatch
+eligibility rather than maintaining independent state dimensions.
 
 ## State Dimensions
 

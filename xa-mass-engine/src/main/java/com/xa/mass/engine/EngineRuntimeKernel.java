@@ -20,7 +20,6 @@ import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.watchdog.LeaseExpireWatchdog;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.engine.watchdog.WorkerCommandMaintenanceWatchdog;
-import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -269,7 +268,6 @@ public class EngineRuntimeKernel {
     private StartedRuntime startedRuntime() {
         return new StartedRuntime(
                 eventListeners,
-                config.getWorkerDispatchGateRuntime(),
                 null
         );
     }
@@ -277,13 +275,11 @@ public class EngineRuntimeKernel {
     private StartedRuntime startedRuntime(Runnable dispatchWakeupCallback) {
         return new StartedRuntime(
                 eventListeners,
-                config.getWorkerDispatchGateRuntime(),
                 dispatchWakeupCallback
         );
     }
 
     public record StartedRuntime(TaskEventListenerRegistrar eventListeners,
-                                 WorkerDispatchGateRuntime workerDispatchGateRuntime,
                                  Runnable dispatchWakeupCallback) {
     }
 }

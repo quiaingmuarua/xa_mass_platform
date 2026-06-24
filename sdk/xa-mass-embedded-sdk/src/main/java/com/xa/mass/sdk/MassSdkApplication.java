@@ -1706,7 +1706,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         }
         return delegate.getEngine()
                 .getConfig()
-                .getWorkerSchedulingViewRuntime()
+                .getWorkerReachabilityView()
                 .getWorkerReachability(worker.workerId()) == WorkerReachabilityState.ONLINE;
     }
 
@@ -1849,7 +1849,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private String workerSnapshotStatus(String workerId) {
         WorkerReachabilityState reachability = delegate.getEngine()
                 .getConfig()
-                .getWorkerSchedulingViewRuntime()
+                .getWorkerReachabilityView()
                 .getWorkerReachability(workerId);
         return reachability == null ? WorkerReachabilityState.UNKNOWN.name() : reachability.name();
     }

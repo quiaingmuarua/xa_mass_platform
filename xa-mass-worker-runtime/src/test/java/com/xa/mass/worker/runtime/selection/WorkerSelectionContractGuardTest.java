@@ -64,6 +64,31 @@ class WorkerSelectionContractGuardTest {
                 "claim authorization should remain package-private");
     }
 
+    @Test
+    void selectionOwnerDoesNotGateOnReachabilityProjectionDirectly() throws Exception {
+        String source = readString(Path.of("src/main/java/com/xa/mass/worker/runtime/selection/WorkerSelectionOwner.java"));
+
+        for (String forbidden : Set.of(
+                "getWorkerReachability(",
+                "WorkerReachabilityState.ONLINE",
+                "worker transport unreachable"
+        )) {
+            assertFalse(source.contains(forbidden),
+                    "selection must consume worker-runtime dispatch eligibility, not direct reachability projection: "
+                            + forbidden);
+        }
+    }
+
+    @Test
+    void selectionSchedulingViewDoesNotExposeReachabilityProjection() {
+        String source = readString(Path.of("src/main/java/com/xa/mass/worker/runtime/evidence/WorkerSchedulingViewRuntime.java"));
+
+        assertFalse(source.contains("getWorkerReachability("),
+                "selection-facing scheduling view must not expose reachability as a candidate gate");
+        assertFalse(source.contains("WorkerReachabilityState"),
+                "reachability belongs to a separate diagnostic/evidence view, not the selection scheduling view");
+    }
+
     private static String readString(Path path) {
         try {
             return Files.readString(path, StandardCharsets.UTF_8);

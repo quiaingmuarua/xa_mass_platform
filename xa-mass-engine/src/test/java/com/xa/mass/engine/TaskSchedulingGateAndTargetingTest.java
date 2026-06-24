@@ -5,7 +5,8 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
+import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -20,12 +21,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TaskSchedulingGateAndTargetingTest {
 
     @Test
-    void unknownReachabilityIsRejectedBeforeBindingWork() {
-        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness(workerId ->
-                "worker-unknown".equals(workerId) ? WorkerReachabilityState.UNKNOWN : WorkerReachabilityState.ONLINE);
-        harness.addWorker("worker-unknown", "us");
+    void blockedWorkerIsRejectedBeforeBindingWork() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorker("worker-blocked", "us");
+        assertTrue(harness.workerManager.blockWorkerDispatch("pool-main", "worker-blocked",
+                new WorkerDispatchBlockSignal(
+                        WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED,
+                        "current session disconnected",
+                        1_000L,
+                        0L
+                )));
         Task task = harness.createBatchTask(
-                "unknown-reachability",
+                "blocked-worker",
                 List.of(harness.item("alpha")),
                 0,
                 1
@@ -38,8 +45,8 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals(1, harness.stats(task.getTid()).readyCount());
         assertEquals(0, harness.stats(task.getTid()).inflightCount());
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
-        assertEquals(1, harness.selectionReasonCount(task.getTid(), "worker transport unreachable"));
-        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-unknown"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-blocked"));
+        assertTrue(harness.workerRecords(task.getTid(), "worker-blocked").isEmpty());
     }
 
     @Test

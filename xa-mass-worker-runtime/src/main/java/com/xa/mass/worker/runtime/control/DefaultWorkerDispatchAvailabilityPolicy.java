@@ -1,8 +1,7 @@
-package com.xa.mass.engine.control;
+package com.xa.mass.worker.runtime.control;
 
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
 import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
-import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 import com.xa.mass.worker.runtime.report.WorkerStateProjection;
 
 import java.util.Locale;
@@ -11,14 +10,27 @@ import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_COMMA
 import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_STATE;
 
 /**
- * Current default policy that translates bounded worker control state into the
- * worker dispatch gate truth consumed by scheduling.
+ * Default worker-runtime policy that keeps dispatch eligibility as worker
+ * runtime truth instead of an engine-control state model.
  */
-public final class DefaultWorkerDispatchAvailabilityPolicy implements WorkerDispatchAvailabilityPolicy {
+public final class DefaultWorkerDispatchAvailabilityPolicy implements WorkerDispatchEligibilityRuntime {
+    private final WorkerDispatchGateRuntime dispatchGateRuntime;
+    private final WorkerDispatchRecoveryRuntime dispatchRecoveryRuntime;
+
+    public DefaultWorkerDispatchAvailabilityPolicy(WorkerDispatchGateRuntime dispatchGateRuntime,
+                                                   WorkerDispatchRecoveryRuntime dispatchRecoveryRuntime) {
+        this.dispatchGateRuntime = java.util.Objects.requireNonNull(dispatchGateRuntime, "dispatchGateRuntime");
+        this.dispatchRecoveryRuntime = java.util.Objects.requireNonNull(dispatchRecoveryRuntime,
+                "dispatchRecoveryRuntime");
+    }
 
     @Override
-    public void applyWorkerStateProjection(WorkerStateProjection projection,
-                                           WorkerDispatchGateRuntime dispatchGateRuntime) {
+    public boolean isWorkerDispatchEnabled(String workerId) {
+        return dispatchGateRuntime.isWorkerDispatchEnabled(workerId);
+    }
+
+    @Override
+    public void applyWorkerStateProjection(WorkerStateProjection projection) {
         if (projection == null) {
             return;
         }
@@ -32,13 +44,12 @@ public final class DefaultWorkerDispatchAvailabilityPolicy implements WorkerDisp
             return;
         }
         if ("AVAILABLE".equals(normalizedState)) {
-            dispatchGateRuntime.clearWorkerDispatchDisable(projection.workerId(), WORKER_STATE, projection.reason());
+            dispatchRecoveryRuntime.recoverWorkerDispatch(projection.workerId(), WORKER_STATE, projection.reason());
         }
     }
 
     @Override
-    public void applyWorkerCommandLifecycleResult(WorkerCommandLifecycleResult result,
-                                                  WorkerDispatchGateRuntime dispatchGateRuntime) {
+    public void applyWorkerCommandLifecycleResult(WorkerCommandLifecycleResult result) {
         WorkerCommandRecord record = result != null ? result.record() : null;
         if (record == null) {
             return;

@@ -9,7 +9,6 @@ import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 
 import java.util.ArrayList;
@@ -208,9 +207,6 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
         }
         if (!routeMatches(row.attributes(), intent)) {
             return CandidateEvaluation.reject(row, groupView, null, "routing code mismatch");
-        }
-        if (schedulingViewRuntime.getWorkerReachability(row.workerId()) != WorkerReachabilityState.ONLINE) {
-            return CandidateEvaluation.reject(row, groupView, null, "worker transport unreachable");
         }
         if (!schedulingViewRuntime.isWorkerDispatchEnabled(row.workerId())) {
             return CandidateEvaluation.reject(row, groupView, null, "worker dispatch disabled");

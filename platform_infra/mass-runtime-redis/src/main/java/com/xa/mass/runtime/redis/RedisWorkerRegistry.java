@@ -13,6 +13,7 @@ import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.DefaultWorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
+import com.xa.mass.runtime.worker.WorkerDispatchBlockRecord;
 import com.xa.mass.runtime.worker.WorkerSlot;
 import io.lettuce.core.Limit;
 import io.lettuce.core.MapScanCursor;
@@ -558,6 +559,71 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
+    public synchronized boolean blockDispatch(String groupId, String workerId, WorkerDispatchBlockRecord record) {
+        Objects.requireNonNull(record, "record");
+        String normalizedGroupId = normalizeNullable(groupId);
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedGroupId == null || normalizedWorkerId == null || slot(normalizedGroupId, normalizedWorkerId).isEmpty()) {
+            return false;
+        }
+        Optional<WorkerDispatchBlockRecord> currentRecord = dispatchBlockRecord(
+                normalizedGroupId,
+                normalizedWorkerId,
+                record.source()
+        );
+        if (currentRecord.isPresent() && record.observedAtMillis() < currentRecord.orElseThrow().observedAtMillis()) {
+            return false;
+        }
+        MutationResult result = updateSlot(normalizedGroupId, normalizedWorkerId, current -> {
+            if (current == null) {
+                return SlotUpdate.noop(null, false);
+            }
+            EnumSet<DispatchAvailabilitySource> sources = disabledSources(current);
+            boolean changed = sources.add(record.source());
+            WorkerSlot updated = new WorkerSlot(
+                    current.meta(),
+                    current.declaredCapacity(),
+                    current.eventBindingCeiling(),
+                    current.activeLeaseCount(),
+                    current.reservedCount(),
+                    current.activeLeaseCountByTask(),
+                    sources,
+                    current.exclusiveLeaseHeld(),
+                    current.removing(),
+                    current.removingReason()
+            );
+            return SlotUpdate.write(updated,
+                    tx -> tx.hset(
+                            keyspace.groupDispatchBlocksHash(normalizedGroupId),
+                            dispatchBlockField(normalizedWorkerId, record.source()),
+                            encodeDispatchBlockRecord(record)
+                    ),
+                    true);
+        });
+        if (Boolean.TRUE.equals(result.payload())) {
+            removeFromLifecycleProjection(normalizedGroupId, normalizedWorkerId);
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public synchronized Optional<WorkerDispatchBlockRecord> dispatchBlockRecord(String groupId,
+                                                                                String workerId,
+                                                                                DispatchAvailabilitySource source) {
+        Objects.requireNonNull(source, "source");
+        String normalizedGroupId = normalizeNullable(groupId);
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedGroupId == null || normalizedWorkerId == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(decodeDispatchBlockRecord(commands.hget(
+                keyspace.groupDispatchBlocksHash(normalizedGroupId),
+                dispatchBlockField(normalizedWorkerId, source)
+        )));
+    }
+
+    @Override
     public synchronized boolean clearDispatchDisable(String groupId, String workerId, DispatchAvailabilitySource source) {
         Objects.requireNonNull(source, "source");
         String normalizedGroupId = normalizeNullable(groupId);
@@ -731,6 +797,18 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
 
     private String encodeSlot(WorkerSlot slot) {
         return GSON.toJson(SlotPayload.from(slot));
+    }
+
+    private WorkerDispatchBlockRecord decodeDispatchBlockRecord(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        DispatchBlockPayload payload = GSON.fromJson(json, DispatchBlockPayload.class);
+        return payload == null ? null : payload.toRecord();
+    }
+
+    private String encodeDispatchBlockRecord(WorkerDispatchBlockRecord record) {
+        return GSON.toJson(DispatchBlockPayload.from(record));
     }
 
     private WorkerSlot newSlot(WorkerMeta meta, int declaredCapacity, Set<EventKey> eventBindingCeiling) {
@@ -988,6 +1066,10 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         return value == null || value.isBlank() ? null : value.trim();
     }
 
+    private static String dispatchBlockField(String workerId, DispatchAvailabilitySource source) {
+        return normalizeNullable(workerId) + ":" + Objects.requireNonNull(source, "source").name();
+    }
+
     private record MutationResult(boolean changed, Object payload) {
     }
 
@@ -1059,6 +1141,31 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                     exclusiveLeaseHeld,
                     removing,
                     removingReason
+            );
+        }
+    }
+
+    private static final class DispatchBlockPayload {
+        String source;
+        String reason;
+        long observedAtMillis;
+        long suggestedRecheckAfterMillis;
+
+        static DispatchBlockPayload from(WorkerDispatchBlockRecord record) {
+            DispatchBlockPayload payload = new DispatchBlockPayload();
+            payload.source = record.source().name();
+            payload.reason = record.reason();
+            payload.observedAtMillis = record.observedAtMillis();
+            payload.suggestedRecheckAfterMillis = record.suggestedRecheckAfterMillis();
+            return payload;
+        }
+
+        WorkerDispatchBlockRecord toRecord() {
+            return new WorkerDispatchBlockRecord(
+                    DispatchAvailabilitySource.valueOf(source),
+                    reason,
+                    observedAtMillis,
+                    suggestedRecheckAfterMillis
             );
         }
     }

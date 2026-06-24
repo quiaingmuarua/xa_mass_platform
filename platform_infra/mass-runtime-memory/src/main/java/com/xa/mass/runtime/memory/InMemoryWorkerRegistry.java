@@ -12,6 +12,7 @@ import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.DefaultWorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
+import com.xa.mass.runtime.worker.WorkerDispatchBlockRecord;
 import com.xa.mass.runtime.worker.WorkerSlot;
 
 import java.util.ArrayList;
@@ -44,6 +45,8 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     private final ConcurrentMap<String, BucketMembership> bucketMembershipByWorkerId = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Set<String>> taskActiveWorkersByTask = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ConcurrentMap<String, Integer>> taskWorkerActiveCounts = new ConcurrentHashMap<>();
+    private final ConcurrentMap<DispatchBlockKey, WorkerDispatchBlockRecord> dispatchBlockRecords =
+            new ConcurrentHashMap<>();
 
     public InMemoryWorkerRegistry() {
         this(DefaultWorkerCandidateBucketPolicy.defaultPolicy(), RandomWorkerCandidateSamplingPolicy.defaultPolicy());
@@ -505,6 +508,47 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     }
 
     @Override
+    public boolean blockDispatch(String groupId, String workerId, WorkerDispatchBlockRecord record) {
+        Objects.requireNonNull(record, "record");
+        String normalizedGroupId = normalizeNullable(groupId);
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedGroupId == null || normalizedWorkerId == null || slot(normalizedGroupId, normalizedWorkerId).isEmpty()) {
+            return false;
+        }
+        DispatchBlockKey key = new DispatchBlockKey(normalizedGroupId, normalizedWorkerId, record.source());
+        AtomicReference<Boolean> accepted = new AtomicReference<>(Boolean.FALSE);
+        dispatchBlockRecords.compute(key, (ignored, current) -> {
+            if (current != null && record.observedAtMillis() < current.observedAtMillis()) {
+                return current;
+            }
+            accepted.set(Boolean.TRUE);
+            return record;
+        });
+        if (!accepted.get()) {
+            return false;
+        }
+        disableDispatch(normalizedGroupId, normalizedWorkerId, record.source());
+        return true;
+    }
+
+    @Override
+    public Optional<WorkerDispatchBlockRecord> dispatchBlockRecord(String groupId,
+                                                                   String workerId,
+                                                                   DispatchAvailabilitySource source) {
+        Objects.requireNonNull(source, "source");
+        String normalizedGroupId = normalizeNullable(groupId);
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedGroupId == null || normalizedWorkerId == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(dispatchBlockRecords.get(new DispatchBlockKey(
+                normalizedGroupId,
+                normalizedWorkerId,
+                source
+        )));
+    }
+
+    @Override
     public boolean clearDispatchDisable(String groupId, String workerId, DispatchAvailabilitySource source) {
         Objects.requireNonNull(source, "source");
         Optional<AtomicReference<WorkerSlot>> slotRef = slotRef(groupId, workerId);
@@ -839,6 +883,9 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         private BucketMembership {
             groupKeys = groupKeys == null || groupKeys.isEmpty() ? Set.of() : Set.copyOf(groupKeys);
         }
+    }
+
+    private record DispatchBlockKey(String groupId, String workerId, DispatchAvailabilitySource source) {
     }
 
     private record GroupCandidateBucketKey(String groupId, String candidateBucketKey) {

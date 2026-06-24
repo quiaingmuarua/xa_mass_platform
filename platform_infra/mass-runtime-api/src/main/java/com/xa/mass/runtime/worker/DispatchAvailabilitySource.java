@@ -6,5 +6,6 @@ package com.xa.mass.runtime.worker;
 public enum DispatchAvailabilitySource {
     WORKER_STATE,
     WORKER_COMMAND,
-    NODE_GROUP_BINDING
+    NODE_GROUP_BINDING,
+    TRANSPORT_DISCONNECTED
 }

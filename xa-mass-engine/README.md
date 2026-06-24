@@ -90,9 +90,9 @@ Owner-backed worker-control and stage entry surfaces:
   state projection. It emits canonical trace and delegates truth to
   `WorkerCommandLifecycleOwner`, `WorkerCapabilityAuthority` via
   `WorkerManager`, and `WorkerStateProjectionOwner`. Any translation from
-  worker-control truth into scheduling dispatch gate truth belongs to the
-  pluggable `WorkerDispatchAvailabilityPolicy`, not to transport shells or
-  matching mainline code.
+  worker-control truth into scheduling dispatch eligibility belongs to the
+  worker-runtime-owned `WorkerDispatchEligibilityRuntime`, not to transport
+  shells, engine-control policy, or matching mainline code.
 - `TaskStageEvidenceService` is the engine caller surface for task item stage
   evidence and bounded stage projection. It emits canonical trace and delegates
   stage truth to `TaskStageEvidenceOwner`.

@@ -157,16 +157,59 @@ public interface WorkerRegistry {
 
     boolean disableDispatch(String groupId, String workerId, DispatchAvailabilitySource source);
 
+    default boolean blockDispatch(String groupId, String workerId, WorkerDispatchBlockRecord record) {
+        if (record == null) {
+            throw new IllegalArgumentException("record must not be null");
+        }
+        return disableDispatch(groupId, workerId, record.source());
+    }
+
     default boolean disableDispatch(String workerId, DispatchAvailabilitySource source) {
         return slotByWorkerId(workerId)
                 .map(slot -> disableDispatch(slot.groupId(), slot.workerId(), source))
                 .orElse(false);
     }
 
+    default boolean blockDispatch(String workerId, WorkerDispatchBlockRecord record) {
+        if (record == null) {
+            throw new IllegalArgumentException("record must not be null");
+        }
+        return slotByWorkerId(workerId)
+                .map(slot -> blockDispatch(slot.groupId(), slot.workerId(), record))
+                .orElse(false);
+    }
+
+    default Optional<WorkerDispatchBlockRecord> dispatchBlockRecord(String groupId,
+                                                                    String workerId,
+                                                                    DispatchAvailabilitySource source) {
+        return Optional.empty();
+    }
+
+    default Optional<WorkerDispatchBlockRecord> dispatchBlockRecord(String workerId,
+                                                                    DispatchAvailabilitySource source) {
+        return slotByWorkerId(workerId)
+                .flatMap(slot -> dispatchBlockRecord(slot.groupId(), slot.workerId(), source));
+    }
+
     boolean clearDispatchDisable(String groupId, String workerId, DispatchAvailabilitySource source);
 
     default boolean clearDispatchDisable(String workerId, DispatchAvailabilitySource source) {
         return slotByWorkerId(workerId)
+                .map(slot -> clearDispatchDisable(slot.groupId(), slot.workerId(), source))
+                .orElse(false);
+    }
+
+    /**
+     * Clears a dispatch-disable source only when the worker slot is still
+     * present, not removing, and currently blocked by that source.
+     */
+    default boolean recoverDispatchDisable(String workerId, DispatchAvailabilitySource source) {
+        if (source == null) {
+            throw new IllegalArgumentException("source must not be null");
+        }
+        return slotByWorkerId(workerId)
+                .filter(slot -> !slot.removing())
+                .filter(slot -> slot.disabledSources().contains(source))
                 .map(slot -> clearDispatchDisable(slot.groupId(), slot.workerId(), source))
                 .orElse(false);
     }

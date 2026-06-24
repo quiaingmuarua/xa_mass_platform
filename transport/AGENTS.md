@@ -128,6 +128,16 @@ entry for `transport/`.
   derived reachability and registry slot heartbeat freshness. Endpoint leases
   remain delivery feasibility evidence and must not become worker lifecycle
   truth, worker state-report truth, slot heartbeat truth, or capability truth.
+- Transport and concrete adapters must not import worker-runtime dispatch gate
+  APIs or clear worker dispatch eligibility. Negative eligibility signals from
+  transport observations are bridged in SDK/starter assembly through the
+  worker-runtime negative-only block port. Adapter final-hop code returns
+  `DispatchOutcome`; it does not call worker-runtime.
+- Only confirmed current-session loss may become a worker dispatch block in the
+  current mainline. Selected-worker final-hop `NO_ENDPOINT`, backpressure,
+  invalid input, shutdown, mailbox/system unavailability, and generic failed
+  outcomes remain delivery outcomes/failure evidence and do not block worker
+  dispatch in this roadmap.
 - `DispatchMessage` is the assigned-item delivery carrier inside an
   adapter-mailbox dispatch batch. It carries only delivery id,
   `selectedWorkerId`, an opaque worker payload, opaque delivery correlation,

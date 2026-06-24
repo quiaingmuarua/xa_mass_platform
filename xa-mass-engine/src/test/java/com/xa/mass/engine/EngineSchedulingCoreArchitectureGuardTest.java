@@ -2070,6 +2070,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "RandomWorkerCandidateSamplingPolicy.java",
                 "ReserveResult.java",
                 "ReserveStatus.java",
+                "WorkerDispatchBlockRecord.java",
                 "WorkerAdmissionSnapshot.java",
                 "WorkerCandidateSamplingContext.java",
                 "WorkerCandidateSamplingPolicy.java",
@@ -2460,23 +2461,43 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void dispatchAvailabilityPolicyConsumesOnlyDispatchGateRuntime() throws IOException {
-        Path policyPath = MAIN_SOURCE_ROOT.resolve(
+        Path retiredEnginePolicyPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/control/WorkerDispatchAvailabilityPolicy.java");
-        Path defaultPolicyPath = MAIN_SOURCE_ROOT.resolve(
+        Path retiredEngineDefaultPolicyPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/control/DefaultWorkerDispatchAvailabilityPolicy.java");
+        Path workerRuntimePolicyPath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                "com", "xa", "mass", "worker", "runtime", "control", "WorkerDispatchEligibilityRuntime.java");
+        Path workerRuntimeDefaultPolicyPath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                "com", "xa", "mass", "worker", "runtime", "control",
+                "DefaultWorkerDispatchAvailabilityPolicy.java");
         Path controlServicePath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/control/WorkerControlService.java");
-        String policySource = Files.readString(policyPath, StandardCharsets.UTF_8)
+        String policySource = Files.readString(workerRuntimePolicyPath, StandardCharsets.UTF_8)
                 + "\n"
-                + Files.readString(defaultPolicyPath, StandardCharsets.UTF_8);
+                + Files.readString(workerRuntimeDefaultPolicyPath, StandardCharsets.UTF_8);
         String controlServiceSource = Files.readString(controlServicePath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
+        if (Files.exists(retiredEnginePolicyPath) || Files.exists(retiredEngineDefaultPolicyPath)) {
+            violations.add("dispatch availability policy must not be owned by engine/control");
+        }
         if (Pattern.compile("\\bWorkerManager\\b").matcher(policySource).find()) {
             violations.add("dispatch availability policy reintroduced full WorkerManager access");
         }
         if (!policySource.contains("WorkerDispatchGateRuntime")) {
             violations.add("dispatch availability policy does not consume WorkerDispatchGateRuntime");
+        }
+        if (!policySource.contains("WorkerDispatchRecoveryRuntime")) {
+            violations.add("dispatch availability policy does not submit positive recovery through WorkerDispatchRecoveryRuntime");
+        }
+        if (policySource.contains("clearWorkerDispatchDisable")) {
+            violations.add("dispatch availability policy must not directly clear the worker dispatch gate");
+        }
+        if (!controlServiceSource.contains("com.xa.mass.worker.runtime.control.WorkerDispatchEligibilityRuntime")) {
+            violations.add("WorkerControlService must consume worker-runtime-owned dispatch eligibility runtime");
+        }
+        if (controlServiceSource.contains("com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime")) {
+            violations.add("WorkerControlService must not receive the clear-capable WorkerDispatchGateRuntime");
         }
         if (Pattern.compile("\\bWorkerManager\\b").matcher(controlServiceSource).find()) {
             violations.add("WorkerControlService depends on full WorkerManager instead of narrow runtime contracts");
@@ -2492,7 +2513,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         for (String requiredContract : List.of(
                 "WorkerReportRuntime",
                 "WorkerResourceQueryRuntime",
-                "WorkerDispatchGateRuntime",
+                "WorkerDispatchEligibilityRuntime",
                 "WorkerStateProjectionRuntime")) {
             if (!controlServiceSource.contains(requiredContract)) {
                 violations.add("WorkerControlService does not consume " + requiredContract);
@@ -2500,8 +2521,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Worker-control policy may mutate dispatch eligibility only through "
-                        + "WorkerDispatchGateRuntime:\n"
+                "Worker-control service must submit evidence to worker-runtime dispatch eligibility owner:\n"
                         + String.join("\n", violations));
     }
 
@@ -2597,10 +2617,47 @@ class EngineSchedulingCoreArchitectureGuardTest {
                     || source.contains("WorkerHeartbeatRuntime")) {
                 violations.add(bridgePath + " depends on worker resource runtime ports");
             }
+            if (source.contains("WorkerDispatchGateRuntime")
+                    || source.contains("clearWorkerDispatchDisable")) {
+                violations.add(bridgePath + " exposes clear-capable worker dispatch gate");
+            }
         }
 
         assertTrue(violations.isEmpty(),
                 "SDK runtime bridge is shell wiring and must not carry worker resource runtime ports:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void clearCapableDispatchGateDoesNotCrossEngineShellBridge() throws IOException {
+        List<Path> shellBridgePaths = List.of(
+                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
+                        "com", "xa", "mass", "starter", "EngineRuntimeBridge.java"),
+                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
+                        "com", "xa", "mass", "starter", "RuntimeEventBusEngineBridge.java"),
+                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
+                        "com", "xa", "mass", "starter", "MassEngine.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernel.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernelConfig.java")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : shellBridgePaths) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (source.contains("WorkerDispatchGateRuntime")) {
+                violations.add(path + " mentions WorkerDispatchGateRuntime");
+            }
+            if (source.contains("clearWorkerDispatchDisable")) {
+                violations.add(path + " mentions clearWorkerDispatchDisable");
+            }
+            if (source.contains("workerDispatchGateRuntime")) {
+                violations.add(path + " exposes workerDispatchGateRuntime");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "The clear-capable worker dispatch gate is worker-runtime internal recovery machinery "
+                        + "and must not cross the SDK runtime bridge or engine kernel output:\n"
                         + String.join("\n", violations));
     }
 

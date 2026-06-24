@@ -1,7 +1,6 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.engine.TaskEventListenerRegistrar;
-import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 
 /**
  * Optional shell-side bridge installed around the engine runtime.
@@ -13,13 +12,7 @@ import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 public interface EngineRuntimeBridge {
 
     void start(TaskEventListenerRegistrar eventListeners,
-               WorkerDispatchGateRuntime workerDispatchGateRuntime);
-
-    default void start(TaskEventListenerRegistrar eventListeners,
-                       WorkerDispatchGateRuntime workerDispatchGateRuntime,
-                       Runnable dispatchWakeupCallback) {
-        start(eventListeners, workerDispatchGateRuntime);
-    }
+               Runnable dispatchWakeupCallback);
 
     void stop();
 
@@ -35,7 +28,7 @@ public interface EngineRuntimeBridge {
 
         @Override
         public void start(TaskEventListenerRegistrar eventListeners,
-                          WorkerDispatchGateRuntime workerDispatchGateRuntime) {
+                          Runnable dispatchWakeupCallback) {
         }
 
         @Override

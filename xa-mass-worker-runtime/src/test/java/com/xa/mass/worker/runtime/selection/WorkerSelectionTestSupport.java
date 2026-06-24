@@ -6,7 +6,6 @@ import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 
 import java.util.List;
@@ -79,7 +78,6 @@ final class WorkerSelectionTestSupport {
     static void selectable(WorkerSchedulingViewRuntime schedulingViewRuntime,
                            String workerId,
                            WorkerLoadSnapshot load) {
-        when(schedulingViewRuntime.getWorkerReachability(workerId)).thenReturn(WorkerReachabilityState.ONLINE);
         when(schedulingViewRuntime.isWorkerDispatchEnabled(workerId)).thenReturn(true);
         when(schedulingViewRuntime.hasWorkerExclusiveLease(workerId)).thenReturn(false);
         when(schedulingViewRuntime.getWorkerLoad(workerId)).thenReturn(load);

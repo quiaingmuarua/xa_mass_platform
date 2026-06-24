@@ -5,6 +5,7 @@ import com.xa.mass.runtime.worker.CleanupSummary;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.ReserveStatus;
+import com.xa.mass.runtime.worker.WorkerDispatchBlockRecord;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.DefaultWorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
@@ -347,6 +348,42 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
     }
 
     @Test
+    void dispatchBlockRecordRejectsStaleSignalsAndSurvivesGateClear() {
+        WorkerRegistry workerRegistry = createRegistry();
+        workerRegistry.upsertSlot(meta("worker-1", "group-a", 2_000), 1, Set.of(eventKey()));
+
+        assertTrue(workerRegistry.blockDispatch("group-a", "worker-1", blockRecord("first", 2_000L)));
+        assertFalse(workerRegistry.isDispatchEnabled("worker-1"));
+
+        assertTrue(workerRegistry.clearDispatchDisable(
+                "group-a",
+                "worker-1",
+                DispatchAvailabilitySource.TRANSPORT_DISCONNECTED
+        ));
+        assertTrue(workerRegistry.isDispatchEnabled("worker-1"));
+
+        assertFalse(workerRegistry.blockDispatch("group-a", "worker-1", blockRecord("stale", 1_000L)));
+        assertTrue(workerRegistry.isDispatchEnabled("worker-1"));
+        assertEquals("first", workerRegistry.dispatchBlockRecord(
+                        "group-a",
+                        "worker-1",
+                        DispatchAvailabilitySource.TRANSPORT_DISCONNECTED
+                )
+                .orElseThrow()
+                .reason());
+
+        assertTrue(workerRegistry.blockDispatch("group-a", "worker-1", blockRecord("newer", 3_000L)));
+        assertFalse(workerRegistry.isDispatchEnabled("worker-1"));
+        assertEquals("newer", workerRegistry.dispatchBlockRecord(
+                        "group-a",
+                        "worker-1",
+                        DispatchAvailabilitySource.TRANSPORT_DISCONNECTED
+                )
+                .orElseThrow()
+                .reason());
+    }
+
+    @Test
     void schedulingCandidateProjectionFiltersExpiredDeadlineBeforeCleanup() {
         WorkerRegistry workerRegistry = createRegistry();
         workerRegistry.upsertSlot(meta("worker-stale", "group-a", 1_000), 1, Set.of(eventKey()));
@@ -539,5 +576,14 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
 
     private String oldTaskActiveWorkersKey(String taskId) {
         return keyspace.namespace() + ":task:" + taskId + ":active-workers";
+    }
+
+    private static WorkerDispatchBlockRecord blockRecord(String reason, long observedAtMillis) {
+        return new WorkerDispatchBlockRecord(
+                DispatchAvailabilitySource.TRANSPORT_DISCONNECTED,
+                reason,
+                observedAtMillis,
+                0L
+        );
     }
 }

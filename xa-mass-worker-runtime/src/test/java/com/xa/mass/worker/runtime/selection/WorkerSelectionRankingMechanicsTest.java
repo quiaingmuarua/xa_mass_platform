@@ -3,7 +3,6 @@ package com.xa.mass.worker.runtime.selection;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -44,13 +43,13 @@ class WorkerSelectionRankingMechanicsTest {
                 row("worker-loaded", Map.of("region", "us", "routingTags", "lane-us")),
                 row("worker-no-affinity", Map.of("region", "us", "routingTags", "eu")),
                 row("worker-best", Map.of("region", "us", "routingTags", "lane-us")),
-                row("worker-offline", Map.of("region", "us", "routingTags", "lane-us"))
+                row("worker-blocked", Map.of("region", "us", "routingTags", "lane-us"))
         ));
         groupIsReadable(schedulingViewRuntime);
         selectable(schedulingViewRuntime, "worker-loaded", load("worker-loaded", 3, 0, 3));
         selectable(schedulingViewRuntime, "worker-no-affinity", load("worker-no-affinity", 0, 0, 3));
         selectable(schedulingViewRuntime, "worker-best", load("worker-best", 0, 0, 3));
-        when(schedulingViewRuntime.getWorkerReachability("worker-offline")).thenReturn(WorkerReachabilityState.OFFLINE);
+        when(schedulingViewRuntime.isWorkerDispatchEnabled("worker-blocked")).thenReturn(false);
         when(admissionRuntime.reserveWorkerCapacity(target("worker-best"))).thenReturn(accepted());
         when(admissionRuntime.tryAcquireWorkerExclusiveLease("worker-best")).thenReturn(true);
 
@@ -71,7 +70,7 @@ class WorkerSelectionRankingMechanicsTest {
         assertEquals(1, selected.workerReservedCount());
         assertEquals(3, selected.workerDeclaredCapacity());
         assertEquals(1.0d / 3.0d, selected.workerEstimatedLoadRatio());
-        assertEquals(1, result.rejectedCountByReason().get("worker transport unreachable"));
+        assertEquals(1, result.rejectedCountByReason().get("worker dispatch disabled"));
         verify(admissionRuntime).reserveWorkerCapacity(target("worker-best"));
         verify(admissionRuntime, never()).reserveWorkerCapacity(target("worker-loaded"));
         verify(admissionRuntime, never()).reserveWorkerCapacity(target("worker-no-affinity"));

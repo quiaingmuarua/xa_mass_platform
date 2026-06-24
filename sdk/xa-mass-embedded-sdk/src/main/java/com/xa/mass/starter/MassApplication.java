@@ -563,7 +563,7 @@ public class MassApplication {
         }
         return new WorkerRuntimePresenceIngress(
                 engineConfig.getWorkerPresenceRuntime(),
-                engineConfig.getWorkerHeartbeatRuntime(),
+                engineConfig.getWorkerDispatchBlockRuntime(),
                 engineConfig.getExecutionEventSink()
         );
     }

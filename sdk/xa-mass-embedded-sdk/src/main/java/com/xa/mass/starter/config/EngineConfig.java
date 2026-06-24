@@ -16,9 +16,7 @@ import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.engine.WorkerControlRuntime;
-import com.xa.mass.engine.control.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.control.WorkerControlService;
-import com.xa.mass.engine.control.WorkerDispatchAvailabilityPolicy;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
 import com.xa.mass.worker.runtime.evidence.WorkerDeliveryTargetView;
@@ -49,12 +47,15 @@ import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAvailabilityWakeupRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
+import com.xa.mass.worker.runtime.control.DefaultWorkerDispatchAvailabilityPolicy;
+import com.xa.mass.worker.runtime.control.WorkerDispatchEligibilityRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.worker.runtime.report.WorkerReportRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.report.WorkerStateProjectionRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
+import com.xa.mass.worker.runtime.control.WorkerDispatchBlockRuntime;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
@@ -111,8 +112,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     private final WorkerCandidateBucketPolicy workerCandidateBucketPolicy = WorkerCandidateBucketPolicies.defaultPolicy();
     private WorkerManager workerManager;
     private WorkerCommandLifecycleOwner workerCommandLifecycleOwner = new WorkerCommandLifecycleOwner();
-    private WorkerDispatchAvailabilityPolicy workerDispatchAvailabilityPolicy =
-            new DefaultWorkerDispatchAvailabilityPolicy();
+    private WorkerDispatchEligibilityRuntime workerDispatchEligibilityRuntime;
     private WorkerStateProjectionRuntime workerStateProjectionRuntime = new WorkerStateProjectionOwner();
     private WorkerControlRuntime workerControlRuntime;
     private TaskStageEvidenceOwner taskStageEvidenceOwner = new TaskStageEvidenceOwner();
@@ -169,7 +169,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         this.workerRegistry = source.workerRegistry;
         this.workerManager = null;
         this.workerCommandLifecycleOwner = source.workerCommandLifecycleOwner;
-        this.workerDispatchAvailabilityPolicy = source.workerDispatchAvailabilityPolicy;
+        this.workerDispatchEligibilityRuntime = source.workerDispatchEligibilityRuntime;
         this.workerStateProjectionRuntime = source.workerStateProjectionRuntime;
         this.workerControlRuntime = null;
         this.taskStageEvidenceOwner = source.taskStageEvidenceOwner;
@@ -373,6 +373,10 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         return workerManager();
     }
 
+    public WorkerDispatchBlockRuntime getWorkerDispatchBlockRuntime() {
+        return workerManager();
+    }
+
     public WorkerReportRuntime getWorkerReportRuntime() {
         return workerManager();
     }
@@ -386,10 +390,9 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
             workerControlRuntime = new WorkerControlService(
                     getWorkerReportRuntime(),
                     getWorkerResourceQueryRuntime(),
-                    getWorkerDispatchGateRuntime(),
+                    getWorkerDispatchEligibilityRuntime(),
                     workerCommandLifecycleOwner,
                     workerStateProjectionRuntime,
-                    workerDispatchAvailabilityPolicy,
                     getTraceEventLogger()
             );
         }
@@ -452,14 +455,18 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         this.workerControlRuntime = null;
     }
 
-    public WorkerDispatchAvailabilityPolicy getWorkerDispatchAvailabilityPolicy() {
-        return workerDispatchAvailabilityPolicy;
+    public WorkerDispatchEligibilityRuntime getWorkerDispatchEligibilityRuntime() {
+        if (workerDispatchEligibilityRuntime == null) {
+            workerDispatchEligibilityRuntime = new DefaultWorkerDispatchAvailabilityPolicy(
+                    getWorkerDispatchGateRuntime(),
+                    workerManager()
+            );
+        }
+        return workerDispatchEligibilityRuntime;
     }
 
-    public void setWorkerDispatchAvailabilityPolicy(WorkerDispatchAvailabilityPolicy workerDispatchAvailabilityPolicy) {
-        this.workerDispatchAvailabilityPolicy = workerDispatchAvailabilityPolicy != null
-                ? workerDispatchAvailabilityPolicy
-                : new DefaultWorkerDispatchAvailabilityPolicy();
+    public void setWorkerDispatchEligibilityRuntime(WorkerDispatchEligibilityRuntime workerDispatchEligibilityRuntime) {
+        this.workerDispatchEligibilityRuntime = workerDispatchEligibilityRuntime;
         this.workerControlRuntime = null;
     }
 

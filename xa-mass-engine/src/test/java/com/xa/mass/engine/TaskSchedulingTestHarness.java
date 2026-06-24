@@ -23,7 +23,6 @@ import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
 import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -31,6 +30,7 @@ import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
+import com.xa.mass.worker.runtime.control.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
 import com.xa.mass.worker.runtime.report.WorkerStateReport;
 
@@ -56,10 +56,6 @@ final class TaskSchedulingTestHarness {
     final WorkerControlService workerControlService;
 
     TaskSchedulingTestHarness() {
-        this(WorkerReachabilityView.permissive());
-    }
-
-    TaskSchedulingTestHarness(WorkerReachabilityView reachabilityView) {
         this.taskStorage = new InMemoryTaskShellRuntimeStore();
         this.taskManager = new TaskManager(
                 taskStorage,
@@ -67,11 +63,11 @@ final class TaskSchedulingTestHarness {
                 new InMemoryTaskResultRuntime(),
                 null
         );
-        this.workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), reachabilityView, new InMemoryWorkerRegistry());
+        this.workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
         this.workerControlService = new WorkerControlService(
                 workerManager,
                 workerManager,
-                workerManager,
+                new DefaultWorkerDispatchAvailabilityPolicy(workerManager, workerManager),
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
                 TraceEventLogger.noop()

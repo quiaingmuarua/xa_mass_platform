@@ -9,8 +9,6 @@ public interface WorkerSchedulingViewRuntime {
 
     Optional<WorkerGroupCapabilityView> workerGroupReadView(String groupId);
 
-    WorkerReachabilityState getWorkerReachability(String workerId);
-
     boolean isWorkerDispatchEnabled(String workerId);
 
     boolean hasWorkerExclusiveLease(String workerId);

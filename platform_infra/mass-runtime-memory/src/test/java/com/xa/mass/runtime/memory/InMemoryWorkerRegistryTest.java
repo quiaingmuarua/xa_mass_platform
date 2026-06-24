@@ -2,6 +2,7 @@ package com.xa.mass.runtime.memory;
 
 import com.xa.mass.runtime.contract.WorkerRegistryContractTest;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
+import com.xa.mass.runtime.worker.WorkerDispatchBlockRecord;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
@@ -16,6 +17,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
@@ -96,6 +98,42 @@ class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
         assertTrue(registry.slot("group-a", "worker-1").isEmpty());
     }
 
+    @Test
+    void dispatchBlockRecordRejectsStaleSignalsAndSurvivesGateClear() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));
+
+        assertTrue(registry.blockDispatch("group-a", "worker-1", blockRecord("first", 2_000L)));
+        assertFalse(registry.isDispatchEnabled("worker-1"));
+
+        assertTrue(registry.clearDispatchDisable(
+                "group-a",
+                "worker-1",
+                com.xa.mass.runtime.worker.DispatchAvailabilitySource.TRANSPORT_DISCONNECTED
+        ));
+        assertTrue(registry.isDispatchEnabled("worker-1"));
+
+        assertFalse(registry.blockDispatch("group-a", "worker-1", blockRecord("stale", 1_000L)));
+        assertTrue(registry.isDispatchEnabled("worker-1"));
+        assertEquals("first", registry.dispatchBlockRecord(
+                        "group-a",
+                        "worker-1",
+                        com.xa.mass.runtime.worker.DispatchAvailabilitySource.TRANSPORT_DISCONNECTED
+                )
+                .orElseThrow()
+                .reason());
+
+        assertTrue(registry.blockDispatch("group-a", "worker-1", blockRecord("newer", 3_000L)));
+        assertFalse(registry.isDispatchEnabled("worker-1"));
+        assertEquals("newer", registry.dispatchBlockRecord(
+                        "group-a",
+                        "worker-1",
+                        com.xa.mass.runtime.worker.DispatchAvailabilitySource.TRANSPORT_DISCONNECTED
+                )
+                .orElseThrow()
+                .reason());
+    }
+
     private WorkerMeta workerMeta(String workerId, String groupId, String region) {
         return new WorkerMeta(
                 workerId,
@@ -125,5 +163,14 @@ class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
                 return 2;
             }
         };
+    }
+
+    private static WorkerDispatchBlockRecord blockRecord(String reason, long observedAtMillis) {
+        return new WorkerDispatchBlockRecord(
+                com.xa.mass.runtime.worker.DispatchAvailabilitySource.TRANSPORT_DISCONNECTED,
+                reason,
+                observedAtMillis,
+                0L
+        );
     }
 }

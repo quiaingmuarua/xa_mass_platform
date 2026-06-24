@@ -14,7 +14,12 @@ import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
+import com.xa.mass.runtime.worker.WorkerDispatchBlockRecord;
+import com.xa.mass.worker.runtime.control.WorkerDispatchBlockRuntime;
+import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
 import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
+import com.xa.mass.worker.runtime.control.WorkerDispatchRecoveryMode;
+import com.xa.mass.worker.runtime.control.WorkerDispatchRecoveryRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
@@ -73,7 +78,9 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
         WorkerAdmissionRuntime,
         WorkerSelectionRuntime,
         WorkerAvailabilityWakeupRuntime,
+        WorkerDispatchBlockRuntime,
         WorkerDispatchGateRuntime,
+        WorkerDispatchRecoveryRuntime,
         WorkerReportRuntime,
         WorkerWarmHintRuntime {
 
@@ -220,6 +227,9 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
 
     public void releaseWorkerExclusiveLease(String workerId) {
         admissionOwner.releaseWorkerExclusiveLease(workerId);
+        if (workerId != null && !workerId.isBlank()) {
+            notifyDispatchWakeup("worker exclusive lease released");
+        }
     }
 
     public boolean hasWorkerExclusiveLease(String workerId) {
@@ -387,8 +397,39 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
         return workerRegistry.disableDispatch(workerId, source);
     }
 
+    @Override
+    public boolean blockWorkerDispatch(String workerId, WorkerDispatchBlockSignal signal) {
+        Objects.requireNonNull(signal, "signal");
+        return workerRegistry.blockDispatch(workerId, blockRecord(signal));
+    }
+
+    @Override
+    public boolean blockWorkerDispatch(String workerGroupId, String workerId, WorkerDispatchBlockSignal signal) {
+        Objects.requireNonNull(signal, "signal");
+        return workerRegistry.blockDispatch(workerGroupId, workerId, blockRecord(signal));
+    }
+
+    Optional<WorkerDispatchBlockRecord> dispatchBlockRecord(String workerGroupId,
+                                                            String workerId,
+                                                            DispatchAvailabilitySource source) {
+        return workerRegistry.dispatchBlockRecord(workerGroupId, workerId, source);
+    }
+
     public boolean clearWorkerDispatchDisable(String workerId, DispatchAvailabilitySource source, String reason) {
         return workerRegistry.clearDispatchDisable(workerId, source);
+    }
+
+    @Override
+    public boolean recoverWorkerDispatch(String workerId, DispatchAvailabilitySource source, String reason) {
+        Objects.requireNonNull(source, "source");
+        Optional<com.xa.mass.runtime.worker.WorkerMeta> meta = workerRegistry.workerMeta(workerId);
+        if (meta.isEmpty()) {
+            return false;
+        }
+        if (!recoveryAllowed(meta.orElseThrow(), source)) {
+            return false;
+        }
+        return workerRegistry.recoverDispatchDisable(workerId, source);
     }
 
     public void setDispatchWakeupCallback(Runnable dispatchWakeupCallback) {
@@ -417,6 +458,9 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
     @Override
     public void releaseWorkerReservation(WorkerAdmissionTarget target) {
         admissionOwner.releaseWorkerReservation(target);
+        if (target != null) {
+            notifyDispatchWakeup("worker reservation released");
+        }
     }
 
     @Override
@@ -427,6 +471,9 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
     @Override
     public void recordWorkFinal(WorkerAdmissionTarget target) {
         admissionOwner.recordWorkFinal(target);
+        if (target != null) {
+            notifyDispatchWakeup("worker work final");
+        }
     }
 
     private void publishWorkerRegistrySnapshot() {
@@ -462,6 +509,30 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
         } catch (RuntimeException e) {
             log.warn("Worker relationship dispatch wakeup callback failed: {}", reason, e);
         }
+    }
+
+    private static WorkerDispatchBlockRecord blockRecord(WorkerDispatchBlockSignal signal) {
+        return new WorkerDispatchBlockRecord(
+                signal.source().gateSource(),
+                signal.reason(),
+                signal.observedAtMillis(),
+                signal.suggestedRecheckAfterMillis()
+        );
+    }
+
+    private static boolean recoveryAllowed(com.xa.mass.runtime.worker.WorkerMeta meta,
+                                           DispatchAvailabilitySource source) {
+        if (controlledRecoverySource(source)) {
+            return true;
+        }
+        return WorkerDispatchRecoveryMode.fromAttributes(meta.attributes())
+                == WorkerDispatchRecoveryMode.FRESHNESS_EVIDENCE;
+    }
+
+    private static boolean controlledRecoverySource(DispatchAvailabilitySource source) {
+        return source == DispatchAvailabilitySource.WORKER_STATE
+                || source == DispatchAvailabilitySource.WORKER_COMMAND
+                || source == DispatchAvailabilitySource.NODE_GROUP_BINDING;
     }
 
 }

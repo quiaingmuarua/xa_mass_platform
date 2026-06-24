@@ -6,7 +6,6 @@ import com.xa.mass.base.channel.eventbus.event.task.TaskAssignedEvent;
 import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
-import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -35,13 +34,6 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
 
     @Override
     public void start(TaskEventListenerRegistrar eventListeners,
-                      WorkerDispatchGateRuntime workerDispatchGateRuntime) {
-        start(eventListeners, workerDispatchGateRuntime, null);
-    }
-
-    @Override
-    public void start(TaskEventListenerRegistrar eventListeners,
-                      WorkerDispatchGateRuntime workerDispatchGateRuntime,
                       Runnable dispatchWakeupCallback) {
         stop();
         @SuppressWarnings("unchecked")

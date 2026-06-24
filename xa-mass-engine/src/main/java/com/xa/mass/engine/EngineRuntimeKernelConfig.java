@@ -3,7 +3,6 @@ package com.xa.mass.engine;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.admission.WorkerAvailabilityWakeupRuntime;
-import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 
 /**
@@ -31,8 +30,6 @@ public interface EngineRuntimeKernelConfig {
     WorkerAvailabilityWakeupRuntime getWorkerAvailabilityWakeupRuntime();
 
     WorkerSelectionRuntime getWorkerSelectionRuntime();
-
-    WorkerDispatchGateRuntime getWorkerDispatchGateRuntime();
 
     WorkerControlRuntime getWorkerControlRuntime();
 

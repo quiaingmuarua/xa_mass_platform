@@ -25,9 +25,9 @@ Worker runtime owns:
 - WorkerGroup, AdapterNode, NodeGroupBinding, and event binding declarations.
 - Worker row to registry slot projection.
 - Worker capability report application and bounded state projection.
-- Worker reachability, load, and group capability evidence used by
-  worker-runtime selection and explicit diagnostics.
-- Worker admission, capacity permits, dispatch gates, and exclusive leases.
+- Worker-runtime dispatch eligibility evidence used by worker-runtime selection
+  and explicit diagnostics: reachability observations, heartbeat freshness,
+  load, admission, capacity permits, dispatch gates, and exclusive leases.
 - Runtime worker selection: worker-fact predicates, ordering, reservation,
   selected handles, selected claim authorization, and selected-worker
   accounting.
@@ -82,14 +82,17 @@ Role split:
   dispatch gates, reservations, leases, raw timestamps, or worker-level
   supported project/event capability hints.
 - `WorkerRuntimeStateRecord` is a current runtime-state view assembled from
-  registry, reachability, heartbeat freshness, dispatch gate, and admission
-  evidence. It exposes reachability/readiness diagnostics and occupancy
-  evidence fields, but it is not persisted as declaration truth.
+  registry, reachability observations, heartbeat freshness, dispatch gate, and
+  admission evidence. It exposes diagnostic fields, but it is not persisted as
+  declaration truth and must not become a second scheduling owner beside
+  registry/admission/selection.
 - `WorkerResourceRecord` is a minimal lookup read model for worker-owned
   identity/declaration facts. It does not carry runtime status, heartbeat,
   adapter topology ids, raw timestamps, or compatibility capability hints.
 - `WorkerHeartbeatRuntime` is the narrow runtime-evidence port used to refresh
-  registry heartbeat evidence. It is separate from declaration mutation.
+  registry heartbeat evidence from explicit worker/runtime report paths. It is
+  separate from declaration mutation, and transport session connected/heartbeat
+  presence is not a caller for registry heartbeat refresh.
 - `WorkerNodeBindingRuntime` is topology/admin. It may manage adapter node and
   node-group binding metadata, but it does not own scheduling selection or
   worker dispatch eligibility.
@@ -128,16 +131,18 @@ not provide worker-runtime source keys, candidate rows, scheduling views,
 worker attributes, load snapshots, dispatch-gate evidence, or transport
 topology ids.
 
-Worker-runtime selection may compose candidate source, reachability, dispatch
-gate, load, WorkerGroup capability, routing/attribute matching, admission, and
-exclusive lease evidence internally. It returns selected handles only after
-worker-runtime has selected and reserved workers. Engine may read `workerId`,
-`workerGroupId`, selection token, and selected accounting/claim operations from
-the handle. Claim authorization remains a worker-runtime package-private bridge
-used by the selected handle to build the current task-runtime claim target;
-engine must not inspect capability lists or authorization internals. Any
-additional worker fact belongs in an explicit server/SDK diagnostic view, not
-in the engine hot path.
+Worker-runtime selection composes candidate source, dispatch eligibility,
+load, WorkerGroup capability, routing/attribute
+matching, admission, and exclusive lease evidence internally. These inputs feed
+one worker-runtime dispatch eligibility decision; they are not parallel
+readiness/reachability/occupancy scheduling owners. It returns selected handles
+only after worker-runtime has selected and reserved workers. Engine may read
+`workerId`, `workerGroupId`, selection token, and selected accounting/claim
+operations from the handle. Claim authorization remains a worker-runtime
+package-private bridge used by the selected handle to build the current
+task-runtime claim target; engine must not inspect capability lists or
+authorization internals. Any additional worker fact belongs in an explicit
+server/SDK diagnostic view, not in the engine hot path.
 
 `SelectedWorkerEvidence` is the recovery/release shape for persisted dispatch
 bindings. It carries selected identity and selection scope only.
@@ -194,14 +199,20 @@ Owned contracts:
 
 Allowed callers:
 
-- Worker-runtime selection implementation.
-- SDK/server assembly when exposing worker state.
+- Worker-runtime selection implementation for `WorkerSchedulingViewRuntime`.
+- SDK/server assembly when exposing worker state diagnostics through
+  `WorkerReachabilityView`.
 - Worker-runtime implementation.
 
 Evidence is read-only worker-runtime input and diagnostic output. Engine
 scheduling must not read it directly as a worker-selection input; selected
 handles are the engine hot-path contract. Evidence must not mutate worker
 lifecycle truth.
+
+`WorkerSchedulingViewRuntime` is the selection-facing read surface. It exposes
+group capability, dispatch gate, lock, and load facts, but it must not expose
+`getWorkerReachability`. Reachability stays behind `WorkerReachabilityView` so
+diagnostic/freshness observations cannot quietly return as a selection gate.
 
 `WorkerDeliveryTargetView` is the post-selection delivery evidence contract.
 It resolves an already selected worker to an opaque adapter mailbox target.
@@ -211,10 +222,11 @@ connection ids, session handles, transport node ids, or adapter ids as worker
 selection truth. The contract is point lookup only and must not grow list,
 count, stats, snapshot, or inspection APIs.
 
-Reachability, readiness, and occupancy are separate dimensions. `UNKNOWN`
-reachability is an observation gap; only `ONLINE` is reachable for scheduling.
-Readiness and occupancy states are diagnostic views derived from current
-worker-runtime facts unless a later owner decision makes a stored field
+Reachability, readiness, and occupancy are evidence/diagnostic vocabularies
+inside worker-runtime, not three independent scheduling truth owners. `UNKNOWN`
+reachability is an observation gap; worker-runtime must not treat it as
+reachable for scheduling. Readiness and occupancy labels are derived from
+current worker-runtime facts unless a later owner decision makes a stored field
 canonical. Legacy `statusName` / worker `status` fields are display-only
 compatibility and must not become scheduling truth.
 
@@ -289,9 +301,9 @@ side effects are limited to an explicit dispatch-gate allowlist:
 | State report value | Classification |
 | --- | --- |
 | `DRAINING` | dispatch-gate input; disables `WORKER_STATE` |
-| `AVAILABLE` | dispatch-gate input; clears only `WORKER_STATE` |
+| `AVAILABLE` | dispatch-gate input; requests worker-runtime recovery for `WORKER_STATE` |
 | `DEGRADED` | diagnostic-only projection |
-| `OFFLINE` | diagnostic-only projection; reachability owns offline scheduling evidence |
+| `OFFLINE` | diagnostic-only projection; worker-runtime-owned reachability evidence decides dispatch eligibility |
 | `READY` | diagnostic-only projection |
 | `INIT_REQUIRED` | target-only readiness vocabulary |
 | `VERSION_MISMATCH` | target-only readiness vocabulary |
@@ -299,7 +311,9 @@ side effects are limited to an explicit dispatch-gate allowlist:
 | `HEALTH_UNAVAILABLE` | target-only readiness vocabulary |
 
 `AVAILABLE` must not clear `WORKER_COMMAND`; worker command drain remains a
-separate dispatch-gate source.
+separate dispatch-gate source. Positive state evidence enters
+`WorkerDispatchRecoveryRuntime` and must pass worker-runtime validation before
+the matching source can be cleared.
 
 ### Control
 
@@ -307,13 +321,33 @@ Package: `com.xa.mass.worker.runtime.control`
 
 Owned contract:
 
+- `WorkerDispatchBlockRuntime`
+- `WorkerDispatchEligibilityRuntime`
 - `WorkerDispatchGateRuntime`
+- `WorkerDispatchRecoveryRuntime`
+- `WorkerDispatchRecoveryMode`
 
 Allowed callers:
 
+- `WorkerDispatchBlockRuntime`: SDK/starter integration bridges that publish
+  allowlisted external negative evidence. The current transport slice allows
+  only confirmed current-session disconnect.
 - Engine control paths.
 - SDK/server worker control paths.
 - Worker-runtime implementation.
+
+`WorkerDispatchBlockRuntime` is negative-only. It records source-scoped block
+metadata and cannot clear a dispatch block. `WorkerDispatchEligibilityRuntime`
+owns worker state/command evidence interpretation into dispatch eligibility;
+engine control submits evidence to this runtime instead of receiving the
+clear-capable gate. `DefaultWorkerDispatchAvailabilityPolicy` is the default
+worker-runtime implementation of that evidence translation. Positive recovery
+from that policy uses `WorkerDispatchRecoveryRuntime`; the first synchronous
+implementation validates worker meta, `WorkerDispatchRecoveryMode`, slot
+presence, removing state, and the active block source before clearing only that
+source.
+`WorkerDispatchGateRuntime` is clear-capable and remains worker-runtime/control
+internal; transport and concrete adapters must not import or call it.
 
 ### Command
 
@@ -339,8 +373,15 @@ Allowed callers:
 - Worker-runtime implementation and tests.
 
 Worker command lifecycle truth is worker-scoped runtime/control truth. Engine
-may translate lifecycle results into dispatch-gate side effects, trace events,
-and delivery retries, but engine must not own the command record/status store.
+may submit lifecycle results to worker-runtime dispatch eligibility, emit trace
+events, and coordinate delivery retries, but engine must not own command
+record/status storage or dispatch-gate mutation policy.
+
+`WorkerAvailabilityWakeupRuntime` is assembly wiring for worker-runtime
+availability changes that can make waiting tasks worth rechecking. Admission
+release paths such as reservation release, final work accounting, and
+exclusive-lock release may trigger it after capacity state changes. The wakeup
+does not clear dispatch blocks and is not itself scheduling truth.
 
 ### Routing
 
@@ -360,11 +401,12 @@ indexing write amplification is visible.
 
 Worker registration may create or refresh a registry slot so the runtime can
 route current work, but declaration persistence is not the source of active
-online state. Online state comes from transport reachability, heartbeat
-freshness in current registry metadata, dispatch gates, and admission evidence.
-Declaration-store writes must keep projecting to `WorkerDeclarationRecord`
-before persistence so heartbeat or online/offline churn never becomes durable
-worker declaration truth.
+online or dispatchable state. Worker-runtime dispatch eligibility is derived
+inside worker-runtime from reachability observations, heartbeat freshness in
+current registry metadata, dispatch gates, capacity/admission, and selection
+confirmation. Declaration-store writes must keep projecting to
+`WorkerDeclarationRecord` before persistence so heartbeat or online/offline
+churn never becomes durable worker declaration truth.
 
 ## Registry SPI Below This Boundary
 
@@ -394,9 +436,9 @@ handler to run. It is not a worker selector and must not cause engine code to
 scan all workers from item payload.
 
 WorkerGroup owns project/event capability truth. Worker registration and
-runtime state provide execution identity, group/node membership, reachability,
-load, admission, draining, lease, and other scheduling evidence for selection
-inside the selected group.
+runtime state provide execution identity, group/node membership, reachability
+observations, load, admission, draining/gate state, lease, and other
+worker-runtime evidence for selection inside the selected group.
 
 Engine scheduling code should not import registry primitives or worker-runtime
 candidate/evidence/admission subports. The default engine-facing contract is

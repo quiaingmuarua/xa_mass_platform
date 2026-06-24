@@ -64,6 +64,42 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
+    void negativeWorkerDispatchSignalBridgeStaysInStarterAssembly() throws IOException {
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java")
+                ),
+                "WorkerDispatchBlockRuntime",
+                "WorkerDispatchBlockSignal",
+                "WorkerDispatchGateRuntime",
+                "blockWorkerDispatch(",
+                "clearWorkerDispatchDisable(",
+                "disableWorkerDispatch("
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
+                ),
+                "WorkerDispatchGateRuntime",
+                "clearWorkerDispatchDisable(",
+                "disableWorkerDispatch("
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
+                ),
+                "WorkerHeartbeatRuntime",
+                "refreshWorkerHeartbeat(",
+                "refreshSlotHeartbeat"
+        );
+    }
+
+    @Test
     void oldWorkerLifecycleChannelAndRouteProjectorDoNotReappear() throws IOException {
         assertNoProductionSourceContains(
                 List.of(

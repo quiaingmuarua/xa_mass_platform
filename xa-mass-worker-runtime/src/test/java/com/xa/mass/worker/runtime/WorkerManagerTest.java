@@ -10,9 +10,12 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
+import com.xa.mass.runtime.worker.WorkerDispatchBlockRecord;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
+import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
+import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportStatus;
@@ -34,6 +37,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_STATE;
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_COMMAND;
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.TRANSPORT_DISCONNECTED;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class WorkerManagerTest {
@@ -166,6 +171,31 @@ public class WorkerManagerTest {
 
         manager.recordWorkFinal(admissionTarget("us", "worker-reserve", "task-1"));
         assertEquals(0, manager.getWorkerLoad("worker-reserve").activeLeaseCount());
+    }
+
+    @Test
+    void releaseAndFinalEvidenceWakeDispatchWithoutClearingBlocks() {
+        Worker worker = worker("worker-release-wakeup", "us");
+        worker.setMaxConcurrentWork(2);
+        addWorker(worker);
+        WorkerAdmissionTarget activeTarget = admissionTarget("us", worker.getWorkerId(), "task-active");
+        WorkerAdmissionTarget reservedTarget = admissionTarget("us", worker.getWorkerId(), "task-reserved");
+        assertTrue(manager.reserveWorkerCapacity(activeTarget).accepted());
+        assertTrue(manager.confirmWorkerReservation(activeTarget));
+        assertTrue(manager.reserveWorkerCapacity(reservedTarget).accepted());
+        assertTrue(manager.tryAcquireWorkerExclusiveLease(worker.getWorkerId()));
+        assertTrue(manager.blockWorkerDispatch(worker.getWorkerId(),
+                blockSignal(WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED, "disconnect", 1_000L)));
+        AtomicInteger wakeups = new AtomicInteger();
+        manager.setDispatchWakeupCallback(wakeups::incrementAndGet);
+
+        manager.recordWorkFinal(activeTarget);
+        manager.releaseWorkerReservation(reservedTarget);
+        manager.releaseWorkerExclusiveLease(worker.getWorkerId());
+
+        assertEquals(3, wakeups.get());
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+        assertTrue(manager.dispatchBlockRecord("us", worker.getWorkerId(), TRANSPORT_DISCONNECTED).isPresent());
     }
 
     @Test
@@ -448,6 +478,88 @@ public class WorkerManagerTest {
         NodeGroupBindingRecord binding = manager.nodeGroupBinding("node-a", "crawler").orElseThrow();
         assertFalse(binding.enabled());
         assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+    }
+
+    @Test
+    void negativeBlockPortDisablesDispatchWithoutExposingClear() {
+        Worker worker = worker("worker-disconnected", "us");
+        addWorker(worker);
+
+        assertTrue(manager.blockWorkerDispatch("us", "worker-disconnected",
+                blockSignal(WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED, "current disconnect", 2_000L)));
+
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+        WorkerDispatchBlockRecord record = manager.dispatchBlockRecord(
+                "us",
+                "worker-disconnected",
+                TRANSPORT_DISCONNECTED
+        ).orElseThrow();
+        assertEquals(TRANSPORT_DISCONNECTED, record.source());
+        assertEquals("current disconnect", record.reason());
+        assertEquals(2_000L, record.observedAtMillis());
+    }
+
+    @Test
+    void staleNegativeBlockSignalDoesNotReblockAfterRecoveryClearsGateSource() {
+        Worker worker = worker("worker-recovered", "us");
+        addWorker(worker);
+
+        assertTrue(manager.blockWorkerDispatch("us", "worker-recovered",
+                blockSignal(WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED, "current disconnect", 2_000L)));
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+
+        assertTrue(manager.clearWorkerDispatchDisable("worker-recovered", TRANSPORT_DISCONNECTED, "worker-runtime recheck passed"));
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+
+        assertFalse(manager.blockWorkerDispatch("us", "worker-recovered",
+                blockSignal(WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED, "stale disconnect", 1_000L)));
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+
+        assertTrue(manager.blockWorkerDispatch("us", "worker-recovered",
+                blockSignal(WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED, "new disconnect", 3_000L)));
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+        assertEquals("new disconnect", manager.dispatchBlockRecord("us", "worker-recovered", TRANSPORT_DISCONNECTED)
+                .orElseThrow()
+                .reason());
+    }
+
+    @Test
+    void negativeBlockSignalCannotRedefineWorkerGroupMembership() {
+        Worker worker = worker("worker-group-owned", "us");
+        addWorker(worker);
+
+        assertFalse(manager.blockWorkerDispatch("eu", "worker-group-owned",
+                blockSignal(WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED, "wrong group", 1_000L)));
+
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+    }
+
+    @Test
+    void workerRuntimeRecoveryClearsOnlyRequestedValidatedSource() {
+        Worker worker = worker("worker-state-recovered", "us");
+        addWorker(worker);
+
+        manager.disableWorkerDispatch(worker.getWorkerId(), WORKER_STATE, "state draining");
+        manager.disableWorkerDispatch(worker.getWorkerId(), WORKER_COMMAND, "drain command accepted");
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+
+        assertTrue(manager.recoverWorkerDispatch(worker.getWorkerId(), WORKER_STATE, "state available"));
+
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+        assertTrue(manager.recoverWorkerDispatch(worker.getWorkerId(), WORKER_COMMAND, "command recovered"));
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
+    }
+
+    @Test
+    void workerRuntimeRecoveryRejectsRemovingWorkerSlot() {
+        Worker worker = worker("worker-removing-recovery", "us");
+        addWorker(worker);
+        manager.disableWorkerDispatch(worker.getWorkerId(), WORKER_STATE, "state draining");
+
+        assertTrue(manager.deleteWorker(worker.getWorkerId()));
+        assertFalse(manager.recoverWorkerDispatch(worker.getWorkerId(), WORKER_STATE, "state available"));
+
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     @Test
@@ -1196,6 +1308,12 @@ public class WorkerManagerTest {
 
     private static WorkerAdmissionTarget admissionTarget(String groupId, String workerId, String taskId) {
         return WorkerAdmissionTarget.groupScoped(groupId, workerId, taskId);
+    }
+
+    private static WorkerDispatchBlockSignal blockSignal(WorkerDispatchBlockSource source,
+                                                         String reason,
+                                                         long observedAtMillis) {
+        return new WorkerDispatchBlockSignal(source, reason, observedAtMillis, 0L);
     }
 
     private static InMemoryWorkerRegistry platformRegistry() {

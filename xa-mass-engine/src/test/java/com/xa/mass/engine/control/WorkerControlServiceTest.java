@@ -15,7 +15,8 @@ import com.xa.mass.engine.testutil.WorkerTestFixture;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
-import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
+import com.xa.mass.worker.runtime.control.DefaultWorkerDispatchAvailabilityPolicy;
+import com.xa.mass.worker.runtime.control.WorkerDispatchEligibilityRuntime;
 import com.xa.mass.worker.runtime.report.WorkerStateProjection;
 import com.xa.mass.worker.runtime.report.WorkerStateReport;
 import com.xa.mass.trace.sink.ExecutionEventType;
@@ -186,7 +187,7 @@ public class WorkerControlServiceTest {
     }
 
     @Test
-    void dispatchAvailabilityPolicyIsPluggable() {
+    void dispatchEligibilityRuntimeIsPluggable() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
         WorkerTestFixture worker = new WorkerTestFixture();
         worker.setWorkerId("worker-3");
@@ -194,12 +195,16 @@ public class WorkerControlServiceTest {
         registerWorker(workerManager, worker);
         AtomicInteger stateApplications = new AtomicInteger();
         AtomicInteger commandApplications = new AtomicInteger();
-        WorkerDispatchAvailabilityPolicy policy = new WorkerDispatchAvailabilityPolicy() {
+        WorkerDispatchEligibilityRuntime eligibilityRuntime = new WorkerDispatchEligibilityRuntime() {
             @Override
-            public void applyWorkerStateProjection(WorkerStateProjection projection,
-                                                   WorkerDispatchGateRuntime dispatchGateRuntime) {
+            public boolean isWorkerDispatchEnabled(String workerId) {
+                return workerManager.isWorkerDispatchEnabled(workerId);
+            }
+
+            @Override
+            public void applyWorkerStateProjection(WorkerStateProjection projection) {
                 stateApplications.incrementAndGet();
-                dispatchGateRuntime.disableWorkerDispatch(
+                workerManager.disableWorkerDispatch(
                         projection.workerId(),
                         WORKER_STATE,
                         projection.reason()
@@ -207,10 +212,9 @@ public class WorkerControlServiceTest {
             }
 
             @Override
-            public void applyWorkerCommandLifecycleResult(com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult result,
-                                                          WorkerDispatchGateRuntime dispatchGateRuntime) {
+            public void applyWorkerCommandLifecycleResult(com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult result) {
                 commandApplications.incrementAndGet();
-                dispatchGateRuntime.clearWorkerDispatchDisable(
+                workerManager.clearWorkerDispatchDisable(
                         result.record().workerId(),
                         WORKER_STATE,
                         result.record().statusReason()
@@ -221,7 +225,7 @@ public class WorkerControlServiceTest {
                 workerManager,
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
-                policy,
+                eligibilityRuntime,
                 TraceEventLogger.noop());
 
         assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-3", 1, "AVAILABLE")
@@ -435,7 +439,7 @@ public class WorkerControlServiceTest {
         return new WorkerControlService(
                 workerManager,
                 workerManager,
-                workerManager,
+                new DefaultWorkerDispatchAvailabilityPolicy(workerManager, workerManager),
                 commandOwner,
                 stateOwner,
                 traceEventLogger);
@@ -444,15 +448,14 @@ public class WorkerControlServiceTest {
     private static WorkerControlService workerControlService(WorkerManager workerManager,
                                                              WorkerCommandLifecycleOwner commandOwner,
                                                              WorkerStateProjectionOwner stateOwner,
-                                                             WorkerDispatchAvailabilityPolicy policy,
+                                                             WorkerDispatchEligibilityRuntime eligibilityRuntime,
                                                              TraceEventLogger traceEventLogger) {
         return new WorkerControlService(
                 workerManager,
                 workerManager,
-                workerManager,
+                eligibilityRuntime,
                 commandOwner,
                 stateOwner,
-                policy,
                 traceEventLogger);
     }
 

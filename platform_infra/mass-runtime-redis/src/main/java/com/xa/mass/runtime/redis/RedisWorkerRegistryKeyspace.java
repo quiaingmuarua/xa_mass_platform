@@ -62,6 +62,10 @@ public final class RedisWorkerRegistryKeyspace {
         return groupPrefix(groupId) + ":bucket-membership";
     }
 
+    public String groupDispatchBlocksHash(String groupId) {
+        return groupPrefix(groupId) + ":dispatch-blocks";
+    }
+
     public String taskWorkerActiveCountsHash(String taskId) {
         return taskPrefix(taskId) + ":worker-active-count";
     }

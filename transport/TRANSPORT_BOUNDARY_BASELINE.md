@@ -209,6 +209,17 @@ Transport should stay centered on these concepts only:
   lifecycle owner.
   Connected and heartbeat observations may refresh worker-runtime slot heartbeat
   freshness; they must not write worker resource status or dispatch gates.
+  Current-session disconnect may be projected by starter assembly into the
+  worker-runtime negative-only dispatch block port; stale/replaced session
+  disconnects must not block dispatch.
+- Transport/adapters do not own worker dispatch eligibility recovery. They may
+  only produce best-effort negative observations through delivery outcomes or
+  session-presence projection. SDK/starter assembly bridges confirmed
+  current-session disconnect observations to worker-runtime block records; it
+  must not expose clear-capable gate APIs to transport or concrete adapters.
+  Final-hop `NO_ENDPOINT`, pre-transport missing target, mailbox unavailable,
+  backpressure, invalid input, shutdown, and generic failed outcomes remain
+  delivery outcomes/failure evidence in the current roadmap.
 - `WorkerGroup`: capability declaration and scheduling entry boundary. It owns
   project/event capability truth through event bindings.
 - `Worker`: selected execution identity plus scheduling evidence. Worker rows
