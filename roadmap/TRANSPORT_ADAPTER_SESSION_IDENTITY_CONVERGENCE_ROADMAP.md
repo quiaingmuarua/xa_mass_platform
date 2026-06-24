@@ -55,10 +55,12 @@ assigned-delivery final-hop executor extraction.
   parse error classification. WebSocket-specific behavior in that path is only
   `TextWebSocketFrame` extraction, `ChannelHandlerContext` error-frame writing,
   and Netty channel lifecycle.
-- `WebSocketTaskDispatchChannel` is still the current WebSocket assigned
-  delivery final-hop proof in active owner docs. Removing or replacing it is a
-  separate assigned-delivery executor convergence, not a prerequisite for
-  session identity or due-refresh work.
+- WebSocket assigned delivery now contributes a runtime-created
+  `AdapterCommandExecutor` from `WebSocketTransportAdapterBootstrap` by passing
+  a final-hop `send(DispatchMessage)` function to
+  `AdapterCommandExecutors.perMessage(...)`. There is no
+  `WebSocketTaskDispatchChannel` wrapper class in the target WebSocket shape.
+  This remains separate from session identity and due-refresh work.
 - `MassApplicationBuilder` and `MassSdk` expose
   `TransportServerFactory<WebSocketServerFactoryContext>`, and
   `WebSocketServerFactoryContext` exposes `WebSocketServerSessionHandle`.
@@ -165,14 +167,14 @@ delivery path in this roadmap:
 
 ```text
 DispatchMessage.selectedWorkerId
-  -> WebSocketTaskDispatchChannel
+  -> WebSocketTransportAdapterBootstrap contributed AdapterCommandExecutor
+  -> AdapterCommandExecutors.perMessage(...)
   -> WebSocketSessionRegistry.sendTextToWorker(workerId, frame)
 ```
 
-Do not delete, rename, or replace `WebSocketTaskDispatchChannel` as part of
-this session identity roadmap. If the adapter-common final-hop executor is
-still desirable, create a separate assigned-delivery executor roadmap with its
-own proof and owner-doc updates.
+Do not reintroduce a WebSocket protocol-specific executor wrapper class as part
+of this session identity roadmap. WebSocket owns the final-hop send function;
+runtime embedded support owns the batch/outcome executor wrapper.
 
 Do not keep a standalone WebSocket session-open reader. WebSocket handshake
 query parsing is protocol-edge work inside `DispatcherInboundHandler`; a
@@ -229,7 +231,8 @@ TransportEndpointLeaseDueHint(identity, leaseExpireAtEpochMillis)
 
 ```text
 DispatchMessage.selectedWorkerId
-  -> WebSocketTaskDispatchChannel
+  -> WebSocketTransportAdapterBootstrap contributed AdapterCommandExecutor
+  -> AdapterCommandExecutors.perMessage(...)
   -> WorkerChannelFrameJsonCodec.encodeAction(payload)
   -> WebSocketSessionRegistry.sendTextToWorker(selectedWorkerId, frame)
   -> WebSocketSessionRegistry worker-id lookup
@@ -237,7 +240,7 @@ DispatchMessage.selectedWorkerId
 
 Do not pass `AdapterSessionIdentity` or `deliveryBucketId` into
 `DispatchMessage` or the adapter command executor path. This roadmap does not
-move or replace the WebSocket assigned-delivery executor.
+move the WebSocket assigned-delivery executor into session identity.
 
 Concrete adapters still own protocol carriers. WebSocket still owns
 `TextWebSocketFrame` construction and channel writes.
@@ -275,8 +278,8 @@ an adapter inbound JSON frame.
   has a bound adapter session identity.
 - Do not create a generic endpoint registry or selected-worker endpoint lookup
   abstraction.
-- Do not delete, rename, or replace `WebSocketTaskDispatchChannel`; assigned
-  WebSocket final-hop executor extraction is out of scope for this roadmap.
+- Do not reintroduce `WebSocketTaskDispatchChannel` or another WebSocket
+  protocol-specific `AdapterCommandExecutor` wrapper class.
 - Do not keep or introduce a reader/factory/helper class whose only job is to
   instantiate `AdapterSessionIdentity` from WebSocket handshake query fields.
 - Do not include routeKey, adapterId, endpoint lease id, session handle,
@@ -287,8 +290,8 @@ an adapter inbound JSON frame.
 
 ## Do Not Start With
 
-Do not start by changing `DispatchMessage`, `WebSocketTaskDispatchChannel`, or
-assigned-delivery executor wiring.
+Do not start by changing `DispatchMessage`, socket executor wiring, or broader
+assigned-delivery command semantics.
 
 This convergence is about session evidence identity. Assigned task dispatch
 already has the correct final-hop constraint: `selectedWorkerId`.
@@ -297,9 +300,9 @@ Do not start by moving the record to `transport_api`. This is not an external
 transport-neutral protocol contract; it is embedded adapter/session evidence
 support.
 
-Do not treat session identity cleanup as permission to delete the WebSocket
-final-hop dispatch capability. `WebSocketTaskDispatchChannel` remains the
-current assigned-delivery final-hop owner until a separate roadmap changes it.
+Do not treat session identity cleanup as permission to remove the WebSocket
+final-hop dispatch capability. WebSocket final-hop dispatch remains present as
+a bootstrap-contributed runtime executor built from a final-hop send function.
 
 Do not preserve `WebSocketSessionOpenFrameReader` as a rename-only shim after
 `WebSocketSessionIdentity` is removed. Move the tiny query parsing into the
@@ -312,15 +315,11 @@ lifecycle.
 
 ## Deferred Follow-Ups
 
-- Assigned-delivery final-hop executor extraction:
-  `WebSocketTaskDispatchChannel` and `SocketTaskDispatchChannel` may still have
-  common frame/outcome mechanics worth extracting, but that work belongs to an
-  assigned-delivery executor roadmap because it changes push dispatch proof,
-  owner docs, and selected-worker final-hop tests. That follow-up should not
-  introduce another adapter-owned executor class per protocol. It should make
-  `AdapterCommandExecutor` a runtime-created batch/outcome wrapper around an
-  adapter-supplied `send(DispatchMessage)` function, so WebSocket/Socket only
-  own final-hop frame construction and local session send.
+- Socket assigned-delivery final-hop executor extraction:
+  WebSocket has converged to a bootstrap-contributed runtime executor built
+  from an adapter-supplied `send(DispatchMessage)` function. Socket still has
+  `SocketTaskDispatchChannel`; socket parity should be handled separately so it
+  does not expand the WebSocket session identity/due-refresh prerequisite.
 - `AdapterSessionEvidencePublisher` identity overload/signature convergence:
   the publisher still receives loose `workerId, deliveryBucketId,
   sessionHandle` parameters. Replacing that API should cover WebSocket, socket,
@@ -592,9 +591,9 @@ roadmap starts. It is not a due-refresh prerequisite.
 - ASI-1 keeps `WebSocketSessionRegistry` and `WebSocketServerSessionHandle`
   mutation APIs stable; any future typed registry API is a separate breaking
   change with its own SDK custom-factory proof
-- WebSocket assigned delivery remains on the current
-  `WebSocketTaskDispatchChannel` path unless a separate assigned-delivery
-  executor roadmap changes it
+- WebSocket assigned delivery remains a bootstrap-contributed runtime executor
+  built from a WebSocket final-hop send function; do not recreate a
+  `WebSocketTaskDispatchChannel` wrapper
 - assigned push dispatch remains worker-id-only and does not consume session
   identity, bucket, route, endpoint lease, or session handle facts
 - `AdapterSessionEvidencePublisher` loose-argument API is either unchanged and

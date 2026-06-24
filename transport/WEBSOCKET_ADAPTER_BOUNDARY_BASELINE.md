@@ -85,15 +85,18 @@ Hard rules:
   not a lookup dimension. It must not expose public session records that carry
   Netty send behavior.
 - WebSocket assigned-delivery local lookup is worker-id-only:
-  `DispatchMessage.selectedWorkerId` -> `WebSocketTaskDispatchChannel` ->
+  `DispatchMessage.selectedWorkerId` -> runtime-created
+  `AdapterCommandExecutor` from the WebSocket final-hop send function ->
   `WebSocketSessionRegistry.sendTextToWorker(...)` -> Netty frame write.
   `deliveryBucketId`, routeKey, endpoint address, and adapter mailbox key are
   not WebSocket session lookup dimensions.
-- `WebSocketTaskDispatchChannel` owns only WebSocket final-hop frame writing
-  and selected-worker session send wiring. Reusable `DispatchOutcome`
+- WebSocket does not keep a protocol-specific `AdapterCommandExecutor` wrapper
+  class for assigned delivery. `WebSocketTransportAdapterBootstrap` contributes
+  an executor by passing a WebSocket final-hop `send(DispatchMessage)` function
+  to `AdapterCommandExecutors.perMessage(...)`. Reusable `DispatchOutcome`
   production for per-message push final-hop attempts belongs to transport
-  runtime embedded support. The channel must not import Netty, session records,
-  session record types, or duplicate outcome-loop logic.
+  runtime embedded support. WebSocket owns only worker-channel ACTION frame
+  construction and selected-worker session send wiring.
 - pass `WebSocketServerSessionHandle` to server/inbound wiring, not the broader
   runtime registry surface; do not add assigned-delivery lookup methods to that
   handle

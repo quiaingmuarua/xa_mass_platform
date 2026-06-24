@@ -1,18 +1,20 @@
 package com.xa.mass.transport.websocket.runtime;
 
 import com.google.gson.JsonObject;
+import com.xa.mass.contract.worker.WorkerChannelFrameJsonCodec;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutors;
 import com.xa.mass.transport.runtime.embedded.AdapterInboundResultProcessor;
 import com.xa.mass.transport.runtime.embedded.JsonAdapterResultDiagnosticsProvider;
 import com.xa.mass.transport.runtime.embedded.WorkerChannelActionReplyResultFrameReader;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
 import com.xa.mass.transport.websocket.session.WebSocketServerSessionHandle;
@@ -21,6 +23,7 @@ import com.xa.mass.transport.websocket.session.WebSocketSessionRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -65,8 +68,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
 
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
-            WebSocketTaskDispatchChannel commandExecutor =
-                    new WebSocketTaskDispatchChannel(sessionRegistry);
             contribution.addTransportBinding(TransportBinding.builder(
                             config.getAdapterId(),
                             com.xa.mass.transport.WorkerTransportHints.REALTIME
@@ -76,7 +77,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                     .build());
             contribution.addAdapterMailboxConsumer(context.mailbox().consumer(
                     config.getAdapterId(),
-                    commandExecutor
+                    webSocketCommandExecutor(sessionRegistry, new WorkerChannelFrameJsonCodec())
             ));
             contribution.addRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(
                     config.getAdapterId(),
@@ -94,6 +95,15 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             contribution.addTransportServer(transportServer);
         }
         return contribution.build();
+    }
+
+    static AdapterCommandExecutor webSocketCommandExecutor(WebSocketSessionRegistry sessionRegistry,
+                                                           WorkerChannelFrameJsonCodec frameCodec) {
+        WebSocketSessionRegistry requiredRegistry = Objects.requireNonNull(sessionRegistry, "sessionRegistry");
+        WorkerChannelFrameJsonCodec requiredFrameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
+        return AdapterCommandExecutors.perMessage("WebSocket", item -> requiredRegistry.sendTextToWorker(
+                item.selectedWorkerId(),
+                requiredFrameCodec.encodeAction(item.payload())));
     }
 
     private TransportServer createTransportServer(TransportJsonFrameParser frameParser,

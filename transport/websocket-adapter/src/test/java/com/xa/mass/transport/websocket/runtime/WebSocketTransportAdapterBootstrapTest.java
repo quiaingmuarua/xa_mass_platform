@@ -7,17 +7,31 @@ import com.xa.mass.contract.worker.WorkerChannelFrameJsonCodec;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
+import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
+import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.websocket.session.WebSocketSessionRegistry;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelId;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class WebSocketTransportAdapterBootstrapTest {
 
@@ -54,6 +68,40 @@ class WebSocketTransportAdapterBootstrapTest {
         assertNull(captured.get());
     }
 
+    @Test
+    void contributedCommandExecutorSendsActionFrameToSelectedWorkerSession() {
+        SessionFixture fixture = sessionWithWorker("worker-1");
+        DispatchMessage message = dispatchMessage();
+        AdapterCommandExecutor executor =
+                WebSocketTransportAdapterBootstrap.webSocketCommandExecutor(fixture.registry(), frameCodec);
+
+        List<DispatchOutcome> outcomes = executor.dispatch(List.of(message));
+
+        assertEquals(1, outcomes.size());
+        assertEquals(DispatchOutcomeStatus.DELIVERED, outcomes.get(0).getStatus());
+        ArgumentCaptor<TextWebSocketFrame> captor = ArgumentCaptor.forClass(TextWebSocketFrame.class);
+        verify(fixture.channel()).writeAndFlush(captor.capture());
+        JsonObject frame = frameParser.parseObject(captor.getValue().text());
+        assertEquals(WorkerChannelFrame.ACTION, frame.get("kind").getAsString());
+        assertEquals(message.payload(), frame.get("body").getAsString());
+        fixture.registry().shutdown();
+    }
+
+    @Test
+    void contributedCommandExecutorReturnsNoEndpointWhenSelectedWorkerHasNoSession() {
+        AdapterSessionEvidencePublisher sessionEvidencePublisher =
+                AdapterSessionEvidencePublisher.noop("websocket", "websocket");
+        WebSocketSessionRegistry registry = new WebSocketSessionRegistry(sessionEvidencePublisher);
+        AdapterCommandExecutor executor =
+                WebSocketTransportAdapterBootstrap.webSocketCommandExecutor(registry, frameCodec);
+
+        DispatchOutcome outcome = executor.dispatch(List.of(dispatchMessage())).get(0);
+
+        assertEquals(DispatchOutcomeStatus.NO_ENDPOINT, outcome.getStatus());
+        assertTrue(outcome.isRetryable());
+        registry.shutdown();
+    }
+
     private WebSocketTransportAdapterBootstrap bootstrapCapturing(
             AtomicReference<WebSocketServerFactoryContext> serverContext) {
         WebSocketAdapterConfig config = new WebSocketAdapterConfig();
@@ -62,6 +110,27 @@ class WebSocketTransportAdapterBootstrapTest {
             return noopServer();
         });
         return new WebSocketTransportAdapterBootstrap(config);
+    }
+
+    private SessionFixture sessionWithWorker(String workerId) {
+        AdapterSessionEvidencePublisher sessionEvidencePublisher =
+                AdapterSessionEvidencePublisher.noop("websocket", "websocket");
+        WebSocketSessionRegistry registry = new WebSocketSessionRegistry(sessionEvidencePublisher);
+        Channel channel = mockActiveChannel(workerId);
+        registry.addSession("bucket-1", workerId, channel);
+        return new SessionFixture(registry, channel);
+    }
+
+    private Channel mockActiveChannel(String idText) {
+        Channel ch = mock(Channel.class);
+        ChannelId chId = mock(ChannelId.class);
+        when(chId.asShortText()).thenReturn(idText);
+        when(ch.id()).thenReturn(chId);
+        when(ch.isActive()).thenReturn(true);
+        return ch;
+    }
+
+    private record SessionFixture(WebSocketSessionRegistry registry, Channel channel) {
     }
 
     private TransportAdapterBootstrapContext context(AtomicReference<ResultIngressEntry> captured) {
@@ -101,6 +170,17 @@ class WebSocketTransportAdapterBootstrapTest {
                 WorkerChannelFrame.ACTION_REPLY,
                 "{\"replyRef\":\"" + replyRef + "\",\"body\":\"ok\"}"
         ));
+    }
+
+    private DispatchMessage dispatchMessage() {
+        return new DispatchMessage(
+                "delivery-msg-1",
+                "worker-1",
+                "{\"messageId\":\"msg-1\",\"eventCode\":\"crawler.fetch-page\"}",
+                "corr-msg-1",
+                0L,
+                1L
+        );
     }
 
     private String withType(String rawFrame, String type) {

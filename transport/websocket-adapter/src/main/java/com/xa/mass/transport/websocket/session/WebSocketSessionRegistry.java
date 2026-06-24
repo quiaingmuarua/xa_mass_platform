@@ -29,10 +29,6 @@ public final class WebSocketSessionRegistry implements WebSocketServerSessionHan
 
     @Override
     public synchronized void addSession(String workerGroupId, String workerId, Channel channel) {
-        bind(workerGroupId, workerId, channel);
-    }
-
-    public synchronized void bind(String workerGroupId, String workerId, Channel channel) {
         String normalizedWorkerGroupId = requireText(workerGroupId, "workerGroupId");
         String normalizedWorkerId = requireText(workerId, "workerId");
         Objects.requireNonNull(channel, "channel");
