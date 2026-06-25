@@ -2,6 +2,7 @@ package com.xa.mass.engine;
 
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
+import com.xa.mass.runtime.memory.InMemoryWorkerScoreBandSlotRuntime;
 import com.xa.mass.base.enums.assignment.AssignmentType;
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskStatus;
@@ -63,7 +64,10 @@ final class TaskSchedulingTestHarness {
                 new InMemoryTaskResultRuntime(),
                 null
         );
-        this.workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
+        this.workerManager = new WorkerManager(
+                new InMemoryWorkerDeclarationRuntimeStore(),
+                new InMemoryWorkerRegistry(),
+                new InMemoryWorkerScoreBandSlotRuntime());
         this.workerControlService = new WorkerControlService(
                 workerManager,
                 workerManager,

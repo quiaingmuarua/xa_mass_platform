@@ -9,7 +9,6 @@ import com.xa.mass.runtime.redis.RedisWorkerScoreBandSlotRuntime;
 import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
 import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
@@ -418,8 +417,7 @@ public class XaMassServerApplication {
         if ("redis".equals(normalizedMode)) {
             return new RedisWorkerRegistry(
                     redisUri(),
-                    runtimeRedisNamespace + ":worker",
-                    WorkerCandidateBucketPolicies.defaultPolicy()
+                    runtimeRedisNamespace + ":worker"
             );
         }
         requireDurableLocalInfraMode("mass.runtime.mode", "redis", normalizedMode);

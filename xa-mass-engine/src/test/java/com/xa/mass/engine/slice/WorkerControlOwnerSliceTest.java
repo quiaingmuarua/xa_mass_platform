@@ -3,6 +3,7 @@ package com.xa.mass.engine.slice;
 import com.xa.mass.engine.InMemoryWorkerDeclarationRuntimeStore;
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
+import com.xa.mass.runtime.memory.InMemoryWorkerScoreBandSlotRuntime;
 import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
@@ -35,7 +36,10 @@ public class WorkerControlOwnerSliceTest {
         WorkerStateProjectionOwner stateOwner = new WorkerStateProjectionOwner();
         RecordingEventSink sink = new RecordingEventSink();
         TraceEventLogger trace = new TraceEventLogger(sink);
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerDeclarationRuntimeStore(),
+                new InMemoryWorkerRegistry(),
+                new InMemoryWorkerScoreBandSlotRuntime());
         WorkerControlService workerControlService = new WorkerControlService(
                 workerManager,
                 workerManager,

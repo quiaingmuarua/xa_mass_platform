@@ -76,9 +76,9 @@ Current landed slice:
   delivery uses worker registration plus local transport binding for
   selected-worker mailbox lookup; split producer runtimes use explicit
   resolver injection;
-- worker-runtime admission/final evidence (`releaseWorkerReservation`,
-  `recordWorkFinal`, and exclusive-lock release) now requests dispatch wakeup
-  through `WorkerAvailabilityWakeupRuntime`; it does not clear block sources.
+- worker-runtime claim-close/final evidence and exclusive-lock release now
+  request dispatch wakeup through `WorkerAvailabilityWakeupRuntime`; it does
+  not clear block sources.
 - `SelectedWorkerDeliveryTargetEvidence` no longer carries reachability,
   generation, or observation metadata; assigned delivery target evidence is
   selected worker, mailbox target, and expiry evidence.
@@ -1432,7 +1432,6 @@ Later implementation tests to create or update:
 ```text
 InMemoryWorkerRegistryTest
 RedisWorkerRegistryTest
-WorkerCandidateIndexTest
 WorkerManagerTest
 WorkerDispatchEligibilityRuntimeTest or an inventory-selected equivalent
 WebSocketSessionRegistryTest

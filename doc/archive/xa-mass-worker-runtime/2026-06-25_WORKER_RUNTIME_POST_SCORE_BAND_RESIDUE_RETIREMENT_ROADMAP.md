@@ -1,9 +1,14 @@
 # Worker Runtime Post Score-Band Residue Retirement Roadmap
 
-Status: proposed direction document.
+Status: completed and archived on 2026-06-25.
+
+Implementation note: the codebase now uses score-band worker slot runtime as
+the production worker acquisition path. The deleted candidate, reservation, and
+candidate-bucket surfaces named in this roadmap should be read as historical
+pre-implementation observations.
 
 This roadmap follows
-[WORKER_RUNTIME_SCORE_BAND_SLOT_REGISTRY_CONVERGENCE_ROADMAP.md](WORKER_RUNTIME_SCORE_BAND_SLOT_REGISTRY_CONVERGENCE_ROADMAP.md).
+[WORKER_RUNTIME_SCORE_BAND_SLOT_REGISTRY_CONVERGENCE_ROADMAP.md](../../../roadmap/WORKER_RUNTIME_SCORE_BAND_SLOT_REGISTRY_CONVERGENCE_ROADMAP.md).
 The score-band worker slot state machine is now the production worker selection
 source. This roadmap retires the pre-score-band candidate, reservation, and
 candidate-bucket surfaces that remained to keep the first score-band migration

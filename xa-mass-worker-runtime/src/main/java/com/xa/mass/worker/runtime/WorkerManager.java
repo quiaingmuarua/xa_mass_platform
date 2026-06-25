@@ -5,14 +5,9 @@ import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
-import com.xa.mass.runtime.worker.slot.NoopWorkerScoreBandSlotRuntime;
 import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.worker.runtime.admission.WorkerAvailabilityWakeupRuntime;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerDispatchBlockRecord;
@@ -25,7 +20,6 @@ import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.worker.runtime.report.WorkerReportRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
@@ -33,9 +27,7 @@ import com.xa.mass.worker.runtime.resource.WorkerNodeBindingRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
-import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
-import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerEvidence;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionOwner;
@@ -44,8 +36,6 @@ import com.xa.mass.worker.runtime.selection.WorkerSelectionResult;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 import com.xa.mass.worker.runtime.WorkerAdmissionOwner;
-import com.xa.mass.worker.runtime.WorkerCandidateIndex;
-import com.xa.mass.worker.runtime.WorkerCandidateSourceOwner;
 import com.xa.mass.worker.runtime.WorkerCapabilityAuthority;
 import com.xa.mass.worker.runtime.WorkerCapabilityReportApplication;
 import com.xa.mass.worker.runtime.WorkerGroupOwner;
@@ -73,7 +63,6 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
         WorkerResourceDeclarationRuntime,
         WorkerNodeBindingRuntime,
         WorkerHeartbeatRuntime,
-        WorkerCandidateRuntime,
         WorkerSchedulingViewRuntime,
         WorkerAdmissionRuntime,
         WorkerSelectionRuntime,
@@ -87,11 +76,9 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
     private final Function<String, WorkerReachabilityState> reachabilityLookup;
     private final WorkerRegistry workerRegistry;
     private final WorkerScoreBandSlotRuntime scoreBandSlotRuntime;
-    private final WorkerCandidateBucketPolicy candidateBucketPolicy;
     private final WorkerGroupOwner groupOwner;
     private final WorkerResourceOwner resourceOwner;
     private final WorkerReportOwner reportOwner;
-    private final WorkerCandidateSourceOwner candidateSourceOwner;
     private final WorkerAdmissionOwner admissionOwner;
     private final WorkerSelectionOwner selectionOwner;
     private final WorkerRelationshipOwner relationshipOwner;
@@ -100,80 +87,31 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
     };
 
     public WorkerManager(WorkerDeclarationStore workerStorage,
-                         WorkerRegistry workerRegistry) {
-        this(workerStorage, permissiveReachability(), workerRegistry);
-    }
-
-    public WorkerManager(WorkerDeclarationStore workerStorage,
-                         Function<String, WorkerReachabilityState> reachabilityLookup,
-                         WorkerRegistry workerRegistry) {
-        this(workerStorage, reachabilityLookup, new WorkerCapabilityAuthority(), workerRegistry);
+                         WorkerRegistry workerRegistry,
+                         WorkerScoreBandSlotRuntime scoreBandSlotRuntime) {
+        this(workerStorage, permissiveReachability(), workerRegistry, scoreBandSlotRuntime);
     }
 
     public WorkerManager(WorkerDeclarationStore workerStorage,
                          Function<String, WorkerReachabilityState> reachabilityLookup,
                          WorkerRegistry workerRegistry,
-                         WorkerCandidateBucketPolicy candidateBucketPolicy) {
+                         WorkerScoreBandSlotRuntime scoreBandSlotRuntime) {
         this(workerStorage,
                 reachabilityLookup,
                 new WorkerCapabilityAuthority(),
                 workerRegistry,
-                NoopWorkerScoreBandSlotRuntime.INSTANCE,
-                candidateBucketPolicy);
-    }
-
-    WorkerManager(WorkerDeclarationStore workerStorage,
-                  Function<String, WorkerReachabilityState> reachabilityLookup,
-                  WorkerCapabilityAuthority capabilityAuthority,
-                  WorkerRegistry workerRegistry) {
-        this(workerStorage,
-                reachabilityLookup,
-                capabilityAuthority,
-                workerRegistry,
-                NoopWorkerScoreBandSlotRuntime.INSTANCE,
-                WorkerCandidateBucketPolicies.defaultPolicy());
+                scoreBandSlotRuntime);
     }
 
     WorkerManager(WorkerDeclarationStore workerStorage,
                   Function<String, WorkerReachabilityState> reachabilityLookup,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerRegistry workerRegistry,
-                  WorkerCandidateBucketPolicy candidateBucketPolicy) {
-        this(workerStorage,
-                reachabilityLookup,
-                capabilityAuthority,
-                workerRegistry,
-                NoopWorkerScoreBandSlotRuntime.INSTANCE,
-                candidateBucketPolicy);
-    }
-
-    public WorkerManager(WorkerDeclarationStore workerStorage,
-                         Function<String, WorkerReachabilityState> reachabilityLookup,
-                         WorkerRegistry workerRegistry,
-                         WorkerScoreBandSlotRuntime scoreBandSlotRuntime,
-                         WorkerCandidateBucketPolicy candidateBucketPolicy) {
-        this(workerStorage,
-                reachabilityLookup,
-                new WorkerCapabilityAuthority(),
-                workerRegistry,
-                scoreBandSlotRuntime,
-                candidateBucketPolicy);
-    }
-
-    WorkerManager(WorkerDeclarationStore workerStorage,
-                  Function<String, WorkerReachabilityState> reachabilityLookup,
-                  WorkerCapabilityAuthority capabilityAuthority,
-                  WorkerRegistry workerRegistry,
-                  WorkerScoreBandSlotRuntime scoreBandSlotRuntime,
-                  WorkerCandidateBucketPolicy candidateBucketPolicy) {
+                  WorkerScoreBandSlotRuntime scoreBandSlotRuntime) {
         this.reachabilityLookup = reachabilityLookup != null ? reachabilityLookup : permissiveReachability();
         this.workerRegistry = Objects.requireNonNull(workerRegistry, "workerRegistry");
-        this.scoreBandSlotRuntime = scoreBandSlotRuntime != null
-                ? scoreBandSlotRuntime
-                : NoopWorkerScoreBandSlotRuntime.INSTANCE;
-        this.candidateBucketPolicy = candidateBucketPolicy != null ? candidateBucketPolicy : WorkerCandidateBucketPolicies.defaultPolicy();
+        this.scoreBandSlotRuntime = Objects.requireNonNull(scoreBandSlotRuntime, "scoreBandSlotRuntime");
         this.groupOwner = new WorkerGroupOwner(this.workerRegistry);
-        this.candidateSourceOwner = new WorkerCandidateSourceOwner(this::getWorkerCandidateIndex);
         this.admissionOwner = new WorkerAdmissionOwner(this.workerRegistry);
         this.selectionOwner = new WorkerSelectionOwner(this, this, this.scoreBandSlotRuntime);
         this.relationshipOwner = new WorkerRelationshipOwner(this.groupOwner::hasWorkerGroup);
@@ -342,12 +280,6 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
     }
 
     @Override
-    public List<WorkerCandidateRow> findWorkerCandidates(WorkerTaskSelector selector,
-                                                         int maxCandidateCount) {
-        return candidateSourceOwner.findWorkerCandidates(selector, maxCandidateCount);
-    }
-
-    @Override
     public WorkerSelectionResult selectAndReserve(WorkerSelectionRequest request) {
         return selectionOwner.selectAndReserve(request);
     }
@@ -389,10 +321,6 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
 
     WorkerRegistrySnapshot getWorkerRegistrySnapshot() {
         return workerRegistrySnapshot;
-    }
-
-    WorkerCandidateIndex getWorkerCandidateIndex() {
-        return new WorkerCandidateIndex(workerRegistrySnapshot, workerRegistry, candidateBucketPolicy);
     }
 
     void refreshWorkerRegistrySnapshot() {
@@ -471,41 +399,6 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
 
     public WorkerLoadSnapshot getWorkerLoad(String workerId) {
         return admissionOwner.getWorkerLoad(workerId);
-    }
-
-    public int getActiveWorkerCountForTask(String taskId) {
-        return admissionOwner.getActiveWorkerCountForTask(taskId);
-    }
-
-    @Override
-    public WorkerAdmissionResult reserveWorkerCapacity(WorkerAdmissionTarget target) {
-        return admissionOwner.reserveWorkerCapacity(target);
-    }
-
-    @Override
-    public boolean confirmWorkerReservation(WorkerAdmissionTarget target) {
-        return admissionOwner.confirmWorkerReservation(target);
-    }
-
-    @Override
-    public void releaseWorkerReservation(WorkerAdmissionTarget target) {
-        admissionOwner.releaseWorkerReservation(target);
-        if (target != null) {
-            notifyDispatchWakeup("worker reservation released");
-        }
-    }
-
-    @Override
-    public void recordWorkClaimed(WorkerAdmissionTarget target) {
-        admissionOwner.recordWorkClaimed(target);
-    }
-
-    @Override
-    public void recordWorkFinal(WorkerAdmissionTarget target) {
-        admissionOwner.recordWorkFinal(target);
-        if (target != null) {
-            notifyDispatchWakeup("worker work final");
-        }
     }
 
     private void publishWorkerRegistrySnapshot() {

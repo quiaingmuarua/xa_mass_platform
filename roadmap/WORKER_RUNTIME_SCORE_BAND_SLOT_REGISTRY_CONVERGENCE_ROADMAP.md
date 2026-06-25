@@ -55,11 +55,10 @@ Current implementation notes:
   TaskDispatchBinding / RuntimeResultApplyContext -> SelectedWorkerEvidence`.
   Null-observation legacy evidence must not reopen or shorten score-band
   claims.
-- `WorkerSelectionOwner` no longer writes the old
-  `WorkerAdmissionRuntime.reserveWorkerCapacity / confirm / claimed / final`
-  accounting path. `WorkerAdmissionRuntime` still owns exclusive worker locks
-  and remains as direct/runtime API residue outside the score-band selection
-  hot path.
+- `WorkerSelectionOwner` no longer writes the old capacity reservation and
+  claimed/final accounting path. `WorkerAdmissionRuntime` still owns exclusive
+  worker locks and remains as direct/runtime API residue outside the score-band
+  selection hot path.
 - `WorkerSelectionRuntime.activeSelectedWorkerCount(taskId)` has been removed.
   Task-scope budgeting reads belong to engine/task-runtime assignment truth and
   are served by `TaskAssignmentRuntimePort.countActiveDispatchWorkers(taskId)`,
@@ -71,8 +70,8 @@ Current implementation notes:
   gates, worker selection, and scheduling evidence above the low-level
   `mass-runtime-api` registry SPI.
 - `platform_infra/mass-runtime-api` currently exposes `WorkerRegistry`,
-  `WorkerSlot`, `WorkerMeta`, `ReserveResult`, `ReserveStatus`, and candidate
-  bucket policy contracts.
+  `WorkerSlot`, `WorkerMeta`, and the new score-band slot contract. The old
+  broad candidate and reservation APIs are retired.
 - Memory and Redis implementations already share `WorkerRegistryContractTest`
   and concrete `InMemoryWorkerRegistryTest` / `RedisWorkerRegistryTest` proof.
 - Current production selection now flows through score-band acquisition:
@@ -402,8 +401,7 @@ Scope:
   - `WorkerRegistry`
   - `WorkerSlot`
   - `WorkerMeta`
-  - `WorkerCandidateRuntime`
-  - `WorkerCandidateIndex`
+  - the retired pre-score-band candidate runtime facade and candidate index
   - `WorkerSelectionOwner`
   - `WorkerAdmissionRuntime`
   - `DispatchAvailabilitySource`
@@ -797,16 +795,15 @@ Scope:
   seam, not around engine assignment.
 - Update architecture guards in the same slice when they currently protect the
   old candidate acquisition path. SBR-5 must not leave guards that require
-  production `WorkerSelectionOwner` or `WorkerCandidateIndex` to call
-  `WorkerRegistry.acquireCandidates(...)`.
+  production selection to call the retired registry candidate-acquire SPI.
 
 Acceptance:
 
 - `WorkerSelectionRuntime` callers in engine compile unchanged.
 - Engine still receives the same selected-worker handle/evidence semantics.
-- `WorkerSelectionOwner` production selection no longer calls
-  `WorkerCandidateRuntime`, `WorkerCandidateIndex`, or
-  `WorkerRegistry.acquireCandidates(...)`.
+- `WorkerSelectionOwner` production selection no longer calls the retired
+  pre-score-band candidate facade, candidate index, or registry candidate
+  acquisition SPI.
 - `WorkerSelectionOwner` does not replace those calls with an all-worker,
   all-group, or all-home-bucket scan.
 - Score-band acquire returns eligible/time-due resources; parked, low-recheck,
@@ -827,10 +824,9 @@ Acceptance:
   observation where claim-close validation needs same-claim proof.
 - Confirm/claim-close paths validate and advance score through the score-band
   runtime rather than a separate production reserve truth.
-- Production selection no longer calls
-  `WorkerAdmissionRuntime.reserveWorkerCapacity`,
-  `confirmWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal`, or
-  `releaseWorkerReservation`.
+- Production selection no longer calls the retired capacity reservation,
+  reservation confirmation, claimed/final accounting, or reservation release
+  methods.
 - `WorkerSelectionRuntime` no longer exposes `activeSelectedWorkerCount`.
 - `TaskWorkerAssignListener` reads current task worker count from
   `TaskAssignmentRuntimePort.countActiveDispatchWorkers(taskId)`, backed by
@@ -904,7 +900,7 @@ Acceptance:
 SBR-0 inventory:
 
 ```powershell
-rg -n "WorkerRegistry|WorkerSlot|WorkerMeta|WorkerCandidateRuntime|WorkerCandidateIndex|WorkerSelectionOwner|WorkerAdmissionRuntime|DispatchAvailabilitySource|cleanupExpiredHeartbeats|acquireCandidates|tryReserve" `
+rg -n "WorkerRegistry|WorkerSlot|WorkerMeta|WorkerSelectionOwner|WorkerAdmissionRuntime|DispatchAvailabilitySource|cleanupExpiredHeartbeats|WorkerScoreBand" `
   platform_infra/mass-runtime-api platform_infra/mass-runtime-memory platform_infra/mass-runtime-redis xa-mass-worker-runtime xa-mass-engine `
   --glob "*.java" --glob "!**/target/**"
 ```
@@ -932,7 +928,7 @@ After SBR-4:
 ```powershell
 .\mvnw.cmd -q -pl xa-mass-worker-runtime,xa-mass-engine -am -DskipTests test-compile
 .\mvnw.cmd -q -pl xa-mass-worker-runtime `
-  "-Dtest=WorkerManagerTest,WorkerScoreBandSlotStateMachineIntegrationTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest" test
+  "-Dtest=WorkerManagerTest,WorkerScoreBandSlotStateMachineIntegrationTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest" test
 .\mvnw.cmd -q -pl xa-mass-engine `
   "-Dtest=EngineSchedulingCoreArchitectureGuardTest" test
 ```
@@ -948,7 +944,7 @@ After SBR-5:
 ```
 
 The SBR-5 proof currently lives in the existing focused selection and engine
-tests above. They must prove bounded score-band acquire, no old candidate
+tests above. They must prove bounded score-band acquire, no retired candidate
 acquire in `WorkerSelectionOwner`, claim-close observation propagation, and
 stale/null-observation safety. Do not rely on
 `-Dsurefire.failIfNoSpecifiedTests=false` for final roadmap completion proof.
@@ -963,7 +959,7 @@ Completion residue scan:
 rg -n "WorkerScoreBand|ScoreBand|score-band|wr:.*score|wr:.*meta|wr:.*hold" `
   xa-mass-engine transport `
   --glob "*.java" --glob "!**/target/**"
-rg -n "WorkerCandidateRuntime|WorkerCandidateIndex|acquireCandidates\(" `
+rg -n "WorkerScoreBandSlotRuntime|acquire\(" `
   xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/selection xa-mass-engine/src/main/java `
   --glob "*.java" --glob "!**/target/**"
 rg -n "adapterMailboxKey|routeKey|connectionId|sessionHandle" `
@@ -977,11 +973,9 @@ all `wr:*score/meta` or `RedisWorkerRegistry` mentions as residue.
 retired, but it must not write score/meta keys and score-band Redis runtime
 must not write the old candidate/heartbeat/group slot keys.
 
-The broader old candidate/admission surface in `WorkerManager`,
-`WorkerAdmissionRuntime`, `WorkerCandidateRuntime`, `WorkerCandidateIndex`,
-`WorkerRegistry.acquireCandidates(...)`, and candidate-bucket keyspace is
-tracked by
-[WORKER_RUNTIME_POST_SCORE_BAND_RESIDUE_RETIREMENT_ROADMAP.md](WORKER_RUNTIME_POST_SCORE_BAND_RESIDUE_RETIREMENT_ROADMAP.md).
+The broader old candidate/admission surface in worker-runtime, the registry
+candidate acquisition SPI, and candidate-bucket keyspace are tracked by
+[2026-06-25_WORKER_RUNTIME_POST_SCORE_BAND_RESIDUE_RETIREMENT_ROADMAP.md](../doc/archive/xa-mass-worker-runtime/2026-06-25_WORKER_RUNTIME_POST_SCORE_BAND_RESIDUE_RETIREMENT_ROADMAP.md).
 SBR completion only requires that production selection no longer uses those
 old paths.
 
@@ -1005,7 +999,7 @@ This roadmap can be considered complete only when:
   mutations consistent for the logical transition;
 - transition evidence is proven through trace/test evidence, not required Redis
   stream writes;
-- current `WorkerRegistry` candidate/reserve tests remain green during the
+- current worker-registry lifecycle/gate tests remain green during the
   transition;
 - worker-runtime has an internal lifecycle state-machine integration proof
   without changing engine assignment;
@@ -1016,9 +1010,9 @@ This roadmap can be considered complete only when:
   current proof and is not required before old reservation residue is retired;
   future non-exclusive reuse can be expressed by earlier claim close rather
   than by preserving old reservation counters;
-- `WorkerSelectionOwner` production selection no longer depends on
-  `WorkerCandidateRuntime`, `WorkerCandidateIndex`, or
-  `WorkerRegistry.acquireCandidates(...)`;
+- `WorkerSelectionOwner` production selection no longer depends on the retired
+  pre-score-band candidate facade, candidate index, or registry candidate
+  acquisition SPI;
 - score-band acquire is bounded by a worker-runtime-owned domain/scope and does
   not scan all workers, all groups, or all home buckets for normal selection;
 - WorkerGroup, target worker, routing, attribute, exclusive-lock, and requested

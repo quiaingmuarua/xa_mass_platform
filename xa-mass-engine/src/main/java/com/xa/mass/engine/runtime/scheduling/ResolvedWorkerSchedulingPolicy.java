@@ -1,10 +1,7 @@
 package com.xa.mass.engine.runtime.scheduling;
 
-import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
-
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Resolved worker-side scheduling view consumed before runtime worker
@@ -20,7 +17,6 @@ public record ResolvedWorkerSchedulingPolicy(
         List<String> workerGroupIds,
         String routingCode,
         Map<String, String> routeAttributes,
-        Set<String> candidateBucketKeys,
         String targetWorkerId,
         Map<String, String> targetWorkerAttributes
 ) {
@@ -28,11 +24,10 @@ public record ResolvedWorkerSchedulingPolicy(
     public ResolvedWorkerSchedulingPolicy {
         workerGroupIds = workerGroupIds == null ? List.of() : List.copyOf(workerGroupIds);
         routeAttributes = routeAttributes == null ? Map.of() : Map.copyOf(routeAttributes);
-        candidateBucketKeys = normalizeCandidateBucketKeys(candidateBucketKeys);
         targetWorkerAttributes = targetWorkerAttributes == null ? Map.of() : Map.copyOf(targetWorkerAttributes);
     }
 
-    public static ResolvedWorkerSchedulingPolicy from(TaskDispatchIntent intent, Set<String> candidateBucketKeys) {
+    public static ResolvedWorkerSchedulingPolicy from(TaskDispatchIntent intent) {
         TaskDispatchIntent resolvedIntent = intent == null
                 ? new TaskDispatchIntent(null, null, null, List.of(), null, Map.of(), null, Map.of())
                 : intent;
@@ -43,7 +38,6 @@ public record ResolvedWorkerSchedulingPolicy(
                 resolvedIntent.workerGroupIds(),
                 resolvedIntent.routingCode(),
                 resolvedIntent.routeAttributes(),
-                candidateBucketKeys,
                 resolvedIntent.targetWorkerId(),
                 resolvedIntent.targetWorkerAttributes()
         );
@@ -53,10 +47,4 @@ public record ResolvedWorkerSchedulingPolicy(
         return targetWorkerId != null;
     }
 
-    private static Set<String> normalizeCandidateBucketKeys(Set<String> values) {
-        if (values == null || values.isEmpty()) {
-            return Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY);
-        }
-        return Set.copyOf(values);
-    }
 }

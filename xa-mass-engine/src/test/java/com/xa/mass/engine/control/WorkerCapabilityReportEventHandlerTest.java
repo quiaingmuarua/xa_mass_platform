@@ -4,8 +4,7 @@ import com.xa.mass.engine.InMemoryWorkerDeclarationRuntimeStore;
 
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.runtime.memory.InMemoryWorkerScoreBandSlotRuntime;
 import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
@@ -16,8 +15,6 @@ import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.testutil.WorkerTestFixture;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.WorkerManager;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
-import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.worker.runtime.control.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportStatus;
 import com.xa.mass.trace.sink.ExecutionEventType;
@@ -34,8 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class WorkerCapabilityReportEventHandlerTest {
 
     @Test
-    void capabilityReportEventRefreshesWorkerRegistrySnapshotThroughOwner() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
+    void capabilityReportEventRefreshesScoreBandMetadataThroughOwner() {
+        InMemoryWorkerScoreBandSlotRuntime scoreBandRuntime = new InMemoryWorkerScoreBandSlotRuntime();
+        WorkerManager workerManager = workerManager(scoreBandRuntime);
         WorkerTestFixture worker = worker("worker-crawler", "crawler");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
@@ -62,11 +60,9 @@ public class WorkerCapabilityReportEventHandlerTest {
         );
 
         assertTrue(response.isSuccess());
-        assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "crawler.parse")));
-        assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "crawler.fetch")));
-        assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "not.approved")));
-        assertEquals("us", workerRows(workerManager, task("demoApp", "crawler.fetch"))
-                .getFirst()
+        assertEquals("us", scoreBandRuntime.slot("crawler", "worker-crawler")
+                .orElseThrow()
+                .metadata()
                 .attributes()
                 .get("country"));
         assertTrue(sink.events().stream()
@@ -76,8 +72,9 @@ public class WorkerCapabilityReportEventHandlerTest {
     }
 
     @Test
-    void staleReportEventFailsWithoutChangingCandidateSnapshot() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
+    void staleReportEventFailsWithoutChangingScoreBandSlot() {
+        InMemoryWorkerScoreBandSlotRuntime scoreBandRuntime = new InMemoryWorkerScoreBandSlotRuntime();
+        WorkerManager workerManager = workerManager(scoreBandRuntime);
         WorkerTestFixture worker = worker("worker-crawler", "crawler");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
@@ -92,8 +89,16 @@ public class WorkerCapabilityReportEventHandlerTest {
 
         assertFalse(stale.isSuccess());
         assertEquals(WorkerCapabilityReportStatus.STALE.name(), stale.getCode());
-        assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "crawler.parse")));
-        assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "crawler.fetch")));
+        assertEquals("worker-crawler", scoreBandRuntime.slot("crawler", "worker-crawler")
+                .orElseThrow()
+                .workerId());
+    }
+
+    private static WorkerTestFixture worker(String workerId, String workerGroupId) {
+        WorkerTestFixture worker = new WorkerTestFixture();
+        worker.setWorkerId(workerId);
+        worker.setWorkerGroupId(workerGroupId);
+        return worker;
     }
 
     private static CoreEventRequest request(long capabilityVersion, List<String> availableEventCodes) {
@@ -108,36 +113,12 @@ public class WorkerCapabilityReportEventHandlerTest {
                 .build();
     }
 
-    private static Task task(String project, String eventCode) {
-        Task task = new Task();
-        task.setProject(project);
-        task.setSharedConfig(Map.of(
-                TaskSharedConfig.WORKER_GROUP_ID, "crawler",
-                TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, eventCode)
-        ));
-        return task;
-    }
-
-    private static List<String> workerIds(WorkerManager workerManager, Task task) {
-        return workerRows(workerManager, task).stream()
-                .map(WorkerCandidateRow::workerId)
-                .toList();
-    }
-
-    private static List<WorkerCandidateRow> workerRows(WorkerManager workerManager, Task task) {
-        return workerManager.findWorkerCandidates(new WorkerTaskSelector(
-                task.getTid(),
-                TaskSharedConfig.workerGroupSelector(task),
-                TaskSharedConfig.targetWorkerId(task),
-                java.util.Set.of()
-        ), 512);
-    }
-
-    private static WorkerTestFixture worker(String workerId, String workerGroupId) {
-        WorkerTestFixture worker = new WorkerTestFixture();
-        worker.setWorkerId(workerId);
-        worker.setWorkerGroupId(workerGroupId);
-        return worker;
+    private static WorkerManager workerManager(InMemoryWorkerScoreBandSlotRuntime scoreBandRuntime) {
+        return new WorkerManager(
+                new InMemoryWorkerDeclarationRuntimeStore(),
+                new InMemoryWorkerRegistry(),
+                scoreBandRuntime
+        );
     }
 
     private static WorkerControlService workerControlService(WorkerManager workerManager,

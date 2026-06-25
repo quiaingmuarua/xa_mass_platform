@@ -5,24 +5,13 @@ import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import java.util.List;
 
 /**
- * Runtime admission and occupancy surface for selected workers.
+ * Narrow worker-runtime admission support surface.
  *
- * <p>Scheduling callers must carry WorkerGroup evidence from candidate source
- * through reserve, confirm/release, claim, and final accounting. Worker-id-only
- * reverse lookup belongs below this contract, not on the engine-facing
- * admission surface.</p>
+ * <p>Score-band selection owns claim and release state. This interface only
+ * exposes the remaining exclusive-lock and load-read support used by
+ * worker-runtime selection and diagnostics.</p>
  */
 public interface WorkerAdmissionRuntime {
-
-    WorkerAdmissionResult reserveWorkerCapacity(WorkerAdmissionTarget target);
-
-    boolean confirmWorkerReservation(WorkerAdmissionTarget target);
-
-    void releaseWorkerReservation(WorkerAdmissionTarget target);
-
-    void recordWorkClaimed(WorkerAdmissionTarget target);
-
-    void recordWorkFinal(WorkerAdmissionTarget target);
 
     boolean tryAcquireWorkerExclusiveLease(String workerId);
 
@@ -33,6 +22,4 @@ public interface WorkerAdmissionRuntime {
     List<String> getExclusiveLeaseWorkerIds();
 
     WorkerLoadSnapshot getWorkerLoad(String workerId);
-
-    int getActiveWorkerCountForTask(String taskId);
 }

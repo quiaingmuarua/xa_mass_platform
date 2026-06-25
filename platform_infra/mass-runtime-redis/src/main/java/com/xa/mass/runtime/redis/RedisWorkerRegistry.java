@@ -4,15 +4,9 @@ import com.google.gson.Gson;
 import com.xa.mass.runtime.worker.CleanupSummary;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.EventKey;
-import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
-import com.xa.mass.runtime.worker.ReserveResult;
 import com.xa.mass.runtime.worker.ReserveStatus;
-import com.xa.mass.runtime.worker.WorkerCandidateSamplingContext;
-import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.DefaultWorkerCandidateBucketPolicy;
-import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerDispatchBlockRecord;
 import com.xa.mass.runtime.worker.WorkerSlot;
 import io.lettuce.core.Limit;
@@ -27,7 +21,6 @@ import io.lettuce.core.api.sync.RedisCommands;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,79 +30,57 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /**
- * Redis-backed WorkerRegistry using group-partitioned slot hashes and buckets.
+ * Redis-backed WorkerRegistry using group-partitioned slot hashes.
  *
  * <p>Slot mutations use Redis WATCH/MULTI so capacity and occupancy updates are
  * atomic across Redis clients without introducing an engine-local global lock.</p>
  */
 public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable {
 
-    public static final String DEFAULT_CANDIDATE_BUCKET_KEY = WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY;
     public static final long DEFAULT_HEARTBEAT_FRESHNESS_MILLIS = 30_000L;
 
     private static final Gson GSON = new Gson();
     private static final int DEFAULT_WATCH_RETRIES = 32;
-    private static final int DEFAULT_UNBOUNDED_SOURCE_BATCH_LIMIT = 256;
 
     private final RedisClient redisClient;
     private final StatefulRedisConnection<String, String> connection;
     private final RedisCommands<String, String> commands;
     private final RedisWorkerRegistryKeyspace keyspace;
-    private final WorkerCandidateSamplingPolicy samplingPolicy;
-    private final WorkerCandidateBucketPolicy candidateBucketPolicy;
     private final long heartbeatFreshnessMillis;
     private final boolean ownsClient;
 
     public RedisWorkerRegistry(String redisUri, String namespace) {
-        this(redisUri, namespace, DefaultWorkerCandidateBucketPolicy.defaultPolicy());
-    }
-
-    public RedisWorkerRegistry(String redisUri, String namespace, WorkerCandidateBucketPolicy candidateBucketPolicy) {
         this(RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 new RedisWorkerRegistryKeyspace(namespace),
-                RandomWorkerCandidateSamplingPolicy.defaultPolicy(),
-                candidateBucketPolicy,
                 DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
                 true);
     }
 
     public RedisWorkerRegistry(RedisClient redisClient,
                                RedisWorkerRegistryKeyspace keyspace,
-                               WorkerCandidateSamplingPolicy samplingPolicy,
-                               WorkerCandidateBucketPolicy candidateBucketPolicy,
                                boolean ownsClient) {
         this(redisClient,
                 keyspace,
-                samplingPolicy,
-                candidateBucketPolicy,
                 DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
                 ownsClient);
     }
 
     public RedisWorkerRegistry(RedisClient redisClient,
                                RedisWorkerRegistryKeyspace keyspace,
-                               WorkerCandidateSamplingPolicy samplingPolicy,
-                               WorkerCandidateBucketPolicy candidateBucketPolicy,
                                long heartbeatFreshnessMillis,
                                boolean ownsClient) {
         this(redisClient,
                 Objects.requireNonNull(redisClient, "redisClient").connect(),
                 keyspace,
-                samplingPolicy,
-                candidateBucketPolicy,
                 heartbeatFreshnessMillis,
                 ownsClient);
     }
 
     public RedisWorkerRegistry(StatefulRedisConnection<String, String> connection,
-                               RedisWorkerRegistryKeyspace keyspace,
-                               WorkerCandidateSamplingPolicy samplingPolicy,
-                               WorkerCandidateBucketPolicy candidateBucketPolicy) {
+                               RedisWorkerRegistryKeyspace keyspace) {
         this(null,
                 connection,
                 keyspace,
-                samplingPolicy,
-                candidateBucketPolicy,
                 DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
                 false);
     }
@@ -117,20 +88,12 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     private RedisWorkerRegistry(RedisClient redisClient,
                                 StatefulRedisConnection<String, String> connection,
                                 RedisWorkerRegistryKeyspace keyspace,
-                                WorkerCandidateSamplingPolicy samplingPolicy,
-                                WorkerCandidateBucketPolicy candidateBucketPolicy,
                                 long heartbeatFreshnessMillis,
                                 boolean ownsClient) {
         this.redisClient = redisClient;
         this.connection = Objects.requireNonNull(connection, "connection");
         this.commands = connection.sync();
         this.keyspace = keyspace != null ? keyspace : new RedisWorkerRegistryKeyspace();
-        this.samplingPolicy = samplingPolicy != null
-                ? samplingPolicy
-                : RandomWorkerCandidateSamplingPolicy.defaultPolicy();
-        this.candidateBucketPolicy = candidateBucketPolicy != null
-                ? candidateBucketPolicy
-                : DefaultWorkerCandidateBucketPolicy.defaultPolicy();
         this.heartbeatFreshnessMillis = Math.max(1L, heartbeatFreshnessMillis);
         this.ownsClient = ownsClient;
     }
@@ -142,7 +105,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         String groupId = meta.groupId();
         String previousGroupId = commands.hget(keyspace.workerGroupHash(), workerId);
         if (previousGroupId != null && !previousGroupId.equals(groupId)) {
-            removeFromBuckets(previousGroupId, workerId);
             commands.zrem(keyspace.groupHeartbeatDeadlinesZset(previousGroupId), workerId);
             commands.hdel(keyspace.groupSlotsHash(previousGroupId), workerId);
         }
@@ -170,8 +132,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                         workerId);
             });
         });
-        removeFromBuckets(groupId, workerId);
-        slot(groupId, workerId).ifPresent(this::addToBuckets);
     }
 
     @Override
@@ -198,9 +158,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                     reason
             ), null, true);
         });
-        if (result.changed()) {
-            removeFromBuckets(normalizedGroupId, normalizedWorkerId);
-        }
         return result.changed();
     }
 
@@ -227,7 +184,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             commands.hdel(keyspace.workerGroupHash(), workerId);
             commands.zrem(keyspace.groupHeartbeatDeadlinesZset(normalizedGroupId), workerId);
             commands.srem(keyspace.exclusiveLeasesSet(), workerId);
-            removeFromBuckets(normalizedGroupId, workerId);
             removed++;
         }
         return new CleanupSummary(scanned, removed, skipped);
@@ -263,45 +219,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public synchronized List<String> acquireCandidates(String groupId, String candidateBucketKey, int maxCandidateCount) {
-        return acquireCandidatesInternal(groupId, candidateBucketKey, maxCandidateCount, Long.MIN_VALUE);
-    }
-
-    @Override
-    public synchronized List<String> acquireCandidates(String groupId,
-                                                       String candidateBucketKey,
-                                                       int maxCandidateCount,
-                                                       long nowMillis) {
-        return acquireCandidatesInternal(groupId, candidateBucketKey, maxCandidateCount, nowMillis);
-    }
-
-    private List<String> acquireCandidatesInternal(String groupId,
-                                                   String candidateBucketKey,
-                                                   int maxCandidateCount,
-                                                   long nowMillis) {
-        String normalizedGroupId = normalizeNullable(groupId);
-        String normalizedCandidateBucketKey = normalizeCandidateBucketKey(candidateBucketKey);
-        if (normalizedGroupId == null || maxCandidateCount <= 0) {
-            return List.of();
-        }
-        String bucketKey = keyspace.groupCandidateBucket(normalizedGroupId, normalizedCandidateBucketKey);
-        int sourceLimit = sourceBatchLimit(maxCandidateCount);
-        List<String> workerIds = nowMillis == Long.MIN_VALUE
-                ? new ArrayList<>(commands.srandmember(bucketKey, sourceLimit))
-                : commands.zrangebyscore(
-                        keyspace.candidateBucketLifecycleDeadlinesZset(bucketKey),
-                        Range.create(nextDeadlineMillis(nowMillis), Double.POSITIVE_INFINITY),
-                        Limit.create(0, sourceLimit)
-                );
-        workerIds.sort(String::compareTo);
-        return samplingPolicy.sample(
-                new WorkerCandidateSamplingContext(normalizedGroupId, normalizedCandidateBucketKey),
-                workerIds,
-                maxCandidateCount
-        );
-    }
-
-    @Override
     public synchronized ReserveStatus slotLifecycleStatus(String groupId, String workerId, long nowMillis) {
         String normalizedGroupId = normalizeNullable(groupId);
         String normalizedWorkerId = normalizeNullable(workerId);
@@ -315,156 +232,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                     : ReserveStatus.MISSING_SLOT;
         }
         return validateSlotLifecycle(slot.orElseThrow(), normalizedGroupId, normalizedWorkerId, nowMillis);
-    }
-
-    @Override
-    public synchronized ReserveResult tryReserve(String groupId, String workerId, String taskId, int permits, long nowMillis) {
-        String normalizedGroupId = normalizeNullable(groupId);
-        String normalizedWorkerId = normalizeNullable(workerId);
-        int normalizedPermits = Math.max(1, permits);
-        if (normalizedGroupId == null || normalizedWorkerId == null) {
-            return ReserveResult.rejected(ReserveStatus.MISSING_SLOT, "worker slot missing");
-        }
-        if (slot(normalizedGroupId, normalizedWorkerId).isEmpty()) {
-            return slotByWorkerId(normalizedWorkerId).isPresent()
-                    ? ReserveResult.rejected(ReserveStatus.GROUP_MISMATCH, "worker group mismatch")
-                    : ReserveResult.rejected(ReserveStatus.MISSING_SLOT, "worker slot missing");
-        }
-        final ReserveResult[] accepted = new ReserveResult[1];
-        MutationResult result = updateSlot(normalizedGroupId, normalizedWorkerId, current -> {
-            ReserveStatus status = validateReserve(current, normalizedGroupId, normalizedWorkerId, normalizedPermits, nowMillis);
-            if (status != ReserveStatus.ACCEPTED) {
-                return SlotUpdate.noop(current, ReserveResult.rejected(status, status.name()));
-            }
-            WorkerSlot updated = new WorkerSlot(
-                    current.meta(),
-                    current.declaredCapacity(),
-                    current.eventBindingCeiling(),
-                    current.activeLeaseCount(),
-                    current.reservedCount() + normalizedPermits,
-                    current.activeLeaseCountByTask(),
-                    current.disabledSources(),
-                    current.exclusiveLeaseHeld(),
-                    current.removing(),
-                    current.removingReason()
-            );
-            accepted[0] = ReserveResult.accepted(updated);
-            return SlotUpdate.write(updated, null, accepted[0]);
-        });
-        return result.payload() instanceof ReserveResult reserveResult
-                ? reserveResult
-                : accepted[0] == null
-                        ? ReserveResult.rejected(ReserveStatus.MISSING_SLOT, "worker slot missing")
-                        : accepted[0];
-    }
-
-    @Override
-    public synchronized boolean confirmReservation(String groupId, String workerId, String taskId, int permits) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        String normalizedWorkerId = normalizeNullable(workerId);
-        int normalizedPermits = Math.max(1, permits);
-        MutationResult result = updateSlot(groupId, workerId, current -> {
-            if (current == null || current.removing() || current.reservedCount() < normalizedPermits) {
-                return SlotUpdate.noop(current, false);
-            }
-            WorkerSlot updated = new WorkerSlot(
-                    current.meta(),
-                    current.declaredCapacity(),
-                    current.eventBindingCeiling(),
-                    current.activeLeaseCount() + normalizedPermits,
-                    current.reservedCount() - normalizedPermits,
-                    incrementTaskCount(current.activeLeaseCountByTask(), normalizedTaskId, normalizedPermits),
-                    current.disabledSources(),
-                    current.exclusiveLeaseHeld(),
-                    current.removing(),
-                    current.removingReason()
-            );
-            return SlotUpdate.write(updated,
-                    tx -> incrementTaskProjection(tx, normalizedTaskId, normalizedWorkerId, normalizedPermits),
-                    true);
-        });
-        return Boolean.TRUE.equals(result.payload());
-    }
-
-    @Override
-    public synchronized void releaseReservation(String groupId, String workerId, String taskId, int permits) {
-        int normalizedPermits = Math.max(1, permits);
-        updateSlot(groupId, workerId, current -> {
-            if (current == null) {
-                return SlotUpdate.noop(null, false);
-            }
-            return SlotUpdate.write(new WorkerSlot(
-                    current.meta(),
-                    current.declaredCapacity(),
-                    current.eventBindingCeiling(),
-                    current.activeLeaseCount(),
-                    Math.max(0, current.reservedCount() - normalizedPermits),
-                    current.activeLeaseCountByTask(),
-                    current.disabledSources(),
-                    current.exclusiveLeaseHeld(),
-                    current.removing(),
-                    current.removingReason()
-            ), null);
-        });
-    }
-
-    @Override
-    public synchronized void recordWorkClaimed(String groupId, String workerId, String taskId, int permits) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        String normalizedWorkerId = normalizeNullable(workerId);
-        int normalizedPermits = Math.max(1, permits);
-        updateSlot(groupId, workerId, current -> {
-            if (current == null) {
-                return SlotUpdate.noop(null, false);
-            }
-            WorkerSlot updated = new WorkerSlot(
-                    current.meta(),
-                    current.declaredCapacity(),
-                    current.eventBindingCeiling(),
-                    current.activeLeaseCount() + normalizedPermits,
-                    current.reservedCount(),
-                    incrementTaskCount(current.activeLeaseCountByTask(), normalizedTaskId, normalizedPermits),
-                    current.disabledSources(),
-                    current.exclusiveLeaseHeld(),
-                    current.removing(),
-                    current.removingReason()
-            );
-            return SlotUpdate.write(updated,
-                    tx -> incrementTaskProjection(tx, normalizedTaskId, normalizedWorkerId, normalizedPermits),
-                    true);
-        });
-    }
-
-    @Override
-    public synchronized void recordWorkFinal(String groupId, String workerId, String taskId, int permits) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        String normalizedWorkerId = normalizeNullable(workerId);
-        int normalizedPermits = Math.max(1, permits);
-        updateSlot(groupId, workerId, current -> {
-            if (current == null) {
-                return SlotUpdate.noop(null, false);
-            }
-            int released = Math.min(normalizedPermits, current.activeLeaseCount());
-            if (released <= 0) {
-                return SlotUpdate.noop(current, false);
-            }
-            int nextTaskCount = Math.max(0, current.activeLeaseCountByTask().getOrDefault(normalizedTaskId, 0) - released);
-            WorkerSlot updated = new WorkerSlot(
-                    current.meta(),
-                    current.declaredCapacity(),
-                    current.eventBindingCeiling(),
-                    Math.max(0, current.activeLeaseCount() - released),
-                    current.reservedCount(),
-                    decrementTaskCount(current.activeLeaseCountByTask(), normalizedTaskId, released),
-                    current.disabledSources(),
-                    current.exclusiveLeaseHeld(),
-                    current.removing(),
-                    current.removingReason()
-            );
-            return SlotUpdate.write(updated,
-                    tx -> decrementTaskProjection(tx, normalizedTaskId, normalizedWorkerId, released, nextTaskCount),
-                    true);
-        });
     }
 
     @Override
@@ -529,8 +296,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     @Override
     public synchronized boolean disableDispatch(String groupId, String workerId, DispatchAvailabilitySource source) {
         Objects.requireNonNull(source, "source");
-        String normalizedGroupId = normalizeNullable(groupId);
-        String normalizedWorkerId = normalizeNullable(workerId);
         MutationResult result = updateSlot(groupId, workerId, current -> {
             if (current == null) {
                 return SlotUpdate.noop(null, false);
@@ -552,9 +317,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             return SlotUpdate.write(updated, null, changed);
         });
         boolean changed = Boolean.TRUE.equals(result.payload());
-        if (changed) {
-            removeFromLifecycleProjection(normalizedGroupId, normalizedWorkerId);
-        }
         return changed;
     }
 
@@ -600,11 +362,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                     ),
                     true);
         });
-        if (Boolean.TRUE.equals(result.payload())) {
-            removeFromLifecycleProjection(normalizedGroupId, normalizedWorkerId);
-            return true;
-        }
-        return false;
+        return Boolean.TRUE.equals(result.payload());
     }
 
     @Override
@@ -626,8 +384,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     @Override
     public synchronized boolean clearDispatchDisable(String groupId, String workerId, DispatchAvailabilitySource source) {
         Objects.requireNonNull(source, "source");
-        String normalizedGroupId = normalizeNullable(groupId);
-        String normalizedWorkerId = normalizeNullable(workerId);
         MutationResult result = updateSlot(groupId, workerId, current -> {
             if (current == null) {
                 return SlotUpdate.noop(null, false);
@@ -648,45 +404,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             );
             return SlotUpdate.write(updated, null, changed);
         });
-        boolean changed = Boolean.TRUE.equals(result.payload());
-        if (changed) {
-            slot(normalizedGroupId, normalizedWorkerId).ifPresent(this::refreshLifecycleProjection);
-        }
-        return changed;
-    }
-
-    @Override
-    public synchronized Set<String> activeWorkerIdsByTask(String taskId) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        if (normalizedTaskId == null) {
-            return Set.of();
-        }
-        return Set.copyOf(commands.hkeys(keyspace.taskWorkerActiveCountsHash(normalizedTaskId)));
-    }
-
-    @Override
-    public synchronized int activeWorkerCountForTask(String taskId) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        if (normalizedTaskId == null) {
-            return 0;
-        }
-        return commands.hlen(keyspace.taskWorkerActiveCountsHash(normalizedTaskId)).intValue();
-    }
-
-    @Override
-    public synchronized int activeLeaseCountByTaskWorker(String taskId, String workerId) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        String normalizedWorkerId = normalizeNullable(workerId);
-        if (normalizedTaskId == null || normalizedWorkerId == null) {
-            return 0;
-        }
-        String value = commands.hget(keyspace.taskWorkerActiveCountsHash(normalizedTaskId), normalizedWorkerId);
-        return parseNonNegativeInt(value);
-    }
-
-    @Override
-    public synchronized void markCandidateStale(String groupId, String workerId, String reason) {
-        removeFromBuckets(normalizeNullable(groupId), normalizeNullable(workerId));
+        return Boolean.TRUE.equals(result.payload());
     }
 
     @Override
@@ -712,7 +430,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             for (String workerId : workerIds) {
                 scanned++;
                 boolean changed = markSlotRemoving(groupId, workerId, "heartbeat expired");
-                removeFromBuckets(groupId, workerId);
                 commands.zrem(keyspace.groupHeartbeatDeadlinesZset(groupId), workerId);
                 if (changed) {
                     removed++;
@@ -722,31 +439,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             }
         }
         return new CleanupSummary(scanned, removed, skipped);
-    }
-
-    @Override
-    public synchronized CleanupSummary cleanupStaleBucketMembers(String groupId, int limit) {
-        String normalizedGroupId = normalizeNullable(groupId);
-        if (normalizedGroupId == null || limit <= 0) {
-            return CleanupSummary.empty();
-        }
-        int scanned = 0;
-        int removed = 0;
-        for (String candidateBucketKey : commands.smembers(keyspace.groupCandidateBucketsSet(normalizedGroupId))) {
-            String bucketKey = keyspace.groupCandidateBucket(normalizedGroupId, candidateBucketKey);
-            int remaining = limit - scanned;
-            if (remaining <= 0) {
-                return new CleanupSummary(scanned, removed, 0);
-            }
-            for (String workerId : commands.srandmember(bucketKey, remaining)) {
-                scanned++;
-                if (slot(normalizedGroupId, workerId).isEmpty()) {
-                    removeFromBuckets(normalizedGroupId, workerId);
-                    removed++;
-                }
-            }
-        }
-        return new CleanupSummary(scanned, removed, 0);
     }
 
     @Override
@@ -826,21 +518,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         );
     }
 
-    private ReserveStatus validateReserve(WorkerSlot current,
-                                          String groupId,
-                                          String workerId,
-                                          int permits,
-                                          long nowMillis) {
-        ReserveStatus lifecycleStatus = validateSlotLifecycle(current, groupId, workerId, nowMillis);
-        if (lifecycleStatus != ReserveStatus.ACCEPTED) {
-            return lifecycleStatus;
-        }
-        if (current.occupiedPermits() + permits > current.declaredCapacity()) {
-            return ReserveStatus.CAPACITY_UNAVAILABLE;
-        }
-        return ReserveStatus.ACCEPTED;
-    }
-
     private ReserveStatus validateSlotLifecycle(WorkerSlot current,
                                                 String groupId,
                                                 String workerId,
@@ -863,94 +540,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         return ReserveStatus.ACCEPTED;
     }
 
-    private void addToBuckets(WorkerSlot slot) {
-        WorkerMeta meta = slot.meta();
-        LinkedHashSet<String> bucketKeys = new LinkedHashSet<>();
-        for (String candidateBucketKey : candidateBucketKeys(meta)) {
-            commands.sadd(keyspace.groupCandidateBucketsSet(meta.groupId()), candidateBucketKey);
-            String groupBucketKey = keyspace.groupCandidateBucket(meta.groupId(), candidateBucketKey);
-            commands.sadd(groupBucketKey, meta.workerId());
-            bucketKeys.add(groupBucketKey);
-            addToLifecycleProjectionIfEligible(slot, groupBucketKey);
-        }
-        if (!bucketKeys.isEmpty()) {
-            commands.hset(
-                    keyspace.groupBucketMembershipHash(meta.groupId()),
-                    meta.workerId(),
-                    encodeBucketMembership(bucketKeys)
-            );
-        }
-    }
-
-    private void removeFromBuckets(String groupId, String workerId) {
-        if (groupId == null || workerId == null) {
-            return;
-        }
-        String membershipKey = keyspace.groupBucketMembershipHash(groupId);
-        Set<String> bucketKeys = decodeBucketMembership(commands.hget(membershipKey, workerId));
-        for (String bucketKey : bucketKeys) {
-            commands.srem(bucketKey, workerId);
-            commands.zrem(keyspace.candidateBucketLifecycleDeadlinesZset(bucketKey), workerId);
-        }
-        commands.hdel(membershipKey, workerId);
-    }
-
-    private void removeFromLifecycleProjection(String groupId, String workerId) {
-        if (groupId == null || workerId == null) {
-            return;
-        }
-        String membershipKey = keyspace.groupBucketMembershipHash(groupId);
-        Set<String> bucketKeys = decodeBucketMembership(commands.hget(membershipKey, workerId));
-        for (String bucketKey : bucketKeys) {
-            commands.zrem(keyspace.candidateBucketLifecycleDeadlinesZset(bucketKey), workerId);
-        }
-    }
-
-    private void refreshLifecycleProjection(WorkerSlot slot) {
-        if (slot == null) {
-            return;
-        }
-        String membershipKey = keyspace.groupBucketMembershipHash(slot.groupId());
-        Set<String> bucketKeys = decodeBucketMembership(commands.hget(membershipKey, slot.workerId()));
-        for (String bucketKey : bucketKeys) {
-            commands.zrem(keyspace.candidateBucketLifecycleDeadlinesZset(bucketKey), slot.workerId());
-            addToLifecycleProjectionIfEligible(slot, bucketKey);
-        }
-    }
-
-    private void addToLifecycleProjectionIfEligible(WorkerSlot slot, String bucketKey) {
-        if (slot == null || bucketKey == null || slot.removing() || !slot.dispatchEnabled()) {
-            return;
-        }
-        commands.zadd(
-                keyspace.candidateBucketLifecycleDeadlinesZset(bucketKey),
-                heartbeatDeadlineMillis(slot.meta()),
-                slot.workerId()
-        );
-    }
-
-    private String encodeBucketMembership(Set<String> bucketKeys) {
-        return GSON.toJson(bucketKeys.toArray(String[]::new));
-    }
-
-    private Set<String> decodeBucketMembership(String json) {
-        if (json == null || json.isBlank()) {
-            return Set.of();
-        }
-        String[] bucketKeys = GSON.fromJson(json, String[].class);
-        if (bucketKeys == null || bucketKeys.length == 0) {
-            return Set.of();
-        }
-        LinkedHashSet<String> decoded = new LinkedHashSet<>();
-        for (String bucketKey : bucketKeys) {
-            String normalized = normalizeNullable(bucketKey);
-            if (normalized != null) {
-                decoded.add(normalized);
-            }
-        }
-        return Set.copyOf(decoded);
-    }
-
     private List<String> scanHashFields(String key, int limit) {
         if (key == null || limit <= 0) {
             return List.of();
@@ -971,95 +560,16 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         return fields.stream().limit(limit).toList();
     }
 
-    private Set<String> candidateBucketKeys(WorkerMeta meta) {
-        Set<String> candidateBucketKeys = candidateBucketPolicy.candidateBucketKeysForWorkerMeta(meta);
-        return candidateBucketKeys == null || candidateBucketKeys.isEmpty()
-                ? Set.of(DEFAULT_CANDIDATE_BUCKET_KEY)
-                : Set.copyOf(candidateBucketKeys);
-    }
-
     private long heartbeatDeadlineMillis(WorkerMeta meta) {
         long lastHeartbeatMillis = Math.max(0L, meta.lastHeartbeatMillis());
         long maxIncrement = Long.MAX_VALUE - lastHeartbeatMillis;
         return lastHeartbeatMillis + Math.min(heartbeatFreshnessMillis, maxIncrement);
     }
 
-    private static int sourceBatchLimit(int maxCandidateCount) {
-        if (maxCandidateCount <= 0) {
-            return 0;
-        }
-        return maxCandidateCount == Integer.MAX_VALUE
-                ? DEFAULT_UNBOUNDED_SOURCE_BATCH_LIMIT
-                : maxCandidateCount;
-    }
-
-    private static double nextDeadlineMillis(long nowMillis) {
-        return nowMillis == Long.MAX_VALUE ? Double.POSITIVE_INFINITY : (double) nowMillis + 1.0d;
-    }
-
-    private void incrementTaskProjection(RedisCommands<String, String> tx, String taskId, String workerId, int permits) {
-        if (taskId == null || workerId == null) {
-            return;
-        }
-        tx.hincrby(keyspace.taskWorkerActiveCountsHash(taskId), workerId, permits);
-    }
-
-    private void decrementTaskProjection(RedisCommands<String, String> tx,
-                                         String taskId,
-                                         String workerId,
-                                         int permits,
-                                         int nextTaskCount) {
-        if (taskId == null || workerId == null) {
-            return;
-        }
-        if (nextTaskCount <= 0) {
-            tx.hdel(keyspace.taskWorkerActiveCountsHash(taskId), workerId);
-        } else {
-            tx.hincrby(keyspace.taskWorkerActiveCountsHash(taskId), workerId, -permits);
-        }
-    }
-
-    private static Map<String, Integer> incrementTaskCount(Map<String, Integer> current,
-                                                           String taskId,
-                                                           int permits) {
-        if (taskId == null) {
-            return current;
-        }
-        LinkedHashMap<String, Integer> updated = new LinkedHashMap<>(current);
-        updated.merge(taskId, permits, Integer::sum);
-        return Map.copyOf(updated);
-    }
-
-    private static Map<String, Integer> decrementTaskCount(Map<String, Integer> current,
-                                                           String taskId,
-                                                           int permits) {
-        if (taskId == null || current.isEmpty()) {
-            return current;
-        }
-        LinkedHashMap<String, Integer> updated = new LinkedHashMap<>(current);
-        updated.computeIfPresent(taskId, (ignored, value) -> {
-            int next = Math.max(0, value - permits);
-            return next == 0 ? null : next;
-        });
-        return Map.copyOf(updated);
-    }
-
     private static EnumSet<DispatchAvailabilitySource> disabledSources(WorkerSlot slot) {
         return slot.disabledSources().isEmpty()
                 ? EnumSet.noneOf(DispatchAvailabilitySource.class)
                 : EnumSet.copyOf(slot.disabledSources());
-    }
-
-    private static int parseNonNegativeInt(String value) {
-        if (value == null || value.isBlank()) {
-            return 0;
-        }
-        return Math.max(0, Integer.parseInt(value));
-    }
-
-    private static String normalizeCandidateBucketKey(String value) {
-        String normalized = normalizeNullable(value);
-        return normalized == null ? DEFAULT_CANDIDATE_BUCKET_KEY : normalized;
     }
 
     private static String normalizeNullable(String value) {

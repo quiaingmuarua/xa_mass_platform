@@ -1,7 +1,11 @@
 # Worker Runtime Score-Band Slot Registry Inventory
 
-Status: active inventory for
-`WORKER_RUNTIME_SCORE_BAND_SLOT_REGISTRY_CONVERGENCE_ROADMAP.md`.
+Status: archived historical SBR-0 inventory on 2026-06-25.
+
+This file records the pre-pivot inventory that informed
+`WORKER_RUNTIME_SCORE_BAND_SLOT_REGISTRY_CONVERGENCE_ROADMAP.md`. It is no
+longer current implementation truth after the score-band selection pivot and
+post-score-band residue retirement.
 
 ## Decision
 

@@ -42,40 +42,12 @@ public final class RedisWorkerRegistryKeyspace {
         return groupPrefix(groupId) + ":slots";
     }
 
-    public String groupCandidateBucket(String groupId, String candidateBucketKey) {
-        return groupPrefix(groupId) + ":bucket:" + requireToken(candidateBucketKey, "candidateBucketKey") + ":workers";
-    }
-
-    public String groupCandidateBucketLifecycleDeadlinesZset(String groupId, String candidateBucketKey) {
-        return candidateBucketLifecycleDeadlinesZset(groupCandidateBucket(groupId, candidateBucketKey));
-    }
-
-    public String groupCandidateBucketsSet(String groupId) {
-        return groupPrefix(groupId) + ":buckets";
-    }
-
-    public String candidateBucketLifecycleDeadlinesZset(String candidateBucketStorageKey) {
-        return requireToken(candidateBucketStorageKey, "candidateBucketStorageKey") + ":slot-lifecycle-deadlines";
-    }
-
-    public String groupBucketMembershipHash(String groupId) {
-        return groupPrefix(groupId) + ":bucket-membership";
-    }
-
     public String groupDispatchBlocksHash(String groupId) {
         return groupPrefix(groupId) + ":dispatch-blocks";
     }
 
-    public String taskWorkerActiveCountsHash(String taskId) {
-        return taskPrefix(taskId) + ":worker-active-count";
-    }
-
     private String groupPrefix(String groupId) {
         return namespaced("group:" + requireToken(groupId, "groupId"));
-    }
-
-    private String taskPrefix(String taskId) {
-        return namespaced("task:" + requireToken(taskId, "taskId"));
     }
 
     private String namespaced(String suffix) {

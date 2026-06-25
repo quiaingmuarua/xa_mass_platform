@@ -4,6 +4,7 @@ import com.xa.mass.engine.InMemoryWorkerDeclarationRuntimeStore;
 
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
+import com.xa.mass.runtime.memory.InMemoryWorkerScoreBandSlotRuntime;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
@@ -31,7 +32,10 @@ public class EngineExample {
                 new InMemoryTaskResultRuntime(),
                 null);
         TaskCommandService taskCommands = new TaskCommandService(taskManager);
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerDeclarationRuntimeStore(),
+                new InMemoryWorkerRegistry(),
+                new InMemoryWorkerScoreBandSlotRuntime());
         log.info("taskManager:" + taskManager);
         log.info("workerManager:" + workerManager);
 

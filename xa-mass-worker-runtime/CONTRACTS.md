@@ -34,9 +34,6 @@ Worker runtime owns:
 - Worker command lifecycle truth: request records, status transitions,
   worker-pulled claims, delivery-attempt bookkeeping, expiry, and command
   lifecycle value contracts.
-- Stage-1 bounded worker candidate source, source guard, and platform-approved
-  worker candidate bucket policy composition where still used as
-  migration/source projection support.
 
 Worker runtime does not own:
 
@@ -127,9 +124,9 @@ not provide worker-runtime source keys, candidate rows, scheduling views,
 worker attributes, load snapshots, dispatch-gate evidence, or transport
 topology ids.
 
-Worker-runtime selection composes candidate source, dispatch eligibility,
-load, WorkerGroup capability, routing/attribute
-matching, admission, and exclusive lease evidence internally. These inputs feed
+Worker-runtime selection composes WorkerGroup capability, dispatch eligibility,
+load, routing/attribute matching, score-band slot state, and exclusive lease
+evidence internally. These inputs feed
 one worker-runtime dispatch eligibility decision; they are not parallel
 readiness/reachability/occupancy scheduling owners. It returns selected handles
 only after worker-runtime has selected and reserved workers. Engine may read
@@ -143,41 +140,17 @@ server/SDK diagnostic view, not in the engine hot path.
 `SelectedWorkerEvidence` is the recovery/release shape for persisted dispatch
 bindings. It carries selected identity and selection scope only.
 
-### Candidate
+### Retired Candidate Surface
 
-Package: `com.xa.mass.worker.runtime.candidate`
+Pre-score-band candidate acquisition is not a current contract family.
+The old candidate runtime, task selector, candidate index/source owner,
+registry acquisition method, and candidate-bucket policy/keyspace SPI have been
+removed from the mainline.
 
-Owned contracts:
-
-- `WorkerCandidateRuntime`
-- `WorkerCandidateRow`
-- `WorkerTaskSelector`
-
-Allowed callers:
-
-- Worker-runtime implementation.
-- Test support that proves candidate-source behavior.
-
-Candidate acquisition is an internal worker-runtime selection mechanism.
-Engine scheduling must use `WorkerSelectionRuntime`, not
-`WorkerCandidateRuntime`. Candidate acquisition must start from an explicit
-WorkerGroup selector and must not reintroduce all-worker scans.
-`WorkerCandidateRuntime#findWorkerCandidates(...)` returns row-only source
-candidates; warm/cold diagnostic wrappers and task-local warm mutation ports
-are not current contracts.
-
-Production scheduling candidate acquisition carries the scheduling clock into
-`WorkerRegistry#acquireCandidates(...)` so registry implementations may use
-deadline-aware slot lifecycle projections before the source guard. The source
-guard and reserve mutation still revalidate canonical slot truth; Redis
-deadline indexes remain adapter-internal derived indexes and are not exposed as
-worker-runtime or engine contracts.
-
-Candidate bucket keys are source-index hints selected by `WorkerTaskSelector`
-and validated against the runtime-api `WorkerCandidateBucketPolicy`. They are
-not lifecycle eligibility truth. The policy owns optional attribute dimensions
-and declares max bucket fan-out cost; registry implementations execute the
-policy and fall back to the `default` bucket when it returns no keys.
+Worker-runtime selection must use `WorkerSelectionRuntime` backed by
+`WorkerScoreBandSlotRuntime`. Engine scheduling must not consume candidate rows,
+candidate bucket keys, registry acquisition methods, worker attributes, load
+snapshots, dispatch-gate evidence, or transport topology ids directly.
 
 ### Evidence
 
@@ -228,9 +201,10 @@ current worker-runtime facts unless a later owner decision makes a stored field
 canonical. Legacy `statusName` / worker `status` fields are display-only
 compatibility and must not become scheduling truth.
 
-`WorkerOccupancyState` is not an admission predicate. `OCCUPIED` may still be
-schedulable when declared capacity remains; `WorkerAdmissionRuntime` and the
-underlying `WorkerRegistry` reserve result own the binding decision.
+`WorkerOccupancyState` is not an admission predicate. Current score-band
+selection is one active hold per worker resource; simultaneous same-worker
+multi-item throughput is future task-policy work, not proof carried by old
+reservation counters.
 
 Current engine scheduling proof treats worker state report `DRAINING` as
 dispatch-gate unavailability from the worker-control owner path. A distinct
@@ -243,9 +217,6 @@ Package: `com.xa.mass.worker.runtime.admission`
 Owned contracts:
 
 - `WorkerAdmissionRuntime`
-- `WorkerAdmissionTarget`
-- `WorkerAdmissionResult`
-- `WorkerAdmissionStatus`
 - `WorkerAvailabilityWakeupRuntime`
 
 Allowed callers:
@@ -255,17 +226,12 @@ Allowed callers:
 - SDK/server assembly.
 - Worker-runtime implementation.
 
-Admission translates registry reserve/release primitives into worker-plane
-results. Engine strategy must not consume `ReserveResult`, `ReserveStatus`, or
+Admission currently owns exclusive worker locks and load snapshots below
+selection. Engine strategy must not consume `ReserveStatus` or
 `WorkerAdmissionRuntime` directly for scheduling. The engine-facing mutation
-surface for selection, confirm, release, claim, and final accounting is
+surface for selection, release, claim-close, and final evidence is
 `WorkerSelectionRuntime` with `SelectedWorkerHandle` or
 `SelectedWorkerEvidence`.
-
-`WorkerAdmissionTarget` carries `workerGroupId + workerId + taskId + permits`
-below the selection boundary. Worker-id reverse lookup belongs below this
-contract as low-level registry support for diagnostics, commands, or genuinely
-group-less paths.
 
 ### Report
 
@@ -375,24 +341,10 @@ events, and coordinate delivery retries, but engine must not own command
 record/status storage or dispatch-gate mutation policy.
 
 `WorkerAvailabilityWakeupRuntime` is assembly wiring for worker-runtime
-availability changes that can make waiting tasks worth rechecking. Admission
-release paths such as reservation release, final work accounting, and
-exclusive-lock release may trigger it after capacity state changes. The wakeup
-does not clear dispatch blocks and is not itself scheduling truth.
-
-### Routing
-
-Package: `com.xa.mass.worker.runtime.routing`
-
-Owned contract:
-
-- `WorkerCandidateBucketPolicies`
-
-`WorkerCandidateBucketPolicies` is the current platform approved-attribute
-candidate-bucket policy. Its standard route attributes are a worker-runtime
-default, not Redis keyspace truth. The registry-level `WorkerCandidateBucketPolicy`
-SPI remains in `mass-runtime-api` and exposes bucket fan-out cost so attribute
-indexing write amplification is visible.
+availability changes that can make waiting tasks worth rechecking. Score-band
+claim-close/final evidence and exclusive-lock release may trigger it after
+worker-runtime state changes. The wakeup does not clear dispatch blocks and is
+not itself scheduling truth.
 
 ## Online And Heartbeat Semantics
 
@@ -400,7 +352,7 @@ Worker registration may create or refresh a registry slot so the runtime can
 route current work, but declaration persistence is not the source of active
 online or dispatchable state. Worker-runtime dispatch eligibility is derived
 inside worker-runtime from reachability observations, heartbeat freshness in
-current registry metadata, dispatch gates, capacity/admission, and selection
+current registry metadata, dispatch gates, score-band state, load, and selection
 confirmation. Declaration-store writes must keep projecting to
 `WorkerDeclarationRecord` before persistence so heartbeat or online/offline
 churn never becomes durable worker declaration truth.
@@ -413,16 +365,14 @@ These low-level types stay in
 - `WorkerRegistry`
 - `WorkerSlot`
 - `WorkerMeta`
-- `ReserveResult`
 - `ReserveStatus`
 - `CleanupSummary`
 - `DispatchAvailabilitySource`
 - `EventKey`
-- `WorkerCandidateSamplingPolicy`
-- `WorkerCandidateSamplingContext`
-- `RandomWorkerCandidateSamplingPolicy`
-- `WorkerCandidateBucketPolicy`
-- `DefaultWorkerCandidateBucketPolicy`
+- `WorkerDispatchBlockRecord`
+- `WorkerAdmissionSnapshot`
+- `NoopWorkerScoreBandSlotRuntime`
+- score-band slot runtime value contracts under the `slot` subpackage
 
 `EventKey` is a project-scoped worker capability key for registry binding. It
 is not a globally unique business event identity.
@@ -434,11 +384,11 @@ scan all workers from item payload.
 
 WorkerGroup owns project/event capability truth. Worker registration and
 runtime state provide execution identity, group/node membership, reachability
-observations, load, admission, draining/gate state, lease, and other
+observations, load, score-band state, draining/gate state, lease, and other
 worker-runtime evidence for selection inside the selected group.
 
 Engine scheduling code should not import registry primitives or worker-runtime
-candidate/evidence/admission subports. The default engine-facing contract is
+evidence/admission subports. The default engine-facing contract is
 `WorkerSelectionRuntime`; module assembly may still wire registry
 implementations into `WorkerManager`.
 
@@ -465,9 +415,8 @@ Current implementation status:
 - production `WorkerSelectionRuntime` now acquires bounded eligible slots from
   score-band runtime and writes `FUTURE_BAND` claim scores for selected
   workers;
-- `WorkerSelectionOwner` no longer writes the old
-  `WorkerAdmissionRuntime.reserveWorkerCapacity / confirm / claimed / final`
-  accounting path;
+- `WorkerSelectionOwner` writes score-band claim and claim-close/final
+  evidence instead of old reserve/confirm/claimed/final accounting paths;
 - `WorkerAdmissionRuntime` still owns exclusive worker locks and remains as
   direct/runtime API residue outside the score-band selection hot path;
 - `WorkerSelectionRuntime.activeSelectedWorkerCount(taskId)` has been removed.
@@ -483,8 +432,8 @@ not enough to shorten a `FUTURE_BAND` score or reopen eligibility.
 ## Implementation-Only Owners
 
 The root package contains implementation owners such as `WorkerManager`,
-`WorkerResourceOwner`, `WorkerAdmissionOwner`, `WorkerCandidateSourceOwner`,
-`WorkerCandidateIndex`, `WorkerRegistrySnapshot`, and `WorkerReportOwner`.
+`WorkerResourceOwner`, `WorkerAdmissionOwner`, `WorkerRegistrySnapshot`, and
+`WorkerReportOwner`.
 
 These are not contract families. Cross-module callers should prefer the
 contract packages above.
@@ -495,10 +444,10 @@ Runtime outcome proof:
 
 ```powershell
 .\mvnw.cmd -pl xa-mass-worker-runtime `
-  "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest" test
+  "-Dtest=WorkerManagerTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest" test
 
 .\mvnw.cmd -pl platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am `
-  "-Dtest=InMemoryWorkerScoreBandSlotRuntimeTest,RedisWorkerScoreBandSlotRuntimeTest" test
+  "-Dtest=InMemoryWorkerScoreBandSlotRuntimeTest,InMemoryWorkerRegistryTest,RedisWorkerScoreBandSlotRuntimeTest,RedisWorkerRegistryTest" test
 
 .\mvnw.cmd -pl xa-mass-engine `
   "-Dtest=TaskWorkerEligibilityTest,WorkerStateReportSchedulingIntegrationTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskSchedulingBindingEntryBypassTest,EngineSchedulingCoreSuite" test
@@ -507,7 +456,7 @@ Runtime outcome proof:
 Boundary residue sanity:
 
 ```powershell
-rg -n "WorkerRegistry|WorkerSlot|WorkerMeta|ReserveResult|ReserveStatus" `
+rg -n "WorkerRegistry|WorkerSlot|WorkerMeta|ReserveStatus" `
   xa-mass-engine/src/main/java --glob '!**/target/**'
 ```
 

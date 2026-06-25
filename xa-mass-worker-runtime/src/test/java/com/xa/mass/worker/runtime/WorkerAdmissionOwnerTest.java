@@ -1,9 +1,8 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionStatus;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.runtime.worker.WorkerMeta;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -15,24 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorkerAdmissionOwnerTest {
-
-    @Test
-    void reservesConfirmsAndFinalizesWorkerCapacityThroughRegistry() {
-        InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry();
-        registry.upsertSlot(workerMeta("worker-1"), 1, Set.of());
-        WorkerAdmissionOwner owner = new WorkerAdmissionOwner(registry);
-
-        assertTrue(owner.reserveWorkerCapacity(admissionTarget("worker-1", "task-1")).accepted());
-        assertFalse(owner.reserveWorkerCapacity(admissionTarget("worker-1", "task-2")).accepted());
-        assertEquals(1, owner.getWorkerLoad("worker-1").reservedCount());
-
-        assertTrue(owner.confirmWorkerReservation(admissionTarget("worker-1", "task-1")));
-        assertEquals(0, owner.getWorkerLoad("worker-1").reservedCount());
-        assertEquals(1, owner.getWorkerLoad("worker-1").activeLeaseCount());
-
-        owner.recordWorkFinal(admissionTarget("worker-1", "task-1"));
-        assertEquals(0, owner.getWorkerLoad("worker-1").activeLeaseCount());
-    }
 
     @Test
     void resolvesExclusiveLeaseByWorkerId() {
@@ -49,15 +30,14 @@ class WorkerAdmissionOwnerTest {
     }
 
     @Test
-    void missingWorkerSlotRejectsReservation() {
-        WorkerAdmissionOwner owner = new WorkerAdmissionOwner(new InMemoryWorkerRegistry());
+    void readsLoadSnapshotFromRegistrySlot() {
+        InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry();
+        registry.upsertSlot(workerMeta("worker-load"), 3, Set.of());
+        WorkerAdmissionOwner owner = new WorkerAdmissionOwner(registry);
 
-        assertEquals(WorkerAdmissionStatus.MISSING_SLOT,
-                owner.reserveWorkerCapacity(admissionTarget("missing-worker", "task-1")).status());
-    }
-
-    private static WorkerAdmissionTarget admissionTarget(String workerId, String taskId) {
-        return WorkerAdmissionTarget.groupScoped("group-1", workerId, taskId);
+        assertEquals(3, owner.getWorkerLoad("worker-load").declaredCapacity());
+        assertEquals(0, owner.getWorkerLoad("worker-load").activeLeaseCount());
+        assertEquals(0, owner.getWorkerLoad("worker-load").reservedCount());
     }
 
     private static WorkerMeta workerMeta(String workerId) {

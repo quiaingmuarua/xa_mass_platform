@@ -4,6 +4,7 @@ import com.xa.mass.engine.InMemoryWorkerDeclarationRuntimeStore;
 
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
+import com.xa.mass.runtime.memory.InMemoryWorkerScoreBandSlotRuntime;
 import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
@@ -98,7 +99,10 @@ public class WorkerStateReportEventHandlerTest {
 
     private static WorkerControlService workerControlService(WorkerStateProjectionOwner owner,
                                                              TraceEventLogger traceEventLogger) {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerDeclarationRuntimeStore(),
+                new InMemoryWorkerRegistry(),
+                new InMemoryWorkerScoreBandSlotRuntime());
         return new WorkerControlService(
                 workerManager,
                 workerManager,

@@ -2,7 +2,6 @@ package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.slot.NoopWorkerScoreBandSlotRuntime;
 import com.xa.mass.runtime.worker.slot.WorkerScoreBand;
 import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlot;
 import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotMetadata;
@@ -11,6 +10,7 @@ import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -26,19 +26,11 @@ public final class WorkerResourceOwner {
 
     public WorkerResourceOwner(WorkerDeclarationStore workerStorage,
                                WorkerRegistry workerRegistry,
-                               WorkerGroupOwner groupOwner) {
-        this(workerStorage, workerRegistry, NoopWorkerScoreBandSlotRuntime.INSTANCE, groupOwner);
-    }
-
-    public WorkerResourceOwner(WorkerDeclarationStore workerStorage,
-                               WorkerRegistry workerRegistry,
                                WorkerScoreBandSlotRuntime scoreBandSlotRuntime,
                                WorkerGroupOwner groupOwner) {
         this.workerStorage = workerStorage;
         this.workerRegistry = workerRegistry;
-        this.scoreBandSlotRuntime = scoreBandSlotRuntime != null
-                ? scoreBandSlotRuntime
-                : NoopWorkerScoreBandSlotRuntime.INSTANCE;
+        this.scoreBandSlotRuntime = Objects.requireNonNull(scoreBandSlotRuntime, "scoreBandSlotRuntime");
         this.groupOwner = groupOwner;
     }
 

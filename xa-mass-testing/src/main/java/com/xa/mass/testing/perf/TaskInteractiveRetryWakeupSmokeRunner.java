@@ -2,6 +2,7 @@ package com.xa.mass.testing.perf;
 
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
+import com.xa.mass.runtime.memory.InMemoryWorkerScoreBandSlotRuntime;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
@@ -35,7 +36,6 @@ import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
-import com.xa.mass.worker.runtime.selection.WorkerSelectionOwner;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
@@ -104,7 +104,11 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             TaskLeaseMaintenancePort leaseMaintenancePort = engineConfig.getTaskLeaseMaintenancePort();
             TaskDispatchWakeupPort dispatchWakeupPort = engineConfig.getTaskDispatchWakeupPort();
             TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
-            WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
+            InMemoryWorkerScoreBandSlotRuntime scoreBandRuntime = new InMemoryWorkerScoreBandSlotRuntime();
+            WorkerManager workerManager = new WorkerManager(
+                    new InMemoryWorkerDeclarationStore(),
+                    new InMemoryWorkerRegistry(),
+                    scoreBandRuntime);
             WorkerResourceDeclarationRuntime workerDeclarationRuntime = workerManager;
             WorkerResourceQueryRuntime workerResourceQueryRuntime = workerManager;
             WorkerAdmissionRuntime workerAdmissionRuntime = workerManager;
@@ -148,13 +152,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 }
             };
 
-            WorkerSelectionRuntime workerSelectionRuntime = new WorkerSelectionOwner(
-                    PerfWorkerMatchingSupport.laneAwareCandidateRuntime(
-                            workerResourceQueryRuntime,
-                            workloadByTaskId,
-                            config.reservedInteractiveWorkers()),
-                    workerSchedulingViewRuntime,
-                    workerAdmissionRuntime);
+            WorkerSelectionRuntime workerSelectionRuntime = workerManager;
             SimpleTaskDispatchBinder dispatchBinder =
                     new SimpleTaskDispatchBinder(
                             assignmentRuntimePort,

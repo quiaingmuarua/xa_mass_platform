@@ -30,6 +30,23 @@ class EngineSchedulingCoreArchitectureGuardTest {
     private static final Path WORKER_CANDIDATE_ROW_SOURCE = Path.of("..", "xa-mass-worker-runtime",
             "src", "main", "java", "com", "xa", "mass", "worker", "runtime", "candidate",
             "WorkerCandidateRow.java");
+    private static final String RETIRED_CANDIDATE_RUNTIME = "Worker" + "Candidate" + "Runtime";
+    private static final String RETIRED_CANDIDATE_SOURCE_OWNER = "Worker" + "Candidate" + "SourceOwner";
+    private static final String RETIRED_CANDIDATE_INDEX = "Worker" + "Candidate" + "Index";
+    private static final String RETIRED_FIND_WORKER_CANDIDATES = "find" + "Worker" + "Candidates";
+    private static final String RETIRED_GET_WORKER_CANDIDATE_INDEX = "get" + "Worker" + "Candidate" + "Index";
+    private static final String RETIRED_BUCKET_POLICY = "Worker" + "Candidate" + "Bucket" + "Policy";
+    private static final String RETIRED_RECORD_WORK_CLAIMED = "record" + "Work" + "Claimed";
+    private static final String RETIRED_RECORD_WORK_FINAL = "record" + "Work" + "Final";
+    private static final String RETIRED_RELEASE_WORKER_RESERVATION = "release" + "Worker" + "Reservation";
+    private static final String RETIRED_RESERVE_WORKER_CAPACITY = "reserve" + "Worker" + "Capacity";
+    private static final String RETIRED_CONFIRM_WORKER_RESERVATION = "confirm" + "Worker" + "Reservation";
+    private static final String RETIRED_TRY_RESERVE = "try" + "Reserve";
+    private static final String RETIRED_CONFIRM_RESERVATION = "confirm" + "Reservation";
+    private static final String RETIRED_RELEASE_RESERVATION = "release" + "Reservation";
+    private static final String RETIRED_ACTIVE_WORKER_COUNT = "active" + "Worker" + "CountForTask";
+    private static final String RETIRED_ACQUIRE_CANDIDATES = "acquire" + "Candidates";
+    private static final String RETIRED_CANDIDATE_BUCKET = "candidate" + "Bucket";
 
     private static final Map<String, Pattern> FORBIDDEN_MAINLINE_PATTERNS = Map.ofEntries(
             Map.entry("TaskMessageProjection", Pattern.compile("\\bTaskMessageProjection\\b")),
@@ -85,7 +102,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
     @Test
     void listenerOrchestrationDoesNotCallDispatchCleanupPrimitivesDirectly() throws IOException {
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
-                Map.entry("releaseWorkerReservation", Pattern.compile("\\breleaseWorkerReservation\\s*\\(")),
+                Map.entry(RETIRED_RELEASE_WORKER_RESERVATION,
+                        Pattern.compile("\\b" + RETIRED_RELEASE_WORKER_RESERVATION + "\\s*\\(")),
                 Map.entry("releaseWorkerExclusiveLease", Pattern.compile("\\breleaseWorkerExclusiveLease\\s*\\(")),
                 Map.entry("workerLockReleased", Pattern.compile("\\bworkerLockReleased\\s*\\("))
         );
@@ -1150,45 +1168,29 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerCandidateIndexStaysOnGroupCapabilityTruth() throws IOException {
+    void retiredPreScoreBandCandidateIndexDoesNotReappear() throws IOException {
         Path indexPath = repositoryRoot().resolve(
-                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateIndex.java");
-        String source = Files.readString(indexPath, StandardCharsets.UTF_8);
-
-        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
-                Map.entry("supportedProjects", Pattern.compile("\\.getSupportedProjects\\s*\\(")),
-                Map.entry("supportedEventCodes", Pattern.compile("\\.getSupportedEventCodes\\s*\\(")),
-                Map.entry("AdapterNode", Pattern.compile("\\bAdapterNode")),
-                Map.entry("NodeGroupBinding", Pattern.compile("\\bNodeGroupBinding")),
-                Map.entry("WorkerManager", Pattern.compile("\\bWorkerManager\\b")),
-                Map.entry("WorkerDeclarationStore", Pattern.compile("\\bWorkerDeclarationStore\\b")),
-                Map.entry("unbounded group worker enumeration",
-                        Pattern.compile("\\.workerIdsByGroupId\\s*\\(")),
-                Map.entry("all-workers scan", Pattern.compile("\\.getAllWorkers\\s*\\("))
-        );
-
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/"
+                        + RETIRED_CANDIDATE_INDEX + ".java");
         List<String> violations = new ArrayList<>();
-        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
-            if (forbiddenPattern.getValue().matcher(source).find()) {
-                violations.add(indexPath + " leaks non-index candidate-source dependency: "
-                        + forbiddenPattern.getKey());
+        if (Files.exists(indexPath)) {
+            violations.add(indexPath + " reintroduces retired pre-score-band candidate indexing");
+        }
+        String workerManager = Files.readString(WORKER_MANAGER_SOURCE, StandardCharsets.UTF_8);
+        for (String token : List.of(
+                RETIRED_CANDIDATE_INDEX,
+                RETIRED_CANDIDATE_RUNTIME,
+                RETIRED_FIND_WORKER_CANDIDATES,
+                RETIRED_GET_WORKER_CANDIDATE_INDEX,
+                "Worker" + "Candidate" + "BucketOwner")) {
+            if (workerManager.contains(token)) {
+                violations.add(WORKER_MANAGER_SOURCE + " keeps retired candidate-index token: " + token);
             }
-        }
-        if (!Pattern.compile("\\bWorkerRegistry\\b").matcher(source).find()) {
-            violations.add(indexPath + " does not use WorkerRegistry for bounded acquisition");
-        }
-        if (!Pattern.compile("\\bsourceGuard\\s*\\(").matcher(source).find()) {
-            violations.add(indexPath + " does not expose a source-guard owner API");
-        }
-        if (Pattern.compile("\\bWorkerCandidateBucketOwner\\b").matcher(source).find()) {
-            violations.add(indexPath + " still references removed WorkerCandidateBucketOwner residue");
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerCandidateIndex is Stage-1 group-capability narrowing only. "
-                + "It must not read worker-level compatibility capability, WorkerManager, "
-                + "storage, candidate-bucket residue, unbounded group worker enumeration, full scans, "
-                        + "or Stage-2 runtime admission state:\n"
+                "Score-band selection retired the pre-score-band candidate index/runtime as a live path. "
+                        + "Do not preserve a parallel candidate-index owner next to WorkerScoreBandSlotRuntime:\n"
                 + String.join("\n", violations));
     }
 
@@ -1213,8 +1215,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "WorkerDeclarationStore.getAllWorkers() is a current bootstrap/refresh residue, not a scheduling hot-path "
-                        + "candidate source. New scheduling code must use WorkerManager/WorkerCandidateIndex "
-                        + "until WorkerRegistry owns bounded acquisition:\n"
+                        + "candidate source. New scheduling code must use WorkerSelectionRuntime backed by "
+                        + "WorkerScoreBandSlotRuntime:\n"
                         + String.join("\n", violations));
     }
 
@@ -1241,28 +1243,24 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerManagerCandidateReadPathDoesNotEnterRegistryLock() throws IOException {
+    void workerManagerDoesNotExposeRetiredCandidateReadPath() throws IOException {
         Path workerManagerPath = WORKER_MANAGER_SOURCE;
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
-        Map<String, String> guardedMethods = Map.of(
-                "findWorkerCandidates", "public List<WorkerCandidateRow> findWorkerCandidates",
-                "getWorkerCandidateIndex", "WorkerCandidateIndex getWorkerCandidateIndex"
-        );
-
         List<String> violations = new ArrayList<>();
-        for (Map.Entry<String, String> method : guardedMethods.entrySet()) {
-            String body = sourceMethod(source, method.getValue());
-            if (Pattern.compile("\\bworkerRegistryLock\\b").matcher(body).find()) {
-                violations.add(workerManagerPath + "#" + method.getKey() + " enters workerRegistryLock");
-            }
-            if (Pattern.compile("\\bsynchronized\\s*\\(").matcher(body).find()) {
-                violations.add(workerManagerPath + "#" + method.getKey() + " enters synchronized block");
+        for (String token : List.of(
+                RETIRED_FIND_WORKER_CANDIDATES,
+                "find" + "Worker" + "CandidateBatch",
+                RETIRED_GET_WORKER_CANDIDATE_INDEX,
+                RETIRED_CANDIDATE_INDEX,
+                RETIRED_CANDIDATE_RUNTIME)) {
+            if (source.contains(token)) {
+                violations.add(workerManagerPath + " exposes retired candidate read path token: " + token);
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "Worker candidate read path must not take WorkerManager's registry lock. "
-                        + "WSR convergence allows stale/bounded candidate indexes and validates at Stage-2:\n"
+                "WorkerManager must not keep the pre-score-band candidate read surface. "
+                        + "Selection acquire now flows through WorkerSelectionRuntime / WorkerScoreBandSlotRuntime:\n"
                         + String.join("\n", violations));
     }
 
@@ -1291,14 +1289,12 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void matchingMainlineDoesNotOwnWorkerGroupIndexLookup() throws IOException {
         Path strategyRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
         Pattern workerRegistrySnapshot = Pattern.compile("\\bWorkerRegistrySnapshot\\b");
-        Pattern workerCandidateIndex = Pattern.compile("\\bWorkerCandidateIndex\\b");
         Pattern directSnapshotAccessor = Pattern.compile("\\.getWorkerRegistrySnapshot\\s*\\(");
 
         List<String> violations = new ArrayList<>();
         for (Path path : javaSourceFiles(strategyRoot)) {
             String source = Files.readString(path, StandardCharsets.UTF_8);
             if (workerRegistrySnapshot.matcher(source).find()
-                    || workerCandidateIndex.matcher(source).find()
                     || directSnapshotAccessor.matcher(source).find()) {
                 violations.add(path + " owns WorkerGroup snapshot/index lookup");
             }
@@ -1306,7 +1302,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "Strategy code may materialize WorkerGroup capability already selected by WorkerManager, "
-                        + "but WorkerManager/WorkerCandidateIndex must own Stage-1 snapshot/index lookup:\n"
+                        + "but worker-runtime score-band selection must own worker acquire/eligibility lookup:\n"
                         + String.join("\n", violations));
     }
 
@@ -1473,44 +1469,38 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerAdmissionMutationSurfaceStaysGroupScoped() throws IOException {
+    void workerAdmissionRuntimeDoesNotExposeReservationAccountingSurface() throws IOException {
         Path runtimeContractPath = repositoryRoot().resolve(
                 "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/admission/WorkerAdmissionRuntime.java");
-        Path targetPath = repositoryRoot().resolve(
-                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/admission/WorkerAdmissionTarget.java");
         String contract = Files.readString(runtimeContractPath, StandardCharsets.UTF_8);
-        String target = Files.readString(targetPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
         for (String method : List.of(
-                "reserveWorkerCapacity",
-                "confirmWorkerReservation",
-                "releaseWorkerReservation",
-                "recordWorkClaimed",
-                "recordWorkFinal"
+                RETIRED_RESERVE_WORKER_CAPACITY,
+                RETIRED_CONFIRM_WORKER_RESERVATION,
+                RETIRED_RELEASE_WORKER_RESERVATION,
+                RETIRED_RECORD_WORK_CLAIMED,
+                RETIRED_RECORD_WORK_FINAL,
+                RETIRED_TRY_RESERVE,
+                RETIRED_CONFIRM_RESERVATION,
+                RETIRED_RELEASE_RESERVATION,
+                RETIRED_ACTIVE_WORKER_COUNT
         )) {
-            if (!Pattern.compile("\\b" + method + "\\s*\\(\\s*WorkerAdmissionTarget\\s+target\\s*\\)")
-                    .matcher(contract)
-                    .find()) {
-                violations.add(runtimeContractPath + " does not expose group-scoped target method: " + method);
-            }
-            if (Pattern.compile("\\b" + method + "\\s*\\(\\s*String\\s+workerId", Pattern.DOTALL)
-                    .matcher(contract)
-                    .find()) {
-                violations.add(runtimeContractPath + " exposes worker-id-only admission mutation: " + method);
+            if (Pattern.compile("\\b" + method + "\\s*\\(").matcher(contract).find()) {
+                violations.add(runtimeContractPath + " exposes retired reservation/accounting method: " + method);
             }
         }
-        if (!target.contains("String workerGroupId")) {
-            violations.add(targetPath + " does not carry workerGroupId");
-        }
-        if (Pattern.compile("\\bworkerLevel\\s*\\(").matcher(target).find()) {
-            violations.add(targetPath + " reintroduces a worker-id-only target factory");
+        Path targetPath = repositoryRoot().resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/admission/"
+                        + "Worker" + "Admission" + "Target.java");
+        if (Files.exists(targetPath)) {
+            violations.add(targetPath + " reintroduces retired admission-target DTO");
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerAdmissionRuntime is a worker-runtime admission lifecycle sub-port behind WorkerSelectionRuntime. "
-                        + "Reserve, confirm, release, claim, and final accounting must carry "
-                        + "WorkerAdmissionTarget instead of worker-id-only mutation calls:\n"
+                "WorkerAdmissionRuntime is now a narrow exclusive-lease/load sub-port behind "
+                        + "WorkerSelectionRuntime. It must not preserve pre-score-band reservation "
+                        + "or task-active accounting APIs:\n"
                         + String.join("\n", violations));
     }
 
@@ -1596,46 +1586,63 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void redisWorkerRegistryCandidateAcquisitionDoesNotMaterializeFullBucket() throws IOException {
+    void redisWorkerRegistryDoesNotKeepCandidateBucketAcquisitionResidue() throws IOException {
         Path registryPath = repositoryRoot().resolve(
                 "platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistry.java");
+        Path keyspacePath = repositoryRoot().resolve(
+                "platform_infra/mass-runtime-redis/src/main/java/com/xa/mass/runtime/redis/RedisWorkerRegistryKeyspace.java");
         String source = Files.readString(registryPath, StandardCharsets.UTF_8);
+        String keyspace = Files.readString(keyspacePath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
-        if (Pattern.compile("\\.smembers\\s*\\(\\s*bucketKey\\s*\\)").matcher(source).find()) {
-            violations.add(registryPath + "#acquireCandidates materializes the full candidate bucket");
-        }
-        if (!Pattern.compile("\\.srandmember\\s*\\(\\s*bucketKey\\s*,\\s*sourceLimit\\s*\\)")
-                .matcher(source)
-                .find()) {
-            violations.add(registryPath + "#acquireCandidates support path does not use bounded Redis sampling");
-        }
-        if (!Pattern.compile("\\.zrangebyscore\\s*\\(\\s*keyspace\\.candidateBucketLifecycleDeadlinesZset\\s*\\(\\s*bucketKey\\s*\\)",
-                Pattern.DOTALL).matcher(source).find()) {
-            violations.add(registryPath + "#acquireCandidates scheduling path does not use deadline lifecycle projection");
+        for (String token : List.of(
+                RETIRED_ACQUIRE_CANDIDATES,
+                RETIRED_CANDIDATE_BUCKET,
+                RETIRED_CANDIDATE_BUCKET + "LifecycleDeadlinesZset",
+                "group" + "BucketMembershipHash",
+                "task" + "WorkerActiveCountsHash",
+                "srandmember",
+                "bucket" + "Key")) {
+            if (source.contains(token)) {
+                violations.add(registryPath + " keeps retired candidate-bucket acquisition token: " + token);
+            }
+            if (keyspace.contains(token)) {
+                violations.add(keyspacePath + " keeps retired candidate-bucket keyspace token: " + token);
+            }
         }
 
         assertTrue(violations.isEmpty(),
-                "Redis candidate acquisition must honor BCA bounded-source semantics. "
-                        + "Do not reintroduce full-bucket SMEMBERS in the scheduling path, "
-                        + "and keep deadline lifecycle acquisition on the derived projection:\n"
+                "RedisWorkerRegistry must not keep the pre-score-band candidate bucket, sampling, "
+                        + "deadline projection, or task-active count keyspace. Score-band owns acquisition:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void workerCandidateIndexPassesSchedulingClockToCandidateAcquisition() throws IOException {
-        Path indexPath = repositoryRoot().resolve(
-                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateIndex.java");
-        String source = Files.readString(indexPath, StandardCharsets.UTF_8);
+    void workerRegistryNoLongerExposesCandidateAcquisitionSpi() throws IOException {
+        Path registryPath = repositoryRoot().resolve(
+                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerRegistry.java");
+        String source = Files.readString(registryPath, StandardCharsets.UTF_8);
 
-        assertTrue(Pattern.compile(
-                        "workerRegistry\\.acquireCandidates\\s*\\([^;]*maxCandidateCount\\s*,\\s*nowMillis\\s*\\)",
-                        Pattern.DOTALL)
-                .matcher(source)
-                .find(),
-                "WorkerCandidateIndex must pass the scheduling clock into WorkerRegistry#acquireCandidates "
-                        + "so Redis deadline-aware slot lifecycle projection and the source guard share "
-                        + "the same nowMillis evidence.");
+        List<String> violations = new ArrayList<>();
+        for (String token : List.of(
+                RETIRED_ACQUIRE_CANDIDATES,
+                RETIRED_TRY_RESERVE,
+                RETIRED_CONFIRM_RESERVATION,
+                RETIRED_RELEASE_RESERVATION,
+                RETIRED_RECORD_WORK_CLAIMED,
+                RETIRED_RECORD_WORK_FINAL,
+                RETIRED_ACTIVE_WORKER_COUNT,
+                "active" + "WorkerIdsByTask",
+                "active" + "LeaseCountByTaskWorker")) {
+            if (Pattern.compile("\\b" + token + "\\s*\\(").matcher(source).find()) {
+                violations.add(registryPath + " exposes retired candidate/admission SPI: " + token);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerRegistry must stay a low-level slot/score-band/gate store. "
+                        + "Pre-score-band candidate acquisition and reservation accounting must not return:\n"
+                        + String.join("\n", violations));
     }
 
     @Test
@@ -1733,7 +1740,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
         if (source.contains("WorkerAdmissionRuntime")
                 || source.contains("WorkerWarmHintRuntime")
-                || source.contains("WorkerCandidateRuntime")
+                || source.contains(RETIRED_CANDIDATE_RUNTIME)
                 || source.contains("WorkerSchedulingViewRuntime")) {
             violations.add(listenerPath + " imports a retired direct worker-runtime selection sub-port");
         }
@@ -1861,38 +1868,17 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerCandidateRuntimeContractIsSourceProjectionSupportOnly() throws IOException {
+    void retiredPreScoreBandCandidateRuntimeContractDoesNotReappear() throws IOException {
         Path candidateRuntimePath = Path.of("../xa-mass-worker-runtime/src/main/java")
-                .resolve("com/xa/mass/worker/runtime/candidate/WorkerCandidateRuntime.java");
-        String source = Files.readString(candidateRuntimePath, StandardCharsets.UTF_8);
-
+                .resolve("com/xa/mass/worker/runtime/candidate/" + RETIRED_CANDIDATE_RUNTIME + ".java");
         List<String> violations = new ArrayList<>();
-        if (source.contains("com.xa.mass.engine")) {
-            violations.add(candidateRuntimePath + " depends on xa-mass-engine");
-        }
-        if (source.contains("com.xa.mass.base")) {
-            violations.add(candidateRuntimePath + " depends on xa-mass-base");
-        }
-        Map<String, Pattern> forbiddenMethods = Map.ofEntries(
-                Map.entry("getWorkerCandidateIndex", Pattern.compile("\\bgetWorkerCandidateIndex\\s*\\(")),
-                Map.entry("batch candidate acquisition", Pattern.compile("\\bfindWorkerCandidateBatch\\s*\\(")),
-                Map.entry("warm candidate writes", Pattern.compile("\\brecordWarmCandidate\\s*\\("))
-        );
-        for (Map.Entry<String, Pattern> forbiddenMethod : forbiddenMethods.entrySet()) {
-            if (forbiddenMethod.getValue().matcher(source).find()) {
-                violations.add(candidateRuntimePath + " exposes " + forbiddenMethod.getKey());
-            }
-        }
-        if (!Pattern.compile("\\bList\\s*<\\s*WorkerCandidateRow\\s*>\\s+findWorkerCandidates\\s*\\(")
-                .matcher(source)
-                .find()) {
-            violations.add(candidateRuntimePath + " does not expose row-only candidate acquisition");
+        if (Files.exists(candidateRuntimePath)) {
+            violations.add(candidateRuntimePath + " reintroduces the retired candidate acquisition contract");
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerCandidateRuntime is migration/source projection support, not the production "
-                        + "selection acquire owner after the score-band pivot. Keep diagnostics, batch wrappers, "
-                        + "and warm hint writes off candidate acquisition:\n"
+                "Score-band selection retired the pre-score-band candidate runtime. Engine and assembly must consume "
+                        + "WorkerSelectionRuntime instead of a parallel candidate-acquisition sub-port:\n"
                         + String.join("\n", violations));
     }
 
@@ -1968,7 +1954,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 .find()) {
             violations.add(workerManagerPath + " exposes registry snapshot diagnostics as public API");
         }
-        if (Pattern.compile("public\\s+WorkerCandidateIndex\\s+getWorkerCandidateIndex\\s*\\(")
+        if (Pattern.compile("public\\s+" + RETIRED_CANDIDATE_INDEX + "\\s+"
+                        + RETIRED_GET_WORKER_CANDIDATE_INDEX + "\\s*\\(")
                 .matcher(source)
                 .find()) {
             violations.add(workerManagerPath + " exposes candidate index diagnostics as public API");
@@ -1978,10 +1965,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 .find()) {
             violations.add(workerManagerPath + " exposes snapshot refresh diagnostics as public API");
         }
-        if (Pattern.compile("\\bfindWorkerCandidates\\s*\\(\\s*Task\\b").matcher(source).find()) {
+        if (Pattern.compile("\\b" + RETIRED_FIND_WORKER_CANDIDATES + "\\s*\\(\\s*Task\\b").matcher(source).find()) {
             violations.add(workerManagerPath + " exposes Task-shaped candidate acquisition");
         }
-        if (Pattern.compile("\\bfindWorkerCandidateBatch\\s*\\(").matcher(source).find()) {
+        if (Pattern.compile("\\bfind" + "Worker" + "CandidateBatch\\s*\\(").matcher(source).find()) {
             violations.add(workerManagerPath + " keeps batch candidate acquisition");
         }
         if (Pattern.compile("\\brecordWarmCandidate\\s*\\([^)]*\\bTask\\b").matcher(source).find()) {
@@ -1993,16 +1980,17 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "WorkerManager is still assembly, but resource and candidate acquisition "
-                        + "entrypoints must stay on model-neutral WorkerResourceRecord / "
-                        + "WorkerTaskSelector / WorkerCandidateRow shapes; task-local warm "
-                        + "candidate mutations must not return:\n"
+                        + "entrypoints must stay on model-neutral WorkerResourceRecord and "
+                        + "WorkerSelectionRuntime shapes; task-local warm/candidate mutations "
+                        + "must not return:\n"
                         + String.join("\n", violations));
     }
 
     @Test
     void engineSelectionMainlineDoesNotInferWorkerRuntimeSubPorts() throws IOException {
         Pattern forbiddenSubPort = Pattern.compile(
-                "\\b(?:WorkerCandidateRuntime|WorkerSchedulingViewRuntime|WorkerAdmissionRuntime)\\b");
+                "\\b(?:" + RETIRED_CANDIDATE_RUNTIME
+                        + "|WorkerSchedulingViewRuntime|WorkerAdmissionRuntime)\\b");
 
         List<String> violations = new ArrayList<>();
         for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
@@ -2028,7 +2016,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         Pattern.compile("\\bWorkerRegistry\\b")),
                 Map.entry("low-level worker registry primitive import",
                         Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.runtime\\.worker\\."
-                                + "(?:WorkerRegistry|WorkerSlot|WorkerMeta|WorkerCandidateBucketPolicy)\\b")),
+                                + "(?:WorkerRegistry|WorkerSlot|WorkerMeta|" + RETIRED_BUCKET_POLICY + ")\\b")),
                 Map.entry("resource/report/group runtime owners",
                         Pattern.compile("\\bWorker(?:Resource|Report|Group|Relationship|Admission|CandidateSource)Owner\\b")),
                 Map.entry("state projection owner",
@@ -2048,7 +2036,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Worker-runtime selection may consume candidate/admission/scheduling-view evidence, "
+                "Worker-runtime selection may consume admission/scheduling-view evidence, "
                         + "but engine strategy code must not own worker registry/resource/report/gate mutation truth:\n"
                         + String.join("\n", violations));
     }
@@ -2059,16 +2047,11 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker");
         Set<String> allowedFiles = Set.of(
                 "CleanupSummary.java",
-                "DefaultWorkerCandidateBucketPolicy.java",
                 "DispatchAvailabilitySource.java",
                 "EventKey.java",
-                "RandomWorkerCandidateSamplingPolicy.java",
-                "ReserveResult.java",
                 "ReserveStatus.java",
                 "WorkerDispatchBlockRecord.java",
                 "WorkerAdmissionSnapshot.java",
-                "WorkerCandidateSamplingContext.java",
-                "WorkerCandidateSamplingPolicy.java",
                 "NoopWorkerScoreBandSlotRuntime.java",
                 "WorkerScoreBand.java",
                 "WorkerScoreBandAcquireRequest.java",
@@ -2083,7 +2066,6 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "WorkerScoreBandTransitionType.java",
                 "WorkerMeta.java",
                 "WorkerRegistry.java",
-                "WorkerCandidateBucketPolicy.java",
                 "WorkerSlot.java"
         );
         Set<String> actualFiles = javaSourceFiles(workerApiPackage).stream()
@@ -2201,30 +2183,28 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerManagerDoesNotUseWorkerLevelEventStorageIndexForEventCandidateSource() throws IOException {
+    void retiredPreScoreBandCandidateSourceOwnerDoesNotReappear() throws IOException {
         Path workerManagerPath = WORKER_MANAGER_SOURCE;
         Path candidateSourceOwnerPath = repositoryRoot().resolve(
-                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateSourceOwner.java");
-        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8)
-                + "\n"
-                + Files.readString(candidateSourceOwnerPath, StandardCharsets.UTF_8);
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/"
+                        + RETIRED_CANDIDATE_SOURCE_OWNER + ".java");
+        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
+        if (Files.exists(candidateSourceOwnerPath)) {
+            violations.add(candidateSourceOwnerPath + " reintroduces retired worker candidate-source owner");
+        }
         if (Pattern.compile("\\.getWorkersBySupportedEventCode\\s*\\(").matcher(source).find()) {
-            violations.add("worker candidate source calls worker-level supported-event storage index");
+            violations.add(workerManagerPath + " calls worker-level supported-event storage index");
         }
         if (Pattern.compile("\\.getWorkersBySupportedProject\\s*\\(").matcher(source).find()) {
-            violations.add("worker candidate source calls worker-level supported-project storage index");
-        }
-        if (!Pattern.compile("\\bWorkerCandidateIndex\\b").matcher(source).find()
-                || !Pattern.compile("\\.workersFor\\s*\\(").matcher(source).find()) {
-            violations.add(candidateSourceOwnerPath + " does not use WorkerCandidateIndex for indexed candidate lookup");
+            violations.add(workerManagerPath + " calls worker-level supported-project storage index");
         }
 
         assertTrue(violations.isEmpty(),
-                "WG candidate source must flow through WorkerCandidateIndex for target, event, and project "
-                        + "lookup. Do not reintroduce worker-level supportedProject/supportedEvent storage "
-                        + "indexes as active scheduling candidate sources:\n"
+                "The pre-score-band candidate-source owner and worker-level event/project candidate indexes are retired. "
+                        + "WorkerGroup capability truth and score-band selection must not be bypassed through "
+                        + "legacy storage candidate sources:\n"
                         + String.join("\n", violations));
     }
 
@@ -2244,8 +2224,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "WorkerDeclarationStore must stay runtime worker-registry storage. Capability candidate "
-                        + "lookup belongs to WorkerRegistrySnapshot / WorkerCandidateIndex, not control-plane "
-                + "storage APIs:\n"
+                        + "lookup belongs to worker-runtime score-band/resource evidence, not control-plane "
+                        + "storage APIs:\n"
                 + String.join("\n", violations));
     }
 
@@ -2280,9 +2260,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void groupSelectorFirstCandidateSourceDoesNotUseEventOrAllWorkerFallback() throws IOException {
-        Path candidateIndexPath = repositoryRoot().resolve(
-                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateIndex.java");
+    void groupSelectorFirstSelectionDoesNotUseEventOrAllWorkerFallback() throws IOException {
         Path workerManagerPath = WORKER_MANAGER_SOURCE;
         Path binderPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java");
@@ -2295,11 +2273,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path allocationRequestPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/assignment/AssignmentAllocationRequest.java");
 
-        String candidateIndex = Files.readString(candidateIndexPath, StandardCharsets.UTF_8);
-        String findWorkerCandidates = sourceMethod(
-                Files.readString(workerManagerPath, StandardCharsets.UTF_8),
-                "public List<WorkerCandidateRow> findWorkerCandidates"
-        );
+        String workerManager = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
         String binder = Files.readString(binderPath, StandardCharsets.UTF_8);
         String traceLogger = Files.readString(traceLoggerPath, StandardCharsets.UTF_8);
         String ruleConfig = Files.readString(ruleConfigPath, StandardCharsets.UTF_8);
@@ -2307,17 +2281,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
         String allocationRequest = Files.readString(allocationRequestPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
-        if (Pattern.compile("\\bTaskSharedConfig\\.sdkEventCode\\s*\\(").matcher(candidateIndex).find()) {
-            violations.add(candidateIndexPath + " reads sdkEventCode in candidate-source lookup");
-        }
-        if (Pattern.compile("\\bgroupIdsByEventKey\\s*\\(").matcher(candidateIndex).find()) {
-            violations.add(candidateIndexPath + " reads groupIdsByEventKey in candidate-source lookup");
-        }
-        if (Pattern.compile("\\bgroupIdsByProjectCode\\s*\\(").matcher(candidateIndex).find()) {
-            violations.add(candidateIndexPath + " reads groupIdsByProjectCode in candidate-source lookup");
-        }
-        if (Pattern.compile("\\.getAllWorkers\\s*\\(").matcher(findWorkerCandidates).find()) {
-            violations.add(workerManagerPath + "#findWorkerCandidates falls back to all workers");
+        for (String token : List.of(
+                "TaskSharedConfig.sdkEventCode",
+                "groupIdsByEventKey",
+                "groupIdsByProjectCode",
+                RETIRED_FIND_WORKER_CANDIDATES)) {
+            if (workerManager.contains(token)) {
+                violations.add(workerManagerPath + " keeps retired candidate-source token: " + token);
+            }
         }
         for (String oldSource : List.of("GROUP_INDEX", "GROUP_PROJECT_INDEX", "ALL_WORKERS_FALLBACK")) {
             if (binder.contains(oldSource)) {
@@ -2337,7 +2308,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 || assignmentListener.contains("TaskSharedConfig.sdkEventCode(task)")) {
             violations.add(assignmentListenerPath + " uses task eventCode as assignment allocation truth");
         }
-        if (Pattern.compile("\\bfindWorkerCandidates\\s*\\(").matcher(assignmentListener).find()) {
+        if (Pattern.compile("\\b" + RETIRED_FIND_WORKER_CANDIDATES + "\\s*\\(").matcher(assignmentListener).find()) {
             violations.add(assignmentListenerPath + " pre-fetches Stage-1 candidates before matching");
         }
         if (allocationRequest.contains("taskLevelEventCapability")) {
@@ -2350,7 +2321,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "Group-selector-first scheduling must not reintroduce event/project/all-worker "
-                        + "candidate-source fallbacks:\n"
+                        + "candidate-source fallbacks. Engine should produce a worker selection request; "
+                        + "worker-runtime score-band selection owns acquire:\n"
                         + String.join("\n", violations));
     }
 
@@ -2406,11 +2378,11 @@ class EngineSchedulingCoreArchitectureGuardTest {
             violations.add(workerManagerPath + " still wires WorkerLoadView");
         }
         for (String forbidden : List.of(
-                ".tryReserveCapacity(",
-                ".confirmReservation(",
-                ".releaseReservation(",
-                ".recordWorkClaimed(",
-                ".recordWorkFinal(",
+                ".try" + "ReserveCapacity(",
+                "." + RETIRED_CONFIRM_RESERVATION + "(",
+                "." + RETIRED_RELEASE_RESERVATION + "(",
+                "." + RETIRED_RECORD_WORK_CLAIMED + "(",
+                "." + RETIRED_RECORD_WORK_FINAL + "(",
                 ".recordDeclaredCapacity("
         )) {
             if (source.contains("workerLoadView" + forbidden)) {
@@ -2730,8 +2702,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
             violations.add(selectionOwnerPath + " does not build score-band acquire requests");
         }
         if (selectionOwner.contains("new WorkerTaskSelector(")
-                || selectionOwner.contains("findWorkerCandidates(")
-                || selectionOwner.contains("WorkerCandidateRuntime")) {
+                || selectionOwner.contains(RETIRED_FIND_WORKER_CANDIDATES + "(")
+                || selectionOwner.contains(RETIRED_CANDIDATE_RUNTIME)) {
             violations.add(selectionOwnerPath + " reintroduces old candidate acquire into production selection");
         }
 
@@ -2846,25 +2818,24 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerRegistry implementations must consume runtime-api candidate-bucket policy, "
-                        + "not engine worker policy:\n"
+                "WorkerRegistry implementations must not consume engine worker routing policy:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void workerRegistryImplementationsDoNotOwnAttributeBucketDimensions() throws IOException {
+    void workerRegistryImplementationsDoNotOwnCandidateBucketDimensions() throws IOException {
         Path repo = repositoryRoot();
         List<Path> roots = List.of(
                 repo.resolve("platform_infra/mass-runtime-memory/src/main/java"),
                 repo.resolve("platform_infra/mass-runtime-redis/src/main/java")
         );
         Path policyPath = repo.resolve(
-                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerCandidateBucketPolicy.java");
-        String policySource = Files.readString(policyPath, StandardCharsets.UTF_8);
+                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/"
+                        + RETIRED_BUCKET_POLICY + ".java");
 
         List<String> violations = new ArrayList<>();
-        if (!policySource.contains("maxBucketFanout()")) {
-            violations.add(policyPath + " does not expose candidate bucket fan-out cost");
+        if (Files.exists(policyPath)) {
+            violations.add(policyPath + " reintroduces retired candidate bucket policy");
         }
         for (Path root : roots) {
             for (Path path : javaSourceFiles(root)) {
@@ -2872,10 +2843,19 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 if (!source.contains("WorkerRegistry")) {
                     continue;
                 }
+                for (String token : List.of(
+                        RETIRED_BUCKET_POLICY,
+                        RETIRED_CANDIDATE_BUCKET,
+                        "bucket" + "Membership",
+                        "bucket-membership")) {
+                    if (source.contains(token)) {
+                        violations.add(path + " keeps retired candidate bucket token: " + token);
+                    }
+                }
                 if (Pattern.compile("\\.attributes\\s*\\(\\s*\\)\\s*\\.\\s*(?:get|containsKey)\\s*\\(")
                         .matcher(source)
                         .find()) {
-                    violations.add(path + " interprets worker attributes instead of consuming WorkerCandidateBucketPolicy");
+                    violations.add(path + " interprets worker attributes for candidate bucket dimensions");
                 }
                 for (String literal : List.of("\"attr:", "\"business\"", "\"tenant\"", "\"region\"", "\"pool\"")) {
                     if (source.contains(literal)) {
@@ -2886,8 +2866,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerRegistry implementations may execute source-bucket policy, but must not own "
-                        + "attribute index dimensions or hide their write fan-out cost:\n"
+                "WorkerRegistry implementations should not keep the pre-score-band candidate bucket "
+                        + "policy or attribute-bucket dimensions. Score-band slot metadata and score "
+                        + "sets are the scheduling index:\n"
                         + String.join("\n", violations));
     }
 
@@ -3415,7 +3396,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "Future worker capability self-report must flow through a worker capability/report owner "
-                        + "that refreshes WorkerManager / WorkerRegistrySnapshot / WorkerCandidateIndex truth. "
+                        + "that refreshes WorkerGroup capability and worker-runtime score-band truth. "
                         + "It must not bypass that owner through session presence ingress, matching, or result paths:\n"
                         + String.join("\n", violations));
     }

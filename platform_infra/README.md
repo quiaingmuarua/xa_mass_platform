@@ -86,11 +86,13 @@ Current truth for this conservative first slice:
   prefer explicit seed/import and may use SQLite as the lightweight
   control-plane DB direction.
 - worker registry slot state, score-band worker slot state, dispatch
-  availability, candidate buckets, and candidate sampling are runtime state, not
-  control-plane DB CRUD state. The score-band runtime shape is
+  availability, exclusive leases, and heartbeat cleanup are runtime state, not
+  control-plane DB CRUD state. Pre-score-band candidate buckets and candidate
+  sampling are retired from the production worker acquire path. The score-band
+  runtime shape is
   `score:{homeBucketId}` plus `meta:{homeBucketId}`; transition evidence and
   diagnostics must not become writable current-state owners. Higher level
-  worker resource/candidate/evidence contracts such as
+  worker resource/evidence contracts such as
   `WorkerRegistrySnapshot`, `AdapterNodeRecord`, and `NodeGroupBindingRecord`
   belong to `xa-mass-worker-runtime`; if they need durable history or operator
   query, emit trace/events and let an async pipeline persist them outside the

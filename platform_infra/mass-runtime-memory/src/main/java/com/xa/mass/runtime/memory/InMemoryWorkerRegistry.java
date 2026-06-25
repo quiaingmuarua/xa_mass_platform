@@ -3,22 +3,14 @@ package com.xa.mass.runtime.memory;
 import com.xa.mass.runtime.worker.CleanupSummary;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.EventKey;
-import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
-import com.xa.mass.runtime.worker.ReserveResult;
 import com.xa.mass.runtime.worker.ReserveStatus;
-import com.xa.mass.runtime.worker.WorkerCandidateSamplingContext;
-import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.DefaultWorkerCandidateBucketPolicy;
-import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerDispatchBlockRecord;
 import com.xa.mass.runtime.worker.WorkerSlot;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -35,38 +27,18 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
 
     public static final long DEFAULT_HEARTBEAT_FRESHNESS_MILLIS = 30_000L;
 
-    private final WorkerCandidateBucketPolicy candidateBucketPolicy;
-    private final WorkerCandidateSamplingPolicy samplingPolicy;
     private final long heartbeatFreshnessMillis;
     private final ConcurrentMap<String, ConcurrentMap<String, AtomicReference<WorkerSlot>>> slotsByGroupId =
             new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> workerIdToGroupId = new ConcurrentHashMap<>();
-    private final ConcurrentMap<GroupCandidateBucketKey, Set<String>> candidateBuckets = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, BucketMembership> bucketMembershipByWorkerId = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, Set<String>> taskActiveWorkersByTask = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, ConcurrentMap<String, Integer>> taskWorkerActiveCounts = new ConcurrentHashMap<>();
     private final ConcurrentMap<DispatchBlockKey, WorkerDispatchBlockRecord> dispatchBlockRecords =
             new ConcurrentHashMap<>();
 
     public InMemoryWorkerRegistry() {
-        this(DefaultWorkerCandidateBucketPolicy.defaultPolicy(), RandomWorkerCandidateSamplingPolicy.defaultPolicy());
+        this(DEFAULT_HEARTBEAT_FRESHNESS_MILLIS);
     }
 
-    public InMemoryWorkerRegistry(WorkerCandidateSamplingPolicy samplingPolicy) {
-        this(DefaultWorkerCandidateBucketPolicy.defaultPolicy(), samplingPolicy);
-    }
-
-    public InMemoryWorkerRegistry(WorkerCandidateBucketPolicy candidateBucketPolicy, WorkerCandidateSamplingPolicy samplingPolicy) {
-        this(candidateBucketPolicy, samplingPolicy, DEFAULT_HEARTBEAT_FRESHNESS_MILLIS);
-    }
-
-    public InMemoryWorkerRegistry(WorkerCandidateBucketPolicy candidateBucketPolicy,
-                                  WorkerCandidateSamplingPolicy samplingPolicy,
-                                  long heartbeatFreshnessMillis) {
-        this.candidateBucketPolicy = candidateBucketPolicy != null ? candidateBucketPolicy : DefaultWorkerCandidateBucketPolicy.defaultPolicy();
-        this.samplingPolicy = samplingPolicy != null
-                ? samplingPolicy
-                : RandomWorkerCandidateSamplingPolicy.defaultPolicy();
+    public InMemoryWorkerRegistry(long heartbeatFreshnessMillis) {
         this.heartbeatFreshnessMillis = Math.max(1L, heartbeatFreshnessMillis);
     }
 
@@ -77,7 +49,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         String groupId = meta.groupId();
         String previousGroupId = workerIdToGroupId.put(workerId, groupId);
         if (previousGroupId != null && !previousGroupId.equals(groupId)) {
-            removeFromBuckets(previousGroupId, workerId);
             ConcurrentMap<String, AtomicReference<WorkerSlot>> previousGroup = slotsByGroupId.get(previousGroupId);
             if (previousGroup != null) {
                 previousGroup.remove(workerId);
@@ -107,8 +78,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     current.removingReason()
             );
         });
-        removeFromBuckets(groupId, workerId);
-        addToBuckets(meta);
     }
 
     @Override
@@ -136,7 +105,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     reason
             );
         });
-        removeFromBuckets(normalizeNullable(groupId), normalizeNullable(workerId));
         return changed[0];
     }
 
@@ -166,7 +134,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
             }
             if (groupSlots.remove(entry.getKey(), entry.getValue())) {
                 workerIdToGroupId.remove(entry.getKey(), normalizedGroupId);
-                removeFromBuckets(normalizedGroupId, entry.getKey());
                 removed++;
             } else {
                 skipped++;
@@ -201,46 +168,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     }
 
     @Override
-    public List<String> acquireCandidates(String groupId, String candidateBucketKey, int maxCandidateCount) {
-        return acquireCandidates(groupId, candidateBucketKey, maxCandidateCount, null);
-    }
-
-    @Override
-    public List<String> acquireCandidates(String groupId,
-                                          String candidateBucketKey,
-                                          int maxCandidateCount,
-                                          long nowMillis) {
-        return acquireCandidates(groupId, candidateBucketKey, maxCandidateCount, Long.valueOf(nowMillis));
-    }
-
-    private List<String> acquireCandidates(String groupId,
-                                           String candidateBucketKey,
-                                           int maxCandidateCount,
-                                           Long nowMillis) {
-        String normalizedGroupId = normalizeNullable(groupId);
-        String normalizedCandidateBucketKey = normalizeCandidateBucketKey(candidateBucketKey);
-        if (normalizedGroupId == null || normalizedCandidateBucketKey == null || maxCandidateCount <= 0) {
-            return List.of();
-        }
-
-        Set<String> workerIds = candidateBuckets.getOrDefault(
-                new GroupCandidateBucketKey(normalizedGroupId, normalizedCandidateBucketKey),
-                Set.of()
-        );
-        List<String> sourceWorkerIds = snapshotWorkerIds(workerIds);
-        if (nowMillis != null) {
-            sourceWorkerIds = sourceWorkerIds.stream()
-                    .filter(workerId -> slotLifecycleStatus(normalizedGroupId, workerId, nowMillis) == ReserveStatus.ACCEPTED)
-                    .toList();
-        }
-        return samplingPolicy.sample(
-                new WorkerCandidateSamplingContext(normalizedGroupId, normalizedCandidateBucketKey),
-                sourceWorkerIds,
-                maxCandidateCount
-        );
-    }
-
-    @Override
     public ReserveStatus slotLifecycleStatus(String groupId, String workerId, long nowMillis) {
         Optional<AtomicReference<WorkerSlot>> slotRef = slotRef(groupId, workerId);
         if (slotRef.isEmpty()) {
@@ -250,161 +177,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         }
         WorkerSlot current = slotRef.orElseThrow().get();
         return validateSlotLifecycle(current, groupId, workerId, nowMillis);
-    }
-
-    @Override
-    public ReserveResult tryReserve(String groupId, String workerId, String taskId, int permits, long nowMillis) {
-        int normalizedPermits = Math.max(1, permits);
-        Optional<AtomicReference<WorkerSlot>> slotRef = slotRef(groupId, workerId);
-        if (slotRef.isEmpty()) {
-            if (slotByWorkerId(workerId).isPresent()) {
-                return ReserveResult.rejected(ReserveStatus.GROUP_MISMATCH, "worker group mismatch");
-            }
-            return ReserveResult.rejected(ReserveStatus.MISSING_SLOT, "worker slot missing");
-        }
-
-        AtomicReference<WorkerSlot> ref = slotRef.orElseThrow();
-        while (true) {
-            WorkerSlot current = ref.get();
-            ReserveStatus status = validateReserve(current, groupId, workerId, normalizedPermits, nowMillis);
-            if (status != ReserveStatus.ACCEPTED) {
-                return ReserveResult.rejected(status, status.name());
-            }
-            WorkerSlot updated = new WorkerSlot(
-                    current.meta(),
-                    current.declaredCapacity(),
-                    current.eventBindingCeiling(),
-                    current.activeLeaseCount(),
-                    current.reservedCount() + normalizedPermits,
-                    current.activeLeaseCountByTask(),
-                    current.disabledSources(),
-                    current.exclusiveLeaseHeld(),
-                    current.removing(),
-                    current.removingReason()
-            );
-            if (ref.compareAndSet(current, updated)) {
-                return ReserveResult.accepted(updated);
-            }
-        }
-    }
-
-    @Override
-    public boolean confirmReservation(String groupId, String workerId, String taskId, int permits) {
-        int normalizedPermits = Math.max(1, permits);
-        Optional<AtomicReference<WorkerSlot>> slotRef = slotRef(groupId, workerId);
-        if (slotRef.isEmpty()) {
-            return false;
-        }
-        AtomicReference<WorkerSlot> ref = slotRef.orElseThrow();
-        while (true) {
-            WorkerSlot current = ref.get();
-            if (current == null || current.removing() || current.reservedCount() < normalizedPermits) {
-                return false;
-            }
-            Map<String, Integer> activeByTask = incrementTaskCount(current.activeLeaseCountByTask(),
-                    taskId,
-                    normalizedPermits);
-            WorkerSlot updated = new WorkerSlot(
-                    current.meta(),
-                    current.declaredCapacity(),
-                    current.eventBindingCeiling(),
-                    current.activeLeaseCount() + normalizedPermits,
-                    current.reservedCount() - normalizedPermits,
-                    activeByTask,
-                    current.disabledSources(),
-                    current.exclusiveLeaseHeld(),
-                    current.removing(),
-                    current.removingReason()
-            );
-            if (ref.compareAndSet(current, updated)) {
-                incrementTaskProjection(taskId, workerId, normalizedPermits);
-                return true;
-            }
-        }
-    }
-
-    @Override
-    public void releaseReservation(String groupId, String workerId, String taskId, int permits) {
-        int normalizedPermits = Math.max(1, permits);
-        slotRef(groupId, workerId).ifPresent(ref -> update(ref, current -> {
-            if (current == null) {
-                return null;
-            }
-            return new WorkerSlot(
-                    current.meta(),
-                    current.declaredCapacity(),
-                    current.eventBindingCeiling(),
-                    current.activeLeaseCount(),
-                    Math.max(0, current.reservedCount() - normalizedPermits),
-                    current.activeLeaseCountByTask(),
-                    current.disabledSources(),
-                    current.exclusiveLeaseHeld(),
-                    current.removing(),
-                    current.removingReason()
-            );
-        }));
-    }
-
-    @Override
-    public void recordWorkClaimed(String groupId, String workerId, String taskId, int permits) {
-        int normalizedPermits = Math.max(1, permits);
-        slotRef(groupId, workerId).ifPresent(ref -> {
-            boolean[] changed = new boolean[1];
-            update(ref, current -> {
-                if (current == null) {
-                    return null;
-                }
-                changed[0] = true;
-                return new WorkerSlot(
-                        current.meta(),
-                        current.declaredCapacity(),
-                        current.eventBindingCeiling(),
-                        current.activeLeaseCount() + normalizedPermits,
-                        current.reservedCount(),
-                        incrementTaskCount(current.activeLeaseCountByTask(), taskId, normalizedPermits),
-                        current.disabledSources(),
-                        current.exclusiveLeaseHeld(),
-                        current.removing(),
-                        current.removingReason()
-                );
-            });
-            if (changed[0]) {
-                incrementTaskProjection(taskId, workerId, normalizedPermits);
-            }
-        });
-    }
-
-    @Override
-    public void recordWorkFinal(String groupId, String workerId, String taskId, int permits) {
-        int normalizedPermits = Math.max(1, permits);
-        slotRef(groupId, workerId).ifPresent(ref -> {
-            boolean[] changed = new boolean[1];
-            update(ref, current -> {
-                if (current == null) {
-                    return null;
-                }
-                int released = Math.min(normalizedPermits, current.activeLeaseCount());
-                if (released <= 0) {
-                    return current;
-                }
-                changed[0] = true;
-                return new WorkerSlot(
-                        current.meta(),
-                        current.declaredCapacity(),
-                        current.eventBindingCeiling(),
-                        Math.max(0, current.activeLeaseCount() - released),
-                        current.reservedCount(),
-                        decrementTaskCount(current.activeLeaseCountByTask(), taskId, released),
-                        current.disabledSources(),
-                        current.exclusiveLeaseHeld(),
-                        current.removing(),
-                        current.removingReason()
-                );
-            });
-            if (changed[0]) {
-                decrementTaskProjection(taskId, workerId, normalizedPermits);
-            }
-        });
     }
 
     @Override
@@ -579,37 +351,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     }
 
     @Override
-    public Set<String> activeWorkerIdsByTask(String taskId) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        if (normalizedTaskId == null) {
-            return Set.of();
-        }
-        return Set.copyOf(taskActiveWorkersByTask.getOrDefault(normalizedTaskId, Set.of()));
-    }
-
-    @Override
-    public int activeWorkerCountForTask(String taskId) {
-        return activeWorkerIdsByTask(taskId).size();
-    }
-
-    @Override
-    public int activeLeaseCountByTaskWorker(String taskId, String workerId) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        String normalizedWorkerId = normalizeNullable(workerId);
-        if (normalizedTaskId == null || normalizedWorkerId == null) {
-            return 0;
-        }
-        return taskWorkerActiveCounts
-                .getOrDefault(normalizedTaskId, new ConcurrentHashMap<>())
-                .getOrDefault(normalizedWorkerId, 0);
-    }
-
-    @Override
-    public void markCandidateStale(String groupId, String workerId, String reason) {
-        removeFromBuckets(normalizeNullable(groupId), normalizeNullable(workerId));
-    }
-
-    @Override
     public CleanupSummary cleanupExpiredHeartbeats(long nowMillis, int limit) {
         int scanned = 0;
         int removed = 0;
@@ -633,33 +374,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
             }
         }
         return new CleanupSummary(scanned, removed, skipped);
-    }
-
-    @Override
-    public CleanupSummary cleanupStaleBucketMembers(String groupId, int limit) {
-        String normalizedGroupId = normalizeNullable(groupId);
-        if (normalizedGroupId == null || limit <= 0) {
-            return CleanupSummary.empty();
-        }
-        int scanned = 0;
-        int removed = 0;
-        for (Map.Entry<GroupCandidateBucketKey, Set<String>> entry : candidateBuckets.entrySet()) {
-            if (!normalizedGroupId.equals(entry.getKey().groupId())) {
-                continue;
-            }
-            List<String> snapshot = snapshotWorkerIds(entry.getValue());
-            for (String workerId : snapshot) {
-                if (scanned >= limit) {
-                    return new CleanupSummary(scanned, removed, 0);
-                }
-                scanned++;
-                if (slot(normalizedGroupId, workerId).isEmpty()) {
-                    entry.getValue().remove(workerId);
-                    removed++;
-                }
-            }
-        }
-        return new CleanupSummary(scanned, removed, 0);
     }
 
     private Optional<AtomicReference<WorkerSlot>> slotRef(String groupId, String workerId) {
@@ -687,21 +401,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         );
     }
 
-    private ReserveStatus validateReserve(WorkerSlot current,
-                                          String groupId,
-                                          String workerId,
-                                          int permits,
-                                          long nowMillis) {
-        ReserveStatus lifecycleStatus = validateSlotLifecycle(current, groupId, workerId, nowMillis);
-        if (lifecycleStatus != ReserveStatus.ACCEPTED) {
-            return lifecycleStatus;
-        }
-        if (current.occupiedPermits() + permits > current.declaredCapacity()) {
-            return ReserveStatus.CAPACITY_UNAVAILABLE;
-        }
-        return ReserveStatus.ACCEPTED;
-    }
-
     private ReserveStatus validateSlotLifecycle(WorkerSlot current,
                                                 String groupId,
                                                 String workerId,
@@ -726,62 +425,10 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         return ReserveStatus.ACCEPTED;
     }
 
-    private void addToBuckets(WorkerMeta meta) {
-        LinkedHashSet<GroupCandidateBucketKey> groupKeys = new LinkedHashSet<>();
-        for (String candidateBucketKey : candidateBucketKeys(meta)) {
-            GroupCandidateBucketKey groupKey = new GroupCandidateBucketKey(meta.groupId(), candidateBucketKey);
-            candidateBuckets.computeIfAbsent(
-                    groupKey,
-                    ignored -> newWorkerBucketSet()
-            ).add(meta.workerId());
-            groupKeys.add(groupKey);
-        }
-        bucketMembershipByWorkerId.put(meta.workerId(), new BucketMembership(groupKeys));
-    }
-
-    private void removeFromBuckets(String groupId, String workerId) {
-        if (groupId == null || workerId == null) {
-            return;
-        }
-        BucketMembership membership = bucketMembershipByWorkerId.remove(workerId);
-        if (membership == null) {
-            return;
-        }
-        for (GroupCandidateBucketKey key : membership.groupKeys()) {
-            if (!groupId.equals(key.groupId())) {
-                continue;
-            }
-            Set<String> workers = candidateBuckets.get(key);
-            if (workers != null) {
-                workers.remove(workerId);
-            }
-        }
-    }
-
-    private Set<String> candidateBucketKeys(WorkerMeta meta) {
-        Set<String> candidateBucketKeys = candidateBucketPolicy.candidateBucketKeysForWorkerMeta(meta);
-        return candidateBucketKeys == null || candidateBucketKeys.isEmpty()
-                ? Set.of(WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY)
-                : Set.copyOf(candidateBucketKeys);
-    }
-
     private long heartbeatDeadlineMillis(WorkerMeta meta) {
         long lastHeartbeatMillis = Math.max(0L, meta.lastHeartbeatMillis());
         long maxIncrement = Long.MAX_VALUE - lastHeartbeatMillis;
         return lastHeartbeatMillis + Math.min(heartbeatFreshnessMillis, maxIncrement);
-    }
-
-    private static Set<String> newWorkerBucketSet() {
-        return Collections.synchronizedSet(new LinkedHashSet<>());
-    }
-
-    private static List<String> snapshotWorkerIds(Set<String> workerIds) {
-        if (workerIds == null || workerIds.isEmpty()) {
-            return List.of();
-        }
-        synchronized (workerIds) {
-            return List.copyOf(workerIds);
-        }
     }
 
     private static WorkerSlot update(AtomicReference<WorkerSlot> ref, SlotUpdater updater) {
@@ -794,81 +441,10 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         }
     }
 
-    private static Map<String, Integer> incrementTaskCount(Map<String, Integer> current,
-                                                           String taskId,
-                                                           int permits) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        if (normalizedTaskId == null) {
-            return current;
-        }
-        ConcurrentHashMap<String, Integer> updated = new ConcurrentHashMap<>(current);
-        updated.merge(normalizedTaskId, permits, Integer::sum);
-        return Map.copyOf(updated);
-    }
-
-    private static Map<String, Integer> decrementTaskCount(Map<String, Integer> current,
-                                                           String taskId,
-                                                           int permits) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        if (normalizedTaskId == null || current.isEmpty()) {
-            return current;
-        }
-        ConcurrentHashMap<String, Integer> updated = new ConcurrentHashMap<>(current);
-        updated.computeIfPresent(normalizedTaskId, (ignored, value) -> {
-            int next = Math.max(0, value - permits);
-            return next == 0 ? null : next;
-        });
-        return Map.copyOf(updated);
-    }
-
-    private void incrementTaskProjection(String taskId, String workerId, int permits) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        String normalizedWorkerId = normalizeNullable(workerId);
-        if (normalizedTaskId == null || normalizedWorkerId == null) {
-            return;
-        }
-        taskActiveWorkersByTask
-                .computeIfAbsent(normalizedTaskId, ignored -> ConcurrentHashMap.newKeySet())
-                .add(normalizedWorkerId);
-        taskWorkerActiveCounts
-                .computeIfAbsent(normalizedTaskId, ignored -> new ConcurrentHashMap<>())
-                .merge(normalizedWorkerId, permits, Integer::sum);
-    }
-
-    private void decrementTaskProjection(String taskId, String workerId, int permits) {
-        String normalizedTaskId = normalizeNullable(taskId);
-        String normalizedWorkerId = normalizeNullable(workerId);
-        if (normalizedTaskId == null || normalizedWorkerId == null) {
-            return;
-        }
-        ConcurrentMap<String, Integer> workerCounts = taskWorkerActiveCounts.get(normalizedTaskId);
-        if (workerCounts == null) {
-            return;
-        }
-        workerCounts.computeIfPresent(normalizedWorkerId, (ignored, value) -> {
-            int next = Math.max(0, value - permits);
-            return next == 0 ? null : next;
-        });
-        if (workerCounts.isEmpty()) {
-            taskWorkerActiveCounts.remove(normalizedTaskId, workerCounts);
-        }
-        if (!workerCounts.containsKey(normalizedWorkerId)) {
-            taskActiveWorkersByTask.computeIfPresent(normalizedTaskId, (ignored, workers) -> {
-                workers.remove(normalizedWorkerId);
-                return workers.isEmpty() ? null : workers;
-            });
-        }
-    }
-
     private static EnumSet<DispatchAvailabilitySource> disabledSources(WorkerSlot slot) {
         return slot.disabledSources().isEmpty()
                 ? EnumSet.noneOf(DispatchAvailabilitySource.class)
                 : EnumSet.copyOf(slot.disabledSources());
-    }
-
-    private static String normalizeCandidateBucketKey(String value) {
-        String normalized = normalizeNullable(value);
-        return normalized == null ? WorkerCandidateBucketPolicy.DEFAULT_CANDIDATE_BUCKET_KEY : normalized;
     }
 
     private static String normalizeNullable(String value) {
@@ -879,15 +455,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         WorkerSlot update(WorkerSlot current);
     }
 
-    private record BucketMembership(Set<GroupCandidateBucketKey> groupKeys) {
-        private BucketMembership {
-            groupKeys = groupKeys == null || groupKeys.isEmpty() ? Set.of() : Set.copyOf(groupKeys);
-        }
-    }
-
     private record DispatchBlockKey(String groupId, String workerId, DispatchAvailabilitySource source) {
-    }
-
-    private record GroupCandidateBucketKey(String groupId, String candidateBucketKey) {
     }
 }

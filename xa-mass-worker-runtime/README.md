@@ -25,9 +25,6 @@ Worker runtime owns worker truth that is not task truth:
 - Worker command lifecycle truth: command records, status transitions,
   worker-pulled claims, delivery attempt state, and command lifecycle value
   contracts.
-- Stage-1 bounded worker candidate source, source guard, and platform-approved
-  worker candidate bucket policies where still used as migration/source
-  projection support.
 - Legacy adapter-node and node/group relation read models where still present in
   worker registration surfaces. These are topology/control-plane evidence only;
   they do not own event capability, final-hop delivery, or worker selection.
@@ -48,30 +45,24 @@ current exclusive-lock owner and direct/runtime API residue; production
 selection must not write separate reserve/confirm/claimed/final counters beside
 score-band claim state.
 
-Stage-1 candidate acquisition and candidate bucket policies are migration/source
-projection support. Redis may keep candidate buckets and registry deadline
-projections for existing owners, but WorkerRuntime selection contracts expose
-score-band-backed selection, not Redis key shapes or candidate bucket truth.
-
-Candidate bucket policy is source-index policy, not lifecycle truth. The
-runtime-api `WorkerCandidateBucketPolicy` owns bucket key calculation and its
-declared max fan-out cost; memory and Redis registries execute that policy and
-must not hardcode worker attribute dimensions. When no policy-specific bucket is
-available, scheduling falls back to the `default` source bucket plus bounded
-acquisition, source guard, and worker-runtime selection filtering.
+Current score-band selection is one active score-band hold per worker resource.
+`declaredCapacity` remains metadata/ranking/load evidence for now; it is not a
+current proof that an already held worker can receive another simultaneous
+assignment through old reservation counters. Future multi-item throughput should
+be introduced as task policy, for example exclusive vs non-exclusive dispatch
+with an earlier engine claim-close/recheck point for non-exclusive work, not by
+preserving the retired candidate bucket or reservation accounting APIs.
 
 ## Package Map
 
 ```text
 com.xa.mass.worker.runtime.resource   resource declarations and lookup
 com.xa.mass.worker.runtime.selection  selected-worker contract for engine
-com.xa.mass.worker.runtime.candidate  migration/source candidate projection support
 com.xa.mass.worker.runtime.evidence   read-only scheduling evidence
 com.xa.mass.worker.runtime.admission  exclusive locks and legacy admission residue
 com.xa.mass.worker.runtime.command    worker command lifecycle truth
 com.xa.mass.worker.runtime.report     capability and state report projection
 com.xa.mass.worker.runtime.control    worker dispatch gate/block control
-com.xa.mass.worker.runtime.routing    platform candidate bucket policy
 com.xa.mass.worker.runtime            implementation owners and assembly
 ```
 
@@ -134,16 +125,16 @@ Worker runtime does not own transport delivery identity:
   `WorkerDispatchGateRuntime` remains the internal mutation surface below that
   owner and must not be handed to transport or adapters.
 - `WorkerAvailabilityWakeupRuntime` is the assembly hook for high-value
-  worker-runtime availability changes. Reservation release, work-final
-  accounting, and exclusive-lock release use it to request dispatch wakeup after
-  the admission owner applies the capacity change. It does not clear dispatch
-  blocks and is not scheduling truth.
+  worker-runtime availability changes. Score-band claim-close/final evidence
+  and exclusive-lock release use it to request dispatch wakeup after
+  worker-runtime applies the state change. It does not clear dispatch blocks
+  and is not scheduling truth.
 
 ## Dispatch Eligibility Truth
 
 Worker-runtime owns whether a worker may enter dispatch competition. That truth
 now converges through score-band worker slot state, dispatch gates,
-admission/capacity evidence, exclusive-lock checks, lease observations, and
+admission/load evidence, exclusive-lock checks, lease observations, and
 selection confirmation. Older registry candidate acquisition,
 `reachability`, `readiness`, and `occupancy` vocabulary is useful only as
 evidence or diagnostics inside that owner path; it must not become three
@@ -161,10 +152,12 @@ fresh evidence and should not treat the worker as reachable for scheduling, but
 transport endpoint leases or session diagnostics do not become scheduling truth
 by themselves.
 
-Occupancy is a capacity/admission observation. `OCCUPIED` means active work
-exists; it does not mean the worker is unschedulable when declared capacity
-remains. Reservation and capacity truth stay in the worker registry/admission
-path, and `CAPACITY_FULL` or exclusive lock evidence is what blocks new work.
+Occupancy is a load/admission observation. Current score-band selection is one
+active hold per worker resource: once selected, the worker moves to a future
+score until claim-close/final/recovery evidence reopens it. Future same-worker
+multi-item throughput should be modeled as task policy, such as non-exclusive
+dispatch with early claim-close, not by restoring old reservation counters.
+Exclusive lock evidence still blocks new work.
 
 Readiness labels are diagnostic/control vocabulary. Worker state report
 `DRAINING` currently disables dispatch through the worker-control gate source;
@@ -209,7 +202,7 @@ WorkerGroup capability boundary:
   to run; it is not a worker selector.
 - Runtime worker selection happens inside an already selected WorkerGroup from
   worker-runtime-owned dispatch eligibility evidence: reachability observations,
-  load, admission, draining/gate state, leases, and explicit scheduling
+  load, score-band state, draining/gate state, leases, and explicit scheduling
   evidence. It must not reinterpret item payload as matching policy.
 
 ## Dependency Rules
@@ -228,7 +221,7 @@ Forbidden:
 - `mass-storage-api` must not own worker declaration contracts; storage modules
   may implement this module's declaration port as adapters.
 - Engine match strategy must not consume `WorkerRegistry`, `WorkerSlot`,
-  `WorkerMeta`, `ReserveResult`, or `ReserveStatus` as strategy contracts.
+  `WorkerMeta`, or `ReserveStatus` as strategy contracts.
 
 ## Verification
 
@@ -236,11 +229,10 @@ Runtime outcome proof:
 
 ```powershell
 .\mvnw.cmd -pl xa-mass-worker-runtime `
-  "-Dtest=WorkerManagerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest" test
+  "-Dtest=WorkerManagerTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest" test
 
 .\mvnw.cmd -pl platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am `
-  "-Dtest=InMemoryWorkerScoreBandSlotRuntimeTest,RedisWorkerScoreBandSlotRuntimeTest" `
-  "-Dsurefire.failIfNoSpecifiedTests=false" test
+  "-Dtest=InMemoryWorkerScoreBandSlotRuntimeTest,InMemoryWorkerRegistryTest,RedisWorkerScoreBandSlotRuntimeTest,RedisWorkerRegistryTest" test
 
 .\mvnw.cmd -pl xa-mass-engine `
   "-Dtest=TaskResourceReleaseListenerTest,TaskWorkerAssignListenerTest,TaskResultCorrelationSupportTest,TaskWorkAttemptIdSupportTest,EngineSchedulingCoreArchitectureGuardTest,SimpleTaskDispatchBinderTest" test
@@ -249,6 +241,6 @@ Runtime outcome proof:
 Boundary residue sanity:
 
 ```powershell
-rg -n "WorkerRegistry|WorkerSlot|WorkerMeta|ReserveResult|ReserveStatus" `
+rg -n "WorkerRegistry|WorkerSlot|WorkerMeta|ReserveStatus" `
   xa-mass-engine/src/main/java --glob '!**/target/**'
 ```

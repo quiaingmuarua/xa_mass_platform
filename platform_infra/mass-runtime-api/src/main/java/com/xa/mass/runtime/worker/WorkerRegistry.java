@@ -6,12 +6,13 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Runtime worker registry contract for bounded candidate acquisition and
- * semantic worker-state operations.
+ * Low-level runtime worker registry contract for worker slot metadata,
+ * lifecycle gates, exclusive leases, and cleanup.
  *
- * <p>Scheduling hot paths should carry WorkerGroup evidence and use group-scoped
- * lifecycle/admission methods. Worker-id semantic methods are support surfaces
- * for diagnostics, commands, and paths that genuinely lack group evidence; they
+ * <p>Score-band slot runtime owns production worker acquisition. This registry
+ * must not grow a second candidate acquisition, reservation, or task-active
+ * accounting owner. Worker-id semantic methods are support surfaces for
+ * diagnostics, commands, and paths that genuinely lack group evidence; they
  * must not leak Redis physical key shape into engine or worker-runtime
  * callers.</p>
  */
@@ -60,80 +61,17 @@ public interface WorkerRegistry {
     }
 
     /**
-     * Acquires a bounded Stage-1 candidate source batch.
-     *
-     * <p>The returned list is not a complete-set contract. Implementations may
-     * read a bounded subset from their local storage before applying
-     * {@link WorkerCandidateSamplingPolicy}. Callers must still validate slot
-     * lifecycle and reserve capacity before dispatch binding.</p>
-     */
-    List<String> acquireCandidates(String groupId, String candidateBucketKey, int maxCandidateCount);
-
-    /**
-     * Acquires a bounded Stage-1 scheduling candidate batch using the supplied
-     * scheduling clock.
-     *
-     * <p>Implementations that maintain a deadline-aware slot lifecycle
-     * projection should use {@code nowMillis} to avoid returning expired
-     * heartbeat members as accepted source candidates. Callers must still keep
-     * the slot lifecycle guard and reserve revalidation because derived indexes
-     * are not canonical truth.</p>
-     */
-    default List<String> acquireCandidates(String groupId,
-                                           String candidateBucketKey,
-                                           int maxCandidateCount,
-                                           long nowMillis) {
-        return acquireCandidates(groupId, candidateBucketKey, maxCandidateCount);
-    }
-
-    /**
-     * Registry-owned slot lifecycle predicate for scheduling candidate sources.
+     * Registry-owned slot lifecycle predicate for support callers.
      *
      * <p>This covers slot existence, group membership, removing state, heartbeat
-     * freshness, and dispatch gate. It intentionally excludes capacity so reserve
-     * remains the final admission authority under contention.</p>
+     * freshness, and dispatch gate. Production worker acquisition uses
+     * WorkerScoreBandSlotRuntime and must not use this method as a separate
+     * candidate-source owner.</p>
      */
     ReserveStatus slotLifecycleStatus(String groupId, String workerId, long nowMillis);
 
     default boolean isSlotLifecycleEligible(String groupId, String workerId, long nowMillis) {
         return slotLifecycleStatus(groupId, workerId, nowMillis) == ReserveStatus.ACCEPTED;
-    }
-
-    ReserveResult tryReserve(String groupId, String workerId, String taskId, int permits, long nowMillis);
-
-    default ReserveResult tryReserve(String workerId, String taskId, int permits, long nowMillis) {
-        return slotByWorkerId(workerId)
-                .map(slot -> tryReserve(slot.groupId(), slot.workerId(), taskId, permits, nowMillis))
-                .orElseGet(() -> ReserveResult.rejected(ReserveStatus.MISSING_SLOT, "worker slot missing"));
-    }
-
-    boolean confirmReservation(String groupId, String workerId, String taskId, int permits);
-
-    default boolean confirmReservation(String workerId, String taskId, int permits) {
-        return slotByWorkerId(workerId)
-                .map(slot -> confirmReservation(slot.groupId(), slot.workerId(), taskId, permits))
-                .orElse(false);
-    }
-
-    void releaseReservation(String groupId, String workerId, String taskId, int permits);
-
-    default void releaseReservation(String workerId, String taskId, int permits) {
-        slotByWorkerId(workerId)
-                .ifPresent(slot -> releaseReservation(slot.groupId(), slot.workerId(), taskId, permits));
-    }
-
-    void recordWorkClaimed(String groupId, String workerId, String taskId, int permits);
-
-    default void recordWorkClaimed(String workerId, String taskId, int permits) {
-        slotByWorkerId(workerId)
-                .ifPresent(slot -> recordWorkClaimed(slot.groupId(), slot.workerId(), taskId, permits));
-    }
-
-    void recordWorkFinal(String groupId, String workerId, String taskId, int permits);
-
-    default void recordWorkFinal(String workerId, String taskId, int permits) {
-        slotByWorkerId(workerId)
-                .ifPresent(slot -> recordWorkFinal(slot.groupId(), slot.workerId(), taskId, permits));
     }
 
     boolean tryAcquireExclusiveLease(String groupId, String workerId);
@@ -220,15 +158,5 @@ public interface WorkerRegistry {
                 .orElse(false);
     }
 
-    Set<String> activeWorkerIdsByTask(String taskId);
-
-    int activeWorkerCountForTask(String taskId);
-
-    int activeLeaseCountByTaskWorker(String taskId, String workerId);
-
-    void markCandidateStale(String groupId, String workerId, String reason);
-
     CleanupSummary cleanupExpiredHeartbeats(long nowMillis, int limit);
-
-    CleanupSummary cleanupStaleBucketMembers(String groupId, int limit);
 }
