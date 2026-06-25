@@ -1,6 +1,5 @@
 package com.xa.mass.transport.socket.session;
 
-import com.xa.mass.transport.runtime.RouteEndpointIndex;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,10 +7,11 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * Adapter-owned session manager for raw TCP socket workers.
@@ -22,8 +22,8 @@ public final class SocketSessionManager {
 
     private final String adapterId;
     private final String adapterMailboxKey;
-    private final RouteEndpointIndex<String, SocketWorkerEndpoint> routeIndex = new RouteEndpointIndex<>();
-    private final ConcurrentMap<String, String> deliveryBucketByEndpoint = new ConcurrentHashMap<>();
+    private final Map<String, SessionEntry> sessionsByWorkerId = new LinkedHashMap<>();
+    private final Map<String, SessionEntry> sessionsByEndpointId = new LinkedHashMap<>();
     private final AdapterSessionEvidencePublisher sessionEvidencePublisher;
 
     public SocketSessionManager(String adapterId,
@@ -38,170 +38,99 @@ public final class SocketSessionManager {
     }
 
     public synchronized void addSession(String deliveryBucketId,
-                                        String routeKey,
                                         String workerId,
                                         String endpointId,
                                         Socket socket,
                                         BufferedWriter writer) {
         String normalizedDeliveryBucketId = requireText(deliveryBucketId, "deliveryBucketId");
-        RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> previousForWorker =
-                activeEntryForWorker(workerId, endpointId);
-        RouteEndpointIndex.BindResult<String, SocketWorkerEndpoint> result = routeIndex.bind(
-                routeKey,
-                workerId,
-                endpointId,
-                new SocketWorkerEndpoint(endpointId, socket, writer),
-                SocketWorkerEndpoint::isActive
+        String normalizedWorkerId = requireText(workerId, "workerId");
+        String normalizedEndpointId = requireText(endpointId, "endpointId");
+        SocketWorkerEndpoint endpoint = new SocketWorkerEndpoint(
+                normalizedEndpointId,
+                Objects.requireNonNull(socket, "socket"),
+                Objects.requireNonNull(writer, "writer")
         );
-        if (result.unchanged()) {
+
+        SessionEntry existingEndpointEntry = sessionsByEndpointId.get(normalizedEndpointId);
+        if (existingEndpointEntry != null
+                && normalizedWorkerId.equals(existingEndpointEntry.workerId())
+                && existingEndpointEntry.endpoint().isActive()) {
+            logger.debug("Socket session for workerId={} already exists on endpointId={}. Skipping add.",
+                    normalizedWorkerId, normalizedEndpointId);
             return;
         }
-        deliveryBucketByEndpoint.put(endpointId, normalizedDeliveryBucketId);
-        RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> previous = result.previousEntry();
-        if (previous != null && !previous.handle().equals(endpointId)) {
-            closeQuietly(previous.endpoint());
+
+        SessionEntry replacedWorkerEntry = activeEntryForWorker(normalizedWorkerId, normalizedEndpointId);
+        if (existingEndpointEntry != null) {
+            removeEntry(existingEndpointEntry, true, "socket session rebound");
         }
-        logger.info("Connected: routeKey={} workerId={} endpointId={} totalRoutes={}",
-                routeKey, workerId, endpointId, routeIndex.routeCount());
-        if (result.currentEntry().endpoint().isActive()) {
-            String reason = "socket connected";
-            sessionEvidencePublisher.connected(
-                    workerId,
-                    normalizedDeliveryBucketId,
-                    endpointId,
-                    reason,
-                    endpointId
-            );
+
+        SessionEntry current = new SessionEntry(normalizedDeliveryBucketId, normalizedWorkerId, endpoint);
+        putEntry(current);
+        logger.info("Connected: workerId={} endpointId={} activeConnections={}",
+                current.workerId(), current.endpointId(), getActiveConnectionCount());
+        if (current.endpoint().isActive()) {
+            publishConnected(current, "socket connected");
         }
-        if (previousForWorker != null) {
-            logger.warn("Existing socket endpoint for routeKey={} workerId={} found. Replacing session.",
-                    routeKey, workerId);
-            removeSession(previousForWorker.handle(), true, "socket session replaced");
+
+        if (replacedWorkerEntry != null) {
+            logger.warn("Existing socket endpoint for workerId={} found. Replacing session.",
+                    replacedWorkerEntry.workerId());
+            removeEntry(replacedWorkerEntry, true, "socket session replaced");
         }
     }
 
     public synchronized void removeSession(String endpointId) {
-        removeSession(endpointId, true, "socket disconnected");
-    }
-
-    private synchronized void removeSession(String endpointId, boolean publishPresence, String reason) {
-        RouteEndpointIndex.RemoveResult<String, SocketWorkerEndpoint> result = routeIndex.removeByHandle(endpointId);
-        RouteEndpointIndex.Binding binding = result.binding();
-        if (binding == null) {
+        String normalizedEndpointId = normalizeNullable(endpointId);
+        if (normalizedEndpointId == null) {
             return;
         }
-        String deliveryBucketId = deliveryBucketByEndpoint.remove(endpointId);
-        if (result.removedCurrentRoute()) {
-            closeQuietly(result.removedEntry().endpoint());
+        SessionEntry entry = sessionsByEndpointId.get(normalizedEndpointId);
+        if (entry == null) {
+            return;
         }
-
-        logger.info("Disconnected: routeKey={} workerId={} endpointId={}",
-                binding.routeKey(), binding.workerId(), endpointId);
-        if (result.removedCurrentRoute()) {
-            if (publishPresence) {
-                sessionEvidencePublisher.disconnected(
-                        binding.workerId(),
-                        deliveryBucketId,
-                        endpointId,
-                        reason,
-                        endpointId
-                );
-            }
-        }
+        removeEntry(entry, true, "socket disconnected");
     }
 
-    private boolean sendToBoundRoute(String routeKey, String workerId, String message) {
-        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
-            if (workerId != null && !workerId.equals(entry.workerId())) {
-                continue;
-            }
-            SocketWorkerEndpoint endpoint = entry.endpoint();
-            if (endpoint == null || !endpoint.isActive()) {
-                continue;
-            }
-            try {
-                endpoint.send(message);
-                return true;
-            } catch (IOException ex) {
-                logger.warn("Failed to send socket message to routeKey={}, endpointId={}",
-                        routeKey, endpoint.endpointId(), ex);
-                removeSession(endpoint.endpointId());
-            }
-        }
-        return false;
-    }
-
-    private boolean hasActiveRoute(String routeKey) {
-        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForRoute(routeKey)) {
-            SocketWorkerEndpoint endpoint = entry.endpoint();
-            if (endpoint != null && endpoint.isActive()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    boolean sendToRoute(String routeKey, String message) {
-        return sendToBoundRoute(routeKey, null, message);
-    }
-
-    public boolean sendToWorker(String workerId, String message) {
-        String normalizedWorkerId = normalizeNullable(workerId);
-        if (normalizedWorkerId == null) {
+    public synchronized boolean sendToWorker(String workerId, String message) {
+        SessionEntry entry = activeEntryForWorker(workerId, null);
+        if (entry == null) {
             return false;
         }
-        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForWorker(normalizedWorkerId)) {
-            SocketWorkerEndpoint endpoint = entry.endpoint();
-            if (endpoint == null || !endpoint.isActive()) {
-                continue;
-            }
-            try {
-                endpoint.send(message);
-                return true;
-            } catch (IOException ex) {
-                logger.warn("Failed to send socket message to workerId={}, endpointId={}",
-                        normalizedWorkerId, endpoint.endpointId(), ex);
-                removeSession(endpoint.endpointId());
-            }
-        }
-        return false;
-    }
-
-    public boolean isAdapterRouteOnline(String adapterId, String routeKey) {
-        if (!matchesAdapter(adapterId)) {
+        try {
+            entry.endpoint().send(message);
+            return true;
+        } catch (IOException ex) {
+            logger.warn("Failed to send socket message to workerId={}, endpointId={}",
+                    entry.workerId(), entry.endpointId(), ex);
+            removeEntry(entry, true, "socket send failed");
             return false;
         }
-        return hasActiveRoute(routeKey);
     }
 
-    public int getActiveConnectionCount() {
-        return (int) routeIndex.entries().stream()
-                .map(RouteEndpointIndex.Entry::endpoint)
-                .filter(SocketWorkerEndpoint::isActive)
-                .count();
+    public synchronized boolean hasActiveWorkerSession(String workerId) {
+        return activeEntryForWorker(workerId, null) != null;
+    }
+
+    public synchronized int getActiveConnectionCount() {
+        int count = 0;
+        for (SessionEntry entry : sessionsByEndpointId.values()) {
+            if (entry.endpoint().isActive()) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public synchronized void shutdown() {
-        List<RouteEndpointIndex.Entry<String, SocketWorkerEndpoint>> entries = routeIndex.entries();
-        List<SocketWorkerEndpoint> endpoints = entries.stream()
-                .map(RouteEndpointIndex.Entry::endpoint)
-                .toList();
-        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : entries) {
+        List<SessionEntry> entries = new ArrayList<>(sessionsByEndpointId.values());
+        sessionsByWorkerId.clear();
+        sessionsByEndpointId.clear();
+        for (SessionEntry entry : entries) {
             if (entry.endpoint().isActive()) {
-                String reason = "socket adapter shutdown";
-                sessionEvidencePublisher.disconnected(
-                        entry.workerId(),
-                        deliveryBucketByEndpoint.get(entry.handle()),
-                        entry.handle(),
-                        reason,
-                        entry.handle()
-                );
+                publishDisconnected(entry, "socket adapter shutdown");
             }
-        }
-        routeIndex.clear();
-        deliveryBucketByEndpoint.clear();
-        for (SocketWorkerEndpoint endpoint : endpoints) {
-            closeQuietly(endpoint);
+            closeQuietly(entry.endpoint());
         }
     }
 
@@ -209,42 +138,67 @@ public final class SocketSessionManager {
         return adapterId;
     }
 
-    private RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> activeEntryForWorker(String workerId,
-                                                                                        String excludedEndpointId) {
-        String normalizedWorkerId = normalizeNullable(workerId);
-        if (normalizedWorkerId == null) {
-            return null;
-        }
-        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForWorker(normalizedWorkerId)) {
-            if (entry.handle().equals(excludedEndpointId) || !normalizedWorkerId.equals(entry.workerId())) {
-                continue;
-            }
-            SocketWorkerEndpoint endpoint = entry.endpoint();
-            if (endpoint != null && endpoint.isActive()) {
-                return entry;
-            }
-        }
-        return null;
-    }
-
-    public void recordHeartbeat(String routeKey, String workerId, String endpointId, String reason, String traceId) {
-        RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> current = currentEntryForHandle(endpointId);
+    public synchronized void recordHeartbeat(String workerId, String endpointId, String reason, String traceId) {
+        SessionEntry current = sessionsByEndpointId.get(normalizeNullable(endpointId));
         if (current == null
-                || !Objects.equals(normalizeNullable(routeKey), current.routeKey())
-                || !Objects.equals(normalizeNullable(workerId), current.workerId())) {
+                || !Objects.equals(normalizeNullable(workerId), current.workerId())
+                || !current.endpoint().isActive()) {
             return;
         }
         sessionEvidencePublisher.heartbeat(
                 current.workerId(),
-                deliveryBucketByEndpoint.get(endpointId),
-                endpointId,
+                current.deliveryBucketId(),
+                current.endpointId(),
                 reason,
                 traceId
         );
     }
 
-    private boolean matchesAdapter(String adapterId) {
-        return adapterId == null || this.adapterId.equalsIgnoreCase(adapterId.trim());
+    private void putEntry(SessionEntry entry) {
+        sessionsByEndpointId.put(entry.endpointId(), entry);
+        sessionsByWorkerId.put(entry.workerId(), entry);
+    }
+
+    private void removeEntry(SessionEntry entry, boolean publishPresence, String reason) {
+        sessionsByEndpointId.remove(entry.endpointId(), entry);
+        sessionsByWorkerId.remove(entry.workerId(), entry);
+        logger.info("Disconnected: workerId={} endpointId={}", entry.workerId(), entry.endpointId());
+        if (publishPresence) {
+            publishDisconnected(entry, reason);
+        }
+        closeQuietly(entry.endpoint());
+    }
+
+    private void publishConnected(SessionEntry entry, String reason) {
+        sessionEvidencePublisher.connected(
+                entry.workerId(),
+                entry.deliveryBucketId(),
+                entry.endpointId(),
+                reason,
+                entry.endpointId()
+        );
+    }
+
+    private void publishDisconnected(SessionEntry entry, String reason) {
+        sessionEvidencePublisher.disconnected(
+                entry.workerId(),
+                entry.deliveryBucketId(),
+                entry.endpointId(),
+                reason,
+                entry.endpointId()
+        );
+    }
+
+    private SessionEntry activeEntryForWorker(String workerId, String excludedEndpointId) {
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedWorkerId == null) {
+            return null;
+        }
+        SessionEntry entry = sessionsByWorkerId.get(normalizedWorkerId);
+        if (entry == null || Objects.equals(entry.endpointId(), excludedEndpointId)) {
+            return null;
+        }
+        return entry.endpoint().isActive() ? entry : null;
     }
 
     private static String normalizeNullable(String value) {
@@ -259,23 +213,6 @@ public final class SocketSessionManager {
         return normalized;
     }
 
-    private RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> currentEntryForHandle(String endpointId) {
-        RouteEndpointIndex.Binding binding = routeIndex.bindingForHandle(endpointId);
-        if (binding == null) {
-            return null;
-        }
-        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entriesForRoute(binding.routeKey())) {
-            if (!entry.handle().equals(endpointId)) {
-                continue;
-            }
-            SocketWorkerEndpoint endpoint = entry.endpoint();
-            if (endpoint != null && endpoint.isActive()) {
-                return entry;
-            }
-        }
-        return null;
-    }
-
     private void closeQuietly(SocketWorkerEndpoint endpoint) {
         if (endpoint == null) {
             return;
@@ -284,6 +221,14 @@ public final class SocketSessionManager {
             endpoint.close();
         } catch (IOException ignored) {
             // Best-effort shutdown only.
+        }
+    }
+
+    private record SessionEntry(String deliveryBucketId,
+                                String workerId,
+                                SocketWorkerEndpoint endpoint) {
+        String endpointId() {
+            return endpoint.endpointId();
         }
     }
 

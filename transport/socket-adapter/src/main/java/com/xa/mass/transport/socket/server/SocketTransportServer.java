@@ -156,8 +156,6 @@ public final class SocketTransportServer implements TransportServer {
     private void handleClient(Socket client) {
         String endpointId = UUID.randomUUID().toString();
         String boundWorkerId = null;
-        String boundWorkerGroupId = null;
-        String boundRouteKey = null;
         try (Socket socket = client;
              BufferedReader reader = new BufferedReader(
                      new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
@@ -171,14 +169,13 @@ public final class SocketTransportServer implements TransportServer {
                 }
                 if (frameCodec.isHelloFrame(frame)) {
                     boundWorkerId = frameCodec.extractWorkerId(frame);
-                    boundWorkerGroupId = frameCodec.extractWorkerGroupId(frame);
-                    boundRouteKey = frameCodec.extractRouteKey(frame);
-                    if (boundWorkerId == null || boundWorkerGroupId == null || boundRouteKey == null) {
-                        logger.warn("Ignoring socket hello without workerId/workerGroupId/routeKey: endpointId={}",
+                    String boundWorkerGroupId = frameCodec.extractWorkerGroupId(frame);
+                    if (boundWorkerId == null || boundWorkerGroupId == null) {
+                        logger.warn("Ignoring socket hello without workerId/workerGroupId: endpointId={}",
                                 endpointId);
                         continue;
                     }
-                    sessionManager.addSession(boundWorkerGroupId, boundRouteKey, boundWorkerId, endpointId, socket, writer);
+                    sessionManager.addSession(boundWorkerGroupId, boundWorkerId, endpointId, socket, writer);
                     continue;
                 }
                 if (boundWorkerId == null) {
@@ -187,20 +184,20 @@ public final class SocketTransportServer implements TransportServer {
                 }
                 if (frameCodec.isHeartbeatFrame(frame)) {
                     String traceId = frameCodec.extractTraceId(frame);
-                    sessionManager.recordHeartbeat(boundRouteKey, boundWorkerId, endpointId, "socket heartbeat", traceId);
+                    sessionManager.recordHeartbeat(boundWorkerId, endpointId, "socket heartbeat", traceId);
                     continue;
                 }
                 if (resultFrameReader.isResultFrame(frame)) {
                     resultProcessor.processResult(frame);
                     continue;
                 }
-                logger.warn("Ignoring unsupported socket frame: endpointId={}, routeKey={}, workerId={}",
-                        endpointId, boundRouteKey, boundWorkerId);
+                logger.warn("Ignoring unsupported socket frame: endpointId={}, workerId={}",
+                        endpointId, boundWorkerId);
             }
         } catch (Exception ex) {
             if (running.get()) {
-                logger.error("Socket client loop failed: endpointId={}, routeKey={}, workerId={}",
-                        endpointId, boundRouteKey, boundWorkerId, ex);
+                logger.error("Socket client loop failed: endpointId={}, workerId={}",
+                        endpointId, boundWorkerId, ex);
             }
         } finally {
             sessionManager.removeSession(endpointId);

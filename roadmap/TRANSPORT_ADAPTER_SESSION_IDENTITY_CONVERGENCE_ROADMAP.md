@@ -315,11 +315,10 @@ lifecycle.
 
 ## Deferred Follow-Ups
 
-- Socket assigned-delivery final-hop executor extraction:
-  WebSocket has converged to a bootstrap-contributed runtime executor built
-  from an adapter-supplied `send(DispatchMessage)` function. Socket still has
-  `SocketTaskDispatchChannel`; socket parity should be handled separately so it
-  does not expand the WebSocket session identity/due-refresh prerequisite.
+- Socket assigned-delivery final-hop executor extraction has been handled by
+  the separate socket adapter worker-id final-hop slice. Socket now follows the
+  bootstrap-contributed runtime executor shape instead of a protocol-specific
+  task dispatch wrapper.
 - `AdapterSessionEvidencePublisher` identity overload/signature convergence:
   the publisher still receives loose `workerId, deliveryBucketId,
   sessionHandle` parameters. Replacing that API should cover WebSocket, socket,

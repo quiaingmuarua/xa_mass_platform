@@ -132,18 +132,6 @@ function actionBody(action) {
   return parseJson(action?.body);
 }
 
-function base64Url(value) {
-  return Buffer.from(String(value).trim(), "utf8")
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
-
-function canonicalRouteKey(groupId, subjectWorkerId) {
-  return `wkr1.${base64Url(groupId)}.${base64Url(subjectWorkerId)}`;
-}
-
 function shutdown(exitCode) {
   if (socket && !socket.destroyed) {
     socket.end(() => process.exit(exitCode));
@@ -155,8 +143,7 @@ function shutdown(exitCode) {
 
 socket = net.createConnection({ host: socketHost, port: socketPort }, () => {
   log(`connected to tcp://${socketHost}:${socketPort}`);
-  const routeKey = canonicalRouteKey(workerGroupId, workerId);
-  sendFrame({ type: "hello", workerId, workerGroupId, routeKey });
+  sendFrame({ type: "hello", workerId, workerGroupId });
 });
 
 const lineReader = readline.createInterface({

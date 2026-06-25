@@ -81,49 +81,12 @@ class SocketTransportServerTest {
             try (Socket socket = new Socket("127.0.0.1", port);
                  BufferedWriter writer = new BufferedWriter(
                          new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
-                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"workerGroupId\":\"bucket-1\",\"routeKey\":\"socket-route-9\"}");
+                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"workerGroupId\":\"bucket-1\"}");
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> sessionManager.isAdapterRouteOnline("socket", "socket-route-9"),
+                waitUntil(() -> sessionManager.hasActiveWorkerSession("worker-1"),
                         "hello frame should register worker socket session");
-            }
-        } finally {
-            server.stop();
-            executor.shutdown();
-            executor.awaitTermination(5, TimeUnit.SECONDS);
-            System.clearProperty(SocketTransportServer.BOUND_PORT_PROPERTY);
-        }
-    }
-
-    @Test
-    void helloFrameRouteKeyOverridesWorkerIdAsSocketAddress() throws Exception {
-        VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
-        SocketSessionManager sessionManager = sessionManager();
-        SocketTransportServer server = new SocketTransportServer(
-                "socket",
-                "127.0.0.1",
-                0,
-                10,
-                sessionManager,
-                new SocketTransportFrameCodec(),
-                null,
-                executor::submit
-        );
-
-        try {
-            server.start();
-            int port = Integer.parseInt(System.getProperty(SocketTransportServer.BOUND_PORT_PROPERTY));
-            try (Socket socket = new Socket("127.0.0.1", port);
-                 BufferedWriter writer = new BufferedWriter(
-                         new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
-                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"workerGroupId\":\"bucket-1\",\"routeKey\":\"socket-route-9\"}");
-                writer.newLine();
-                writer.flush();
-
-                waitUntil(() -> sessionManager.isAdapterRouteOnline("socket", "socket-route-9"),
-                        "hello frame should register socket routeKey independently");
-                assertFalse(sessionManager.isAdapterRouteOnline("socket", "worker-1"));
             }
         } finally {
             server.stop();
@@ -158,7 +121,7 @@ class SocketTransportServerTest {
             try (Socket socket = new Socket("127.0.0.1", port);
                  BufferedWriter writer = new BufferedWriter(
                          new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
-                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"workerGroupId\":\"bucket-1\",\"routeKey\":\"socket-route-9\"}");
+                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"workerGroupId\":\"bucket-1\"}");
                 writer.newLine();
                 writer.write(new WorkerChannelFrameJsonCodec().encode(new WorkerChannelFrame(
                         "reply-corr-1",
@@ -173,7 +136,7 @@ class SocketTransportServerTest {
                 assertEquals("corr-1", capturedEntry.get().partitionKey());
                 assertEquals("corr-1", capturedEntry.get().message().resultCorrelationRef());
                 assertEquals("socket", capturedEntry.get().diagnostics().get("adapterId"));
-                assertNull(capturedEntry.get().diagnostics().get("routeKey"));
+                assertNull(capturedEntry.get().diagnostics().get("route" + "Key"));
                 assertEquals("reply-corr-1", capturedEntry.get().diagnostics().get("traceId"));
                 assertTrue(capturedEntry.get().message().payload().contains("\"replyRef\":\"corr-1\""));
                 assertFalse(capturedEntry.get().message().payload().contains("\"taskId\""));

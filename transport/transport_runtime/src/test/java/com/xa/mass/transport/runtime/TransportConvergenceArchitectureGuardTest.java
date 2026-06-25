@@ -237,7 +237,7 @@ class TransportConvergenceArchitectureGuardTest {
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java"),
-                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java")
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java")
                 ),
                 "payloadString(TransportPacket.PAYLOAD_WORKER_ID)",
                 "sendToAdapterRoute("
@@ -301,7 +301,7 @@ class TransportConvergenceArchitectureGuardTest {
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java"),
-                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java")
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java")
                 ),
                 "DispatchOutcomeFactory",
                 "DispatchOutcome.delivered(",
@@ -560,7 +560,6 @@ class TransportConvergenceArchitectureGuardTest {
 
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java"),
                         repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingDeliveryExecutor.java")
                 ),
                 "public String protocol(",
@@ -887,7 +886,7 @@ class TransportConvergenceArchitectureGuardTest {
     @Test
     void websocketAssignedDeliveryOwnsFinalHopWithoutEndpointRegistryWrapper() throws IOException {
         assertPathsDoNotExist(repoRoot().resolve(
-                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketTaskDispatchChannel.java"));
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocket" + "TaskDispatchChannel.java"));
 
         Path bootstrap = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java");
         String bootstrapSource = Files.readString(bootstrap);
@@ -1024,10 +1023,10 @@ class TransportConvergenceArchitectureGuardTest {
         assertTrue(!webSocketBootstrapSource.contains("sendToSelectedWorker(\n                            adapterId()")
                         && !webSocketBootstrapSource.contains("sendToSelectedWorker(\r\n                            adapterId()"),
                 "WebSocket assigned delivery must not pass adapterId into selected-worker endpoint send");
-        String socketDispatchSource = Files.readString(repoRoot().resolve(
-                "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java"));
-        assertTrue(!socketDispatchSource.contains("sendToSelectedWorker(\n                            adapterId()")
-                        && !socketDispatchSource.contains("sendToSelectedWorker(\r\n                            adapterId()"),
+        String socketBootstrapSource = Files.readString(repoRoot().resolve(
+                "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java"));
+        assertTrue(!socketBootstrapSource.contains("sendToSelectedWorker(\n                            adapterId()")
+                        && !socketBootstrapSource.contains("sendToSelectedWorker(\r\n                            adapterId()"),
                 "Socket assigned delivery must not pass adapterId into selected-worker endpoint send");
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketEndpointInspector.java"));
@@ -1070,25 +1069,34 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void socketAssignedDeliveryUsesNarrowCommandContext() throws IOException {
-        Path taskDispatchChannel = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTaskDispatchChannel.java");
-        String taskDispatchSource = Files.readString(taskDispatchChannel);
-        assertTrue(taskDispatchSource.contains("SocketSessionManager"),
-                "Socket assigned delivery executor must use the adapter-local session owner for final-hop sends");
-        assertTrue(taskDispatchSource.contains("sendToWorker("),
-                "Socket assigned delivery executor must dispatch by selected worker only");
-        assertTrue(taskDispatchSource.contains("SocketTransportFrameCodec"),
-                "Socket assigned delivery executor must own frame encoding at the concrete adapter boundary");
-        assertTrue(!taskDispatchSource.contains("SocketCommandDispatchContext"),
-                "Socket assigned delivery must not reintroduce a command-context wrapper");
-        assertTrue(!taskDispatchSource.contains("WorkerEndpointRegistry"),
-                "Socket assigned delivery must not route through the generic endpoint-registry wrapper");
-        assertTrue(!taskDispatchSource.contains("TransportDeliveryService")
-                        && !taskDispatchSource.contains("sendDirect("),
-                "Socket assigned delivery must not proxy local final-hop sends through TransportDeliveryService");
+    void socketAssignedDeliveryUsesBootstrapOwnedWorkerIdFinalHop() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketTask" + "DispatchChannel.java"),
+                repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketCommandDispatchContext.java")
+        );
 
-        assertPathsDoNotExist(repoRoot().resolve(
-                "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketCommandDispatchContext.java"));
+        Path bootstrap = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java");
+        String bootstrapSource = Files.readString(bootstrap);
+        assertTrue(bootstrapSource.contains("AdapterCommandExecutors.perMessage(\"Socket\""),
+                "Socket bootstrap must let runtime embedded support own per-message outcome normalization");
+        assertTrue(bootstrapSource.contains("sendToWorker("),
+                "Socket assigned delivery executor must dispatch by selected worker only");
+        assertTrue(bootstrapSource.contains("encodeCanonicalTaskDispatch(item)"),
+                "Socket assigned delivery must frame the opaque payload as a worker ACTION frame");
+        assertTrue(!bootstrapSource.contains("private final SocketAdapterConfig config")
+                        && !bootstrapSource.contains("config.get")
+                        && !bootstrapSource.contains("config.is"),
+                "Socket bootstrap must snapshot concrete adapter properties instead of retaining live config access");
+        assertSourceSliceDoesNotContain(
+                bootstrap,
+                "static AdapterCommandExecutor socketCommandExecutor",
+                "private record SocketRuntimeParts",
+                "SocketCommandDispatchContext",
+                "WorkerEndpointRegistry",
+                "TransportDeliveryService",
+                "sendDirect("
+        );
+
 
         Path sessionManager = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java");
         String sessionManagerSource = Files.readString(sessionManager);
@@ -1103,6 +1111,15 @@ class TransportConvergenceArchitectureGuardTest {
         assertTrue(!sessionManagerSource.contains("WorkerEndpointSnapshot")
                         && !sessionManagerSource.contains("listEndpointSnapshots("),
                 "SocketSessionManager must not expose endpoint snapshot diagnostics views");
+        String routeEndpointIndex = "Route" + "EndpointIndex";
+        String entriesForRoute = "entriesFor" + "Route(";
+        String sendToRoute = "sendTo" + "Route(";
+        String adapterRouteOnline = "isAdapter" + "RouteOnline(";
+        assertTrue(!sessionManagerSource.contains(routeEndpointIndex)
+                        && !sessionManagerSource.contains(entriesForRoute)
+                        && !sessionManagerSource.contains(sendToRoute)
+                        && !sessionManagerSource.contains(adapterRouteOnline),
+                "SocketSessionManager must keep worker/endpoint indexes instead of routeKey route lookup");
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketEndpointInspector.java"));
     }

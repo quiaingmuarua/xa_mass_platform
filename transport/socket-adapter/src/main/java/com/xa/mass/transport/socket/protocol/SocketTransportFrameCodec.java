@@ -15,7 +15,6 @@ public final class SocketTransportFrameCodec {
 
     private static final String TYPE_FIELD = "type";
     private static final String WORKER_GROUP_ID_FIELD = "workerGroupId";
-    private static final String ROUTE_KEY_FIELD = "routeKey";
     private static final String TRACE_ID_FIELD = "traceId";
 
     private final TransportJsonFrameParser jsonFrameParser;
@@ -49,10 +48,6 @@ public final class SocketTransportFrameCodec {
 
     public String extractWorkerGroupId(JsonObject frame) {
         return readString(frame, WORKER_GROUP_ID_FIELD);
-    }
-
-    public String extractRouteKey(JsonObject frame) {
-        return readString(frame, ROUTE_KEY_FIELD);
     }
 
     public String extractTraceId(JsonObject frame) {
