@@ -2,6 +2,7 @@ package com.xa.mass.transport.runtime.lease;
 
 import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 
 import java.util.Locale;
@@ -15,21 +16,23 @@ import java.util.Locale;
  */
 public final class AdapterSessionEvidencePublisher {
 
+    private final String adapterId;
+    private final String adapterMailboxKey;
     private final TransportEndpointLeasePublisher endpointLeasePublisher;
-    private final WorkerPresenceSessionPublisher workerPresencePublisher;
+    private final WorkerPresenceIngress workerPresenceIngress;
 
     public AdapterSessionEvidencePublisher(String adapterId,
                                            String adapterMailboxKey,
                                            TransportEndpointLeaseStore endpointLeaseStore,
                                            WorkerPresenceIngress workerPresenceIngress) {
         String normalizedAdapterId = requireText(adapterId, "adapterId").toLowerCase(Locale.ROOT);
+        this.adapterId = normalizedAdapterId;
+        this.adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
         this.endpointLeasePublisher = new TransportEndpointLeasePublisher(normalizedAdapterId);
         this.endpointLeasePublisher.setEndpointLeaseStore(endpointLeaseStore);
-        this.workerPresencePublisher = new WorkerPresenceSessionPublisher(
-                normalizedAdapterId,
-                requireText(adapterMailboxKey, "adapterMailboxKey")
-        );
-        this.workerPresencePublisher.setWorkerPresenceIngress(workerPresenceIngress);
+        this.workerPresenceIngress = workerPresenceIngress != null
+                ? workerPresenceIngress
+                : NoopWorkerPresenceIngress.INSTANCE;
     }
 
     public static AdapterSessionEvidencePublisher noop(String adapterId, String adapterMailboxKey) {
@@ -50,7 +53,7 @@ public final class AdapterSessionEvidencePublisher {
                           String sessionToken,
                           String reason,
                           String traceId) {
-        workerPresencePublisher.sessionConnected(workerId, sessionToken, reason, traceId);
+        workerPresenceIngress.sessionConnected(connectedEvent(workerId, sessionToken, reason, traceId));
         endpointLeasePublisher.claim(workerId, deliveryBucketId, sessionToken, reason);
     }
 
@@ -59,7 +62,7 @@ public final class AdapterSessionEvidencePublisher {
                              String sessionToken,
                              String reason,
                              String traceId) {
-        workerPresencePublisher.sessionHeartbeat(workerId, sessionToken, reason, traceId);
+        workerPresenceIngress.sessionHeartbeat(heartbeatEvent(workerId, sessionToken, reason, traceId));
         return endpointLeasePublisher.refresh(workerId, deliveryBucketId, sessionToken, reason);
     }
 
@@ -68,7 +71,7 @@ public final class AdapterSessionEvidencePublisher {
                                 String sessionToken,
                                 String reason,
                                 String traceId) {
-        workerPresencePublisher.sessionDisconnected(workerId, sessionToken, reason, traceId);
+        workerPresenceIngress.sessionDisconnected(disconnectedEvent(workerId, sessionToken, reason, traceId));
         return endpointLeasePublisher.release(workerId, deliveryBucketId, sessionToken, reason);
     }
 
@@ -77,6 +80,30 @@ public final class AdapterSessionEvidencePublisher {
                               String sessionToken,
                               String reason) {
         endpointLeasePublisher.claim(workerId, deliveryBucketId, sessionToken, reason);
+    }
+
+    private WorkerSessionPresenceEvent connectedEvent(String workerId,
+                                                      String sessionToken,
+                                                      String reason,
+                                                      String traceId) {
+        return WorkerSessionPresenceEvent.connected(
+                workerId, adapterId, adapterMailboxKey, null, sessionToken, reason, traceId);
+    }
+
+    private WorkerSessionPresenceEvent heartbeatEvent(String workerId,
+                                                      String sessionToken,
+                                                      String reason,
+                                                      String traceId) {
+        return WorkerSessionPresenceEvent.heartbeat(
+                workerId, adapterId, adapterMailboxKey, null, sessionToken, reason, traceId);
+    }
+
+    private WorkerSessionPresenceEvent disconnectedEvent(String workerId,
+                                                         String sessionToken,
+                                                         String reason,
+                                                         String traceId) {
+        return WorkerSessionPresenceEvent.disconnected(
+                workerId, adapterId, adapterMailboxKey, null, sessionToken, reason, traceId);
     }
 
     private static String requireText(String value, String fieldName) {

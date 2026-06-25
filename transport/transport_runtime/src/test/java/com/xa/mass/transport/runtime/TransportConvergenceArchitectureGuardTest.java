@@ -1164,8 +1164,16 @@ class TransportConvergenceArchitectureGuardTest {
         );
         assertTrue(Files.exists(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease/TransportEndpointLeasePublisher.java")),
                 "Endpoint lease projection must live in a dedicated publisher");
-        assertTrue(Files.exists(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease/WorkerPresenceSessionPublisher.java")),
-                "Worker presence projection must live in a dedicated publisher");
+        String removedPresencePublisher = "WorkerPresence" + "SessionPublisher";
+        assertPathsDoNotExist(repoRoot().resolve(
+                "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease/" + removedPresencePublisher + ".java"));
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport"),
+                        repoRoot().resolve("sdk")
+                ),
+                removedPresencePublisher
+        );
     }
 
     @Test

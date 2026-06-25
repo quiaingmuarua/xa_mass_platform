@@ -1,8 +1,9 @@
 # Worker Runtime / Transport Pre-Score-Band Residue Convergence Roadmap
 
 Status: active roadmap; presence/read-view interface removal is already in
-progress in the current working tree. WTP-0 inventory and WTP-4 warm-candidate
-deletion are the next executable slices.
+progress in the current working tree. WTP-0 inventory, WTP-1 session-presence
+event bridge deletion, and WTP-4 warm-candidate deletion are the next
+executable slices.
 
 ## Purpose
 
@@ -20,9 +21,11 @@ starts now:
   in one composite owner.
 - `InMemoryWorkerPresenceRuntime` mixes active session projection,
   reachability state, and selected-worker delivery target derivation.
-- `WorkerRuntimePresenceIngress` still makes transport session events look like
-  a worker-runtime presence lane, even though only confirmed current-session
-  disconnect should be scheduling-relevant negative evidence.
+- `WorkerPresenceIngress`, `WorkerSessionPresenceEvent`, and
+  `WorkerRuntimePresenceIngress` still make transport session events look like
+  a worker-runtime presence lane, even though transport session events should
+  stay transport-local and only confirmed current-session disconnect should
+  become scheduling-relevant negative evidence.
 - `TaskCandidateWarmPool` and `WorkerWarmHintRuntime` preserve a task-local
   warm-candidate hint mechanism that conflicts with the supply-side slot
   leasing direction.
@@ -96,9 +99,9 @@ Therefore this roadmap cleans the pre-score-band residue as follows:
 
 | Current mechanism | Classification | Why it can be cleaned before score-band | Target disposition |
 | --- | --- | --- | --- |
-| `WorkerPresenceRuntime extends WorkerReachabilityView, WorkerDeliveryTargetView` | mixed projection / residue | It collapses transport session writes, reachability diagnostics, and delivery-target lookup into one contract. The blueprint separates transport-local freshness from worker-runtime schedulability and post-selection delivery. Current code is already moving away from the composite type; this roadmap must finish the cleanup rather than recreate it. | Split into narrow presence write/write-ingress contract plus separate read/projection surfaces. |
-| `InMemoryWorkerPresenceRuntime` backing presence, reachability, and delivery target | transitional embedded implementation | A single implementation may temporarily back multiple views, but callers should not see a composite owner. | Keep only as implementation detail if needed; expose through narrow interfaces in assembly. |
-| `WorkerRuntimePresenceIngress` connected / heartbeat path | transport freshness bridge residue | Connected and heartbeat prove session freshness only. They must not request scheduling recheck or reopen eligibility. | Keep as transport-local/presence projection only; only current-session disconnect may emit negative block evidence. |
+| `WorkerPresenceRuntime extends WorkerReachabilityView, WorkerDeliveryTargetView` | mixed projection / residue | It collapses transport session writes, reachability diagnostics, and delivery-target lookup into one contract. The blueprint separates transport-local freshness from worker-runtime schedulability and post-selection delivery. Current code is already moving away from the composite type; this roadmap must finish the cleanup rather than recreate it. | Delete the composite contract. Do not replace it with a generic presence ingress; delivery-target lookup and negative disconnect evidence get separate surfaces. |
+| `InMemoryWorkerPresenceRuntime` backing presence, reachability, and delivery target | transitional embedded implementation | A single implementation may temporarily back multiple views, but callers should not see a composite owner. | Keep only as interim implementation detail if needed for delivery-target point lookup; expose no generic presence write/event surface to transport. |
+| `WorkerPresenceIngress` / `WorkerSessionPresenceEvent` / `WorkerRuntimePresenceIngress` | transport-to-worker-runtime event bridge residue | Connected and heartbeat prove transport freshness only. A generic event bridge encourages worker-runtime to treat session events as lifecycle input and preserves positive reopen drift. | Delete. Transport writes endpoint/session evidence locally. Confirmed current-session disconnect may emit narrow negative block evidence without a presence event DTO. |
 | `WorkerDispatchBlockRuntime` / `WorkerDispatchBlockSignal` / `WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED` | allowed negative-evidence ingress | This is the one current transport-to-worker-runtime scheduling effect allowed by the blueprint: accepted current-session loss can close dispatch eligibility. It is not a freshness/reopen path. | Keep narrow. Inventory callers and prove connected/heartbeat cannot use it; only accepted current-session disconnect may emit `TRANSPORT_DISCONNECTED`. |
 | `WorkerReachabilityView` / `WorkerManager#getWorkerReachability` | diagnostic read model residue | Reachability is not score-band eligibility and must not become a second scheduling gate. The interface is being removed, but `Function<String, WorkerReachabilityState>` and direct getters can still preserve the old behavior if left unclassified. | Keep only as diagnostic point read if needed; forbid selection and recovery from depending on it. |
 | Delivery-target resolver / `SelectedWorkerDeliveryTargetEvidence` | still-required post-selection evidence | Assigned dispatch still needs selected worker to opaque `adapterMailboxKey` lookup. This is after worker selection and not a scheduling input. The interface may disappear, but the resolver surface still exists. | Keep as point lookup; classify each evidence field as dispatch-required or diagnostic. Forbid list/stats/scheduling use. |
@@ -115,6 +118,7 @@ In short:
 ```text
 clean now:
   composite presence contract
+  transport-to-worker-runtime presence event bridge
   transport freshness as worker-runtime scheduling input
   composite runtime-state as selection truth, and unused runtime-state DTOs
   task-local warm candidate cache
@@ -186,10 +190,18 @@ proof. It should not be retained now as speculative diagnostic surface.
   `workerPresenceRuntime::getWorkerReachability` and defaults
   `workerDeliveryTargetResolver` to
   `workerPresenceRuntime::resolveDeliveryTarget`.
-- `WorkerRuntimePresenceIngress` is the transport-to-worker-runtime bridge for
-  connected / heartbeat / disconnected events and emits the negative
-  `TRANSPORT_DISCONNECTED` block only when a current session becomes
-  unreachable.
+- `WorkerPresenceIngress`, `WorkerSessionPresenceEvent`,
+  `WorkerPresenceEventType`, `NoopWorkerPresenceIngress`, and
+  `WorkerRuntimePresenceIngress` are the current transport-to-worker-runtime
+  session event bridge. They are residue: transport session connected /
+  heartbeat / disconnected events should not be delivered to worker-runtime as
+  generic presence events.
+- `TransportConfig.customWorkerPresenceIngress`,
+  `TransportBuilder.workerPresenceIngress(...)`,
+  `TransportRuntimeComposition.resolveWorkerPresenceIngress()`, and
+  `TransportAdapterBootstrapContext.workerPresenceIngress` expose that bridge
+  through SDK/assembly configuration. These are removal targets, not
+  compatibility surfaces.
 - `WorkerDispatchBlockRuntime`, `WorkerDispatchBlockSignal`, and
   `WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED` are the current narrow
   negative-evidence path from transport session loss into worker-runtime
@@ -281,17 +293,21 @@ demand lane or score-band index.
 
 ## Boundary Decision
 
-Presence mutation, reachability diagnostics, and delivery-target lookup must be
-separate contracts.
+Transport session evidence, worker-runtime negative dispatch block, reachability
+diagnostics, and delivery-target lookup must be separate contracts.
 
 Target split:
 
 ```text
-WorkerSessionPresence / WorkerPresenceIngress write path
-  session presence projection only:
-    sessionConnected
-    sessionHeartbeat
-    sessionDisconnected
+Transport endpoint/session evidence
+  transport-local freshness/currentness only:
+    connected
+    heartbeat
+    disconnected
+
+Worker dispatch block sink
+  negative signal only:
+    confirmed current-session disconnect -> TRANSPORT_DISCONNECTED
 
 WorkerReachabilityState point read
   diagnostic only, if still needed
@@ -301,10 +317,12 @@ Selected-worker delivery target resolver
     selectedWorkerId -> adapterMailboxKey evidence
 ```
 
-No production contract should combine those three roles. If an in-memory
-implementation temporarily backs more than one role, assembly must expose it
-through narrow typed fields or narrow functions, not through a composite
-interface or a broad runtime object.
+No production contract should deliver generic transport session events into
+worker-runtime. There should be no replacement for `WorkerPresenceIngress`;
+connected / heartbeat / keepalive are transport-local evidence. If an in-memory
+implementation temporarily backs delivery-target lookup and diagnostics,
+assembly must expose only narrow typed fields or functions, not a composite
+presence interface or broad runtime object.
 
 Runtime state/readiness/occupancy records must be treated as read models:
 
@@ -379,7 +397,14 @@ Scope:
 - Inventory callers of:
   - `WorkerPresenceRuntime`
   - `InMemoryWorkerPresenceRuntime`
+  - `WorkerPresenceIngress`
+  - `WorkerSessionPresenceEvent`
+  - `WorkerPresenceEventType`
+  - `NoopWorkerPresenceIngress`
   - `WorkerRuntimePresenceIngress`
+  - `TransportConfig.customWorkerPresenceIngress`
+  - `MassApplicationBuilder.TransportBuilder#workerPresenceIngress`
+  - `TransportRuntimeComposition#resolveWorkerPresenceIngress`
   - `WorkerDispatchBlockRuntime`
   - `WorkerDispatchBlockSignal`
   - `WorkerDispatchBlockSource`
@@ -455,56 +480,70 @@ Suggested inventory file:
 roadmap/WORKER_RUNTIME_TRANSPORT_PRE_SCORE_BAND_RESIDUE_INVENTORY.md
 ```
 
-## WTP-1: Split Session Presence From Read Views
+## WTP-1: Delete Session Presence Event Bridge
 
 Goal:
 
-Remove the composite presence contract while preserving current embedded
-delivery-target and negative-disconnect behavior.
+Remove the transport-to-worker-runtime session presence event bridge while
+preserving current embedded delivery-target lookup and negative-disconnect
+behavior.
 
 Scope:
 
 - Finish removing `WorkerPresenceRuntime` / `WorkerReachabilityView` /
   `WorkerDeliveryTargetView` interface residue from main sources, tests,
   docs, and guards.
-- Keep `WorkerPresenceIngress` as the transport-facing ingress contract, or
-  introduce a worker-runtime-local write contract only if a real owner boundary
-  requires it. Do not recreate a composite presence runtime.
-- Update `WorkerRuntimePresenceIngress` so its worker-runtime dependency can
-  only write session presence and emit negative disconnect through
-  `WorkerDispatchBlockRuntime`.
+- Delete `WorkerPresenceIngress`, `NoopWorkerPresenceIngress`,
+  `WorkerSessionPresenceEvent`, `WorkerPresenceEventType`, and
+  `WorkerRuntimePresenceIngress`.
+- Remove SDK/assembly configuration for custom worker presence ingress:
+  `TransportConfig.customWorkerPresenceIngress`,
+  `MassApplicationBuilder.TransportBuilder#workerPresenceIngress(...)`,
+  `TransportRuntimeComposition#resolveWorkerPresenceIngress()`, and the
+  `workerPresenceIngress` field/constructor argument on
+  `TransportAdapterBootstrapContext`.
+- `AdapterSessionEvidencePublisher` should publish only transport-owned
+  endpoint/session evidence. It must not construct worker-runtime presence
+  events or depend on a worker-runtime presence ingress.
 - Keep `WorkerDispatchBlockRuntime`, `WorkerDispatchBlockSignal`, and
   `WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED` as an explicit
   negative-evidence ingress, not as presence-read residue. Classify the port in
   WTP-0 and prove its caller path is limited to accepted current-session loss.
-- Keep connected / heartbeat as presence writes only; they must not refresh
-  registry heartbeat, request dispatch wakeup, or reopen schedulability.
-- Keep disconnected as the only current transport-to-worker-runtime negative
-  path, and only when current-session loss is accepted by the presence
-  projection.
+- Connected / heartbeat / keepalive stay transport-local and must not call
+  worker-runtime, refresh registry heartbeat, request dispatch wakeup, recover
+  dispatch gates, or reopen schedulability.
+- Disconnected is the only current transport-to-worker-runtime path, and only
+  when adapter-local currentness confirms current-session loss. It must emit a
+  narrow `TRANSPORT_DISCONNECTED` block signal directly or through a
+  negative-only assembly sink, not through a generic presence event.
 - Wire reachability diagnostics and delivery-target resolver separately in
   `EngineConfig` / `MassApplication` assembly. A direct function resolver is
   acceptable as an interim shape if it is narrow and documented.
-- If the same in-memory object temporarily backs write, reachability, and
-  delivery-target views, production callers must still receive only the narrow
-  interface they own.
+- If `InMemoryWorkerPresenceRuntime` temporarily backs delivery-target lookup
+  and diagnostics, production callers must still receive only the narrow
+  function they own. It must not be exposed as a session-presence write owner.
 
 Acceptance:
 
 - No production main source references `WorkerPresenceRuntime`,
   `WorkerReachabilityView`, or `WorkerDeliveryTargetView` unless WTP-0
   explicitly reclassifies one as a still-current contract.
-- `WorkerRuntimePresenceIngress` cannot call `resolveDeliveryTarget(...)` or
-  `getWorkerReachability(...)` through its presence dependency.
-- `WorkerRuntimePresenceIngress` can call `WorkerDispatchBlockRuntime` only
-  for accepted current-session disconnect. Connected, heartbeat, refresh, and
-  stale/replaced disconnect cannot call block, recovery, or recheck.
+- No production main or test source references `WorkerPresenceIngress`,
+  `NoopWorkerPresenceIngress`, `WorkerSessionPresenceEvent`,
+  `WorkerPresenceEventType`, or `WorkerRuntimePresenceIngress`.
+- `TransportConfig`, `MassApplicationBuilder`, `TransportRuntimeComposition`,
+  `TransportAdapterBootstrapContext`, and `AdapterSessionEvidencePublisher`
+  expose no worker presence ingress configuration or constructor dependency.
+- Connected, heartbeat, refresh, and stale/replaced disconnect cannot call
+  block, recovery, recheck, heartbeat refresh, or any worker-runtime scheduling
+  reopen path.
+- Accepted current-session disconnect still emits `TRANSPORT_DISCONNECTED`
+  block evidence through a negative-only path.
 - `EngineConfig` no longer uses one composite field as the public/default owner
   of presence, reachability, and delivery target.
 - Existing embedded distributed transport tests still prove selected-worker
   delivery target lookup works.
-- Current-session disconnect still emits `TRANSPORT_DISCONNECTED` block; stale
-  or replaced-session disconnect does not.
+- Stale or replaced-session disconnect does not emit `TRANSPORT_DISCONNECTED`.
 
 ## WTP-2: Narrow Delivery Target And Reachability Residue
 
@@ -711,24 +750,27 @@ Acceptance:
     surface, with SDK/server API disposition, not score-band truth;
   - candidate buckets as current bounded-candidate partitioning only;
   - warm-pool mechanism as removed.
-- Proof registry points to focused tests for presence split, delivery target
-  lookup, negative disconnect, and bounded candidate acquisition.
-- Guard tests fail on reintroducing composite presence or warm-pool symbols.
+- Proof registry points to focused tests for presence-event bridge deletion,
+  delivery target lookup, negative disconnect, and bounded candidate
+  acquisition.
+- Guard tests fail on reintroducing composite presence, session-presence event
+  bridge, or warm-pool symbols.
 
 ## Suggested Implementation Order
 
 1. WTP-0 inventory.
-2. WTP-4 task-local warm candidate deletion.
-3. WTP-1 presence contract split.
+2. WTP-1 session-presence event bridge deletion.
+3. WTP-4 task-local warm candidate deletion.
 4. WTP-2 delivery-target / reachability residue cleanup.
 5. WTP-3 runtime-state / topology / candidate-bucket classification.
 6. WTP-5 docs and guards.
 
 WTP-0 should be thin and current-code grounded. It must prove the warm-pool
-path is not a correctness requirement, but it should not become a broad
-topology redesign gate. Once WTP-0 confirms warm-pool is only acceleration,
-start WTP-4 before the larger presence/topology cleanup so score-band is not
-blocked by unrelated public-surface decisions.
+path is not a correctness requirement and identify the delivery-target writer
+that will survive presence-event bridge deletion, but it should not become a
+broad topology redesign gate. WTP-1 and WTP-4 can proceed independently after
+WTP-0: WTP-1 removes transport session events from worker-runtime, and WTP-4
+removes task-local worker warming.
 
 The removed runtime-history boundary track is not a dependency for this
 roadmap. Do not reintroduce it to justify retaining `WorkerRuntimeStateRecord`
@@ -760,7 +802,9 @@ or old runtime-history storage wording.
 Commands must be corrected after WTP-0 if test names change.
 
 ```powershell
-rg -n "WorkerPresenceRuntime|InMemoryWorkerPresenceRuntime|WorkerRuntimePresenceIngress|WorkerDispatchBlockRuntime|WorkerDispatchBlockSignal|WorkerDispatchBlockSource|WorkerDeliveryTargetView|WorkerReachabilityView|WorkerManager#getWorkerReachability|getWorkerReachability|SelectedWorkerDeliveryTargetEvidence|WorkerRuntimeStateRecord|WorkerReadinessState|WorkerOccupancyState|AdapterNodeRecord|NodeGroupBindingRecord|WorkerNodeBindingRuntime|WorkerCandidateBucketPolicy|candidateBucketKeys|TaskCandidateWarmPool|WorkerWarmHintRuntime|warmCandidate|warmCandidateCount|coldCandidateCount|warmSourceGuardRejectedCount|duplicateCandidateCount|findWorkerCandidateBatch" xa-mass-worker-runtime sdk/xa-mass-embedded-sdk transport xa-mass-engine platform_infra roadmap doc --glob "!**/target/**" --glob "!**/archive/**"
+rg -n "WorkerPresenceRuntime|InMemoryWorkerPresenceRuntime|WorkerPresenceIngress|NoopWorkerPresenceIngress|WorkerSessionPresenceEvent|WorkerPresenceEventType|WorkerRuntimePresenceIngress|customWorkerPresenceIngress|workerPresenceIngress|WorkerDispatchBlockRuntime|WorkerDispatchBlockSignal|WorkerDispatchBlockSource|WorkerDeliveryTargetView|WorkerReachabilityView|WorkerManager#getWorkerReachability|getWorkerReachability|SelectedWorkerDeliveryTargetEvidence|WorkerRuntimeStateRecord|WorkerReadinessState|WorkerOccupancyState|AdapterNodeRecord|NodeGroupBindingRecord|WorkerNodeBindingRuntime|WorkerCandidateBucketPolicy|candidateBucketKeys|TaskCandidateWarmPool|WorkerWarmHintRuntime|warmCandidate|warmCandidateCount|coldCandidateCount|warmSourceGuardRejectedCount|duplicateCandidateCount|findWorkerCandidateBatch" xa-mass-worker-runtime sdk/xa-mass-embedded-sdk transport xa-mass-engine platform_infra roadmap doc --glob "!**/target/**" --glob "!**/archive/**"
+
+rg -n "WorkerPresenceIngress|NoopWorkerPresenceIngress|WorkerSessionPresenceEvent|WorkerPresenceEventType|WorkerRuntimePresenceIngress|customWorkerPresenceIngress|workerPresenceIngress" transport/src/main transport/transport_api/src/main transport/transport_runtime/src/main transport/polling-adapter/src/main transport/socket-adapter/src/main transport/websocket-adapter/src/main sdk/xa-mass-embedded-sdk/src/main --glob "*.java" --glob "!**/target/**"
 
 rg -n "TaskCandidateWarmPool|WorkerWarmHintRuntime|recordWarmCandidate|warmCandidateCount|WorkerCandidateBatch|findWorkerCandidateBatch|coldCandidateCount|warmSourceGuardRejectedCount|duplicateCandidateCount" xa-mass-worker-runtime/src/main sdk/xa-mass-embedded-sdk/src/main xa-mass-engine/src/main platform_infra --glob "*.java" --glob "!**/target/**"
 
@@ -768,7 +812,7 @@ rg -n "TaskCandidateWarmPool|WorkerWarmHintRuntime|recordWarmCandidate|warmCandi
 
 .\mvnw.cmd -q -pl xa-mass-worker-runtime -am "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,InMemoryWorkerPresenceRuntimeTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest" test
 
-.\mvnw.cmd -q -pl sdk/xa-mass-embedded-sdk -am "-Dtest=WorkerRuntimePresenceIngressTest,MassApplicationDistributedTransportTest,TaskDispatchRoutingSubmitterTest" test
+.\mvnw.cmd -q -pl sdk/xa-mass-embedded-sdk -am "-Dtest=MassApplicationDistributedTransportTest,TaskDispatchRoutingSubmitterTest,MassSdkTest" test
 
 .\mvnw.cmd -q -pl transport/transport_runtime -am "-Dtest=TransportConvergenceArchitectureGuardTest" test
 
