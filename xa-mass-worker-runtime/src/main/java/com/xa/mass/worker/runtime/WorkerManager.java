@@ -23,7 +23,6 @@ import com.xa.mass.worker.runtime.control.WorkerDispatchRecoveryRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerCandidateBucketPolicy;
 import com.xa.mass.worker.runtime.report.WorkerReportRuntime;
@@ -61,13 +60,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Worker access facade for the active engine runtime.
  *
- * <p>Reachability is read through {@link WorkerReachabilityView}, while
- * endpoint leases stay in transport delivery and must not be
- * promoted into worker lifecycle truth.
+ * <p>Reachability is exposed as a point read for diagnostics. Endpoint leases
+ * stay in transport delivery and must not be promoted into worker lifecycle
+ * truth.
  */
 public class WorkerManager implements WorkerResourceQueryRuntime,
         WorkerResourceDeclarationRuntime,
@@ -85,7 +85,7 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
         WorkerWarmHintRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
-    private final WorkerReachabilityView reachabilityView;
+    private final Function<String, WorkerReachabilityState> reachabilityLookup;
     private final WorkerRegistry workerRegistry;
     private final WorkerCandidateBucketPolicy candidateBucketPolicy;
     private final WorkerGroupOwner groupOwner;
@@ -101,35 +101,35 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
 
     public WorkerManager(WorkerDeclarationStore workerStorage,
                          WorkerRegistry workerRegistry) {
-        this(workerStorage, WorkerReachabilityView.permissive(), workerRegistry);
+        this(workerStorage, permissiveReachability(), workerRegistry);
     }
 
     public WorkerManager(WorkerDeclarationStore workerStorage,
-                         WorkerReachabilityView reachabilityView,
+                         Function<String, WorkerReachabilityState> reachabilityLookup,
                          WorkerRegistry workerRegistry) {
-        this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), workerRegistry);
+        this(workerStorage, reachabilityLookup, new WorkerCapabilityAuthority(), workerRegistry);
     }
 
     public WorkerManager(WorkerDeclarationStore workerStorage,
-                         WorkerReachabilityView reachabilityView,
+                         Function<String, WorkerReachabilityState> reachabilityLookup,
                          WorkerRegistry workerRegistry,
                          WorkerCandidateBucketPolicy candidateBucketPolicy) {
-        this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), workerRegistry, candidateBucketPolicy);
+        this(workerStorage, reachabilityLookup, new WorkerCapabilityAuthority(), workerRegistry, candidateBucketPolicy);
     }
 
     WorkerManager(WorkerDeclarationStore workerStorage,
-                  WorkerReachabilityView reachabilityView,
+                  Function<String, WorkerReachabilityState> reachabilityLookup,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerRegistry workerRegistry) {
-        this(workerStorage, reachabilityView, capabilityAuthority, workerRegistry, WorkerCandidateBucketPolicies.defaultPolicy());
+        this(workerStorage, reachabilityLookup, capabilityAuthority, workerRegistry, WorkerCandidateBucketPolicies.defaultPolicy());
     }
 
     WorkerManager(WorkerDeclarationStore workerStorage,
-                  WorkerReachabilityView reachabilityView,
+                  Function<String, WorkerReachabilityState> reachabilityLookup,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerRegistry workerRegistry,
                   WorkerCandidateBucketPolicy candidateBucketPolicy) {
-        this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
+        this.reachabilityLookup = reachabilityLookup != null ? reachabilityLookup : permissiveReachability();
         this.workerRegistry = Objects.requireNonNull(workerRegistry, "workerRegistry");
         this.candidateBucketPolicy = candidateBucketPolicy != null ? candidateBucketPolicy : WorkerCandidateBucketPolicies.defaultPolicy();
         this.groupOwner = new WorkerGroupOwner(this.workerRegistry);
@@ -386,7 +386,12 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
         if (workerId == null || workerId.isBlank()) {
             return WorkerReachabilityState.UNKNOWN;
         }
-        return reachabilityView.getWorkerReachability(workerId);
+        WorkerReachabilityState state = reachabilityLookup.apply(workerId.trim());
+        return state != null ? state : WorkerReachabilityState.UNKNOWN;
+    }
+
+    private static Function<String, WorkerReachabilityState> permissiveReachability() {
+        return workerId -> WorkerReachabilityState.ONLINE;
     }
 
     public boolean isWorkerDispatchEnabled(String workerId) {

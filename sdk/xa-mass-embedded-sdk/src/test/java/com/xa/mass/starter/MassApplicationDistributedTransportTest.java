@@ -24,7 +24,6 @@ import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChann
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
 
@@ -54,10 +53,9 @@ class MassApplicationDistributedTransportTest {
         engine.setEnabled(true);
         engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-1"));
         engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-2"));
-        engine.setWorkerDeliveryTargetView(selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
+        engine.setWorkerDeliveryTargetResolver(selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                 selectedWorkerId,
                 adapterMailboxKey(),
-                WorkerReachabilityState.ONLINE,
                 1L,
                 System.currentTimeMillis(),
                 Long.MAX_VALUE
@@ -98,10 +96,9 @@ class MassApplicationDistributedTransportTest {
         EngineConfig engine = new EngineConfig();
         engine.setEnabled(true);
         engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-1"));
-        engine.setWorkerDeliveryTargetView(selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
+        engine.setWorkerDeliveryTargetResolver(selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                 "other-worker",
                 adapterMailboxKey(),
-                WorkerReachabilityState.ONLINE,
                 1L,
                 System.currentTimeMillis(),
                 Long.MAX_VALUE
@@ -130,7 +127,7 @@ class MassApplicationDistributedTransportTest {
     }
 
     @Test
-    void engineProducerRequiresExplicitWorkerDeliveryTargetView() {
+    void engineProducerRequiresExplicitWorkerDeliveryTargetResolver() {
         EngineConfig engine = new EngineConfig();
         engine.setEnabled(true);
 
@@ -139,7 +136,7 @@ class MassApplicationDistributedTransportTest {
         MassApplication app = new MassApplication(massEngine, transport, engine);
 
         RuntimeException failure = assertThrows(RuntimeException.class, app::start);
-        assertTrue(hasCauseMessage(failure, "engine-producer runtime requires an explicit WorkerDeliveryTargetView"));
+        assertTrue(hasCauseMessage(failure, "engine-producer runtime requires an explicit worker delivery target resolver"));
     }
 
     @Test

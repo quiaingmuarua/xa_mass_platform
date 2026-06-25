@@ -92,7 +92,7 @@ Role split:
 - `WorkerHeartbeatRuntime` is the narrow runtime-evidence port used to refresh
   registry heartbeat evidence from explicit worker/runtime report paths. It is
   separate from declaration mutation, and transport session connected/heartbeat
-  presence is not a caller for registry heartbeat refresh.
+  presence is not a caller for registry heartbeat refresh or dispatch wakeup.
 - `WorkerNodeBindingRuntime` is topology/admin. It may manage adapter node and
   node-group binding metadata, but it does not own scheduling selection or
   worker dispatch eligibility.
@@ -188,8 +188,6 @@ Package: `com.xa.mass.worker.runtime.evidence`
 Owned contracts:
 
 - `WorkerSchedulingViewRuntime`
-- `WorkerReachabilityView`
-- `WorkerDeliveryTargetView`
 - `SelectedWorkerDeliveryTargetEvidence`
 - `WorkerReachabilityState`
 - `WorkerReadinessState`
@@ -201,7 +199,9 @@ Allowed callers:
 
 - Worker-runtime selection implementation for `WorkerSchedulingViewRuntime`.
 - SDK/server assembly when exposing worker state diagnostics through
-  `WorkerReachabilityView`.
+- worker-runtime reachability point reads.
+- SDK/starter delivery integration when resolving selected-worker delivery
+  target evidence after assignment.
 - Worker-runtime implementation.
 
 Evidence is read-only worker-runtime input and diagnostic output. Engine
@@ -211,16 +211,17 @@ lifecycle truth.
 
 `WorkerSchedulingViewRuntime` is the selection-facing read surface. It exposes
 group capability, dispatch gate, lock, and load facts, but it must not expose
-`getWorkerReachability`. Reachability stays behind `WorkerReachabilityView` so
-diagnostic/freshness observations cannot quietly return as a selection gate.
+`getWorkerReachability`. Reachability stays as a diagnostic point read from the
+presence projection so diagnostic/freshness observations cannot quietly return
+as a selection gate.
 
-`WorkerDeliveryTargetView` is the post-selection delivery evidence contract.
-It resolves an already selected worker to an opaque adapter mailbox target.
-SDK/starter delivery integration may consume it after assignment; engine
-selection must not read adapter mailboxes, endpoint leases, route keys,
-connection ids, session handles, transport node ids, or adapter ids as worker
-selection truth. The contract is point lookup only and must not grow list,
-count, stats, snapshot, or inspection APIs.
+Selected-worker delivery target resolution is the post-selection delivery
+evidence contract. It resolves an already selected worker to an opaque adapter
+mailbox target. SDK/starter delivery integration may consume it after
+assignment; engine selection must not read adapter mailboxes, endpoint leases,
+route keys, connection ids, session handles, transport node ids, or adapter ids
+as worker selection truth. The resolver is point lookup only and must not grow
+list, count, stats, snapshot, or inspection APIs.
 
 Reachability, readiness, and occupancy are evidence/diagnostic vocabularies
 inside worker-runtime, not three independent scheduling truth owners. `UNKNOWN`

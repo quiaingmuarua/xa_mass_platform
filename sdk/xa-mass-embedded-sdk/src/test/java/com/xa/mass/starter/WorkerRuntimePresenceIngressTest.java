@@ -65,7 +65,6 @@ class WorkerRuntimePresenceIngressTest {
         var target = runtime.resolveDeliveryTarget("worker-1").orElseThrow();
         assertEquals("worker-1", target.workerId());
         assertEquals("mailbox-a", target.adapterMailboxKey());
-        assertEquals(WorkerReachabilityState.ONLINE, target.reachabilityState());
     }
 
     @Test

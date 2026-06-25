@@ -16,6 +16,7 @@ import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
+import com.xa.mass.worker.runtime.control.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.control.WorkerStateReportEventHandler;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,7 @@ public class WorkerControlOwnerSliceTest {
         WorkerControlService workerControlService = new WorkerControlService(
                 workerManager,
                 workerManager,
-                workerManager,
+                new DefaultWorkerDispatchAvailabilityPolicy(workerManager, workerManager),
                 commandOwner,
                 stateOwner,
                 trace);

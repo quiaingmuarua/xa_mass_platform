@@ -13,6 +13,7 @@ import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
+import com.xa.mass.worker.runtime.control.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResultCode;
@@ -107,7 +108,7 @@ public class WorkerCommandRequestEventHandlerTest {
         return new WorkerControlService(
                 workerManager,
                 workerManager,
-                workerManager,
+                new DefaultWorkerDispatchAvailabilityPolicy(workerManager, workerManager),
                 owner,
                 new WorkerStateProjectionOwner(),
                 traceEventLogger);

@@ -11,7 +11,6 @@ import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
-import com.xa.mass.worker.runtime.evidence.WorkerDeliveryTargetView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +19,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 
 /**
  * Starter-owned translator from engine assignment bindings to transport
@@ -32,18 +33,18 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
 
     private final TransportAssignedDeliverySubmitter assignedDeliverySubmitter;
     private final TransportDeliveryFailureHandler failureHandler;
-    private final WorkerDeliveryTargetView deliveryTargetView;
+    private final Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> deliveryTargetResolver;
     private final TaskDispatchPayloadEncoder payloadEncoder = new TaskDispatchPayloadEncoder();
     private final TaskDispatchDeliveryCorrelationCodec correlationCodec = new TaskDispatchDeliveryCorrelationCodec();
 
     TaskDispatchRoutingSubmitter(TransportAssignedDeliverySubmitter assignedDeliverySubmitter,
                                   TransportDeliveryFailureHandler failureHandler,
-                                  WorkerDeliveryTargetView deliveryTargetView) {
+                                  Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> deliveryTargetResolver) {
         this.assignedDeliverySubmitter = Objects.requireNonNull(assignedDeliverySubmitter, "assignedDeliverySubmitter");
         this.failureHandler = failureHandler;
-        this.deliveryTargetView = deliveryTargetView != null
-                ? deliveryTargetView
-                : WorkerDeliveryTargetView.unavailable();
+        this.deliveryTargetResolver = deliveryTargetResolver != null
+                ? deliveryTargetResolver
+                : selectedWorkerId -> Optional.empty();
     }
 
     @Override
@@ -63,8 +64,8 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
                 continue;
             }
             DispatchMessage item = toItem(task, binding, selectedWorkerId);
-            SelectedWorkerDeliveryTargetEvidence target = deliveryTargetView
-                    .resolveDeliveryTarget(selectedWorkerId)
+            SelectedWorkerDeliveryTargetEvidence target = deliveryTargetResolver
+                    .apply(selectedWorkerId)
                     .orElse(null);
             if (target == null || !target.isDeliverable(System.currentTimeMillis())) {
                 compensateDeliveryTargetFailure(item, "selected worker has no current adapter mailbox target");

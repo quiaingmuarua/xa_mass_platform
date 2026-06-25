@@ -125,9 +125,11 @@ entry for `transport/`.
   stored `endpointLeaseId` / public `sessionToken`.
 - `WorkerPresenceIngress` is current session-presence ingress only. Adapters may
   publish connect/heartbeat/disconnect observations, while worker-runtime owns
-  derived reachability and registry slot heartbeat freshness. Endpoint leases
-  remain delivery feasibility evidence and must not become worker lifecycle
-  truth, worker state-report truth, slot heartbeat truth, or capability truth.
+  derived reachability and selected-worker mailbox projection. Transport
+  connected/heartbeat observations must not refresh registry slot heartbeat or
+  request dispatch wakeup/recheck. Endpoint leases remain delivery feasibility
+  evidence and must not become worker lifecycle truth, worker state-report
+  truth, slot heartbeat truth, or capability truth.
 - Transport and concrete adapters must not import worker-runtime dispatch gate
   APIs or clear worker dispatch eligibility. Negative eligibility signals from
   transport observations are bridged in SDK/starter assembly through the

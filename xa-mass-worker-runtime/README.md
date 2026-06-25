@@ -108,17 +108,19 @@ Worker runtime does not own transport delivery identity:
   endpoint lease ids, session handles, and delivery queue keys are not worker
   selection inputs. If they affect scheduling, they must first be projected into
   bounded worker-runtime evidence.
-- `WorkerDeliveryTargetView` is the narrow worker-runtime delivery evidence
-  surface for the post-selection handoff: point lookup from `selectedWorkerId`
-  to an opaque `adapterMailboxKey`. Embedded runtimes may derive it from local
-  worker session presence; split runtimes must use an explicit injected view or
-  a future worker-runtime-owned shared projection. It is not a worker list,
-  mailbox list, statistics surface, endpoint inventory, or scheduling view.
+- Worker delivery target resolution is the narrow post-selection handoff:
+  point lookup from `selectedWorkerId` to
+  `SelectedWorkerDeliveryTargetEvidence` with an opaque `adapterMailboxKey`.
+  Embedded runtimes may derive it from local worker session presence; split
+  runtimes must use an explicit injected resolver or a future
+  worker-runtime-owned shared projection. It is not a worker list, mailbox
+  list, statistics surface, endpoint inventory, reachability state, or
+  scheduling view.
 - Transport session connected/heartbeat observations may maintain the embedded
   delivery-target and reachability projection while that projection is still the
-  current writer, but they must not refresh registry heartbeat, request recheck,
-  or make a worker schedulable. Explicit worker heartbeat/report paths remain
-  separate worker-runtime evidence inputs.
+  current writer, but they must not refresh registry heartbeat, request dispatch
+  wakeup/recheck, or make a worker schedulable. Explicit worker
+  heartbeat/report paths remain separate worker-runtime evidence inputs.
 - `WorkerDispatchBlockRuntime` is the negative-only external signal port for
   transport/starter integration. It can make a worker less schedulable by
   recording a source-scoped block, but it cannot clear a block or make a worker
@@ -144,8 +146,8 @@ evidence or diagnostics inside that owner path; it must not become three
 parallel scheduling state machines.
 
 `WorkerSchedulingViewRuntime` is the selection-facing read surface and no
-longer exposes reachability. Reachability diagnostics remain available through
-`WorkerReachabilityView` only.
+longer exposes reachability. Reachability diagnostics remain point reads from
+the embedded presence projection and must not return as a selection gate.
 
 Reachability is an observation input. `UNKNOWN` means the worker-runtime lacks
 fresh evidence and should not treat the worker as reachable for scheduling, but

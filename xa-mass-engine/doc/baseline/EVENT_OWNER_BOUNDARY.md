@@ -41,8 +41,8 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | task dispatch handoff | assignment/transport boundary | already-bound task work delivery view | worker matching, allocation, finality |
 | `TaskResultReport` | task result payload | worker task-result input | worker command ack, worker state report |
 | `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)` | transport result-ingress carrier | opaque routing target, payload, diagnostics, and creation time around worker result payloads | final result classification, task-result schema decoding |
-| `WorkerPresenceIngress` | transport session-presence ingress | worker session connect/heartbeat/disconnect observations projected into worker-runtime reachability, plus connected/heartbeat refresh of registry-owned slot heartbeat freshness | endpoint-lease delivery feasibility, command lifecycle, state projection, capability truth, worker resource status |
-| `WorkerReachabilityView` | worker-runtime read model | dispatchability evidence | transport endpoint leases, device state, load, command status |
+| `WorkerPresenceIngress` | transport session-presence ingress | worker session connect/heartbeat/disconnect observations projected into embedded reachability and delivery-target evidence; disconnected may emit negative dispatch evidence | endpoint-lease delivery feasibility, positive scheduling recovery, command lifecycle, state projection, capability truth, worker resource status |
+| reachability point read | worker-runtime diagnostic projection | bounded session-observation diagnostics | scheduling reopen, transport endpoint leases, device state, load, command status |
 | `WorkerRegistry` / `WorkerSlot` | scheduling resource owner | active/reserved task-work capacity and exclusive execution-lane evidence | reachability, device state, command lifecycle |
 | trace/audit plane | evidence | historical facts | current runtime truth |
 
@@ -232,7 +232,7 @@ task result, or scheduling lifecycle truth by itself.
 - Worker state projection is versioned per worker. Stale and conflicting reports
   are rejected as no-ops, idempotent reports are accepted without projection
   change, and recent raw report evidence is bounded per worker.
-- Worker state projection must not mutate `WorkerReachabilityView`,
+- Worker state projection must not mutate reachability diagnostics,
   `WorkerRegistry`, `WorkerRegistrySnapshot`, `WorkerCandidateIndex`,
   matching, or task-result convergence.
 - Task item stage evidence must not become public final result truth.
@@ -287,8 +287,8 @@ task result, or scheduling lifecycle truth by itself.
     event-binding ceilings
   - event availability is intersected with registration-approved event codes
   - stale, conflicting, and unknown-worker reports are rejected as no-ops
-- `WorkerReachabilityView` stays worker-runtime reachability evidence, not
-  transport endpoint-lease truth or generic health.
+- Reachability diagnostics stay worker-runtime observation evidence, not
+  transport endpoint-lease truth, scheduling reopen truth, or generic health.
 - `WorkerRegistry` stays task-work capacity and exclusive execution-lane
   evidence, not device state.
 - `WorkerPresenceIngress` must not import engine scheduling packages, mutate

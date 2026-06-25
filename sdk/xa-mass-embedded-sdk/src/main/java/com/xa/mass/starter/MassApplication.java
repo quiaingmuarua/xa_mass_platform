@@ -223,7 +223,7 @@ public class MassApplication {
                     transportRuntimeComposition.getTransportRuntimeMaxPendingTasks()
             );
             TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
-            validateWorkerDeliveryTargetViewConfiguration(runtimeRole);
+            validateWorkerDeliveryTargetResolverConfiguration(runtimeRole);
             AdapterMailboxConsumerRegistry mailboxConsumerRegistry = NoopAdapterMailboxConsumerRegistry.INSTANCE;
             if (requiresDispatchHandoff(runtimeRole)) {
                 transportDispatchHandoff =
@@ -369,12 +369,12 @@ public class MassApplication {
                 || (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER);
     }
 
-    private void validateWorkerDeliveryTargetViewConfiguration(TransportRuntimeRole runtimeRole) {
+    private void validateWorkerDeliveryTargetResolverConfiguration(TransportRuntimeRole runtimeRole) {
         if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER
                 && engineConfig.isEnabled()
-                && !engineConfig.isWorkerDeliveryTargetViewExplicitlyConfigured()) {
+                && !engineConfig.isWorkerDeliveryTargetResolverExplicitlyConfigured()) {
             throw new IllegalStateException(
-                    "engine-producer runtime requires an explicit WorkerDeliveryTargetView; "
+                    "engine-producer runtime requires an explicit worker delivery target resolver; "
                             + "local worker presence is only a valid default for embedded runtime"
             );
         }
@@ -402,7 +402,7 @@ public class MassApplication {
         return new TaskDispatchRoutingSubmitter(
                 assignedDeliverySubmitter,
                 createTransportDeliveryFailureHandler(),
-                engineConfig.getWorkerDeliveryTargetView()
+                engineConfig::resolveWorkerDeliveryTarget
         );
     }
 

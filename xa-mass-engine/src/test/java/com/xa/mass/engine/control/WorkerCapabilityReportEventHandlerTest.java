@@ -18,6 +18,7 @@ import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
+import com.xa.mass.worker.runtime.control.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportStatus;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
@@ -144,7 +145,7 @@ public class WorkerCapabilityReportEventHandlerTest {
         return new WorkerControlService(
                 workerManager,
                 workerManager,
-                workerManager,
+                new DefaultWorkerDispatchAvailabilityPolicy(workerManager, workerManager),
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
                 traceEventLogger);

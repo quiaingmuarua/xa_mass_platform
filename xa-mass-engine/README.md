@@ -395,9 +395,9 @@ Repo-level mainline surfaces:
   must not grow a direct dependency on transport routing/runtime classes, and
   transport-side consumption now happens through the batch handoff seam rather
   than a direct dispatch-listener callback
-- worker-runtime reachability is read through `WorkerReachabilityView`;
-  dispatch eligibility must not read transport endpoint leases as worker
-  lifecycle truth
+- worker-runtime reachability diagnostics are point reads from the embedded
+  presence projection; dispatch eligibility must not read transport endpoint
+  leases as worker lifecycle truth
 - task-create input consumed by `TaskCommandService` now lives in the neutral
   base model layer; cross-module create flows should not import engine-owned
   DTO packages just to submit tasks

@@ -1104,10 +1104,10 @@ public class WorkerManagerTest {
         assertFalse(manager.tryAcquireWorkerExclusiveLease("w7"));
     }
 
-    // ---- worker model status vs transport reachability ----
+    // ---- worker model status vs reachability diagnostics ----
 
     @Test
-    void workerReachabilityComesFromTransportViewInsteadOfWorkerModelStatus() {
+    void workerReachabilityComesFromInjectedPointReadInsteadOfWorkerModelStatus() {
         WorkerManager reachabilityAwareManager = new WorkerManager(
                 new TestWorkerDeclarationStore(),
                 workerId -> switch (workerId) {

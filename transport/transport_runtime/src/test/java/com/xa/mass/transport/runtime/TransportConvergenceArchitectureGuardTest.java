@@ -97,6 +97,23 @@ class TransportConvergenceArchitectureGuardTest {
                 "refreshWorkerHeartbeat(",
                 "refreshSlotHeartbeat"
         );
+        assertPathsDoNotExist(
+                repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/presence/WorkerPresenceRuntime.java"),
+                repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerReachabilityView.java"),
+                repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerDeliveryTargetView.java")
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/presence/InMemoryWorkerPresenceRuntime.java")
+                ),
+                "setDispatchWakeupCallback",
+                "dispatchWakeupCallback",
+                "notifyDispatchWakeup("
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassEngine.java")),
+                "getWorkerPresenceRuntime().setDispatchWakeupCallback"
+        );
     }
 
     @Test
@@ -1183,9 +1200,11 @@ class TransportConvergenceArchitectureGuardTest {
 
     @Test
     void selectedWorkerMailboxEvidenceMainlineStaysPointLookupOnly() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerDeliveryTargetView.java")
+        );
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerDeliveryTargetView.java"),
                         repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/SelectedWorkerDeliveryTargetEvidence.java")
                 ),
                 "List<",
@@ -1194,7 +1213,9 @@ class TransportConvergenceArchitectureGuardTest {
                 "stats",
                 "snapshot",
                 "count",
-                "inspect"
+                "inspect",
+                "WorkerReachabilityState",
+                "reachabilityState"
         );
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("xa-mass-base/src/main/java/com/xa/mass/base/runtime/dispatch/TaskDispatchBinding.java")),

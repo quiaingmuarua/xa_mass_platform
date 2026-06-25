@@ -127,7 +127,6 @@ import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.sdk.worker.WorkerAction;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -974,14 +973,12 @@ class MassSdkTest {
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = mock(EngineConfig.class);
         WorkerResourceQueryRuntime workerRuntime = mock(WorkerResourceQueryRuntime.class);
-        WorkerReachabilityView reachabilityView = mock(WorkerReachabilityView.class);
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getWorkerResourceQueryRuntime()).thenReturn(workerRuntime);
-        when(config.getWorkerReachabilityView()).thenReturn(reachabilityView);
         when(workerRuntime.worker("worker-1")).thenReturn(java.util.Optional.of(workerResource("worker-1", "group-1")));
-        when(reachabilityView.getWorkerReachability("worker-1")).thenReturn(WorkerReachabilityState.ONLINE);
+        when(config.getWorkerReachability("worker-1")).thenReturn(WorkerReachabilityState.ONLINE);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -994,15 +991,13 @@ class MassSdkTest {
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = mock(EngineConfig.class);
         WorkerResourceQueryRuntime workerRuntime = mock(WorkerResourceQueryRuntime.class);
-        WorkerReachabilityView reachabilityView = mock(WorkerReachabilityView.class);
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
         when(engine.getConfig()).thenReturn(config);
         when(config.getWorkerResourceQueryRuntime()).thenReturn(workerRuntime);
-        when(config.getWorkerReachabilityView()).thenReturn(reachabilityView);
         when(workerRuntime.worker("worker-stale")).thenReturn(java.util.Optional.of(
                 workerResource("worker-stale", "group-1")));
-        when(reachabilityView.getWorkerReachability("worker-stale")).thenReturn(WorkerReachabilityState.OFFLINE);
+        when(config.getWorkerReachability("worker-stale")).thenReturn(WorkerReachabilityState.OFFLINE);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 

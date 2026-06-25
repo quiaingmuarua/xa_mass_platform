@@ -11,13 +11,13 @@ import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -47,7 +47,6 @@ class TaskDispatchRoutingSubmitterTest {
                 selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                         selectedWorkerId,
                         "mailbox-a",
-                        WorkerReachabilityState.ONLINE,
                         1L,
                         1L,
                         1L
@@ -70,7 +69,6 @@ class TaskDispatchRoutingSubmitterTest {
                 selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                         "other-worker",
                         "mailbox-a",
-                        WorkerReachabilityState.ONLINE,
                         1L,
                         System.currentTimeMillis(),
                         Long.MAX_VALUE
@@ -86,13 +84,13 @@ class TaskDispatchRoutingSubmitterTest {
     }
 
     private static TaskDispatchRoutingSubmitter submitter(
-            com.xa.mass.worker.runtime.evidence.WorkerDeliveryTargetView view,
+            Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> resolver,
             RecordingHandoff handoff,
             RecordingFailureHandler failures) {
         return new TaskDispatchRoutingSubmitter(
                 new TransportAssignedDeliverySubmitter(handoff, failures),
                 failures,
-                view
+                resolver
         );
     }
 

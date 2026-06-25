@@ -54,8 +54,8 @@ Current landed slice:
 - session-presence ingress emits `TRANSPORT_DISCONNECTED` only when the
   worker-runtime presence projection accepts the disconnect and the worker
   becomes unreachable;
-- worker selection no longer rejects candidates by reading
-  `WorkerReachabilityView` directly; it consumes worker-runtime registry/gate
+- worker selection no longer rejects candidates by reading direct reachability
+  projection; it consumes worker-runtime registry/gate
   dispatch eligibility;
 - worker state/command dispatch eligibility policy is owned by
   `WorkerDispatchEligibilityRuntime` in worker-runtime; `WorkerControlService`
@@ -71,20 +71,29 @@ Current landed slice:
   clearing that source through `WorkerRegistry.recoverDispatchDisable(...)`;
 - `WorkerRuntimePresenceIngress` no longer calls `WorkerHeartbeatRuntime` or
   refreshes registry heartbeat from transport connected/heartbeat observations.
-  The remaining session-presence bridge only preserves current delivery-target
-  and reachability projection until a replacement writer exists;
+  The old `WorkerPresenceRuntime` interface has been removed; the remaining
+  session-presence bridge writes only to the embedded
+  `InMemoryWorkerPresenceRuntime` projection, so transport
+  connected/reconnected observations also cannot wake the scheduler through the
+  presence projection. That bridge preserves current delivery-target and
+  reachability projection until a replacement writer exists;
 - worker-runtime admission/final evidence (`releaseWorkerReservation`,
   `recordWorkFinal`, and exclusive-lock release) now requests dispatch wakeup
   through `WorkerAvailabilityWakeupRuntime`; it does not clear block sources.
+- `SelectedWorkerDeliveryTargetEvidence` no longer carries
+  `WorkerReachabilityState`; assigned delivery target evidence is only
+  selected-worker mailbox target, generation, and expiry evidence.
 
 Current executable slice is the negative-fast-close lane, selection-gate owner
 move, worker-control dispatch eligibility owner move, and removal of
 readiness/reachability/occupancy as separate scheduling truth models. SDK
 runtime bridge clear-gate cleanup and first positive recovery validation have
-landed; the transport-presence-to-registry-heartbeat write bridge has also been
-removed, and capacity-changing release/final/lock-release evidence now reaches
-the worker-runtime dispatch wakeup/recheck hook. Freshness point-read recovery,
-full push-presence deletion or delivery-target writer replacement, and broader
+landed; the transport-presence-to-registry-heartbeat bridge and the
+presence-to-dispatch-wakeup bridge have also been removed, and
+capacity-changing release/final/lock-release evidence now reaches the
+worker-runtime dispatch wakeup/recheck hook. Delivery target evidence has been
+separated from reachability vocabulary. Freshness point-read recovery, full
+push-presence deletion or delivery-target writer replacement, and broader
 release/delete policy remain roadmap work, not completed facts.
 Delivery target ownership can remain on the current simple implementation for
 this slice as long as assigned dispatch does not move target resolution into
@@ -574,12 +583,16 @@ classification remains follow-up policy.
 - Current `WorkerRuntimePresenceIngress` receives transport connected,
   heartbeat, and disconnected events and mutates worker-runtime presence
   projection directly for reachability and delivery-target evidence. It no
-  longer refreshes registry heartbeat from connected/heartbeat observations.
+  longer refreshes registry heartbeat from connected/heartbeat observations, and
+  it now writes to the embedded `InMemoryWorkerPresenceRuntime` projection
+  directly.
 - Current `InMemoryWorkerPresenceRuntime` models active sessions and projects
   older `ONLINE / STALE / OFFLINE / UNKNOWN` reachability vocabulary.
-- Current `WorkerPresenceRuntime` also implements `WorkerDeliveryTargetView`;
-  `resolveDeliveryTarget(selectedWorkerId)` is still the dispatch producer's
+- Current `InMemoryWorkerPresenceRuntime` exposes
+  `resolveDeliveryTarget(selectedWorkerId)` as the embedded dispatch producer's
   source for `selectedWorkerId -> adapterMailboxKey`.
+  The returned `SelectedWorkerDeliveryTargetEvidence` no longer carries
+  reachability state.
 - Current `WorkerSelectionOwner` no longer rejects candidates by calling
   `WorkerSchedulingViewRuntime.getWorkerReachability(workerId) != ONLINE`.
   Direct reachability projection is guarded as diagnostic/evidence-only for
@@ -587,7 +600,7 @@ classification remains follow-up policy.
   dispatch eligibility, admission, capacity, locks, and matching.
 - Current `WorkerSchedulingViewRuntime` no longer exposes
   `getWorkerReachability`; SDK/operator diagnostics read reachability through
-  `WorkerReachabilityView`.
+  a point read on the embedded presence projection.
 - Current `WorkerRegistry` already owns candidate acquisition, slot lifecycle,
   heartbeat freshness, dispatch disable sources, reservation, and lifecycle
   cleanup in memory and Redis implementations.
@@ -610,7 +623,8 @@ classification remains follow-up policy.
   `TaskEventListenerRegistrar` plus the dispatch wakeup callback; they do not
   accept `WorkerDispatchGateRuntime`.
 - Current `MassEngine` no longer passes a clear-capable worker dispatch gate to
-  optional shell bridge code.
+  optional shell bridge code, and it no longer wires engine dispatch wakeup into
+  worker presence projection.
 - Current `EngineRuntimeKernel.StartedRuntime` carries only event listeners and
   the dispatch wakeup callback; it no longer exposes
   `WorkerDispatchGateRuntime`.
@@ -637,7 +651,7 @@ classification remains follow-up policy.
 - Do not make transport heartbeat write worker-runtime registry heartbeat as a
   target mechanism.
 - Do not let transport or adapters move a worker into `schedulable`.
-- Do not keep `WorkerReachabilityView` as an independent selection-time
+- Do not keep reachability projection as an independent selection-time
   scheduling gate. Reachability/freshness may feed worker-runtime recovery, but
   candidate rejection must come from registry/gate/admission projections.
 - Do not pull engine control-policy migration into the first
@@ -647,10 +661,9 @@ classification remains follow-up policy.
 - Do not add a parallel `WorkerSchedulingIndex` unless inventory proves the
   existing registry/gate owners cannot be extended; if that happens, this
   roadmap must be revised before implementation.
-- Do not delete `WorkerDeliveryTargetView` or the
-  current `selectedWorkerId -> adapterMailboxKey` resolver as part of this
-  roadmap unless a same-slice replacement keeps target resolution before
-  transport enqueue.
+- Do not delete the current `selectedWorkerId -> adapterMailboxKey` resolver
+  path as part of this roadmap unless a same-slice replacement keeps target
+  resolution before transport enqueue.
 - Do not classify ordinary reservation, active lease, or `OCCUPIED` as a
   candidate-lifecycle hold. Capacity belongs to reserve/admission.
 - Do not redesign task attempt timeout/retry in this roadmap.
@@ -692,9 +705,8 @@ Scope:
   - `WorkerSessionPresenceEvent`
   - `TransportEndpointLeaseStore`
   - `TransportEndpointLeasePublisher`
-  - `WorkerPresenceRuntime`
+  - `InMemoryWorkerPresenceRuntime`
   - `WorkerReachabilityState`
-  - `WorkerDeliveryTargetView`
   - `SelectedWorkerDeliveryTargetEvidence`
   - `TransportEndpointLeaseStore`
   - `TransportEndpointLeasePublisher`
@@ -731,7 +743,7 @@ Scope:
   - or another worker-runtime-owned name that does not imply a parallel
     scheduling owner.
 - Inventory the current delivery target resolver:
-  - keep the existing simple `WorkerDeliveryTargetView` path for this roadmap
+  - keep the existing simple selected-worker resolver path for this roadmap
     unless a replacement is needed by the current slice;
   - name the writer that updates `SelectedWorkerDeliveryTargetEvidence`;
   - separate delivery target evidence from scheduling eligibility and transport
@@ -791,7 +803,8 @@ Acceptance:
 - Roadmap names the retained or replacement owner for
   the pre-transport delivery target resolver if this roadmap changes it.
 - Roadmap names the delivery target evidence writer before any slice removes
-  `WorkerPresenceIngress`, `WorkerPresenceRuntime`, or session-presence writes.
+  `WorkerPresenceIngress`, `InMemoryWorkerPresenceRuntime`, or session-presence
+  writes.
 - Roadmap states that `WorkerRegistry + WorkerDispatchGateRuntime` are the
   first extension targets; adding a parallel scheduling index is blocked unless
   a later owner decision explicitly replaces registry ownership.
@@ -803,7 +816,7 @@ Acceptance:
 - Inventory classifies task completion/release as capacity evidence, not as a
   direct gate-clear or block-clear command.
 - Inventory explicitly names the migration point where `WorkerSelectionOwner`
-  stops using transport-derived `WorkerReachabilityView` as an independent
+  stops using transport-derived reachability projection as an independent
   scheduling gate.
 
 ## NDE-0A Positive Evidence And Port Boundary Decision
@@ -881,7 +894,7 @@ Scope:
   - worker-runtime owns the final schedulable decision after release evidence.
 - Decide whether delivery target resolver ownership is changing in this
   roadmap:
-  - if not, retain the existing simple `WorkerDeliveryTargetView` path;
+  - if not, retain the existing simple selected-worker resolver path;
   - name the writer that keeps `SelectedWorkerDeliveryTargetEvidence` current;
   - keep delivery target evidence out of freshness evidence providers;
   - if yes, keep target resolution before transport enqueue and do not replace
@@ -966,7 +979,7 @@ Scope:
   membership internally.
 - Recheck for blocked workers is owned by worker-runtime and may be periodic,
   demand-driven, or bounded opportunistic cleanup.
-- Move worker selection away from direct `WorkerReachabilityView` gating:
+- Move worker selection away from direct reachability projection gating:
   candidate exclusion must come from registry/gate/admission projections, not a
   transport-derived `ONLINE` read.
 
@@ -987,8 +1000,8 @@ Acceptance:
 - Task completion/release evidence can reduce occupancy/capacity, but it does
   not clear block sources.
 - `WorkerSelectionOwner` no longer rejects candidates by reading a
-  transport-derived `WorkerReachabilityView` / `getWorkerReachability(...) ==
-  ONLINE` check as an independent scheduling gate.
+  transport-derived `getWorkerReachability(...) == ONLINE` check as an
+  independent scheduling gate.
 - `WorkerSchedulingViewRuntime.getWorkerReachability` is removed from the
   selection path or explicitly retained as diagnostic/non-gating residue with a
   follow-up removal target.
@@ -1166,9 +1179,10 @@ Acceptance:
 ## NDE-4 Remove Push-Presence Scheduling-Mutation Residue
 
 Status: partial cleanup landed. Transport connected/heartbeat no longer refresh
-worker registry heartbeat or write scheduling freshness through
-`WorkerRuntimePresenceIngress`. Full push-presence removal remains follow-up
-until delivery target evidence has a replacement writer.
+worker registry heartbeat, write scheduling freshness through
+`WorkerRuntimePresenceIngress`, or wake the scheduler through
+the embedded worker presence projection. Full push-presence removal remains
+follow-up until delivery target evidence has a replacement writer.
 
 Scope:
 
@@ -1185,7 +1199,7 @@ Scope:
   must not mutate worker-runtime scheduling state or drive producer-side target
   resolution.
 - Preserve the current delivery target resolver, or replace it in the same
-  slice, before deleting `WorkerPresenceRuntime`.
+  slice, before deleting `InMemoryWorkerPresenceRuntime`.
 - Preserve or replace the delivery target evidence writer before deleting
   session-presence writes that currently update delivery targets.
 - If no replacement writer proof exists, do not delete the
@@ -1194,7 +1208,7 @@ Scope:
 - Current allowed intermediate state: `WorkerRuntimePresenceIngress` may still
   update worker-runtime presence projection for delivery-target evidence and
   reachability diagnostics, but it must not call `WorkerHeartbeatRuntime`, refresh
-  registry heartbeat, request recheck, or open eligibility.
+  registry heartbeat, request dispatch wakeup/recheck, or open eligibility.
 
 Acceptance:
 
@@ -1412,7 +1426,7 @@ Acceptance:
 NDE-0 / NDE-0A proof:
 
 ```bash
-rg -n "WorkerRuntimePresenceIngress|refreshSlotHeartbeat|WorkerDeliveryTargetView|SelectedWorkerDeliveryTargetEvidence|TaskDispatchRoutingSubmitter|WorkerDispatchGateRuntime|DispatchAvailabilitySource|WorkerSelectionOwner|getWorkerReachability|WorkerReachabilityView|release.*Worker|complete.*Worker" sdk xa-mass-worker-runtime xa-mass-engine platform_infra transport --glob "*.java" --glob "!**/target/**"
+rg -n "WorkerRuntimePresenceIngress|refreshSlotHeartbeat|SelectedWorkerDeliveryTargetEvidence|TaskDispatchRoutingSubmitter|WorkerDispatchGateRuntime|DispatchAvailabilitySource|WorkerSelectionOwner|getWorkerReachability|release.*Worker|complete.*Worker" sdk xa-mass-worker-runtime xa-mass-engine platform_infra transport --glob "*.java" --glob "!**/target/**"
 ```
 
 NDE-0 / NDE-0A acceptance is an inventory and decision proof, not a runtime test
@@ -1454,11 +1468,14 @@ rg -n "WorkerDispatchGateRuntime|clearWorkerDispatchDisable" sdk/xa-mass-embedde
 rg -n "clearWorkerDispatchDisable" xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/control/DefaultWorkerDispatchAvailabilityPolicy.java xa-mass-engine/src/main/java/com/xa/mass/engine/control/WorkerControlService.java
 ```
 
-NDE-4A transport-presence heartbeat-write cleanup proof:
+NDE-4A transport-presence heartbeat-write and wakeup cleanup proof:
 
 ```bash
 mvn -pl sdk/xa-mass-embedded-sdk,transport/transport_runtime -am test -Dtest='WorkerRuntimePresenceIngressTest,MassEngineAssemblyBoundaryTest,TransportConvergenceArchitectureGuardTest'
 rg -n "WorkerHeartbeatRuntime|refreshWorkerHeartbeat|refreshSlotHeartbeat" sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java
+rg -n "setDispatchWakeupCallback|dispatchWakeupCallback|notifyDispatchWakeup" xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/presence
+rg -n "interface\\s+WorkerPresenceRuntime|import\\s+.*\\.WorkerPresenceRuntime;|setWorkerPresenceRuntime\\(" sdk/xa-mass-embedded-sdk/src/main/java xa-mass-worker-runtime/src/main/java --glob "*.java"
+rg -n "getWorkerPresenceRuntime\\(\\)\\.setDispatchWakeupCallback" sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassEngine.java
 ```
 
 NDE-3 first release/recheck-request proof:
@@ -1518,8 +1535,8 @@ This roadmap is complete only when:
   internal optimization behind the same port;
 - scheduler acquisition reads existing worker-runtime registry/gate eligibility
   projections;
-- `WorkerSelectionOwner` no longer treats transport-derived
-  `WorkerReachabilityView` as an independent scheduling gate;
+- `WorkerSelectionOwner` no longer treats transport-derived reachability
+  projection as an independent scheduling gate;
 - the selection-facing `WorkerSchedulingViewRuntime` does not expose
   `getWorkerReachability`;
 - engine control submits worker state/command evidence to

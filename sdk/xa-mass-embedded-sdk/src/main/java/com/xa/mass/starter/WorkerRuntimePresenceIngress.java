@@ -9,8 +9,8 @@ import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
+import com.xa.mass.worker.runtime.presence.InMemoryWorkerPresenceRuntime;
 import com.xa.mass.worker.runtime.presence.WorkerPresenceChange;
-import com.xa.mass.worker.runtime.presence.WorkerPresenceRuntime;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,15 +18,15 @@ import java.util.Objects;
 
 /**
  * Projects transport session-presence evidence into the worker-runtime
- * reachability owner.
+ * embedded reachability and delivery-target projection.
  */
 final class WorkerRuntimePresenceIngress implements WorkerPresenceIngress {
 
-    private final WorkerPresenceRuntime workerPresenceRuntime;
+    private final InMemoryWorkerPresenceRuntime workerPresenceRuntime;
     private final WorkerDispatchBlockRuntime workerDispatchBlockRuntime;
     private final ExecutionEventSink traceSink;
 
-    WorkerRuntimePresenceIngress(WorkerPresenceRuntime workerPresenceRuntime,
+    WorkerRuntimePresenceIngress(InMemoryWorkerPresenceRuntime workerPresenceRuntime,
                                  WorkerDispatchBlockRuntime workerDispatchBlockRuntime,
                                  ExecutionEventSink traceSink) {
         this.workerPresenceRuntime = Objects.requireNonNull(workerPresenceRuntime, "workerPresenceRuntime");

@@ -3034,8 +3034,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("worker state report -> reachability truth",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerReachabilityView.java"),
-                                        repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerManager.java")
+                                        repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerManager.java"),
+                                        repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/presence/InMemoryWorkerPresenceRuntime.java")
                                 ),
                                 Pattern.compile("\\bWorkerStateReport\\b")))
         );
@@ -3192,7 +3192,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("reachability read model",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerReachabilityView.java")
+                                        repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerManager.java"),
+                                        repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/presence/InMemoryWorkerPresenceRuntime.java")
                                 ),
                                 workerControlOrState)),
                 Map.entry("load read model",

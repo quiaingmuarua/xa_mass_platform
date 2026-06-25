@@ -68,7 +68,8 @@ WorkerSchedulingCandidateEnumerator
 Current worker scheduling evidence includes:
 
 - worker identity, group identity, and group-indexed candidate-source evidence
-- reachability from `WorkerReachabilityView`
+- dispatch gate and worker-runtime registry eligibility; reachability
+  diagnostics must not be read as a separate selection gate
 - dispatch-enabled and worker lock state
 - routing tags and scheduling attributes from worker-level facts
 - load/reservation facts from `WorkerRegistry` / `WorkerSlot`

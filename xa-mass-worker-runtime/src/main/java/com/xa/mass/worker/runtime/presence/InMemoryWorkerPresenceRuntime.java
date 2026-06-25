@@ -20,7 +20,7 @@ import java.util.function.LongSupplier;
  * adapter mailbox key is the delivery target projection. Route key is retained
  * as diagnostic metadata only and never participates in currentness decisions.</p>
  */
-public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntime {
+public final class InMemoryWorkerPresenceRuntime {
 
     public static final long DEFAULT_SESSION_TIMEOUT_MILLIS = 300_000L;
 
@@ -30,8 +30,6 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
     private final Set<String> seenWorkers = new HashSet<>();
     private final Map<String, String> currentMailboxByWorker = new HashMap<>();
     private final Map<String, Long> deliveryTargetGenerationByWorker = new HashMap<>();
-    private Runnable dispatchWakeupCallback = () -> {
-    };
 
     public InMemoryWorkerPresenceRuntime() {
         this(DEFAULT_SESSION_TIMEOUT_MILLIS, System::currentTimeMillis);
@@ -46,7 +44,6 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    @Override
     public synchronized WorkerPresenceChange sessionConnected(String workerId,
                                                              String adapterId,
                                                              String adapterMailboxKey,
@@ -57,7 +54,6 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
         return upsertSession(workerId, adapterId, adapterMailboxKey, routeKey, sessionToken, observedAtMillis, reason);
     }
 
-    @Override
     public synchronized WorkerPresenceChange sessionHeartbeat(String workerId,
                                                              String adapterId,
                                                              String adapterMailboxKey,
@@ -68,7 +64,6 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
         return refreshSession(workerId, adapterId, adapterMailboxKey, routeKey, sessionToken, observedAtMillis, reason);
     }
 
-    @Override
     public synchronized WorkerPresenceChange sessionDisconnected(String workerId,
                                                                 String adapterId,
                                                                 String adapterMailboxKey,
@@ -99,7 +94,6 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
         );
     }
 
-    @Override
     public synchronized WorkerReachabilityState getWorkerReachability(String workerId) {
         if (workerId == null || workerId.isBlank()) {
             return WorkerReachabilityState.UNKNOWN;
@@ -107,14 +101,12 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
         return stateForWorker(workerId.trim(), clock.getAsLong());
     }
 
-    @Override
     public synchronized Optional<SelectedWorkerDeliveryTargetEvidence> resolveDeliveryTarget(String selectedWorkerId) {
         if (selectedWorkerId == null || selectedWorkerId.isBlank()) {
             return Optional.empty();
         }
         long now = clock.getAsLong();
         String normalizedWorkerId = selectedWorkerId.trim();
-        WorkerReachabilityState reachability = stateForWorker(normalizedWorkerId, now);
         PresenceSessionRecord session = currentSessionForWorker(normalizedWorkerId, now);
         if (session == null) {
             return Optional.empty();
@@ -127,17 +119,10 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
         return Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                 normalizedWorkerId,
                 mailboxKey,
-                reachability,
                 generation,
                 session.lastObservedAtMillis(),
                 expiresAt
         ));
-    }
-
-    @Override
-    public synchronized void setDispatchWakeupCallback(Runnable dispatchWakeupCallback) {
-        this.dispatchWakeupCallback = dispatchWakeupCallback != null ? dispatchWakeupCallback : () -> {
-        };
     }
 
     private WorkerPresenceChange upsertSession(String workerId,
@@ -174,9 +159,6 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
                 previous != current,
                 true
         );
-        if (change.becameReachable()) {
-            notifyDispatchWakeup();
-        }
         return change;
     }
 
@@ -281,14 +263,6 @@ public final class InMemoryWorkerPresenceRuntime implements WorkerPresenceRuntim
                 seenWorkers.add(record.key().workerId());
                 iterator.remove();
             }
-        }
-    }
-
-    private void notifyDispatchWakeup() {
-        try {
-            dispatchWakeupCallback.run();
-        } catch (RuntimeException ignored) {
-            // Presence should not fail because dispatch wakeup notification failed.
         }
     }
 

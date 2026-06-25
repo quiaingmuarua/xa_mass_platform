@@ -61,12 +61,10 @@ the selected-worker-to-mailbox projection.
 
 ## Current Code Observations
 
-- `TaskDispatchRoutingSubmitter` resolves
-  `WorkerDeliveryTargetView.resolveDeliveryTarget(selectedWorkerId)` after
-  engine assignment and before transport handoff.
+- `TaskDispatchRoutingSubmitter` resolves selected-worker delivery target
+  evidence after engine assignment and before transport handoff.
 - `SelectedWorkerDeliveryTargetEvidence` currently carries `workerId`,
-  `adapterMailboxKey`, reachability state, generation, observed time, and
-  expiry.
+  `adapterMailboxKey`, generation, observed time, and expiry.
 - `TaskDispatchRoutingSubmitter` already rejects missing, stale, or
   mismatched evidence and emits delivery failure evidence for engine
   compensation.
@@ -76,10 +74,10 @@ the selected-worker-to-mailbox projection.
 - `WorkerSessionPresenceEvent` carries explicit `adapterMailboxKey`,
   `WorkerRuntimePresenceIngress` forwards that field into worker-runtime
   presence, and focused proof covers `adapterId != adapterMailboxKey`.
-- `EngineConfig.setWorkerDeliveryTargetView(...)` now records explicit
-  delivery-target-view configuration, and `MassApplication` fails fast for
-  split engine-producer roles that do not provide an explicit view.
-- Split runtime tests inject a `WorkerDeliveryTargetView` as injection-mode
+- `EngineConfig.setWorkerDeliveryTargetResolver(...)` now records explicit
+  delivery-target-resolver configuration, and `MassApplication` fails fast for
+  split engine-producer roles that do not provide an explicit resolver.
+- Split runtime tests inject a selected-worker resolver as injection-mode
   proof. That proves the deployment-injected contract, not a shared runtime
   truth.
 - `InMemoryWorkerPresenceRuntime.activeSessionCount(...)` has been removed;
@@ -93,8 +91,8 @@ Implemented slice facts:
 - embedded/in-memory session presence can produce
   `selectedWorkerId -> adapterMailboxKey`
 - submitter rejects missing, stale, and mismatched delivery target evidence
-- embedded assembly can receive an injected `WorkerDeliveryTargetView`
-- split engine-producer startup fails without an explicit delivery target view
+- embedded assembly can receive an injected selected-worker resolver
+- split engine-producer startup fails without an explicit delivery target resolver
 - missing, expired, and mismatched target evidence each emit one producer-side
   delivery failure outcome
 - delivery-target evidence mainline has no list/count/stats/snapshot/inspect
@@ -256,8 +254,8 @@ test-only session-count residue has been removed from worker-runtime mainline.
 
 Scope:
 
-- Inventory all production, test, and fake implementations of
-  `WorkerDeliveryTargetView`.
+- Inventory all production, test, and fake selected-worker delivery target
+  resolvers.
 - Inventory all writers of `WorkerSessionPresenceEvent` and any path that can
   feed selected-worker mailbox evidence.
 - Classify every field on `SelectedWorkerDeliveryTargetEvidence` as one of:
@@ -281,29 +279,29 @@ Acceptance:
 - The inventory records the removed `activeSessionCount(...)` residue and the
   guard prevents it from returning as a public mainline read API.
 
-## SWME-1A - Formalize Injected View And Startup Guard
+## SWME-1A - Formalize Injected Resolver And Startup Guard
 
 Status: implemented.
 
 Implemented proof:
 
-- `EngineConfig` tracks whether `WorkerDeliveryTargetView` was explicitly
-  configured.
+- `EngineConfig` tracks whether a selected-worker delivery target resolver was
+  explicitly configured.
 - `MassApplication` fails startup for `ENGINE_PRODUCER` when no explicit
-  delivery target view is configured.
+  delivery target resolver is configured.
 - `WorkerRuntimePresenceIngressTest` proves `adapterId=websocket` with
   `adapterMailboxKey=mailbox-a` resolves to `mailbox-a`.
 
 Scope:
 
-- Formalize the existing `WorkerDeliveryTargetView` injection seam in
+- Formalize the selected-worker resolver injection seam in
   `EngineConfig` / `MassApplication` as the split-runtime producer contract.
 - Define which profiles use embedded in-memory worker presence as the default
-  view and which profiles require an explicit injected/shared view.
+  resolver and which profiles require an explicit injected/shared resolver.
 - Add startup failure for producer roles that enable adapter-mailbox dispatch
   but have neither embedded local presence nor an explicit delivery target
-  view.
-- Keep fake views test-only and clearly named as injection-mode fixtures.
+  resolver.
+- Keep fake resolvers test-only and clearly named as injection-mode fixtures.
 - Add SDK ingress proof that `WorkerRuntimePresenceIngress` preserves
   `adapterMailboxKey` when it differs from `adapterId`.
 
@@ -312,11 +310,11 @@ Acceptance:
 - The injection contract is documented as worker-runtime evidence, not
   transport endpoint evidence.
 - Embedded/local profile defaults remain explicit: local worker presence may be
-  the delivery target view only when producer and session observations live in
+  the delivery target resolver only when producer and session observations live in
   the same runtime.
 - Split producer profile cannot silently fall back to an empty or local-only
-  in-memory view when external evidence is required.
-- Tests that use injected views say they are testing injection mode; they do
+  in-memory resolver when external evidence is required.
+- Tests that use injected resolvers say they are testing injection mode; they do
   not imply a shared distributed projection already exists.
 - `WorkerRuntimePresenceIngressTest` or an equivalent focused test proves
   `adapterId=websocket` and `adapterMailboxKey=mailbox-a` resolve to
@@ -396,10 +394,10 @@ Scope:
 - Add guards that prevent statistics/view APIs from becoming the delivery
   target read path.
 - Guard scope should target the delivery-target mainline packages and callers:
-  `WorkerDeliveryTargetView`, `SelectedWorkerDeliveryTargetEvidence`,
+  `SelectedWorkerDeliveryTargetEvidence`,
   worker-runtime delivery-target projection/store implementations,
   `TaskDispatchRoutingSubmitter`, and profile assembly that wires the
-  view. Do not use broad repository-wide scans that would block unrelated
+  resolver. Do not use broad repository-wide scans that would block unrelated
   diagnostics or test helpers.
 
 Acceptance:
@@ -445,7 +443,7 @@ Mandatory proof additions before this roadmap can be marked complete:
   `adapterId != adapterMailboxKey` is preserved into
   `resolveDeliveryTarget(workerId)`.
 - A split-profile assembly test must prove producer startup fails when a
-  required delivery target view is absent, or explicitly documents and verifies
+  required delivery target resolver is absent, or explicitly documents and verifies
   injection mode.
 - `TaskDispatchRoutingSubmitterTest` or equivalent must prove missing,
   expired, and mismatched delivery target evidence each emit one producer-side

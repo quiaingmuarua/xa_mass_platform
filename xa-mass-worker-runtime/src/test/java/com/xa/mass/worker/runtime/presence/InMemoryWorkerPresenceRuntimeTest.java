@@ -4,7 +4,6 @@ import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -118,20 +117,19 @@ class InMemoryWorkerPresenceRuntimeTest {
     }
 
     @Test
-    void expiredSessionBecomesOfflineOnReadAndNewOnlineWakesDispatcher() {
+    void expiredSessionBecomesOfflineOnReadAndReconnectOnlyUpdatesPresenceProjection() {
         AtomicLong now = new AtomicLong(1_000L);
-        AtomicInteger wakeups = new AtomicInteger();
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(500L, now::get);
-        runtime.setDispatchWakeupCallback(wakeups::incrementAndGet);
 
         runtime.sessionConnected("worker-1", "websocket", "websocket", "route", "session", now.get(), "connected");
-        assertEquals(1, wakeups.get());
+        assertEquals(WorkerReachabilityState.ONLINE, runtime.getWorkerReachability("worker-1"));
 
         now.set(1_600L);
         assertEquals(WorkerReachabilityState.OFFLINE, runtime.getWorkerReachability("worker-1"));
 
         runtime.sessionConnected("worker-1", "websocket", "websocket", "route", "session-2", now.get(), "reconnected");
-        assertEquals(2, wakeups.get());
+        assertEquals(WorkerReachabilityState.ONLINE, runtime.getWorkerReachability("worker-1"));
+        assertEquals(true, runtime.resolveDeliveryTarget("worker-1").isPresent());
     }
 
     @Test
@@ -146,7 +144,6 @@ class InMemoryWorkerPresenceRuntimeTest {
 
         assertEquals("worker-1", first.workerId());
         assertEquals("mailbox-ws", first.adapterMailboxKey());
-        assertEquals(WorkerReachabilityState.ONLINE, first.reachabilityState());
         assertEquals(1L, first.generation());
         assertEquals(true, first.isDeliverable(now.get()));
 

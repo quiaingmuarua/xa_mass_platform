@@ -60,7 +60,6 @@ public class MassEngine {
             runtimeBridge.start(
                     startedRuntime.eventListeners(),
                     startedRuntime.dispatchWakeupCallback());
-            config.getWorkerPresenceRuntime().setDispatchWakeupCallback(startedRuntime.dispatchWakeupCallback());
             running = true;
             logger.info("MassEngine started successfully");
         } catch (Exception e) {
@@ -83,7 +82,6 @@ public class MassEngine {
                 runtimeBridge.stop();
                 runtimeBridge = null;
             }
-            config.getWorkerPresenceRuntime().setDispatchWakeupCallback(null);
             if (runtimeKernel != null) {
                 runtimeKernel.stop();
                 runtimeKernel = null;
