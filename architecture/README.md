@@ -26,7 +26,10 @@ Use this guide when you want to answer practical questions:
 3. [Score-Band Resource Slot Scheduling Blueprint](./score-band-resource-slot-scheduling-blueprint.md)
    - target scheduling mechanism blueprint for supply-side resource-slot
      leasing; not current implementation truth
-4. [Add Worker And Event](./add-worker-and-event.md)
+4. [Score-Band Worker Runtime Redis Shape](./score-band-worker-runtime-redis-shape.md)
+   - concrete first-slice Redis runtime structure reference for score-band
+     worker resources; not current implementation truth
+5. [Add Worker And Event](./add-worker-and-event.md)
    - register an event, bind it to a project, register a worker, and process
      items by `eventCode`
 
@@ -81,6 +84,8 @@ task/worker/runtime ownership model.
 The target scheduling mechanism is described in
 [Score-Band Resource Slot Scheduling Blueprint](./score-band-resource-slot-scheduling-blueprint.md).
 That document is a mechanism blueprint, not current implementation truth.
+The concrete first-slice Redis shape reference is
+[Score-Band Worker Runtime Redis Shape](./score-band-worker-runtime-redis-shape.md).
 
 Scheduling policy boundary:
 

@@ -88,19 +88,25 @@ because:
 
 The score-band model makes resource availability supply-owned. The hot path
 does not ask "which workers match this task by scanning a worker universe?" It
-asks "which eligible resource slots can be leased for this demand lane?"
+asks "which eligible resources can be leased for this demand lane?"
 
-## Resource Slot
+## Resource Identity
 
-A resource slot is the smallest schedulable unit for one resource kind.
+`resourceId` is the schedulable identity inside score-band runtime.
 
-First implementation waves should prove the model on worker execution slots:
+First implementation waves should keep the unit simple:
 
 ```text
-workerSlot = one schedulable worker execution permit
+resourceKind = worker
+resourceId = workerId
 ```
 
-For multi-capacity workers, prefer multiple execution slots where feasible:
+Do not introduce per-permit worker slot ids in the first slice. If a worker has
+`maxConcurrentWork > 1`, keep that as worker resource metadata / lease capacity
+until a later proof shows that per-permit resource ids are worth the additional
+model cost.
+
+Possible future shape:
 
 ```text
 worker-a#0
@@ -108,22 +114,20 @@ worker-a#1
 worker-a#2
 ```
 
-This avoids hiding old occupancy semantics inside a single mutable worker row.
-If a hybrid slot plus permit count is used first, it should be treated as a
-migration compromise, not the conceptual target.
+That future shape is an implementation option, not a first-slice requirement.
 
 Later resource kinds can include:
 
 ```text
-physicalDeviceSlot
-accountSlot
-proxySlot
-simSlot
-browserSlot
+device
+account
+proxy
+sim
+browser
 ```
 
-Do not start with a generic universal resource envelope. Prove the model on
-worker execution slots first.
+Do not start with a generic universal resource envelope. Prove the model with
+worker resources first, using `workerId` as `resourceId`.
 
 ## Score Bands
 
@@ -234,15 +238,15 @@ PARKED_BAND score
   negative fixed code range
   example: score < 0
   score identifies broad parked class only
-  reasonCode, sourceType, actorId, observedAt, generation, and reopen policy
-  live in metadata / transition log
+  reasonCode, sourceType, actorId, observedAt, and reopen policy live in
+  metadata / transition log
 
 LOW_RECHECK_BAND score
   reserved relative due-time range
   example: 0 <= score < TIME_SCORE_FLOOR
   score = nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS
   failedRecheckCount, reasonCode, sourceType, actorId, observedAt,
-  nextRecheckAt, backoffPolicy, and generation live in metadata / transition log
+  nextRecheckAt, and backoffPolicy live in metadata / transition log
 
 TIME_BAND score
   example: score >= TIME_SCORE_FLOOR
@@ -351,7 +355,8 @@ maintenance paths, not task hot paths.
 | Slot declared and owner validates schedulable | worker-runtime/resource-runtime | `now` | `ELIGIBLE_BAND` | Initial open is owner validation, not transport connect. |
 | Slot declared but intentionally idle or disabled | worker-runtime/resource-runtime | parked code, for example `PARKED_IDLE` or `PARKED_OPERATOR_DISABLED` | `PARKED_BAND` | No periodic recheck budget should be spent until explicit promotion or demand policy. |
 | Slot declared but requires bounded readiness recheck | worker-runtime/resource-runtime | `nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS` | `LOW_RECHECK_BAND` | Reason can be `INIT_REQUIRED` or `RECHECK_REQUIRED`; failed count starts in metadata. |
-| Explicit worker `AVAILABLE` / `READY` report validated | worker-runtime | `now` | `ELIGIBLE_BAND` | Positive report requests verified reopen; it does not write score directly. |
+| Explicit worker `AVAILABLE` / `READY` report validated while in `LOW_RECHECK_BAND` | worker-runtime | `now` | `ELIGIBLE_BAND` | Positive report is evidence-only until owner validation. It cannot clear parked state. |
+| Explicit unpark / resume / enable command validated | worker-runtime/resource-runtime | `now` or low-recheck due score | `ELIGIBLE_BAND` or `LOW_RECHECK_BAND` | Required to release `PARKED_BAND`; `AVAILABLE` / `READY` alone is insufficient. |
 | Explicit worker `OFFLINE` / unavailable report | worker-runtime | `nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS` | `LOW_RECHECK_BAND` | Negative business-state report closes eligibility and may be recoverable. |
 | Explicit worker `DRAINING` report | worker-runtime | parked code, for example `PARKED_DRAIN` | `PARKED_BAND` | Drain should not burn periodic recheck budget. |
 | Operator disable / drain | worker-runtime/resource-runtime | parked code, for example `PARKED_OPERATOR_DISABLED` | `PARKED_BAND` | Operator policy is not time-releasable. |
@@ -361,7 +366,7 @@ maintenance paths, not task hot paths.
 | `WORKER_HEARTBEAT` / `TRANSPORT_REFRESH` / `SESSION_KEEPALIVE` / `CONNECTED` | transport | no score write | unchanged | Freshness evidence stays transport-local unless point-read during an allowed owner recheck. |
 | Preallocation acquire | matcher through resource-runtime | `now + preallocLeaseMillis` | `FUTURE_BAND` | Lease owner is demand lane / matcher. |
 | Dispatch / attempt starts | engine through resource-runtime | `attemptLeaseUntilMillis` | `FUTURE_BAND` | Converts or extends preallocation into attempt lease. |
-| Attempt lease renew | engine through resource-runtime | new `attemptLeaseUntilMillis` | `FUTURE_BAND` | Only valid for same active lease generation and non-blocked slot. |
+| Attempt lease renew | engine through resource-runtime | new `attemptLeaseUntilMillis` | `FUTURE_BAND` | Only valid for same active lease token and non-blocked slot. |
 | Cooldown | resource-runtime policy | `now + cooldownMillis` | `FUTURE_BAND` | Time-releasable policy hold. |
 | Early release / final / cancel / pause | engine through resource-runtime | `now` or `now + cooldownMillis` | `ELIGIBLE_BAND` or `FUTURE_BAND` | Only if no parked/low-recheck block remains and owner validation passes. |
 | Future lease expires | no writer required | existing timestamp is now due | `ELIGIBLE_BAND` candidate | Acquire still validates current slot metadata before binding. |
@@ -432,7 +437,7 @@ backoffPolicy
 Example:
 
 ```text
-worker-a#0 initially eligible
+worker-a initially eligible
   score = now
 
 transport current-session disconnect accepted
@@ -518,11 +523,16 @@ For Redis this usually means a small Lua script or equivalent atomic primitive
 for:
 
 ```text
-validate current slot generation / lease owner / band
+validate current band and owner preconditions
+validate lease owner / lease token when the transition touches a lease
 write score
 write lease or block metadata
 append transition evidence
 ```
+
+The append step may generate a `transitionId` for logs and trace correlation.
+That id is evidence-only. It must not be supplied by callers or used to drive a
+future worker-runtime transition.
 
 Do not put ranking, lane policy, or task scheduling strategy into that atomic
 primitive. Lua or CAS protects the resource transition invariant; it does not
@@ -571,7 +581,7 @@ REMOVE_SLOT
 Suggested fields:
 
 ```text
-resourceSlotId
+resourceId
 resourceKind
 oldScore
 oldBand
@@ -587,7 +597,7 @@ leaseId
 attemptId
 correlationRef
 observedAt
-generation
+transitionId
 ```
 
 Field roles:
@@ -609,12 +619,17 @@ ownerAction
 
 rawEventName
   original event name or command name for trace/debug only
+
+transitionId
+  runtime-generated evidence id for the appended transition log entry only;
+  it must not be accepted from callers, passed into worker-runtime as a control
+  parameter, or used as a transition precondition
 ```
 
 Example transitions:
 
 ```text
-worker-a#0
+worker-a
   ELIGIBLE_BAND -> FUTURE_BAND
   transitionType = LEASE_ACQUIRE
   reasonCode = PREALLOCATED
@@ -622,7 +637,7 @@ worker-a#0
   ownerAction = ACQUIRE_LEASE
   leaseId = prealloc-xxx
 
-worker-a#0
+worker-a
   FUTURE_BAND -> LOW_RECHECK_BAND
   transitionType = RECOVERABLE_CLOSE
   reasonCode = CURRENT_SESSION_DISCONNECTED
@@ -630,7 +645,7 @@ worker-a#0
   ownerAction = CLOSE_RECOVERABLE
   rawEventName = WEBSOCKET_SESSION_CLOSED
 
-worker-a#0
+worker-a
   ELIGIBLE_BAND -> PARKED_BAND
   transitionType = PARK
   reasonCode = OPERATOR_DRAIN
@@ -671,6 +686,181 @@ task intake and ready counts
 WorkerGroup may remain part of lane scope, but it should not be the primary
 hot-path worker enumeration model.
 
+## Demand-Guided Sparse Acquire
+
+First implementation should focus on demand-guided acquire. Supply-push /
+worker-runtime proactively matching ready supply to demand lanes is a later
+optimization mode and should not be part of the first score-band slice.
+
+Demand-guided acquire is not task-side worker search. The boundary is:
+
+```text
+Task declares demand
+  -> scheduling policy compiles an acquire plan
+  -> resource-runtime uses approved placement tags as supply-side acceleration
+  -> resource-runtime validates and leases slots
+```
+
+The task must not query workers, choose bucket keys, or create placement tag
+specs at runtime.
+
+### Task Demand Shape
+
+Task demand should split matching requirements into explicit categories:
+
+```text
+exactRequirements
+  fixed equality requirements that may be eligible for placement-tag
+  acceleration after policy approval
+
+rangePredicates
+  interval or predicate requirements that must be validated by resource-runtime
+  or an owner-approved validation function
+
+desiredSlots / maxCandidates / maxAttempts
+  bounded acquire budget, not an instruction to enumerate workers
+```
+
+Examples:
+
+```text
+exactRequirements:
+  region = SG
+  fingerprintProfile = fp-alpha
+
+rangePredicates:
+  battery >= 60
+  networkLatencyMillis < 200
+
+desiredSlots:
+  100
+```
+
+Range predicates are allowed in demand, but they are not placement tags by
+default. They remain validation unless a long-lived owner-approved
+`PlacementTagSpec` projects them into finite buckets.
+
+### PlacementTagSpec
+
+`PlacementTagSpec` is a long-lived supply-side acceleration config. It is not
+a task API field and not a per-task index.
+
+Suggested shape:
+
+```text
+PlacementTagSpec
+  name
+  sourceAttributes
+  projectionRule
+  allowedValues
+  maxValues
+  fallbackPolicy
+  owner
+```
+
+Placement tags should usually be composite tags for sparse matching, not a new
+index for every single worker attribute.
+
+Example:
+
+```text
+name = sg_fp_profile
+sourceAttributes = [region, fingerprintProfile]
+projectionRule = region + ":" + fingerprintProfile
+allowedValues = ["SG:fp-alpha", "SG:fp-beta", "US:fp-alpha"]
+maxValues = 100
+fallbackPolicy = FALLBACK_TO_GROUP_SAMPLE
+```
+
+The runtime may maintain a bucket for:
+
+```text
+sg_fp_profile:SG:fp-alpha
+```
+
+It must not automatically create buckets for arbitrary task expressions or
+unbounded attribute combinations.
+
+Single-attribute tags should be exceptional. They are reasonable only when the
+attribute is itself a strong partition, safety boundary, or high-selectivity
+management dimension, such as tenant shard or resource pool. Ordinary
+attributes should either be part of an approved composite tag or remain
+Stage-2 validation.
+
+### AcquirePlan
+
+Scheduling policy compiles task demand into an acquire plan:
+
+```text
+AcquirePlan
+  laneId
+  resourceKind
+  workerGroupScope
+  placementTagBucketCandidates
+  fallbackBuckets
+  validationRef
+  desiredSlots
+  maxCandidates
+  maxAttempts
+  noMatchBehavior
+```
+
+Resource-runtime executes the plan:
+
+```text
+try approved placement tag buckets
+  -> bounded sample eligible slots
+  -> run exact/range validation
+  -> lease validated slots
+  -> if insufficient, apply fallback policy
+```
+
+Tag hit is only a coarse supply-side narrowing step. It is not correctness
+proof. Final eligibility still requires score-band eligibility, owner
+validation, and lease acquisition.
+
+### Sparse Matching Guards
+
+- Task does not query workers.
+- Task does not select placement buckets.
+- Task does not create `PlacementTagSpec`.
+- `PlacementTagSpec` is owned by scheduling policy / resource-runtime owner.
+- Placement tags are acceleration evidence, not worker correctness proof.
+- Range predicates are validation by default, not bucket truth.
+- Runtime must not auto-index arbitrary worker attributes.
+- Runtime must not create buckets beyond `allowedValues` / `maxValues`.
+- Fallback must be explicit and bounded; no implicit full WorkerGroup scan.
+- First slice implements demand-guided acquire only; supply-push remains future
+  direction.
+
+## Worker Runtime Redis Shape
+
+Concrete Redis runtime shape is split into a separate reference:
+[Score-Band Worker Runtime Redis Shape](./score-band-worker-runtime-redis-shape.md).
+
+The mechanism-level boundary remains:
+
+```text
+Eligibility Index
+  score-band acquire index
+
+Scheduling Metadata
+  low-frequency owner-approved matching / validation projection
+
+Lease / Hold State
+  lease token, hold reason, failed recheck count, and reopen policy
+```
+
+First-slice constraints:
+
+- `resourceKind = worker`
+- `resourceId = workerId`
+- each `resourceId` has exactly one `homeBucketId`
+- score / metadata / hold state share the same `homeBucketId`
+- auxiliary placement indexes, if added later, do not own score / metadata /
+  hold truth
+- transport/session/freshness evidence stays out of worker scheduling metadata
+
 ## Lease Model
 
 All non-negative resource holds are leases:
@@ -698,10 +888,10 @@ Preallocation should prefer lane binding before task binding:
 
 ```text
 preallocation:
-  lane -> resourceSlot
+  lane -> resourceId
 
 dispatch:
-  task + resourceSlot -> attempt lease
+  task + resourceId -> attempt lease
 ```
 
 This avoids complicated rollback when a task is canceled, reprioritized, or no
@@ -739,8 +929,10 @@ They own:
 
 - resource slot declaration and lifecycle;
 - score-band index maintenance;
-- negative fast-close into `LOW_RECHECK_BAND` or `PARKED_BAND`;
-- positive verified-open from `LOW_RECHECK_BAND` or `PARKED_BAND`;
+- external negative fast-close into `LOW_RECHECK_BAND` or `PARKED_BAND`;
+- external positive evidence intake without direct score write;
+- verified reopen from `LOW_RECHECK_BAND`;
+- explicit unpark / resume / enable from `PARKED_BAND`;
 - lease metadata and resource claims;
 - score transition logging;
 - final slot validation before acquire/lease;
@@ -869,7 +1061,8 @@ CONNECTED
 worker explicit AVAILABLE / READY report
   means the worker is asserting scheduling readiness
   enters worker-runtime report/control owner
-  may request verified reopen
+  may request verified reopen from LOW_RECHECK_BAND
+  cannot release PARKED_BAND
 
 current-session disconnect
   proves the selected worker's current transport path is gone
@@ -920,8 +1113,13 @@ Explicit worker reports are different:
 worker reports AVAILABLE / READY / business-available
   -> transport carries the report
   -> worker-runtime report/control owner validates it
-  -> worker-runtime may request verified reopen
-  -> slot may move to ELIGIBLE_BAND only after owner validation
+  -> worker-runtime treats it as positive evidence
+  -> if current band is LOW_RECHECK_BAND, owner may reopen to ELIGIBLE_BAND
+  -> if current band is PARKED_BAND, owner records evidence but keeps parked
+
+operator / owner sends explicit unpark / resume / enable
+  -> worker-runtime/resource-runtime validates parked reason and policy
+  -> slot may move to LOW_RECHECK_BAND or ELIGIBLE_BAND after validation
 
 worker reports OFFLINE / DRAINING / unavailable
   -> transport carries the report
@@ -1046,7 +1244,7 @@ Target shape:
 
 ```text
 SelectedResourceHandle
-  resourceSlotId
+  resourceId
   resourceKind
   workerId or execution identity when resourceKind = worker
   leaseId
@@ -1057,7 +1255,7 @@ SelectedResourceHandle
 ```
 
 Early implementation may keep the current `SelectedWorkerHandle` external seam,
-but internally it should represent a leased resource slot, not a candidate row
+but internally it should represent a leased resource id, not a candidate row
 that survived task-side filtering.
 
 ### Engine To Transport
@@ -1101,7 +1299,7 @@ forever because non-negative holds are time-bounded in `FUTURE_BAND`.
 | --- | --- | --- | --- | --- |
 | Transport | current-session disconnect | Worker-runtime | move slot to `LOW_RECHECK_BAND` after validation | reopen eligibility |
 | Transport | `WORKER_HEARTBEAT` / `TRANSPORT_REFRESH` / `SESSION_KEEPALIVE` / `CONNECTED` | Transport evidence store | update endpoint/session/freshness evidence only | publish worker-runtime event, request recheck, or imply business availability |
-| Worker via transport | explicit AVAILABLE / READY / business-available report | Worker-runtime report/control owner | request verified reopen | transport directly moves slot to `ELIGIBLE_BAND` |
+| Worker via transport | explicit AVAILABLE / READY / business-available report | Worker-runtime report/control owner | positive evidence; may request verified reopen only from `LOW_RECHECK_BAND` | transport directly moves slot to `ELIGIBLE_BAND` or clears `PARKED_BAND` |
 | Worker via transport | explicit OFFLINE / unavailable report | Worker-runtime report/control owner | move slot to `LOW_RECHECK_BAND` after validation | transport owns block policy |
 | Worker via transport / operator | explicit DRAINING / disable / intentional idle | Worker-runtime report/control owner | move slot to `PARKED_BAND` after validation | transport owns parked policy |
 | Transport | mailbox / endpoint feasibility | Transport evidence store, delivery handoff, optional point-read view | prove final-hop feasibility or delivery failure | choose replacement worker, reopen slot, or block worker without allowlist |
@@ -1123,7 +1321,8 @@ It defines the semantic invariant:
 
 ```text
 negative evidence may fast-close eligibility
-positive evidence may only request owner recheck
+positive evidence is evidence-only and may only request owner recheck
+PARKED_BAND requires explicit unpark / resume / enable
 only the owner may reopen eligibility
 ```
 
@@ -1132,7 +1331,9 @@ Score-band lease is the lower-level mechanism:
 ```text
 recoverable negative evidence -> move slot to LOW_RECHECK_BAND
 intentional stop / disable / idle -> move slot to PARKED_BAND
-positive evidence -> owner recheck -> maybe move slot to ELIGIBLE_BAND
+positive evidence while LOW_RECHECK -> owner recheck -> maybe ELIGIBLE_BAND
+positive evidence while PARKED -> record evidence, remain PARKED_BAND
+explicit unpark / resume / enable -> owner validation -> LOW_RECHECK_BAND or ELIGIBLE_BAND
 non-negative hold -> FUTURE_BAND lease
 ```
 
@@ -1185,18 +1386,18 @@ implemented as one giant roadmap.
 
 Goal:
 
-Introduce worker execution slot score-band registry inside worker-runtime /
+Introduce worker resource score-band registry inside worker-runtime /
 runtime-api, with memory and Redis implementations sharing contract tests.
 
 First scope:
 
-- model `workerExecutionSlot`;
+- model worker resource with `resourceKind=worker` and `resourceId=workerId`;
 - map recoverable negative block to `LOW_RECHECK_BAND`;
 - map intentional idle/disable/drain/cold lifecycle to `PARKED_BAND`;
 - map preallocation/reserve/active attempt/cooldown to `FUTURE_BAND`;
 - allow time expiry from `FUTURE_BAND` to eligible;
-- require owner validation before reopening from `LOW_RECHECK_BAND` or
-  `PARKED_BAND`;
+- require owner validation before reopening from `LOW_RECHECK_BAND`;
+- require explicit unpark / resume / enable before leaving `PARKED_BAND`;
 - emit score transition evidence.
 
 Do not change engine assignment semantics in the first slice.
@@ -1229,6 +1430,10 @@ First scope:
 - keep `WorkerSelectionRuntime` as the engine-facing seam;
 - add a demand-lane request shape behind or beside current
   `WorkerSelectionRequest`;
+- compile task demand into an `AcquirePlan`;
+- use approved composite `PlacementTagSpec` buckets only as bounded
+  acceleration;
+- keep range predicates in owner validation;
 - acquire bounded eligible slots from score-band;
 - perform owner revalidation at lease time;
 - produce selected handles compatible with current dispatch binding.
@@ -1244,6 +1449,9 @@ Proof:
 
 - no full worker group scan on hot path;
 - no task-side worker enumeration;
+- task cannot create placement tag specs or choose bucket keys;
+- placement tag hit still requires validation and lease acquisition;
+- fallback is explicit and bounded;
 - bounded slot acquire;
 - selected handle still binds one execution identity;
 - existing task dispatch correctness remains unchanged externally.
@@ -1288,7 +1496,7 @@ browser
 First scope:
 
 - define resource requirement expression;
-- acquire worker slot plus one additional exclusive resource slot;
+- acquire worker resource plus one additional exclusive resource;
 - all-or-nothing lease;
 - failure releases all partial claims;
 - transition logs show each resource claim.
@@ -1310,6 +1518,7 @@ Proof:
   low-recheck band.
 - Negative evidence may fast-close eligibility.
 - Positive evidence may only request owner recheck.
+- Positive evidence cannot release `PARKED_BAND`.
 - Fast recovery from low-recheck requires explicit worker report or owner event;
   heartbeat/reconnect is not enough.
 - Scheduling hot path never scans parked or low-recheck bands.
@@ -1321,6 +1530,10 @@ Proof:
 - Actual dispatch extends or converts a lease into an attempt lease.
 - Multi-resource claims are all-or-nothing.
 - Engine does not enumerate workers for a task.
+- Task demand does not create placement indexes, select bucket keys, or query
+  workers directly.
+- Placement tags are approved long-lived supply-side acceleration indexes, not
+  task-level correctness truth.
 - WorkerGroup may scope lanes or slots, but must not be the primary hot-path
   worker enumeration model.
 
@@ -1330,6 +1543,8 @@ Proof:
 - A large rewrite of engine assignment and worker-runtime in one phase.
 - A Redis-only zset implementation without memory contract parity.
 - New task-side worker indexes.
+- Per-task placement tag specs or automatic bucket creation from arbitrary
+  worker attributes.
 - Rebranding current candidate buckets as score-band without changing lease
   semantics.
 - Making heartbeat or connected events reopen slots.
@@ -1363,6 +1578,8 @@ internals.
 - Whether preallocation binds lane only or can bind task in special cases.
 - How to represent demand lane identity and priority without turning it into a
   task-side worker index.
+- Which composite `PlacementTagSpec` dimensions are worth approving, and what
+  bounded fallback policies they use.
 - Whether score transition log is trace-only first or also a runtime repair
   input.
 - How to archive or supersede existing worker-candidate roadmaps once the first
