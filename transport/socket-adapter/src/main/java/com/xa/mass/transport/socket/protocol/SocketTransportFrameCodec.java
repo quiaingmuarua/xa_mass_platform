@@ -5,7 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.xa.mass.contract.worker.WorkerChannelFrameJsonCodec;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
-import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 
 /**
@@ -14,6 +13,7 @@ import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 public final class SocketTransportFrameCodec {
 
     private static final String TYPE_FIELD = "type";
+    private static final String WORKER_ID_FIELD = "workerId";
     private static final String WORKER_GROUP_ID_FIELD = "workerGroupId";
     private static final String TRACE_ID_FIELD = "traceId";
 
@@ -35,7 +35,7 @@ public final class SocketTransportFrameCodec {
 
     public boolean isHelloFrame(JsonObject frame) {
         return "hello".equalsIgnoreCase(readString(frame, TYPE_FIELD))
-                && readString(frame, TransportPacket.PAYLOAD_WORKER_ID) != null;
+                && readString(frame, WORKER_ID_FIELD) != null;
     }
 
     public boolean isHeartbeatFrame(JsonObject frame) {
@@ -43,7 +43,7 @@ public final class SocketTransportFrameCodec {
     }
 
     public String extractWorkerId(JsonObject frame) {
-        return readString(frame, TransportPacket.PAYLOAD_WORKER_ID);
+        return readString(frame, WORKER_ID_FIELD);
     }
 
     public String extractWorkerGroupId(JsonObject frame) {

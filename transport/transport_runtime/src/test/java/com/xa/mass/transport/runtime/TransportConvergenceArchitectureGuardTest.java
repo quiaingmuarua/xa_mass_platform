@@ -237,12 +237,13 @@ class TransportConvergenceArchitectureGuardTest {
 
     @Test
     void directDispatchChannelsUseEnvelopeSelectedWorkerConstraint() throws IOException {
+        String removedPayloadWorkerIdAccessor = "payloadString(Transport" + "Packet.PAYLOAD_WORKER_ID)";
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java"),
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java")
                 ),
-                "payloadString(TransportPacket.PAYLOAD_WORKER_ID)",
+                removedPayloadWorkerIdAccessor,
                 "sendToAdapterRoute("
         );
     }
@@ -477,6 +478,7 @@ class TransportConvergenceArchitectureGuardTest {
 
     @Test
     void DispatchMessageDoesNotRegainLaneRouteBucketOrPacketFacts() throws IOException {
+        String removedPacketModel = "Transport" + "Packet";
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/DispatchMessage.java"),
@@ -487,7 +489,7 @@ class TransportConvergenceArchitectureGuardTest {
                 "connectionToken",
                 "connectionId",
                 "routeKey",
-                "TransportPacket",
+                removedPacketModel,
                 "TaskDispatchItem",
                 "Map<String, String>"
         );
@@ -518,6 +520,54 @@ class TransportConvergenceArchitectureGuardTest {
         assertPathsDoNotExist(
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model")
                         .resolve("AdapterDispatch" + "Request.java")
+        );
+    }
+
+    @Test
+    void removedLegacyPacketModelsDoNotReappear() throws IOException {
+        String removedPacketModel = "Transport" + "Packet";
+        String removedTypeModel = "Packet" + "Type";
+        String removedPacketCodec = "Transport" + "PacketCodec";
+        String removedJsonPacketCodec = "JsonTransport" + "PacketCodec";
+        String removedPacketFactory = "Transport" + "PacketFactory";
+        String removedInboundModel = "Inbound" + "Envelope";
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java"),
+                        repoRoot().resolve("transport/transport_api/src/test/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/test/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/test/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/test/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/test/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/test/java"),
+                        repoRoot().resolve("xa-mass-server/src/main/java"),
+                        repoRoot().resolve("xa-mass-worker-runtime/src/main/java")
+                ),
+                removedPacketModel,
+                removedTypeModel,
+                removedPacketCodec,
+                removedJsonPacketCodec,
+                removedPacketFactory,
+                removedInboundModel
+        );
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/packet")
+                        .resolve("Transport" + "Packet.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/packet")
+                        .resolve("Packet" + "Type.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/packet")
+                        .resolve("Transport" + "PacketCodec.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/packet")
+                        .resolve("JsonTransport" + "PacketCodec.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model")
+                        .resolve("Inbound" + "Envelope.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/packet")
+                        .resolve("Transport" + "PacketFactory.java")
         );
     }
 
@@ -1212,9 +1262,10 @@ class TransportConvergenceArchitectureGuardTest {
 
     @Test
     void starterDeliverySubmitterDoesNotBuildPacketBackedCommandsOrFakeRouteFacts() throws IOException {
+        String removedPacketModel = "Transport" + "Packet";
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/TaskDispatchRoutingSubmitter.java")),
-                "TransportPacket",
+                removedPacketModel,
                 "TaskDispatchItem",
                 "TransportEndpointLease",
                 "RouteOwner",
@@ -1272,9 +1323,10 @@ class TransportConvergenceArchitectureGuardTest {
     @Test
     void transportDispatchBatchCodecKeepsRecordMinimal() throws IOException {
         Path codec = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDispatchBatchCodec.java");
+        String removedPacketModel = "Transport" + "Packet";
         assertNoProductionSourceContains(
                 List.of(codec),
-                "TransportPacket",
+                removedPacketModel,
                 "TaskDispatchItem",
                 "connectionToken",
                 "taskName",
@@ -1309,6 +1361,7 @@ class TransportConvergenceArchitectureGuardTest {
 
     @Test
     void pollingPendingDeliveryValueIsFlatDispatchItemNotPacketEnvelope() throws IOException {
+        String removedPacketModel = "Transport" + "Packet";
         assertPathsDoNotExist(
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeCodec.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchEnvelopeRecord.java")
@@ -1316,7 +1369,7 @@ class TransportConvergenceArchitectureGuardTest {
         Path codec = repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/delivery/PollingDispatchMessageCodec.java");
         assertNoProductionSourceContains(
                 List.of(codec),
-                "TransportPacket",
+                removedPacketModel,
                 "TaskDispatchItem",
                 "transportPayload"
         );
@@ -1348,10 +1401,11 @@ class TransportConvergenceArchitectureGuardTest {
 
     @Test
     void deliveryFailureEventCodecDoesNotSerializeFullCommandsOrPacketPayloads() throws IOException {
+        String removedPacketModel = "Transport" + "Packet";
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryFailureEventCodec.java")),
                 "DeliveryCommand",
-                "TransportPacket",
+                removedPacketModel,
                 "TaskDispatchItem",
                 "DeliveryObservation",
                 "groupContext",

@@ -633,28 +633,15 @@ payload and selected-worker endpoint evidence. Task shell metadata such as task
 name, project, and user id must not be copied into `DispatchMessage`, transport
 pull results, or handoff codecs as parallel truth.
 
-`TransportPacket` remains limited packet codec support for worker-system-event
-and legacy packet-shaped frames. It is not the task-dispatch carrier
-and is not the result-ingress mainline carrier. Result ingress uses
+The old generic packet carrier has been removed from transport. Transport does
+not keep a catch-all packet model for dispatch, result ingress, or worker-system
+events. Result ingress uses
 `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)`; starter-owned
 code decodes the opaque payload. Task-dispatch wire frames are assembled at
-final-hop delivery from `DispatchMessage`. Starter-side dispatch
-construction must not create a packet-backed dispatch item. The dispatch
-handoff codec and polling queue codec must not serialize a generic task-dispatch
-`TransportPacket` as the item payload.
-
-`TransportPacket.payload` is a JSON object boundary, not an arbitrary JVM
-object slot. Durable queue codecs must be able to round-trip packet payloads
-without relying on Java-local runtime types. Packet identity rules are
-type-specific legacy packet validation, not assigned-delivery or result-ingress
-routing truth: `TASK_DISPATCH` requires `taskId`, `messageId`, and `eventCode`;
-`TASK_RESULT` requires `taskId` and `messageId`; `WORKER_SYSTEM_EVENT` requires
-`eventCode`. Allowed payload values are JSON-safe primitives plus nested
-JSON-safe object or array shapes only:
-`String`, `Number`, `Boolean`, `null`, `Map<String, Object>`, and lists/arrays
-composed from the same value set. Transport must reject unsupported JVM-only
-objects at payload assembly time instead of letting different codecs or queue
-implementations observe different behavior.
+final-hop delivery from `DispatchMessage`. Starter-side dispatch construction
+must not create a packet-backed dispatch item. The dispatch handoff codec and
+polling queue codec must not serialize a generic task-dispatch packet as the
+item payload.
 
 Dispatch input projection should remain payload-shape driven. If transport
 needs to unwrap a worker-facing wrapper such as the current SDK
@@ -815,7 +802,7 @@ attempts. Storage implementations should provide bounded lookups for:
 Dispatch is also a hot path. Dispatch handoff queues store
 mailbox-targeted flat dispatch items under mailbox-scoped queues. They
 must not deep-copy worker pull DTOs, endpoint leases, or generic task-dispatch
-`TransportPacket` payloads as the handoff item shape. Adapter delivery receives
+packet payloads as the handoff item shape. Adapter delivery receives
 `DispatchMessage` with selected-worker opaque payload; concrete push adapters
 use the selected worker id as their single local final-hop lookup key, while
 polling queue delivery projects directly to opaque pulled delivery messages.
