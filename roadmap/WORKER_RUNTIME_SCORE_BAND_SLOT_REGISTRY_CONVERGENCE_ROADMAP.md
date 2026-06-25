@@ -1,13 +1,15 @@
 # Worker Runtime Score-Band Slot State Machine Convergence Roadmap
 
-Status: mainline complete for score-band worker single-slot v1; follow-up
+Status: mainline complete for score-band active-hold v1; follow-up
 roadmaps remain. SBR-0 through SBR-5 have landed for the worker resource slot
 score-band runtime, memory/Redis parity, production selection acquire/claim
 pivot, and claim-close observation propagation. The current score-band slice
-models one scheduling slot per worker resource: once selected, that worker is
-held in `FUTURE_BAND` until claim close or natural due time. Remaining-permit
-concurrency for `declaredCapacity > 1` is not proven by this roadmap and needs
-a later per-permit/per-resource-slot owner decision. The old
+models one active score-band hold per worker resource: once selected, that
+worker is held in `FUTURE_BAND` until claim close or natural due time.
+Remaining-permit concurrency for `declaredCapacity > 1` is not the current
+score-band target. This does not assert that a worker can never process
+multiple items; a future non-exclusive task policy may close the claim after
+dispatch acceptance so the same worker can be reacquired. The old
 `activeSelectedWorkerCount(taskId)` budgeting read has been removed from
 `WorkerSelectionRuntime`; assignment budgeting now reads active dispatch
 workers from task-runtime lease truth through `TaskAssignmentRuntimePort`.
@@ -83,10 +85,12 @@ Current implementation notes:
     -> WorkerScoreBandSlotRuntime.transition(FUTURE_INTERVAL)
   ```
 
-- Current production selection is one score-band slot per worker resource. It
-  does not prove that an occupied worker with remaining declared capacity can
-  be concurrently selected. That capacity semantics is deferred to a follow-up
-  per-permit/per-resource-slot roadmap.
+- Current production selection is one active score-band hold per worker
+  resource. It does not prove that an occupied worker with remaining declared
+  capacity can be concurrently selected through old reservation accounting.
+  That capacity semantics is not current mainline. Future non-exclusive task
+  policy can be modeled as early claim close after dispatch acceptance, not as
+  a revival of pre-score-band reservation counters.
 
 - Older Redis worker-registry data still has group-partitioned slot hashes,
   candidate buckets,
@@ -480,7 +484,8 @@ Scope:
     `dispatchRecoveryMode=FRESHNESS_EVIDENCE`; default `EXPLICIT_ONLY` workers
     need explicit worker report/control evidence;
   - only worker-runtime validation may reopen eligibility after declaration,
-    WorkerGroup membership, gates, capacity, recovery mode, and metadata checks.
+    WorkerGroup membership, gates, single-slot hold state, recovery mode, and
+    metadata checks.
 
 Acceptance:
 
@@ -742,10 +747,11 @@ Scope:
   write independent reserve/confirm/claimed/final counters beside score-band
   claims.
 - Preserve the current score-band v1 capacity boundary: score-band acquire is
-  worker-resource single-slot. This slice must not claim proof for concurrent
-  remaining-permit selection. If the platform wants `declaredCapacity > 1` to
-  mean concurrent selectable permits, that belongs to a later per-permit or
-  per-resource-slot roadmap before old capacity/reservation support is removed.
+  one active hold per worker resource. This slice must not claim proof for
+  concurrent remaining-permit selection through old reservation accounting.
+  `declaredCapacity > 1` remains metadata / ranking / diagnostic evidence, not
+  current acquire concurrency truth. Future non-exclusive task policy may make
+  workers reusable earlier by emitting claim close after dispatch acceptance.
 - Move `activeSelectedWorkerCount(taskId)` out of `WorkerSelectionRuntime`.
   Score-band claims are worker-slot keyed; task-scoped active dispatch worker
   counts are computed from task-runtime active leases through
@@ -805,9 +811,10 @@ Acceptance:
   all-group, or all-home-bucket scan.
 - Score-band acquire returns eligible/time-due resources; parked, low-recheck,
   and not-yet-due future-held resources are not selected by the hot path.
-- Score-band acquire is worker-resource single-slot in this slice. A selected
-  worker is future-held as a whole worker resource until claim close or due
-  time; remaining-permit capacity is not part of SBR-5 acceptance.
+- Score-band acquire is one active hold per worker resource in this slice. A
+  selected worker is future-held until claim close or due time;
+  remaining-permit capacity through old reservation accounting is not part of
+  SBR-5 acceptance.
 - Selected WorkerGroup, target worker, routing, and attribute constraints remain
   observable in focused selection tests after the acquire pivot.
 - Owner validation can reject a score-band slot without corrupting score state.
@@ -1004,9 +1011,11 @@ This roadmap can be considered complete only when:
   without changing engine assignment;
 - production `WorkerSelectionRuntime` internals acquire/claim workers through
   score-band runtime while preserving the engine-facing selection contract;
-- score-band completion is scoped to worker-resource single-slot v1; concurrent
-  remaining-permit selection for `declaredCapacity > 1` is a follow-up owner
-  decision, not current proof;
+- score-band completion is scoped to one active hold per worker resource;
+  concurrent remaining-permit selection for `declaredCapacity > 1` is not
+  current proof and is not required before old reservation residue is retired;
+  future non-exclusive reuse can be expressed by earlier claim close rather
+  than by preserving old reservation counters;
 - `WorkerSelectionOwner` production selection no longer depends on
   `WorkerCandidateRuntime`, `WorkerCandidateIndex`, or
   `WorkerRegistry.acquireCandidates(...)`;

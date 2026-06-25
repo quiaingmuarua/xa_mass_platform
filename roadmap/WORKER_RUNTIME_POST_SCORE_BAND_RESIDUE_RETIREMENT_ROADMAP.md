@@ -44,6 +44,14 @@ the project look like it has two worker-selection mechanisms.
   paths creates a manager whose score-band acquire returns no workers. SDK and
   server production assembly provide real score-band runtimes, but the direct
   worker-runtime assembly surface is dangerous residue.
+- `WorkerResourceOwner` also has a public constructor that defaults to
+  `NoopWorkerScoreBandSlotRuntime.INSTANCE`. That path can register workers and
+  update `WorkerRegistry` while never writing the score-band slot that
+  production selection now acquires from.
+- `xa-mass-testing/src/main` smoke/perf runners still contain direct
+  `WorkerManager` / `WorkerSelectionOwner` assembly. These are support
+  programs, not ordinary unit-test fixtures; silent no-op score-band assembly
+  there makes performance and smoke validation misleading.
 - `WorkerRegistry` still exposes and implements old candidate and reservation
   methods:
 
@@ -99,11 +107,20 @@ transition only as implementation residue. They must not be treated as worker
 scheduling policy truth unless a new owner decision proves they are still
 needed after score-band acquire.
 
-The current score-band implementation is worker-resource single-slot. It does
-not prove remaining-permit concurrent acquisition for `declaredCapacity > 1`.
-Old reservation/capacity surfaces must not be deleted merely because they are
-old; they may be deleted only after the project accepts single-slot v1 as the
-current behavior or lands a per-permit/per-resource-slot replacement.
+The current score-band implementation is one active score-band hold per worker
+resource. It does not attempt remaining-permit concurrent acquisition for
+`declaredCapacity > 1`. That is the current mainline decision, not a
+compatibility gap. Old reservation/capacity surfaces may be retired as residue
+once no current caller needs them.
+For active-hold v1, `declaredCapacity` is metadata, ranking/load evidence, and
+diagnostic/configuration evidence. It is not current concurrent acquisition
+proof or an active score-band acquire input.
+
+This does not mean a worker can never execute multiple items. Future
+non-exclusive task policy may release the score-band hold after dispatch
+acceptance, letting the same worker be reacquired while earlier item execution
+continues. That is a claim-close policy extension, not a reason to preserve old
+reservation counters.
 
 ## Boundary Decision
 
@@ -132,6 +149,18 @@ Score-band assembly must be explicit. New direct `WorkerManager` construction
 must not silently fall back to a no-op score-band runtime that makes selection
 return no candidates.
 
+The capacity decision is explicit for this roadmap:
+
+```text
+one active score-band hold per worker resource accepted for current selection
+declaredCapacity = metadata / ranking / diagnostic evidence
+declaredCapacity != current concurrent acquisition proof
+```
+
+Future per-permit or per-resource-slot capacity can be designed separately if a
+new product requirement appears, but it is not a blocker for this residue
+retirement roadmap.
+
 ## Target Shape
 
 After this roadmap:
@@ -145,11 +174,16 @@ After this roadmap:
 - `WorkerAdmissionRuntime` is either deleted or narrowed/renamed to the
   remaining exclusive-lock/load role. It no longer exposes reservation,
   claim/final accounting, or task active-worker count methods.
-- `WorkerRegistry` no longer exposes old candidate/reservation methods once
-  all callers are moved:
+- `WorkerRegistry` no longer exposes old candidate acquisition methods once all
+  callers are moved:
 
   ```text
   acquireCandidates
+  ```
+
+- `WorkerRegistry` no longer exposes old reservation / active-count methods:
+
+  ```text
   tryReserve
   confirmReservation
   releaseReservation
@@ -183,9 +217,9 @@ After this roadmap:
 - Do not create compatibility aliases for deleted candidate/admission APIs.
 - Do not preserve old tests by turning them into wrappers over the new score
   path. Tests should prove the current owner, not keep old vocabulary alive.
-- Do not delete reservation/capacity APIs until the worker single-slot v1
-  capacity boundary is accepted or a per-permit/per-resource-slot replacement
-  exists.
+- Do not turn this cleanup roadmap into a per-permit capacity redesign.
+  One active score-band hold per worker resource is the current score-band
+  mainline.
 
 ## Do Not Start With
 
@@ -196,11 +230,12 @@ and guards have been moved. Start at the worker-runtime public/internal surface,
 then shrink admission, then shrink the low-level registry SPI and Redis/memory
 keyspace.
 
-Also do not start by deleting old capacity/reservation methods before the
-capacity boundary is explicit. If the current score-band v1 single-slot behavior
-is accepted, those methods can be retired as residue. If concurrent
-`declaredCapacity > 1` acquisition remains required, replace them with a
-score-band-compatible per-permit owner first.
+Also do not preserve old capacity/reservation methods on the assumption that
+`declaredCapacity > 1` must still mean concurrent score-band acquisition.
+One active score-band hold per worker resource is the current mainline; old
+reservation methods should be removed once callers are moved. Future
+non-exclusive reuse should be modeled through claim-close timing, not through
+the old reservation SPI.
 
 ## PRR-0 Inventory And Guard Reclassification
 
@@ -222,6 +257,9 @@ Scope:
 - `WorkerCandidateBucketPolicy`
 - `ResolvedWorkerSchedulingPolicy.candidateBucketKeys`
 - `DefaultSchedulingPlaneResolver` candidate-bucket output
+- legacy `WorkerManager` constructors that default score-band runtime to no-op
+- `WorkerResourceOwner` constructors that default score-band runtime to no-op
+- `xa-mass-testing/src/main` smoke/perf direct worker-runtime assembly
 - `EngineSchedulingCoreArchitectureGuardTest` old candidate/admission guard rows
 
 Acceptance:
@@ -230,8 +268,14 @@ Acceptance:
   classification, and target action.
 - The inventory explicitly classifies legacy `WorkerManager` constructors that
   fall back to `NoopWorkerScoreBandSlotRuntime`.
-- The inventory records whether `declaredCapacity > 1` concurrent acquisition
-  is deferred or required before admission/capacity deletion proceeds.
+- The inventory explicitly classifies `WorkerResourceOwner` constructors that
+  fall back to `NoopWorkerScoreBandSlotRuntime`.
+- The inventory includes `xa-mass-testing/src/main` smoke/perf runners and
+  direct support assembly paths, not only unit tests.
+- The inventory records the active-hold v1 decision: `declaredCapacity` is not
+  current concurrent acquisition proof or an active acquire input, and future
+  non-exclusive reuse belongs to claim-close policy rather than old reservation
+  accounting.
 - Guard rows that currently protect old candidate source behavior are
   identified for rewrite before the slice that deletes the protected symbol.
 - Production `WorkerSelectionOwner` remains proven to acquire from
@@ -244,21 +288,32 @@ silently install a no-op score-band runtime.
 
 Scope:
 
-- Inventory `WorkerManager` constructors and test harness construction sites.
+- Inventory `WorkerManager` constructors, `WorkerResourceOwner` constructors,
+  and support/runtime construction sites.
+- Include `xa-mass-testing/src/main` smoke/perf runners in the inventory and
+  migration scope.
 - Delete legacy constructors that cannot provide `WorkerScoreBandSlotRuntime`,
   or route them to an explicit runtime supplied by test/support assembly.
 - If a no-op score-band runtime remains for tests, it must be named and scoped
   as a test/support object, not the default production fallback.
 - Update worker-runtime tests and SDK/server assembly tests to prove all
   production-like construction paths provide a real score-band runtime.
-- Add a guard that prevents new production `WorkerManager` construction without
-  a `WorkerScoreBandSlotRuntime`.
+- Update smoke/perf runners to pass a real in-memory score-band runtime, or
+  explicitly mark a runner as incompatible with score-band selection until it
+  is migrated.
+- Add a guard that prevents new production/support `WorkerManager` or
+  `WorkerResourceOwner` construction without a `WorkerScoreBandSlotRuntime`.
 
 Acceptance:
 
 - Direct `WorkerManager` production construction cannot silently select zero
   workers because score-band runtime was omitted.
-- No public constructor defaults to `NoopWorkerScoreBandSlotRuntime.INSTANCE`.
+- Direct `WorkerResourceOwner` construction cannot register workers without
+  writing score-band slots because score-band runtime was omitted.
+- No public `WorkerManager` or `WorkerResourceOwner` constructor defaults to
+  `NoopWorkerScoreBandSlotRuntime.INSTANCE`.
+- `xa-mass-testing/src/main` smoke/perf runners use explicit score-band runtime
+  assembly.
 - Test-only use of no-op score-band runtime is explicitly scoped, or removed.
 - SDK/server assembly still wires memory/Redis score-band runtimes.
 
@@ -266,6 +321,11 @@ Acceptance:
 
 Goal: delete the old candidate-source API exposed above worker-runtime now that
 production selection uses score-band.
+
+PRR-3 must either land in the same implementation window or immediately after
+this slice. The repo must not remain in a long-lived state where worker-runtime
+candidate APIs are gone but engine still produces `candidateBucketKeys` as a
+worker-selection hint that no owner consumes.
 
 Scope:
 
@@ -300,12 +360,6 @@ Acceptance:
 
 Goal: remove old reservation and task-count semantics from the worker-runtime
 admission surface.
-
-Precondition:
-
-- The project has accepted score-band worker single-slot v1 as current
-  behavior, or a per-permit/per-resource-slot score-band replacement exists for
-  `declaredCapacity > 1` concurrent acquisition.
 
 Scope:
 
@@ -351,6 +405,12 @@ Acceptance:
 Goal: stop carrying candidate-bucket keys as worker-selection policy output
 when score-band acquire does not consume them.
 
+Ordering rule:
+
+- Execute PRR-3 in the same implementation window as PRR-1 or immediately after
+  PRR-1. Do not leave `ResolvedWorkerSchedulingPolicy.candidateBucketKeys` as a
+  long-lived unused scheduling hint.
+
 Scope:
 
 - Remove `candidateBucketKeys` from `ResolvedWorkerSchedulingPolicy` if no
@@ -370,10 +430,10 @@ Acceptance:
   routing code, route attributes, and target worker attributes.
 - No engine production source imports `WorkerCandidateBucketPolicy`.
 
-## PRR-4 Shrink WorkerRegistry Candidate And Reservation SPI
+## PRR-4A Shrink WorkerRegistry Candidate Acquire SPI
 
-Goal: remove old candidate/reservation methods from the low-level registry
-contract after worker-runtime callers and tests have moved.
+Goal: remove old candidate acquisition methods from the low-level registry
+contract after worker-runtime candidate callers and tests have moved.
 
 Scope:
 
@@ -381,6 +441,33 @@ Scope:
 
   ```text
   acquireCandidates(...)
+  ```
+
+- Remove memory/Redis implementations for candidate acquisition.
+- Remove or rewrite `WorkerRegistryContractTest`,
+  `InMemoryWorkerRegistryTest`, and `RedisWorkerRegistryTest` cases that prove
+  old candidate acquisition semantics.
+- Keep registry methods that still own worker metadata, slot lifecycle,
+  dispatch disable/block/recovery, cleanup/removing state, exclusive lease, and
+  reservation/active-count surfaces until their own slice removes them.
+
+Acceptance:
+
+- `WorkerRegistry` no longer exposes candidate acquisition methods.
+- Memory and Redis implementations compile without old candidate acquisition.
+- Registry tests no longer prove old candidate acquisition behavior.
+- Score-band runtime tests prove selection source and claim/release semantics.
+
+## PRR-4B Shrink WorkerRegistry Reservation And Active-Count SPI
+
+Goal: remove old reservation and active-count methods from the low-level
+registry contract after worker-runtime admission callers and tests have moved.
+
+Scope:
+
+- Remove from `WorkerRegistry`:
+
+  ```text
   tryReserve(...)
   confirmReservation(...)
   releaseReservation(...)
@@ -389,27 +476,27 @@ Scope:
   activeWorkerCountForTask(...)
   ```
 
-- Remove memory/Redis implementations for those methods.
+- Remove memory/Redis implementations for reservation and active-count methods.
 - Remove or rewrite `WorkerRegistryContractTest`,
   `InMemoryWorkerRegistryTest`, and `RedisWorkerRegistryTest` cases that prove
-  old candidate/reserve semantics.
+  old reservation / active-count semantics.
 - Keep registry methods that still own worker metadata, slot lifecycle,
   dispatch disable/block/recovery, cleanup/removing state, and exclusive lease
   if they remain current owner truth.
 
 Acceptance:
 
-- `WorkerRegistry` no longer exposes candidate acquisition or reservation
-  accounting methods.
-- Memory and Redis implementations compile without old candidate/reserve
+- `WorkerRegistry` no longer exposes reservation accounting or task
+  active-count methods.
+- Memory and Redis implementations compile without old reservation / active-count
   methods.
 - Registry tests prove only the remaining registry responsibilities.
-- Score-band runtime tests prove selection source and claim/release semantics.
+- Score-band runtime tests prove active-hold claim/release semantics.
 
 ## PRR-5 Remove Candidate-Bucket Keyspace And Policy Residue
 
-Goal: delete pre-score-band candidate-bucket storage and policy after no API
-or test needs it.
+Goal: delete pre-score-band candidate-bucket storage and policy after PRR-4A
+removes candidate acquire SPI and no API or test needs it.
 
 Scope:
 
@@ -469,12 +556,14 @@ Acceptance:
 1. PRR-0: classify current symbols and update blocking guard expectations.
 2. PRR-0A: close no-op score-band assembly residue.
 3. PRR-1: delete candidate runtime surface above worker-runtime.
-4. PRR-2: narrow admission runtime to exclusive lock / load support after the
-   capacity precondition is satisfied.
+4. PRR-2: narrow admission runtime to exclusive lock / load support.
 5. PRR-3: remove candidate-bucket keys from engine resolved policy.
-6. PRR-4: shrink `WorkerRegistry` SPI and memory/Redis implementations.
+6. PRR-4A: shrink `WorkerRegistry` candidate acquire SPI and memory/Redis
+   candidate acquire implementations.
 7. PRR-5: remove candidate-bucket keyspace and policy residue.
-8. PRR-6: update docs/proof registry and archive when residue is gone.
+8. PRR-2 / PRR-4B: narrow admission runtime and remove registry reservation /
+   active-count SPI.
+9. PRR-6: update docs/proof registry and archive when residue is gone.
 
 ## Verification Candidates
 
@@ -493,7 +582,7 @@ Focused score-band and selection proof:
 .\mvnw.cmd -q -pl xa-mass-engine "-Dtest=TaskResourceReleaseListenerTest,TaskWorkerAssignListenerTest,TaskResultCorrelationSupportTest,TaskWorkAttemptIdSupportTest,EngineSchedulingCoreArchitectureGuardTest,SimpleTaskDispatchBinderTest" test "-DtrimStackTrace=true"
 ```
 
-Registry proof after PRR-4:
+Registry proof after PRR-4A / PRR-4B:
 
 ```powershell
 .\mvnw.cmd -q -pl platform_infra/mass-runtime-api "-Dtest=WorkerRegistryContractTest" test "-DtrimStackTrace=true"
@@ -509,6 +598,7 @@ Residue checks:
 
 ```powershell
 rg -n "WorkerCandidateRuntime|WorkerCandidateSourceOwner|WorkerCandidateIndex|findWorkerCandidates|getWorkerCandidateIndex" xa-mass-worker-runtime xa-mass-engine sdk xa-mass-server platform_infra --glob "*.java" --glob "!**/target/**"
+rg -n "NoopWorkerScoreBandSlotRuntime|new WorkerManager\\(|new WorkerResourceOwner\\(" xa-mass-worker-runtime sdk xa-mass-server xa-mass-testing/src/main --glob "*.java" --glob "!**/target/**"
 rg -n "reserveWorkerCapacity|confirmWorkerReservation|releaseWorkerReservation|recordWorkClaimed|recordWorkFinal|getActiveWorkerCountForTask|tryReserve\\(|confirmReservation\\(|releaseReservation\\(" xa-mass-worker-runtime xa-mass-engine sdk xa-mass-server platform_infra --glob "*.java" --glob "!**/target/**"
 rg -n "candidateBucketKey|candidateBucketKeys|WorkerCandidateBucketPolicy|DefaultWorkerCandidateBucketPolicy|WorkerCandidateBucketPolicies" xa-mass-worker-runtime xa-mass-engine sdk xa-mass-server platform_infra --glob "*.java" --glob "!**/target/**"
 git diff --check
@@ -517,6 +607,8 @@ git diff --check
 Expected final residue:
 
 - no Java production/test references to deleted candidate/admission symbols;
+- no production/support construction path defaults to
+  `NoopWorkerScoreBandSlotRuntime`;
 - no Redis/memory candidate-bucket keyspace writes;
 - only archived roadmap/history files may mention old symbols.
 
@@ -528,12 +620,13 @@ This roadmap is complete only when all are true:
   `WorkerSelectionRuntime`.
 - Old worker candidate runtime classes and config getters are deleted.
 - Old worker admission reservation/counter methods are deleted or replaced by
-  a clearly named narrow lock/load port after the capacity precondition is
-  satisfied.
+  a clearly named narrow lock/load port.
 - Direct `WorkerManager` construction cannot silently default to
   `NoopWorkerScoreBandSlotRuntime`.
-- `WorkerRegistry` no longer exposes old candidate acquisition or reservation
-  accounting APIs.
+- Direct `WorkerResourceOwner` construction cannot silently default to
+  `NoopWorkerScoreBandSlotRuntime`.
+- `WorkerRegistry` no longer exposes old candidate acquisition APIs.
+- `WorkerRegistry` no longer exposes old reservation accounting APIs.
 - Candidate-bucket policy and keyspace are removed from production/test mainline
   unless a separate owner decision keeps them for a non-selection feature.
 - Tests and architecture guards protect the post-score-band owner model instead
