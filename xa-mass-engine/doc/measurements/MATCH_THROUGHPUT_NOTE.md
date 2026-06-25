@@ -23,7 +23,7 @@ Local validation record:
 - Command:
 
 ```bash
-mvn -q -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-redis,xa-mass-engine,xa-mass-embedded-sdk -am '-Dtest=WorkerRegistryContractTest,InMemoryWorkerRegistryTest,RedisWorkerRegistryTest,WorkerCandidateIndexTest,TaskCandidateWarmPoolTest,WorkerManagerTest,DefaultWorkerCandidateRankerTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskWorkerAssignListenerTest,TaskAssignWorkerTest,TaskDispatchWakeupBridgeTest,EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
+mvn -q -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-redis,xa-mass-engine,xa-mass-worker-runtime -am '-Dtest=WorkerRegistryContractTest,InMemoryWorkerRegistryTest,RedisWorkerRegistryTest,WorkerCandidateIndexTest,WorkerManagerTest,DefaultWorkerCandidateRankerTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskWorkerAssignListenerTest,TaskAssignWorkerTest,TaskDispatchWakeupBridgeTest,EngineSchedulingCoreArchitectureGuardTest' test
 ```
 
 - Result: passed.

@@ -2,7 +2,7 @@ package com.xa.mass.starter.config;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.TransportServer;
-import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
+import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
@@ -93,8 +93,8 @@ class TransportConfigTest {
                 bootstrap.descriptor(),
                 "ws-extra-mailbox",
                 entry -> true,
-                NoopWorkerPresenceIngress.INSTANCE,
                 new InMemoryTransportEndpointLeaseStore(),
+                CurrentSessionDisconnectSink.NOOP,
                 mock(RuntimeTaskExecutor.class),
                 null,
                 null,

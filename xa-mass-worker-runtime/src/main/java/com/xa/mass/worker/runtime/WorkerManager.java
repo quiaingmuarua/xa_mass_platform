@@ -9,7 +9,6 @@ import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.worker.runtime.admission.WorkerAvailabilityWakeupRuntime;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
@@ -35,7 +34,6 @@ import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
-import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerEvidence;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionOwner;
@@ -81,8 +79,7 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
         WorkerDispatchBlockRuntime,
         WorkerDispatchGateRuntime,
         WorkerDispatchRecoveryRuntime,
-        WorkerReportRuntime,
-        WorkerWarmHintRuntime {
+        WorkerReportRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
     private final Function<String, WorkerReachabilityState> reachabilityLookup;
@@ -301,9 +298,9 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
     }
 
     @Override
-    public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(WorkerTaskSelector selector,
-                                                                             int maxCandidateCount) {
-        return candidateSourceOwner.findWorkerCandidateBatch(selector, maxCandidateCount);
+    public List<WorkerCandidateRow> findWorkerCandidates(WorkerTaskSelector selector,
+                                                         int maxCandidateCount) {
+        return candidateSourceOwner.findWorkerCandidates(selector, maxCandidateCount);
     }
 
     @Override
@@ -357,15 +354,6 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
 
     WorkerCandidateIndex getWorkerCandidateIndex() {
         return new WorkerCandidateIndex(workerRegistrySnapshot, workerRegistry, candidateBucketPolicy);
-    }
-
-    @Override
-    public void recordWarmCandidate(WorkerTaskSelector selector, WorkerCandidateRow candidate) {
-        candidateSourceOwner.recordWarmCandidate(selector, candidate);
-    }
-
-    int warmCandidateCount(String taskId) {
-        return candidateSourceOwner.warmCandidateCount(taskId);
     }
 
     void refreshWorkerRegistrySnapshot() {

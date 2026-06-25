@@ -9,15 +9,11 @@ package com.xa.mass.worker.runtime.evidence;
  */
 public record SelectedWorkerDeliveryTargetEvidence(String workerId,
                                                    String adapterMailboxKey,
-                                                   long generation,
-                                                   long observedAtEpochMillis,
                                                    long expiresAtEpochMillis) {
 
     public SelectedWorkerDeliveryTargetEvidence {
         workerId = requireText(workerId, "workerId");
         adapterMailboxKey = requireText(adapterMailboxKey, "adapterMailboxKey");
-        generation = Math.max(0L, generation);
-        observedAtEpochMillis = Math.max(0L, observedAtEpochMillis);
         expiresAtEpochMillis = Math.max(0L, expiresAtEpochMillis);
     }
 

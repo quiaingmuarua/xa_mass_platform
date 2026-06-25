@@ -4,11 +4,12 @@ Status: slice complete, roadmap active. The current landed slice covers the
 disconnect negative-signal path, selection-gate owner move, worker-control
 eligibility owner move, clear-capable SDK runtime bridge cleanup, and the first
 worker-runtime-owned positive recovery path for worker state/command sources.
-Transport session presence no longer refreshes worker registry heartbeat.
+Transport session presence bridge has been deleted; connected and heartbeat
+observations stay transport-local.
 Capacity-changing release/final/lock-release evidence now requests dispatch
 wakeup through the worker-runtime availability hook. Freshness point-read
-recovery, richer release/capacity recovery policy, and full push-presence
-deletion or delivery-target writer replacement remain open.
+recovery, richer release/capacity recovery policy, and a future shared
+delivery-target projection remain open.
 
 ## Summary
 
@@ -51,9 +52,9 @@ Current landed slice:
 - worker-runtime exposes a negative-only `WorkerDispatchBlockRuntime` port;
 - memory and Redis worker registries store source-scoped block metadata and
   reject stale negative observations by `observedAtMillis`;
-- session-presence ingress emits `TRANSPORT_DISCONNECTED` only when the
-  worker-runtime presence projection accepts the disconnect and the worker
-  becomes unreachable;
+- adapter-local current-session disconnect emits `TRANSPORT_DISCONNECTED`
+  through the negative-only sink when endpoint/session currentness confirms
+  the loss;
 - worker selection no longer rejects candidates by reading direct reachability
   projection; it consumes worker-runtime registry/gate
   dispatch eligibility;
@@ -69,32 +70,30 @@ Current landed slice:
   `WorkerDispatchRecoveryRuntime`, and `WorkerManager` validates worker meta,
   recovery mode, slot presence, removing state, and active block source before
   clearing that source through `WorkerRegistry.recoverDispatchDisable(...)`;
-- `WorkerRuntimePresenceIngress` no longer calls `WorkerHeartbeatRuntime` or
-  refreshes registry heartbeat from transport connected/heartbeat observations.
-  The old `WorkerPresenceRuntime` interface has been removed; the remaining
-  session-presence bridge writes only to the embedded
-  `InMemoryWorkerPresenceRuntime` projection, so transport
-  connected/reconnected observations also cannot wake the scheduler through the
-  presence projection. That bridge preserves current delivery-target and
-  reachability projection until a replacement writer exists;
+- the former transport-to-worker-runtime push-presence event bridge has been
+  removed. Transport connected/heartbeat observations stay transport-local and
+  cannot wake the scheduler through presence projection. Embedded assigned
+  delivery uses worker registration plus local transport binding for
+  selected-worker mailbox lookup; split producer runtimes use explicit
+  resolver injection;
 - worker-runtime admission/final evidence (`releaseWorkerReservation`,
   `recordWorkFinal`, and exclusive-lock release) now requests dispatch wakeup
   through `WorkerAvailabilityWakeupRuntime`; it does not clear block sources.
-- `SelectedWorkerDeliveryTargetEvidence` no longer carries
-  `WorkerReachabilityState`; assigned delivery target evidence is only
-  selected-worker mailbox target, generation, and expiry evidence.
+- `SelectedWorkerDeliveryTargetEvidence` no longer carries reachability,
+  generation, or observation metadata; assigned delivery target evidence is
+  selected worker, mailbox target, and expiry evidence.
 
 Current executable slice is the negative-fast-close lane, selection-gate owner
 move, worker-control dispatch eligibility owner move, and removal of
 readiness/reachability/occupancy as separate scheduling truth models. SDK
 runtime bridge clear-gate cleanup and first positive recovery validation have
-landed; the transport-presence-to-registry-heartbeat bridge and the
+landed; the transport-presence event bridge, registry-heartbeat writes, and
 presence-to-dispatch-wakeup bridge have also been removed, and
 capacity-changing release/final/lock-release evidence now reaches the
 worker-runtime dispatch wakeup/recheck hook. Delivery target evidence has been
-separated from reachability vocabulary. Freshness point-read recovery, full
-push-presence deletion or delivery-target writer replacement, and broader
-release/delete policy remain roadmap work, not completed facts.
+separated from reachability vocabulary. Freshness point-read recovery, future
+shared delivery-target projection, and broader release/delete policy remain
+roadmap work, not completed facts.
 Delivery target ownership can remain on the current simple implementation for
 this slice as long as assigned dispatch does not move target resolution into
 transport endpoint/session reads.
@@ -577,22 +576,17 @@ classification remains follow-up policy.
 
 - Current transport session evidence still has transport-owned
   `TransportEndpointLeaseStore` / `TransportEndpointLeasePublisher`.
-- Current push-presence bridge still has `WorkerPresenceIngress` /
-  `WorkerPresenceSessionPublisher` residue that can mutate worker-runtime
-  presence projection from transport connected/heartbeat/disconnected events.
-- Current `WorkerRuntimePresenceIngress` receives transport connected,
-  heartbeat, and disconnected events and mutates worker-runtime presence
-  projection directly for reachability and delivery-target evidence. It no
-  longer refreshes registry heartbeat from connected/heartbeat observations, and
-  it now writes to the embedded `InMemoryWorkerPresenceRuntime` projection
-  directly.
-- Current `InMemoryWorkerPresenceRuntime` models active sessions and projects
-  older `ONLINE / STALE / OFFLINE / UNKNOWN` reachability vocabulary.
-- Current `InMemoryWorkerPresenceRuntime` exposes
-  `resolveDeliveryTarget(selectedWorkerId)` as the embedded dispatch producer's
-  source for `selectedWorkerId -> adapterMailboxKey`.
-  The returned `SelectedWorkerDeliveryTargetEvidence` no longer carries
-  reachability state.
+- The former push-presence bridge from transport session events into
+  worker-runtime projection has been deleted. Transport connected/heartbeat
+  observations now update only transport-owned endpoint/session evidence.
+- Current-session disconnect is the only transport-origin scheduling signal
+  retained by this roadmap; it enters worker-runtime as a narrow negative block.
+- Embedded assigned dispatch resolves `selectedWorkerId -> adapterMailboxKey`
+  from worker registration plus local transport binding. Split engine-producer
+  runtimes require an explicit resolver injection until a future shared
+  projection is justified.
+- `SelectedWorkerDeliveryTargetEvidence` no longer carries reachability,
+  generation, or observed-time metadata.
 - Current `WorkerSelectionOwner` no longer rejects candidates by calling
   `WorkerSchedulingViewRuntime.getWorkerReachability(workerId) != ONLINE`.
   Direct reachability projection is guarded as diagnostic/evidence-only for
@@ -677,8 +671,8 @@ classification remains follow-up policy.
 
 ## Do Not Start With
 
-Do not start by deleting `WorkerPresenceIngress` or
-`TransportEndpointLeaseStore`.
+Do not start by deleting `TransportEndpointLeaseStore` or by reintroducing a
+generic transport session-presence bridge.
 
 Also do not start by creating a new scheduling index beside `WorkerRegistry`.
 Do not start by wiring transport or adapters to the current
@@ -699,7 +693,7 @@ cleanup proves it has no diagnostics, freshness, or currentness value.
 
 Scope:
 
-- Inventory current production and test references to:
+- Inventory current references and preserve historical deletion proof for:
   - `WorkerPresenceIngress`
   - `WorkerPresenceSessionPublisher`
   - `WorkerSessionPresenceEvent`
@@ -1038,8 +1032,8 @@ Acceptance:
 
 Implementation state:
 
-- `WorkerRuntimePresenceIngress` maps accepted current-session disconnects that
-  make a worker unreachable to `TRANSPORT_DISCONNECTED`.
+- Adapter-local current-session disconnect maps to `TRANSPORT_DISCONNECTED`
+  through the assembly-provided negative sink.
 - Transport runtime and concrete adapters still do not import worker-runtime or
   call dispatch gate/block APIs directly.
 
@@ -1178,19 +1172,16 @@ Acceptance:
 
 ## NDE-4 Remove Push-Presence Scheduling-Mutation Residue
 
-Status: partial cleanup landed. Transport connected/heartbeat no longer refresh
-worker registry heartbeat, write scheduling freshness through
-`WorkerRuntimePresenceIngress`, or wake the scheduler through
-the embedded worker presence projection. Full push-presence removal remains
-follow-up until delivery target evidence has a replacement writer.
+Status: push-presence cleanup landed. Transport connected/heartbeat no longer
+refresh worker registry heartbeat, write worker-runtime scheduling freshness, or
+wake the scheduler through a presence projection. Embedded delivery-target
+lookup is derived from worker registration plus local transport binding; a
+future shared projection remains a separate deployment decision.
 
 Scope:
 
-- After NDE-0A through NDE-3 pass, remove or retire:
-  - `WorkerPresenceIngress`
-  - `WorkerPresenceSessionPublisher`
-  - transport-owned `WorkerSessionPresenceEvent`
-- Remove push-presence capabilities from adapter bootstrap assembly.
+- Keep the former push-presence capabilities removed from adapter bootstrap
+  assembly.
 - Do not delete `TransportEndpointLeaseStore`, `TransportEndpointLeasePublisher`,
   endpoint lease records, or Redis/in-memory endpoint lease stores as part of
   this roadmap.
@@ -1198,16 +1189,11 @@ Scope:
   transport diagnostics, currentness checks, or narrow freshness evidence, but it
   must not mutate worker-runtime scheduling state or drive producer-side target
   resolution.
-- Preserve the current delivery target resolver, or replace it in the same
-  slice, before deleting `InMemoryWorkerPresenceRuntime`.
-- Preserve or replace the delivery target evidence writer before deleting
-  session-presence writes that currently update delivery targets.
-- If no replacement writer proof exists, do not delete the
-  `WorkerRuntimePresenceIngress` path that currently keeps
-  `SelectedWorkerDeliveryTargetEvidence` current.
-- Current allowed intermediate state: `WorkerRuntimePresenceIngress` may still
-  update worker-runtime presence projection for delivery-target evidence and
-  reachability diagnostics, but it must not call `WorkerHeartbeatRuntime`, refresh
+- Preserve the embedded delivery target resolver and split-runtime explicit
+  resolver requirement unless a future shared projection replaces them.
+- Current allowed state: no transport session event may update worker-runtime
+  presence projection for delivery-target evidence or reachability diagnostics,
+  and transport connected/heartbeat must not call `WorkerHeartbeatRuntime`, refresh
   registry heartbeat, request dispatch wakeup/recheck, or open eligibility.
 
 Acceptance:
@@ -1220,9 +1206,9 @@ Acceptance:
 - Dispatch producer still resolves the delivery target before transport
   enqueue; transport endpoint/session reads do not become the producer-side
   target resolver.
-- `SelectedWorkerDeliveryTargetEvidence` still has a named writer after
-  push-presence residue is removed.
-- The delivery target writer is separate from scheduling eligibility and
+- `SelectedWorkerDeliveryTargetEvidence` still has a named resolver or
+  projection source after push-presence residue is removed.
+- The delivery target resolver/projection source is separate from scheduling eligibility and
   freshness evidence providers; it does not become a transport endpoint/session
   read in the assigned-dispatch producer.
 - Architecture guards forbid transport/adapters from opening schedulability.
@@ -1463,16 +1449,18 @@ NDE-6A / NDE-6B proof:
 
 ```bash
 mvn -pl xa-mass-engine,xa-mass-worker-runtime,sdk/xa-mass-embedded-sdk -am test -Dtest='WorkerControlServiceTest,TaskWorkerEligibilityTest,EngineSchedulingCoreArchitectureGuardTest,MassEngineAssemblyBoundaryTest,WorkerManagerTest,WorkerSelectionContractGuardTest'
-mvn -pl platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis,xa-mass-worker-runtime,sdk/xa-mass-embedded-sdk -am test -Dtest='InMemoryWorkerRegistryTest,RedisWorkerRegistryTest,WorkerRuntimePresenceIngressTest,WorkerManagerTest'
+mvn -pl platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis,xa-mass-worker-runtime,sdk/xa-mass-embedded-sdk -am test -Dtest='InMemoryWorkerRegistryTest,RedisWorkerRegistryTest,WorkerManagerTest'
 rg -n "WorkerDispatchGateRuntime|clearWorkerDispatchDisable" sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/EngineRuntimeBridge.java sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/RuntimeEventBusEngineBridge.java sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassEngine.java xa-mass-engine/src/main/java/com/xa/mass/engine/EngineRuntimeKernel.java xa-mass-engine/src/main/java/com/xa/mass/engine/EngineRuntimeKernelConfig.java
 rg -n "clearWorkerDispatchDisable" xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/control/DefaultWorkerDispatchAvailabilityPolicy.java xa-mass-engine/src/main/java/com/xa/mass/engine/control/WorkerControlService.java
 ```
 
-NDE-4A transport-presence heartbeat-write and wakeup cleanup proof:
+NDE-4A transport-presence heartbeat-write, wakeup, and push-presence deletion
+proof:
 
 ```bash
-mvn -pl sdk/xa-mass-embedded-sdk,transport/transport_runtime -am test -Dtest='WorkerRuntimePresenceIngressTest,MassEngineAssemblyBoundaryTest,TransportConvergenceArchitectureGuardTest'
-rg -n "WorkerHeartbeatRuntime|refreshWorkerHeartbeat|refreshSlotHeartbeat" sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java
+mvn -pl sdk/xa-mass-embedded-sdk,transport/transport_runtime -am test -Dtest='MassApplicationDistributedTransportTest,MassEngineAssemblyBoundaryTest,TransportConvergenceArchitectureGuardTest'
+mvn -pl transport/polling-adapter,transport/socket-adapter,transport/websocket-adapter test -Dtest='PollingSessionEvidenceDriverTest,SocketSessionManagerTest,WebSocketSessionRegistryTest,WebSocketSessionEvidenceRefresherTest'
+rg -n "WorkerHeartbeatRuntime|refreshWorkerHeartbeat|refreshSlotHeartbeat" sdk/xa-mass-embedded-sdk/src/main/java transport --glob "*.java" --glob "!**/target/**"
 rg -n "setDispatchWakeupCallback|dispatchWakeupCallback|notifyDispatchWakeup" xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/presence
 rg -n "interface\\s+WorkerPresenceRuntime|import\\s+.*\\.WorkerPresenceRuntime;|setWorkerPresenceRuntime\\(" sdk/xa-mass-embedded-sdk/src/main/java xa-mass-worker-runtime/src/main/java --glob "*.java"
 rg -n "getWorkerPresenceRuntime\\(\\)\\.setDispatchWakeupCallback" sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassEngine.java

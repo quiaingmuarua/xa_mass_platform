@@ -38,7 +38,7 @@ assignment signal
 | assignment orchestration | `TaskWorkerAssignListener` | inline budget formulas, result finality |
 | allocation shape | `AssignmentAllocationPolicy` | task mutation, claim/bind |
 | worker budget | `WorkerBudgetPolicy` | eligibility, result interpretation |
-| candidate source | `WorkerManager.findWorkerCandidateBatch(...)` backed by `WorkerCandidateIndex` | rule evaluation, acquisition |
+| candidate source | `WorkerManager.findWorkerCandidates(...)` backed by `WorkerCandidateIndex` | rule evaluation, acquisition |
 | worker scheduling read model | `WorkerSchedulingCandidate` / `WorkerSchedulingView` / `WorkerMatchContext` | device/account lifecycle ownership |
 | eligibility and preference | prefilter + QLExpress rules + `WorkerCandidateRanker` | runtime claim, terminal policy |
 | current acquisition path | `RuleBasedTaskWorkerMatchingStrategy` | allocation formulas, result convergence |

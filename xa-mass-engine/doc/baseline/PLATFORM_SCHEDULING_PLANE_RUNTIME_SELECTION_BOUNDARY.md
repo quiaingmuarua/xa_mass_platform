@@ -28,14 +28,14 @@ single class, not a policy family, and not a new facade.
 | `WorkerTaskSelectorFactory#fromPolicy` | candidate-source selector construction from resolved worker policy | `ResolvedWorkerSchedulingPolicy` | policy resolution, runtime admission, ranking, reserve/lock mutation | candidate-source adapter |
 | `RuleBasedTaskWorkerMatchingStrategy` | matching assembly, prefilter, rule evaluation handoff, ranking handoff, reserve/lock/admission handoff | dispatch intent, resolved worker policy, candidate source, rule context, ranker, admission/resource mechanisms | persisted policy truth, public policy config, trace truth | runtime-selection mechanism |
 | `TaskAssignWorker` | assignment signal queue, delayed retry, lane routing, and retry wakeup | task events and `TaskWorkerAssignListener` | concrete worker choice, policy definition, trace truth | binding entry coordinator |
-| `TaskWorkerAssignListener` | allocation, matching handoff, dispatch binding call, surplus release, warm-hint write timing | matching strategy, dispatch binder, admission runtime, warm-hint runtime, allocation policy | direct candidate source, rule context definition, persisted policy truth | binding coordinator |
+| `TaskWorkerAssignListener` | allocation, matching handoff, dispatch binding call, surplus release | matching strategy, dispatch binder, admission runtime, allocation policy | direct candidate source, rule context definition, persisted policy truth | binding coordinator |
 | `RuntimeReadyDispatchPump` | runtime-ready BATCH task redispatch entry | runtime dispatchable task source and `TaskWorkerAssignListener#onTaskAssign` | direct worker binding, direct candidate selection | approved binding entry fan-in |
 | `TaskDispatchWakeupBridge` | worker-availability wakeup fanout | `TaskAssignWorker#wakeWaitingRetries` and runtime-ready pump wakeup | direct worker binding, direct candidate selection | approved wakeup fanout |
 | `EngineRuntimeKernel` | default engine runtime assembly and lifecycle wiring | runtime ports, listener graph, matching strategy, assign worker, pumps/watchdogs | direct worker binding outside listener/binder path | assembly owner |
 | `WorkerMatchContext#getRuleContext()` | approved rule-readable eligibility map | static task/candidate facts approved for rules | diagnostic-only context, live admission/reserve/lock evidence unless explicitly approved | rule-readable input |
 | full `WorkerMatchContext` snapshot | diagnostic match evidence | runtime and candidate facts | rule policy contract, selection truth | diagnostic evidence |
 | `WorkerCandidateRanker` / `WorkerCandidateRankPolicy` | read-only ordering and current default ranking weights | candidate evidence and static rank weights | reserve, lock, admission, release, live evidence ownership | ranking mechanism / static ranking policy |
-| `WorkerAdmissionRuntime` / `WorkerWarmHintRuntime` | live admission, reservation, lock, load, active-worker count, warm hints | worker runtime state | resolved policy definition, rule DSL ownership, trace truth | runtime truth |
+| `WorkerAdmissionRuntime` | live admission, reservation, lock, load, active-worker count | worker runtime state | resolved policy definition, rule DSL ownership, trace truth | runtime truth |
 | `WorkerDispatchResourcePolicy` / `WorkerDispatchResourceReleaser` | dispatch resource usage and release semantics | selected candidate and task dispatch context | policy variant selection, candidate source definition, trace truth | runtime resource mechanism |
 | `SimpleTaskDispatchBinder` | runtime work claim and dispatch binding materialization for already matched workers | matched workers, runtime ready work, admission runtime | matching, ranking, policy resolution | binding owner after runtime selection |
 | `AssignmentRecordService` / `TraceEventLogger` | assignment and trace evidence | selection results, rejection facts, release facts | worker-selection truth, replayable policy state | evidence only |
@@ -95,14 +95,13 @@ Runtime mechanism evidence:
 - worker reachability,
 - worker load and slots,
 - draining / dispatch-disabled state,
-- warm hints,
 - reserve / lock / admission result,
 - ranking execution,
 - release result.
 
 Static ranking policy and runtime ranking evidence are separate. Current
 `WorkerCandidateRankPolicy` is a default static weight object. Live load,
-availability, warm evidence, reserve, lock, and admission remain runtime
+availability, reserve, lock, and admission remain runtime
 mechanism evidence.
 
 ## Residue Candidates
@@ -156,7 +155,7 @@ the primary integrated scheduling commands above.
 Residue sanity commands:
 
 ```powershell
-rg -n "ResolvedWorkerSchedulingPolicy|WorkerTaskSelectorFactory|RuleBasedTaskWorkerMatchingStrategy|WorkerMatchContext|WorkerCandidateRanker|WorkerAdmissionRuntime|WorkerWarmHintRuntime|WorkerDispatchResourcePolicy|AssignmentRecordService" xa-mass-engine xa-mass-worker-runtime --glob '!**/target/**'
+rg -n "ResolvedWorkerSchedulingPolicy|WorkerTaskSelectorFactory|RuleBasedTaskWorkerMatchingStrategy|WorkerMatchContext|WorkerCandidateRanker|WorkerAdmissionRuntime|WorkerDispatchResourcePolicy|AssignmentRecordService" xa-mass-engine xa-mass-worker-runtime --glob '!**/target/**'
 rg -n "TaskAssignWorker|TaskWorkerAssignListener|TaskDispatchWakeupBridge|RuntimeReadyDispatchPump|LeaseExpireWatchdog|TaskDispatchBinder|bindDispatches|submit\(|onTaskAssign|expireLeasedWork" xa-mass-engine/src/main/java --glob '!**/target/**'
 rg -n "WorkerTaskSelectorFactory\.fromTask\(" xa-mass-engine/src/main/java --glob '!**/target/**'
 rg -n "TaskDispatchIntent\.fromTask\(" xa-mass-engine/src/main/java --glob '!**/target/**'

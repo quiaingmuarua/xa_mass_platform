@@ -50,9 +50,10 @@ Important current owner facts:
 - `SimpleTaskDispatchBinder` owns runtime claim and dispatch binding.
 - `TaskResultService` owns result ingest, retry/finality decision flow, lease
   expiry handling, and result-side trace/event ordering.
-- `WorkerCandidateRuntime`, `WorkerAdmissionRuntime`, `WorkerWarmHintRuntime`,
-  and `WorkerSchedulingViewRuntime` come from worker-runtime. Engine consumes
-  these seams; it should not re-own worker registry truth.
+- `WorkerCandidateRuntime`, `WorkerAdmissionRuntime`, and
+  `WorkerSchedulingViewRuntime` come from worker-runtime. Engine consumes these
+  seams; it should not re-own worker registry truth. The former warm-hint seam
+  has been removed before score-band worker-runtime work.
 
 ## What Looks Healthy
 

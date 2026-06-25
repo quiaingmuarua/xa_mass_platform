@@ -5,11 +5,10 @@ import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.polling.runtime.PollingSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
 import org.junit.jupiter.api.Test;
@@ -112,12 +111,12 @@ class EmbeddedPullWorkerSessionTest {
     }
 
     @Test
-    void connectHeartbeatDisconnectWritePresenceWithoutRouteKeyAndWithSessionToken() {
+    void connectHeartbeatDisconnectWriteEndpointLeaseAndCurrentDisconnectSignal() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
+        RecordingDisconnectSink disconnectSink = new RecordingDisconnectSink();
         WorkerHeartbeatRuntime workerHeartbeatRuntime = mock(WorkerHeartbeatRuntime.class);
         EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), mock(TransportResultIngressChannel.class),
-                endpointLeaseStore, presenceIngress, workerHeartbeatRuntime);
+                endpointLeaseStore, disconnectSink, workerHeartbeatRuntime);
 
         assertTrue(session.connectAndClaim("connected"));
         verify(workerHeartbeatRuntime).refreshWorkerHeartbeat(eq("worker-1"), anyLong());
@@ -125,62 +124,52 @@ class EmbeddedPullWorkerSessionTest {
         assertEquals("conn-1", endpointLeaseStore.currentEndpointLease("group-1", "worker-1")
                 .orElseThrow()
                 .endpointLeaseId());
-        assertEquals(List.of("CONNECTED:worker-1:polling:null:conn-1:connected:conn-1"),
-                presenceIngress.events);
+        assertEquals(List.of(), disconnectSink.events);
 
-        assertFalse(staleSession("stale-conn", endpointLeaseStore, new RecordingWorkerPresenceIngress())
+        assertFalse(staleSession("stale-conn", endpointLeaseStore, new RecordingDisconnectSink())
                 .disconnectIfCurrent("stale-disconnect"));
         assertTrue(endpointLeaseStore.currentEndpointLease("group-1", "worker-1").isPresent());
 
-        assertFalse(staleSession("stale-conn", endpointLeaseStore, new RecordingWorkerPresenceIngress())
+        assertFalse(staleSession("stale-conn", endpointLeaseStore, new RecordingDisconnectSink())
                 .refreshHeartbeatIfCurrent("stale-heartbeat"));
         assertTrue(session.refreshHeartbeatIfCurrent("heartbeat"));
         verify(workerHeartbeatRuntime, org.mockito.Mockito.times(2)).refreshWorkerHeartbeat(eq("worker-1"), anyLong());
         assertTrue(endpointLeaseStore.currentEndpointLease("group-1", "worker-1").isPresent());
-        assertEquals(List.of(
-                        "CONNECTED:worker-1:polling:null:conn-1:connected:conn-1",
-                        "HEARTBEAT:worker-1:polling:null:conn-1:heartbeat:conn-1"
-                ),
-                presenceIngress.events);
+        assertEquals(List.of(), disconnectSink.events);
 
         assertTrue(session.disconnectIfCurrent("disconnect"));
         assertTrue(endpointLeaseStore.currentEndpointLease("group-1", "worker-1").isEmpty());
-        assertEquals(List.of(
-                        "CONNECTED:worker-1:polling:null:conn-1:connected:conn-1",
-                        "HEARTBEAT:worker-1:polling:null:conn-1:heartbeat:conn-1",
-                        "DISCONNECTED:worker-1:polling:null:conn-1:disconnect:conn-1"
-                ),
-                presenceIngress.events);
+        assertEquals(List.of("group-1:worker-1:disconnect"), disconnectSink.events);
     }
 
     private static EmbeddedPullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
                                              TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore) {
         return session("conn-1", deliveryPullChannel, resultIngestChannel, endpointLeaseStore,
-                new RecordingWorkerPresenceIngress());
+                new RecordingDisconnectSink());
     }
 
     private static EmbeddedPullWorkerSession staleSession(String sessionToken,
                                                   InMemoryTransportEndpointLeaseStore endpointLeaseStore,
-                                                  WorkerPresenceIngress presenceIngress) {
+                                                  CurrentSessionDisconnectSink disconnectSink) {
         return session(sessionToken, mock(DeliveryPullChannel.class), mock(TransportResultIngressChannel.class), endpointLeaseStore,
-                presenceIngress);
+                disconnectSink);
     }
 
     private static EmbeddedPullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
                                              TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore,
-                                             WorkerPresenceIngress presenceIngress) {
-        return session(deliveryPullChannel, resultIngestChannel, endpointLeaseStore, presenceIngress,
+                                             CurrentSessionDisconnectSink disconnectSink) {
+        return session(deliveryPullChannel, resultIngestChannel, endpointLeaseStore, disconnectSink,
                 mock(WorkerHeartbeatRuntime.class));
     }
 
     private static EmbeddedPullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
                                              TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore,
-                                             WorkerPresenceIngress presenceIngress,
+                                             CurrentSessionDisconnectSink disconnectSink,
                                              WorkerHeartbeatRuntime workerHeartbeatRuntime) {
-        return session("conn-1", deliveryPullChannel, resultIngestChannel, endpointLeaseStore, presenceIngress,
+        return session("conn-1", deliveryPullChannel, resultIngestChannel, endpointLeaseStore, disconnectSink,
                 workerHeartbeatRuntime);
     }
 
@@ -188,8 +177,8 @@ class EmbeddedPullWorkerSessionTest {
                                              DeliveryPullChannel deliveryPullChannel,
                                              TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore,
-                                             WorkerPresenceIngress presenceIngress) {
-        return session(sessionToken, deliveryPullChannel, resultIngestChannel, endpointLeaseStore, presenceIngress,
+                                             CurrentSessionDisconnectSink disconnectSink) {
+        return session(sessionToken, deliveryPullChannel, resultIngestChannel, endpointLeaseStore, disconnectSink,
                 mock(WorkerHeartbeatRuntime.class));
     }
 
@@ -197,7 +186,7 @@ class EmbeddedPullWorkerSessionTest {
                                              DeliveryPullChannel deliveryPullChannel,
                                              TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore,
-                                             WorkerPresenceIngress presenceIngress,
+                                             CurrentSessionDisconnectSink disconnectSink,
                                              WorkerHeartbeatRuntime workerHeartbeatRuntime) {
         return new EmbeddedPullWorkerSession(
                 "worker-1",
@@ -205,48 +194,31 @@ class EmbeddedPullWorkerSessionTest {
                 sessionToken,
                 deliveryPullChannel,
                 resultIngestChannel,
-                evidenceDriver(endpointLeaseStore, presenceIngress),
+                evidenceDriver(endpointLeaseStore, disconnectSink),
                 workerHeartbeatRuntime,
                 "polling"
         );
     }
 
     private static PullSessionEvidenceDriver evidenceDriver(InMemoryTransportEndpointLeaseStore endpointLeaseStore,
-                                                            WorkerPresenceIngress presenceIngress) {
+                                                            CurrentSessionDisconnectSink disconnectSink) {
         return new PollingSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
                 "polling",
                 "polling",
                 endpointLeaseStore,
-                presenceIngress
+                disconnectSink
         ));
     }
 
-    private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {
+    private static final class RecordingDisconnectSink implements CurrentSessionDisconnectSink {
         private final List<String> events = new ArrayList<>();
 
         @Override
-        public void sessionConnected(WorkerSessionPresenceEvent event) {
-            events.add(describe(event));
-        }
-
-        @Override
-        public void sessionHeartbeat(WorkerSessionPresenceEvent event) {
-            events.add(describe(event));
-        }
-
-        @Override
-        public void sessionDisconnected(WorkerSessionPresenceEvent event) {
-            events.add(describe(event));
-        }
-
-        private String describe(WorkerSessionPresenceEvent event) {
-            return event.eventType().name() + ":"
-                    + event.workerId() + ":"
-                    + event.adapterId() + ":"
-                    + event.routeKey() + ":"
-                    + event.sessionToken() + ":"
-                    + event.reason() + ":"
-                    + event.traceId();
+        public void currentSessionDisconnected(String deliveryBucketId,
+                                               String workerId,
+                                               String reason,
+                                               long observedAtMillis) {
+            events.add(deliveryBucketId + ":" + workerId + ":" + reason);
         }
     }
 

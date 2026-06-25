@@ -31,9 +31,9 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | `WorkerCommandLifecycleOwner` | worker command lifecycle owner | command request/status truth, approved command catalog admission, deadline expiry, owner-decided acknowledgement/status ingest, and read view | task result convergence, task-work dispatch, transport lifecycle state |
 | `WorkerCommandDeliveryCoordinator` / `WorkerCommandDeliveryPort` | worker command delivery handoff | command-specific delivery attempt coordination and handoff result mapping back into command lifecycle | task-work dispatch, task result convergence, transport lifecycle state |
 | `WorkerCapabilityReportEventHandler` | worker capability event handler | parse kernel-targeted capability reports and delegate to `WorkerControlService` | capability composition, matching, result convergence, presence ownership |
-| `WorkerCapabilityAuthority` | worker capability composition owner | report version/idempotency/conflict rules and effective capability composition into immutable `WorkerRegistrySnapshot` | event routing, matching/ranking decisions, transport presence |
+| `WorkerCapabilityAuthority` | worker capability composition owner | report version/idempotency/conflict rules and effective capability composition into immutable `WorkerRegistrySnapshot` | event routing, matching/ranking decisions, transport session/reachability evidence |
 | `WorkerStateReportEventHandler` | worker state event handler | parse kernel-targeted state reports and delegate to `WorkerControlService` | state projection truth, reachability, load, matching, result convergence |
-| `WorkerStateProjectionOwner` | worker state projection owner | bounded per-worker state projection, version/idempotency/conflict rules, and recent diagnostic history | transport presence, worker capability truth, load, matching/ranking, task result |
+| `WorkerStateProjectionOwner` | worker state projection owner | bounded per-worker state projection, version/idempotency/conflict rules, and recent diagnostic history | transport session/reachability evidence, worker capability truth, load, matching/ranking, task result |
 | `TaskStageEvidenceService` | owner-backed task stage evidence service surface | direct entry/read handoff for task stage evidence plus canonical trace emission | stage projection truth, public result rows, final convergence, task lifecycle |
 | `TaskStageEvidenceEventHandler` | task stage event handler | parse kernel-targeted task stage evidence and delegate to `TaskStageEvidenceService` | stage projection truth, public result rows, final convergence, task lifecycle |
 | `TaskStageEvidenceOwner` | task stage evidence owner | bounded per-task/message/stage projection, version/idempotency/conflict rules, and recent diagnostic history | public result rows, final convergence, task-work queues, scheduling, dispatch |
@@ -41,7 +41,7 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | task dispatch handoff | assignment/transport boundary | already-bound task work delivery view | worker matching, allocation, finality |
 | `TaskResultReport` | task result payload | worker task-result input | worker command ack, worker state report |
 | `RoutingEnvelope(target=result-ingress:<resultCorrelationRef>)` | transport result-ingress carrier | opaque routing target, payload, diagnostics, and creation time around worker result payloads | final result classification, task-result schema decoding |
-| `WorkerPresenceIngress` | transport session-presence ingress | worker session connect/heartbeat/disconnect observations projected into embedded reachability and delivery-target evidence; disconnected may emit negative dispatch evidence | endpoint-lease delivery feasibility, positive scheduling recovery, command lifecycle, state projection, capability truth, worker resource status |
+| `TransportEndpointLeasePublisher` / `CurrentSessionDisconnectSink` | transport session-evidence boundary | adapter session connect/heartbeat/disconnect observations written to transport endpoint lease evidence; only an adapter-confirmed current-session disconnect may cross into worker-runtime as negative dispatch evidence | positive scheduling recovery, worker-runtime heartbeat refresh, command lifecycle, state projection, capability truth, worker resource status |
 | reachability point read | worker-runtime diagnostic projection | bounded session-observation diagnostics | scheduling reopen, transport endpoint leases, device state, load, command status |
 | `WorkerRegistry` / `WorkerSlot` | scheduling resource owner | active/reserved task-work capacity and exclusive execution-lane evidence | reachability, device state, command lifecycle |
 | trace/audit plane | evidence | historical facts | current runtime truth |
@@ -75,21 +75,24 @@ Those fields are descriptive metadata and policy inputs only:
 Visible catalog/API surfaces may expose metadata, but read visibility does not
 authorize a new owner path.
 
-## Current Presence-Ingress Boundary
+## Current Transport Session Evidence Boundary
 
-`WorkerPresenceIngress` currently means session-presence ingress only:
+Transport session observations are endpoint/session evidence, not worker-runtime
+presence ingress:
 
-- `sessionConnected(...)`
-- `sessionDisconnected(...)`
-- `sessionHeartbeat(...)`
+- `connected` claims or replaces the current transport endpoint lease.
+- `heartbeat` refreshes only the matching current transport endpoint lease.
+- `disconnected` releases only the matching current transport endpoint lease.
 
-`WorkerRuntimePresenceIngress` projects these observations into the
-worker-runtime presence owner and may emit canonical online/offline trace
-evidence when reachability actually changes. The ingress itself is not a worker
-state, command, capability, or endpoint-lease lifecycle owner.
-Connected and heartbeat observations may refresh registry-owned slot heartbeat
-freshness so Stage-1 slot lifecycle eligibility has current evidence, but they
-must not write worker resource status or dispatch gates.
+Connected and heartbeat observations stay transport-local. They must not
+refresh registry-owned slot heartbeat, request dispatch wakeup/recheck, reopen
+dispatch eligibility, write worker resource status, or mutate worker state /
+command / capability owners.
+
+Only a disconnect that the transport endpoint lease owner accepts as the
+current session may cross into worker-runtime, and only as narrow negative
+dispatch evidence through the worker-runtime block port. That signal may close
+dispatch eligibility as best-effort protection; it cannot reopen a worker.
 
 This is current implementation truth, not a claim that `system event` should
 remain a permanent second event family. The active future roadmap treats future
@@ -291,9 +294,9 @@ task result, or scheduling lifecycle truth by itself.
   transport endpoint-lease truth, scheduling reopen truth, or generic health.
 - `WorkerRegistry` stays task-work capacity and exclusive execution-lane
   evidence, not device state.
-- `WorkerPresenceIngress` must not import engine scheduling packages, mutate
-  engine lifecycle state, write worker resource status, or derive presence or
-  slot heartbeat from endpoint-lease currentness.
+- Transport session evidence publishers must not import engine scheduling
+  packages, mutate engine lifecycle state, write worker resource status, or
+  derive registry slot heartbeat from endpoint-lease currentness.
 - A shared runtime envelope remains future-only until concrete owners exist and
   duplicate carrier shape becomes a real problem.
 - Event routing must not become lifecycle ownership merely because a future

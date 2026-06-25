@@ -22,7 +22,6 @@ import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
-import com.xa.mass.worker.runtime.presence.InMemoryWorkerPresenceRuntime;
 import com.xa.mass.engine.stage.TaskStageEvidenceOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;
 import com.xa.mass.engine.rules.MatchingRuleEvaluator;
@@ -54,7 +53,6 @@ import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.worker.runtime.report.WorkerReportRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.report.WorkerStateProjectionRuntime;
-import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockRuntime;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
@@ -88,6 +86,9 @@ import java.util.function.Function;
  */
 public class EngineConfig implements EngineRuntimeKernelConfig {
 
+    private static final Function<String, WorkerReachabilityState> UNKNOWN_WORKER_REACHABILITY =
+            workerId -> WorkerReachabilityState.UNKNOWN;
+
     private boolean enabled = true;
     private int workerThreads = 8;
 
@@ -105,9 +106,8 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     private TaskShellStore taskShellStore;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
-    private InMemoryWorkerPresenceRuntime workerPresenceRuntime = new InMemoryWorkerPresenceRuntime();
     private Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> workerDeliveryTargetResolver =
-            workerPresenceRuntime::resolveDeliveryTarget;
+            selectedWorkerId -> Optional.empty();
     private boolean workerDeliveryTargetResolverExplicitlyConfigured;
     private WorkerDeclarationStore workerDeclarationStore = new InMemoryWorkerDeclarationStore();
     private WorkerRegistry workerRegistry;
@@ -159,12 +159,11 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         this.taskShellStore = source.taskShellStore;
         this.taskWorkRuntime = source.taskWorkRuntime;
         this.taskResultRuntime = source.taskResultRuntime;
-        this.workerPresenceRuntime = source.workerPresenceRuntime;
         this.workerDeliveryTargetResolverExplicitlyConfigured =
                 source.workerDeliveryTargetResolverExplicitlyConfigured;
         this.workerDeliveryTargetResolver = source.workerDeliveryTargetResolverExplicitlyConfigured
                 ? source.workerDeliveryTargetResolver
-                : this.workerPresenceRuntime::resolveDeliveryTarget;
+                : selectedWorkerId -> Optional.empty();
         this.workerDeclarationStore = source.workerDeclarationStore;
         this.workerRegistry = source.workerRegistry;
         this.workerManager = null;
@@ -324,7 +323,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         if (workerManager == null) {
             workerManager = new WorkerManager(
                     getWorkerDeclarationStore(),
-                    workerPresenceRuntime::getWorkerReachability,
+                    UNKNOWN_WORKER_REACHABILITY,
                     getWorkerRegistry(),
                     workerCandidateBucketPolicy
             );
@@ -385,10 +384,6 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         return workerManager();
     }
 
-    public WorkerWarmHintRuntime getWorkerWarmHintRuntime() {
-        return workerManager();
-    }
-
     public WorkerControlRuntime getWorkerControlRuntime() {
         if (workerControlRuntime == null) {
             workerControlRuntime = new WorkerControlService(
@@ -414,7 +409,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     }
 
     public WorkerReachabilityState getWorkerReachability(String workerId) {
-        return workerPresenceRuntime.getWorkerReachability(workerId);
+        return UNKNOWN_WORKER_REACHABILITY.apply(workerId);
     }
 
     public Optional<SelectedWorkerDeliveryTargetEvidence> resolveWorkerDeliveryTarget(String selectedWorkerId) {
@@ -429,12 +424,8 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
             Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> workerDeliveryTargetResolver) {
         this.workerDeliveryTargetResolver = workerDeliveryTargetResolver != null
                 ? workerDeliveryTargetResolver
-                : workerPresenceRuntime::resolveDeliveryTarget;
+                : selectedWorkerId -> Optional.empty();
         this.workerDeliveryTargetResolverExplicitlyConfigured = workerDeliveryTargetResolver != null;
-    }
-
-    public InMemoryWorkerPresenceRuntime getWorkerPresenceRuntime() {
-        return workerPresenceRuntime;
     }
 
     public WorkerDispatchEligibilityRuntime getWorkerDispatchEligibilityRuntime() {

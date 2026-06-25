@@ -125,12 +125,12 @@ public class WorkerCapabilityReportEventHandlerTest {
     }
 
     private static List<WorkerCandidateRow> workerRows(WorkerManager workerManager, Task task) {
-        return workerManager.findWorkerCandidateBatch(new WorkerTaskSelector(
+        return workerManager.findWorkerCandidates(new WorkerTaskSelector(
                 task.getTid(),
                 TaskSharedConfig.workerGroupSelector(task),
                 TaskSharedConfig.targetWorkerId(task),
                 java.util.Set.of()
-        ), 512).candidates();
+        ), 512);
     }
 
     private static WorkerTestFixture worker(String workerId, String workerGroupId) {

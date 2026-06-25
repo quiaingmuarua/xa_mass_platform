@@ -2,7 +2,6 @@ package com.xa.mass.worker.runtime.selection;
 
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
@@ -45,8 +44,8 @@ final class WorkerSelectionTestSupport {
         return new WorkerCandidateRow(workerId, "agent-v1", GROUP_ID, "polling", attributes);
     }
 
-    static WorkerCandidateBatch<WorkerCandidateRow> batch(WorkerCandidateRow... rows) {
-        return new WorkerCandidateBatch<>(List.of(rows), 0, rows.length, 0, 0);
+    static List<WorkerCandidateRow> candidates(WorkerCandidateRow... rows) {
+        return List.of(rows);
     }
 
     static WorkerAdmissionTarget target(String workerId) {

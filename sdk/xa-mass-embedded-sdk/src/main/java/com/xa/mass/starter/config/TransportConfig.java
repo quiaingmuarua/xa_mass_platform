@@ -1,6 +1,5 @@
 package com.xa.mass.starter.config;
 
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
@@ -31,7 +30,6 @@ public class TransportConfig {
     private String outputApiUrl;
     private String apiKey;
 
-    private WorkerPresenceIngress customWorkerPresenceIngress;
     private Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory;
     private WebSocketAdapterConfig bundledWebSocketAdapterConfig = new WebSocketAdapterConfig();
     private TransportServerFactory<WebSocketServerFactoryContext> bundledWebSocketTransportServerFactory;
@@ -61,7 +59,6 @@ public class TransportConfig {
         this.inputApiUrl = source.inputApiUrl;
         this.outputApiUrl = source.outputApiUrl;
         this.apiKey = source.apiKey;
-        this.customWorkerPresenceIngress = source.customWorkerPresenceIngress;
         this.endpointLeaseStoreFactory = source.endpointLeaseStoreFactory;
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.bundledWebSocketAdapterConfig);
         this.bundledWebSocketTransportServerFactory = source.bundledWebSocketTransportServerFactory;
@@ -124,14 +121,6 @@ public class TransportConfig {
 
     public void setApiKey(String apiKey) {
         this.apiKey = apiKey;
-    }
-
-    public WorkerPresenceIngress getCustomWorkerPresenceIngress() {
-        return customWorkerPresenceIngress;
-    }
-
-    public void setCustomWorkerPresenceIngress(WorkerPresenceIngress customWorkerPresenceIngress) {
-        this.customWorkerPresenceIngress = customWorkerPresenceIngress;
     }
 
     public WebSocketAdapterConfig getBundledWebSocketAdapterConfig() {

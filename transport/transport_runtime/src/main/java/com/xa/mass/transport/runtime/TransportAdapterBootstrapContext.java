@@ -2,7 +2,6 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
@@ -12,6 +11,7 @@ import com.xa.mass.transport.runtime.embedded.AdapterMailboxConsumer;
 import com.xa.mass.transport.runtime.embedded.AdapterMailboxConsumerLoop;
 import com.xa.mass.transport.runtime.embedded.DeliveryFailureEvidenceSink;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 
 import java.util.Objects;
 
@@ -22,8 +22,8 @@ public final class TransportAdapterBootstrapContext implements AdapterBootstrapC
 
     private final AdapterBootstrapAssignment assignment;
     private final TransportResultIngressChannel resultIngressChannel;
-    private final WorkerPresenceIngress workerPresenceIngress;
     private final TransportEndpointLeaseStore endpointLeaseStore;
+    private final CurrentSessionDisconnectSink currentSessionDisconnectSink;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
     private final AdapterMailboxClient adapterMailboxClient;
     private final DeliveryFailureEvidenceSink failureEvidenceSink;
@@ -38,8 +38,8 @@ public final class TransportAdapterBootstrapContext implements AdapterBootstrapC
     public TransportAdapterBootstrapContext(TransportAdapterDescriptor descriptor,
                                             String adapterMailboxKey,
                                             TransportResultIngressChannel resultIngressChannel,
-                                            WorkerPresenceIngress workerPresenceIngress,
                                             TransportEndpointLeaseStore endpointLeaseStore,
+                                            CurrentSessionDisconnectSink currentSessionDisconnectSink,
                                             RuntimeTaskExecutor runtimeTaskExecutor,
                                             AdapterMailboxClient adapterMailboxClient,
                                             DeliveryFailureEvidenceSink failureEvidenceSink,
@@ -47,8 +47,10 @@ public final class TransportAdapterBootstrapContext implements AdapterBootstrapC
                                             long mailboxConsumerAvailabilityMillis) {
         this.assignment = new AdapterBootstrapAssignment(descriptor, adapterMailboxKey);
         this.resultIngressChannel = resultIngressChannel;
-        this.workerPresenceIngress = Objects.requireNonNull(workerPresenceIngress, "workerPresenceIngress");
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
+        this.currentSessionDisconnectSink = currentSessionDisconnectSink != null
+                ? currentSessionDisconnectSink
+                : CurrentSessionDisconnectSink.NOOP;
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
         this.adapterMailboxClient = adapterMailboxClient;
         this.failureEvidenceSink = failureEvidenceSink != null ? failureEvidenceSink : ignored -> { };
@@ -134,7 +136,7 @@ public final class TransportAdapterBootstrapContext implements AdapterBootstrapC
                     assignment.adapterId(),
                     assignment.adapterMailboxKey(),
                     endpointLeaseStore,
-                    workerPresenceIngress
+                    currentSessionDisconnectSink
             );
         }
     }

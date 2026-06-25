@@ -13,7 +13,6 @@ import com.xa.mass.transport.runtime.delivery.InMemoryTransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
@@ -35,7 +34,6 @@ import java.util.function.Supplier;
  */
 public class TransportRuntimeComposition {
 
-    private final WorkerPresenceIngress customWorkerPresenceIngress;
     private final Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory;
     private final WebSocketAdapterConfig bundledWebSocketAdapterConfig;
     private final TransportServerFactory<WebSocketServerFactoryContext> bundledWebSocketTransportServerFactory;
@@ -62,7 +60,6 @@ public class TransportRuntimeComposition {
     private transient TransportEndpointLeaseStore runtimeOwnedEndpointLeaseStore;
 
     public TransportRuntimeComposition(TransportConfig source) {
-        this.customWorkerPresenceIngress = source.getCustomWorkerPresenceIngress();
         this.endpointLeaseStoreFactory = source.endpointLeaseStoreFactory();
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getBundledWebSocketAdapterConfig());
         this.bundledWebSocketTransportServerFactory = source.getBundledWebSocketTransportServerFactory();
@@ -121,13 +118,6 @@ public class TransportRuntimeComposition {
         return supplementalSocketAdapterConfigs.stream()
                 .map(SocketAdapterConfig::new)
                 .toList();
-    }
-
-    public WorkerPresenceIngress resolveWorkerPresenceIngress() {
-        if (customWorkerPresenceIngress != null) {
-            return customWorkerPresenceIngress;
-        }
-        return null;
     }
 
     public WorkerTransportRuntimeFactory resolveWorkerTransportRuntimeFactory() {

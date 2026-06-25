@@ -26,7 +26,7 @@ assignment signal
 Completed convergence that should be treated as current baseline:
 
 - worker scheduling is worker-level, not `WorkerContext`-level
-- candidate source is centralized behind `WorkerManager.findWorkerCandidateBatch(...)`
+- candidate source is centralized behind `WorkerManager.findWorkerCandidates(...)`
   and backed by `WorkerCandidateIndex`
 - ranking, allocation, budget, resource usage, release, and refill each have
   explicit owners

@@ -1,10 +1,8 @@
 package com.xa.mass.transport.socket.session;
 
-import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
 
@@ -31,32 +29,24 @@ class SocketSessionManagerTest {
     void connectHeartbeatDisconnectProjectEndpointLeaseIntoTransportStore() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore =
                 new InMemoryTransportEndpointLeaseStore(30_000L);
-        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, presenceIngress);
+        RecordingDisconnectSink disconnectSink = new RecordingDisconnectSink();
+        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, disconnectSink);
 
         manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "endpoint-1",
                 activeSocket(), mock(BufferedWriter.class));
 
         assertEquals("endpoint-1", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
-        assertEquals(List.of("connected:worker-1:socket:endpoint-1:socket connected:endpoint-1"),
-                presenceIngress.events);
+        assertEquals(List.of(), disconnectSink.events);
 
         manager.recordHeartbeat("worker-1", "endpoint-1", "socket heartbeat", "trace-1");
 
         assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
-        assertEquals(List.of(
-                "connected:worker-1:socket:endpoint-1:socket connected:endpoint-1",
-                "heartbeat:worker-1:socket:endpoint-1:socket heartbeat:trace-1"
-        ), presenceIngress.events);
+        assertEquals(List.of(), disconnectSink.events);
 
         manager.removeSession("endpoint-1");
 
         assertFalse(hasEndpoint(endpointLeaseStore, "worker-1"));
-        assertEquals(List.of(
-                "connected:worker-1:socket:endpoint-1:socket connected:endpoint-1",
-                "heartbeat:worker-1:socket:endpoint-1:socket heartbeat:trace-1",
-                "disconnected:worker-1:socket:endpoint-1:socket disconnected:endpoint-1"
-        ), presenceIngress.events);
+        assertEquals(List.of("bucket-1:worker-1:socket disconnected"), disconnectSink.events);
     }
 
     @Test
@@ -89,18 +79,14 @@ class SocketSessionManagerTest {
     @Test
     void staleEndpointHeartbeatAndDisconnectDoNotOverrideReplacementEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, presenceIngress);
+        RecordingDisconnectSink disconnectSink = new RecordingDisconnectSink();
+        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, disconnectSink);
 
         manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "endpoint-old",
                 activeSocket(), mock(BufferedWriter.class));
         manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "endpoint-new",
                 activeSocket(), mock(BufferedWriter.class));
-        assertEquals(List.of(
-                "connected:worker-1:socket:endpoint-old:socket connected:endpoint-old",
-                "connected:worker-1:socket:endpoint-new:socket connected:endpoint-new",
-                "disconnected:worker-1:socket:endpoint-old:socket session replaced:endpoint-old"
-        ), presenceIngress.events);
+        assertEquals(List.of(), disconnectSink.events);
 
         manager.recordHeartbeat("worker-1", "endpoint-old", "stale-heartbeat", "trace-old");
 
@@ -110,27 +96,18 @@ class SocketSessionManagerTest {
         manager.removeSession("endpoint-old");
 
         assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
-        assertEquals(List.of(
-                "connected:worker-1:socket:endpoint-old:socket connected:endpoint-old",
-                "connected:worker-1:socket:endpoint-new:socket connected:endpoint-new",
-                "disconnected:worker-1:socket:endpoint-old:socket session replaced:endpoint-old"
-        ), presenceIngress.events);
+        assertEquals(List.of(), disconnectSink.events);
 
         manager.removeSession("endpoint-new");
 
         assertFalse(hasEndpoint(endpointLeaseStore, "worker-1"));
-        assertEquals(List.of(
-                "connected:worker-1:socket:endpoint-old:socket connected:endpoint-old",
-                "connected:worker-1:socket:endpoint-new:socket connected:endpoint-new",
-                "disconnected:worker-1:socket:endpoint-old:socket session replaced:endpoint-old",
-                "disconnected:worker-1:socket:endpoint-new:socket disconnected:endpoint-new"
-        ), presenceIngress.events);
+        assertEquals(List.of("bucket-1:worker-1:socket disconnected"), disconnectSink.events);
     }
 
     @Test
     void shutdownReleasesEndpointLeaseBeforeClearingSessions() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, NoopWorkerPresenceIngress.INSTANCE);
+        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, CurrentSessionDisconnectSink.NOOP);
 
         manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "endpoint-1",
                 activeSocket(), mock(BufferedWriter.class));
@@ -143,7 +120,7 @@ class SocketSessionManagerTest {
     @Test
     void replacingSelectedWorkerRetiresOldEndpoint() throws IOException {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, NoopWorkerPresenceIngress.INSTANCE);
+        SocketSessionManager manager = manager("socket", "socket", endpointLeaseStore, CurrentSessionDisconnectSink.NOOP);
         BufferedWriter oldWriter = mock(BufferedWriter.class);
         BufferedWriter newWriter = mock(BufferedWriter.class);
         Socket oldSocket = activeSocket();
@@ -188,7 +165,7 @@ class SocketSessionManagerTest {
     private static SocketSessionManager manager(String adapterId,
                                                 String adapterMailboxKey,
                                                 InMemoryTransportEndpointLeaseStore endpointLeaseStore,
-                                                WorkerPresenceIngress presenceIngress) {
+                                                CurrentSessionDisconnectSink disconnectSink) {
         return new SocketSessionManager(
                 adapterId,
                 adapterMailboxKey,
@@ -196,35 +173,20 @@ class SocketSessionManagerTest {
                         adapterId,
                         adapterMailboxKey,
                         endpointLeaseStore,
-                        presenceIngress
+                        disconnectSink
                 )
         );
     }
 
-    private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {
+    private static final class RecordingDisconnectSink implements CurrentSessionDisconnectSink {
         private final List<String> events = new ArrayList<>();
 
         @Override
-        public void sessionConnected(WorkerSessionPresenceEvent event) {
-            events.add("connected:" + describe(event));
-        }
-
-        @Override
-        public void sessionHeartbeat(WorkerSessionPresenceEvent event) {
-            events.add("heartbeat:" + describe(event));
-        }
-
-        @Override
-        public void sessionDisconnected(WorkerSessionPresenceEvent event) {
-            events.add("disconnected:" + describe(event));
-        }
-
-        private static String describe(WorkerSessionPresenceEvent event) {
-            return event.workerId()
-                    + ":" + event.adapterId()
-                    + ":" + event.sessionToken()
-                    + ":" + event.reason()
-                    + ":" + event.traceId();
+        public void currentSessionDisconnected(String deliveryBucketId,
+                                               String workerId,
+                                               String reason,
+                                               long observedAtMillis) {
+            events.add(deliveryBucketId + ":" + workerId + ":" + reason);
         }
     }
 }

@@ -34,9 +34,7 @@ Worker runtime owns:
 - Worker command lifecycle truth: request records, status transitions,
   worker-pulled claims, delivery-attempt bookkeeping, expiry, and command
   lifecycle value contracts.
-- Stage-1 worker candidate source, source guard, and warm/cold merge.
-- Task-local warm candidate hint storage after engine observes useful Stage-2
-  evidence.
+- Stage-1 bounded worker candidate source and source guard.
 - Platform-approved worker candidate bucket policy composition.
 
 Worker runtime does not own:
@@ -66,7 +64,6 @@ Owned contracts:
 - `WorkerNodeBindingRuntime`
 - `WorkerDeclarationRecord`
 - `WorkerResourceRecord`
-- `WorkerRuntimeStateRecord`
 - `WorkerGroupRecord`
 - `AdapterNodeRecord`
 - `NodeGroupBindingRecord`
@@ -81,11 +78,9 @@ Role split:
   not contain adapter-node topology ids, heartbeat, online/offline state,
   dispatch gates, reservations, leases, raw timestamps, or worker-level
   supported project/event capability hints.
-- `WorkerRuntimeStateRecord` is a current runtime-state view assembled from
-  registry, reachability observations, heartbeat freshness, dispatch gate, and
-  admission evidence. It exposes diagnostic fields, but it is not persisted as
-  declaration truth and must not become a second scheduling owner beside
-  registry/admission/selection.
+- Broad runtime-state/readiness records are not current worker-runtime
+  contracts. Registry heartbeat, dispatch gate, admission, and load evidence
+  remain on their narrow owners instead of being copied into a composite DTO.
 - `WorkerResourceRecord` is a minimal lookup read model for worker-owned
   identity/declaration facts. It does not carry runtime status, heartbeat,
   adapter topology ids, raw timestamps, or compatibility capability hints.
@@ -154,7 +149,6 @@ Package: `com.xa.mass.worker.runtime.candidate`
 Owned contracts:
 
 - `WorkerCandidateRuntime`
-- `WorkerCandidateBatch`
 - `WorkerCandidateRow`
 - `WorkerTaskSelector`
 
@@ -167,6 +161,9 @@ Candidate acquisition is an internal worker-runtime selection mechanism.
 Engine scheduling must use `WorkerSelectionRuntime`, not
 `WorkerCandidateRuntime`. Candidate acquisition must start from an explicit
 WorkerGroup selector and must not reintroduce all-worker scans.
+`WorkerCandidateRuntime#findWorkerCandidates(...)` returns row-only source
+candidates; warm/cold diagnostic wrappers and task-local warm mutation ports
+are not current contracts.
 
 Production scheduling candidate acquisition carries the scheduling clock into
 `WorkerRegistry#acquireCandidates(...)` so registry implementations may use
@@ -190,7 +187,6 @@ Owned contracts:
 - `WorkerSchedulingViewRuntime`
 - `SelectedWorkerDeliveryTargetEvidence`
 - `WorkerReachabilityState`
-- `WorkerReadinessState`
 - `WorkerOccupancyState`
 - `WorkerGroupCapabilityView`
 - `WorkerLoadSnapshot`
@@ -250,7 +246,6 @@ Owned contracts:
 - `WorkerAdmissionResult`
 - `WorkerAdmissionStatus`
 - `WorkerAvailabilityWakeupRuntime`
-- `WorkerWarmHintRuntime`
 
 Allowed callers:
 
@@ -450,8 +445,7 @@ implementations into `WorkerManager`.
 
 The root package contains implementation owners such as `WorkerManager`,
 `WorkerResourceOwner`, `WorkerAdmissionOwner`, `WorkerCandidateSourceOwner`,
-`WorkerCandidateIndex`, `WorkerRegistrySnapshot`, `WorkerReportOwner`, and
-`TaskCandidateWarmPool`.
+`WorkerCandidateIndex`, `WorkerRegistrySnapshot`, and `WorkerReportOwner`.
 
 These are not contract families. Cross-module callers should prefer the
 contract packages above.
@@ -462,7 +456,7 @@ Runtime outcome proof:
 
 ```powershell
 .\mvnw.cmd -pl xa-mass-worker-runtime `
-  "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,TaskCandidateWarmPoolTest" test
+  "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest" test
 
 .\mvnw.cmd -pl xa-mass-engine `
   "-Dtest=TaskWorkerEligibilityTest,WorkerStateReportSchedulingIntegrationTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskSchedulingBindingEntryBypassTest,EngineSchedulingCoreSuite" test

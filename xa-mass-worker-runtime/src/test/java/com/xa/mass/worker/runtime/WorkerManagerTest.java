@@ -12,7 +12,6 @@ import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerDispatchBlockRecord;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
@@ -838,102 +837,6 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void warmCandidateHintIsPreferredBeforeColdSourceFill() {
-        declareProjectGroup("pool-a", "demoApp");
-        Worker coldFirst = worker("w-cold-first", "pool-a");
-        Worker warm = worker("w-warm", "pool-a");
-        addWorker(coldFirst);
-        addWorker(warm);
-        Task task = task("demoApp", selector("pool-a"));
-
-        manager.recordWarmCandidate(workerTaskSelector(task), workerCandidateRow(warm));
-        WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(workerTaskSelector(task), 1);
-
-        assertEquals(List.of("w-warm"),
-                batch.candidates().stream()
-                        .map(WorkerCandidateRow::workerId)
-                        .toList());
-        assertEquals(1, batch.warmCandidateCount());
-        assertEquals(1, batch.coldCandidateCount());
-        assertEquals(0, batch.warmSourceGuardRejectedCount());
-        assertEquals(0, batch.duplicateCandidateCount());
-        assertEquals(1, manager.warmCandidateCount(task.getTid()));
-    }
-
-    @Test
-    void duplicateWarmAndColdCandidateIsReportedAndDeduped() {
-        declareProjectGroup("pool-a", "demoApp");
-        Worker duplicate = worker("w-duplicate", "pool-a");
-        addWorker(duplicate);
-        Task task = task("demoApp", selector("pool-a"));
-
-        manager.recordWarmCandidate(workerTaskSelector(task), workerCandidateRow(duplicate));
-        WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(workerTaskSelector(task), 2);
-
-        assertEquals(List.of("w-duplicate"),
-                batch.candidates().stream()
-                        .map(WorkerCandidateRow::workerId)
-                        .toList());
-        assertEquals(1, batch.warmCandidateCount());
-        assertEquals(1, batch.coldCandidateCount());
-        assertEquals(0, batch.warmSourceGuardRejectedCount());
-        assertEquals(1, batch.duplicateCandidateCount());
-    }
-
-    @Test
-    void targetWorkerLookupIgnoresWarmCandidateHints() {
-        declareProjectGroup("pool-a", "demoApp");
-        Worker target = worker("w-target-warm-suppressed", "pool-a");
-        Worker warm = worker("w-warm-suppressed", "pool-a");
-        addWorker(target);
-        addWorker(warm);
-        Task task = task("demoApp", selector("pool-a"));
-        manager.recordWarmCandidate(workerTaskSelector(task), workerCandidateRow(warm));
-        task.setSharedConfig(sharedConfig(Map.of(
-                TaskSharedConfig.TARGET_WORKER_ID, "w-target-warm-suppressed"
-        ), "pool-a"));
-        WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(workerTaskSelector(task), 1);
-
-        assertEquals(List.of("w-target-warm-suppressed"),
-                batch.candidates().stream()
-                        .map(WorkerCandidateRow::workerId)
-                        .toList());
-        assertEquals(0, batch.warmCandidateCount());
-        assertEquals(1, batch.coldCandidateCount());
-        assertEquals(0, batch.duplicateCandidateCount());
-    }
-
-    @Test
-    void staleWarmRouteEvidenceFallsBackToColdCandidateSource() {
-        declareProjectGroup("pool-a", "demoApp");
-        Worker stable = worker("w-stable-route", "pool-a");
-        stable.setAttributes(Map.of("region", "us"));
-        Worker staleWarm = worker("w-stale-warm-route", "pool-a");
-        staleWarm.setAttributes(Map.of("region", "us"));
-        addWorker(stable);
-        addWorker(staleWarm);
-        Task task = task("demoApp", sharedConfig(
-                Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us")),
-                "pool-a"));
-        manager.recordWarmCandidate(workerTaskSelector(task), workerCandidateRow(staleWarm));
-
-        Worker moved = worker("w-stale-warm-route", "pool-a");
-        moved.setAttributes(Map.of("region", "eu"));
-        assertTrue(updateWorker(moved));
-        WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(workerTaskSelector(task), 1);
-
-        assertEquals(List.of("w-stable-route"),
-                batch.candidates().stream()
-                        .map(WorkerCandidateRow::workerId)
-                        .toList());
-        assertEquals(0, batch.warmCandidateCount());
-        assertEquals(1, batch.coldCandidateCount());
-        assertEquals(1, batch.warmSourceGuardRejectedCount());
-        assertEquals(0, batch.duplicateCandidateCount());
-        assertEquals(0, manager.warmCandidateCount(task.getTid()));
-    }
-
-    @Test
     void workerRegistrySnapshotPublicationSwapsPointInTimeSnapshotReference() {
         WorkerRegistrySnapshot before = manager.getWorkerRegistrySnapshot();
         declareEventGroup("crawler", "demoApp", "crawler.fetch");
@@ -1270,7 +1173,7 @@ public class WorkerManagerTest {
     }
 
     private List<WorkerCandidateRow> candidateRows(Task task) {
-        return manager.findWorkerCandidateBatch(workerTaskSelector(task), 512).candidates();
+        return manager.findWorkerCandidates(workerTaskSelector(task), 512);
     }
 
     private List<String> candidateIds(Task task) {
@@ -1278,7 +1181,7 @@ public class WorkerManagerTest {
     }
 
     private List<String> candidateIds(WorkerManager workerManager, Task task, int maxCandidateCount) {
-        return workerManager.findWorkerCandidateBatch(workerTaskSelector(task), maxCandidateCount).candidates().stream()
+        return workerManager.findWorkerCandidates(workerTaskSelector(task), maxCandidateCount).stream()
                 .map(WorkerCandidateRow::workerId)
                 .toList();
     }
@@ -1320,16 +1223,6 @@ public class WorkerManagerTest {
         return new InMemoryWorkerRegistry(
                 WorkerCandidateBucketPolicies.defaultPolicy(),
                 RandomWorkerCandidateSamplingPolicy.defaultPolicy()
-        );
-    }
-
-    private static WorkerCandidateRow workerCandidateRow(Worker worker) {
-        return new WorkerCandidateRow(
-                worker.getWorkerId(),
-                worker.getAgentVersion(),
-                worker.getWorkerGroupId(),
-                worker.getOnlineStrategy(),
-                worker.getAttributes()
         );
     }
 

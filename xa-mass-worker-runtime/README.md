@@ -24,8 +24,7 @@ Worker runtime owns worker truth that is not task truth:
 - Worker command lifecycle truth: command records, status transitions,
   worker-pulled claims, delivery attempt state, and command lifecycle value
   contracts.
-- Stage-1 worker candidate source, source guard, and warm/cold merge.
-- Task-local warm candidate hint storage.
+- Stage-1 bounded worker candidate source and source guard.
 - Platform-approved worker candidate bucket policies.
 - Legacy adapter-node and node/group relation read models where still present in
   worker registration surfaces. These are topology/control-plane evidence only;
@@ -64,7 +63,7 @@ com.xa.mass.worker.runtime.resource   resource declarations and lookup
 com.xa.mass.worker.runtime.selection  selected-worker contract for engine
 com.xa.mass.worker.runtime.candidate  Stage-1 candidate contracts
 com.xa.mass.worker.runtime.evidence   read-only scheduling evidence
-com.xa.mass.worker.runtime.admission  reserve/release, wakeup, warm hints
+com.xa.mass.worker.runtime.admission  reserve/release and wakeup
 com.xa.mass.worker.runtime.command    worker command lifecycle truth
 com.xa.mass.worker.runtime.report     capability and state report projection
 com.xa.mass.worker.runtime.control    worker dispatch gate/block control
@@ -77,10 +76,9 @@ com.xa.mass.worker.runtime            implementation owners and assembly
 - `WorkerDeclarationRecord` and `WorkerDeclarationStore` live in this module as
   the worker-runtime owned declaration port: execution identity, WorkerGroup
   membership, adapter hints, static attributes, max concurrency, and timestamps.
-- `WorkerRuntimeStateRecord` is current runtime evidence: heartbeat freshness,
-  reachability observations, dispatch gate, reservation/load, and lease
-  observations. It is not a second scheduling truth beside the registry,
-  admission, and selection path.
+- Broad runtime-state/readiness DTOs are not current worker-runtime contracts.
+  Heartbeat freshness, dispatch gates, reservation/load, and lease observations
+  stay on the registry/admission/selection path or narrow diagnostics.
 - `WorkerResourceRecord` is the current composite read model. It may be used
   for SDK/server/operator resource views, but it must not become declaration
   persistence truth while it still carries status, last heartbeat, and
@@ -111,16 +109,16 @@ Worker runtime does not own transport delivery identity:
 - Worker delivery target resolution is the narrow post-selection handoff:
   point lookup from `selectedWorkerId` to
   `SelectedWorkerDeliveryTargetEvidence` with an opaque `adapterMailboxKey`.
-  Embedded runtimes may derive it from local worker session presence; split
-  runtimes must use an explicit injected resolver or a future
+  Embedded runtimes may derive it from worker registration plus local transport
+  binding metadata; split runtimes must use an explicit injected resolver or a future
   worker-runtime-owned shared projection. It is not a worker list, mailbox
   list, statistics surface, endpoint inventory, reachability state, or
   scheduling view.
-- Transport session connected/heartbeat observations may maintain the embedded
-  delivery-target and reachability projection while that projection is still the
-  current writer, but they must not refresh registry heartbeat, request dispatch
-  wakeup/recheck, or make a worker schedulable. Explicit worker
-  heartbeat/report paths remain separate worker-runtime evidence inputs.
+- Transport session connected/heartbeat observations stay transport-local. They
+  do not maintain worker-runtime delivery-target or reachability projections,
+  refresh registry heartbeat, request dispatch wakeup/recheck, or make a worker
+  schedulable. Explicit worker heartbeat/report paths remain separate
+  worker-runtime evidence inputs.
 - `WorkerDispatchBlockRuntime` is the negative-only external signal port for
   transport/starter integration. It can make a worker less schedulable by
   recording a source-scoped block, but it cannot clear a block or make a worker
@@ -143,7 +141,9 @@ must converge through registry candidate acquisition, dispatch gates,
 admission/capacity, reservation/lease checks, and selection confirmation. Older
 `reachability`, `readiness`, and `occupancy` vocabulary is useful only as
 evidence or diagnostics inside that owner path; it must not become three
-parallel scheduling state machines.
+parallel scheduling state machines. `WorkerRuntimeStateRecord` and
+`WorkerReadinessState` have been removed; `WorkerOccupancyState` remains only
+as a compact helper derived from `WorkerLoadSnapshot`.
 
 `WorkerSchedulingViewRuntime` is the selection-facing read surface and no
 longer exposes reachability. Reachability diagnostics remain point reads from
@@ -229,7 +229,7 @@ Runtime outcome proof:
 
 ```powershell
 .\mvnw.cmd -pl xa-mass-worker-runtime `
-  "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,TaskCandidateWarmPoolTest" test
+  "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest" test
 
 .\mvnw.cmd -pl xa-mass-engine `
   "-Dtest=TaskWorkerEligibilityTest,WorkerStateReportSchedulingIntegrationTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskSchedulingBindingEntryBypassTest,EngineSchedulingCoreSuite" test

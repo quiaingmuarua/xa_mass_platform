@@ -1,7 +1,7 @@
 # Worker Runtime Selected Worker Mailbox Evidence Inventory
 
 Status: current code inventory for
-`WORKER_RUNTIME_SELECTED_WORKER_MAILBOX_EVIDENCE_CONVERGENCE_ROADMAP.md`.
+`2026-06-25_WORKER_RUNTIME_SELECTED_WORKER_MAILBOX_EVIDENCE_CONVERGENCE_ROADMAP.md`.
 
 ## Summary
 

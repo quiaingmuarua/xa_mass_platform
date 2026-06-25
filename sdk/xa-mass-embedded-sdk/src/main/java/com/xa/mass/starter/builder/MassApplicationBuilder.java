@@ -26,7 +26,6 @@ import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.RedisPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.lease.RedisTransportEndpointLeaseStore;
 import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
@@ -397,14 +396,6 @@ public class MassApplicationBuilder {
             return normalizedNamespacePrefix;
         }
 
-        /**
-         * Overrides the default worker presence ingress. Useful for custom
-         * transport adapters or testing with a mock ingress.
-         */
-        public TransportBuilder workerPresenceIngress(WorkerPresenceIngress ingress) {
-            config.setCustomWorkerPresenceIngress(ingress);
-            return this;
-        }
     }
 
     public static class WebSocketAdapterBuilder {

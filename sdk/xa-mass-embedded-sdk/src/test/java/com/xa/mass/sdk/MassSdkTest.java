@@ -92,9 +92,7 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
-import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
+import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBufferStats;
@@ -313,16 +311,6 @@ class MassSdkTest {
     }
 
     @Test
-    void defaultWorkerPresenceIngressIsNoopUntilEngineAssemblyProvidesRuntimeOwner() {
-        TransportConfig config = new TransportConfig();
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-
-        WorkerPresenceIngress presenceIngress = runtimeComposition.resolveWorkerPresenceIngress();
-
-        assertNull(presenceIngress);
-    }
-
-    @Test
     void runtimeCompositionExposesAdapterOwnedConfigSnapshots() {
         TransportConfig config = new TransportConfig();
         config.getBundledWebSocketAdapterConfig().setServerPort(19095);
@@ -400,8 +388,6 @@ class MassSdkTest {
         TransportConfig config = new TransportConfig();
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        WorkerPresenceIngress customPresenceIngress = mock(WorkerPresenceIngress.class);
-        config.setCustomWorkerPresenceIngress(customPresenceIngress);
         WorkerTransportRuntimeFactory customFactory = (taskResultIngestChannel,
                                                      endpointLeaseStore,
                                                      adapterBindings) -> mock(TransportRuntimeRegistry.class);
@@ -409,59 +395,7 @@ class MassSdkTest {
 
         TransportRuntimeComposition customizedRuntimeComposition = config.snapshotRuntimeComposition();
 
-        assertSame(customPresenceIngress, customizedRuntimeComposition.resolveWorkerPresenceIngress());
         assertSame(customFactory, customizedRuntimeComposition.resolveWorkerTransportRuntimeFactory());
-    }
-
-    @Test
-    void workerLifecycleFacadePublishesPresenceOnceThroughEmbeddedPullWorkerSession() {
-        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        MassApplication delegate = MassApplicationBuilder.create()
-                .transport(transport -> transport
-                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false))
-                        .socketAdapter(socket -> socket.enabled(false).serverEnabled(false))
-                        .workerPresenceIngress(presenceIngress))
-                .engine(engine -> engine.enabled(true).workerThreads(1))
-                .build();
-        MassSdkApplication app = new MassSdkApplication(delegate);
-
-        try {
-            app.start();
-            app.registerEventDefinition(EventDefinition.builder()
-                    .code("crawler.fetch-page")
-                    .name("Fetch Page")
-                    .payloadTypes(List.of(PayloadType.JSON))
-                    .taskModes(List.of(TaskMode.SINGLE_RUN))
-                    .build());
-            app.registerProject(ProjectDefinition.builder()
-                    .code("crawlerApp")
-                    .name("Crawler App")
-                    .eventCodes(List.of("crawler.fetch-page"))
-                    .build());
-            declareSdkTestGroup(app, "polling-workers", List.of(WorkerEventBinding.builder()
-                    .eventCode("crawler.fetch-page")
-                    .projectCodes(List.of("crawlerApp"))
-                    .build()));
-            bindSdkTestNode(app, "polling-workers");
-            app.registerWorker(WorkerRegistration.builder()
-                    .workerId("worker-1")
-                    .workerGroupId("polling-workers")
-                    .transportHint(WorkerTransportHints.POLLING)
-                    .build());
-
-            app.workerOnline("worker-1", "session-1", "online");
-            app.workerHeartbeat("worker-1", "session-1", "heartbeat");
-            app.workerOffline("worker-1", "session-1", "offline");
-
-            assertEquals(List.of(
-                            "CONNECTED:worker-1:polling-default:null:session-1:online:session-1",
-                            "HEARTBEAT:worker-1:polling-default:null:session-1:heartbeat:session-1",
-                            "DISCONNECTED:worker-1:polling-default:null:session-1:offline:session-1"
-                    ),
-                    presenceIngress.events);
-        } finally {
-            app.stop();
-        }
     }
 
     @Test
@@ -3127,8 +3061,8 @@ class MassSdkTest {
                 descriptor,
                 descriptor.getAdapterId(),
                 mock(TransportResultIngressChannel.class),
-                NoopWorkerPresenceIngress.INSTANCE,
                 new InMemoryTransportEndpointLeaseStore(),
+                CurrentSessionDisconnectSink.NOOP,
                 runtimeTaskExecutor,
                 (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),
                 ignored -> { },
@@ -3454,35 +3388,6 @@ class MassSdkTest {
         @Override
         public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
             return TransportAdapterContribution.empty();
-        }
-    }
-
-    private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {
-        private final List<String> events = new ArrayList<>();
-
-        @Override
-        public void sessionConnected(WorkerSessionPresenceEvent event) {
-            events.add(describe(event));
-        }
-
-        @Override
-        public void sessionHeartbeat(WorkerSessionPresenceEvent event) {
-            events.add(describe(event));
-        }
-
-        @Override
-        public void sessionDisconnected(WorkerSessionPresenceEvent event) {
-            events.add(describe(event));
-        }
-
-        private String describe(WorkerSessionPresenceEvent event) {
-            return event.eventType().name() + ":"
-                    + event.workerId() + ":"
-                    + event.adapterId() + ":"
-                    + event.routeKey() + ":"
-                    + event.sessionToken() + ":"
-                    + event.reason() + ":"
-                    + event.traceId();
         }
     }
 

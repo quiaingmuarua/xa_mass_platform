@@ -178,15 +178,6 @@ class MassEngineStartRecoveryTest {
                 .build());
         workerDeclaration.addWorker(workerDeclaration(workerId, workerGroupId));
         long observedAtMillis = System.currentTimeMillis();
-        config.getWorkerPresenceRuntime().sessionConnected(
-                workerId,
-                "polling",
-                "polling",
-                workerGroupId,
-                workerId + "-session",
-                observedAtMillis,
-                "test worker session connected"
-        );
         config.getWorkerHeartbeatRuntime().refreshWorkerHeartbeat(workerId, observedAtMillis);
     }
 

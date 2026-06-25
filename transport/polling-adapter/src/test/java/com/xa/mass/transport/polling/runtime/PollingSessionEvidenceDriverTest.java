@@ -1,8 +1,7 @@
 package com.xa.mass.transport.polling.runtime;
 
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
 
@@ -16,76 +15,49 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PollingSessionEvidenceDriverTest {
 
     @Test
-    void connectHeartbeatDisconnectPublishPresenceAndEndpointLease() {
+    void connectHeartbeatDisconnectPublishEndpointLeaseAndCurrentDisconnectSignal() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore(30_000L);
-        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
+        RecordingDisconnectSink disconnectSink = new RecordingDisconnectSink();
         PollingSessionEvidenceDriver driver = new PollingSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
                 "polling-default",
                 "polling-mailbox",
                 endpointLeaseStore,
-                presenceIngress
+                disconnectSink
         ));
 
         assertTrue(driver.connect("worker-1", "bucket-1", "conn-1", "connected"));
         var connected = endpointLeaseStore.currentEndpointLease("bucket-1", "worker-1").orElseThrow();
         assertEquals("conn-1", connected.endpointLeaseId());
-        assertEquals(List.of("CONNECTED:worker-1:polling-default:polling-mailbox:null:conn-1:connected:conn-1"),
-                presenceIngress.events);
+        assertEquals(List.of(), disconnectSink.events);
 
         PollingSessionEvidenceDriver staleDriver = new PollingSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
                 "polling-default",
                 "polling-mailbox",
                 endpointLeaseStore,
-                new RecordingWorkerPresenceIngress()
+                disconnectSink
         ));
         assertFalse(staleDriver.heartbeat("worker-1", "bucket-1", "stale-conn", "stale-heartbeat"));
         assertTrue(driver.heartbeat("worker-1", "bucket-1", "conn-1", "heartbeat"));
-        assertEquals(List.of(
-                        "CONNECTED:worker-1:polling-default:polling-mailbox:null:conn-1:connected:conn-1",
-                        "HEARTBEAT:worker-1:polling-default:polling-mailbox:null:conn-1:heartbeat:conn-1"
-                ),
-                presenceIngress.events);
+        assertEquals(List.of(), disconnectSink.events);
 
         assertFalse(staleDriver.disconnect("worker-1", "bucket-1", "stale-conn", "stale-disconnect"));
         assertTrue(endpointLeaseStore.currentEndpointLease("bucket-1", "worker-1").isPresent());
+        assertEquals(List.of(), disconnectSink.events);
 
         assertTrue(driver.disconnect("worker-1", "bucket-1", "conn-1", "disconnect"));
         assertTrue(endpointLeaseStore.currentEndpointLease("bucket-1", "worker-1").isEmpty());
-        assertEquals(List.of(
-                        "CONNECTED:worker-1:polling-default:polling-mailbox:null:conn-1:connected:conn-1",
-                        "HEARTBEAT:worker-1:polling-default:polling-mailbox:null:conn-1:heartbeat:conn-1",
-                        "DISCONNECTED:worker-1:polling-default:polling-mailbox:null:conn-1:disconnect:conn-1"
-                ),
-                presenceIngress.events);
+        assertEquals(List.of("bucket-1:worker-1:disconnect"), disconnectSink.events);
     }
 
-    private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {
+    private static final class RecordingDisconnectSink implements CurrentSessionDisconnectSink {
         private final List<String> events = new ArrayList<>();
 
         @Override
-        public void sessionConnected(WorkerSessionPresenceEvent event) {
-            events.add(describe(event));
-        }
-
-        @Override
-        public void sessionHeartbeat(WorkerSessionPresenceEvent event) {
-            events.add(describe(event));
-        }
-
-        @Override
-        public void sessionDisconnected(WorkerSessionPresenceEvent event) {
-            events.add(describe(event));
-        }
-
-        private String describe(WorkerSessionPresenceEvent event) {
-            return event.eventType().name() + ":"
-                    + event.workerId() + ":"
-                    + event.adapterId() + ":"
-                    + event.adapterMailboxKey() + ":"
-                    + event.routeKey() + ":"
-                    + event.sessionToken() + ":"
-                    + event.reason() + ":"
-                    + event.traceId();
+        public void currentSessionDisconnected(String deliveryBucketId,
+                                               String workerId,
+                                               String reason,
+                                               long observedAtMillis) {
+            events.add(deliveryBucketId + ":" + workerId + ":" + reason);
         }
     }
 }

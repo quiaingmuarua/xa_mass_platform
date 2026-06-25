@@ -56,8 +56,6 @@ class MassApplicationDistributedTransportTest {
         engine.setWorkerDeliveryTargetResolver(selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                 selectedWorkerId,
                 adapterMailboxKey(),
-                1L,
-                System.currentTimeMillis(),
                 Long.MAX_VALUE
         )));
 
@@ -99,8 +97,6 @@ class MassApplicationDistributedTransportTest {
         engine.setWorkerDeliveryTargetResolver(selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                 "other-worker",
                 adapterMailboxKey(),
-                1L,
-                System.currentTimeMillis(),
                 Long.MAX_VALUE
         )));
 
@@ -137,6 +133,38 @@ class MassApplicationDistributedTransportTest {
 
         RuntimeException failure = assertThrows(RuntimeException.class, app::start);
         assertTrue(hasCauseMessage(failure, "engine-producer runtime requires an explicit worker delivery target resolver"));
+    }
+
+    @Test
+    void embeddedRuntimeResolvesDeliveryTargetFromWorkerTransportBinding() throws Exception {
+        EngineConfig engine = new EngineConfig();
+        engine.setEnabled(true);
+        engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-1"));
+
+        LocalDeliveryCommandHandoff handoff = new LocalDeliveryCommandHandoff();
+        RecordingAdapter adapter = new RecordingAdapter("websocket", 1);
+        TransportConfig transport = disabledTransportConsumerTransport();
+        transport.setRuntimeRole(TransportRuntimeRole.EMBEDDED);
+        transport.setDispatchHandoffFactory(() -> handoff);
+        transport.setPrimaryTransportAdapterBootstrap(new RecordingAdapterBootstrap(adapter));
+
+        CapturingMassEngine massEngine = new CapturingMassEngine(engine);
+        MassApplication app = new MassApplication(massEngine, transport, engine);
+
+        app.start();
+        try {
+            TaskDispatchBatchListener listener = massEngine.listenerRef.get();
+            assertNotNull(listener);
+
+            listener.onTaskDispatchBatch(context(), List.of(binding("msg-1", "worker-1")));
+
+            assertTrue(adapter.awaitDispatch(2, TimeUnit.SECONDS),
+                    "embedded runtime should resolve selected worker to adapter mailbox from worker transport binding");
+            assertEquals(List.of("msg-1"), adapter.dispatchedMessageIds());
+            assertEquals(List.of("worker-1"), adapter.dispatchedWorkerIds());
+        } finally {
+            app.stop();
+        }
     }
 
     @Test

@@ -1,7 +1,6 @@
 package com.xa.mass.testing.perf;
 
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
@@ -97,10 +96,10 @@ final class PerfWorkerMatchingSupport {
         }
 
         @Override
-        public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(WorkerTaskSelector selector,
-                                                                                 int maxCandidateCount) {
+        public List<WorkerCandidateRow> findWorkerCandidates(WorkerTaskSelector selector,
+                                                             int maxCandidateCount) {
             if (selector == null || maxCandidateCount <= 0 || selector.workerGroupIds().isEmpty()) {
-                return WorkerCandidateBatch.empty();
+                return List.of();
             }
             List<WorkerCandidateRow> rows = new ArrayList<>();
             for (WorkerResourceRecord worker : workerResourceQueryRuntime.workers()) {
@@ -119,7 +118,7 @@ final class PerfWorkerMatchingSupport {
                 }
                 rows.add(candidateRow(worker));
             }
-            return new WorkerCandidateBatch<>(rows, 0, rows.size(), 0);
+            return rows;
         }
 
         private boolean isBulkTask(String taskId) {

@@ -41,11 +41,12 @@ import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureInboxPump;
-import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
+import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
+import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
+import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
+import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,7 +89,6 @@ public class MassApplication {
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
     private RuntimeTaskExecutor eventRuntimeTaskExecutor;
     private BufferedTransportResultIngressChannel bufferedResultIngestChannel;
-    private WorkerPresenceIngress workerPresenceIngress;
 
     public MassApplication(MassEngine engine,
                            TransportConfig transportConfig,
@@ -215,9 +215,8 @@ public class MassApplication {
             rawWorkerMessageChannelsByAdapterId.clear();
             embeddedAdapterHostSet = EmbeddedAdapterHostSet.empty();
             startEventRuntimeTaskExecutor();
-            WorkerPresenceIngress presenceIngress = resolveWorkerPresenceIngress();
-            workerPresenceIngress = presenceIngress;
             endpointLeaseStore = transportRuntimeComposition.resolveTransportEndpointLeaseStore();
+            CurrentSessionDisconnectSink currentSessionDisconnectSink = createCurrentSessionDisconnectSink();
             transportRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
                     "transport-runtime-",
                     transportRuntimeComposition.getTransportRuntimeMaxPendingTasks()
@@ -284,8 +283,8 @@ public class MassApplication {
                             descriptor,
                             assignedMailboxKey,
                             resultIngressChannel,
-                            presenceIngress,
                             endpointLeaseStore,
+                            currentSessionDisconnectSink,
                             transportRuntimeTaskExecutor,
                             transportDispatchHandoff == null ? null : transportDispatchHandoff::poll,
                             new TransportDeliveryFailureEvidenceSink(adapterHostFailureHandler),
@@ -375,7 +374,7 @@ public class MassApplication {
                 && !engineConfig.isWorkerDeliveryTargetResolverExplicitlyConfigured()) {
             throw new IllegalStateException(
                     "engine-producer runtime requires an explicit worker delivery target resolver; "
-                            + "local worker presence is only a valid default for embedded runtime"
+                            + "local transport bindings are only a valid default for embedded runtime"
             );
         }
     }
@@ -402,8 +401,34 @@ public class MassApplication {
         return new TaskDispatchRoutingSubmitter(
                 assignedDeliverySubmitter,
                 createTransportDeliveryFailureHandler(),
-                engineConfig::resolveWorkerDeliveryTarget
+                createWorkerDeliveryTargetResolver()
         );
+    }
+
+    private java.util.function.Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>>
+    createWorkerDeliveryTargetResolver() {
+        if (engineConfig.isWorkerDeliveryTargetResolverExplicitlyConfigured()) {
+            return engineConfig::resolveWorkerDeliveryTarget;
+        }
+        return this::resolveWorkerDeliveryTargetFromBinding;
+    }
+
+    private Optional<SelectedWorkerDeliveryTargetEvidence> resolveWorkerDeliveryTargetFromBinding(String selectedWorkerId) {
+        if (selectedWorkerId == null || selectedWorkerId.isBlank() || transportRuntimeRegistry == null) {
+            return Optional.empty();
+        }
+        WorkerResourceRecord worker;
+        try {
+            worker = requireWorkerResource(selectedWorkerId.trim());
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+        TransportBinding binding = resolveTransportBinding(worker);
+        return Optional.of(new SelectedWorkerDeliveryTargetEvidence(
+                worker.workerId(),
+                binding.getAdapterMailboxKey(),
+                Long.MAX_VALUE
+        ));
     }
 
     private WorkerResourceRecord requireWorkerResource(String workerId) {
@@ -534,7 +559,6 @@ public class MassApplication {
     }
 
     private void stopEventRuntimeTaskExecutor() throws Exception {
-        workerPresenceIngress = null;
         RuntimeTaskExecutor executor = eventRuntimeTaskExecutor;
         eventRuntimeTaskExecutor = null;
         if (executor == null) {
@@ -553,21 +577,21 @@ public class MassApplication {
         return new BoundedMassEventRuntime(inMemoryRuntime, () -> eventRuntimeTaskExecutor, timeoutMillis);
     }
 
-    private WorkerPresenceIngress resolveWorkerPresenceIngress() {
-        WorkerPresenceIngress configuredIngress = transportRuntimeComposition.resolveWorkerPresenceIngress();
-        if (configuredIngress != null && configuredIngress != NoopWorkerPresenceIngress.INSTANCE) {
-            return configuredIngress;
-        }
+    private CurrentSessionDisconnectSink createCurrentSessionDisconnectSink() {
         if (!engineConfig.isEnabled()) {
-            return NoopWorkerPresenceIngress.INSTANCE;
+            return CurrentSessionDisconnectSink.NOOP;
         }
-        return new WorkerRuntimePresenceIngress(
-                engineConfig.getWorkerPresenceRuntime(),
-                engineConfig.getWorkerDispatchBlockRuntime(),
-                engineConfig.getWorkerDispatchRecoveryRuntime(),
-                engineConfig.getWorkerHeartbeatRuntime(),
-                engineConfig.getExecutionEventSink()
-        );
+        return (deliveryBucketId, workerId, reason, observedAtMillis) ->
+                engineConfig.getWorkerDispatchBlockRuntime().blockWorkerDispatch(
+                        deliveryBucketId,
+                        workerId,
+                        new WorkerDispatchBlockSignal(
+                                WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED,
+                                firstNonBlank(reason, "transport session disconnected"),
+                                observedAtMillis,
+                                0L
+                        )
+                );
     }
 
     private void registerRawWorkerMessageChannel(RawWorkerMessageChannel rawWorkerMessageChannel) {

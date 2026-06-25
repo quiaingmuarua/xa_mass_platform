@@ -15,7 +15,7 @@ import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.EV
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.PROJECT;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.TASK_ID;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.accepted;
-import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.batch;
+import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.candidates;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.groupIsReadable;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.load;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.request;
@@ -39,7 +39,7 @@ class WorkerSelectionRankingMechanicsTest {
         WorkerAdmissionRuntime admissionRuntime = mock(WorkerAdmissionRuntime.class);
         WorkerSelectionOwner owner = new WorkerSelectionOwner(candidateRuntime, schedulingViewRuntime, admissionRuntime);
 
-        when(candidateRuntime.findWorkerCandidateBatch(any(), anyInt())).thenReturn(batch(
+        when(candidateRuntime.findWorkerCandidates(any(), anyInt())).thenReturn(candidates(
                 row("worker-loaded", Map.of("region", "us", "routingTags", "lane-us")),
                 row("worker-no-affinity", Map.of("region", "us", "routingTags", "eu")),
                 row("worker-best", Map.of("region", "us", "routingTags", "lane-us")),
@@ -82,13 +82,13 @@ class WorkerSelectionRankingMechanicsTest {
         WorkerSchedulingViewRuntime schedulingViewRuntime = mock(WorkerSchedulingViewRuntime.class);
         WorkerAdmissionRuntime admissionRuntime = mock(WorkerAdmissionRuntime.class);
         WorkerSelectionOwner owner = new WorkerSelectionOwner(candidateRuntime, schedulingViewRuntime, admissionRuntime);
-        when(candidateRuntime.findWorkerCandidateBatch(any(), anyInt())).thenReturn(batch());
+        when(candidateRuntime.findWorkerCandidates(any(), anyInt())).thenReturn(candidates());
 
         owner.selectAndReserve(request(2, false));
 
         ArgumentCaptor<WorkerTaskSelector> selector = ArgumentCaptor.forClass(WorkerTaskSelector.class);
         ArgumentCaptor<Integer> limit = ArgumentCaptor.forClass(Integer.class);
-        verify(candidateRuntime).findWorkerCandidateBatch(selector.capture(), limit.capture());
+        verify(candidateRuntime).findWorkerCandidates(selector.capture(), limit.capture());
         assertEquals(WorkerSelectionTestSupport.TASK_ID, selector.getValue().taskId());
         assertEquals(List.of(GROUP_ID), selector.getValue().workerGroupIds());
         assertEquals(512, limit.getValue());

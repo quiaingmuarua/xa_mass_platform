@@ -109,9 +109,10 @@ entry for `transport/`.
   the serving adapter identity instead of reviving route-only shared semantics.
 - The network/session evidence lane is a first-class transport responsibility,
   not delivery-executor residue. Adapter session connect/heartbeat/disconnect
-  observations feed transport endpoint/session evidence and worker session
-  presence ingress; worker-runtime owns the derived reachability and selected
-  worker mailbox projection.
+  observations feed transport endpoint/session evidence. Worker-runtime
+  scheduling state is not opened by transport observations; only confirmed
+  current-session loss may cross assembly as narrow negative dispatch block
+  evidence.
 - worker endpoint lease evidence lives in a transport-owned endpoint lease
   plane keyed by `deliveryBucketId + workerId`. Handoff consumer availability is
   mailbox-level evidence, not `deliveryBucketId + selectedWorkerId` evidence.
@@ -123,13 +124,13 @@ entry for `transport/`.
   `deliveryBucketId`, heartbeat only extends the matching endpoint lease, and
   release only removes the endpoint lease when the caller still holds the
   stored `endpointLeaseId` / public `sessionToken`.
-- `WorkerPresenceIngress` is current session-presence ingress only. Adapters may
-  publish connect/heartbeat/disconnect observations, while worker-runtime owns
-  derived reachability and selected-worker mailbox projection. Transport
-  connected/heartbeat observations must not refresh registry slot heartbeat or
-  request dispatch wakeup/recheck. Endpoint leases remain delivery feasibility
-  evidence and must not become worker lifecycle truth, worker state-report
-  truth, slot heartbeat truth, or capability truth.
+- There is no transport-to-worker-runtime session-presence event bridge.
+  Connected and heartbeat observations stay transport-local endpoint/session
+  freshness. Confirmed current-session disconnect may emit
+  `TRANSPORT_DISCONNECTED` through the SDK/starter negative-only block sink.
+  Endpoint leases remain delivery feasibility evidence and must not become
+  worker lifecycle truth, worker state-report truth, slot heartbeat truth,
+  positive eligibility recovery, or capability truth.
 - Transport and concrete adapters must not import worker-runtime dispatch gate
   APIs or clear worker dispatch eligibility. Negative eligibility signals from
   transport observations are bridged in SDK/starter assembly through the
@@ -178,15 +179,15 @@ entry for `transport/`.
   `TransportAdapterBootstrapContext`: host-assigned adapter mailbox key,
   session evidence publisher, adapter-owned mailbox consumer construction,
   adapter-facing result ingress sink, and adapter-facing host executor where
-  needed. They must not receive raw endpoint lease stores, worker-presence
-  ingress, generic delivery services, mailbox registries, or handoff internals,
-  and they must not mint mailbox keys from adapter id or protocol values
-  themselves.
+  needed. They must not receive raw endpoint lease stores, worker-runtime
+  scheduling mutation surfaces, generic delivery services, mailbox registries,
+  or handoff internals, and they must not mint mailbox keys from adapter id or
+  protocol values themselves.
 - Concrete adapters may observe protocol sessions and send to selected workers,
   but endpoint lease evidence is projected by `TransportEndpointLeasePublisher`,
   mailbox consumer availability is claimed by embedded adapter host support,
-  and worker session-presence observations are projected by
-  `WorkerPresenceSessionPublisher`.
+  and confirmed current-session loss is bridged by SDK/starter assembly through
+  the negative-only worker dispatch block sink.
   WebSocket now splits this into explicit session store, server handle, command
   executor, protocol-edge `AdapterSessionIdentity` construction, public
   worker-channel frame codec consumption, and evidence refresher roles.

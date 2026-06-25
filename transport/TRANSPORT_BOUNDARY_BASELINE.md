@@ -23,8 +23,8 @@ Transport owns two runtime lanes for worker connectivity and dispatch:
 
 These lanes share adapter observations, endpoint/session evidence, and mailbox
 facts, but they must not collapse into one lifecycle owner. The evidence lane
-produces reachability inputs; the assigned-delivery lane is the pure delivery
-executor.
+produces transport-local endpoint freshness and confirmed current-session loss
+signals; the assigned-delivery lane is the pure delivery executor.
 
 Transport owns network/session evidence mechanics:
 
@@ -33,10 +33,12 @@ Transport owns network/session evidence mechanics:
   Endpoint leases contain adapter/runtime/session facts for current delivery
   feasibility, while timestamps stay in store deadline indexes or
   policy-specific consumer evidence instead of the general view record.
-- session-presence ingress for adapter connect/disconnect/heartbeat
-  observations; worker-runtime owns derived reachability and registry slot
-  heartbeat freshness, while endpoint lease refresh does not decide worker
-  lifecycle, state-report, capability, or slot heartbeat truth
+- endpoint/session evidence for adapter connect/disconnect/heartbeat
+  observations. Connected and heartbeat observations remain transport-local.
+  Confirmed current-session disconnect may cross assembly as negative dispatch
+  block evidence, while endpoint lease refresh does not decide worker
+  lifecycle, state-report, capability, slot heartbeat, or positive eligibility
+  recovery truth
 
 Network/session evidence is system hygiene state, not message delivery. It
 must remain bounded and self-cleaning through finite lease deadlines, explicit
@@ -103,8 +105,9 @@ Transport should stay centered on these concepts only:
 - `TransportAdapterBootstrapContext`: embedded adapter support capability
   surface. It exposes host assignment, mailbox, session evidence, result
   ingress, and host-resource capabilities. Concrete adapters must not receive
-  raw endpoint lease stores, worker-presence ingress, mailbox registries,
-  dispatch handoff internals, or generic delivery services through this surface.
+  raw endpoint lease stores, worker-runtime scheduling mutation surfaces,
+  mailbox registries, dispatch handoff internals, or generic delivery services
+  through this surface.
 - `EmbeddedAdapterHostSet` / `EmbeddedAdapterContributionHost`: current
   embedded Java adapter host-support classes around one or more adapter
   contributions. Their stable role is host mounting: start/stop
@@ -121,7 +124,7 @@ Transport should stay centered on these concepts only:
 - `PollingDeliveryExecutor`: polling adapter command executor. It owns only
   `DispatchMessage` enqueue into the polling delivery buffer and dispatch
   outcome normalization/logging. It must not own pull polling, endpoint lease
-  projection, worker-presence projection, or mailbox consumer availability.
+  projection, worker dispatch eligibility, or mailbox consumer availability.
 - `PollingDeliveryPullChannel`: polling adapter pull-channel implementation. It
   owns only worker pull-buffer demux by adapter mailbox plus `selectedWorkerId`
   and status mapping into `DeliveryPullResult`. It must not own command
@@ -137,10 +140,11 @@ Transport should stay centered on these concepts only:
   availability is claimed by embedded adapter host support when the handoff
   requires it, not by endpoint lease projection and not as adapter lifecycle
   truth.
-- `WorkerPresenceSessionPublisher`: runtime owner that projects adapter
-  connect/heartbeat/disconnect observations into worker session-presence
-  ingress. Concrete adapters may observe sessions, but they do not own worker
-  lifecycle truth.
+- `CurrentSessionDisconnectSink`: runtime assembly sink for confirmed
+  current-session loss. `AdapterSessionEvidencePublisher` writes transport
+  endpoint lease evidence first; only a successful current endpoint release may
+  call this sink. The sink is narrow negative evidence, not a generic worker
+  presence event channel.
 - `DispatchOutcome`: adapter-neutral delivery result, never task-lifecycle truth
   and the single retryable delivery-failure fact owner. It carries stable
   delivery identity, selected worker, opaque delivery correlation, status,
@@ -203,18 +207,9 @@ Transport should stay centered on these concepts only:
   `deliveryBucketId + workerId` endpoint metadata. General view records do not
   expose lease deadlines; endpoint lease stores do not own dispatch
   handoff consumer leases.
-- `WorkerPresenceIngress`: transport-neutral ingress seam for worker session
-  connect/disconnect/heartbeat observations. It is not an endpoint lease
-  projection, worker command, worker state-report, or capability-report
-  lifecycle owner.
-  Connected and heartbeat observations may refresh worker-runtime slot heartbeat
-  freshness; they must not write worker resource status or dispatch gates.
-  Current-session disconnect may be projected by starter assembly into the
-  worker-runtime negative-only dispatch block port; stale/replaced session
-  disconnects must not block dispatch.
 - Transport/adapters do not own worker dispatch eligibility recovery. They may
   only produce best-effort negative observations through delivery outcomes or
-  session-presence projection. SDK/starter assembly bridges confirmed
+  current-session disconnect. SDK/starter assembly bridges confirmed
   current-session disconnect observations to worker-runtime block records; it
   must not expose clear-capable gate APIs to transport or concrete adapters.
   Final-hop `NO_ENDPOINT`, pre-transport missing target, mailbox unavailable,
@@ -232,14 +227,15 @@ Transport should stay centered on these concepts only:
 Avoid adding new transport model names unless they carry a distinct runtime
 behavior that cannot fit one of these concepts.
 
-Worker session-presence ingress is intentionally narrow in the current
-baseline. Future worker command, worker state-report, or worker capability
-self-report flows may use transport ingress, but they must first define a
-separate owner that validates, stores, projects, repairs, and exposes the
-resulting state. Transport must not route command acknowledgements through task
-result ingest, treat state reports as reachability truth, mutate worker
-capability truth directly from presence ingress, or let `TransportEndpointLeaseStore`
-claim/refresh/release currentness drive presence or slot heartbeat truth.
+There is intentionally no transport-to-worker-runtime session-presence ingress
+in the current baseline. Future worker command, worker state-report, or worker
+capability self-report flows may use transport ingress, but they must first
+define a separate owner that validates, stores, projects, repairs, and exposes
+the resulting state. Transport must not route command acknowledgements through
+task result ingest, treat state reports as reachability truth, mutate worker
+capability truth directly from adapter session events, or let
+`TransportEndpointLeaseStore` claim/refresh/release currentness drive worker
+presence, slot heartbeat, or positive dispatch eligibility recovery.
 
 The completed worker-control owner-baseline roadmap is archived at
 `../doc/archive/xa-mass-engine/2026-05-18_EVENT_AND_WORKER_CONTROL_ROADMAP.md`. Current
@@ -280,7 +276,7 @@ hot-path recovery logic.
 
 `transport_api` owns stable contracts used across adapters and runtime:
 
-- transport-neutral dispatch/result/session-presence interfaces
+- transport-neutral dispatch/result/session-evidence interfaces
 - transport-neutral models that adapters must exchange with runtime
 - canonical worker route-key codec contract for the WRB convergence target
 
@@ -378,7 +374,8 @@ online/offline truth, scheduling strategy, adapter health, reconnect/failover,
 or message reliability.
 SDK/operator worker inspection must not read endpoint lease projections;
 it reads worker runtime lifecycle state. Engine and SDK inspection must not
-write presence, read adapter sessions, or treat presence as a schedule owner.
+write worker presence from adapter sessions, read adapter sessions, or treat
+transport presence as a schedule owner.
 Runtime assembly keeps `TransportEndpointLeaseStore` for adapter/session writes
 and shutdown ownership. Assigned-delivery producer and listener code do not use
 endpoint lease view lookup as a routing engine.

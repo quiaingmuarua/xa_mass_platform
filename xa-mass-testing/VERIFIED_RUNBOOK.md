@@ -380,8 +380,9 @@ Result write-back and closure:
 Worker scheduling truth:
 
 - `Worker.status` is the worker model status on the control-plane side. Dispatch
-  online/reachability truth comes from transport presence consumed through
-  `WorkerReachabilityView`.
+  eligibility truth comes from worker-runtime registry/gate/admission state.
+  Transport connected/heartbeat evidence stays transport-local; only confirmed
+  current-session disconnect may enter worker-runtime as negative block evidence.
 - worker lock truth is runtime/resource state and must stay out of the
   control-plane DB. The server JDBC adapter intentionally keeps lock churn
   process-local instead of persisting it in durable storage.

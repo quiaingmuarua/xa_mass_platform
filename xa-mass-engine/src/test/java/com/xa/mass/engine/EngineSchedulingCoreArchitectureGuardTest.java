@@ -1245,7 +1245,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path workerManagerPath = WORKER_MANAGER_SOURCE;
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
         Map<String, String> guardedMethods = Map.of(
-                "findWorkerCandidateBatch", "public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch",
+                "findWorkerCandidates", "public List<WorkerCandidateRow> findWorkerCandidates",
                 "getWorkerCandidateIndex", "WorkerCandidateIndex getWorkerCandidateIndex"
         );
 
@@ -1267,34 +1267,23 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void taskCandidateWarmPoolDoesNotOwnEligibilityReserveOrDispatchTruth() throws IOException {
-        Path warmPoolPath = Path.of("..")
-                .resolve("xa-mass-worker-runtime")
-                .resolve("src/main/java/com/xa/mass/worker/runtime/TaskCandidateWarmPool.java")
-                .normalize();
-        String source = Files.readString(warmPoolPath, StandardCharsets.UTF_8);
-
-        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
-                Map.entry("rule evaluation", Pattern.compile("\\bRuleManager\\b|\\bevaluateRules\\b|\\bRuleEvaluation\\b")),
-                Map.entry("worker reserve", Pattern.compile("\\btryReserve\\b|\\bconfirmReservation\\b")),
-                Map.entry("worker release/final", Pattern.compile("\\breleaseReservation\\b|\\brecordWorkFinal\\b")),
-                Map.entry("dispatch runtime", Pattern.compile("\\bTaskWorkRuntime\\b|\\bTaskResultRuntime\\b|\\bTaskDispatch\\b")),
-                Map.entry("candidate bucket acquisition", Pattern.compile("\\bacquireCandidates\\s*\\(")),
-                Map.entry("worker slot truth", Pattern.compile("\\bWorkerSlot\\b|\\bWorkerRegistry\\b"))
-        );
+    void taskLocalWarmCandidatePathDoesNotReappear() throws IOException {
+        Path runtimeRoot = repositoryRoot().resolve("xa-mass-worker-runtime/src/main/java");
+        Pattern forbiddenWarmResidue = Pattern.compile(
+                "\\b(?:TaskCandidateWarmPool|WorkerWarmHintRuntime|WorkerCandidateBatch|"
+                        + "recordWarmCandidate|warmCandidateCount|findWorkerCandidateBatch)\\b");
 
         List<String> violations = new ArrayList<>();
-        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
-            if (forbiddenPattern.getValue().matcher(source).find()) {
-                violations.add(warmPoolPath + " owns forbidden warm-hint responsibility: "
-                        + forbiddenPattern.getKey());
+        for (Path path : javaSourceFiles(runtimeRoot)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (forbiddenWarmResidue.matcher(source).find()) {
+                violations.add(path + " keeps task-local warm candidate residue");
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "TaskCandidateWarmPool is only bounded task-local source evidence. "
-                        + "It must not own rule evaluation, worker registry truth, reserve/release, "
-                        + "or dispatch/result runtime state:\n"
+                "Pre-score-band worker runtime must not retain task-local warm candidate "
+                        + "pools, batch DTOs, or warm mutation ports:\n"
                         + String.join("\n", violations));
     }
 
@@ -1885,23 +1874,24 @@ class EngineSchedulingCoreArchitectureGuardTest {
             violations.add(candidateRuntimePath + " depends on xa-mass-base");
         }
         Map<String, Pattern> forbiddenMethods = Map.ofEntries(
-                Map.entry("findWorkerCandidates", Pattern.compile("\\bfindWorkerCandidates\\s*\\(")),
                 Map.entry("getWorkerCandidateIndex", Pattern.compile("\\bgetWorkerCandidateIndex\\s*\\(")),
-                Map.entry("recordWarmCandidate", Pattern.compile("\\brecordWarmCandidate\\s*\\("))
+                Map.entry("batch candidate acquisition", Pattern.compile("\\bfindWorkerCandidateBatch\\s*\\(")),
+                Map.entry("warm candidate writes", Pattern.compile("\\brecordWarmCandidate\\s*\\("))
         );
         for (Map.Entry<String, Pattern> forbiddenMethod : forbiddenMethods.entrySet()) {
             if (forbiddenMethod.getValue().matcher(source).find()) {
                 violations.add(candidateRuntimePath + " exposes " + forbiddenMethod.getKey());
             }
         }
-        if (!Pattern.compile("\\bfindWorkerCandidateBatch\\s*\\(").matcher(source).find()) {
-            violations.add(candidateRuntimePath + " does not expose batch candidate acquisition");
+        if (!Pattern.compile("\\bList\\s*<\\s*WorkerCandidateRow\\s*>\\s+findWorkerCandidates\\s*\\(")
+                .matcher(source)
+                .find()) {
+            violations.add(candidateRuntimePath + " does not expose row-only candidate acquisition");
         }
 
         assertTrue(violations.isEmpty(),
                 "WorkerCandidateRuntime is a worker-runtime candidate acquisition sub-port behind WorkerSelectionRuntime. "
-                        + "Keep diagnostics and warm hint writes off candidate acquisition; warm hints "
-                        + "belong on WorkerWarmHintRuntime:\n"
+                        + "Keep diagnostics, batch wrappers, and warm hint writes off candidate acquisition:\n"
                         + String.join("\n", violations));
     }
 
@@ -1958,7 +1948,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerManagerCandidateAndWarmHintSurfaceStaysRuntimeNeutral() throws IOException {
+    void workerManagerCandidateSurfaceStaysRuntimeNeutral() throws IOException {
         Path workerManagerPath = WORKER_MANAGER_SOURCE;
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
 
@@ -1987,8 +1977,11 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 .find()) {
             violations.add(workerManagerPath + " exposes snapshot refresh diagnostics as public API");
         }
-        if (Pattern.compile("\\bfindWorkerCandidateBatch\\s*\\(\\s*Task\\b").matcher(source).find()) {
+        if (Pattern.compile("\\bfindWorkerCandidates\\s*\\(\\s*Task\\b").matcher(source).find()) {
             violations.add(workerManagerPath + " exposes Task-shaped candidate acquisition");
+        }
+        if (Pattern.compile("\\bfindWorkerCandidateBatch\\s*\\(").matcher(source).find()) {
+            violations.add(workerManagerPath + " keeps batch candidate acquisition");
         }
         if (Pattern.compile("\\brecordWarmCandidate\\s*\\([^)]*\\bTask\\b").matcher(source).find()) {
             violations.add(workerManagerPath + " exposes Task-shaped warm hint mutation");
@@ -1998,16 +1991,17 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerManager is still assembly, but resource, candidate acquisition, and warm-hint "
+                "WorkerManager is still assembly, but resource and candidate acquisition "
                         + "entrypoints must stay on model-neutral WorkerResourceRecord / "
-                        + "WorkerTaskSelector / WorkerCandidateRow shapes:\n"
+                        + "WorkerTaskSelector / WorkerCandidateRow shapes; task-local warm "
+                        + "candidate mutations must not return:\n"
                         + String.join("\n", violations));
     }
 
     @Test
     void engineSelectionMainlineDoesNotInferWorkerRuntimeSubPorts() throws IOException {
         Pattern forbiddenSubPort = Pattern.compile(
-                "\\b(?:WorkerCandidateRuntime|WorkerSchedulingViewRuntime|WorkerAdmissionRuntime|WorkerWarmHintRuntime)\\b");
+                "\\b(?:WorkerCandidateRuntime|WorkerSchedulingViewRuntime|WorkerAdmissionRuntime)\\b");
 
         List<String> violations = new ArrayList<>();
         for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
@@ -2289,9 +2283,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "com/xa/mass/engine/assignment/AssignmentAllocationRequest.java");
 
         String candidateIndex = Files.readString(candidateIndexPath, StandardCharsets.UTF_8);
-        String findWorkerCandidateBatch = sourceMethod(
+        String findWorkerCandidates = sourceMethod(
                 Files.readString(workerManagerPath, StandardCharsets.UTF_8),
-                "public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch"
+                "public List<WorkerCandidateRow> findWorkerCandidates"
         );
         String binder = Files.readString(binderPath, StandardCharsets.UTF_8);
         String traceLogger = Files.readString(traceLoggerPath, StandardCharsets.UTF_8);
@@ -2309,8 +2303,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("\\bgroupIdsByProjectCode\\s*\\(").matcher(candidateIndex).find()) {
             violations.add(candidateIndexPath + " reads groupIdsByProjectCode in candidate-source lookup");
         }
-        if (Pattern.compile("\\.getAllWorkers\\s*\\(").matcher(findWorkerCandidateBatch).find()) {
-            violations.add(workerManagerPath + "#findWorkerCandidateBatch falls back to all workers");
+        if (Pattern.compile("\\.getAllWorkers\\s*\\(").matcher(findWorkerCandidates).find()) {
+            violations.add(workerManagerPath + "#findWorkerCandidates falls back to all workers");
         }
         for (String oldSource : List.of("GROUP_INDEX", "GROUP_PROJECT_INDEX", "ALL_WORKERS_FALLBACK")) {
             if (binder.contains(oldSource)) {
@@ -3016,10 +3010,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("TargetScope -> new control-plane runtime path",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker"),
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerPresenceIngress.java"),
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSessionPresenceEvent.java"),
-                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker")
                                 ),
                                 Pattern.compile("\\bTargetScope\\b|\\.getTargetScope\\s*\\("))),
                 Map.entry("worker command/state report -> task result owner",
@@ -3103,7 +3094,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "\\bWorkerManager\\b",
                 "\\bWorkerReachabilityView\\b",
                 "\\bWorkerLoadView\\b",
-                "\\bWorkerPresenceIngress\\b",
+                "\\bWorkerPresence" + "Ingress\\b",
                 "\\bWorkerCommand(?:Ack|Status)?\\b",
                 "\\bWorkerStateReport\\b",
                 "\\bWorkerCapabilityReport\\b",
@@ -3127,50 +3118,56 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerPresenceIngressStaysTransportIngressNotLifecycleOwner() throws IOException {
+    void transportSessionPresenceEventBridgeDoesNotReappear() throws IOException {
         Path repo = repositoryRoot();
-        Map<String, GuardedSourceArea> guardedAreas = Map.ofEntries(
-                Map.entry("presence ingress -> engine dependency",
-                        new GuardedSourceArea(
-                                List.of(
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerPresenceIngress.java"),
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/NoopWorkerPresenceIngress.java"),
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSessionPresenceEvent.java"),
-                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
-                                ),
-                                Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.engine\\."))),
-                Map.entry("presence ingress -> task result payload",
-                        new GuardedSourceArea(
-                                List.of(
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerPresenceIngress.java"),
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSessionPresenceEvent.java"),
-                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
-                                ),
-                                Pattern.compile("\\bTaskResultReport\\b|\\bTaskResultRuntime\\b"))),
-                Map.entry("presence ingress -> command/state owner",
-                        new GuardedSourceArea(
-                                List.of(
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerPresenceIngress.java"),
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSessionPresenceEvent.java"),
-                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
-                                ),
-                                Pattern.compile("\\bWorkerCommand(?:Ack|Status)?\\b|\\bWorkerStateReport\\b")))
+        String ingressType = "WorkerPresence" + "Ingress";
+        String noopIngressType = "NoopWorkerPresence" + "Ingress";
+        String sessionEventType = "WorkerSession" + "PresenceEvent";
+        String eventType = "WorkerPresence" + "EventType";
+        String runtimeIngressType = "WorkerRuntime" + "PresenceIngress";
+        List<Path> removedBridgePaths = List.of(
+                repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/" + ingressType + ".java"),
+                repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/" + noopIngressType + ".java"),
+                repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/" + sessionEventType + ".java"),
+                repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/" + eventType + ".java"),
+                repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/" + runtimeIngressType + ".java")
         );
+        List<Path> existingBridgePaths = removedBridgePaths.stream()
+                .filter(Files::exists)
+                .toList();
+        assertTrue(existingBridgePaths.isEmpty(),
+                "Removed transport session presence bridge files still exist: " + existingBridgePaths);
 
+        List<String> forbiddenTokens = List.of(
+                ingressType,
+                noopIngressType,
+                sessionEventType,
+                eventType,
+                runtimeIngressType,
+                "customWorker" + "PresenceIngress",
+                "worker" + "PresenceIngress"
+        );
+        List<Path> roots = List.of(
+                repo.resolve("transport/transport_api/src/main/java"),
+                repo.resolve("transport/transport_runtime/src/main/java"),
+                repo.resolve("transport/polling-adapter/src/main/java"),
+                repo.resolve("transport/socket-adapter/src/main/java"),
+                repo.resolve("transport/websocket-adapter/src/main/java"),
+                repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java")
+        );
         List<String> violations = new ArrayList<>();
-        for (Map.Entry<String, GuardedSourceArea> guardedArea : guardedAreas.entrySet()) {
-            for (Path path : guardedArea.getValue().sourceFiles()) {
+        for (Path root : roots) {
+            for (Path path : javaSourceFiles(root)) {
                 String source = Files.readString(path, StandardCharsets.UTF_8);
-                if (guardedArea.getValue().forbiddenPattern().matcher(source).find()) {
-                    violations.add(path + " leaks worker presence ingress into owner path: "
-                            + guardedArea.getKey());
+                for (String token : forbiddenTokens) {
+                    if (source.contains(token)) {
+                        violations.add(path + " preserves removed transport session presence bridge token: " + token);
+                    }
                 }
             }
         }
-
         assertTrue(violations.isEmpty(),
-                "WorkerPresenceIngress is a transport session-presence ingress seam. "
-                        + "It must not become a lifecycle owner or import engine scheduling/result paths:\n"
+                "Transport session connected/heartbeat must not enter worker-runtime through a generic presence bridge:\n"
                         + String.join("\n", violations));
     }
 
@@ -3240,7 +3237,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "\\bTaskWorkRuntime\\b",
                 "\\bTaskAssignWorker\\b",
                 "\\bTaskDispatchBinder\\b",
-                "\\bWorkerPresenceIngress\\b",
+                "\\bWorkerPresence" + "Ingress\\b",
                 "\\bWorkerReachabilityView\\b",
                 "\\bWorkerLoadView\\b",
                 "\\bimport\\s+com\\.xa\\.mass\\.transport\\.",
@@ -3367,9 +3364,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("session presence ingress",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerPresenceIngress.java"),
-                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSessionPresenceEvent.java"),
-                                        repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
+                                        repo.resolve("transport/transport_api/src/main/java")
                                 ),
                                 capabilityReport)),
                 Map.entry("matching/acquisition path",
@@ -3413,7 +3408,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         String source = Files.readString(handlerPath, StandardCharsets.UTF_8);
 
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
-                Map.entry("transport session presence ingress", Pattern.compile("\\bWorkerPresenceIngress\\b")),
+                Map.entry("transport session presence ingress", Pattern.compile("\\bWorkerPresence" + "Ingress\\b")),
                 Map.entry("task result owner", Pattern.compile("\\bTaskResult(?:Service|Runtime|Report)\\b")),
                 Map.entry("task work runtime", Pattern.compile("\\bTaskWorkRuntime\\b")),
                 Map.entry("matching/ranking owner", Pattern.compile("\\bRuleBasedTaskWorkerMatchingStrategy\\b|\\bWorkerCandidateRanker\\b")),

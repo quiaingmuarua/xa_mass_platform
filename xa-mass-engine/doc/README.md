@@ -44,7 +44,6 @@ below and must not stay in this list.
 
 - [PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md](roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md)
 - [TASK_RUNTIME_PROFILE_DESIGN.md](roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
-- [WORKER_MATCH_UPGRADE_ROADMAP.md](roadmap/WORKER_MATCH_UPGRADE_ROADMAP.md)
 - [WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md](../../roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md)
   owns the remaining worker-registry candidate acquisition and node-group
   maintenance boundedness decisions.

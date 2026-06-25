@@ -3,7 +3,6 @@ package com.xa.mass.worker.runtime.selection;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
@@ -61,7 +60,7 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
                 intent.targetWorkerId(),
                 Set.of()
         );
-        WorkerCandidateBatch<WorkerCandidateRow> candidateBatch = candidateRuntime.findWorkerCandidateBatch(
+        List<WorkerCandidateRow> candidateRows = candidateRuntime.findWorkerCandidates(
                 selector,
                 candidateAcquisitionLimit(intent, resolvedRequest.requestedWorkerCount())
         );
@@ -69,7 +68,7 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
         Map<String, Integer> rejectedByReason = new LinkedHashMap<>();
         Set<String> completedWorkerIds = new LinkedHashSet<>();
 
-        for (WorkerCandidateRow row : candidateBatch.candidates()) {
+        for (WorkerCandidateRow row : candidateRows) {
             if (row == null || isBlank(row.workerId()) || !completedWorkerIds.add(row.workerId())) {
                 increment(rejectedByReason, "duplicate or invalid worker candidate");
                 continue;

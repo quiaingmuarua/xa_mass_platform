@@ -1,10 +1,8 @@
 package com.xa.mass.transport.websocket.session;
 
-import com.xa.mass.transport.channel.NoopWorkerPresenceIngress;
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
-import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import io.netty.channel.Channel;
@@ -63,8 +61,8 @@ class WebSocketSessionRegistryTest {
     void sessionsProjectEndpointLeaseWithoutRouteKey() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore =
                 new InMemoryTransportEndpointLeaseStore(30_000L);
-        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
-        registry = newRegistry(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore, presenceIngress);
+        RecordingDisconnectSink disconnectSink = new RecordingDisconnectSink();
+        registry = newRegistry(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore, disconnectSink);
         Channel channel = mockActiveChannel("worker-1");
 
         registry.addSession(WORKER_GROUP_ID, "worker-1", channel);
@@ -74,16 +72,12 @@ class WebSocketSessionRegistryTest {
         assertEquals(WORKER_GROUP_ID, endpoint.deliveryBucketId());
         assertEquals("worker-1", endpoint.workerId());
         assertEquals("worker-1", endpoint.endpointLeaseId());
-        assertEquals(List.of("connected:worker-1:websocket:null:worker-1:websocket connected:worker-1"),
-                presenceIngress.events);
+        assertEquals(List.of(), disconnectSink.events);
 
         registry.removeSession(channel);
 
         assertFalse(hasEndpoint(endpointLeaseStore, "worker-1"));
-        assertEquals(List.of(
-                "connected:worker-1:websocket:null:worker-1:websocket connected:worker-1",
-                "disconnected:worker-1:websocket:null:worker-1:websocket disconnected:worker-1"
-        ), presenceIngress.events);
+        assertEquals(List.of("group-1:worker-1:websocket disconnected"), disconnectSink.events);
     }
 
     @Test
@@ -103,10 +97,10 @@ class WebSocketSessionRegistryTest {
 
     @Test
     void replacingWorkerChannelKeepsConnectionCountStable() {
-        RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
+        RecordingDisconnectSink disconnectSink = new RecordingDisconnectSink();
         registry = newRegistry(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID,
                 new InMemoryTransportEndpointLeaseStore(30_000L),
-                presenceIngress);
+                disconnectSink);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
 
@@ -119,30 +113,21 @@ class WebSocketSessionRegistryTest {
         assertTrue(registry.sendTextToWorker("worker-1", "{\"hello\":\"world\"}"));
         verify(firstChannel).close();
         verify(secondChannel).writeAndFlush(any(TextWebSocketFrame.class));
-        assertEquals(List.of(
-                "connected:worker-1:websocket:null:worker-1-old:websocket connected:worker-1-old",
-                "connected:worker-1:websocket:null:worker-1-new:websocket connected:worker-1-new",
-                "disconnected:worker-1:websocket:null:worker-1-old:websocket session replaced:worker-1-old"
-        ), presenceIngress.events);
+        assertEquals(List.of(), disconnectSink.events);
 
         registry.removeSession(firstChannel);
         assertEquals(1, registry.activeConnectionCount());
 
         registry.removeSession(secondChannel);
         assertEquals(0, registry.activeConnectionCount());
-        assertEquals(List.of(
-                "connected:worker-1:websocket:null:worker-1-old:websocket connected:worker-1-old",
-                "connected:worker-1:websocket:null:worker-1-new:websocket connected:worker-1-new",
-                "disconnected:worker-1:websocket:null:worker-1-old:websocket session replaced:worker-1-old",
-                "disconnected:worker-1:websocket:null:worker-1-new:websocket disconnected:worker-1-new"
-        ), presenceIngress.events);
+        assertEquals(List.of("group-1:worker-1:websocket disconnected"), disconnectSink.events);
     }
 
     @Test
     void retiredWebSocketChannelCannotReclaimEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         registry = newRegistry(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore,
-                NoopWorkerPresenceIngress.INSTANCE);
+                CurrentSessionDisconnectSink.NOOP);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
 
@@ -159,7 +144,7 @@ class WebSocketSessionRegistryTest {
     void removingStaleChannelDoesNotReleaseReplacementEndpointLease() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         registry = newRegistry(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID, endpointLeaseStore,
-                NoopWorkerPresenceIngress.INSTANCE);
+                CurrentSessionDisconnectSink.NOOP);
         Channel firstChannel = mockActiveChannel("worker-1-old");
         Channel secondChannel = mockActiveChannel("worker-1-new");
 
@@ -235,46 +220,30 @@ class WebSocketSessionRegistryTest {
 
     private WebSocketSessionRegistry newRegistry(String adapterId) {
         return newRegistry(adapterId, new InMemoryTransportEndpointLeaseStore(30_000L),
-                NoopWorkerPresenceIngress.INSTANCE);
+                CurrentSessionDisconnectSink.NOOP);
     }
 
     private WebSocketSessionRegistry newRegistry(String adapterId,
                                                  InMemoryTransportEndpointLeaseStore endpointLeaseStore,
-                                                 WorkerPresenceIngress presenceIngress) {
+                                                 CurrentSessionDisconnectSink disconnectSink) {
         AdapterSessionEvidencePublisher sessionEvidencePublisher = new AdapterSessionEvidencePublisher(
                 adapterId,
                 adapterId,
                 endpointLeaseStore,
-                presenceIngress
+                disconnectSink
         );
         return new WebSocketSessionRegistry(sessionEvidencePublisher);
     }
 
-    private static final class RecordingWorkerPresenceIngress implements WorkerPresenceIngress {
+    private static final class RecordingDisconnectSink implements CurrentSessionDisconnectSink {
         private final List<String> events = new ArrayList<>();
 
         @Override
-        public void sessionConnected(WorkerSessionPresenceEvent event) {
-            events.add("connected:" + describe(event));
-        }
-
-        @Override
-        public void sessionHeartbeat(WorkerSessionPresenceEvent event) {
-            events.add("heartbeat:" + describe(event));
-        }
-
-        @Override
-        public void sessionDisconnected(WorkerSessionPresenceEvent event) {
-            events.add("disconnected:" + describe(event));
-        }
-
-        private static String describe(WorkerSessionPresenceEvent event) {
-            return event.workerId()
-                    + ":" + event.adapterId()
-                    + ":" + event.routeKey()
-                    + ":" + event.sessionToken()
-                    + ":" + event.reason()
-                    + ":" + event.traceId();
+        public void currentSessionDisconnected(String deliveryBucketId,
+                                               String workerId,
+                                               String reason,
+                                               long observedAtMillis) {
+            events.add(deliveryBucketId + ":" + workerId + ":" + reason);
         }
     }
 }

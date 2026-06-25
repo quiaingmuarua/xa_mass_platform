@@ -65,15 +65,6 @@ class WorkerRuntimeSelectionIntegrationTest {
                 .build());
         workerDeclaration.addWorker(workerDeclaration("wrx-worker-1", "wrx-selection-workers"));
         long observedAtMillis = System.currentTimeMillis();
-        config.getWorkerPresenceRuntime().sessionConnected(
-                "wrx-worker-1",
-                "polling",
-                "polling",
-                "wrx-selection-workers",
-                "wrx-session-1",
-                observedAtMillis,
-                "test worker session connected"
-        );
         config.getWorkerHeartbeatRuntime().refreshWorkerHeartbeat("wrx-worker-1", observedAtMillis);
 
         CountDownLatch dispatchLatch = new CountDownLatch(1);

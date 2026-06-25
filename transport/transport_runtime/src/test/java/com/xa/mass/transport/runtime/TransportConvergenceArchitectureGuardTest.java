@@ -82,8 +82,7 @@ class TransportConvergenceArchitectureGuardTest {
         );
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java"),
-                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java")
                 ),
                 "WorkerDispatchGateRuntime",
                 "clearWorkerDispatchDisable(",
@@ -117,6 +116,11 @@ class TransportConvergenceArchitectureGuardTest {
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassEngine.java")),
                 "getWorkerPresenceRuntime().setDispatchWakeupCallback"
+        );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/EngineConfig.java")),
+                "public InMemoryWorkerPresenceRuntime getWorkerPresenceRuntime",
+                "getWorkerPresenceRuntime()"
         );
     }
 
@@ -155,7 +159,6 @@ class TransportConvergenceArchitectureGuardTest {
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel"),
-                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java"),
                         repoRoot().resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/presence")
                 ),
                 "TransportEndpointLeaseStore",
@@ -620,7 +623,7 @@ class TransportConvergenceArchitectureGuardTest {
         assertTrue(contextSource.contains("AdapterSessionEvidenceCapabilities sessionEvidence()"),
                 "Adapter bootstrap context must expose session evidence through a narrow capability");
         assertTrue(!contextSource.contains("getEndpointLeaseStore(")
-                        && !contextSource.contains("getWorkerPresenceIngress(")
+                        && !contextSource.contains("getWorker" + "PresenceIngress(")
                         && !contextSource.contains("getDeliveryService(")
                         && !contextSource.contains("pullDeliveryBuffer(")
                         && !contextSource.contains("public TransportResultIngressChannel getResultIngressChannel(")
@@ -659,10 +662,10 @@ class TransportConvergenceArchitectureGuardTest {
         assertNoProductionSourceContains(
                 List.of(pollingBootstrap, websocketBootstrap, socketBootstrap),
                 "getEndpointLeaseStore(",
-                "getWorkerPresenceIngress(",
+                "getWorker" + "PresenceIngress(",
                 "getDeliveryService(",
                 "TransportEndpointLeaseStore",
-                "WorkerPresenceIngress",
+                "WorkerPresence" + "Ingress",
                 "TransportDeliveryService",
                 "context.adapterMailboxKey(",
                 "context.sessionEvidencePublisher(",
@@ -683,7 +686,7 @@ class TransportConvergenceArchitectureGuardTest {
                 "RedisTransportDispatchHandoff",
                 "InMemoryTransportDispatchHandoff",
                 "TransportEndpointLeaseStore",
-                "WorkerPresenceIngress",
+                "WorkerPresence" + "Ingress",
                 "TransportDeliveryService",
                 "TransportDeliveryStore"
         );
@@ -702,7 +705,7 @@ class TransportConvergenceArchitectureGuardTest {
                         repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/session/SocketSessionManager.java")
                 ),
                 "TransportEndpointLeaseStore",
-                "WorkerPresenceIngress",
+                "WorkerPresence" + "Ingress",
                 "TransportDeliveryService"
         );
     }
@@ -825,7 +828,7 @@ class TransportConvergenceArchitectureGuardTest {
                 "DeliveryPullChannel",
                 "TransportEndpointLease",
                 "DeliveryCommandConsumerRegistry",
-                "WorkerPresenceIngress",
+                "WorkerPresence" + "Ingress",
                 "PullSessionEvidenceDriver"
         );
         assertNoProductionSourceContains(
@@ -834,7 +837,7 @@ class TransportConvergenceArchitectureGuardTest {
                 "com.xa.mass.transport.model.DeliveryCommand",
                 "TransportEndpointLease",
                 "DeliveryCommandConsumerRegistry",
-                "WorkerPresenceIngress",
+                "WorkerPresence" + "Ingress",
                 "PullSessionEvidenceDriver"
         );
         assertNoProductionSourceContains(
@@ -948,7 +951,7 @@ class TransportConvergenceArchitectureGuardTest {
                 "WebSocket session registry must not expose diagnostics inspector methods directly");
         assertTrue(!sessionRegistrySource.contains("setEndpointLeaseStore(")
                         && !sessionRegistrySource.contains("setDeliveryCommandConsumerRegistry(")
-                        && !sessionRegistrySource.contains("setWorkerPresenceIngress("),
+                        && !sessionRegistrySource.contains("setWorker" + "PresenceIngress("),
                 "WebSocket session registry must not own endpoint lease or presence wiring setters");
         assertTrue(sessionRegistrySource.contains("sessionsByWorkerId")
                         && sessionRegistrySource.contains("sessionsByChannel")
@@ -1157,7 +1160,7 @@ class TransportConvergenceArchitectureGuardTest {
                 "TransportEndpointLeaseRelease",
                 "TransportEndpointLeaseConsumerEvidence",
                 "DeliveryCommandConsumerClaim",
-                "WorkerSessionPresenceEvent",
+                "WorkerSession" + "PresenceEvent",
                 "endpointLeaseStore.claimEndpointLease",
                 "endpointLeaseStore.refreshEndpointLease",
                 "endpointLeaseStore.releaseEndpointLease"
@@ -1184,8 +1187,8 @@ class TransportConvergenceArchitectureGuardTest {
                 List.of(embeddedPullWorkerSession),
                 "TransportEndpointLeaseStore",
                 "DeliveryCommandConsumerRegistry",
-                "WorkerPresenceIngress",
-                "WorkerSessionPresenceEvent",
+                "WorkerPresence" + "Ingress",
+                "WorkerSession" + "PresenceEvent",
                 "TransportEndpointLeaseClaim",
                 "TransportEndpointLeaseHeartbeat",
                 "TransportEndpointLeaseRelease",

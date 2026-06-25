@@ -7,7 +7,7 @@ import com.xa.mass.contract.worker.WorkerChannelFrameJsonCodec;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.ResultIngressEntry;
-import com.xa.mass.transport.channel.WorkerPresenceIngress;
+import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
@@ -189,19 +189,6 @@ class WebSocketTransportAdapterBootstrapTest {
 
     private TransportAdapterBootstrapContext context(AtomicReference<ResultIngressEntry> captured,
                                                      AdapterMailboxClient adapterMailboxClient) {
-        WorkerPresenceIngress presenceIngress = new WorkerPresenceIngress() {
-            @Override
-            public void sessionConnected(com.xa.mass.transport.channel.WorkerSessionPresenceEvent event) {
-            }
-
-            @Override
-            public void sessionHeartbeat(com.xa.mass.transport.channel.WorkerSessionPresenceEvent event) {
-            }
-
-            @Override
-            public void sessionDisconnected(com.xa.mass.transport.channel.WorkerSessionPresenceEvent event) {
-            }
-        };
         return new TransportAdapterBootstrapContext(
                 new WebSocketTransportAdapterBootstrap(new WebSocketAdapterConfig()).descriptor(),
                 "websocket-mailbox",
@@ -209,8 +196,8 @@ class WebSocketTransportAdapterBootstrapTest {
                     captured.set(entry);
                     return true;
                 },
-                presenceIngress,
                 new InMemoryTransportEndpointLeaseStore(),
+                CurrentSessionDisconnectSink.NOOP,
                 mock(RuntimeTaskExecutor.class),
                 adapterMailboxClient,
                 null,

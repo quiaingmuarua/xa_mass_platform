@@ -10,7 +10,7 @@ import java.util.Map;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.GROUP_ID;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.TASK_ID;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.accepted;
-import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.batch;
+import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.candidates;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.groupIsReadable;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.load;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.request;
@@ -35,7 +35,7 @@ class WorkerSelectionAtomicRuntimeTest {
         WorkerAdmissionRuntime admissionRuntime = mock(WorkerAdmissionRuntime.class);
         WorkerSelectionOwner owner = new WorkerSelectionOwner(candidateRuntime, schedulingViewRuntime, admissionRuntime);
 
-        when(candidateRuntime.findWorkerCandidateBatch(any(), anyInt())).thenReturn(batch(
+        when(candidateRuntime.findWorkerCandidates(any(), anyInt())).thenReturn(candidates(
                 row("worker-primary", Map.of("region", "us", "routingTags", "us")),
                 row("worker-secondary", Map.of("region", "us", "routingTags", "us"))
         ));

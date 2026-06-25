@@ -249,7 +249,7 @@ enough that it cannot become a second worker registry.
 ## SWME-0 - Inventory And Field Disposition
 
 Status: inventory created in
-`WORKER_RUNTIME_SELECTED_WORKER_MAILBOX_EVIDENCE_CONVERGENCE_INVENTORY.md`;
+`2026-06-25_WORKER_RUNTIME_SELECTED_WORKER_MAILBOX_EVIDENCE_CONVERGENCE_INVENTORY.md`;
 test-only session-count residue has been removed from worker-runtime mainline.
 
 Scope:

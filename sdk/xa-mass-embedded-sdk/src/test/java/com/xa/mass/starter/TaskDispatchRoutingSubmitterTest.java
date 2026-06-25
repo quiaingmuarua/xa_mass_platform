@@ -47,8 +47,6 @@ class TaskDispatchRoutingSubmitterTest {
                 selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                         selectedWorkerId,
                         "mailbox-a",
-                        1L,
-                        1L,
                         1L
                 )),
                 handoff,
@@ -69,8 +67,6 @@ class TaskDispatchRoutingSubmitterTest {
                 selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                         "other-worker",
                         "mailbox-a",
-                        1L,
-                        System.currentTimeMillis(),
                         Long.MAX_VALUE
                 )),
                 handoff,
